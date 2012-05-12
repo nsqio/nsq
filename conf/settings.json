@@ -1,0 +1,14 @@
+{
+    "dev": {
+        "test": "asdf"
+    },
+    "airsnakes.local": {
+        "test2": "ghjk"
+    },
+    "default": {},
+    "another": {
+        "level": {
+            "deeper": "definitely"
+        }
+    }
+}
