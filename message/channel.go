@@ -6,14 +6,12 @@ import (
 	"errors"
 	"log"
 	"time"
-	// "../server"
 )
 
 type Channel struct {
-	name             string
-	addClientChan    chan util.ChanReq
-	removeClientChan chan util.ChanReq
-	// clients             []*Client
+	name                string
+	addClientChan       chan util.ChanReq
+	removeClientChan    chan util.ChanReq
 	backend             queue.BackendQueue
 	incomingMessageChan chan *Message
 	msgChan             chan *Message
@@ -27,9 +25,8 @@ type Channel struct {
 // Channel constructor
 func NewChannel(channelName string, inMemSize int) *Channel {
 	channel := &Channel{name: channelName,
-		addClientChan:    make(chan util.ChanReq),
-		removeClientChan: make(chan util.ChanReq),
-		// clients:             make([]*Client, 0, 5),
+		addClientChan:       make(chan util.ChanReq),
+		removeClientChan:    make(chan util.ChanReq),
 		backend:             queue.NewDiskQueue(channelName),
 		incomingMessageChan: make(chan *Message, 5),
 		msgChan:             make(chan *Message, inMemSize),
@@ -41,23 +38,6 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 	go channel.Router()
 	return channel
 }
-
-// // AddClient performs a thread safe operation
-// // to add a Client to a Channel
-// // see: Channel.Router()
-// func (c *Channel) AddClient(client *Client) {
-// 	log.Printf("CHANNEL(%s): adding client...", c.name)
-// 	doneChan := make(chan interface{})
-// 	c.addClientChan <- ChanReq{client, doneChan}
-// 	<-doneChan
-// }
-// 
-// func (c *Channel) RemoveClient(client *Client) {
-// 	log.Printf("CHANNEL(%s): removing client...", c.name)
-// 	doneChan := make(chan interface{})
-// 	c.removeClientChan <- ChanReq{client, doneChan}
-// 	<-doneChan
-// }
 
 // PutMessage writes to the appropriate incoming
 // message channel
@@ -80,8 +60,6 @@ func (c *Channel) RequeueMessage(uuidStr string) error {
 // Router handles the muxing of Channel messages including
 // the addition of a Client to the Channel
 func (c *Channel) Router() {
-	// var clientReq util.ChanReq
-
 	helperCloseChan := make(chan int)
 
 	go func() {
@@ -128,27 +106,6 @@ func (c *Channel) Router() {
 
 	for {
 		select {
-		// case clientReq = <-c.addClientChan:
-		// 	client := clientReq.variable.(*Client)
-		// 	c.clients = append(c.clients, client)
-		// 	log.Printf("CHANNEL(%s): added client(%#v)", c.name, client)
-		// 	clientReq.retChan <- 1
-		// case clientReq = <-c.removeClientChan:
-		// 	indexToRemove := -1
-		// 	client := clientReq.variable.(*Client)
-		// 	for k, v := range c.clients {
-		// 		if v == client {
-		// 			indexToRemove = k
-		// 			break
-		// 		}
-		// 	}
-		// 	if indexToRemove == -1 {
-		// 		log.Printf("ERROR: could not find client(%#v) in clients(%#v)", client, c.clients)
-		// 	} else {
-		// 		c.clients = append(c.clients[:indexToRemove], c.clients[indexToRemove+1:]...)
-		// 		log.Printf("CHANNEL(%s): removed client(%#v)", c.name, client)
-		// 	}
-		// 	clientReq.retChan <- 1
 		case msg := <-c.incomingMessageChan:
 			select {
 			case c.msgChan <- msg:
@@ -211,8 +168,6 @@ func (c *Channel) Close() error {
 	log.Printf("CHANNEL(%s): closing", c.name)
 
 	c.exitChan <- 1
-
-	// TODO: close (and wait to flush?) all clients
 
 	err = c.backend.Close()
 	if err != nil {

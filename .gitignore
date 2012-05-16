@@ -1,4 +1,6 @@
-nsq
+nsq_server/nsq_server
+nsq_lookup/nsq_lookup
+nsq_admin/nsq_admin
 
 # Go.gitignore
 

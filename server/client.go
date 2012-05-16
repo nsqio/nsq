@@ -18,6 +18,9 @@ func NewClient(conn net.Conn) *Client {
 }
 
 func (c *Client) String() string {
+	if c.conn == nil {
+		return "<nil>"
+	}
 	return c.conn.RemoteAddr().String()
 }
 

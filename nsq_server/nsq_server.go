@@ -1,9 +1,9 @@
 package main
 
 import (
-	"./message"
-	"./server"
-	"./util"
+	"../message"
+	"../server"
+	"../util"
 	"flag"
 	"log"
 	"os"

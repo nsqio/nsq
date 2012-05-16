@@ -15,7 +15,7 @@ type Client interface {
 
 type Protocol interface {
 	IOLoop(client Client) error
-	Execute(client Client, params ...string) (error, []byte)
+	Execute(client Client, params ...string) ([]byte, error)
 }
 
 var Protocols = map[int32]Protocol{}

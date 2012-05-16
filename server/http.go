@@ -42,6 +42,7 @@ func (r *ReqParams) Query(key string) (string, error) {
 func HttpServer(address string, port string, endChan chan int) {
 	http.HandleFunc("/ping", pingHandler)
 	http.HandleFunc("/put", putHandler)
+	http.HandleFunc("/stats", statsHandler)
 	go func() {
 		fqAddress := address + ":" + port
 		log.Printf("listening for http requests on %s", fqAddress)
@@ -72,7 +73,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	prot := protocol.Protocols[538990129] // v1
-	err, _ = prot.Execute(NewClient(nil), "PUB", topicName, string(reqParams.body))
+	_, err = prot.Execute(NewClient(nil), "PUB", topicName, string(reqParams.body))
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
