@@ -36,14 +36,8 @@ type ProtocolV1 struct {
 func (p *ProtocolV1) IOLoop(client Client) error {
 	var err error
 	var line string
-	var response []byte
 
 	client.SetState(ClientInit)
-
-	typ := reflect.TypeOf(p)
-	args := make([]reflect.Value, 3)
-	args[0] = reflect.ValueOf(p)
-	args[1] = reflect.ValueOf(client)
 
 	err = nil
 	reader := bufio.NewReader(client.GetConnection())
@@ -56,40 +50,20 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 		line = strings.Replace(line, "\n", "", -1)
 		line = strings.Replace(line, "\r", "", -1)
 		params := strings.Split(line, " ")
-		cmd := strings.ToUpper(params[0])
 
 		log.Printf("PROTOCOL: %#v", params)
 
-		// use reflection to call the appropriate method for this 
-		// command on the protocol object
-		if method, ok := typ.MethodByName(cmd); ok {
-			args[2] = reflect.ValueOf(params)
-			returnValues := method.Func.Call(args)
-			err = nil
-			if !returnValues[0].IsNil() {
-				err = returnValues[0].Interface().(error)
-			}
-			response = nil
-			if !returnValues[1].IsNil() {
-				response = returnValues[1].Interface().([]byte)
-			}
-
+		err, response := p.Execute(client, params...)
+		if err != nil {
+			err = client.WriteError(err)
 			if err != nil {
-				err = client.WriteError(err)
-				if err != nil {
-					break
-				}
-				continue
+				break
 			}
+			continue
+		}
 
-			if response != nil {
-				err = client.Write(response)
-				if err != nil {
-					break
-				}
-			}
-		} else {
-			err = client.WriteError(ClientErrInvalid)
+		if response != nil {
+			err = client.Write(response)
 			if err != nil {
 				break
 			}
@@ -101,6 +75,37 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 	}
 
 	return err
+}
+
+func (p *ProtocolV1) Execute(client Client, params ...string) (error, []byte) {
+	var err error
+	var response []byte
+	
+	typ := reflect.TypeOf(p)
+	args := make([]reflect.Value, 3)
+	args[0] = reflect.ValueOf(p)
+	args[1] = reflect.ValueOf(client)
+	
+	cmd := strings.ToUpper(params[0])
+	
+	// use reflection to call the appropriate method for this 
+	// command on the protocol object
+	if method, ok := typ.MethodByName(cmd); ok {
+		args[2] = reflect.ValueOf(params)
+		returnValues := method.Func.Call(args)
+		err = nil
+		if !returnValues[0].IsNil() {
+			err = returnValues[0].Interface().(error)
+		}
+		response = nil
+		if !returnValues[1].IsNil() {
+			response = returnValues[1].Interface().([]byte)
+		}
+		
+		return err, response
+	}
+	
+	return ClientErrInvalid, nil
 }
 
 func (p *ProtocolV1) SUB(client Client, params []string) (error, []byte) {
@@ -210,22 +215,33 @@ func (p *ProtocolV1) REQ(client Client, params []string) (error, []byte) {
 	return nil, nil
 }
 
-func (p *ProtocolV1) Pub(topicName string, body []byte) error {
+func (p *ProtocolV1) PUB(client Client, params []string) (error, []byte) {
 	var buf bytes.Buffer
 	var err error
+	
+	if client.GetState() != ClientInit {
+		return ClientErrInvalid, nil
+	}
 
+	if len(params) < 3 {
+		return ClientErrInvalid, nil
+	}
+
+	topicName := params[1]
+	body := []byte(params[2])
+	
 	_, err = buf.Write(<-util.UuidChan)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	_, err = buf.Write(body)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	topic := message.GetTopic(topicName)
 	topic.PutMessage(message.NewMessage(buf.Bytes()))
 
-	return nil
+	return nil, nil
 }

@@ -71,8 +71,8 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	prot := &protocol.ProtocolV1{}
-	err = prot.Pub(topicName, reqParams.body)
+	prot := protocol.Protocols[538990129] // v1
+	err, _ = prot.Execute(NewClient(nil), "PUB", topicName, string(reqParams.body))
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
