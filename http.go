@@ -43,7 +43,9 @@ func httpServer(address string, port string, endChan chan int) {
 	http.HandleFunc("/ping", pingHandler)
 	http.HandleFunc("/put", putHandler)
 	go func() {
-		err := http.ListenAndServe(address+":"+port, nil)
+		fqAddress := address + ":" + port
+		log.Printf("listening for http requests on %s", fqAddress)
+		err := http.ListenAndServe(fqAddress, nil)
 		if err != nil {
 			log.Fatal("http.ListenAndServe:", err)
 		}

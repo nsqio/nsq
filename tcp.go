@@ -11,6 +11,7 @@ func tcpServer(address string, port string) {
 	if err != nil {
 		panic("listen (" + fqAddress + ") failed: " + err.Error())
 	}
+	log.Printf("listening for clients on %s", fqAddress)
 
 	for {
 		clientConn, err := listener.Accept()
