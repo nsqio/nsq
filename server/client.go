@@ -1,47 +1,36 @@
-package main
+package server
 
 import (
+	"../protocol"
 	"encoding/binary"
 	"log"
 	"net"
 )
 
 type Client struct {
-	conn    net.Conn
-	state   int
-	channel *Channel
+	conn  net.Conn
+	state int
 }
-
-const (
-	clientInit         = 0
-	clientWaitGet      = 1
-	clientWaitAck      = 2
-	clientWaitResponse = 3
-)
-
-type ClientError struct {
-	errStr string
-}
-
-func (e ClientError) Error() string {
-	return e.errStr
-}
-
-var (
-	clientErrInvalid     = ClientError{"E_INVALID"}
-	clientErrBadProtocol = ClientError{"E_BAD_PROTOCOL"}
-	clientErrBadTopic    = ClientError{"E_BAD_TOPIC"}
-	clientErrBadChannel  = ClientError{"E_BAD_CHANNEL"}
-	clientErrBadMessage  = ClientError{"E_BAD_MESSAGE"}
-)
 
 // Client constructor
 func NewClient(conn net.Conn) *Client {
-	return &Client{conn, clientInit, nil}
+	return &Client{conn, -1}
 }
 
 func (c *Client) String() string {
 	return c.conn.RemoteAddr().String()
+}
+
+func (c *Client) GetState() int {
+	return c.state
+}
+
+func (c *Client) SetState(state int) {
+	c.state = state
+}
+
+func (c *Client) GetConnection() net.Conn {
+	return c.conn
 }
 
 // Write prefixes the byte array with a size and 
@@ -87,14 +76,14 @@ func (c *Client) Handle() {
 
 	log.Printf("CLIENT(%s): desired protocol %d", c.String(), protocolVersion)
 
-	protocol, ok := protocols[protocolVersion]
+	prot, ok := protocol.Protocols[protocolVersion]
 	if !ok {
-		c.WriteError(clientErrBadProtocol)
+		c.WriteError(protocol.ClientErrBadProtocol)
 		log.Printf("CLIENT(%s): bad protocol version %d", c.String(), protocolVersion)
 		return
 	}
 
-	err = protocol.IOLoop(c)
+	err = prot.IOLoop(c)
 	if err != nil {
 		log.Printf("ERROR: client(%s) - %s", c.String(), err.Error())
 		return
@@ -103,8 +92,5 @@ func (c *Client) Handle() {
 
 func (c *Client) Close() {
 	log.Printf("CLIENT(%s): closing", c.String())
-	if c.channel != nil {
-		c.channel.RemoveClient(c)
-	}
 	c.conn.Close()
 }

@@ -1,6 +1,8 @@
-package main
+package protocol
 
 import (
+	"../message"
+	"../util"
 	"bufio"
 	"bytes"
 	"log"
@@ -8,17 +10,35 @@ import (
 	"strings"
 )
 
+const (
+	ClientInit         = 0
+	ClientWaitGet      = 1
+	ClientWaitAck      = 2
+	ClientWaitResponse = 3
+)
+
+var (
+	ClientErrInvalid    = ClientError{"E_INVALID"}
+	ClientErrBadTopic   = ClientError{"E_BAD_TOPIC"}
+	ClientErrBadChannel = ClientError{"E_BAD_CHANNEL"}
+	ClientErrBadMessage = ClientError{"E_BAD_MESSAGE"}
+)
+
 func init() {
 	// BigEndian client byte sequence "  V1"
-	protocols[538990129] = &ProtocolV1{}
+	Protocols[538990129] = &ProtocolV1{}
 }
 
-type ProtocolV1 struct{}
+type ProtocolV1 struct {
+	channel *message.Channel
+}
 
-func (p *ProtocolV1) IOLoop(client *Client) error {
+func (p *ProtocolV1) IOLoop(client Client) error {
 	var err error
 	var line string
 	var response []byte
+
+	client.SetState(ClientInit)
 
 	typ := reflect.TypeOf(p)
 	args := make([]reflect.Value, 3)
@@ -26,7 +46,7 @@ func (p *ProtocolV1) IOLoop(client *Client) error {
 	args[1] = reflect.ValueOf(client)
 
 	err = nil
-	reader := bufio.NewReader(client.conn)
+	reader := bufio.NewReader(client.GetConnection())
 	for {
 		line, err = reader.ReadString('\n')
 		if err != nil {
@@ -42,7 +62,7 @@ func (p *ProtocolV1) IOLoop(client *Client) error {
 
 		// don't let them h@x0r
 		if cmd == "IOLoop" {
-			err = client.WriteError(clientErrInvalid)
+			err = client.WriteError(ClientErrInvalid)
 			if err != nil {
 				break
 			}
@@ -78,59 +98,63 @@ func (p *ProtocolV1) IOLoop(client *Client) error {
 				}
 			}
 		} else {
-			err = client.WriteError(clientErrInvalid)
+			err = client.WriteError(ClientErrInvalid)
 			if err != nil {
 				break
 			}
 		}
 	}
 
+	if p.channel != nil {
+		// p.channel.RemoveClient(c)
+	}
+
 	return err
 }
 
-func (p *ProtocolV1) SUB(client *Client, params []string) (error, []byte) {
-	if client.state != clientInit {
-		return clientErrInvalid, nil
+func (p *ProtocolV1) SUB(client Client, params []string) (error, []byte) {
+	if client.GetState() != ClientInit {
+		return ClientErrInvalid, nil
 	}
 
 	if len(params) < 3 {
-		return clientErrInvalid, nil
+		return ClientErrInvalid, nil
 	}
 
 	topicName := params[1]
 	if len(topicName) == 0 {
-		return clientErrBadTopic, nil
+		return ClientErrBadTopic, nil
 	}
 
 	channelName := params[2]
 	if len(channelName) == 0 {
-		return clientErrBadChannel, nil
+		return ClientErrBadChannel, nil
 	}
 
-	client.state = clientWaitGet
+	client.SetState(ClientWaitGet)
 
-	topic := GetTopic(topicName)
-	client.channel = topic.GetChannel(channelName)
-	client.channel.AddClient(client)
+	topic := message.GetTopic(topicName)
+	p.channel = topic.GetChannel(channelName)
+	// client.channel.AddClient(client)
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) GET(client *Client, params []string) (error, []byte) {
+func (p *ProtocolV1) GET(client Client, params []string) (error, []byte) {
 	var err error
 
-	if client.state != clientWaitGet {
-		return clientErrInvalid, nil
+	if client.GetState() != ClientWaitGet {
+		return ClientErrInvalid, nil
 	}
 
 	// this blocks until a message is ready
-	msg := client.channel.GetMessage()
+	msg := p.channel.GetMessage()
 	if msg == nil {
 		log.Printf("ERROR: msg == nil")
-		return clientErrBadMessage, nil
+		return ClientErrBadMessage, nil
 	}
 
-	uuidStr := UuidToStr(msg.Uuid())
+	uuidStr := util.UuidToStr(msg.Uuid())
 
 	log.Printf("PROTOCOL: writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
 
@@ -140,57 +164,57 @@ func (p *ProtocolV1) GET(client *Client, params []string) (error, []byte) {
 		return err, nil
 	}
 
-	client.state = clientWaitAck
+	client.SetState(ClientWaitAck)
 
 	return nil, buf.Bytes()
 }
 
-func (p *ProtocolV1) ACK(client *Client, params []string) (error, []byte) {
-	if client.state != clientWaitAck {
-		return clientErrInvalid, nil
+func (p *ProtocolV1) ACK(client Client, params []string) (error, []byte) {
+	if client.GetState() != ClientWaitAck {
+		return ClientErrInvalid, nil
 	}
 
-	client.state = clientWaitResponse
+	client.SetState(ClientWaitResponse)
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) FIN(client *Client, params []string) (error, []byte) {
-	if client.state != clientWaitResponse {
-		return clientErrInvalid, nil
+func (p *ProtocolV1) FIN(client Client, params []string) (error, []byte) {
+	if client.GetState() != ClientWaitResponse {
+		return ClientErrInvalid, nil
 	}
 
 	if len(params) < 2 {
-		return clientErrInvalid, nil
+		return ClientErrInvalid, nil
 	}
 
 	uuidStr := params[1]
-	err := client.channel.FinishMessage(uuidStr)
+	err := p.channel.FinishMessage(uuidStr)
 	if err != nil {
 		return err, nil
 	}
 
-	client.state = clientWaitGet
+	client.SetState(ClientWaitGet)
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) REQ(client *Client, params []string) (error, []byte) {
-	if client.state != clientWaitResponse {
-		return clientErrInvalid, nil
+func (p *ProtocolV1) REQ(client Client, params []string) (error, []byte) {
+	if client.GetState() != ClientWaitResponse {
+		return ClientErrInvalid, nil
 	}
 
 	if len(params) < 2 {
-		return clientErrInvalid, nil
+		return ClientErrInvalid, nil
 	}
 
 	uuidStr := params[1]
-	err := client.channel.RequeueMessage(uuidStr)
+	err := p.channel.RequeueMessage(uuidStr)
 	if err != nil {
 		return err, nil
 	}
 
-	client.state = clientWaitGet
+	client.SetState(ClientWaitGet)
 
 	return nil, nil
 }

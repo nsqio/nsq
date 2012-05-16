@@ -1,11 +1,11 @@
-package main
+package server
 
 import (
 	"log"
 	"net"
 )
 
-func tcpServer(address string, port string) {
+func TcpServer(address string, port string) {
 	fqAddress := address + ":" + port
 	listener, err := net.Listen("tcp", fqAddress)
 	if err != nil {

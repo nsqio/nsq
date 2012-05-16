@@ -1,6 +1,7 @@
-package main
+package queue
 
 import (
+	"../util"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -22,8 +23,8 @@ type DiskQueue struct {
 	readFile     *os.File
 	writeFile    *os.File
 	readChan     chan int
-	inChan       chan ChanReq
-	outChan      chan ChanRet
+	inChan       chan util.ChanReq
+	outChan      chan util.ChanRet
 	exitChan     chan int
 }
 
@@ -31,7 +32,7 @@ func NewDiskQueue(name string) *DiskQueue {
 	diskQueue := DiskQueue{name,
 		0, 0, 0, 0,
 		nil, nil,
-		make(chan int), make(chan ChanReq), make(chan ChanRet), make(chan int)}
+		make(chan int), make(chan util.ChanReq), make(chan util.ChanRet), make(chan int)}
 
 	err := diskQueue.retrieveMetaData()
 	if err != nil {
@@ -49,14 +50,14 @@ func (d *DiskQueue) ReadReadyChan() chan int {
 
 func (d *DiskQueue) Get() ([]byte, error) {
 	ret := <-d.outChan
-	return ret.variable.([]byte), ret.err
+	return ret.Variable.([]byte), ret.Err
 }
 
 func (d *DiskQueue) Put(p []byte) error {
 	retChan := make(chan interface{})
-	d.inChan <- ChanReq{p, retChan}
-	ret := (<-retChan).(ChanRet)
-	return ret.err
+	d.inChan <- util.ChanReq{p, retChan}
+	ret := (<-retChan).(util.ChanRet)
+	return ret.Err
 }
 
 func (d *DiskQueue) Close() error {
@@ -264,20 +265,20 @@ func (d *DiskQueue) router() {
 			// select statement is always evaluated)
 			case d.readChan <- 1:
 				buf, err := d.readOne()
-				d.outChan <- ChanRet{err, buf}
+				d.outChan <- util.ChanRet{err, buf}
 			case writeRequest := <-d.inChan:
-				buf := writeRequest.variable.([]byte)
+				buf := writeRequest.Variable.([]byte)
 				err := d.writeOne(buf)
-				writeRequest.retChan <- ChanRet{err, nil}
+				writeRequest.RetChan <- util.ChanRet{err, nil}
 			case <-d.exitChan:
 				return
 			}
 		} else {
 			select {
 			case writeRequest := <-d.inChan:
-				buf := writeRequest.variable.([]byte)
+				buf := writeRequest.Variable.([]byte)
 				err := d.writeOne(buf)
-				writeRequest.retChan <- ChanRet{err, nil}
+				writeRequest.RetChan <- util.ChanRet{err, nil}
 			case <-d.exitChan:
 				return
 			}

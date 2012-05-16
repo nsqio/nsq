@@ -1,6 +1,8 @@
-package main
+package server
 
 import (
+	"../message"
+	"../util"
 	"bytes"
 	"errors"
 	"io"
@@ -39,7 +41,7 @@ func (r *ReqParams) Query(key string) (string, error) {
 	return keyData[0], nil
 }
 
-func httpServer(address string, port string, endChan chan int) {
+func HttpServer(address string, port string, endChan chan int) {
 	http.HandleFunc("/ping", pingHandler)
 	http.HandleFunc("/put", putHandler)
 	go func() {
@@ -73,7 +75,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err = buf.Write(Uuid())
+	_, err = buf.Write(<-util.UuidChan)
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
@@ -85,6 +87,6 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic := GetTopic(topicName)
-	topic.PutMessage(NewMessage(buf.Bytes()))
+	topic := message.GetTopic(topicName)
+	topic.PutMessage(message.NewMessage(buf.Bytes()))
 }

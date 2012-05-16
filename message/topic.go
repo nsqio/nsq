@@ -1,14 +1,16 @@
-package main
+package message
 
 import (
+	"../queue"
+	"../util"
 	"log"
 )
 
 type Topic struct {
 	name                 string
-	newChannelChan       chan ChanReq
+	newChannelChan       chan util.ChanReq
 	channelMap           map[string]*Channel
-	backend              NSQueue
+	backend              queue.BackendQueue
 	incomingMessageChan  chan *Message
 	msgChan              chan *Message
 	routerSyncChan       chan int
@@ -17,15 +19,15 @@ type Topic struct {
 	channelWriterStarted bool
 }
 
-var topicMap = make(map[string]*Topic)
-var newTopicChan = make(chan ChanReq)
+var TopicMap = make(map[string]*Topic)
+var newTopicChan = make(chan util.ChanReq)
 
 // Topic constructor
 func NewTopic(topicName string, inMemSize int) *Topic {
 	topic := &Topic{name: topicName,
-		newChannelChan:       make(chan ChanReq),
+		newChannelChan:       make(chan util.ChanReq),
 		channelMap:           make(map[string]*Channel),
-		backend:              NewDiskQueue(topicName),
+		backend:              queue.NewDiskQueue(topicName),
 		incomingMessageChan:  make(chan *Message, 5),
 		msgChan:              make(chan *Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
@@ -41,25 +43,25 @@ func NewTopic(topicName string, inMemSize int) *Topic {
 // see: topicFactory()
 func GetTopic(topicName string) *Topic {
 	topicChan := make(chan interface{})
-	newTopicChan <- ChanReq{topicName, topicChan}
+	newTopicChan <- util.ChanReq{topicName, topicChan}
 	return (<-topicChan).(*Topic)
 }
 
 // topicFactory is executed in a goroutine and manages
 // the creation/retrieval of Topic objects
-func topicFactory(inMemSize int) {
+func TopicFactory(inMemSize int) {
 	var topic *Topic
 	var ok bool
 
 	for {
 		topicReq := <-newTopicChan
-		name := topicReq.variable.(string)
-		if topic, ok = topicMap[name]; !ok {
+		name := topicReq.Variable.(string)
+		if topic, ok = TopicMap[name]; !ok {
 			topic = NewTopic(name, inMemSize)
-			topicMap[name] = topic
+			TopicMap[name] = topic
 			log.Printf("TOPIC(%s): created", topic.name)
 		}
-		topicReq.retChan <- topic
+		topicReq.RetChan <- topic
 	}
 }
 
@@ -69,7 +71,7 @@ func topicFactory(inMemSize int) {
 // see: Topic.Router()
 func (t *Topic) GetChannel(channelName string) *Channel {
 	channelChan := make(chan interface{})
-	t.newChannelChan <- ChanReq{channelName, channelChan}
+	t.newChannelChan <- util.ChanReq{channelName, channelChan}
 	return (<-channelChan).(*Channel)
 }
 
@@ -119,14 +121,14 @@ func (t *Topic) Router(inMemSize int) {
 	for {
 		select {
 		case channelReq := <-t.newChannelChan:
-			name := channelReq.variable.(string)
+			name := channelReq.Variable.(string)
 			channel, ok := t.channelMap[name]
 			if !ok {
 				channel = NewChannel(name, inMemSize)
 				t.channelMap[name] = channel
 				log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 			}
-			channelReq.retChan <- channel
+			channelReq.RetChan <- channel
 			if !t.channelWriterStarted {
 				go t.MessagePump()
 				t.channelWriterStarted = true

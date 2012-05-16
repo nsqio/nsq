@@ -1,6 +1,9 @@
 package main
 
 import (
+	"./message"
+	"./server"
+	"./util"
 	"flag"
 	"log"
 	"os"
@@ -41,12 +44,12 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	go topicFactory(*memQueueSize)
-	go uuidFactory()
-	go tcpServer(*bindAddress, strconv.Itoa(*tcpPort))
-	httpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
+	go message.TopicFactory(*memQueueSize)
+	go util.UuidFactory()
+	go server.TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
+	server.HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
 
-	for _, topic := range topicMap {
+	for _, topic := range message.TopicMap {
 		topic.Close()
 	}
 }

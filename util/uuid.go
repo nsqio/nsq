@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"crypto/rand"
@@ -7,11 +7,11 @@ import (
 	"log"
 )
 
-var uuidChan = make(chan []byte, 1000)
+var UuidChan = make(chan []byte, 1000)
 
-func uuidFactory() {
+func UuidFactory() {
 	for {
-		uuidChan <- Uuid()
+		UuidChan <- Uuid()
 	}
 }
 
