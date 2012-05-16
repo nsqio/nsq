@@ -1,9 +1,7 @@
 package server
 
 import (
-	"../message"
-	"../util"
-	"bytes"
+	"../protocol"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -61,8 +59,6 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func putHandler(w http.ResponseWriter, req *http.Request) {
-	var buf bytes.Buffer
-
 	reqParams, err := NewReqParams(req)
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
@@ -75,18 +71,10 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err = buf.Write(<-util.UuidChan)
+	prot := &protocol.ProtocolV1{}
+	err = prot.Pub(topicName, reqParams.body)
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
 	}
-
-	_, err = buf.Write(reqParams.body)
-	if err != nil {
-		log.Printf("HTTP: error - %s", err.Error())
-		return
-	}
-
-	topic := message.GetTopic(topicName)
-	topic.PutMessage(message.NewMessage(buf.Bytes()))
 }

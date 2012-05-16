@@ -56,18 +56,9 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 		line = strings.Replace(line, "\n", "", -1)
 		line = strings.Replace(line, "\r", "", -1)
 		params := strings.Split(line, " ")
-		cmd := params[0]
+		cmd := strings.ToUpper(params[0])
 
 		log.Printf("PROTOCOL: %#v", params)
-
-		// don't let them h@x0r
-		if cmd == "IOLoop" {
-			err = client.WriteError(ClientErrInvalid)
-			if err != nil {
-				break
-			}
-			continue
-		}
 
 		// use reflection to call the appropriate method for this 
 		// command on the protocol object
@@ -217,4 +208,24 @@ func (p *ProtocolV1) REQ(client Client, params []string) (error, []byte) {
 	client.SetState(ClientWaitGet)
 
 	return nil, nil
+}
+
+func (p *ProtocolV1) Pub(topicName string, body []byte) error {
+	var buf bytes.Buffer
+	var err error
+
+	_, err = buf.Write(<-util.UuidChan)
+	if err != nil {
+		return err
+	}
+
+	_, err = buf.Write(body)
+	if err != nil {
+		return err
+	}
+
+	topic := message.GetTopic(topicName)
+	topic.PutMessage(message.NewMessage(buf.Bytes()))
+
+	return nil
 }
