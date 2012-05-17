@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"bytes"
+	"strconv"
 )
 
 import _ "net/http/pprof"
@@ -72,10 +74,15 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	conn := &FakeConn{}
+	client := NewClient(conn, "HTTP")
 	prot := protocol.Protocols[538990129] // v1
-	_, err = prot.Execute(NewClient(nil), "PUB", topicName, string(reqParams.body))
+	response, err := prot.Execute(client, "PUB", topicName, string(reqParams.body))
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
 	}
+	
+	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	w.Write(response)
 }

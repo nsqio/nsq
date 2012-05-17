@@ -70,10 +70,6 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 		}
 	}
 
-	if p.channel != nil {
-		// p.channel.RemoveClient(c)
-	}
-
 	return err
 }
 
@@ -131,7 +127,6 @@ func (p *ProtocolV1) SUB(client Client, params []string) ([]byte, error) {
 
 	topic := message.GetTopic(topicName)
 	p.channel = topic.GetChannel(channelName)
-	// client.channel.AddClient(client)
 
 	return nil, nil
 }
@@ -218,12 +213,9 @@ func (p *ProtocolV1) REQ(client Client, params []string) ([]byte, error) {
 func (p *ProtocolV1) PUB(client Client, params []string) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
-	
-	// log.Printf("PROTOCOL: PUB %s", params)
 
 	// pub's are fake clients. They don't get to ClientInit
 	if client.GetState() != -1 {
-		log.Printf("PROTOCOL: INVALID STATE %d", client.GetState())
 		return nil, ClientErrInvalid
 	}
 
@@ -247,5 +239,5 @@ func (p *ProtocolV1) PUB(client Client, params []string) ([]byte, error) {
 	topic := message.GetTopic(topicName)
 	topic.PutMessage(message.NewMessage(buf.Bytes()))
 
-	return nil, nil
+	return []byte("OK"), nil
 }

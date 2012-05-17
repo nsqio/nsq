@@ -4,24 +4,38 @@ import (
 	"../protocol"
 	"encoding/binary"
 	"log"
-	"net"
+	"io"
 )
 
+type FakeConn struct {
+	buf bytes.Buffer
+}
+
+func (c *FakeConn) Read(p []byte) (n int, err error) {
+	return c.buf.Read(p)
+}
+
+func (c *FakeConn) Write(p []byte) (n int, err error) {
+	return c.buf.Write(p)
+}
+
+func (c *FakeConn) Close() error {
+	return nil
+}
+
 type Client struct {
-	conn  net.Conn
+	conn  io.ReadWriteCloser
+	name  string
 	state int
 }
 
 // Client constructor
-func NewClient(conn net.Conn) *Client {
-	return &Client{conn, -1}
+func NewClient(conn io.ReadWriteCloser, name string) *Client {
+	return &Client{conn, name, -1}
 }
 
 func (c *Client) String() string {
-	if c.conn == nil {
-		return "<nil>"
-	}
-	return c.conn.RemoteAddr().String()
+	return c.name
 }
 
 func (c *Client) GetState() int {
@@ -32,7 +46,7 @@ func (c *Client) SetState(state int) {
 	c.state = state
 }
 
-func (c *Client) GetConnection() net.Conn {
+func (c *Client) GetConnection() io.ReadWriteCloser {
 	return c.conn
 }
 

@@ -1,13 +1,13 @@
 package protocol
 
 import (
-	"net"
+	"io"
 )
 
 type Client interface {
 	Write(data []byte) error
 	WriteError(err error) error
-	GetConnection() net.Conn
+	GetConnection() io.ReadWriteCloser
 	GetState() int
 	SetState(state int)
 	String() string

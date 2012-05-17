@@ -18,7 +18,7 @@ func TcpServer(address string, port string) {
 		if err != nil {
 			panic("accept failed: " + err.Error())
 		}
-		client := NewClient(clientConn)
+		client := NewClient(clientConn, clientConn.RemoteAddr().String())
 		log.Printf("NSQ: new client(%s)", client.String())
 		go client.Handle()
 	}
