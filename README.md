@@ -5,7 +5,7 @@ delivery.
 
 #### Background
 
-`simplequeue` was developed as a a dead-simple in-memory message queue. It spoke HTTP and had no knowledge (or care) for
+`simplequeue` was developed as a dead-simple in-memory message queue. It spoke HTTP and had no knowledge (or care) for
 the data you put in or took out. Life was good.
 
 We used `simplequeue` as the foundation for a distributed message queue. In production, we silo'd a `simplequeue` right
@@ -25,29 +25,15 @@ setup as follows:
 
     `api` > `simplequeue` > `queuereader` > `pubsub` > `ps_to_http` > `simplequeue` > `queuereader`
 
-Of particular note are the `pubsub` > `ps_to_http` links. We repeatedly encounter the issue of consuming a single stream
-with the desire to avoid a SPOF. You have 2 options, none ideal. Often we just put the `ps_to_http` process on a single
-box and pray. Alternatively we've chosen to consume the full stream multiple times but only process a % of the stream on
-a given host (essentially sharding).  To make things even more complicated we need to repeat this chain for each stream of data we're interested in.
+Of particular note are the `pubsub` > `ps_to_http` links. We repeatedly encounter the problem of consuming a single
+stream with the desire to avoid a SPOF. You have 2 options, none ideal. Often we just put the `ps_to_http` process on a
+single box and pray. Alternatively we've chosen to consume the full stream multiple times but only process a % of the
+stream on a given host (essentially sharding). To make things even more complicated we need to repeat this chain for
+each stream of data we're interested in.
 
-Messages traveling through the system have no guarantee that they will be delivered to a client and the responsibility of requeueing is placed on the client.  This churn of messages being passed back and forth increases the potential for errors resulting in message loss.
-
-#### Why build on top of 0mq / why not AMQP?
-
-Obviously there are "off-the-shelf" solutions which attempt to solve similar problems. On the more popular side you find
-solutions that fall into the AMQP family (`rabbitmq`, `activemq`, etc.).
-
-There are a few reasons why we felt an AMQP implementation was not the type of tool we wanted to fulfill our needs, the
-most important being it's core design when it comes to [high availability](http://www.rabbitmq.com/ha.html).
-Summarizing, AMQP follows the broker messaging pattern. All messages of a given type (eventually) reach a single
-instance (broker), resulting in a SPOF for all messages of that type. There are ways to mitigate this risk, akin to the
-types of solutions that one would employ when using MySQL (slaves, etc.), but they seem brittle and undesirable (as well
-as fundamentally different from the spirit of `simplequeue`).
-
-`0mq` on the other hand is designed as a messaging *library*. The topology and component implementation is entirely
-up to you, it simply provides the primitives to be able to abstract away lower level details of *how* you're
-transporting data. `0mq` is your protocol, allowing us to skip the step of designing our own and instead leverage
-it's robust client library support, which includes all of the major programming languages used at bitly.
+Messages traveling through the system have no guarantee that they will be delivered to a client and the responsibility
+of requeueing is placed on the client. This churn of messages being passed back and forth increases the potential for
+errors resulting in message loss.
 
 #### Enter NSQ
 
