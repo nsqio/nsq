@@ -6,8 +6,8 @@ import (
 
 type StatefulReadWriter interface {
 	io.ReadWriter
-	GetState() int
-	SetState(state int)
+	GetState(key string) (interface{}, bool)
+	SetState(key string, val interface{})
 	String() string
 }
 

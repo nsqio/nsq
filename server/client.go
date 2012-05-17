@@ -10,24 +10,25 @@ import (
 type Client struct {
 	conn  io.ReadWriteCloser
 	name  string
-	state int
+	state map[string]interface{}
 }
 
 // Client constructor
 func NewClient(conn io.ReadWriteCloser, name string) *Client {
-	return &Client{conn, name, -1}
+	return &Client{conn, name, make(map[string]interface{})}
 }
 
 func (c *Client) String() string {
 	return c.name
 }
 
-func (c *Client) GetState() int {
-	return c.state
+func (c *Client) GetState(key string) (interface{}, bool) {
+	val, ok := c.state[key]
+	return val, ok
 }
 
-func (c *Client) SetState(state int) {
-	c.state = state
+func (c *Client) SetState(key string, val interface{}) {
+	c.state[key] = val
 }
 
 // Read proxies a read from `conn`

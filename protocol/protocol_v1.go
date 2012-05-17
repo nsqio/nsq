@@ -4,10 +4,10 @@ import (
 	"../message"
 	"../util"
 	"bufio"
-	"bytes"
 	"log"
 	"reflect"
 	"strings"
+	"bytes"
 )
 
 const (
@@ -29,15 +29,13 @@ func init() {
 	Protocols[538990129] = &ProtocolV1{}
 }
 
-type ProtocolV1 struct {
-	channel *message.Channel
-}
+type ProtocolV1 struct {}
 
 func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 	var err error
 	var line string
 
-	client.SetState(ClientInit)
+	client.SetState("state", ClientInit)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -105,7 +103,7 @@ func (p *ProtocolV1) Execute(client StatefulReadWriter, params ...string) ([]byt
 }
 
 func (p *ProtocolV1) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
-	if client.GetState() != ClientInit {
+	if state, _ := client.GetState("state"); state.(int) != ClientInit {
 		return nil, ClientErrInvalid
 	}
 
@@ -123,23 +121,26 @@ func (p *ProtocolV1) SUB(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, ClientErrBadChannel
 	}
 
-	client.SetState(ClientWaitGet)
+	client.SetState("state", ClientWaitGet)
 
 	topic := message.GetTopic(topicName)
-	p.channel = topic.GetChannel(channelName)
+	client.SetState("channel", topic.GetChannel(channelName))
 
 	return nil, nil
 }
 
 func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
+	var buf bytes.Buffer
 
-	if client.GetState() != ClientWaitGet {
+	if state, _ := client.GetState("state"); state.(int) != ClientWaitGet {
 		return nil, ClientErrInvalid
 	}
 
+	channelInterface, _ := client.GetState("channel")
+	channel := channelInterface.(*message.Channel)
 	// this blocks until a message is ready
-	msg := p.channel.GetMessage()
+	msg := channel.GetMessage(true)
 	if msg == nil {
 		log.Printf("ERROR: msg == nil")
 		return nil, ClientErrBadMessage
@@ -149,29 +150,33 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 
 	log.Printf("PROTOCOL: writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
 
-	buf := bytes.NewBuffer([]byte(uuidStr))
+	_, err = buf.Write([]byte(uuidStr))
+	if err != nil {
+		return nil, err
+	}
+
 	_, err = buf.Write(msg.Body())
 	if err != nil {
 		return nil, err
 	}
 
-	client.SetState(ClientWaitAck)
+	client.SetState("state", ClientWaitAck)
 
 	return buf.Bytes(), nil
 }
 
 func (p *ProtocolV1) ACK(client StatefulReadWriter, params []string) ([]byte, error) {
-	if client.GetState() != ClientWaitAck {
+	if state, _ := client.GetState("state"); state.(int) != ClientWaitAck {
 		return nil, ClientErrInvalid
 	}
 
-	client.SetState(ClientWaitResponse)
+	client.SetState("state", ClientWaitResponse)
 
 	return nil, nil
 }
 
 func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
-	if client.GetState() != ClientWaitResponse {
+	if state, _ := client.GetState("state"); state.(int) != ClientWaitResponse {
 		return nil, ClientErrInvalid
 	}
 
@@ -180,18 +185,20 @@ func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, er
 	}
 
 	uuidStr := params[1]
-	err := p.channel.FinishMessage(uuidStr)
+	channelInterface, _ := client.GetState("channel")
+	channel := channelInterface.(*message.Channel)
+	err := channel.FinishMessage(uuidStr)
 	if err != nil {
 		return nil, err
 	}
 
-	client.SetState(ClientWaitGet)
+	client.SetState("state", ClientWaitGet)
 
 	return nil, nil
 }
 
 func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, error) {
-	if client.GetState() != ClientWaitResponse {
+	if state, _ := client.GetState("state"); state.(int) != ClientWaitResponse {
 		return nil, ClientErrInvalid
 	}
 
@@ -200,12 +207,14 @@ func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, er
 	}
 
 	uuidStr := params[1]
-	err := p.channel.RequeueMessage(uuidStr)
+	channelInterface, _ := client.GetState("channel")
+	channel := channelInterface.(*message.Channel)
+	err := channel.RequeueMessage(uuidStr)
 	if err != nil {
 		return nil, err
 	}
 
-	client.SetState(ClientWaitGet)
+	client.SetState("state", ClientWaitGet)
 
 	return nil, nil
 }
@@ -213,11 +222,6 @@ func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, er
 func (p *ProtocolV1) PUB(client StatefulReadWriter, params []string) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
-
-	// pub's are fake clients. They don't get to ClientInit
-	if client.GetState() != -1 {
-		return nil, ClientErrInvalid
-	}
 
 	if len(params) < 3 {
 		return nil, ClientErrInvalid

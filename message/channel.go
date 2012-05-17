@@ -16,6 +16,7 @@ type Channel struct {
 	incomingMessageChan chan *Message
 	msgChan             chan *Message
 	inFlightMessageChan chan *Message
+	ackMessageChan      chan util.ChanReq
 	requeueMessageChan  chan util.ChanReq
 	finishMessageChan   chan util.ChanReq
 	exitChan            chan int
@@ -31,6 +32,7 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 		incomingMessageChan: make(chan *Message, 5),
 		msgChan:             make(chan *Message, inMemSize),
 		inFlightMessageChan: make(chan *Message),
+		ackMessageChan:      make(chan util.ChanReq),
 		requeueMessageChan:  make(chan util.ChanReq),
 		finishMessageChan:   make(chan util.ChanReq),
 		exitChan:            make(chan int),
@@ -43,6 +45,12 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 // message channel
 func (c *Channel) PutMessage(msg *Message) {
 	c.incomingMessageChan <- msg
+}
+
+func (c *Channel) AckMessage(uuidStr string) error {
+	errChan := make(chan interface{})
+	c.ackMessageChan <- util.ChanReq{uuidStr, errChan}
+	return (<-errChan).(error)
 }
 
 func (c *Channel) FinishMessage(uuidStr string) error {
@@ -98,6 +106,10 @@ func (c *Channel) Router() {
 					log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
 				}
 				finishReq.RetChan <- err
+			case ackReq := <-c.ackMessageChan:
+				// uuidStr := ackReq.Variable.(string)
+				// TODO: do something
+				ackReq.RetChan <- nil
 			case <-helperCloseChan:
 				return
 			}
@@ -141,21 +153,40 @@ func (c *Channel) popInFlightMessage(uuidStr string) (*Message, error) {
 }
 
 // GetMessage pulls a single message off the client channel
-func (c *Channel) GetMessage() *Message {
+func (c *Channel) GetMessage(block bool) *Message {
 	var msg *Message
 
 	for {
-		select {
-		case msg = <-c.msgChan:
-		case <-c.backend.ReadReadyChan():
-			buf, err := c.backend.Get()
-			if err != nil {
-				log.Printf("ERROR: c.backend.Get() - %s", err.Error())
-				continue
+		if block {
+			select {
+			case msg = <-c.msgChan:
+			case <-c.backend.ReadReadyChan():
+				buf, err := c.backend.Get()
+				if err != nil {
+					log.Printf("ERROR: c.backend.Get() - %s", err.Error())
+					continue
+				}
+				msg = NewMessage(buf)
 			}
-			msg = NewMessage(buf)
+		} else {
+			select {
+			case msg = <-c.msgChan:
+			case <-c.backend.ReadReadyChan():
+				buf, err := c.backend.Get()
+				if err != nil {
+					log.Printf("ERROR: c.backend.Get() - %s", err.Error())
+					continue
+				}
+				msg = NewMessage(buf)
+			default:
+				msg = nil
+			}
 		}
-		c.inFlightMessageChan <- msg
+
+		if msg != nil {
+			c.inFlightMessageChan <- msg
+		}
+
 		break
 	}
 
