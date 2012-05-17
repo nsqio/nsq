@@ -4,18 +4,16 @@ import (
 	"io"
 )
 
-type Client interface {
-	Write(data []byte) error
-	WriteError(err error) error
-	GetConnection() io.ReadWriteCloser
+type StatefulReadWriter interface {
+	io.ReadWriter
 	GetState() int
 	SetState(state int)
 	String() string
 }
 
 type Protocol interface {
-	IOLoop(client Client) error
-	Execute(client Client, params ...string) ([]byte, error)
+	IOLoop(client StatefulReadWriter) error
+	Execute(client StatefulReadWriter, params ...string) ([]byte, error)
 }
 
 var Protocols = map[int32]Protocol{}

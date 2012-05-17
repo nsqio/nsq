@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"bytes"
 	"strconv"
 )
 
@@ -82,7 +81,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		log.Printf("HTTP: error - %s", err.Error())
 		return
 	}
-	
+
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.Write(response)
 }

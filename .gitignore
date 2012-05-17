@@ -2,6 +2,8 @@ nsq_server/nsq_server
 nsq_lookup/nsq_lookup
 nsq_admin/nsq_admin
 
+*.dat
+
 # Go.gitignore
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)

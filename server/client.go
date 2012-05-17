@@ -3,25 +3,9 @@ package server
 import (
 	"../protocol"
 	"encoding/binary"
-	"log"
 	"io"
+	"log"
 )
-
-type FakeConn struct {
-	buf bytes.Buffer
-}
-
-func (c *FakeConn) Read(p []byte) (n int, err error) {
-	return c.buf.Read(p)
-}
-
-func (c *FakeConn) Write(p []byte) (n int, err error) {
-	return c.buf.Write(p)
-}
-
-func (c *FakeConn) Close() error {
-	return nil
-}
 
 type Client struct {
 	conn  io.ReadWriteCloser
@@ -46,32 +30,33 @@ func (c *Client) SetState(state int) {
 	c.state = state
 }
 
-func (c *Client) GetConnection() io.ReadWriteCloser {
-	return c.conn
+// Read proxies a read from `conn`
+func (c *Client) Read(data []byte) (int, error) {
+	return c.conn.Read(data)
 }
 
 // Write prefixes the byte array with a size and 
-// sends it to the Client
-func (c *Client) Write(data []byte) error {
+// proxies the write to `conn`
+func (c *Client) Write(data []byte) (int, error) {
 	var err error
 
 	err = binary.Write(c.conn, binary.BigEndian, int32(len(data)))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	_, err = c.conn.Write(data)
+	n, err := c.conn.Write(data)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return (n + 4), nil
 }
 
-// WriteError is a convenience function to send
-// an error string
-func (c *Client) WriteError(err error) error {
-	return c.Write([]byte(err.Error()))
+// Close proxies the call to `conn`
+func (c *Client) Close() {
+	log.Printf("CLIENT(%s): closing", c.String())
+	c.conn.Close()
 }
 
 // Handle reads data from the client, keeps state, and
@@ -95,7 +80,7 @@ func (c *Client) Handle() {
 
 	prot, ok := protocol.Protocols[protocolVersion]
 	if !ok {
-		c.WriteError(protocol.ClientErrBadProtocol)
+		c.Write([]byte(protocol.ClientErrBadProtocol.Error()))
 		log.Printf("CLIENT(%s): bad protocol version %d", c.String(), protocolVersion)
 		return
 	}
@@ -105,9 +90,4 @@ func (c *Client) Handle() {
 		log.Printf("ERROR: client(%s) - %s", c.String(), err.Error())
 		return
 	}
-}
-
-func (c *Client) Close() {
-	log.Printf("CLIENT(%s): closing", c.String())
-	c.conn.Close()
 }

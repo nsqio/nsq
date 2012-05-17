@@ -33,14 +33,14 @@ type ProtocolV1 struct {
 	channel *message.Channel
 }
 
-func (p *ProtocolV1) IOLoop(client Client) error {
+func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 	var err error
 	var line string
 
 	client.SetState(ClientInit)
 
 	err = nil
-	reader := bufio.NewReader(client.GetConnection())
+	reader := bufio.NewReader(client)
 	for {
 		line, err = reader.ReadString('\n')
 		if err != nil {
@@ -55,7 +55,7 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 
 		response, err := p.Execute(client, params...)
 		if err != nil {
-			err = client.WriteError(err)
+			_, err = client.Write([]byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -63,7 +63,7 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 		}
 
 		if response != nil {
-			err = client.Write(response)
+			_, err = client.Write(response)
 			if err != nil {
 				break
 			}
@@ -73,17 +73,17 @@ func (p *ProtocolV1) IOLoop(client Client) error {
 	return err
 }
 
-func (p *ProtocolV1) Execute(client Client, params ...string) ([]byte, error) {
+func (p *ProtocolV1) Execute(client StatefulReadWriter, params ...string) ([]byte, error) {
 	var err error
 	var response []byte
-	
+
 	typ := reflect.TypeOf(p)
 	args := make([]reflect.Value, 3)
 	args[0] = reflect.ValueOf(p)
 	args[1] = reflect.ValueOf(client)
-	
+
 	cmd := strings.ToUpper(params[0])
-	
+
 	// use reflection to call the appropriate method for this 
 	// command on the protocol object
 	if method, ok := typ.MethodByName(cmd); ok {
@@ -97,14 +97,14 @@ func (p *ProtocolV1) Execute(client Client, params ...string) ([]byte, error) {
 		if !returnValues[1].IsNil() {
 			err = returnValues[1].Interface().(error)
 		}
-		
+
 		return response, err
 	}
-	
+
 	return nil, ClientErrInvalid
 }
 
-func (p *ProtocolV1) SUB(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
 	if client.GetState() != ClientInit {
 		return nil, ClientErrInvalid
 	}
@@ -131,7 +131,7 @@ func (p *ProtocolV1) SUB(client Client, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV1) GET(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
 
 	if client.GetState() != ClientWaitGet {
@@ -160,7 +160,7 @@ func (p *ProtocolV1) GET(client Client, params []string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (p *ProtocolV1) ACK(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) ACK(client StatefulReadWriter, params []string) ([]byte, error) {
 	if client.GetState() != ClientWaitAck {
 		return nil, ClientErrInvalid
 	}
@@ -170,7 +170,7 @@ func (p *ProtocolV1) ACK(client Client, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV1) FIN(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
 	if client.GetState() != ClientWaitResponse {
 		return nil, ClientErrInvalid
 	}
@@ -190,7 +190,7 @@ func (p *ProtocolV1) FIN(client Client, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV1) REQ(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, error) {
 	if client.GetState() != ClientWaitResponse {
 		return nil, ClientErrInvalid
 	}
@@ -210,7 +210,7 @@ func (p *ProtocolV1) REQ(client Client, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV1) PUB(client Client, params []string) ([]byte, error) {
+func (p *ProtocolV1) PUB(client StatefulReadWriter, params []string) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
 
@@ -225,7 +225,7 @@ func (p *ProtocolV1) PUB(client Client, params []string) ([]byte, error) {
 
 	topicName := params[1]
 	body := []byte(params[2])
-	
+
 	_, err = buf.Write(<-util.UuidChan)
 	if err != nil {
 		return nil, err
