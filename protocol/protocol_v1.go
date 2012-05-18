@@ -49,7 +49,7 @@ func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 		line = strings.Replace(line, "\r", "", -1)
 		params := strings.Split(line, " ")
 
-		log.Printf("PROTOCOL: %#v", params)
+		log.Printf("PROTOCOL(V1): %#v", params)
 
 		response, err := p.Execute(client, params...)
 		if err != nil {
@@ -148,7 +148,7 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 
 	uuidStr := util.UuidToStr(msg.Uuid())
 
-	log.Printf("PROTOCOL: writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
+	log.Printf("PROTOCOL(V1): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
 
 	_, err = buf.Write([]byte(uuidStr))
 	if err != nil {
