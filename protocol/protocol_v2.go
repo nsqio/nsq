@@ -41,7 +41,9 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 	var err error
 	var line string
 
+	clientExitChan := make(chan int)
 	client.SetState("state", ClientStateV2Init)
+	client.SetState("exit_chan", clientExitChan)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -83,6 +85,10 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 			}
 		}
 	}
+
+	log.Printf("PROTOCOL(V2): sending on clientExitChan")
+	clientExitChan <- 1
+	log.Printf("PROTOCOL(V2): finished sending on clientExitChan")
 
 	return err
 }
@@ -138,61 +144,69 @@ func (p *ProtocolV2) Execute(client StatefulReadWriter, params ...string) ([]byt
 func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
 	var err error
 	
-	readyCount := 0
+	client.SetState("ready_count", 0)
 	
 	readyStateChanInterface, _ := client.GetState("ready_state_chan")
 	readyStateChan := readyStateChanInterface.(chan int)
+	
+	clientExitChanInterface, _ := client.GetState("exit_chan")
+	clientExitChan := clientExitChanInterface.(chan int)
+	
+	channelInterface, _ := client.GetState("channel")
+	channel := channelInterface.(*message.Channel)
+	
 	for {
+		readyCountInterface, _ := client.GetState("ready_count")
+		readyCount := readyCountInterface.(int)
 		if readyCount > 0 {
 			select {
 			case count := <-readyStateChan:
-				readyCount = count
-			default:
-				channelInterface, _ := client.GetState("channel")
-				channel := channelInterface.(*message.Channel)
-				// this blocks until a message is ready
-				msg := channel.GetMessage(true)
-				if msg == nil {
-					log.Printf("ERROR: msg == nil")
-					continue
-				}
-				readyCount--
+				client.SetState("ready_count", count)
+			case msg := <-channel.ClientMessageChan:
+				client.SetState("ready_count", readyCount - 1)
 				
-				var buf bytes.Buffer
 				uuidStr := util.UuidToStr(msg.Uuid())
-
 				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
-
+				
+				buf := new(bytes.Buffer)
+				
 				_, err = buf.Write([]byte(uuidStr))
 				if err != nil {
-					// TODO: how should we fail here?
-					return
+					goto error
 				}
-
+				
 				_, err = buf.Write(msg.Body())
 				if err != nil {
-					// TODO: how should we fail here?
-					return
+					goto error
 				}
 				
 				clientData, err := p.Frame(FrameTypeMessage, buf.Bytes())
 				if err != nil {
-					// TODO: how should we fail here?
-					return
+					goto error
 				}
+				
 				client.Write(clientData)
+			case <-clientExitChan:
+				goto error
 			}
 		} else {
 			select {
 			case count := <-readyStateChan:
-				readyCount = count
+				client.SetState("ready_count", count)
+			case <-clientExitChan:
+				goto error
 			}
 		}
+	}
+	
+error:
+	if err != nil {
+		log.Printf("PROTOCOL(V2): PushMessages error - %s", err.Error())
 	}
 }
 
 func (p *ProtocolV2) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientInit {
+	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Init {
 		return nil, ClientErrV2Invalid
 	}
 

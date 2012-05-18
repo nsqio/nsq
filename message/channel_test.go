@@ -25,7 +25,7 @@ func TestPutMessage(t *testing.T) {
 	inputMsg := NewMessage(buf.Bytes())
 	topic.PutMessage(inputMsg)
 
-	outputMsg := channel1.GetMessage()
+	outputMsg := <-channel1.ClientMessageChan
 	assert.Equal(t, uuid, outputMsg.Uuid())
 	assert.Equal(t, body, outputMsg.Body())
 }
@@ -47,11 +47,11 @@ func TestPutMessage2Chan(t *testing.T) {
 	inputMsg := NewMessage(buf.Bytes())
 	topic.PutMessage(inputMsg)
 
-	outputMsg1 := channel1.GetMessage()
+	outputMsg1 := <-channel1.ClientMessageChan
 	assert.Equal(t, uuid, outputMsg1.Uuid())
 	assert.Equal(t, body, outputMsg1.Body())
 
-	outputMsg2 := channel2.GetMessage()
+	outputMsg2 := <-channel2.ClientMessageChan
 	assert.Equal(t, uuid, outputMsg2.Uuid())
 	assert.Equal(t, body, outputMsg2.Body())
 }

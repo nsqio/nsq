@@ -11,16 +11,16 @@ import (
 )
 
 const (
-	ClientInit         = 0
-	ClientWaitGet      = 1
-	ClientWaitResponse = 2
+	ClientStateV1Init         = 0
+	ClientStateV1WaitGet      = 1
+	ClientStateV1WaitResponse = 2
 )
 
 var (
-	ClientErrInvalid    = ClientError{"E_INVALID"}
-	ClientErrBadTopic   = ClientError{"E_BAD_TOPIC"}
-	ClientErrBadChannel = ClientError{"E_BAD_CHANNEL"}
-	ClientErrBadMessage = ClientError{"E_BAD_MESSAGE"}
+	ClientErrV1Invalid    = ClientError{"E_INVALID"}
+	ClientErrV1BadTopic   = ClientError{"E_BAD_TOPIC"}
+	ClientErrV1BadChannel = ClientError{"E_BAD_CHANNEL"}
+	ClientErrV1BadMessage = ClientError{"E_BAD_MESSAGE"}
 )
 
 func init() {
@@ -34,7 +34,7 @@ func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 	var err error
 	var line string
 
-	client.SetState("state", ClientInit)
+	client.SetState("state", ClientStateV1Init)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -98,29 +98,29 @@ func (p *ProtocolV1) Execute(client StatefulReadWriter, params ...string) ([]byt
 		return response, err
 	}
 
-	return nil, ClientErrInvalid
+	return nil, ClientErrV1Invalid
 }
 
 func (p *ProtocolV1) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientInit {
-		return nil, ClientErrInvalid
+	if state, _ := client.GetState("state"); state.(int) != ClientStateV1Init {
+		return nil, ClientErrV1Invalid
 	}
 
 	if len(params) < 3 {
-		return nil, ClientErrInvalid
+		return nil, ClientErrV1Invalid
 	}
 
 	topicName := params[1]
 	if len(topicName) == 0 {
-		return nil, ClientErrBadTopic
+		return nil, ClientErrV1BadTopic
 	}
 
 	channelName := params[2]
 	if len(channelName) == 0 {
-		return nil, ClientErrBadChannel
+		return nil, ClientErrV1BadChannel
 	}
 
-	client.SetState("state", ClientWaitGet)
+	client.SetState("state", ClientStateV1WaitGet)
 
 	topic := message.GetTopic(topicName)
 	client.SetState("channel", topic.GetChannel(channelName))
@@ -132,17 +132,17 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 	var err error
 	var buf bytes.Buffer
 
-	if state, _ := client.GetState("state"); state.(int) != ClientWaitGet {
-		return nil, ClientErrInvalid
+	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitGet {
+		return nil, ClientErrV1Invalid
 	}
 
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*message.Channel)
 	// this blocks until a message is ready
-	msg := channel.GetMessage(true)
+	msg := <-channel.ClientMessageChan
 	if msg == nil {
 		log.Printf("ERROR: msg == nil")
-		return nil, ClientErrBadMessage
+		return nil, ClientErrV1BadMessage
 	}
 
 	uuidStr := util.UuidToStr(msg.Uuid())
@@ -159,18 +159,18 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	client.SetState("state", ClientWaitResponse)
+	client.SetState("state", ClientStateV1WaitResponse)
 
 	return buf.Bytes(), nil
 }
 
 func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientWaitResponse {
-		return nil, ClientErrInvalid
+	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitResponse {
+		return nil, ClientErrV1Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrInvalid
+		return nil, ClientErrV1Invalid
 	}
 
 	uuidStr := params[1]
@@ -181,18 +181,18 @@ func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	client.SetState("state", ClientWaitGet)
+	client.SetState("state", ClientStateV1WaitGet)
 
 	return nil, nil
 }
 
 func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientWaitResponse {
-		return nil, ClientErrInvalid
+	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitResponse {
+		return nil, ClientErrV1Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrInvalid
+		return nil, ClientErrV1Invalid
 	}
 
 	uuidStr := params[1]
@@ -203,7 +203,7 @@ func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	client.SetState("state", ClientWaitGet)
+	client.SetState("state", ClientStateV1WaitGet)
 
 	return nil, nil
 }
@@ -213,7 +213,7 @@ func (p *ProtocolV1) PUB(client StatefulReadWriter, params []string) ([]byte, er
 	var err error
 
 	if len(params) < 3 {
-		return nil, ClientErrInvalid
+		return nil, ClientErrV1Invalid
 	}
 
 	topicName := params[1]
