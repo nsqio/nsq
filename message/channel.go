@@ -86,7 +86,6 @@ func (c *Channel) Router() {
 				msg, err := c.popInFlightMessage(uuidStr)
 				if err != nil {
 					log.Printf("ERROR: failed to requeue message(%s) - %s", uuidStr, err.Error())
-					continue
 				} else {
 					go func(msg *Message) {
 						c.PutMessage(msg)
