@@ -81,11 +81,9 @@ It accomplishes this by performing a handshake with the client, as follows:
 
   1. client GET message
   2. `NSQ` sends message and stores in temporary internal location
-  3. client ACK receipt of message
-     * if client does not ACK `NSQ` will requeue the message
-  4. client replies SUCCESS or FAIL
+  3. client replies SUCCESS or FAIL
      * if client does not reply `NSQ` will requeue the message
-  5. `NSQ` requeues on FAIL and purges on SUCCESS
+  4. `NSQ` requeues on FAIL and purges on SUCCESS
 
 #### Lookup Service
 

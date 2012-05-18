@@ -249,26 +249,6 @@ func (p *ProtocolV2) RDY(client StatefulReadWriter, params []string) ([]byte, er
 	return nil, nil
 }
 
-func (p *ProtocolV2) ACK(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Subscribed {
-		return nil, ClientErrV2Invalid
-	}
-
-	if len(params) < 2 {
-		return nil, ClientErrV2Invalid
-	}
-
-	uuidStr := params[1]
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
-	err := channel.AckMessage(uuidStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
 func (p *ProtocolV2) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
 	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Subscribed {
 		return nil, ClientErrV2Invalid

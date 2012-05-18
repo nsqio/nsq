@@ -16,7 +16,6 @@ type Channel struct {
 	incomingMessageChan chan *Message
 	msgChan             chan *Message
 	inFlightMessageChan chan *Message
-	ackMessageChan      chan util.ChanReq
 	requeueMessageChan  chan util.ChanReq
 	finishMessageChan   chan util.ChanReq
 	exitChan            chan int
@@ -32,7 +31,6 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 		incomingMessageChan: make(chan *Message, 5),
 		msgChan:             make(chan *Message, inMemSize),
 		inFlightMessageChan: make(chan *Message),
-		ackMessageChan:      make(chan util.ChanReq),
 		requeueMessageChan:  make(chan util.ChanReq),
 		finishMessageChan:   make(chan util.ChanReq),
 		exitChan:            make(chan int),
@@ -45,13 +43,6 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 // message channel
 func (c *Channel) PutMessage(msg *Message) {
 	c.incomingMessageChan <- msg
-}
-
-func (c *Channel) AckMessage(uuidStr string) error {
-	errChan := make(chan interface{})
-	c.ackMessageChan <- util.ChanReq{uuidStr, errChan}
-	err, _ := (<-errChan).(error)
-	return err
 }
 
 func (c *Channel) FinishMessage(uuidStr string) error {
@@ -109,11 +100,6 @@ func (c *Channel) Router() {
 					log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
 				}
 				finishReq.RetChan <- err
-			case ackReq := <-c.ackMessageChan:
-				// uuidStr := ackReq.Variable.(string)
-				// TODO: acks are wierd in the sense that they're not technically necessary...
-				// it's possible we don't need them at all...
-				ackReq.RetChan <- nil
 			case <-helperCloseChan:
 				return
 			}

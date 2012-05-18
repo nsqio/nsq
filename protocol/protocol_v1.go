@@ -13,8 +13,7 @@ import (
 const (
 	ClientInit         = 0
 	ClientWaitGet      = 1
-	ClientWaitAck      = 2
-	ClientWaitResponse = 3
+	ClientWaitResponse = 2
 )
 
 var (
@@ -160,19 +159,9 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	client.SetState("state", ClientWaitAck)
-
-	return buf.Bytes(), nil
-}
-
-func (p *ProtocolV1) ACK(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientWaitAck {
-		return nil, ClientErrInvalid
-	}
-
 	client.SetState("state", ClientWaitResponse)
 
-	return nil, nil
+	return buf.Bytes(), nil
 }
 
 func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
