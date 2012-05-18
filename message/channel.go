@@ -50,19 +50,22 @@ func (c *Channel) PutMessage(msg *Message) {
 func (c *Channel) AckMessage(uuidStr string) error {
 	errChan := make(chan interface{})
 	c.ackMessageChan <- util.ChanReq{uuidStr, errChan}
-	return (<-errChan).(error)
+	err, _ := (<-errChan).(error)
+	return err
 }
 
 func (c *Channel) FinishMessage(uuidStr string) error {
 	errChan := make(chan interface{})
 	c.finishMessageChan <- util.ChanReq{uuidStr, errChan}
-	return (<-errChan).(error)
+	err, _ := (<-errChan).(error)
+	return err
 }
 
 func (c *Channel) RequeueMessage(uuidStr string) error {
 	errChan := make(chan interface{})
 	c.requeueMessageChan <- util.ChanReq{uuidStr, errChan}
-	return (<-errChan).(error)
+	err, _ := (<-errChan).(error)
+	return err
 }
 
 // Router handles the muxing of Channel messages including
@@ -108,7 +111,8 @@ func (c *Channel) Router() {
 				finishReq.RetChan <- err
 			case ackReq := <-c.ackMessageChan:
 				// uuidStr := ackReq.Variable.(string)
-				// TODO: do something
+				// TODO: acks are wierd in the sense that they're not technically necessary...
+				// it's possible we don't need them at all...
 				ackReq.RetChan <- nil
 			case <-helperCloseChan:
 				return
