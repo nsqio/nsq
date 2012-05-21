@@ -4,10 +4,10 @@ import (
 	"io"
 )
 
-type FakeConn struct {
+type HTTPConn struct {
 	io.ReadWriter
 }
 
-func (c *FakeConn) Close() error {
+func (c *HTTPConn) Close() error {
 	return nil
 }

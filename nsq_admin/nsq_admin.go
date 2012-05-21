@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"log"
 	"io"
-	"strconv"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 

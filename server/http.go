@@ -73,7 +73,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	conn := &FakeConn{}
+	conn := &HTTPConn{}
 	client := NewClient(conn, "HTTP")
 	prot := protocol.Protocols[538990129] // v1
 	response, err := prot.Execute(client, "PUB", topicName, string(reqParams.body))

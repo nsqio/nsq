@@ -4,10 +4,10 @@ import (
 	"../message"
 	"../util"
 	"bufio"
+	"bytes"
 	"log"
 	"reflect"
 	"strings"
-	"bytes"
 )
 
 const (
@@ -28,7 +28,7 @@ func init() {
 	Protocols[538990129] = &ProtocolV1{}
 }
 
-type ProtocolV1 struct {}
+type ProtocolV1 struct{}
 
 func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 	var err error

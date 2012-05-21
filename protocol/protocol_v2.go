@@ -8,19 +8,19 @@ import (
 	"encoding/binary"
 	"log"
 	"reflect"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 const (
-	ClientStateV2Init         = 0
-	ClientStateV2Subscribed   = 1
+	ClientStateV2Init       = 0
+	ClientStateV2Subscribed = 1
 )
 
 const (
-	FrameTypeResponse         = 0
-	FrameTypeError            = 1
-	FrameTypeMessage          = 2
+	FrameTypeResponse = 0
+	FrameTypeError    = 1
+	FrameTypeMessage  = 2
 )
 
 var (
@@ -35,7 +35,7 @@ func init() {
 	Protocols[538990130] = &ProtocolV2{}
 }
 
-type ProtocolV2 struct {}
+type ProtocolV2 struct{}
 
 func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 	var err error
@@ -65,7 +65,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 			if err != nil {
 				break
 			}
-			
+
 			_, err = client.Write(clientData)
 			if err != nil {
 				break
@@ -78,7 +78,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 			if err != nil {
 				break
 			}
-			
+
 			_, err = client.Write(clientData)
 			if err != nil {
 				break
@@ -86,9 +86,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 		}
 	}
 
-	log.Printf("PROTOCOL(V2): sending on clientExitChan")
 	clientExitChan <- 1
-	log.Printf("PROTOCOL(V2): finished sending on clientExitChan")
 
 	return err
 }
@@ -96,17 +94,17 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 func (p *ProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
-	
+
 	err = binary.Write(&buf, binary.BigEndian, &frameType)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	_, err = buf.Write(data)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return buf.Bytes(), nil
 }
 
@@ -143,18 +141,18 @@ func (p *ProtocolV2) Execute(client StatefulReadWriter, params ...string) ([]byt
 
 func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
 	var err error
-	
+
 	client.SetState("ready_count", 0)
-	
+
 	readyStateChanInterface, _ := client.GetState("ready_state_chan")
 	readyStateChan := readyStateChanInterface.(chan int)
-	
+
 	clientExitChanInterface, _ := client.GetState("exit_chan")
 	clientExitChan := clientExitChanInterface.(chan int)
-	
+
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*message.Channel)
-	
+
 	for {
 		readyCountInterface, _ := client.GetState("ready_count")
 		readyCount := readyCountInterface.(int)
@@ -163,43 +161,43 @@ func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
 			case count := <-readyStateChan:
 				client.SetState("ready_count", count)
 			case msg := <-channel.ClientMessageChan:
-				client.SetState("ready_count", readyCount - 1)
-				
-				uuidStr := util.UuidToStr(msg.Uuid())
-				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
-				
+				client.SetState("ready_count", readyCount-1)
+
+				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+					util.UuidToStr(msg.Uuid()), client.String(), string(msg.Body()))
+
 				buf := new(bytes.Buffer)
-				
-				_, err = buf.Write([]byte(uuidStr))
+
+				_, err = buf.Write(msg.Uuid())
 				if err != nil {
-					goto error
+					goto exit
 				}
-				
+
 				_, err = buf.Write(msg.Body())
 				if err != nil {
-					goto error
+					goto exit
 				}
-				
+
 				clientData, err := p.Frame(FrameTypeMessage, buf.Bytes())
 				if err != nil {
-					goto error
+					goto exit
 				}
-				
+
 				client.Write(clientData)
 			case <-clientExitChan:
-				goto error
+				goto exit
 			}
 		} else {
 			select {
 			case count := <-readyStateChan:
 				client.SetState("ready_count", count)
 			case <-clientExitChan:
-				goto error
+				goto exit
 			}
 		}
 	}
-	
-error:
+
+exit:
 	if err != nil {
 		log.Printf("PROTOCOL(V2): PushMessages error - %s", err.Error())
 	}
@@ -231,7 +229,7 @@ func (p *ProtocolV2) SUB(client StatefulReadWriter, params []string) ([]byte, er
 	client.SetState("channel", topic.GetChannel(channelName))
 
 	client.SetState("state", ClientStateV2Subscribed)
-	
+
 	go p.PushMessages(client)
 
 	return nil, nil

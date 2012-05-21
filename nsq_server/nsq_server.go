@@ -19,14 +19,15 @@ var tcpPort = flag.Int("tcp-port", 5151, "port to listen on for TCP connections"
 var debugMode = flag.Bool("debug", false, "enable debug mode")
 var memQueueSize = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
+var goMaxProcs = flag.Int("go-max-procs", 4, "runtime configuration for GOMAXPROCS")
 
 func main() {
-	runtime.GOMAXPROCS(4)
+	flag.Parse()
+
+	runtime.GOMAXPROCS(*goMaxProcs)
 
 	nsqEndChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
-
-	flag.Parse()
 
 	if *cpuProfile != "" {
 		log.Printf("CPU Profiling Enabled")
