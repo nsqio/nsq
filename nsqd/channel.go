@@ -1,26 +1,25 @@
-package message
+package main
 
 import (
-	"../queue"
+	"../nsq"
 	"../util"
 	"errors"
 	"log"
-	"time"
 )
 
 type Channel struct {
 	name                string
 	addClientChan       chan util.ChanReq
 	removeClientChan    chan util.ChanReq
-	backend             queue.BackendQueue
-	incomingMessageChan chan *Message
-	msgChan             chan *Message
-	inFlightMessageChan chan *Message
-	ClientMessageChan   chan *Message
+	backend             nsq.BackendQueue
+	incomingMessageChan chan *nsq.Message
+	msgChan             chan *nsq.Message
+	inFlightMessageChan chan *nsq.Message
+	ClientMessageChan   chan *nsq.Message
 	requeueMessageChan  chan util.ChanReq
 	finishMessageChan   chan util.ChanReq
 	exitChan            chan int
-	inFlightMessages    map[string]*Message
+	inFlightMessages    map[string]*nsq.Message
 }
 
 // Channel constructor
@@ -28,22 +27,22 @@ func NewChannel(channelName string, inMemSize int) *Channel {
 	channel := &Channel{name: channelName,
 		addClientChan:       make(chan util.ChanReq),
 		removeClientChan:    make(chan util.ChanReq),
-		backend:             queue.NewDiskQueue(channelName),
-		incomingMessageChan: make(chan *Message, 5),
-		msgChan:             make(chan *Message, inMemSize),
-		inFlightMessageChan: make(chan *Message),
-		ClientMessageChan:   make(chan *Message),
+		backend:             nsq.NewDiskQueue(channelName),
+		incomingMessageChan: make(chan *nsq.Message, 5),
+		msgChan:             make(chan *nsq.Message, inMemSize),
+		inFlightMessageChan: make(chan *nsq.Message),
+		ClientMessageChan:   make(chan *nsq.Message),
 		requeueMessageChan:  make(chan util.ChanReq),
 		finishMessageChan:   make(chan util.ChanReq),
 		exitChan:            make(chan int),
-		inFlightMessages:    make(map[string]*Message)}
+		inFlightMessages:    make(map[string]*nsq.Message)}
 	go channel.Router()
 	return channel
 }
 
 // PutMessage writes to the appropriate incoming
 // message channel
-func (c *Channel) PutMessage(msg *Message) {
+func (c *Channel) PutMessage(msg *nsq.Message) {
 	c.incomingMessageChan <- msg
 }
 
@@ -97,16 +96,12 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 		select {
 		case msg := <-c.inFlightMessageChan:
 			c.pushInFlightMessage(msg)
-			go func(msg *Message) {
-				select {
-				case <-time.After(60 * time.Second):
-					log.Printf("CHANNEL(%s): auto requeue of message(%s)", c.name, util.UuidToStr(msg.Uuid()))
-				case <-msg.timerChan:
-					return
-				}
-				err := c.RequeueMessage(util.UuidToStr(msg.Uuid()))
-				if err != nil {
-					log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
+			go func(msg *nsq.Message) {
+				if msg.ShouldRequeue(60000) {
+					err := c.RequeueMessage(util.UuidToStr(msg.Uuid()))
+					if err != nil {
+						log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
+					}
 				}
 			}(msg)
 		case requeueReq := <-c.requeueMessageChan:
@@ -115,7 +110,7 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 			if err != nil {
 				log.Printf("ERROR: failed to requeue message(%s) - %s", uuidStr, err.Error())
 			} else {
-				go func(msg *Message) {
+				go func(msg *nsq.Message) {
 					c.PutMessage(msg)
 				}(msg)
 			}
@@ -133,12 +128,12 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 	}
 }
 
-func (c *Channel) pushInFlightMessage(msg *Message) {
+func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 	uuidStr := util.UuidToStr(msg.Uuid())
 	c.inFlightMessages[uuidStr] = msg
 }
 
-func (c *Channel) popInFlightMessage(uuidStr string) (*Message, error) {
+func (c *Channel) popInFlightMessage(uuidStr string) (*nsq.Message, error) {
 	msg, ok := c.inFlightMessages[uuidStr]
 	if !ok {
 		return nil, errors.New("UUID not in flight")
@@ -149,7 +144,7 @@ func (c *Channel) popInFlightMessage(uuidStr string) (*Message, error) {
 }
 
 func (c *Channel) MessagePump(closeChan chan int) {
-	var msg *Message
+	var msg *nsq.Message
 
 	for {
 		select {
@@ -160,7 +155,7 @@ func (c *Channel) MessagePump(closeChan chan int) {
 				log.Printf("ERROR: c.backend.Get() - %s", err.Error())
 				continue
 			}
-			msg = NewMessage(buf)
+			msg = nsq.NewMessage(buf)
 		case <-closeChan:
 			return
 		}

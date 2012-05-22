@@ -1,13 +1,12 @@
-package client
+package nsq
 
 import (
-	"net"
-	"strconv"
-	"io"
-	"fmt"
 	"bytes"
 	"encoding/binary"
-	"../message"
+	"fmt"
+	"io"
+	"net"
+	"strconv"
 )
 
 type Client struct {
@@ -15,13 +14,13 @@ type Client struct {
 }
 
 type Command struct {
-	name []byte
+	name   []byte
 	params [][]byte
 }
 
 type Response struct {
 	FrameType int32
-	Data interface{}
+	Data      interface{}
 }
 
 func NewClient(conn net.Conn) *Client {
@@ -101,17 +100,17 @@ func (c *Client) ReadResponse() (*Response, error) {
 	}
 
 	// message binary data
-	buf := make([]byte, msgSize - 4)
+	buf := make([]byte, msgSize-4)
 	_, err = c.conn.Read(buf)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	resp := &Response{}
 	resp.FrameType = frameType
 	switch resp.FrameType {
-	case 2:
-		resp.Data = message.NewMessage(buf)
+	case FrameTypeMessage:
+		resp.Data = NewMessage(buf)
 		break
 	default:
 		resp.Data = buf

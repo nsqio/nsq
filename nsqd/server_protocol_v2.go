@@ -1,7 +1,7 @@
-package protocol
+package main
 
 import (
-	"../message"
+	"../nsq"
 	"../util"
 	"bufio"
 	"bytes"
@@ -12,37 +12,21 @@ import (
 	"strings"
 )
 
-const (
-	ClientStateV2Init       = 0
-	ClientStateV2Subscribed = 1
-)
-
-const (
-	FrameTypeResponse = 0
-	FrameTypeError    = 1
-	FrameTypeMessage  = 2
-)
-
-var (
-	ClientErrV2Invalid    = ClientError{"E_INVALID"}
-	ClientErrV2BadTopic   = ClientError{"E_BAD_TOPIC"}
-	ClientErrV2BadChannel = ClientError{"E_BAD_CHANNEL"}
-	ClientErrV2BadMessage = ClientError{"E_BAD_MESSAGE"}
-)
+type ServerProtocolV2 struct {
+	nsq.ProtocolV2
+}
 
 func init() {
 	// BigEndian client byte sequence "  V2"
-	Protocols[538990130] = &ProtocolV2{}
+	Protocols[538990130] = &ServerProtocolV2{}
 }
 
-type ProtocolV2 struct{}
-
-func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
+func (p *ServerProtocolV2) IOLoop(client nsq.StatefulReadWriter) error {
 	var err error
 	var line string
 
 	clientExitChan := make(chan int)
-	client.SetState("state", ClientStateV2Init)
+	client.SetState("state", nsq.ClientStateV2Init)
 	client.SetState("exit_chan", clientExitChan)
 
 	err = nil
@@ -61,7 +45,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 
 		response, err := p.Execute(client, params...)
 		if err != nil {
-			clientData, err := p.Frame(FrameTypeError, []byte(err.Error()))
+			clientData, err := p.Frame(nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -74,7 +58,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 		}
 
 		if response != nil {
-			clientData, err := p.Frame(FrameTypeResponse, response)
+			clientData, err := p.Frame(nsq.FrameTypeResponse, response)
 			if err != nil {
 				break
 			}
@@ -91,7 +75,7 @@ func (p *ProtocolV2) IOLoop(client StatefulReadWriter) error {
 	return err
 }
 
-func (p *ProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
+func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
 
@@ -108,7 +92,7 @@ func (p *ProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (p *ProtocolV2) Execute(client StatefulReadWriter, params ...string) ([]byte, error) {
+func (p *ServerProtocolV2) Execute(client nsq.StatefulReadWriter, params ...string) ([]byte, error) {
 	var err error
 	var response []byte
 
@@ -136,10 +120,10 @@ func (p *ProtocolV2) Execute(client StatefulReadWriter, params ...string) ([]byt
 		return response, err
 	}
 
-	return nil, ClientErrV2Invalid
+	return nil, nsq.ClientErrV2Invalid
 }
 
-func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
+func (p *ServerProtocolV2) PushMessages(client nsq.StatefulReadWriter) {
 	var err error
 
 	client.SetState("ready_count", 0)
@@ -151,7 +135,7 @@ func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
 	clientExitChan := clientExitChanInterface.(chan int)
 
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 
 	for {
 		readyCountInterface, _ := client.GetState("ready_count")
@@ -178,7 +162,7 @@ func (p *ProtocolV2) PushMessages(client StatefulReadWriter) {
 					goto exit
 				}
 
-				clientData, err := p.Frame(FrameTypeMessage, buf.Bytes())
+				clientData, err := p.Frame(nsq.FrameTypeMessage, buf.Bytes())
 				if err != nil {
 					goto exit
 				}
@@ -203,43 +187,43 @@ exit:
 	}
 }
 
-func (p *ProtocolV2) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Init {
-		return nil, ClientErrV2Invalid
+func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Init {
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	if len(params) < 3 {
-		return nil, ClientErrV2Invalid
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	topicName := params[1]
 	if len(topicName) == 0 {
-		return nil, ClientErrV2BadTopic
+		return nil, nsq.ClientErrV2BadTopic
 	}
 
 	channelName := params[2]
 	if len(channelName) == 0 {
-		return nil, ClientErrV2BadChannel
+		return nil, nsq.ClientErrV2BadChannel
 	}
 
 	readyStateChan := make(chan int)
 	client.SetState("ready_state_chan", readyStateChan)
 
-	topic := message.GetTopic(topicName)
+	topic := GetTopic(topicName)
 	client.SetState("channel", topic.GetChannel(channelName))
 
-	client.SetState("state", ClientStateV2Subscribed)
+	client.SetState("state", nsq.ClientStateV2Subscribed)
 
 	go p.PushMessages(client)
 
 	return nil, nil
 }
 
-func (p *ProtocolV2) RDY(client StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) RDY(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
 
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Subscribed {
-		return nil, ClientErrV2Invalid
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	count := 1
@@ -251,7 +235,7 @@ func (p *ProtocolV2) RDY(client StatefulReadWriter, params []string) ([]byte, er
 	}
 
 	if count > 1000 {
-		return nil, ClientErrV2Invalid
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	readyStateChanInterface, _ := client.GetState("ready_state_chan")
@@ -261,18 +245,18 @@ func (p *ProtocolV2) RDY(client StatefulReadWriter, params []string) ([]byte, er
 	return nil, nil
 }
 
-func (p *ProtocolV2) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Subscribed {
-		return nil, ClientErrV2Invalid
+func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrV2Invalid
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	uuidStr := params[1]
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 	err := channel.FinishMessage(uuidStr)
 	if err != nil {
 		return nil, err
@@ -281,18 +265,18 @@ func (p *ProtocolV2) FIN(client StatefulReadWriter, params []string) ([]byte, er
 	return nil, nil
 }
 
-func (p *ProtocolV2) REQ(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV2Subscribed {
-		return nil, ClientErrV2Invalid
+func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrV2Invalid
+		return nil, nsq.ClientErrV2Invalid
 	}
 
 	uuidStr := params[1]
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 	err := channel.RequeueMessage(uuidStr)
 	if err != nil {
 		return nil, err

@@ -1,6 +1,7 @@
-nsq_server/nsq_server
-nsq_lookup/nsq_lookup
-nsq_admin/nsq_admin
+nsqd/nsqd
+nsqlookupd/nsqlookupd
+nsqreader/nsqreader
+nsqstatsd/nsqstatsd
 
 *.dat
 

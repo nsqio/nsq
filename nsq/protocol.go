@@ -1,4 +1,4 @@
-package protocol
+package nsq
 
 import (
 	"io"
@@ -15,8 +15,6 @@ type Protocol interface {
 	IOLoop(client StatefulReadWriter) error
 	Execute(client StatefulReadWriter, params ...string) ([]byte, error)
 }
-
-var Protocols = map[int32]Protocol{}
 
 type ClientError struct {
 	errStr string

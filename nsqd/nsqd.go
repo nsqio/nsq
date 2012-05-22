@@ -1,8 +1,7 @@
 package main
 
 import (
-	"../message"
-	"../server"
+	"../nsq"
 	"../util"
 	"flag"
 	"log"
@@ -20,6 +19,8 @@ var debugMode = flag.Bool("debug", false, "enable debug mode")
 var memQueueSize = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
 var goMaxProcs = flag.Int("go-max-procs", 4, "runtime configuration for GOMAXPROCS")
+
+var Protocols = map[int32]nsq.Protocol{}
 
 func main() {
 	flag.Parse()
@@ -45,12 +46,12 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	go message.TopicFactory(*memQueueSize)
+	go TopicFactory(*memQueueSize)
 	go util.UuidFactory()
-	go server.TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
-	server.HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
+	go TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
+	HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
 
-	for _, topic := range message.TopicMap {
+	for _, topic := range TopicMap {
 		topic.Close()
 	}
 }

@@ -1,14 +1,13 @@
 package main
 
 import (
-	"./client"
-	"./util"
+	"../nsq"
+	"../util"
 	"log"
-	"./message"
 )
 
 func main() {
-	client := client.NewClient(nil)
+	client := nsq.NewClient(nil)
 	err := client.Connect("127.0.0.1", 5152)
 	if err != nil {
 		log.Fatal(err)
@@ -23,8 +22,8 @@ func main() {
 			log.Fatal(err)
 		}
 		switch resp.FrameType {
-		case 2:
-			msg := resp.Data.(*message.Message)
+		case nsq.FrameTypeMessage:
+			msg := resp.Data.(*nsq.Message)
 			log.Printf("%s - %s", util.UuidToStr(msg.Uuid()), msg.Body())
 			client.WriteCommand(client.Finish(util.UuidToStr(msg.Uuid())))
 		}

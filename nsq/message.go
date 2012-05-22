@@ -1,8 +1,9 @@
-package message
+package nsq
 
 import (
 	"bytes"
 	"encoding/gob"
+	"time"
 )
 
 type Message struct {
@@ -46,7 +47,17 @@ func (m *Message) EndTimer() {
 	select {
 	case m.timerChan <- 1:
 	default:
+		// TODO: when would this happen, how do we handle this?
 	}
+}
+
+func (m *Message) ShouldRequeue(sleepMS int) bool {
+	select {
+	case <-time.After(time.Duration(sleepMS) * time.Millisecond):
+	case <-m.timerChan:
+		return false
+	}
+	return true
 }
 
 func (m *Message) Encode() ([]byte, error) {

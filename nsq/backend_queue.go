@@ -1,4 +1,4 @@
-package queue
+package nsq
 
 type BackendQueue interface {
 	Get() ([]byte, error)

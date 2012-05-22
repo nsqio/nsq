@@ -1,7 +1,7 @@
-package server
+package main
 
 import (
-	"../protocol"
+	"../nsq"
 	"encoding/binary"
 	"io"
 	"log"
@@ -79,9 +79,9 @@ func (c *Client) Handle() {
 
 	log.Printf("CLIENT(%s): desired protocol %d", c.String(), protocolVersion)
 
-	prot, ok := protocol.Protocols[protocolVersion]
+	prot, ok := Protocols[protocolVersion]
 	if !ok {
-		c.Write([]byte(protocol.ClientErrBadProtocol.Error()))
+		c.Write([]byte(nsq.ClientErrBadProtocol.Error()))
 		log.Printf("CLIENT(%s): bad protocol version %d", c.String(), protocolVersion)
 		return
 	}

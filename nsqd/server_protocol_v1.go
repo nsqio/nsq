@@ -1,7 +1,7 @@
-package protocol
+package main
 
 import (
-	"../message"
+	"../nsq"
 	"../util"
 	"bufio"
 	"bytes"
@@ -10,31 +10,20 @@ import (
 	"strings"
 )
 
-const (
-	ClientStateV1Init         = 0
-	ClientStateV1WaitGet      = 1
-	ClientStateV1WaitResponse = 2
-)
-
-var (
-	ClientErrV1Invalid    = ClientError{"E_INVALID"}
-	ClientErrV1BadTopic   = ClientError{"E_BAD_TOPIC"}
-	ClientErrV1BadChannel = ClientError{"E_BAD_CHANNEL"}
-	ClientErrV1BadMessage = ClientError{"E_BAD_MESSAGE"}
-)
+type ServerProtocolV1 struct {
+	nsq.ProtocolV1
+}
 
 func init() {
 	// BigEndian client byte sequence "  V1"
-	Protocols[538990129] = &ProtocolV1{}
+	Protocols[538990129] = &ServerProtocolV1{}
 }
 
-type ProtocolV1 struct{}
-
-func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
+func (p *ServerProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	var err error
 	var line string
 
-	client.SetState("state", ClientStateV1Init)
+	client.SetState("state", nsq.ClientStateV1Init)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -70,7 +59,7 @@ func (p *ProtocolV1) IOLoop(client StatefulReadWriter) error {
 	return err
 }
 
-func (p *ProtocolV1) Execute(client StatefulReadWriter, params ...string) ([]byte, error) {
+func (p *ServerProtocolV1) Execute(client nsq.StatefulReadWriter, params ...string) ([]byte, error) {
 	var err error
 	var response []byte
 
@@ -98,51 +87,51 @@ func (p *ProtocolV1) Execute(client StatefulReadWriter, params ...string) ([]byt
 		return response, err
 	}
 
-	return nil, ClientErrV1Invalid
+	return nil, nsq.ClientErrV1Invalid
 }
 
-func (p *ProtocolV1) SUB(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV1Init {
-		return nil, ClientErrV1Invalid
+func (p *ServerProtocolV1) SUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1Init {
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	if len(params) < 3 {
-		return nil, ClientErrV1Invalid
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	topicName := params[1]
 	if len(topicName) == 0 {
-		return nil, ClientErrV1BadTopic
+		return nil, nsq.ClientErrV1BadTopic
 	}
 
 	channelName := params[2]
 	if len(channelName) == 0 {
-		return nil, ClientErrV1BadChannel
+		return nil, nsq.ClientErrV1BadChannel
 	}
 
-	client.SetState("state", ClientStateV1WaitGet)
+	client.SetState("state", nsq.ClientStateV1WaitGet)
 
-	topic := message.GetTopic(topicName)
+	topic := GetTopic(topicName)
 	client.SetState("channel", topic.GetChannel(channelName))
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV1) GET(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
 	var buf bytes.Buffer
 
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitGet {
-		return nil, ClientErrV1Invalid
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitGet {
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 	// this blocks until a message is ready
 	msg := <-channel.ClientMessageChan
 	if msg == nil {
 		log.Printf("ERROR: msg == nil")
-		return nil, ClientErrV1BadMessage
+		return nil, nsq.ClientErrV1BadMessage
 	}
 
 	uuidStr := util.UuidToStr(msg.Uuid())
@@ -159,61 +148,61 @@ func (p *ProtocolV1) GET(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	client.SetState("state", ClientStateV1WaitResponse)
+	client.SetState("state", nsq.ClientStateV1WaitResponse)
 
 	return buf.Bytes(), nil
 }
 
-func (p *ProtocolV1) FIN(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitResponse {
-		return nil, ClientErrV1Invalid
+func (p *ServerProtocolV1) FIN(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitResponse {
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrV1Invalid
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	uuidStr := params[1]
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 	err := channel.FinishMessage(uuidStr)
 	if err != nil {
 		return nil, err
 	}
 
-	client.SetState("state", ClientStateV1WaitGet)
+	client.SetState("state", nsq.ClientStateV1WaitGet)
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) REQ(client StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != ClientStateV1WaitResponse {
-		return nil, ClientErrV1Invalid
+func (p *ServerProtocolV1) REQ(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitResponse {
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	if len(params) < 2 {
-		return nil, ClientErrV1Invalid
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	uuidStr := params[1]
 	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*message.Channel)
+	channel := channelInterface.(*Channel)
 	err := channel.RequeueMessage(uuidStr)
 	if err != nil {
 		return nil, err
 	}
 
-	client.SetState("state", ClientStateV1WaitGet)
+	client.SetState("state", nsq.ClientStateV1WaitGet)
 
 	return nil, nil
 }
 
-func (p *ProtocolV1) PUB(client StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
 
 	if len(params) < 3 {
-		return nil, ClientErrV1Invalid
+		return nil, nsq.ClientErrV1Invalid
 	}
 
 	topicName := params[1]
@@ -229,8 +218,8 @@ func (p *ProtocolV1) PUB(client StatefulReadWriter, params []string) ([]byte, er
 		return nil, err
 	}
 
-	topic := message.GetTopic(topicName)
-	topic.PutMessage(message.NewMessage(buf.Bytes()))
+	topic := GetTopic(topicName)
+	topic.PutMessage(nsq.NewMessage(buf.Bytes()))
 
 	return []byte("OK"), nil
 }

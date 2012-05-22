@@ -1,7 +1,7 @@
-package message
+package main
 
 import (
-	"../queue"
+	"../nsq"
 	"../util"
 	"log"
 )
@@ -10,9 +10,9 @@ type Topic struct {
 	name                 string
 	newChannelChan       chan util.ChanReq
 	channelMap           map[string]*Channel
-	backend              queue.BackendQueue
-	incomingMessageChan  chan *Message
-	msgChan              chan *Message
+	backend              nsq.BackendQueue
+	incomingMessageChan  chan *nsq.Message
+	msgChan              chan *nsq.Message
 	routerSyncChan       chan int
 	readSyncChan         chan int
 	exitChan             chan int
@@ -27,9 +27,9 @@ func NewTopic(topicName string, inMemSize int) *Topic {
 	topic := &Topic{name: topicName,
 		newChannelChan:       make(chan util.ChanReq),
 		channelMap:           make(map[string]*Channel),
-		backend:              queue.NewDiskQueue(topicName),
-		incomingMessageChan:  make(chan *Message, 5),
-		msgChan:              make(chan *Message, inMemSize),
+		backend:              nsq.NewDiskQueue(topicName),
+		incomingMessageChan:  make(chan *nsq.Message, 5),
+		msgChan:              make(chan *nsq.Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
 		exitChan:             make(chan int),
@@ -77,7 +77,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 // PutMessage writes to the appropriate incoming
 // message channel
-func (t *Topic) PutMessage(msg *Message) {
+func (t *Topic) PutMessage(msg *nsq.Message) {
 	// log.Printf("TOPIC(%s): PutMessage(%s)", t.name, string(msg.Body()))
 	t.incomingMessageChan <- msg
 }
@@ -86,7 +86,7 @@ func (t *Topic) PutMessage(msg *Message) {
 // writes messages to every channel for this topic, synchronizing
 // with the channel router
 func (t *Topic) MessagePump() {
-	var msg *Message
+	var msg *nsq.Message
 
 	for {
 		select {
@@ -97,7 +97,7 @@ func (t *Topic) MessagePump() {
 				log.Printf("ERROR: t.backend.Get() - %s", err.Error())
 				continue
 			}
-			msg = NewMessage(buf)
+			msg = nsq.NewMessage(buf)
 		}
 
 		t.readSyncChan <- 1
@@ -116,7 +116,7 @@ func (t *Topic) MessagePump() {
 // creation of new Channel objects, proxying messages
 // to memory or backend, and synchronizing reads
 func (t *Topic) Router(inMemSize int) {
-	var msg *Message
+	var msg *nsq.Message
 
 	for {
 		select {
