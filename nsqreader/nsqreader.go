@@ -12,7 +12,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	client.Version("  V2")
+	client.Version(nsq.ProtocolV2Magic)
 	client.WriteCommand(client.Subscribe("test", "ch"))
 	client.WriteCommand(client.Ready(10))
 

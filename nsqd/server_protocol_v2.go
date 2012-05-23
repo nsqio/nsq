@@ -18,7 +18,10 @@ type ServerProtocolV2 struct {
 
 func init() {
 	// BigEndian client byte sequence "  V2"
-	Protocols[538990130] = &ServerProtocolV2{}
+	var magicInt int32
+	buf := bytes.NewBuffer([]byte(ProtocolV2Magic))
+	binary.Read(&buf, binary.BinEndian, &magicInt)
+	Protocols[magicInt] = &ServerProtocolV2{}
 }
 
 func (p *ServerProtocolV2) IOLoop(client nsq.StatefulReadWriter) error {
