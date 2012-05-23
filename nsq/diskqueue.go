@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 
 type DiskQueue struct {
 	name         string
+	dataPath     string
 	readPos      int64
 	writePos     int64
 	readFileNum  int64
@@ -28,8 +30,8 @@ type DiskQueue struct {
 	exitChan     chan int
 }
 
-func NewDiskQueue(name string) *DiskQueue {
-	diskQueue := DiskQueue{name,
+func NewDiskQueue(name string, dataPath string) *DiskQueue {
+	diskQueue := DiskQueue{name, dataPath,
 		0, 0, 0, 0,
 		nil, nil,
 		make(chan int), make(chan util.ChanReq), make(chan util.ChanRet), make(chan int)}
@@ -243,11 +245,11 @@ func (d *DiskQueue) persistMetaData() error {
 }
 
 func (d *DiskQueue) metaDataFileName() string {
-	return fmt.Sprintf("%s.diskqueue.meta.dat", d.name)
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.dat"), d.name)
 }
 
 func (d *DiskQueue) fileName(fileNum int64) string {
-	return fmt.Sprintf("%s.diskqueue.%06d.dat", d.name, fileNum)
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
 }
 
 func (d *DiskQueue) hasDataToRead() bool {

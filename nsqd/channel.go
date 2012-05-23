@@ -23,11 +23,11 @@ type Channel struct {
 }
 
 // Channel constructor
-func NewChannel(channelName string, inMemSize int) *Channel {
+func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 	channel := &Channel{name: channelName,
 		addClientChan:       make(chan util.ChanReq),
 		removeClientChan:    make(chan util.ChanReq),
-		backend:             nsq.NewDiskQueue(channelName),
+		backend:             nsq.NewDiskQueue(channelName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		msgChan:             make(chan *nsq.Message, inMemSize),
 		inFlightMessageChan: make(chan *nsq.Message),

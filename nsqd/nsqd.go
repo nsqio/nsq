@@ -19,6 +19,7 @@ var debugMode = flag.Bool("debug", false, "enable debug mode")
 var memQueueSize = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
 var goMaxProcs = flag.Int("go-max-procs", 4, "runtime configuration for GOMAXPROCS")
+var dataPath = flag.String("data-path", "", "path to store disk-backed messages")
 
 var Protocols = map[int32]nsq.Protocol{}
 
@@ -46,7 +47,7 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	go TopicFactory(*memQueueSize)
+	go TopicFactory(*memQueueSize, *dataPath)
 	go util.UuidFactory()
 	go TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
 	HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)

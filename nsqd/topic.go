@@ -23,18 +23,18 @@ var TopicMap = make(map[string]*Topic)
 var newTopicChan = make(chan util.ChanReq)
 
 // Topic constructor
-func NewTopic(topicName string, inMemSize int) *Topic {
+func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 	topic := &Topic{name: topicName,
 		newChannelChan:       make(chan util.ChanReq),
 		channelMap:           make(map[string]*Channel),
-		backend:              nsq.NewDiskQueue(topicName),
+		backend:              nsq.NewDiskQueue(topicName, dataPath),
 		incomingMessageChan:  make(chan *nsq.Message, 5),
 		msgChan:              make(chan *nsq.Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
 		exitChan:             make(chan int),
 		channelWriterStarted: false}
-	go topic.Router(inMemSize)
+	go topic.Router(inMemSize, dataPath)
 	return topic
 }
 
@@ -49,7 +49,7 @@ func GetTopic(topicName string) *Topic {
 
 // topicFactory is executed in a goroutine and manages
 // the creation/retrieval of Topic objects
-func TopicFactory(inMemSize int) {
+func TopicFactory(inMemSize int, dataPath string) {
 	var topic *Topic
 	var ok bool
 
@@ -57,7 +57,7 @@ func TopicFactory(inMemSize int) {
 		topicReq := <-newTopicChan
 		name := topicReq.Variable.(string)
 		if topic, ok = TopicMap[name]; !ok {
-			topic = NewTopic(name, inMemSize)
+			topic = NewTopic(name, inMemSize, dataPath)
 			TopicMap[name] = topic
 			log.Printf("TOPIC(%s): created", topic.name)
 		}
@@ -115,7 +115,7 @@ func (t *Topic) MessagePump() {
 // Router handles muxing of Topic messages including
 // creation of new Channel objects, proxying messages
 // to memory or backend, and synchronizing reads
-func (t *Topic) Router(inMemSize int) {
+func (t *Topic) Router(inMemSize int, dataPath string) {
 	var msg *nsq.Message
 
 	for {
@@ -124,7 +124,7 @@ func (t *Topic) Router(inMemSize int) {
 			name := channelReq.Variable.(string)
 			channel, ok := t.channelMap[name]
 			if !ok {
-				channel = NewChannel(name, inMemSize)
+				channel = NewChannel(name, inMemSize, dataPath)
 				t.channelMap[name] = channel
 				log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 			}
