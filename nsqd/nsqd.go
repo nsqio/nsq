@@ -26,7 +26,9 @@ var Protocols = map[int32]nsq.Protocol{}
 func main() {
 	flag.Parse()
 
-	runtime.GOMAXPROCS(*goMaxProcs)
+	if *goMaxProcs > 0 {
+		runtime.GOMAXPROCS(*goMaxProcs)
+	}
 
 	nsqEndChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
