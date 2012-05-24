@@ -5,10 +5,12 @@ import (
 	"../util"
 	"bufio"
 	"bytes"
+	"encoding/binary"
+	"io"
 	"log"
 	"reflect"
+	"strconv"
 	"strings"
-	"encoding/binary"
 )
 
 type ServerProtocolV1 struct {
@@ -210,14 +212,23 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 	}
 
 	topicName := params[1]
-	body := []byte(params[2])
+	messageSize, err := strconv.Atoi(params[2])
+	if err != nil {
+		return nil, err
+	}
+
+	messageBody := make([]byte, messageSize)
+	_, err = client.Read(messageBody)
+	if err != nil {
+		return nil, err
+	}
 
 	_, err = buf.Write(<-util.UuidChan)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = buf.Write(body)
+	_, err = buf.Write(messageBody)
 	if err != nil {
 		return nil, err
 	}

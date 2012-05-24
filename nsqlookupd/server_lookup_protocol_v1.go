@@ -4,10 +4,11 @@ import (
 	"../nsq"
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"log"
 	"reflect"
+	"strconv"
 	"strings"
-	"encoding/binary"
 )
 
 type ServerLookupProtocolV1 struct {
@@ -131,15 +132,21 @@ func (p *ServerLookupProtocolV1) SET(client nsq.StatefulReadWriter, params []str
 		return nil, nsq.LookupClientErrV1Invalid
 	}
 
-	val := params[2]
-	if len(val) == 0 {
-		return nil, nsq.LookupClientErrV1Invalid
+	valSize, err := strconv.Atoi(params[2])
+	if err != nil {
+		return nil, err
 	}
-	
+
+	val := make([]byte, valSize)
+	_, err = client.Read(val)
+	if err != nil {
+		return nil, err
+	}
+
 	ldbInterface, _ := client.GetState("lookup_db")
 	ldb := ldbInterface.(*LookupDB)
 
-	err = ldb.Set(key, []byte(val))
+	err = ldb.Set(key, val)
 	if err != nil {
 		return nil, err
 	}

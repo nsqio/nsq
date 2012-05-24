@@ -11,14 +11,14 @@ type SetOp struct {
 }
 
 type LookupDB struct {
-	data map[string]interface{}
+	data    map[string]interface{}
 	setChan chan util.ChanReq
 	getChan chan util.ChanReq
 }
 
 func NewLookupDB() *LookupDB {
-	ldb := LookupDB{make(map[string]interface{}), 
-		make(chan util.ChanReq), 
+	ldb := LookupDB{make(map[string]interface{}),
+		make(chan util.ChanReq),
 		make(chan util.ChanReq)}
 	go ldb.Router()
 	return &ldb

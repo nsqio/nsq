@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"bytes"
 	"io"
 	"log"
 	"net/http"
@@ -44,13 +45,14 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	conn := &HTTPConn{}
+	messageBuf := bytes.NewBuffer(reqParams.Body)
+	conn := &HTTPConn{messageBuf}
 	client := nsq.NewServerClient(conn, "HTTP")
 	prot := Protocols[538990129] // v1
-	response, err := prot.Execute(client, "PUB", topicName, string(reqParams.Body))
+	response, err := prot.Execute(client, "PUB", topicName, strconv.Itoa(messageBuf.Len()))
 	if err != nil {
 		log.Printf("HTTP: error - %s", err.Error())
-		return
+		response = []byte(err.Error())
 	}
 
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
