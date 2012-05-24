@@ -1,44 +1,43 @@
-package main
+package nsq
 
 import (
-	"../nsq"
 	"encoding/binary"
 	"io"
 	"log"
 )
 
-type Client struct {
+type ServerClient struct {
 	conn  io.ReadWriteCloser
 	name  string
 	state map[string]interface{}
 }
 
-// Client constructor
-func NewClient(conn io.ReadWriteCloser, name string) *Client {
-	return &Client{conn, name, make(map[string]interface{})}
+// ServerClient constructor
+func NewServerClient(conn io.ReadWriteCloser, name string) *ServerClient {
+	return &ServerClient{conn, name, make(map[string]interface{})}
 }
 
-func (c *Client) String() string {
+func (c *ServerClient) String() string {
 	return c.name
 }
 
-func (c *Client) GetState(key string) (interface{}, bool) {
+func (c *ServerClient) GetState(key string) (interface{}, bool) {
 	val, ok := c.state[key]
 	return val, ok
 }
 
-func (c *Client) SetState(key string, val interface{}) {
+func (c *ServerClient) SetState(key string, val interface{}) {
 	c.state[key] = val
 }
 
 // Read proxies a read from `conn`
-func (c *Client) Read(data []byte) (int, error) {
+func (c *ServerClient) Read(data []byte) (int, error) {
 	return c.conn.Read(data)
 }
 
 // Write prefixes the byte array with a size and 
 // proxies the write to `conn`
-func (c *Client) Write(data []byte) (int, error) {
+func (c *ServerClient) Write(data []byte) (int, error) {
 	var err error
 
 	err = binary.Write(c.conn, binary.BigEndian, int32(len(data)))
@@ -55,14 +54,14 @@ func (c *Client) Write(data []byte) (int, error) {
 }
 
 // Close proxies the call to `conn`
-func (c *Client) Close() {
+func (c *ServerClient) Close() {
 	log.Printf("CLIENT(%s): closing", c.String())
 	c.conn.Close()
 }
 
 // Handle reads data from the client, keeps state, and
 // responds.  It is executed in a goroutine.
-func (c *Client) Handle() {
+func (c *ServerClient) Handle(protocols map[int32]Protocol) {
 	var err error
 	var protocolVersion int32
 
@@ -79,9 +78,9 @@ func (c *Client) Handle() {
 
 	log.Printf("CLIENT(%s): desired protocol %d", c.String(), protocolVersion)
 
-	prot, ok := Protocols[protocolVersion]
+	prot, ok := protocols[protocolVersion]
 	if !ok {
-		c.Write([]byte(nsq.ClientErrBadProtocol.Error()))
+		c.Write([]byte(ClientErrBadProtocol.Error()))
 		log.Printf("CLIENT(%s): bad protocol version %d", c.String(), protocolVersion)
 		return
 	}

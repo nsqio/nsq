@@ -1,6 +1,6 @@
 package nsq
 
-const ProtocolV1Magic = "  V2"
+const ProtocolV2Magic = "  V2"
 
 const (
 	ClientStateV2Init       = 0

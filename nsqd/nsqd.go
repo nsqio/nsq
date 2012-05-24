@@ -1,7 +1,6 @@
 package main
 
 import (
-	"../nsq"
 	"../util"
 	"flag"
 	"log"
@@ -20,8 +19,6 @@ var memQueueSize = flag.Int("mem-queue-size", 10000, "number of messages to keep
 var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
 var goMaxProcs = flag.Int("go-max-procs", 4, "runtime configuration for GOMAXPROCS")
 var dataPath = flag.String("data-path", "", "path to store disk-backed messages")
-
-var Protocols = map[int32]nsq.Protocol{}
 
 func main() {
 	flag.Parse()

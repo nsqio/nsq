@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"io"
 	"log"
@@ -44,7 +45,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	conn := &HTTPConn{}
-	client := NewClient(conn, "HTTP")
+	client := nsq.NewServerClient(conn, "HTTP")
 	prot := Protocols[538990129] // v1
 	response, err := prot.Execute(client, "PUB", topicName, string(reqParams.Body))
 	if err != nil {

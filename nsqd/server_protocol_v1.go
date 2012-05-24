@@ -8,6 +8,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"encoding/binary"
 )
 
 type ServerProtocolV1 struct {
@@ -17,8 +18,8 @@ type ServerProtocolV1 struct {
 func init() {
 	// BigEndian client byte sequence "  V1"
 	var magicInt int32
-	buf := bytes.NewBuffer([]byte(ProtocolV1Magic))
-	binary.Read(&buf, binary.BinEndian, &magicInt)
+	buf := bytes.NewBuffer([]byte(nsq.ProtocolV1Magic))
+	binary.Read(buf, binary.BigEndian, &magicInt)
 	Protocols[magicInt] = &ServerProtocolV1{}
 }
 

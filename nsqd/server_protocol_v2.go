@@ -19,8 +19,8 @@ type ServerProtocolV2 struct {
 func init() {
 	// BigEndian client byte sequence "  V2"
 	var magicInt int32
-	buf := bytes.NewBuffer([]byte(ProtocolV2Magic))
-	binary.Read(&buf, binary.BinEndian, &magicInt)
+	buf := bytes.NewBuffer([]byte(nsq.ProtocolV2Magic))
+	binary.Read(buf, binary.BigEndian, &magicInt)
 	Protocols[magicInt] = &ServerProtocolV2{}
 }
 
