@@ -78,7 +78,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 // PutMessage writes to the appropriate incoming
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) {
-	// log.Printf("TOPIC(%s): PutMessage(%s)", t.name, string(msg.Body()))
+	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, util.UuidToStr(msg.Uuid()), string(msg.Body()))
 	t.incomingMessageChan <- msg
 }
 
@@ -103,10 +103,10 @@ func (t *Topic) MessagePump() {
 		t.readSyncChan <- 1
 		log.Printf("TOPIC(%s): channelMap %#v", t.name, t.channelMap)
 		for _, channel := range t.channelMap {
-			go func(c *Channel) {
+			go func(c *Channel, m *nsq.Message) {
 				// log.Printf("TOPIC(%s): writing message to channel(%s)", t.name, c.name)
-				c.PutMessage(msg)
-			}(channel)
+				c.PutMessage(m)
+			}(channel, msg)
 		}
 		t.routerSyncChan <- 1
 	}
