@@ -218,7 +218,7 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 	}
 
 	messageBody := make([]byte, messageSize)
-	_, err = client.Read(messageBody)
+	_, err = io.ReadFull(client, messageBody)
 	if err != nil {
 		return nil, err
 	}

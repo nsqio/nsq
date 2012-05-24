@@ -138,7 +138,7 @@ func (p *ServerLookupProtocolV1) SET(client nsq.StatefulReadWriter, params []str
 	}
 
 	val := make([]byte, valSize)
-	_, err = client.Read(val)
+	_, err = io.ReadFull(client, val)
 	if err != nil {
 		return nil, err
 	}

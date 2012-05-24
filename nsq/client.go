@@ -101,7 +101,7 @@ func (c *Client) ReadResponse() (*Response, error) {
 
 	// message binary data
 	buf := make([]byte, msgSize-4)
-	_, err = c.conn.Read(buf)
+	_, err = io.ReadFull(c.conn, buf)
 	if err != nil {
 		return nil, err
 	}
