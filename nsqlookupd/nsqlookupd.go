@@ -17,6 +17,8 @@ var debugMode = flag.Bool("debug", false, "enable debug mode")
 var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
 var goMaxProcs = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 
+var ldb *LookupDB
+
 func main() {
 	flag.Parse()
 
@@ -26,6 +28,7 @@ func main() {
 
 	endChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
+	ldb = NewLookupDB()
 
 	if *cpuProfile != "" {
 		log.Printf("CPU Profiling Enabled")

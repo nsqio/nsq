@@ -1,9 +1,12 @@
 package main
 
 import (
+	"../nsq"
 	"log"
 	"net"
 )
+
+var Protocols = map[int32]nsq.Protocol{}
 
 func TcpServer(address string, port string) {
 	fqAddress := address + ":" + port
@@ -18,7 +21,8 @@ func TcpServer(address string, port string) {
 		if err != nil {
 			panic("accept failed: " + err.Error())
 		}
-		client := NewClient(clientConn)
-		go client.Handle()
+		client := nsq.NewServerClient(clientConn, clientConn.RemoteAddr().String())
+		log.Printf("NSQLOOKUP: new client(%s)", client.String())
+		go client.Handle(Protocols)
 	}
 }

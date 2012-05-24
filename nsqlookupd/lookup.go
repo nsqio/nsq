@@ -17,9 +17,11 @@ type LookupDB struct {
 }
 
 func NewLookupDB() *LookupDB {
-	return &LookupDB{make(map[string]interface{}), 
+	ldb := LookupDB{make(map[string]interface{}), 
 		make(chan util.ChanReq), 
 		make(chan util.ChanReq)}
+	go ldb.Router()
+	return &ldb
 }
 
 func (l *LookupDB) Get(key string) (interface{}, error) {
