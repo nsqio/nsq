@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../util"
 	"../nsq"
+	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -109,10 +109,10 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params 
 	smInterface, _ := client.GetState("safe_map")
 	sm := smInterface.(*util.SafeMap)
 
-	err = sm.Set("topic." + topicName, UpdateTopic, address, port)
+	err = sm.Set("topic."+topicName, UpdateTopic, address, port)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return []byte("OK"), nil
 }

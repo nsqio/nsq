@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 )
 
-type PostOp struct {
+type postOp struct {
 	event string
-	data interface{}
+	data  interface{}
 }
 
 var events = make(map[string][]chan interface{})
@@ -24,13 +24,14 @@ func Observe(event string, outputChan chan interface{}) {
 }
 
 func StopObserving(event string, removeChan chan interface{}) {
+	startRouter()
 	removeReq := util.ChanReq{event, removeChan}
 	removeObserverChan <- removeReq
 }
 
 func Post(event string, data interface{}) {
 	startRouter()
-	postOp := PostOp{event, data}
+	postOp := postOp{event, data}
 	postReq := util.ChanReq{postOp, nil}
 	postNotificationChan <- postReq
 }
@@ -43,13 +44,13 @@ func startRouter() {
 
 func notificationRouter() {
 	for {
-		select{
+		select {
 		case addObserverReq := <-addObserverChan:
 			event := addObserverReq.Variable.(string)
 			outputChan := addObserverReq.RetChan
 			events[event] = append(events[event], outputChan)
 		case postNotificationReq := <-postNotificationChan:
-			postOp := postNotificationReq.Variable.(PostOp)
+			postOp := postNotificationReq.Variable.(postOp)
 			event := postOp.event
 			data := postOp.data
 			if _, ok := events[event]; !ok {

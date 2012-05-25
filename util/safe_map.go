@@ -6,9 +6,9 @@ import (
 )
 
 type SetOp struct {
-	key string
+	key        string
 	updateFunc func(data interface{}, params []interface{}) interface{}
-	params []interface{}
+	params     []interface{}
 }
 
 type SafeMap struct {

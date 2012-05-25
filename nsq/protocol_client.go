@@ -9,25 +9,21 @@ import (
 	"strconv"
 )
 
-type Client struct {
+type ProtocolClient struct {
 	conn io.ReadWriteCloser
 }
 
-type Command struct {
+type ProtocolCommand struct {
 	name   []byte
 	params [][]byte
 }
 
-type Response struct {
+type ProtocolResponse struct {
 	FrameType int32
 	Data      interface{}
 }
 
-func NewClient(conn net.Conn) *Client {
-	return &Client{conn}
-}
-
-func (c *Client) Connect(address string, port int) error {
+func (c *ProtocolClient) Connect(address string, port int) error {
 	fqAddress := address + ":" + strconv.Itoa(port)
 	conn, err := net.Dial("tcp", fqAddress)
 	if err != nil {
@@ -37,37 +33,16 @@ func (c *Client) Connect(address string, port int) error {
 	return nil
 }
 
-func (c *Client) Version(version string) error {
-	_, err := c.conn.Write([]byte(version))
+func (c *ProtocolClient) Version(version string) error {
+	_, err := c.Write([]byte(version))
 	return err
 }
 
-func (c *Client) Subscribe(topic string, channel string) *Command {
-	params := make([][]byte, 2)
-	params[0] = []byte(topic)
-	params[1] = []byte(channel)
-	return &Command{[]byte("SUB"), params}
+func (c *ProtocolClient) Write(data []byte) (int, error) {
+	return c.conn.Write(data)
 }
 
-func (c *Client) Ready(count int) *Command {
-	params := make([][]byte, 1)
-	params[0] = []byte(strconv.Itoa(count))
-	return &Command{[]byte("RDY"), params}
-}
-
-func (c *Client) Finish(uuid string) *Command {
-	params := make([][]byte, 1)
-	params[0] = []byte(uuid)
-	return &Command{[]byte("FIN"), params}
-}
-
-func (c *Client) Requeue(uuid string) *Command {
-	params := make([][]byte, 1)
-	params[0] = []byte(uuid)
-	return &Command{[]byte("REQ"), params}
-}
-
-func (c *Client) WriteCommand(cmd *Command) error {
+func (c *ProtocolClient) WriteCommand(cmd *ProtocolCommand) error {
 	if len(cmd.params) > 0 {
 		_, err := fmt.Fprintf(c.conn, "%s %s\n", cmd.name, string(bytes.Join(cmd.params, []byte(" "))))
 		if err != nil {
@@ -82,7 +57,7 @@ func (c *Client) WriteCommand(cmd *Command) error {
 	return nil
 }
 
-func (c *Client) ReadResponse() (*Response, error) {
+func (c *ProtocolClient) ReadResponse() (*ProtocolResponse, error) {
 	var err error
 	var msgSize int32
 	var frameType int32
@@ -106,7 +81,7 @@ func (c *Client) ReadResponse() (*Response, error) {
 		return nil, err
 	}
 
-	resp := &Response{}
+	resp := ProtocolResponse{}
 	resp.FrameType = frameType
 	switch resp.FrameType {
 	case FrameTypeMessage:
@@ -116,5 +91,5 @@ func (c *Client) ReadResponse() (*Response, error) {
 		resp.Data = buf
 	}
 
-	return resp, nil
+	return &resp, nil
 }

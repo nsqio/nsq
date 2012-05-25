@@ -7,7 +7,7 @@ import (
 
 func UpdateTopic(dataInterface interface{}, params []interface{}) interface{} {
 	var data map[string]interface{}
-	
+
 	address := params[0].(string)
 	port := params[1].(string)
 
