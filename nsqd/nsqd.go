@@ -1,7 +1,6 @@
 package main
 
 import (
-	"../util"
 	"flag"
 	"log"
 	"os"
@@ -47,7 +46,7 @@ func main() {
 	signal.Notify(signalChan, os.Interrupt)
 
 	go TopicFactory(*memQueueSize, *dataPath)
-	go util.UuidFactory()
+	go UuidFactory()
 	go TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
 	HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
 

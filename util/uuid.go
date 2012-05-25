@@ -7,14 +7,6 @@ import (
 	"log"
 )
 
-var UuidChan = make(chan []byte, 1000)
-
-func UuidFactory() {
-	for {
-		UuidChan <- Uuid()
-	}
-}
-
 func Uuid() []byte {
 	b := make([]byte, 16)
 	_, err := io.ReadFull(rand.Reader, b)

@@ -50,7 +50,7 @@ func BenchmarkPut(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		buf := bytes.NewBuffer(<-util.UuidChan)
+		buf := bytes.NewBuffer(<-UuidChan)
 		buf.Write([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic := GetTopic(topicName)
 		topic.PutMessage(NewMessage(buf.Bytes()))

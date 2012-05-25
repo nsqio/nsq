@@ -223,7 +223,7 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 		return nil, err
 	}
 
-	_, err = buf.Write(<-util.UuidChan)
+	_, err = buf.Write(<-UuidChan)
 	if err != nil {
 		return nil, err
 	}
