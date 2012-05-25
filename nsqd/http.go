@@ -6,20 +6,20 @@ import (
 	"bytes"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 )
 
 import _ "net/http/pprof"
 
-func HttpServer(address string, port string, endChan chan int) {
+func HttpServer(tcpAddr *net.TCPAddr, endChan chan int) {
 	http.HandleFunc("/ping", pingHandler)
 	http.HandleFunc("/put", putHandler)
 	http.HandleFunc("/stats", statsHandler)
 	go func() {
-		fqAddress := address + ":" + port
-		log.Printf("listening for http requests on %s", fqAddress)
-		err := http.ListenAndServe(fqAddress, nil)
+		log.Printf("listening for http requests on %s", tcpAddr.String())
+		err := http.ListenAndServe(tcpAddr.String(), nil)
 		if err != nil {
 			log.Fatal("http.ListenAndServe:", err)
 		}

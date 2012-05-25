@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 )
 
 type ProtocolClient struct {
@@ -23,9 +22,8 @@ type ProtocolResponse struct {
 	Data      interface{}
 }
 
-func (c *ProtocolClient) Connect(address string, port int) error {
-	fqAddress := address + ":" + strconv.Itoa(port)
-	conn, err := net.Dial("tcp", fqAddress)
+func (c *ProtocolClient) Connect(tcpAddr *net.TCPAddr) error {
+	conn, err := net.Dial("tcp", tcpAddr.String())
 	if err != nil {
 		return err
 	}

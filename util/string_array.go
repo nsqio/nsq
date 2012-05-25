@@ -1,5 +1,9 @@
 package util
 
+import (
+	"fmt"
+)
+
 type StringArray []string
 
 func (a *StringArray) Set(s string) error {

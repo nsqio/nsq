@@ -1,9 +1,10 @@
 package main
 
 import (
-	"../util/notify"
+	"../util"
 	"flag"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -68,19 +69,26 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	newChannelChan := make(chan interface{})
-	notify.Observe("new_channel", newChannelChan)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", *bindAddress+":"+strconv.Itoa(*tcpPort))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	webAddr, err := net.ResolveTCPAddr("tcp", *bindAddress+":"+strconv.Itoa(*webPort))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
-		for {
-			data := <-newChannelChan
-			log.Printf("NOTIFICATION: %#v", data)
-		}
+		lookupHosts := make([]string, 0)
+		lookupHosts = append(lookupHosts, "127.0.0.1:5160")
+		LookupConnect(lookupHosts)
 	}()
 
 	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
-	go TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
-	HttpServer(*bindAddress, strconv.Itoa(*webPort), nsqEndChan)
+	go TcpServer(tcpAddr)
+	HttpServer(webAddr, nsqEndChan)
 
 	for _, topic := range TopicMap {
 		topic.Close()

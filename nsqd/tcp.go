@@ -8,13 +8,12 @@ import (
 
 var Protocols = map[int32]nsq.Protocol{}
 
-func TcpServer(address string, port string) {
-	fqAddress := address + ":" + port
-	listener, err := net.Listen("tcp", fqAddress)
+func TcpServer(tcpAddr *net.TCPAddr) {
+	listener, err := net.Listen("tcp", tcpAddr.String())
 	if err != nil {
-		panic("listen (" + fqAddress + ") failed: " + err.Error())
+		panic("listen (" + tcpAddr.String() + ") failed: " + err.Error())
 	}
-	log.Printf("listening for clients on %s", fqAddress)
+	log.Printf("listening for clients on %s", tcpAddr.String())
 
 	for {
 		clientConn, err := listener.Accept()
