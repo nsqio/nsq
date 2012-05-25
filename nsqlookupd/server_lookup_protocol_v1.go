@@ -1,13 +1,13 @@
 package main
 
 import (
+	"../util"
 	"../nsq"
 	"bufio"
 	"bytes"
 	"encoding/binary"
 	"log"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -28,7 +28,7 @@ func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	var line string
 
 	client.SetState("state", nsq.LookupClientStateV1Init)
-	client.SetState("lookup_db", ldb)
+	client.SetState("safe_map", sm)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -95,61 +95,24 @@ func (p *ServerLookupProtocolV1) Execute(client nsq.StatefulReadWriter, params .
 	return nil, nsq.LookupClientErrV1Invalid
 }
 
-func (p *ServerLookupProtocolV1) GET(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
 
-	if len(params) < 2 {
+	if len(params) < 4 {
 		return nil, nsq.LookupClientErrV1Invalid
 	}
 
-	key := params[1]
-	if len(key) == 0 {
-		return nil, nsq.LookupClientErrV1Invalid
-	}
+	topicName := params[1]
+	address := params[2]
+	port := params[3]
 
-	ldbInterface, _ := client.GetState("lookup_db")
-	ldb := ldbInterface.(*LookupDB)
+	smInterface, _ := client.GetState("safe_map")
+	sm := smInterface.(*util.SafeMap)
 
-	valInterface, err := ldb.Get(key)
+	err = sm.Set("topic." + topicName, UpdateTopic, address, port)
 	if err != nil {
 		return nil, err
 	}
-
-	val := valInterface.([]byte)
-
-	return val, nil
-}
-
-func (p *ServerLookupProtocolV1) SET(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	var err error
-
-	if len(params) < 3 {
-		return nil, nsq.LookupClientErrV1Invalid
-	}
-
-	key := params[1]
-	if len(key) == 0 {
-		return nil, nsq.LookupClientErrV1Invalid
-	}
-
-	valSize, err := strconv.Atoi(params[2])
-	if err != nil {
-		return nil, err
-	}
-
-	val := make([]byte, valSize)
-	_, err = io.ReadFull(client, val)
-	if err != nil {
-		return nil, err
-	}
-
-	ldbInterface, _ := client.GetState("lookup_db")
-	ldb := ldbInterface.(*LookupDB)
-
-	err = ldb.Set(key, val)
-	if err != nil {
-		return nil, err
-	}
-
+	
 	return []byte("OK"), nil
 }
