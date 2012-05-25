@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"../util/notify"
 	"errors"
 	"log"
 )
@@ -37,6 +38,7 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 		exitChan:            make(chan int),
 		inFlightMessages:    make(map[string]*nsq.Message)}
 	go channel.Router()
+	notify.Post("new_channel", channel)
 	return channel
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../util/notify"
 	"flag"
 	"log"
 	"os"
@@ -44,6 +45,15 @@ func main() {
 		nsqEndChan <- 1
 	}()
 	signal.Notify(signalChan, os.Interrupt)
+
+	newChannelChan := make(chan interface{})
+	notify.Observe("new_channel", newChannelChan)
+	go func() {
+		for {
+			data := <-newChannelChan
+			log.Printf("NOTIFICATION: %#v", data)
+		}
+	}()
 
 	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
