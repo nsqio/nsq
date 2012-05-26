@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	consumer := nsq.Consumer{}
+	consumer := nsq.NewConsumer()
 	err := consumer.Connect("127.0.0.1", 5152)
 	if err != nil {
 		log.Fatal(err)

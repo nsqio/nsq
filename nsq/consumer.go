@@ -8,6 +8,10 @@ type Consumer struct {
 	*ProtocolClient
 }
 
+func NewConsumer() *Consumer {
+	return &Consumer{&ProtocolClient{}}
+}
+
 func (c *ProtocolClient) Subscribe(topic string, channel string) *ProtocolCommand {
 	var params = [][]byte{[]byte(topic), []byte(channel)}
 	return &ProtocolCommand{[]byte("SUB"), params}

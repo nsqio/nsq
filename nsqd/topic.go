@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"../util/notify"
 	"log"
 )
 
@@ -35,6 +36,7 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 		exitChan:             make(chan int),
 		channelWriterStarted: false}
 	go topic.Router(inMemSize, dataPath)
+	notify.Post("new_topic", topic)
 	return topic
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"../util"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -34,12 +35,12 @@ func init() {
 
 func main() {
 	flag.Parse()
-	
+
 	if *showVersion {
 		fmt.Printf("nsqd v%s\n", VERSION)
 		return
 	}
-	
+
 	if *showHelp {
 		fmt.Printf("nsqd v%s\n", VERSION)
 		flag.PrintDefaults()
@@ -78,7 +79,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	
 	go func() {
 		lookupHosts := make([]string, 0)
 		lookupHosts = append(lookupHosts, "127.0.0.1:5160")
