@@ -13,7 +13,7 @@ func TcpServer(tcpAddr *net.TCPAddr) {
 	if err != nil {
 		panic("listen (" + tcpAddr.String() + ") failed: " + err.Error())
 	}
-	log.Printf("listening for clients on %s", tcpAddr.String())
+	log.Printf("TCP: listening on %s", tcpAddr.String())
 
 	for {
 		clientConn, err := listener.Accept()
@@ -21,7 +21,7 @@ func TcpServer(tcpAddr *net.TCPAddr) {
 			panic("accept failed: " + err.Error())
 		}
 		client := nsq.NewServerClient(clientConn, clientConn.RemoteAddr().String())
-		log.Printf("NSQ: new client(%s)", client.String())
+		log.Printf("TCP: new client(%s)", client.String())
 		go client.Handle(Protocols)
 	}
 }

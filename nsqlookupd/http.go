@@ -3,15 +3,15 @@ package main
 import (
 	"io"
 	"log"
+	"net"
 	"net/http"
 )
 
-func HttpServer(address string, port string, endChan chan int) {
+func HttpServer(tcpAddr *net.TCPAddr, endChan chan int) {
 	http.HandleFunc("/ping", pingHandler)
 	go func() {
-		fqAddress := address + ":" + port
-		log.Printf("listening for http requests on %s", fqAddress)
-		err := http.ListenAndServe(fqAddress, nil)
+		log.Printf("HTTP: listening on %s", tcpAddr.String())
+		err := http.ListenAndServe(tcpAddr.String(), nil)
 		if err != nil {
 			log.Fatal("http.ListenAndServe:", err)
 		}

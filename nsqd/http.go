@@ -18,7 +18,7 @@ func HttpServer(tcpAddr *net.TCPAddr, endChan chan int) {
 	http.HandleFunc("/put", putHandler)
 	http.HandleFunc("/stats", statsHandler)
 	go func() {
-		log.Printf("listening for http requests on %s", tcpAddr.String())
+		log.Printf("HTTP: listening on %s", tcpAddr.String())
 		err := http.ListenAndServe(tcpAddr.String(), nil)
 		if err != nil {
 			log.Fatal("http.ListenAndServe:", err)
@@ -35,13 +35,14 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 func putHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("HTTP: error - %s", err.Error())
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		// TODO: return default response
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		log.Printf("HTTP: error - %s", err.Error())
+		// TODO: return default response
 		return
 	}
 
@@ -51,7 +52,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	prot := Protocols[538990129] // v1
 	response, err := prot.Execute(client, "PUB", topicName, strconv.Itoa(messageBuf.Len()))
 	if err != nil {
-		log.Printf("HTTP: error - %s", err.Error())
+		log.Printf("ERROR: failed to publish message - %s", err.Error())
 		response = []byte(err.Error())
 	}
 

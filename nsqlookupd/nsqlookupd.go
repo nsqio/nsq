@@ -3,25 +3,36 @@ package main
 import (
 	"../util"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 )
 
-var bindAddress = flag.String("address", "", "address to bind to")
-var webPort = flag.Int("web-port", 5160, "port to listen on for HTTP connections")
-var tcpPort = flag.Int("tcp-port", 5161, "port to listen on for TCP connections")
-var debugMode = flag.Bool("debug", false, "enable debug mode")
-var cpuProfile = flag.String("cpu-profile", "", "write cpu profile to file")
-var goMaxProcs = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
+const VERSION = "0.1"
+
+var (
+	showVersion = flag.Bool("version", false, "print version string")
+	bindAddress = flag.String("address", "0.0.0.0", "address to bind to")
+	webPort     = flag.String("web-port", "5160", "port to listen on for HTTP connections")
+	tcpPort     = flag.String("tcp-port", "5161", "port to listen on for TCP connections")
+	debugMode   = flag.Bool("debug", false, "enable debug mode")
+	cpuProfile  = flag.String("cpu-profile", "", "write cpu profile to file")
+	goMaxProcs  = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
+)
 
 var sm *util.SafeMap
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nsqlookupd v%s\n", VERSION)
+		return
+	}
 
 	if *goMaxProcs > 0 {
 		runtime.GOMAXPROCS(*goMaxProcs)
@@ -47,6 +58,18 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	go TcpServer(*bindAddress, strconv.Itoa(*tcpPort))
-	HttpServer(*bindAddress, strconv.Itoa(*webPort), endChan)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(*bindAddress, *tcpPort))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	webAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(*bindAddress, *webPort))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("nsqlookupd v%s", VERSION)
+
+	go TcpServer(tcpAddr)
+	HttpServer(webAddr, endChan)
 }

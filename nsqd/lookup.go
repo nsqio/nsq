@@ -5,7 +5,6 @@ import (
 	"../util/notify"
 	"log"
 	"net"
-	"strconv"
 )
 
 var notifyChannelChan = make(chan interface{})
@@ -45,7 +44,7 @@ func lookupRouter() {
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %#v", topic)
 			for _, lookupPeer := range lookupPeers {
-				lookupPeer.WriteCommand(lookupPeer.Announce(topic.name, *bindAddress, strconv.Itoa(*tcpPort)))
+				lookupPeer.WriteCommand(lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
 			}
 		}
 	}
