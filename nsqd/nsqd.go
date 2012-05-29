@@ -17,7 +17,6 @@ const VERSION = "0.1"
 
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
-	showHelp        = flag.Bool("help", false, "print help")
 	bindAddress     = flag.String("address", "0.0.0.0", "address to bind to")
 	webPort         = flag.Int("web-port", 5150, "port to listen on for HTTP connections")
 	tcpPort         = flag.Int("tcp-port", 5151, "port to listen on for TCP connections")
@@ -38,12 +37,6 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf("nsqd v%s\n", VERSION)
-		return
-	}
-
-	if *showHelp {
-		fmt.Printf("nsqd v%s\n", VERSION)
-		flag.PrintDefaults()
 		return
 	}
 
