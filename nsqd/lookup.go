@@ -5,46 +5,77 @@ import (
 	"../util/notify"
 	"log"
 	"net"
+	"time"
 )
 
 var notifyChannelChan = make(chan interface{})
 var notifyTopicChan = make(chan interface{})
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
-func LookupConnect(lookupHosts []string) error {
+func LookupRouter(lookupHosts []string) {
 	for _, host := range lookupHosts {
-		lookupPeer := nsq.NewLookupPeer()
 		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
 		if err != nil {
-			return err
+			log.Fatal("LOOKUP: could not resolve TCP address for %s", host)
 		}
-		err = lookupPeer.Connect(tcpAddr)
-		if err != nil {
-			log.Printf("ERROR: failed to connect to lookup host %s", host)
-			continue
-		}
-		lookupPeer.Version(nsq.LookupProtocolV1Magic)
+		lookupPeer := nsq.NewLookupPeer(tcpAddr)
 		lookupPeers = append(lookupPeers, lookupPeer)
 	}
 
-	go lookupRouter()
 	notify.Observe("new_channel", notifyChannelChan)
 	notify.Observe("new_topic", notifyTopicChan)
 
-	return nil
-}
-
-func lookupRouter() {
 	for {
 		select {
+		case <-time.After(10 * time.Second):
+			// send a heartbeat and read a response (read detects closed conns)
+			for _, lookupPeer := range lookupPeers {
+				log.Printf("LOOKUP: sending heartbeat to %s", lookupPeer.String())
+				if !lookupPeer.IsConnected() {
+					err := lookupPeer.Connect()
+					if err != nil {
+						log.Printf("LOOKUP: failed to connect to %s", lookupPeer.String())
+						continue
+					}
+					lookupPeer.Version(nsq.LookupProtocolV1Magic)
+				}
+				err := lookupPeer.WriteCommand(lookupPeer.Ping())
+				if err != nil {
+					lookupPeer.Close()
+					continue
+				}
+				_, err = lookupPeer.ReadResponse()
+				if err != nil {
+					lookupPeer.Close()
+					continue
+				}
+			}
 		case newChannel := <-notifyChannelChan:
 			channel := newChannel.(*Channel)
-			log.Printf("LOOKUP: new channel %#v", channel)
+			log.Printf("LOOKUP: new channel %s", channel.name)
 		case newTopic := <-notifyTopicChan:
 			topic := newTopic.(*Topic)
-			log.Printf("LOOKUP: new topic %#v", topic)
+			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				lookupPeer.WriteCommand(lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
+				if !lookupPeer.IsConnected() {
+					err := lookupPeer.Connect()
+					if err != nil {
+						log.Printf("LOOKUP: failed to connect to %s", lookupPeer.String())
+						continue
+					}
+					lookupPeer.Version(nsq.LookupProtocolV1Magic)
+				}
+				err := lookupPeer.WriteCommand(lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
+				if err != nil {
+					log.Printf("LOOKUP: error announcing to %s... closing", lookupPeer.String())
+					lookupPeer.Close()
+					continue
+				}
+				_, err = lookupPeer.ReadResponse()
+				if err != nil {
+					lookupPeer.Close()
+					continue
+				}
 			}
 		}
 	}

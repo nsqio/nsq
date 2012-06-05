@@ -6,10 +6,6 @@ const (
 	LookupClientStateV1Init = 0
 )
 
-const (
-	LookupFrameTypeChannel = 0
-)
-
 var (
 	LookupClientErrV1Invalid = ClientError{"E_INVALID"}
 )
@@ -17,4 +13,5 @@ var (
 type LookupProtocolV1 interface {
 	Protocol
 	ANNOUNCE(client StatefulReadWriter, params []string) ([]byte, error)
+	PING(client StatefulReadWriter, params []string) ([]byte, error)
 }

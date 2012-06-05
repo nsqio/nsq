@@ -6,10 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
+)
+
+var (
+	stateDisconnected = 0
+	stateConnected    = 1
 )
 
 type ProtocolClient struct {
-	conn io.ReadWriteCloser
+	conn    io.ReadWriteCloser
+	state   int
+	tcpAddr *net.TCPAddr
 }
 
 type ProtocolCommand struct {
@@ -17,18 +25,27 @@ type ProtocolCommand struct {
 	params [][]byte
 }
 
-type ProtocolResponse struct {
-	FrameType int32
-	Data      interface{}
+func (c *ProtocolClient) String() string {
+	return c.tcpAddr.String()
 }
 
-func (c *ProtocolClient) Connect(tcpAddr *net.TCPAddr) error {
-	conn, err := net.Dial("tcp", tcpAddr.String())
+func (c *ProtocolClient) Connect() error {
+	conn, err := net.DialTimeout("tcp", c.tcpAddr.String(), time.Second)
 	if err != nil {
 		return err
 	}
 	c.conn = conn
+	c.state = stateConnected
 	return nil
+}
+
+func (c *ProtocolClient) IsConnected() bool {
+	return c.state == stateConnected
+}
+
+func (c *ProtocolClient) Close() {
+	c.conn.Close()
+	c.state = stateDisconnected
 }
 
 func (c *ProtocolClient) Version(version string) error {
@@ -55,10 +72,9 @@ func (c *ProtocolClient) WriteCommand(cmd *ProtocolCommand) error {
 	return nil
 }
 
-func (c *ProtocolClient) ReadResponse() (*ProtocolResponse, error) {
+func (c *ProtocolClient) ReadResponse() ([]byte, error) {
 	var err error
 	var msgSize int32
-	var frameType int32
 
 	// message size
 	err = binary.Read(c.conn, binary.BigEndian, &msgSize)
@@ -66,28 +82,12 @@ func (c *ProtocolClient) ReadResponse() (*ProtocolResponse, error) {
 		return nil, err
 	}
 
-	// frame type
-	err = binary.Read(c.conn, binary.BigEndian, &frameType)
-	if err != nil {
-		return nil, err
-	}
-
 	// message binary data
-	buf := make([]byte, msgSize-4)
+	buf := make([]byte, msgSize)
 	_, err = io.ReadFull(c.conn, buf)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := ProtocolResponse{}
-	resp.FrameType = frameType
-	switch resp.FrameType {
-	case FrameTypeMessage:
-		resp.Data = NewMessage(buf)
-		break
-	default:
-		resp.Data = buf
-	}
-
-	return &resp, nil
+	return buf, err
 }

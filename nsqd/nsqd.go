@@ -72,14 +72,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go func() {
-		lookupHosts := make([]string, 0)
-		lookupHosts = append(lookupHosts, "127.0.0.1:5160")
-		LookupConnect(lookupHosts)
-	}()
-
 	log.Printf("nsqd v%s", VERSION)
 
+	// prepare the lookup peer instances
+	lookupHosts := make([]string, 0)
+	lookupHosts = append(lookupHosts, "127.0.0.1:5160")
+	go LookupRouter(lookupHosts)
 	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
 	go TcpServer(tcpAddr)

@@ -4,11 +4,17 @@ import (
 	"../nsq"
 	"../util"
 	"log"
+	"net"
 )
 
 func main() {
-	consumer := nsq.NewConsumer()
-	err := consumer.Connect("127.0.0.1", 5152)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:5152")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	consumer := nsq.NewConsumer(tcpAddr)
+	err = consumer.Connect()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -21,9 +27,14 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		switch resp.FrameType {
+
+		frameType, data, err := consumer.UnpackResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+		switch frameType {
 		case nsq.FrameTypeMessage:
-			msg := resp.Data.(*nsq.Message)
+			msg := data.(*nsq.Message)
 			log.Printf("%s - %s", util.UuidToStr(msg.Uuid()), msg.Body())
 			consumer.WriteCommand(consumer.Finish(util.UuidToStr(msg.Uuid())))
 		}

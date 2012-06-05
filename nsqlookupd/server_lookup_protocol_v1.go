@@ -116,3 +116,7 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params 
 
 	return []byte("OK"), nil
 }
+
+func (p *ServerLookupProtocolV1) PING(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	return []byte("OK"), nil
+}
