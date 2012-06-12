@@ -41,7 +41,7 @@ errors resulting in message loss.
 high-availability as a byproduct of a messaging pattern that includes no SPOF. It also addresses the need for stronger
 guarantees around the delivery of a message.
 
-A single `NSQ` process handles multiple "topics" (by convention, this would previously have been referred to as a
+A single `nsqd` process handles multiple "topics" (by convention, this would previously have been referred to as a
 "stream"). Second, a topic can have multiple "channels". In practice, a channel maps to a downstream service. Each
 channel receives all the messages from a topic. The channels buffer data independently of each other, preventing a slow
 consumer from causing a backlog for other channels. A channel can have multiple clients, a message (assuming successful
@@ -51,8 +51,8 @@ For example, the "decodes" topic could have a channel for "clickatron", "spam", 
 be easy to see, there are no additional services needed to be setup for new queues or to daisy chain a new downstream
 service.
 
-`NSQ` is fully distributed with no single broker or point of failure. `NSQ` clients (queuereaders) are connected via
-`0mq` sockets to **all** `NSQ` instances providing the specified topic. There are no middle-men, no brokers, and no
+`NSQ` is fully distributed with no single broker or point of failure. `nsqd` clients (aka "queuereaders") are connected
+over TCP sockets to **all** `nsqd` instances providing the specified topic. There are no middle-men, no brokers, and no
 SPOF. The *topology* solves the problems described above:
 
     NSQ     NSQ    NSQ
@@ -67,11 +67,11 @@ SPOF. The *topology* solves the problems described above:
 You don't have to deal with figuring out how to robustly distribute an aggregated feed, instead you consume directly
 from *all* producers. It also doesn't *technically* matter which client connects to which `NSQ`, as long as there are
 enough clients connected to all producers to satisfy the volume of messages, you're guaranteed that all will be
-delivered to the system downstream.
+delivered downstream.
 
 It's also worth pointing out the bandwidth efficiency when you have >1 consumers of a topic. You're no longer daisy
 chaining multiple copies of the stream over the network, it's all happening right at the source. Moving away from HTTP
-also significantly reduces the per-message overhead.
+as the only available transport also significantly reduces the per-message overhead.
 
 #### Message Delivery Guarantees
 
@@ -83,21 +83,21 @@ It accomplishes this by performing a handshake with the client, as follows:
   1. client GET message
   2. `NSQ` sends message and stores in temporary internal location
   3. client replies SUCCESS or FAIL
-     * if client does not reply `NSQ` will requeue the message
+     * if client does not reply `NSQ` will automatically timeout and requeue the message
   4. `NSQ` requeues on FAIL and purges on SUCCESS
 
-#### Lookup Service
+#### Lookup Service (nsqlookupd)
 
-`NSQ` includes a helper application, `nsq_lookup`, which provides a directory service where queuereaders can lookup the
+`NSQ` includes a helper application, `nsqlookupd`, which provides a directory service where queuereaders can lookup the
 addresses of `NSQ` instances that contain the topics they are interested in subscribing to. This decouples the consumers
-from the producers (they both individually only need to have intimate knowledge of `nsq_lookup`, never each other).
+from the producers (they both individually only need to have intimate knowledge of `nsqlookupd`, never each other).
 
-At a lower level each `NSQ` has a long-lived connection to `nsq_lookup` over which it periodically pushes it's state.
-This data is used to inform which addresses `nsq_lookup` will give to queuereaders. The heuristic could be based on
+At a lower level each `nsqd` has a long-lived connection to `nsqlookupd` over which it periodically pushes it's state.
+This data is used to inform which addresses `nsqlookupd` will give to queuereaders. The heuristic could be based on
 depth, number of connected queuereaders or naive strategies like round-robin, etc. The goal is to ensure that all
 producers are being read from.  On the client side an HTTP interface is exposed for queuereaders to poll.
 
-High availability of `nsq_lookup` is achieved by running multiple instances. They don't communicate directly to each
+High availability of `nsqlookupd` is achieved by running multiple instances. They don't communicate directly to each
 other and don't require strong data consistency between themselves. The data is considered *eventually* consistent, the
-queuereaders randomly choose a `nsq_lookup` to poll. Stale (or otherwise inaccessible) nodes don't grind the system to a
+queuereaders randomly choose a `nsqlookupd` to poll. Stale (or otherwise inaccessible) nodes don't grind the system to a
 halt.
