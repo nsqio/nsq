@@ -31,52 +31,41 @@ func LookupRouter(lookupHosts []string) {
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
 				log.Printf("LOOKUP: sending heartbeat to %s", lookupPeer.String())
-				if !lookupPeer.IsConnected() {
-					err := lookupPeer.Connect()
-					if err != nil {
-						log.Printf("LOOKUP: failed to connect to %s", lookupPeer.String())
-						continue
-					}
-					lookupPeer.Version(nsq.LookupProtocolV1Magic)
-				}
-				err := lookupPeer.WriteCommand(lookupPeer.Ping())
-				if err != nil {
-					lookupPeer.Close()
-					continue
-				}
-				_, err = lookupPeer.ReadResponse()
-				if err != nil {
-					lookupPeer.Close()
-					continue
-				}
+				lookupCommand(lookupPeer, lookupPeer.Ping())
 			}
 		case newChannel := <-notifyChannelChan:
 			channel := newChannel.(*Channel)
 			log.Printf("LOOKUP: new channel %s", channel.name)
+			// TODO: notify all nsds that a new channel exists
 		case newTopic := <-notifyTopicChan:
+			// notify all nsds that a new topic exists
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				if !lookupPeer.IsConnected() {
-					err := lookupPeer.Connect()
-					if err != nil {
-						log.Printf("LOOKUP: failed to connect to %s", lookupPeer.String())
-						continue
-					}
-					lookupPeer.Version(nsq.LookupProtocolV1Magic)
-				}
-				err := lookupPeer.WriteCommand(lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
-				if err != nil {
-					log.Printf("LOOKUP: error announcing to %s... closing", lookupPeer.String())
-					lookupPeer.Close()
-					continue
-				}
-				_, err = lookupPeer.ReadResponse()
-				if err != nil {
-					lookupPeer.Close()
-					continue
-				}
+				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
 			}
 		}
 	}
+}
+
+func lookupCommand(peer *nsq.LookupPeer, cmd *nsq.ProtocolCommand) ([]byte, error) {
+	if !peer.IsConnected() {
+		err := peer.Connect()
+		if err != nil {
+			log.Printf("LOOKUP: failed to connect to %s", peer.String())
+			return nil, err
+		}
+		peer.Version(nsq.LookupProtocolV1Magic)
+	}
+	err := peer.WriteCommand(cmd)
+	if err != nil {
+		peer.Close()
+		return nil, err
+	}
+	resp, err := peer.ReadResponse()
+	if err != nil {
+		peer.Close()
+		return nil, err
+	}
+	return resp, nil
 }
