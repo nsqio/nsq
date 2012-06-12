@@ -75,7 +75,8 @@ also significantly reduces the per-message overhead.
 
 #### Message Delivery Guarantees
 
-`NSQ` guarantees that a message will be delivered **at least once**.  Duplicate messages are possible and downstream systems should be designed to perform idempotent operations.
+`NSQ` guarantees that a message will be delivered **at least once**. Duplicate messages are possible and downstream
+systems should be designed to perform idempotent operations.
 
 It accomplishes this by performing a handshake with the client, as follows:
 

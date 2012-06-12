@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// TODO: this message needs information about age (miliseconds) and retry count
 type Message struct {
 	// first 16 bytes are the UUID
 	Data      []byte

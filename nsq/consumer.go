@@ -25,6 +25,7 @@ func (c *ProtocolClient) Ready(count int) *ProtocolCommand {
 	return &ProtocolCommand{[]byte("RDY"), params}
 }
 
+// TODO: i think it's easier if these are []byte
 func (c *ProtocolClient) Finish(uuid string) *ProtocolCommand {
 	var params = [][]byte{[]byte(uuid)}
 	return &ProtocolCommand{[]byte("FIN"), params}
