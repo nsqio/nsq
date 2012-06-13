@@ -151,21 +151,14 @@ func (p *ServerProtocolV2) PushMessages(client nsq.StatefulReadWriter) {
 				client.SetState("ready_count", readyCount-1)
 
 				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-					util.UuidToStr(msg.Uuid()), client.String(), string(msg.Body()))
+					util.UuidToStr(msg.Uuid), client.String(), string(msg.Body))
 
-				buf := new(bytes.Buffer)
-
-				_, err = buf.Write(msg.Uuid())
+				data, err := msg.Encode()
 				if err != nil {
 					goto exit
 				}
 
-				_, err = buf.Write(msg.Body())
-				if err != nil {
-					goto exit
-				}
-
-				clientData, err := p.Frame(nsq.FrameTypeMessage, buf.Bytes())
+				clientData, err := p.Frame(nsq.FrameTypeMessage, data)
 				if err != nil {
 					goto exit
 				}

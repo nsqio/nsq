@@ -3,7 +3,6 @@ package main
 import (
 	"../nsq"
 	"../util"
-	"bytes"
 	"io"
 	"log"
 	"net"
@@ -46,15 +45,10 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	messageBuf := bytes.NewBuffer(reqParams.Body)
-	conn := &HTTPConn{messageBuf}
-	client := nsq.NewServerClient(conn, "HTTP")
-	prot := Protocols[538990129] // v1
-	response, err := prot.Execute(client, "PUB", topicName, strconv.Itoa(messageBuf.Len()))
-	if err != nil {
-		log.Printf("ERROR: failed to publish message - %s", err.Error())
-		response = []byte(err.Error())
-	}
+	msg := nsq.NewMessage(<-UuidChan, reqParams.Body)
+	topic := GetTopic(topicName)
+	topic.PutMessage(msg)
+	response := []byte("OK")
 
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.Write(response)

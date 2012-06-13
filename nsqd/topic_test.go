@@ -1,7 +1,7 @@
 package main
 
 import (
-	"../util"
+	"../nsq"
 	"bytes"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
@@ -12,7 +12,7 @@ import (
 
 func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(10)
+	go TopicFactory(10, ".")
 
 	topic1 := GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -28,7 +28,7 @@ func TestGetTopic(t *testing.T) {
 
 func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(10)
+	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")
 	channel1 := topic.GetChannel("ch1")
@@ -44,8 +44,8 @@ func TestGetChannel(t *testing.T) {
 func BenchmarkPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(b.N)
-	go util.UuidFactory()
+	go TopicFactory(b.N, ".")
+	go UuidFactory()
 	topicName := "testbench" + strconv.Itoa(b.N)
 	b.StartTimer()
 
@@ -53,6 +53,7 @@ func BenchmarkPut(b *testing.B) {
 		buf := bytes.NewBuffer(<-UuidChan)
 		buf.Write([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic := GetTopic(topicName)
-		topic.PutMessage(NewMessage(buf.Bytes()))
+		msg, _ := nsq.DecodeMessage(buf.Bytes())
+		topic.PutMessage(msg)
 	}
 }

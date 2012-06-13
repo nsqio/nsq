@@ -78,7 +78,13 @@ func (c *Channel) Router() {
 			case c.msgChan <- msg:
 				log.Printf("CHANNEL(%s): wrote to msgChan", c.name)
 			default:
-				err := c.backend.Put(msg.Data)
+				data, err := msg.Encode()
+				if err != nil {
+					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
+					// TODO: shrug
+					continue
+				}
+				err = c.backend.Put(data)
 				if err != nil {
 					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
 					// TODO: requeue?
@@ -100,7 +106,7 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 			c.pushInFlightMessage(msg)
 			go func(msg *nsq.Message) {
 				if msg.ShouldRequeue(60000) {
-					err := c.RequeueMessage(util.UuidToStr(msg.Uuid()))
+					err := c.RequeueMessage(util.UuidToStr(msg.Uuid))
 					if err != nil {
 						log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
 					}
@@ -131,7 +137,7 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 }
 
 func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
-	uuidStr := util.UuidToStr(msg.Uuid())
+	uuidStr := util.UuidToStr(msg.Uuid)
 	c.inFlightMessages[uuidStr] = msg
 }
 
@@ -157,12 +163,18 @@ func (c *Channel) MessagePump(closeChan chan int) {
 				log.Printf("ERROR: c.backend.Get() - %s", err.Error())
 				continue
 			}
-			msg = nsq.NewMessage(buf)
+			msg, err = nsq.DecodeMessage(buf)
+			if err != nil {
+				log.Printf("ERROR: failed to decode message - %s", err.Error())
+				continue
+			}
 		case <-closeChan:
 			return
 		}
 
+		// TODO: not sure how msg would ever be nil here
 		if msg != nil {
+			msg.Retries += 1
 			c.inFlightMessageChan <- msg
 		}
 

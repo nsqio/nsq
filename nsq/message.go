@@ -2,53 +2,29 @@ package nsq
 
 import (
 	"bytes"
-	"encoding/gob"
+	// "encoding/gob"
+	"encoding/binary"
+	"io/ioutil"
 	"time"
 )
 
-// TODO: this message needs information about age (miliseconds) and retry count
 type Message struct {
-	// first 16 bytes are the UUID
-	Data      []byte
+	Uuid      []byte
+	Body      []byte
+	Timestamp int64
+	Retries   uint16
 	timerChan chan int
 }
 
-func NewMessage(data []byte) *Message {
-	return &Message{data, make(chan int)}
-}
-
-func NewMessageDecoded(byteBuf []byte) (*Message, error) {
-	var buf bytes.Buffer
-	var msg *Message
-	var err error
-
-	_, err = buf.Write(byteBuf)
-	if err != nil {
-		return nil, err
-	}
-
-	decoder := gob.NewDecoder(&buf)
-	err = decoder.Decode(&msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return msg, nil
-}
-
-func (m *Message) Uuid() []byte {
-	return m.Data[:16]
-}
-
-func (m *Message) Body() []byte {
-	return m.Data[16:]
+func NewMessage(uuid []byte, body []byte) *Message {
+	return &Message{Uuid: uuid, Body: body, Timestamp: time.Now().Unix(), Retries: 0, timerChan: make(chan int)}
 }
 
 func (m *Message) EndTimer() {
 	select {
 	case m.timerChan <- 1:
 	default:
-		// TODO: when would this happen, how do we handle this?
+		// TODO: when would this happen, how should we handle this?
 	}
 }
 
@@ -61,14 +37,74 @@ func (m *Message) ShouldRequeue(sleepMS int) bool {
 	return true
 }
 
-func (m *Message) Encode() ([]byte, error) {
-	var buf bytes.Buffer
+func DecodeMessage(byteBuf []byte) (*Message, error) {
+	var age int64
+	var retries uint16
 
-	encoder := gob.NewEncoder(&buf)
-	err := encoder.Encode(*m)
+	buf := bytes.NewBuffer(byteBuf)
+
+	err := binary.Read(buf, binary.BigEndian, &age)
 	if err != nil {
 		return nil, err
 	}
+
+	err = binary.Read(buf, binary.BigEndian, &retries)
+	if err != nil {
+		return nil, err
+	}
+
+	uuid := make([]byte, 16)
+	_, err = buf.Read(uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := ioutil.ReadAll(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := NewMessage(uuid, body)
+	msg.Timestamp = age
+	msg.Retries = retries
+
+	// decoder := gob.NewDecoder(buf)
+	// 	err := decoder.Decode(&msg)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	return msg, nil
+}
+
+func (m *Message) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+
+	err := binary.Write(&buf, binary.BigEndian, &m.Timestamp)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(&buf, binary.BigEndian, &m.Retries)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = buf.Write(m.Uuid)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = buf.Write(m.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// encoder := gob.NewEncoder(&buf)
+	// 	err := encoder.Encode(*m)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
 	return buf.Bytes(), nil
 }

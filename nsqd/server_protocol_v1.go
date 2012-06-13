@@ -140,16 +140,16 @@ func (p *ServerProtocolV1) GET(client nsq.StatefulReadWriter, params []string) (
 		return nil, nsq.ClientErrV1BadMessage
 	}
 
-	uuidStr := util.UuidToStr(msg.Uuid())
+	uuidStr := util.UuidToStr(msg.Uuid)
 
-	log.Printf("PROTOCOL(V1): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body()))
+	log.Printf("PROTOCOL(V1): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body))
 
 	_, err = buf.Write([]byte(uuidStr))
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = buf.Write(msg.Body())
+	_, err = buf.Write(msg.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,6 @@ func (p *ServerProtocolV1) REQ(client nsq.StatefulReadWriter, params []string) (
 }
 
 func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	var buf bytes.Buffer
 	var err error
 
 	if len(params) < 3 {
@@ -223,18 +222,9 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 		return nil, err
 	}
 
-	_, err = buf.Write(<-UuidChan)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(messageBody)
-	if err != nil {
-		return nil, err
-	}
-
+	msg := nsq.NewMessage(<-UuidChan, messageBody)
 	topic := GetTopic(topicName)
-	topic.PutMessage(nsq.NewMessage(buf.Bytes()))
+	topic.PutMessage(msg)
 
 	return []byte("OK"), nil
 }

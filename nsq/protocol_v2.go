@@ -8,9 +8,9 @@ const (
 )
 
 const (
-	FrameTypeResponse = 0
-	FrameTypeError    = 1
-	FrameTypeMessage  = 2
+	FrameTypeResponse int32 = 0
+	FrameTypeError    int32 = 1
+	FrameTypeMessage  int32 = 2
 )
 
 var (

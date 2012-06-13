@@ -1,8 +1,8 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
-	"bytes"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -12,46 +12,36 @@ import (
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(10)
+	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")
 	channel1 := topic.GetChannel("ch1")
 
-	var buf bytes.Buffer
-	uuid := util.Uuid()
-	buf.Write(uuid)
-	body := []byte("test")
-	buf.Write(body)
-	inputMsg := NewMessage(buf.Bytes())
-	topic.PutMessage(inputMsg)
+	msg := nsq.NewMessage(util.Uuid(), []byte("test"))
+	topic.PutMessage(msg)
 
 	outputMsg := <-channel1.ClientMessageChan
-	assert.Equal(t, uuid, outputMsg.Uuid())
-	assert.Equal(t, body, outputMsg.Body())
+	assert.Equal(t, msg.Uuid, outputMsg.Uuid)
+	assert.Equal(t, msg.Body, outputMsg.Body)
 }
 
 // ensure that both channels get the same message
 func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(10)
+	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
-	var buf bytes.Buffer
-	uuid := util.Uuid()
-	buf.Write(uuid)
-	body := []byte("test")
-	buf.Write(body)
-	inputMsg := NewMessage(buf.Bytes())
-	topic.PutMessage(inputMsg)
+	msg := nsq.NewMessage(util.Uuid(), []byte("test"))
+	topic.PutMessage(msg)
 
 	outputMsg1 := <-channel1.ClientMessageChan
-	assert.Equal(t, uuid, outputMsg1.Uuid())
-	assert.Equal(t, body, outputMsg1.Body())
+	assert.Equal(t, msg.Uuid, outputMsg1.Uuid)
+	assert.Equal(t, msg.Body, outputMsg1.Body)
 
 	outputMsg2 := <-channel2.ClientMessageChan
-	assert.Equal(t, uuid, outputMsg2.Uuid())
-	assert.Equal(t, body, outputMsg2.Body())
+	assert.Equal(t, msg.Uuid, outputMsg2.Uuid)
+	assert.Equal(t, msg.Body, outputMsg2.Body)
 }

@@ -80,7 +80,7 @@ func (q *Queue) Run() {
 		switch frameType {
 		case nsq.FrameTypeMessage:
 			msg := data.(*nsq.Message)
-			log.Printf("%s - %s", util.UuidToStr(msg.Uuid()), msg.Body())
+			log.Printf("%s - %s", util.UuidToStr(msg.Uuid), msg.Body)
 			q.messagesInFlight -= 1
 			q.IncomingMessages <- msg
 		default:
@@ -112,26 +112,26 @@ func (q *Queue) AddHandler(handler NSQReader) {
 				break
 			}
 
-			data, err := simplejson.NewJson(msg.Body())
+			data, err := simplejson.NewJson(msg.Body)
 			if err != nil {
 				log.Println(err)
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid(), false}
+				q.FinishedMessages <- &FinishedMessage{msg.Uuid, false}
 				continue
 			}
 
 			_, ok = data.CheckGet("__heartbeat__")
 			if ok {
 				// OK this message
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid(), true}
+				q.FinishedMessages <- &FinishedMessage{msg.Uuid, true}
 				continue
 			}
 
 			// log.Println("got IncomingMessages", msg)
 			err = handler.HandleMessage(data)
 			if err != nil {
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid(), false}
+				q.FinishedMessages <- &FinishedMessage{msg.Uuid, false}
 			} else {
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid(), true}
+				q.FinishedMessages <- &FinishedMessage{msg.Uuid, true}
 			}
 		}
 	}()

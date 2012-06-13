@@ -25,7 +25,6 @@ func (c *ProtocolClient) Ready(count int) *ProtocolCommand {
 	return &ProtocolCommand{[]byte("RDY"), params}
 }
 
-// TODO: i think it's easier if these are []byte
 func (c *ProtocolClient) Finish(uuid string) *ProtocolCommand {
 	var params = [][]byte{[]byte(uuid)}
 	return &ProtocolCommand{[]byte("FIN"), params}
@@ -39,10 +38,10 @@ func (c *ProtocolClient) Requeue(uuid string) *ProtocolCommand {
 func (c *ProtocolClient) UnpackResponse(response []byte) (int32, interface{}, error) {
 	var err error
 	var frameType int32
-	var data interface{}
+	var ret interface{}
 
 	// frame type
-	buf := bytes.NewBuffer(response[:3])
+	buf := bytes.NewBuffer(response[:4])
 	err = binary.Read(buf, binary.BigEndian, &frameType)
 	if err != nil {
 		return -1, nil, err
@@ -50,11 +49,14 @@ func (c *ProtocolClient) UnpackResponse(response []byte) (int32, interface{}, er
 
 	switch frameType {
 	case FrameTypeMessage:
-		data = NewMessage(response[3:])
+		ret, err = DecodeMessage(response[4:])
+		if err != nil {
+			return -1, nil, err
+		}
 		break
 	default:
-		data = response[3:]
+		ret = response[4:]
 	}
 
-	return frameType, data, nil
+	return frameType, ret, nil
 }

@@ -80,7 +80,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 // PutMessage writes to the appropriate incoming
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) {
-	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, util.UuidToStr(msg.Uuid()), string(msg.Body()))
+	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, util.UuidToStr(msg.Uuid), string(msg.Body))
 	t.incomingMessageChan <- msg
 }
 
@@ -99,7 +99,11 @@ func (t *Topic) MessagePump() {
 				log.Printf("ERROR: t.backend.Get() - %s", err.Error())
 				continue
 			}
-			msg = nsq.NewMessage(buf)
+			msg, err = nsq.DecodeMessage(buf)
+			if err != nil {
+				log.Printf("ERROR: failed to decode message - %s", err.Error())
+				continue
+			}
 		}
 
 		t.readSyncChan <- 1
@@ -140,7 +144,13 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 			case t.msgChan <- msg:
 				// log.Printf("TOPIC(%s): wrote to messageChan", t.name)
 			default:
-				err := t.backend.Put(msg.Data)
+				data, err := msg.Encode()
+				if err != nil {
+					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
+					// TODO: shrug
+					continue
+				}
+				err = t.backend.Put(data)
 				if err != nil {
 					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
 					// TODO: requeue?
