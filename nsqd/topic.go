@@ -117,10 +117,11 @@ func (t *Topic) MessagePump() {
 		t.readSyncChan <- 1
 		log.Printf("TOPIC(%s): channelMap %#v", t.name, t.channelMap)
 		for _, channel := range t.channelMap {
-			go func(c *Channel, m *nsq.Message) {
-				// log.Printf("TOPIC(%s): writing message to channel(%s)", t.name, c.name)
-				c.PutMessage(m)
-			}(channel, msg)
+			// copy the message because each channel
+			// needs a unique instance
+			chanMsg := nsq.NewMessage(msg.Uuid, msg.Body)
+			chanMsg.Timestamp = msg.Timestamp
+			go channel.PutMessage(chanMsg)
 		}
 		t.routerSyncChan <- 1
 	}
