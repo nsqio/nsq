@@ -16,9 +16,9 @@ func TestBasicV2(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:5170")
-	tcpListener, err := net.Listen("tcp", tcpAddr.String())
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.Equal(t, err, nil)
+	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
 	go TopicFactory(10, ".")
@@ -58,9 +58,9 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	msgChan := make(chan *nsq.Message)
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:5170")
-	tcpListener, err := net.Listen("tcp", tcpAddr.String())
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.Equal(t, err, nil)
+	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
 	go TopicFactory(10, ".")
