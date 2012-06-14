@@ -4,16 +4,17 @@ import (
 	"../nsq"
 	"../util"
 	"github.com/bmizerany/assert"
-	// "io/ioutil"
-	// "log"
+	"io/ioutil"
+	"log"
 	"net"
+	"os"
 	"testing"
 )
 
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
-	// log.SetOutput(ioutil.Discard)
-	// defer log.SetOutput(os.Stdout)
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:5170")
 	tcpListener, err := net.Listen("tcp", tcpAddr.String())
@@ -52,8 +53,8 @@ func TestBasicV2(t *testing.T) {
 }
 
 func TestMultipleConsumerV2(t *testing.T) {
-	// log.SetOutput(ioutil.Discard)
-	// defer log.SetOutput(os.Stdout)
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
 
 	msgChan := make(chan *nsq.Message)
 
