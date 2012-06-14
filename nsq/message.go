@@ -38,12 +38,12 @@ func (m *Message) ShouldRequeue(sleepMS int) bool {
 }
 
 func DecodeMessage(byteBuf []byte) (*Message, error) {
-	var age int64
+	var timestamp int64
 	var retries uint16
 
 	buf := bytes.NewBuffer(byteBuf)
 
-	err := binary.Read(buf, binary.BigEndian, &age)
+	err := binary.Read(buf, binary.BigEndian, &timestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 	}
 
 	msg := NewMessage(uuid, body)
-	msg.Timestamp = age
+	msg.Timestamp = timestamp
 	msg.Retries = retries
 
 	// decoder := gob.NewDecoder(buf)

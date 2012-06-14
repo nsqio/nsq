@@ -70,6 +70,17 @@ func main() {
 
 	log.Printf("nsqlookupd v%s", VERSION)
 
-	go TcpServer(tcpAddr)
-	HttpServer(webAddr, endChan)
+	tcpListener, err := net.Listen("tcp", tcpAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr.String(), err.Error())
+	}
+	go util.TcpServer(tcpListener, tcpClientHandler)
+
+	webListener, err := net.Listen("tcp", webAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr.String(), err.Error())
+	}
+	go HttpServer(webListener)
+	
+	<-endChan
 }

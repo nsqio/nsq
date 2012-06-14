@@ -6,12 +6,15 @@ import (
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"testing"
 )
 
 func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	go TopicFactory(10, ".")
 
 	topic1 := GetTopic("test")
@@ -28,6 +31,8 @@ func TestGetTopic(t *testing.T) {
 
 func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")

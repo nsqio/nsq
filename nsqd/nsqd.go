@@ -43,7 +43,7 @@ func main() {
 		runtime.GOMAXPROCS(*goMaxProcs)
 	}
 
-	nsqEndChan := make(chan int)
+	endChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
 
 	if *cpuProfile != "" {
@@ -58,7 +58,7 @@ func main() {
 
 	go func() {
 		<-signalChan
-		nsqEndChan <- 1
+		endChan <- 1
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
@@ -78,10 +78,23 @@ func main() {
 	lookupHosts := make([]string, 0)
 	lookupHosts = append(lookupHosts, "127.0.0.1:5160")
 	go LookupRouter(lookupHosts)
+
 	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
-	go TcpServer(tcpAddr)
-	HttpServer(webAddr, nsqEndChan)
+
+	tcpListener, err := net.Listen("tcp", tcpAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr.String(), err.Error())
+	}
+	go util.TcpServer(tcpListener, tcpClientHandler)
+
+	webListener, err := net.Listen("tcp", webAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr.String(), err.Error())
+	}
+	go HttpServer(webListener)
+
+	<-endChan
 
 	for _, topic := range TopicMap {
 		topic.Close()

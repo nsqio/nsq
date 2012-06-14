@@ -7,23 +7,19 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strconv"
 )
 
 import _ "net/http/pprof"
 
-func HttpServer(tcpAddr *net.TCPAddr, endChan chan int) {
+func HttpServer(listener net.Listener) {
+	log.Printf("HTTP: listening on %s", listener.Addr().String())
 	http.HandleFunc("/ping", pingHandler)
 	http.HandleFunc("/put", putHandler)
 	http.HandleFunc("/stats", statsHandler)
-	go func() {
-		log.Printf("HTTP: listening on %s", tcpAddr.String())
-		err := http.ListenAndServe(tcpAddr.String(), nil)
-		if err != nil {
-			log.Fatal("http.ListenAndServe:", err)
-		}
-	}()
-	<-endChan
+	err := http.Serve(listener, nil)
+	if err != nil {
+		log.Fatal("http.ListenAndServe:", err)
+	}
 }
 
 func pingHandler(w http.ResponseWriter, req *http.Request) {
@@ -48,8 +44,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	msg := nsq.NewMessage(<-UuidChan, reqParams.Body)
 	topic := GetTopic(topicName)
 	topic.PutMessage(msg)
-	response := []byte("OK")
 
-	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
-	w.Write(response)
+	w.Header().Set("Content-Length", "2")
+	io.WriteString(w, "OK")
 }

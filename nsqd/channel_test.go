@@ -6,12 +6,15 @@ import (
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
+	"os"
 	"testing"
 )
 
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")
@@ -28,6 +31,8 @@ func TestPutMessage(t *testing.T) {
 // ensure that both channels get the same message
 func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	go TopicFactory(10, ".")
 
 	topic := GetTopic("test")
