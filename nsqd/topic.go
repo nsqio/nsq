@@ -5,6 +5,7 @@ import (
 	"../util"
 	"../util/notify"
 	"log"
+	"sync/atomic"
 )
 
 type Topic struct {
@@ -17,11 +18,12 @@ type Topic struct {
 	routerSyncChan       chan int
 	readSyncChan         chan int
 	exitChan             chan int
-	channelWriterStarted bool
+	channelWriterStarted int32
 }
 
 var TopicMap = make(map[string]*Topic)
 var newTopicChan = make(chan util.ChanReq)
+var topicFactoryStarted = int32(0)
 
 // Topic constructor
 func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
@@ -34,7 +36,7 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
 		exitChan:             make(chan int),
-		channelWriterStarted: false}
+		channelWriterStarted: 0}
 	go topic.Router(inMemSize, dataPath)
 	notify.Post("new_topic", topic)
 	return topic
@@ -53,10 +55,16 @@ func GetTopic(topicName string) *Topic {
 // the creation/retrieval of Topic objects
 func TopicFactory(inMemSize int, dataPath string) {
 	var topic *Topic
-	var ok bool
+
+	if !atomic.CompareAndSwapInt32(&topicFactoryStarted, 0, 1) {
+		return
+	}
 
 	for {
-		topicReq := <-newTopicChan
+		topicReq, ok := <-newTopicChan
+		if !ok {
+			break
+		}
 		name := topicReq.Variable.(string)
 		if topic, ok = TopicMap[name]; !ok {
 			topic = NewTopic(name, inMemSize, dataPath)
@@ -135,9 +143,8 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 				log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 			}
 			channelReq.RetChan <- channel
-			if !t.channelWriterStarted {
+			if atomic.CompareAndSwapInt32(&t.channelWriterStarted, 0, 1) {
 				go t.MessagePump()
-				t.channelWriterStarted = true
 			}
 		case msg = <-t.incomingMessageChan:
 			select {
