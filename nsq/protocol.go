@@ -27,7 +27,7 @@ func (e ClientError) Error() string {
 }
 
 var (
-	ClientErrInvalid = ClientError{"E_INVALID"}
+	ClientErrInvalid     = ClientError{"E_INVALID"}
 	ClientErrBadProtocol = ClientError{"E_BAD_PROTOCOL"}
 )
 

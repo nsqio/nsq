@@ -3,6 +3,8 @@ package nsq
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"log"
 	"net"
 	"strconv"
 )
@@ -35,10 +37,21 @@ func (c *ProtocolClient) Requeue(uuid string) *ProtocolCommand {
 	return &ProtocolCommand{[]byte("REQ"), params}
 }
 
+func (c *ProtocolClient) StartClose() *ProtocolCommand {
+	// start a close cycle. server will ACK after which we can finish up 
+	// pending messages, and then close the connection
+	log.Printf("starting CLS on client")
+	return &ProtocolCommand{[]byte("CLS"), nil}
+}
+
 func (c *ProtocolClient) UnpackResponse(response []byte) (int32, interface{}, error) {
 	var err error
 	var frameType int32
 	var ret interface{}
+
+	if len(response) < 4 {
+		return -1, nil, errors.New("response invalid")
+	}
 
 	// frame type
 	buf := bytes.NewBuffer(response[:4])

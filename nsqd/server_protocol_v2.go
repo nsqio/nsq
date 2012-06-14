@@ -186,7 +186,14 @@ func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) (
 func (p *ServerProtocolV2) RDY(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
 	var err error
 
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+	state, _ := client.GetState("state")
+	if state.(int) == nsq.ClientStateV2Closing {
+		// just ignore ready changes on a closing channel
+		log.Printf("PROTOCOL(V2): ignoring RDY after CLS in state ClientStateV2Closing")
+		return nil, nil
+	}
+
+	if state.(int) != nsq.ClientStateV2Subscribed {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -210,7 +217,8 @@ func (p *ServerProtocolV2) RDY(client nsq.StatefulReadWriter, params []string) (
 }
 
 func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+	state, _ := client.GetState("state")
+	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -230,7 +238,8 @@ func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) (
 }
 
 func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+	state, _ := client.GetState("state")
+	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -245,6 +254,35 @@ func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) (
 	if err != nil {
 		return nil, err
 	}
+
+	return nil, nil
+}
+
+func (p *ServerProtocolV2) CLS(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+		return nil, nsq.ClientErrV2Invalid
+	}
+
+	if len(params) > 1 {
+		return nil, nsq.ClientErrV2Invalid
+	}
+
+	// Force the client into ready 0
+	readyStateChanInterface, _ := client.GetState("ready_state_chan")
+	readyStateChan := readyStateChanInterface.(chan int)
+	readyStateChan <- 0
+
+	// mark this client as closing
+	client.SetState("state", nsq.ClientStateV2Closing)
+
+	// TODO start a timer to actually close the channel (in case the client doesn't do it first)
+
+	// send a FrameTypeCloseWait response
+	clientData, err := p.Frame(nsq.FrameTypeCloseWait, nil)
+	if err != nil {
+		log.Printf("error writing FrameTypeCloseWait")
+	}
+	client.Write(clientData)
 
 	return nil, nil
 }

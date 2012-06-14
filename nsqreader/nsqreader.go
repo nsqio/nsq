@@ -4,26 +4,45 @@ import (
 	"../nsq"
 	"../util"
 	"bitly/simplejson"
+	"errors"
 	"log"
 	"net"
 )
 
-type NSQReader interface {
+type Reader interface {
 	HandleMessage(*simplejson.Json) error
 }
 
-type Queue struct {
-	TopicName        string       // Name of Topic to subscribe to
-	ChannelName      string       // Named Channel to consume messages from
-	ServerAddress    *net.TCPAddr // TODO: switch to lookup hosts
-	BatchSize        int          // number of messages to request at a time
-	IncomingMessages chan *nsq.Message
-	FinishedMessages chan *FinishedMessage
+type NSQReader struct {
+	TopicName        string // Name of Topic to subscribe to
+	ChannelName      string // Named Channel to consume messages from
+	IncomingMessages chan *IncomingMessage
+	ExitChan         chan int
 
-	runFlag          bool
+	nsqConnections map[string]*NSQConnection
+
+	stopFlag         bool
+	runningFlag      bool
 	runningHandlers  int
 	messagesInFlight int
 	consumer         *nsq.Consumer
+}
+
+type NSQConnection struct {
+	ServerAddress    *net.TCPAddr
+	FinishedMessages chan *FinishedMessage
+
+	consumer         *nsq.Consumer
+	stopFlag         bool
+	messagesInFlight int
+	messagesReceived int
+	messagesFinished int
+	messagesReQueued int
+}
+
+type IncomingMessage struct {
+	msg             *nsq.Message
+	responseChannel chan *FinishedMessage
 }
 
 type FinishedMessage struct {
@@ -31,128 +50,205 @@ type FinishedMessage struct {
 	success bool
 }
 
-func NewNSQReader(topic string, channel string, server *net.TCPAddr) (*Queue, error) {
-	q := &Queue{
+func NewNSQReader(topic string, channel string) (*NSQReader, error) {
+	q := &NSQReader{
 		TopicName:        topic,
 		ChannelName:      channel,
-		ServerAddress:    server,
-		BatchSize:        1,
-		IncomingMessages: make(chan *nsq.Message),
-		FinishedMessages: make(chan *FinishedMessage),
-		runFlag:          true,
-		runningHandlers:  0,
-		consumer:         nil,
+		IncomingMessages: make(chan *IncomingMessage),
+		ExitChan:         make(chan int),
+		nsqConnections:   make(map[string]*NSQConnection),
 	}
 	return q, nil
 }
 
-func (q *Queue) Run() {
-	log.Println("starting queue run")
+func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
 	if q.runningHandlers == 0 {
-		log.Fatal("there are no handlers running")
+		return errors.New("There are no handlers running")
 	}
-	go q.FinishLoop()
 
-	q.consumer = nsq.NewConsumer(q.ServerAddress)
-	err := q.consumer.Connect()
-	if err != nil {
-		log.Fatal(err)
+	// TODO: disconnect first?
+	_, ok := q.nsqConnections[addr.String()]
+	if ok {
+		return errors.New("already connected")
 	}
-	q.consumer.Version(nsq.ProtocolV2Magic)
-	q.consumer.WriteCommand(q.consumer.Subscribe(q.TopicName, q.ChannelName))
-	q.messagesInFlight = q.BatchSize
-	q.consumer.WriteCommand(q.consumer.Ready(q.messagesInFlight))
+
+	log.Printf("[%s] connecting to NSQ", addr)
+	consumer := nsq.NewConsumer(addr)
+	err := consumer.Connect()
+	if err != nil {
+		log.Printf("[%s] %s", addr, err.Error())
+		return err
+	}
+
+	consumer.Version(nsq.ProtocolV2Magic)
+	consumer.WriteCommand(consumer.Subscribe(q.TopicName, q.ChannelName))
+
+	connection := &NSQConnection{
+		ServerAddress:    addr,
+		FinishedMessages: make(chan *FinishedMessage),
+
+		consumer:         consumer,
+		stopFlag:         false,
+		messagesReceived: 0,
+		messagesFinished: 0,
+		messagesReQueued: 0,
+	}
+
+	q.nsqConnections[addr.String()] = connection
+
+	// start read loop
+	go ConnectionReadLoop(q, connection)
+	go ConnectionFinishLoop(q, connection)
+	return nil
+}
+
+func ConnectionReadLoop(q *NSQReader, c *NSQConnection) {
+	// TODO calculate ready number better
+	c.consumer.WriteCommand(c.consumer.Ready(1))
 	for {
-		if !q.runFlag {
-			close(q.IncomingMessages) // stops the handlers. will chain to requeue loop
+		if c.stopFlag || q.stopFlag {
+			// start the connection close
+			log.Printf("[%s] stopping read loop ", c.ServerAddress)
+			if c.messagesInFlight == 0 {
+				close(c.FinishedMessages)
+			}
 			break
 		}
 
-		resp, err := q.consumer.ReadResponse()
+		resp, err := c.consumer.ReadResponse()
 		if err != nil {
-			log.Fatal(err)
+			// on error, close the connection
+			log.Printf("[%s] error on response %s", c.ServerAddress, err.Error())
+			c.stopFlag = true
+			continue
 		}
 
-		frameType, data, err := q.consumer.UnpackResponse(resp)
+		frameType, data, err := c.consumer.UnpackResponse(resp)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("[%s] error (%s) unpacking response %s %s", c.ServerAddress, err.Error(), frameType, data)
+			c.stopFlag = true
+			continue
 		}
+
+		// TODO: handle close response
+		// or timeout and close anyway
 		switch frameType {
 		case nsq.FrameTypeMessage:
+			c.messagesReceived += 1
 			msg := data.(*nsq.Message)
-			log.Printf("%s - %s", util.UuidToStr(msg.Uuid), msg.Body)
-			q.messagesInFlight -= 1
-			q.IncomingMessages <- msg
+			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, util.UuidToStr(msg.Uuid), msg.Body)
+			c.messagesInFlight += 1
+			q.messagesInFlight += 1
+			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
+		// case nsq.FrameTypeCloseRequest:
+		// 	// server is gracefully requesting us to drop off
+		// 	c.stopFlag = true
+		case nsq.FrameTypeCloseWait:
+			// server is ready for us to close (it ack'd our StartClose)
+			// we can assume we will not receive any more messages over this channel
+			// (but we can still write back responses)
+			log.Printf("[%s] received ACK from server. now in CloseWait %d", c.ServerAddress, frameType)
+			c.stopFlag = true
 		default:
-			log.Println("unknown message type", frameType)
-			// note: a bunch of messages in this state could take us out of 'ready'
+			log.Printf("[%s] unknown message type %d", c.ServerAddress, frameType)
 		}
 
 	}
 }
 
-// stops a QueueReader gracefully
-func (q *Queue) Stop() {
-	q.runFlag = false // kicks out the GET loop
+func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
+	for {
+		msg, ok := <-c.FinishedMessages
+		if !ok {
+			log.Printf("[%s] stopping finish loop ", c.ServerAddress)
+			c.consumer.Close()
+			delete(q.nsqConnections, c.ServerAddress.String())
+
+			// reconnect ?
+			// if we are the last one, and stopFlag is on
+			log.Printf("there are %d connections left alive", len(q.nsqConnections))
+
+			if len(q.nsqConnections) == 0 {
+				// TODO: reconnect (if lookupd?)
+				if q.stopFlag {
+					q.stopHandlers()
+				}
+			}
+			break
+		}
+		if msg.success {
+			log.Printf("[%s] successfully finished %s", c.ServerAddress, util.UuidToStr(msg.uuid))
+			c.consumer.WriteCommand(c.consumer.Finish(util.UuidToStr(msg.uuid)))
+			c.messagesFinished += 1
+		} else {
+			log.Printf("[%s] failed message %s", c.ServerAddress, util.UuidToStr(msg.uuid))
+			c.consumer.WriteCommand(c.consumer.Requeue(util.UuidToStr(msg.uuid)))
+			c.messagesReQueued += 1
+		}
+		c.messagesInFlight -= 1
+		q.messagesInFlight -= 1
+		// TODO: don't write this every time (for when we have batch requesting enabled)
+		if !c.stopFlag {
+			c.consumer.WriteCommand(c.consumer.Ready(1))
+		}
+	}
 }
 
-// this starts a handler on the queue
+// stops a NSQReaderReader gracefully
+func (q *NSQReader) Stop() {
+	q.stopFlag = true // kicks out the GET loop
+	// start the stop cycle for each client
+	for _, c := range q.nsqConnections {
+		c.consumer.WriteCommand(c.consumer.StartClose())
+	}
+
+}
+
+func (q *NSQReader) stopHandlers() {
+	close(q.IncomingMessages)
+}
+
+// this starts a handler on the NSQReader
 // it's ok to start more than one handler simultaneously
-func (q *Queue) AddHandler(handler NSQReader) {
+func (q *NSQReader) AddHandler(handler Reader) {
 	q.runningHandlers += 1
 	log.Println("starting handle go-routine")
 	go func() {
 		for {
-			msg, ok := <-q.IncomingMessages
+			message, ok := <-q.IncomingMessages
 			if !ok {
+				log.Printf("closing handler (after self.IncomingMessages closed)")
 				q.runningHandlers -= 1
 				if q.runningHandlers == 0 {
-					close(q.FinishedMessages)
+					// we are done?
+					log.Printf("closed last handler")
+					q.ExitChan <- 1
 				}
 				break
 			}
 
+			msg := message.msg
 			data, err := simplejson.NewJson(msg.Body)
 			if err != nil {
-				log.Println(err)
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid, false}
+				log.Println("unable to parse body", msg.Body, err)
+				message.responseChannel <- &FinishedMessage{msg.Uuid, false}
 				continue
 			}
 
 			_, ok = data.CheckGet("__heartbeat__")
 			if ok {
-				// OK this message
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid, true}
+				// Finish this message.
+				message.responseChannel <- &FinishedMessage{msg.Uuid, true}
 				continue
 			}
 
 			// log.Println("got IncomingMessages", msg)
 			err = handler.HandleMessage(data)
 			if err != nil {
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid, false}
+				message.responseChannel <- &FinishedMessage{msg.Uuid, false}
 			} else {
-				q.FinishedMessages <- &FinishedMessage{msg.Uuid, true}
+				message.responseChannel <- &FinishedMessage{msg.Uuid, true}
 			}
 		}
 	}()
-}
-
-// read q.FinishedMessages and act accordingly
-func (q *Queue) FinishLoop() {
-	for {
-		msg, ok := <-q.FinishedMessages
-		if !ok {
-			break
-		}
-		if msg.success {
-			log.Println("successfully finished", msg)
-			q.consumer.WriteCommand(q.consumer.Finish(util.UuidToStr(msg.uuid)))
-		} else {
-			log.Println("failed message", msg)
-			q.consumer.WriteCommand(q.consumer.Requeue(util.UuidToStr(msg.uuid)))
-		}
-		q.messagesInFlight += 1
-		// TODO: don't write this every time (for when we have batch requesting enabled)
-		q.consumer.WriteCommand(q.consumer.Ready(q.messagesInFlight))
-	}
 }
