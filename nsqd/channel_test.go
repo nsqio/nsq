@@ -17,12 +17,12 @@ func TestPutMessage(t *testing.T) {
 
 	go TopicFactory(10, ".")
 
-	topic := GetTopic("test")
-	channel1 := topic.GetChannel("ch1")
-
+	topic := GetTopic("test_put_message")
+	channel1 := topic.GetChannel("ch")
+	
 	msg := nsq.NewMessage(util.Uuid(), []byte("test"))
 	topic.PutMessage(msg)
-
+	
 	outputMsg := <-channel1.ClientMessageChan
 	assert.Equal(t, msg.Uuid, outputMsg.Uuid)
 	assert.Equal(t, msg.Body, outputMsg.Body)
@@ -34,8 +34,8 @@ func TestPutMessage2Chan(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	go TopicFactory(10, ".")
-
-	topic := GetTopic("test")
+	 
+	topic := GetTopic("test_put_message_2chan")
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
