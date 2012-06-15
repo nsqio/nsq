@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"bytes"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -55,10 +54,8 @@ func BenchmarkPut(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		buf := bytes.NewBuffer(<-UuidChan)
-		buf.Write([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic := GetTopic(topicName)
-		msg, _ := nsq.DecodeMessage(buf.Bytes())
+		msg := nsq.NewMessage(<-UuidChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }
