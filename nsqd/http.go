@@ -18,7 +18,7 @@ func HttpServer(listener net.Listener) {
 	http.HandleFunc("/stats", statsHandler)
 	err := http.Serve(listener, nil)
 	if err != nil {
-		log.Fatal("http.ListenAndServe:", err)
+		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
 }
 
