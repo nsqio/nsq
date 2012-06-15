@@ -105,9 +105,7 @@ func notificationRouter() {
 				continue
 			}
 			for _, outputChan := range events[event] {
-				go func(event string, c chan interface{}, d interface{}) {
-					c <- d
-				}(event, outputChan, data)
+				outputChan <- data
 			}
 		case removeObserverReq := <-ignoreChan:
 			event := removeObserverReq.Variable.(string)
