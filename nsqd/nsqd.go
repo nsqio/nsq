@@ -16,9 +16,8 @@ const VERSION = "0.1"
 
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
-	bindAddress     = flag.String("address", "0.0.0.0", "address to bind to")
-	webPort         = flag.String("web-port", "5151", "port to listen on for HTTP connections")
-	tcpPort         = flag.String("tcp-port", "5150", "port to listen on for TCP connections")
+	webAddress      = flag.String("web-address", "0.0.0.0:5151", "<addr>:<port> to listen on for HTTP clients")
+	tcpAddress      = flag.String("tcp-address", "0.0.0.0:5150", "<addr>:<port> to listen on for TCP clients")
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
@@ -62,23 +61,19 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(*bindAddress, *tcpPort))
+	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	webAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(*bindAddress, *webPort))
+	webAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	log.Printf("nsqd v%s", VERSION)
 
-	// prepare the lookup peer instances
-	lookupHosts := make([]string, 0)
-	lookupHosts = append(lookupHosts, "127.0.0.1:5160")
-	go LookupRouter(lookupHosts)
-
+	go LookupRouter(lookupAddresses)
 	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
 

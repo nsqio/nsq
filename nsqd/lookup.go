@@ -5,6 +5,7 @@ import (
 	"../util/notify"
 	"log"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -12,12 +13,18 @@ var notifyChannelChan = make(chan interface{})
 var notifyTopicChan = make(chan interface{})
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
+// TODO: this needs a clean shutdown
 func LookupRouter(lookupHosts []string) {
+	if len(lookupHosts) == 0 {
+		return
+	}
+
 	for _, host := range lookupHosts {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
 		if err != nil {
 			log.Fatal("LOOKUP: could not resolve TCP address for %s", host)
 		}
+		log.Printf("LOOKUP: adding peer %s", tcpAddr.String())
 		lookupPeer := nsq.NewLookupPeer(tcpAddr)
 		lookupPeers = append(lookupPeers, lookupPeer)
 	}
@@ -42,7 +49,8 @@ func LookupRouter(lookupHosts []string) {
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, *bindAddress, *tcpPort))
+				tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
+				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, tcpAddr.IP.String(), strconv.Itoa(tcpAddr.Port)))
 			}
 		}
 	}
