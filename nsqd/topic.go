@@ -32,7 +32,7 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 		channelMap:           make(map[string]*Channel),
 		backend:              nsq.NewDiskQueue(topicName, dataPath),
 		incomingMessageChan:  make(chan *nsq.Message, 5),
-		msgChan:              make(chan *nsq.Message, inMemSize),
+		memoryMsgChan:        make(chan *nsq.Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
 		exitChan:             make(chan int),
@@ -100,7 +100,7 @@ func (t *Topic) MessagePump() {
 
 	for {
 		select {
-		case msg = <-t.msgChan:
+		case msg = <-t.memoryMsgChan:
 		case <-t.backend.ReadReadyChan():
 			buf, err := t.backend.Get()
 			if err != nil {
@@ -149,7 +149,7 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 			}
 		case msg = <-t.incomingMessageChan:
 			select {
-			case t.msgChan <- msg:
+			case t.memoryMsgChan <- msg:
 				// log.Printf("TOPIC(%s): wrote to messageChan", t.name)
 			default:
 				data, err := msg.Encode()

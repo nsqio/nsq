@@ -14,7 +14,7 @@ type Channel struct {
 	removeClientChan    chan util.ChanReq
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
-	msgChan             chan *nsq.Message
+	memoryMsgChan       chan *nsq.Message
 	inFlightMessageChan chan *nsq.Message
 	ClientMessageChan   chan *nsq.Message
 	requeueMessageChan  chan util.ChanReq
@@ -30,7 +30,7 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 		removeClientChan:    make(chan util.ChanReq),
 		backend:             nsq.NewDiskQueue(channelName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
-		msgChan:             make(chan *nsq.Message, inMemSize),
+		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		inFlightMessageChan: make(chan *nsq.Message),
 		ClientMessageChan:   make(chan *nsq.Message),
 		requeueMessageChan:  make(chan util.ChanReq),
@@ -75,8 +75,8 @@ func (c *Channel) Router() {
 		select {
 		case msg := <-c.incomingMessageChan:
 			select {
-			case c.msgChan <- msg:
-				log.Printf("CHANNEL(%s): wrote to msgChan", c.name)
+			case c.memoryMsgChan <- msg:
+				log.Printf("CHANNEL(%s): wrote to memoryMsgChan", c.name)
 			default:
 				data, err := msg.Encode()
 				if err != nil {
@@ -156,7 +156,7 @@ func (c *Channel) MessagePump(closeChan chan int) {
 
 	for {
 		select {
-		case msg = <-c.msgChan:
+		case msg = <-c.memoryMsgChan:
 		case <-c.backend.ReadReadyChan():
 			buf, err := c.backend.Get()
 			if err != nil {
