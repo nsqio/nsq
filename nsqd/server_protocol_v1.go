@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -62,113 +61,6 @@ func (p *ServerProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	}
 
 	return err
-}
-
-func (p *ServerProtocolV1) SUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1Init {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	if len(params) < 3 {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	topicName := params[1]
-	if len(topicName) == 0 {
-		return nil, nsq.ClientErrV1BadTopic
-	}
-
-	channelName := params[2]
-	if len(channelName) == 0 {
-		return nil, nsq.ClientErrV1BadChannel
-	}
-
-	client.SetState("state", nsq.ClientStateV1WaitGet)
-
-	topic := GetTopic(topicName)
-	client.SetState("channel", topic.GetChannel(channelName))
-
-	return nil, nil
-}
-
-func (p *ServerProtocolV1) GET(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	var err error
-	var buf bytes.Buffer
-
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitGet {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
-	// this blocks until a message is ready
-	msg := <-channel.ClientMessageChan
-	if msg == nil {
-		log.Printf("ERROR: msg == nil")
-		return nil, nsq.ClientErrV1BadMessage
-	}
-
-	uuidStr := util.UuidToStr(msg.Uuid)
-
-	log.Printf("PROTOCOL(V1): writing msg(%s) to client(%s) - %s", uuidStr, client.String(), string(msg.Body))
-
-	_, err = buf.Write([]byte(uuidStr))
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(msg.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	client.SetState("state", nsq.ClientStateV1WaitResponse)
-
-	return buf.Bytes(), nil
-}
-
-func (p *ServerProtocolV1) FIN(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitResponse {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	if len(params) < 2 {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	uuidStr := params[1]
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
-	err := channel.FinishMessage(uuidStr)
-	if err != nil {
-		return nil, err
-	}
-
-	client.SetState("state", nsq.ClientStateV1WaitGet)
-
-	return nil, nil
-}
-
-func (p *ServerProtocolV1) REQ(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV1WaitResponse {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	if len(params) < 2 {
-		return nil, nsq.ClientErrV1Invalid
-	}
-
-	uuidStr := params[1]
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
-	err := channel.RequeueMessage(uuidStr)
-	if err != nil {
-		return nil, err
-	}
-
-	client.SetState("state", nsq.ClientStateV1WaitGet)
-
-	return nil, nil
 }
 
 func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
