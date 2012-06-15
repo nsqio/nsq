@@ -27,21 +27,21 @@ func TestBasicV2(t *testing.T) {
 	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
 	topic := GetTopic("test_v2")
 	topic.PutMessage(msg)
-	
+
 	consumer := nsq.NewConsumer(tcpAddr)
-	
+
 	err = consumer.Connect()
 	assert.Equal(t, err, nil)
-	
+
 	err = consumer.Version(nsq.ProtocolV2Magic)
 	assert.Equal(t, err, nil)
-	
+
 	err = consumer.WriteCommand(consumer.Subscribe("test_v2", "ch"))
 	assert.Equal(t, err, nil)
-	
+
 	err = consumer.WriteCommand(consumer.Ready(1))
 	assert.Equal(t, err, nil)
-	
+
 	resp, err := consumer.ReadResponse()
 	assert.Equal(t, err, nil)
 	frameType, msgInterface, err := consumer.UnpackResponse(resp)

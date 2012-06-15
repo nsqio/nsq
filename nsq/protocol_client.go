@@ -59,7 +59,7 @@ func (c *ProtocolClient) Write(data []byte) (int, error) {
 
 func (c *ProtocolClient) WriteCommand(cmd *ProtocolCommand) error {
 	if len(cmd.params) > 0 {
-		_, err := fmt.Fprintf(c.conn, "%s %s\n", cmd.name, string(bytes.Join(cmd.params, []byte(" "))))
+		_, err := fmt.Fprintf(c.conn, "%s %s\n", cmd.name, bytes.Join(cmd.params, []byte(" ")))
 		if err != nil {
 			return err
 		}

@@ -81,6 +81,6 @@ func main() {
 		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr.String(), err.Error())
 	}
 	go HttpServer(webListener)
-	
+
 	<-endChan
 }

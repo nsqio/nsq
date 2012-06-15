@@ -7,7 +7,7 @@ import (
 
 func TcpServer(listener net.Listener, handler func(net.Conn) error) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
-	
+
 	for {
 		clientConn, err := listener.Accept()
 		if err != nil {

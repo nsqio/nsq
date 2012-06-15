@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
-	"reflect"
 	"strings"
 )
 
@@ -44,7 +43,7 @@ func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 
 		log.Printf("PROTOCOL(V1): %#v", params)
 
-		response, err := p.Execute(client, params...)
+		response, err := nsq.ProtocolExecute(p, client, params...)
 		if err != nil {
 			_, err = client.Write([]byte(err.Error()))
 			if err != nil {
@@ -62,37 +61,6 @@ func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	}
 
 	return err
-}
-
-func (p *ServerLookupProtocolV1) Execute(client nsq.StatefulReadWriter, params ...string) ([]byte, error) {
-	var err error
-	var response []byte
-
-	typ := reflect.TypeOf(p)
-	args := make([]reflect.Value, 3)
-	args[0] = reflect.ValueOf(p)
-	args[1] = reflect.ValueOf(client)
-
-	cmd := strings.ToUpper(params[0])
-
-	// use reflection to call the appropriate method for this 
-	// command on the protocol object
-	if method, ok := typ.MethodByName(cmd); ok {
-		args[2] = reflect.ValueOf(params)
-		returnValues := method.Func.Call(args)
-		response = nil
-		if !returnValues[0].IsNil() {
-			response = returnValues[0].Interface().([]byte)
-		}
-		err = nil
-		if !returnValues[1].IsNil() {
-			err = returnValues[1].Interface().(error)
-		}
-
-		return response, err
-	}
-
-	return nil, nsq.LookupClientErrV1Invalid
 }
 
 func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params []string) ([]byte, error) {

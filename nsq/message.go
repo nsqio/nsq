@@ -2,6 +2,7 @@ package nsq
 
 import (
 	"bytes"
+	// we cannot use gob because Message contains a channel (which cannot be encoded)
 	// "encoding/gob"
 	"encoding/binary"
 	"io/ioutil"
