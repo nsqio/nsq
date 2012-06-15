@@ -19,7 +19,6 @@ type Channel struct {
 	ClientMessageChan   chan *nsq.Message
 	requeueMessageChan  chan util.ChanReq
 	finishMessageChan   chan util.ChanReq
-	exitChan            chan int
 	inFlightMessages    map[string]*nsq.Message
 }
 
@@ -35,7 +34,6 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 		ClientMessageChan:   make(chan *nsq.Message),
 		requeueMessageChan:  make(chan util.ChanReq),
 		finishMessageChan:   make(chan util.ChanReq),
-		exitChan:            make(chan int),
 		inFlightMessages:    make(map[string]*nsq.Message)}
 	go channel.Router()
 	notify.Post("new_channel", channel)
@@ -65,12 +63,11 @@ func (c *Channel) RequeueMessage(uuidStr string) error {
 // Router handles the muxing of Channel messages including
 // the addition of a Client to the Channel
 func (c *Channel) Router() {
-	requeueRouterCloseChan := make(chan int)
-	messagePumpCloseChan := make(chan int)
+	go c.RequeueRouter()
+	go c.MessagePump()
 
-	go c.RequeueRouter(requeueRouterCloseChan)
-	go c.MessagePump(messagePumpCloseChan)
-
+	exitChan := make(chan interface{})
+	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg := <-c.incomingMessageChan:
@@ -91,15 +88,16 @@ func (c *Channel) Router() {
 				}
 				log.Printf("CHANNEL(%s): wrote to backend", c.name)
 			}
-		case <-c.exitChan:
-			requeueRouterCloseChan <- 1
-			messagePumpCloseChan <- 1
+		case <-exitChan:
+			notify.Ignore(c.name+".channel_close", exitChan)
 			return
 		}
 	}
 }
 
-func (c *Channel) RequeueRouter(closeChan chan int) {
+func (c *Channel) RequeueRouter() {
+	exitChan := make(chan interface{})
+	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg := <-c.inFlightMessageChan:
@@ -130,7 +128,8 @@ func (c *Channel) RequeueRouter(closeChan chan int) {
 				log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
 			}
 			finishReq.RetChan <- err
-		case <-closeChan:
+		case <-exitChan:
+			notify.Ignore(c.name+".channel_close", exitChan)
 			return
 		}
 	}
@@ -151,9 +150,11 @@ func (c *Channel) popInFlightMessage(uuidStr string) (*nsq.Message, error) {
 	return msg, nil
 }
 
-func (c *Channel) MessagePump(closeChan chan int) {
+func (c *Channel) MessagePump() {
 	var msg *nsq.Message
 
+	exitChan := make(chan interface{})
+	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg = <-c.memoryMsgChan:
@@ -168,7 +169,8 @@ func (c *Channel) MessagePump(closeChan chan int) {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
 			}
-		case <-closeChan:
+		case <-exitChan:
+			notify.Ignore(c.name+".channel_close", exitChan)
 			return
 		}
 
@@ -187,7 +189,7 @@ func (c *Channel) Close() error {
 
 	log.Printf("CHANNEL(%s): closing", c.name)
 
-	c.exitChan <- 1
+	notify.Post(c.name+".channel_close", nil)
 
 	err = c.backend.Close()
 	if err != nil {

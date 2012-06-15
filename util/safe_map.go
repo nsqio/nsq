@@ -12,17 +12,23 @@ type SetOp struct {
 }
 
 type SafeMap struct {
-	data    map[string]interface{}
-	setChan chan ChanReq
-	getChan chan ChanReq
+	data     map[string]interface{}
+	setChan  chan ChanReq
+	getChan  chan ChanReq
+	exitChan chan int
 }
 
 func NewSafeMap() *SafeMap {
 	sm := SafeMap{make(map[string]interface{}),
 		make(chan ChanReq),
-		make(chan ChanReq)}
+		make(chan ChanReq),
+		make(chan int)}
 	go sm.Router()
 	return &sm
+}
+
+func (sm *SafeMap) Close() {
+	sm.exitChan <- 1
 }
 
 func (sm *SafeMap) Get(key string) (interface{}, error) {
@@ -68,6 +74,8 @@ func (sm *SafeMap) Router() {
 				ret.Variable = nil
 			}
 			getReq.RetChan <- ret
+		case <-sm.exitChan:
+			return
 		}
 	}
 }

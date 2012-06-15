@@ -43,7 +43,7 @@ func main() {
 		runtime.GOMAXPROCS(*goMaxProcs)
 	}
 
-	endChan := make(chan int)
+	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
 
 	if *cpuProfile != "" {
@@ -58,7 +58,7 @@ func main() {
 
 	go func() {
 		<-signalChan
-		endChan <- 1
+		exitChan <- 1
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
@@ -94,9 +94,12 @@ func main() {
 	}
 	go HttpServer(webListener)
 
-	<-endChan
+	<-exitChan
 
-	for _, topic := range TopicMap {
+	tcpListener.Close()
+	webListener.Close()
+	close(newTopicChan)
+	for _, topic := range topicMap {
 		topic.Close()
 	}
 }

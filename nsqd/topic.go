@@ -14,14 +14,13 @@ type Topic struct {
 	channelMap           map[string]*Channel
 	backend              nsq.BackendQueue
 	incomingMessageChan  chan *nsq.Message
-	msgChan              chan *nsq.Message
+	memoryMsgChan        chan *nsq.Message
 	routerSyncChan       chan int
 	readSyncChan         chan int
-	exitChan             chan int
 	channelWriterStarted int32
 }
 
-var TopicMap = make(map[string]*Topic)
+var topicMap = make(map[string]*Topic)
 var newTopicChan = make(chan util.ChanReq)
 var topicFactoryStarted = int32(0)
 
@@ -35,7 +34,6 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 		memoryMsgChan:        make(chan *nsq.Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
-		exitChan:             make(chan int),
 		channelWriterStarted: 0}
 	go topic.Router(inMemSize, dataPath)
 	notify.Post("new_topic", topic)
@@ -66,9 +64,9 @@ func TopicFactory(inMemSize int, dataPath string) {
 			break
 		}
 		name := topicReq.Variable.(string)
-		if topic, ok = TopicMap[name]; !ok {
+		if topic, ok = topicMap[name]; !ok {
 			topic = NewTopic(name, inMemSize, dataPath)
-			TopicMap[name] = topic
+			topicMap[name] = topic
 			log.Printf("TOPIC(%s): created", topic.name)
 		}
 		topicReq.RetChan <- topic
@@ -98,6 +96,8 @@ func (t *Topic) PutMessage(msg *nsq.Message) {
 func (t *Topic) MessagePump() {
 	var msg *nsq.Message
 
+	exitChan := make(chan interface{})
+	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
 		case msg = <-t.memoryMsgChan:
@@ -112,6 +112,9 @@ func (t *Topic) MessagePump() {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
 			}
+		case <-exitChan:
+			notify.Ignore(t.name+".topic_close", exitChan)
+			return
 		}
 
 		t.readSyncChan <- 1
@@ -133,6 +136,8 @@ func (t *Topic) MessagePump() {
 func (t *Topic) Router(inMemSize int, dataPath string) {
 	var msg *nsq.Message
 
+	exitChan := make(chan interface{})
+	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
 		case channelReq := <-t.newChannelChan:
@@ -169,7 +174,8 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 			// log.Printf("TOPIC(%s): read sync START", t.name)
 			<-t.routerSyncChan
 			// log.Printf("TOPIC(%s): read sync END", t.name)
-		case <-t.exitChan:
+		case <-exitChan:
+			notify.Ignore(t.name+".topic_close", exitChan)
 			return
 		}
 	}
@@ -180,7 +186,7 @@ func (t *Topic) Close() error {
 
 	log.Printf("TOPIC(%s): closing", t.name)
 
-	t.exitChan <- 1
+	notify.Post(t.name+".topic_close", nil)
 
 	for _, channel := range t.channelMap {
 		err = channel.Close()
