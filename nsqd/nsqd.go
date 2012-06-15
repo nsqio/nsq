@@ -17,8 +17,8 @@ const VERSION = "0.1"
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
 	bindAddress     = flag.String("address", "0.0.0.0", "address to bind to")
-	webPort         = flag.String("web-port", "5150", "port to listen on for HTTP connections")
-	tcpPort         = flag.String("tcp-port", "5151", "port to listen on for TCP connections")
+	webPort         = flag.String("web-port", "5151", "port to listen on for HTTP connections")
+	tcpPort         = flag.String("tcp-port", "5150", "port to listen on for TCP connections")
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
