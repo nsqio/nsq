@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -121,7 +122,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	totalBytes := 4 + msgSize
 
 	readBuf := make([]byte, msgSize)
-	_, err = d.readFile.Read(readBuf)
+	_, err = io.ReadFull(d.readFile, readBuf)
 	if err != nil {
 		return nil, err
 	}

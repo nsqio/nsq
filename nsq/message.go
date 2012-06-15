@@ -5,6 +5,7 @@ import (
 	// we cannot use gob because Message contains a channel (which cannot be encoded)
 	// "encoding/gob"
 	"encoding/binary"
+	"io"
 	"io/ioutil"
 	"time"
 )
@@ -55,7 +56,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 	}
 
 	uuid := make([]byte, 16)
-	_, err = buf.Read(uuid)
+	_, err = io.ReadFull(buf, uuid)
 	if err != nil {
 		return nil, err
 	}
