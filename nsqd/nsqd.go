@@ -22,7 +22,7 @@ var (
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
-	goMaxProcs      = flag.Int("go-max-procs", 4, "runtime configuration for GOMAXPROCS")
+	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	lookupAddresses = util.StringArray{}
 )
