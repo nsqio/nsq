@@ -15,7 +15,7 @@ func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 
 	topic := GetTopic("test_put_message")
 	channel1 := topic.GetChannel("ch")
@@ -33,7 +33,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 
 	topic := GetTopic("test_put_message_2chan")
 	channel1 := topic.GetChannel("ch1")

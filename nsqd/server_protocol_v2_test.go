@@ -21,7 +21,7 @@ func TestBasicV2(t *testing.T) {
 	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
 	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
@@ -63,7 +63,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
 	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))

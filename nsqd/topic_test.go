@@ -14,7 +14,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 
 	topic1 := GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -32,7 +32,7 @@ func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	go TopicFactory(10, ".")
+	go TopicFactory(10, os.TempDir())
 
 	topic := GetTopic("test")
 	channel1 := topic.GetChannel("ch1")
@@ -48,7 +48,8 @@ func TestGetChannel(t *testing.T) {
 func BenchmarkPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
-	go TopicFactory(b.N, ".")
+	defer log.SetOutput(os.Stdout)
+	go TopicFactory(b.N, os.TempDir())
 	go UuidFactory()
 	topicName := "testbench" + strconv.Itoa(b.N)
 	b.StartTimer()
