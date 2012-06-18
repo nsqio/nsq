@@ -14,7 +14,11 @@ type ServerClient struct {
 
 // ServerClient constructor
 func NewServerClient(conn io.ReadWriteCloser, name string) *ServerClient {
-	return &ServerClient{conn, name, make(map[string]interface{})}
+	return &ServerClient{
+		conn:  conn,
+		name:  name,
+		state: make(map[string]interface{}),
+	}
 }
 
 func (c *ServerClient) String() string {

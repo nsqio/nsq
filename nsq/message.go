@@ -19,7 +19,13 @@ type Message struct {
 }
 
 func NewMessage(uuid []byte, body []byte) *Message {
-	return &Message{Uuid: uuid, Body: body, Timestamp: time.Now().Unix(), Retries: 0, timerChan: make(chan int)}
+	return &Message{
+		Uuid:      uuid,
+		Body:      body,
+		Timestamp: time.Now().Unix(),
+		Retries:   0,
+		timerChan: make(chan int),
+	}
 }
 
 func (m *Message) EndTimer() {

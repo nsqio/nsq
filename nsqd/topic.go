@@ -26,7 +26,8 @@ var topicFactoryStarted = int32(0)
 
 // Topic constructor
 func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
-	topic := &Topic{name: topicName,
+	topic := &Topic{
+		name:                 topicName,
 		newChannelChan:       make(chan util.ChanReq),
 		channelMap:           make(map[string]*Channel),
 		backend:              nsq.NewDiskQueue(topicName, dataPath),
@@ -34,7 +35,8 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 		memoryMsgChan:        make(chan *nsq.Message, inMemSize),
 		routerSyncChan:       make(chan int, 1),
 		readSyncChan:         make(chan int),
-		channelWriterStarted: 0}
+		channelWriterStarted: 0,
+	}
 	go topic.Router(inMemSize, dataPath)
 	notify.Post("new_topic", topic)
 	return topic

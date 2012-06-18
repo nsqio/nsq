@@ -19,10 +19,12 @@ type SafeMap struct {
 }
 
 func NewSafeMap() *SafeMap {
-	sm := SafeMap{make(map[string]interface{}),
-		make(chan ChanReq),
-		make(chan ChanReq),
-		make(chan int)}
+	sm := SafeMap{
+		data:     make(map[string]interface{}),
+		setChan:  make(chan ChanReq),
+		getChan:  make(chan ChanReq),
+		exitChan: make(chan int),
+	}
 	go sm.Router()
 	return &sm
 }

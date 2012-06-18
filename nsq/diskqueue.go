@@ -25,17 +25,21 @@ type DiskQueue struct {
 	writeFileNum int64
 	readFile     *os.File
 	writeFile    *os.File
-	readChan     chan int
 	inChan       chan util.ChanReq
 	outChan      chan util.ChanRet
+	readChan     chan int
 	exitChan     chan int
 }
 
 func NewDiskQueue(name string, dataPath string) *DiskQueue {
-	diskQueue := DiskQueue{name, dataPath,
-		0, 0, 0, 0,
-		nil, nil,
-		make(chan int), make(chan util.ChanReq), make(chan util.ChanRet), make(chan int)}
+	diskQueue := DiskQueue{
+		name: name, dataPath: dataPath,
+		readPos: 0, writePos: 0,
+		readFileNum: 0, writeFileNum: 0,
+		readFile: nil, writeFile: nil,
+		inChan: make(chan util.ChanReq), outChan: make(chan util.ChanRet),
+		readChan: make(chan int), exitChan: make(chan int),
+	}
 
 	err := diskQueue.retrieveMetaData()
 	if err != nil {

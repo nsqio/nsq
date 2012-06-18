@@ -22,7 +22,8 @@ type Channel struct {
 
 // Channel constructor
 func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
-	channel := &Channel{name: channelName,
+	channel := &Channel{
+		name:                channelName,
 		backend:             nsq.NewDiskQueue(channelName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
@@ -30,7 +31,8 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 		ClientMessageChan:   make(chan *nsq.Message),
 		requeueMessageChan:  make(chan util.ChanReq),
 		finishMessageChan:   make(chan util.ChanReq),
-		inFlightMessages:    make(map[string]*nsq.Message)}
+		inFlightMessages:    make(map[string]*nsq.Message),
+	}
 	go channel.Router()
 	notify.Post("new_channel", channel)
 	return channel
