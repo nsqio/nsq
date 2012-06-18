@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"testing"
 )
 
@@ -30,11 +31,11 @@ func (h *MyTestHandler) HandleMessage(d []byte) error {
 
 	action, _ := data.Get("action").String()
 	if action != "test1" {
-		h.t.Error("message handled was not correct", data)
+		h.t.Error("message 'action' was not correct: "+action, data)
 	}
 	numeric_id, _ := data.Get("numeric_id").Int()
 	if numeric_id != 12345678 {
-		h.t.Error("message handled was not correct", data)
+		h.t.Error("message 'numeric_id' was not correct: "+strconv.Itoa(numeric_id), data)
 	}
 	h.messagesReceived += 1
 	if h.messagesReceived >= 4 {
