@@ -1,7 +1,7 @@
 package nsq
 
 import (
-	"../util"
+	"../util" // TODO: this dependency needs to be resolved
 	"bytes"
 	"encoding/binary"
 	"fmt"

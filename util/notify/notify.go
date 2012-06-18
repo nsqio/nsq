@@ -3,8 +3,8 @@
 //
 // It generalizes the pattern of *multiple* consumers of an event (ie: 
 // a message over a single channel needing to be consumed by N consumers) 
-// while obviating the need for components to have intimate knowledge of 
-// each other (only `import notify` and the name of the event is required).
+// and obviates the need for components to have intimate knowledge of 
+// each other (only `import notify` and the name of the event are shared).
 //
 // The internal goroutines are started lazily, no initialization is required.
 //
@@ -30,7 +30,7 @@
 package notify
 
 import (
-	"../../util"
+	"../../util" // TODO: for open sourcing this dependency needs to be removed
 	"log"
 	"sync/atomic"
 )
