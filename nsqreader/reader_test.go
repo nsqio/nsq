@@ -16,7 +16,18 @@ type MyTestHandler struct {
 	messagesReceived int
 }
 
-func (h *MyTestHandler) HandleMessage(data *simplejson.Json) error {
+func (h *MyTestHandler) HandleMessage(d []byte) error {
+
+	data, err := simplejson.NewJson(d)
+	if err != nil {
+		return err
+	}
+
+	_, ok := data.CheckGet("__heartbeat__")
+	if ok {
+		return nil // Finish this message
+	}
+
 	action, _ := data.Get("action").String()
 	if action != "test1" {
 		h.t.Error("message handled was not correct", data)

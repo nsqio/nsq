@@ -3,14 +3,18 @@ package nsqreader
 import (
 	"../nsq"
 	"../util"
-	"bitly/simplejson"
 	"errors"
 	"log"
+	"math"
 	"net"
 )
 
 type Reader interface {
-	HandleMessage(*simplejson.Json) error
+	HandleMessage([]byte) error
+}
+
+type AsyncReader interface {
+	HandleMessage(messageID []byte, body []byte, responseChannel chan *FinishedMessage)
 }
 
 type NSQReader struct {
@@ -18,6 +22,7 @@ type NSQReader struct {
 	ChannelName      string // Named Channel to consume messages from
 	IncomingMessages chan *IncomingMessage
 	ExitChan         chan int
+	BufferSize       int
 
 	nsqConnections map[string]*NSQConnection
 
@@ -46,8 +51,8 @@ type IncomingMessage struct {
 }
 
 type FinishedMessage struct {
-	uuid    []byte
-	success bool
+	Uuid    []byte
+	Success bool
 }
 
 func NewNSQReader(topic string, channel string) (*NSQReader, error) {
@@ -57,8 +62,16 @@ func NewNSQReader(topic string, channel string) (*NSQReader, error) {
 		IncomingMessages: make(chan *IncomingMessage),
 		ExitChan:         make(chan int),
 		nsqConnections:   make(map[string]*NSQConnection),
+		BufferSize:       1,
 	}
 	return q, nil
+}
+
+func (q *NSQReader) getBufferSize() int {
+	b := float64(q.BufferSize)
+	s := b / (float64(len(q.nsqConnections)) * .75)
+	return int(math.Min(math.Max(1, s), b))
+
 }
 
 func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
@@ -104,7 +117,7 @@ func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
 
 func ConnectionReadLoop(q *NSQReader, c *NSQConnection) {
 	// TODO calculate ready number better
-	c.consumer.WriteCommand(c.consumer.Ready(1))
+	c.consumer.WriteCommand(c.consumer.Ready(q.getBufferSize()))
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
@@ -176,20 +189,24 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 			}
 			break
 		}
-		if msg.success {
-			log.Printf("[%s] successfully finished %s", c.ServerAddress, util.UuidToStr(msg.uuid))
-			c.consumer.WriteCommand(c.consumer.Finish(util.UuidToStr(msg.uuid)))
+		if msg.Success {
+			log.Printf("[%s] successfully finished %s", c.ServerAddress, util.UuidToStr(msg.Uuid))
+			c.consumer.WriteCommand(c.consumer.Finish(util.UuidToStr(msg.Uuid)))
 			c.messagesFinished += 1
 		} else {
-			log.Printf("[%s] failed message %s", c.ServerAddress, util.UuidToStr(msg.uuid))
-			c.consumer.WriteCommand(c.consumer.Requeue(util.UuidToStr(msg.uuid)))
+			log.Printf("[%s] failed message %s", c.ServerAddress, util.UuidToStr(msg.Uuid))
+			c.consumer.WriteCommand(c.consumer.Requeue(util.UuidToStr(msg.Uuid)))
 			c.messagesReQueued += 1
 		}
 		c.messagesInFlight -= 1
 		q.messagesInFlight -= 1
 		// TODO: don't write this every time (for when we have batch requesting enabled)
 		if !c.stopFlag {
-			c.consumer.WriteCommand(c.consumer.Ready(1))
+			s := q.getBufferSize() - c.messagesInFlight
+			if s >= 1 {
+				log.Printf("RDY %d", s)
+				c.consumer.WriteCommand(c.consumer.Ready(s))
+			}
 		}
 	}
 }
@@ -228,27 +245,37 @@ func (q *NSQReader) AddHandler(handler Reader) {
 			}
 
 			msg := message.msg
-			data, err := simplejson.NewJson(msg.Body)
-			if err != nil {
-				log.Println("unable to parse body", msg.Body, err)
-				message.responseChannel <- &FinishedMessage{msg.Uuid, false}
-				continue
-			}
-
-			_, ok = data.CheckGet("__heartbeat__")
-			if ok {
-				// Finish this message.
-				message.responseChannel <- &FinishedMessage{msg.Uuid, true}
-				continue
-			}
 
 			// log.Println("got IncomingMessages", msg)
-			err = handler.HandleMessage(data)
+			err := handler.HandleMessage(msg.Body)
 			if err != nil {
 				message.responseChannel <- &FinishedMessage{msg.Uuid, false}
 			} else {
 				message.responseChannel <- &FinishedMessage{msg.Uuid, true}
 			}
+		}
+	}()
+}
+
+// this starts a handler on the NSQReader
+// it's ok to start more than one handler simultaneously
+func (q *NSQReader) AddAsyncHandler(handler AsyncReader) {
+	q.runningHandlers += 1
+	log.Println("starting handle go-routine")
+	go func() {
+		for {
+			message, ok := <-q.IncomingMessages
+			if !ok {
+				log.Printf("closing handler (after self.IncomingMessages closed)")
+				q.runningHandlers -= 1
+				if q.runningHandlers == 0 {
+					// we are done?
+					log.Printf("closed last handler")
+					q.ExitChan <- 1
+				}
+				break
+			}
+			handler.HandleMessage(message.msg.Uuid, message.msg.Body, message.responseChannel)
 		}
 	}()
 }
