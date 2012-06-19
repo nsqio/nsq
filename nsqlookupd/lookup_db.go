@@ -20,12 +20,22 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) interface{} {
 		data = dataInterface.(map[string]interface{})
 	}
 
-	producer := make(map[string]string)
-	producer["address"] = address
-	producer["port"] = port
+	// avoid duplicates
 	producers := data["producers"].([]map[string]string)
-	producers = append(producers, producer)
-	data["producers"] = producers
+	found = false
+	for _, entry := range producers {
+		if entry["address"] == address && entry["port"] == port {
+			found = true
+		}
+	}
+
+	if !found {
+		producer := make(map[string]string)
+		producer["address"] = address
+		producer["port"] = port
+		producers = append(producers, producer)
+		data["producers"] = producers
+	}
 
 	return data
 }
