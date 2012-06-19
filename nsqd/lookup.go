@@ -88,8 +88,11 @@ func LookupRouter(lookupHosts []string) {
 	notify.Observe("new_topic", notifyTopicChan)
 
 	for {
+		// so that we can stop the timer and not leak
+		// see: https://groups.google.com/d/topic/golang-nuts/A597Btr_0P8/discussion
+		timer := time.NewTimer(10 * time.Second)
 		select {
-		case <-time.After(10 * time.Second):
+		case <-timer.C:
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
 				log.Printf("LOOKUP: sending heartbeat to %s", lookupPeer.peer.String())
@@ -113,5 +116,6 @@ func LookupRouter(lookupHosts []string) {
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
 		}
+		timer.Stop()
 	}
 }
