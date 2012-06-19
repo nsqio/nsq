@@ -19,6 +19,12 @@ func LookupRouter(lookupHosts []string) {
 		return
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Printf("ERROR: failed to get hostname - %s", err.Error())
+		return
+	}
+
 	for _, host := range lookupHosts {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
 		if err != nil {
@@ -50,7 +56,7 @@ func LookupRouter(lookupHosts []string) {
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
 				tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
-				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, tcpAddr.IP.String(), strconv.Itoa(tcpAddr.Port)))
+				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
 		}
 	}
