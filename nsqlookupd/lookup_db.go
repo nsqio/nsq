@@ -22,7 +22,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) interface{} {
 
 	// avoid duplicates
 	producers := data["producers"].([]map[string]string)
-	found = false
+	found := false
 	for _, entry := range producers {
 		if entry["address"] == address && entry["port"] == port {
 			found = true

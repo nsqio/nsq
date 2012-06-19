@@ -5,13 +5,58 @@ import (
 	"../util/notify"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"time"
 )
 
 var notifyChannelChan = make(chan interface{})
 var notifyTopicChan = make(chan interface{})
-var lookupPeers = make([]*nsq.LookupPeer, 0)
+var syncTopicChan = make(chan *LookupPeerWrapper)
+var lookupPeers = make([]*LookupPeerWrapper, 0)
+
+var (
+	LookupPeerStateDisconnected int32 = 0
+	LookupPeerStateConnected    int32 = 1
+	LookupPeerStateSyncing      int32 = 2
+)
+
+type LookupPeerWrapper struct {
+	state int32
+	peer  *nsq.LookupPeer
+}
+
+func (w *LookupPeerWrapper) Command(cmd *nsq.ProtocolCommand) ([]byte, error) {
+	peer := w.peer
+	initialState := w.state
+	if !peer.IsConnected() {
+		err := peer.Connect()
+		if err != nil {
+			log.Printf("LOOKUP: failed to connect to %s", peer.String())
+			return nil, err
+		}
+		w.state = LookupPeerStateConnected
+		peer.Version(nsq.LookupProtocolV1Magic)
+		if initialState == LookupPeerStateDisconnected {
+			go func() {
+				syncTopicChan <- w
+			}()
+		}
+	}
+	err := peer.WriteCommand(cmd)
+	if err != nil {
+		peer.Close()
+		w.state = 0
+		return nil, err
+	}
+	resp, err := peer.ReadResponse()
+	if err != nil {
+		peer.Close()
+		w.state = 0
+		return nil, err
+	}
+	return resp, nil
+}
 
 // TODO: this needs a clean shutdown
 func LookupRouter(lookupHosts []string) {
@@ -19,6 +64,7 @@ func LookupRouter(lookupHosts []string) {
 		return
 	}
 
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Printf("ERROR: failed to get hostname - %s", err.Error())
@@ -32,7 +78,10 @@ func LookupRouter(lookupHosts []string) {
 		}
 		log.Printf("LOOKUP: adding peer %s", tcpAddr.String())
 		lookupPeer := nsq.NewLookupPeer(tcpAddr)
-		lookupPeers = append(lookupPeers, lookupPeer)
+		lookupPeerWrapper := &LookupPeerWrapper{
+			peer: lookupPeer,
+		}
+		lookupPeers = append(lookupPeers, lookupPeerWrapper)
 	}
 
 	notify.Observe("new_channel", notifyChannelChan)
@@ -43,8 +92,8 @@ func LookupRouter(lookupHosts []string) {
 		case <-time.After(10 * time.Second):
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
-				log.Printf("LOOKUP: sending heartbeat to %s", lookupPeer.String())
-				lookupCommand(lookupPeer, lookupPeer.Ping())
+				log.Printf("LOOKUP: sending heartbeat to %s", lookupPeer.peer.String())
+				lookupPeer.Command(lookupPeer.peer.Ping())
 			}
 		case newChannel := <-notifyChannelChan:
 			channel := newChannel.(*Channel)
@@ -55,31 +104,14 @@ func LookupRouter(lookupHosts []string) {
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
-				lookupCommand(lookupPeer, lookupPeer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
+			}
+		case lookupPeer := <-syncTopicChan:
+			// TODO: need to lock on topicMap
+			lookupPeer.state = LookupPeerStateSyncing
+			for _, topic := range topicMap {
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
 		}
 	}
-}
-
-func lookupCommand(peer *nsq.LookupPeer, cmd *nsq.ProtocolCommand) ([]byte, error) {
-	if !peer.IsConnected() {
-		err := peer.Connect()
-		if err != nil {
-			log.Printf("LOOKUP: failed to connect to %s", peer.String())
-			return nil, err
-		}
-		peer.Version(nsq.LookupProtocolV1Magic)
-	}
-	err := peer.WriteCommand(cmd)
-	if err != nil {
-		peer.Close()
-		return nil, err
-	}
-	resp, err := peer.ReadResponse()
-	if err != nil {
-		peer.Close()
-		return nil, err
-	}
-	return resp, nil
 }
