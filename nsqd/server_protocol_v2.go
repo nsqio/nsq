@@ -39,8 +39,7 @@ func (p *ServerProtocolV2) IOLoop(client nsq.StatefulReadWriter) error {
 			break
 		}
 
-		line = strings.Replace(line, "\n", "", -1)
-		line = strings.Replace(line, "\r", "", -1)
+		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
 		log.Printf("PROTOCOL(V2): %#v", params)
