@@ -5,19 +5,20 @@ import (
 	"../util"
 	"../util/notify"
 	"log"
+	"sync"
 	"sync/atomic"
 )
 
 type Topic struct {
-	name                 string
-	newChannelChan       chan util.ChanReq
-	channelMap           map[string]*Channel
-	backend              nsq.BackendQueue
-	incomingMessageChan  chan *nsq.Message
-	memoryMsgChan        chan *nsq.Message
-	routerSyncChan       chan int
-	readSyncChan         chan int
-	channelWriterStarted int32
+	name                string
+	newChannelChan      chan util.ChanReq
+	channelMap          map[string]*Channel
+	backend             nsq.BackendQueue
+	incomingMessageChan chan *nsq.Message
+	memoryMsgChan       chan *nsq.Message
+	routerSyncChan      chan int
+	readSyncChan        chan int
+	messagePumpStarter  sync.Once
 }
 
 var topicMap = make(map[string]*Topic)
@@ -27,15 +28,14 @@ var topicFactoryStarted = int32(0)
 // Topic constructor
 func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 	topic := &Topic{
-		name:                 topicName,
-		newChannelChan:       make(chan util.ChanReq),
-		channelMap:           make(map[string]*Channel),
-		backend:              nsq.NewDiskQueue(topicName, dataPath),
-		incomingMessageChan:  make(chan *nsq.Message, 5),
-		memoryMsgChan:        make(chan *nsq.Message, inMemSize),
-		routerSyncChan:       make(chan int, 1),
-		readSyncChan:         make(chan int),
-		channelWriterStarted: 0,
+		name:                topicName,
+		newChannelChan:      make(chan util.ChanReq),
+		channelMap:          make(map[string]*Channel),
+		backend:             nsq.NewDiskQueue(topicName, dataPath),
+		incomingMessageChan: make(chan *nsq.Message, 5),
+		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
+		routerSyncChan:      make(chan int, 1),
+		readSyncChan:        make(chan int),
 	}
 	go topic.Router(inMemSize, dataPath)
 	notify.Post("new_topic", topic)
@@ -151,9 +151,7 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 				log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 			}
 			channelReq.RetChan <- channel
-			if atomic.CompareAndSwapInt32(&t.channelWriterStarted, 0, 1) {
-				go t.MessagePump()
-			}
+			t.messagePumpStarter.Do(func() { go t.MessagePump() })
 		case msg = <-t.incomingMessageChan:
 			select {
 			case t.memoryMsgChan <- msg:

@@ -32,7 +32,7 @@ package notify
 import (
 	"../../util" // TODO: for open sourcing this dependency needs to be removed
 	"log"
-	"sync/atomic"
+	"sync"
 )
 
 // internal helper type to pass more data through ChanReq
@@ -55,35 +55,28 @@ var postNotificationChan = make(chan util.ChanReq)
 
 // internal bool to determine whether or not the goroutine has
 // been started
-var routerStarted = int32(0)
+var routerStarter sync.Once
 
 // observe the specified event via provided output channel
 func Observe(event string, outputChan chan interface{}) {
-	startRouter()
+	routerStarter.Do(func() { go notificationRouter() })
 	addReq := util.ChanReq{event, outputChan}
 	observeChan <- addReq
 }
 
 // ignore the specified event on the provided output channel
 func Ignore(event string, outputChan chan interface{}) {
-	startRouter()
+	routerStarter.Do(func() { go notificationRouter() })
 	removeReq := util.ChanReq{event, outputChan}
 	ignoreChan <- removeReq
 }
 
 // post a notification (arbitrary data) to the specified event
 func Post(event string, data interface{}) {
-	startRouter()
+	routerStarter.Do(func() { go notificationRouter() })
 	postOp := postOp{event, data}
 	postReq := util.ChanReq{postOp, nil}
 	postNotificationChan <- postReq
-}
-
-// internal helper function to start the message routing goroutine
-func startRouter() {
-	if atomic.CompareAndSwapInt32(&routerStarted, 0, 1) {
-		go notificationRouter()
-	}
 }
 
 // internal function executed in a goroutine to select
