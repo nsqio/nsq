@@ -85,6 +85,4 @@ func main() {
 
 	tcpListener.Close()
 	webListener.Close()
-
-	sm.Close()
 }

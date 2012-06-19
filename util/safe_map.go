@@ -3,81 +3,70 @@ package util
 import (
 	"errors"
 	"log"
+	"sync"
 )
 
-type SetOp struct {
-	key        string
-	updateFunc func(data interface{}, params []interface{}) interface{}
-	params     []interface{}
-}
-
 type SafeMap struct {
-	data     map[string]interface{}
-	setChan  chan ChanReq
-	getChan  chan ChanReq
-	exitChan chan int
+	data  map[string]interface{}
+	mutex sync.RWMutex
 }
 
 func NewSafeMap() *SafeMap {
 	sm := SafeMap{
-		data:     make(map[string]interface{}),
-		setChan:  make(chan ChanReq),
-		getChan:  make(chan ChanReq),
-		exitChan: make(chan int),
+		data: make(map[string]interface{}),
 	}
-	go sm.Router()
 	return &sm
 }
 
-func (sm *SafeMap) Close() {
-	sm.exitChan <- 1
-}
-
 func (sm *SafeMap) Get(key string) (interface{}, error) {
-	retChan := make(chan interface{})
-	getReq := ChanReq{key, retChan}
-	sm.getChan <- getReq
-	ret := (<-retChan).(ChanRet)
-	return ret.Variable, ret.Err
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	// TODO: should this copy?
+	val, ok := sm.data[key]
+	if !ok {
+		return nil, errors.New("E_NOT_FOUND")
+	}
+
+	return val, nil
 }
 
-func (sm *SafeMap) Set(key string, updateFunc func(data interface{}, params []interface{}) interface{}, params ...interface{}) error {
-	retChan := make(chan interface{})
-	setReq := ChanReq{SetOp{key, updateFunc, params}, retChan}
-	sm.setChan <- setReq
-	ret := (<-retChan).(ChanRet)
-	return ret.Err
+func (sm *SafeMap) Set(key string, updateFunc func(data interface{}, params []interface{}) (interface{}, error), params ...interface{}) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	newData, err := updateFunc(sm.data[key], params)
+	if err != nil {
+		return err
+	}
+	sm.data[key] = newData
+	log.Printf("DATA: %#v", sm.data[key])
+
+	return nil
 }
 
-func (sm *SafeMap) Router() {
-	for {
-		select {
-		case setReq := <-sm.setChan:
-			ret := ChanRet{}
-			setOp := setReq.Variable.(SetOp)
-			key := setOp.key
-			updateFunc := setOp.updateFunc
-			params := setOp.params
-			sm.data[key] = updateFunc(sm.data[key], params)
-			log.Printf("DATA: %#v", sm.data[key])
-			ret.Err = nil
-			ret.Variable = nil
-			setReq.RetChan <- ret
-		case getReq := <-sm.getChan:
-			ret := ChanRet{}
-			key := getReq.Variable.(string)
-			// TODO: should this copy?
-			val, ok := sm.data[key]
-			if ok {
-				ret.Err = nil
-				ret.Variable = val
-			} else {
-				ret.Err = errors.New("E_NOT_FOUND")
-				ret.Variable = nil
-			}
-			getReq.RetChan <- ret
-		case <-sm.exitChan:
-			return
+func (sm *SafeMap) Keys() []string {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	keys := make([]string, 0, len(sm.data))
+	for key, _ := range sm.data {
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
+func (sm *SafeMap) Iter(iterFunc func(key string, data interface{}) error) error {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	for key, val := range sm.data {
+		err := iterFunc(key, val)
+		if err != nil {
+			return err
 		}
 	}
+
+	return nil
 }

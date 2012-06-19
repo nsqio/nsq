@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func UpdateTopic(dataInterface interface{}, params []interface{}) interface{} {
+func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, error) {
 	var data map[string]interface{}
 
 	address := params[0].(string)
@@ -37,5 +37,5 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) interface{} {
 		data["producers"] = producers
 	}
 
-	return data
+	return data, nil
 }
