@@ -4,21 +4,30 @@ package main
 
 import (
 	"../nsqreader"
+	"../util"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
 var (
-	nsqAddress      = flag.String("nsq-address", "127.0.0.1:5150", "<addr>:<port> to listen on for TCP clients")
-	filenamePattern = flag.String("filename-pattern", "/tmp/output-%d-%02d-%02d_%02d.log", "file pattern (with a strftime format)")
-	topic           = flag.String("topic-name", "", "nsq toppic")
-	channel         = flag.String("channel-name", "", "nsq channel")
-	buffer          = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
+	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
+	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
+	topic            = flag.String("topic-name", "", "nsq toppic")
+	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
+	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
+	nsqAddresses     = util.StringArray{}
+	lookupdAddresses = util.StringArray{}
 )
+
+func init() {
+	flag.Var(&nsqAddresses, "nsq-address", "nsq address (may be given multiple times)")
+	flag.Var(&lookupdAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+}
 
 type FileLogger struct {
 	out      *os.File
@@ -52,10 +61,14 @@ func main() {
 		log.Fatalf("--buffer must be > 0")
 	}
 
+	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
+		log.Fatalf("--nsq-address or --lookupd-address required.")
+	}
+
 	f := &FileLogger{
 		logChan: make(chan *Message, *buffer),
 	}
-	addr, _ := net.ResolveTCPAddr("tcp", *nsqAddress)
+
 	r, _ := nsqreader.NewNSQReader(*topic, *channel)
 	r.BufferSize = *buffer
 
@@ -84,21 +97,36 @@ func main() {
 			}
 
 			if sync || pos >= *buffer {
-				log.Printf("syncing %d records to disk", pos)
-				for pos > 0 {
-					pos--
-					m := output[pos]
-					m.returnChannel <- m.m
-					output[pos] = nil
+				if pos > 0 {
+					log.Printf("syncing %d records to disk", pos)
+					f.out.Sync()
+					for pos > 0 {
+						pos--
+						m := output[pos]
+						m.returnChannel <- m.m
+						output[pos] = nil
+					}
 				}
 				sync = false
 			}
 		}
 	}()
 
-	err := r.ConnectToNSQ(addr)
-	if err != nil {
-		log.Fatalf(err.Error())
+	for _, addrString := range nsqAddresses {
+		addr, _ := net.ResolveTCPAddr("tcp", addrString)
+		err := r.ConnectToNSQ(addr)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+	}
+
+	for _, addrString := range lookupdAddresses {
+		log.Printf("lookupd addr %s", addrString)
+		addr, _ := net.ResolveTCPAddr("tcp", addrString)
+		err := r.ConnectToLookupd(addr)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
 	}
 
 	<-r.ExitChan
@@ -108,16 +136,18 @@ func main() {
 func updateFile(f *FileLogger) bool {
 	t := time.Now()
 
-	filename := fmt.Sprintf(*filenamePattern, t.Year(), t.Month(), t.Day(), t.Hour())
+	hostname, _ := os.Hostname()
+	shortHostname := strings.Split(hostname, ".")
+	filename := fmt.Sprintf(filenamePattern, *topic, shortHostname[0], t.Year(), t.Month(), t.Day(), t.Hour())
 	if filename != f.filename || f.out == nil {
 		log.Printf("old %s new %s", f.filename, filename)
 		// roll it
 		if f.out != nil {
 			f.out.Close()
 		}
-		// os.MkdirAll(filename, 777)
-		log.Printf("opening %s", filename)
-		newfile, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+		os.MkdirAll(*outputDir, 777)
+		log.Printf("opening %s/%s", *outputDir, filename)
+		newfile, err := os.OpenFile(fmt.Sprintf("%s/%s", *outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 		f.out = newfile
 		if err != nil {
 			log.Fatal(err)

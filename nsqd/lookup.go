@@ -99,12 +99,16 @@ func LookupRouter(lookupHosts []string) {
 		case newChannel := <-notifyChannelChan:
 			channel := newChannel.(*Channel)
 			log.Printf("LOOKUP: new channel %s", channel.name)
-			// TODO: notify all nsds that a new channel exists
+			// TODO: notify all nsqds that a new channel exists
 		case newTopic := <-notifyTopicChan:
-			// notify all nsds that a new topic exists
+			// notify all nsqds that a new topic exists
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
+				// TODO: we can't use hostname here because it doesn't work when a host has multiple addresses
+				// and you only listen on one of them, or when you confnigure for 127.0.0.1 only.
+				// this should just be blank, and the lookupd should determine the host it receives a request
+				// from automatically
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
 		case lookupPeer := <-syncTopicChan:

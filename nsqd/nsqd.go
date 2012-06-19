@@ -27,7 +27,7 @@ var (
 )
 
 func init() {
-	flag.Var(&lookupAddresses, "lookup-address", "lookup address (may be given multiple times)")
+	flag.Var(&lookupAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
 }
 
 func main() {

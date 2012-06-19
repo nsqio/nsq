@@ -40,7 +40,7 @@ func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
-		log.Printf("PROTOCOL(V1): %#v", params)
+		log.Printf("PROTOCOL(V1) [%s]: %#v", client, params)
 
 		response, err := nsq.ProtocolExecute(p, client, params...)
 		if err != nil {
