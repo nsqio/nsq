@@ -6,6 +6,7 @@ import (
 	"../util/notify"
 	"errors"
 	"log"
+	"sync"
 )
 
 type Channel struct {
@@ -13,10 +14,8 @@ type Channel struct {
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
-	inFlightMessageChan chan *nsq.Message
 	ClientMessageChan   chan *nsq.Message
-	requeueMessageChan  chan util.ChanReq
-	finishMessageChan   chan util.ChanReq
+	inFlightMutex       sync.RWMutex
 	inFlightMessages    map[string]*nsq.Message
 }
 
@@ -27,10 +26,7 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 		backend:             nsq.NewDiskQueue(channelName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
-		inFlightMessageChan: make(chan *nsq.Message),
 		ClientMessageChan:   make(chan *nsq.Message),
-		requeueMessageChan:  make(chan util.ChanReq),
-		finishMessageChan:   make(chan util.ChanReq),
 		inFlightMessages:    make(map[string]*nsq.Message),
 	}
 	go channel.Router()
@@ -45,23 +41,26 @@ func (c *Channel) PutMessage(msg *nsq.Message) {
 }
 
 func (c *Channel) FinishMessage(uuidStr string) error {
-	errChan := make(chan interface{})
-	c.finishMessageChan <- util.ChanReq{uuidStr, errChan}
-	err, _ := (<-errChan).(error)
+	_, err := c.popInFlightMessage(uuidStr)
+	if err != nil {
+		log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
+	}
 	return err
 }
 
 func (c *Channel) RequeueMessage(uuidStr string) error {
-	errChan := make(chan interface{})
-	c.requeueMessageChan <- util.ChanReq{uuidStr, errChan}
-	err, _ := (<-errChan).(error)
+	msg, err := c.popInFlightMessage(uuidStr)
+	if err != nil {
+		log.Printf("ERROR: failed to requeue message(%s) - %s", uuidStr, err.Error())
+	} else {
+		go c.PutMessage(msg)
+	}
 	return err
 }
 
 // Router handles the muxing of Channel messages including
 // the addition of a Client to the Channel
 func (c *Channel) Router() {
-	go c.RequeueRouter()
 	go c.MessagePump()
 
 	exitChan := make(chan interface{})
@@ -92,58 +91,25 @@ func (c *Channel) Router() {
 	}
 }
 
-func (c *Channel) RequeueRouter() {
-	exitChan := make(chan interface{})
-	notify.Observe(c.name+".channel_close", exitChan)
-	for {
-		select {
-		case msg := <-c.inFlightMessageChan:
-			c.pushInFlightMessage(msg)
-			go func(msg *nsq.Message) {
-				if msg.ShouldRequeue(60000) {
-					err := c.RequeueMessage(util.UuidToStr(msg.Uuid))
-					if err != nil {
-						log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
-					}
-				}
-			}(msg)
-		case requeueReq := <-c.requeueMessageChan:
-			uuidStr := requeueReq.Variable.(string)
-			msg, err := c.popInFlightMessage(uuidStr)
-			if err != nil {
-				log.Printf("ERROR: failed to requeue message(%s) - %s", uuidStr, err.Error())
-			} else {
-				go func(msg *nsq.Message) {
-					c.PutMessage(msg)
-				}(msg)
-			}
-			requeueReq.RetChan <- err
-		case finishReq := <-c.finishMessageChan:
-			uuidStr := finishReq.Variable.(string)
-			_, err := c.popInFlightMessage(uuidStr)
-			if err != nil {
-				log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
-			}
-			finishReq.RetChan <- err
-		case <-exitChan:
-			notify.Ignore(c.name+".channel_close", exitChan)
-			return
-		}
-	}
-}
-
 func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
 	uuidStr := util.UuidToStr(msg.Uuid)
 	c.inFlightMessages[uuidStr] = msg
 }
 
 func (c *Channel) popInFlightMessage(uuidStr string) (*nsq.Message, error) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+
 	msg, ok := c.inFlightMessages[uuidStr]
 	if !ok {
 		return nil, errors.New("UUID not in flight")
 	}
 	delete(c.inFlightMessages, uuidStr)
 	msg.EndTimer()
+
 	return msg, nil
 }
 
@@ -171,11 +137,16 @@ func (c *Channel) MessagePump() {
 			return
 		}
 
-		// TODO: not sure how msg would ever be nil here
-		if msg != nil {
-			msg.Retries += 1
-			c.inFlightMessageChan <- msg
-		}
+		msg.Retries += 1
+		c.pushInFlightMessage(msg)
+		go func(msg *nsq.Message) {
+			if msg.ShouldRequeue(60000) {
+				err := c.RequeueMessage(util.UuidToStr(msg.Uuid))
+				if err != nil {
+					log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
+				}
+			}
+		}(msg)
 
 		c.ClientMessageChan <- msg
 	}
