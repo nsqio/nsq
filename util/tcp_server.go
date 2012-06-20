@@ -3,6 +3,7 @@ package util
 import (
 	"log"
 	"net"
+	"strings"
 )
 
 func TcpServer(listener net.Listener, handler func(net.Conn) error) {
@@ -15,7 +16,10 @@ func TcpServer(listener net.Listener, handler func(net.Conn) error) {
 				log.Printf("NOTICE: temporary Accept() failure - %s", err.Error())
 				continue
 			}
-			log.Printf("ERROR: listener.Accept() - %s", err.Error())
+			// theres no direct way to detect this error because it is not exposed
+			if !strings.Contains(err.Error(), "use of closed network connection") {
+				log.Printf("ERROR: listener.Accept() - %s", err.Error())
+			}
 			break
 		}
 		go handler(clientConn)
