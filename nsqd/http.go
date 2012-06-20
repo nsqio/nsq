@@ -31,13 +31,13 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		// TODO: return default response
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST","data":null}`))
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		// TODO: return default response
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC","data":null}`))
 		return
 	}
 
