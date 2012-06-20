@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -71,7 +72,10 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params 
 
 	topicName := params[1]
 	address := params[2]
-	port := params[3]
+	port, err := strconv.Atoi(params[3])
+	if err != nil {
+		return nil, err
+	}
 
 	smInterface, _ := client.GetState("safe_map")
 	sm := smInterface.(*util.SafeMap)

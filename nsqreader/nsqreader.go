@@ -168,11 +168,10 @@ func (q *NSQReader) QueryLookupd() {
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
 			address := producerData["address"].(string)
-			port := producerData["port"].(string) // TODO: THIS SHOULD BE AN INT
-			// port := strconv.Atoi(port)
+			port := producerData["port"].(int)
 
 			// make an address, start a connection
-			nsqAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", address, port))
+			nsqAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(address, strconv.Itoa(port)))
 			if err == nil {
 				q.ConnectToNSQ(nsqAddr)
 			}

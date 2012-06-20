@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -109,13 +108,13 @@ func LookupRouter(lookupHosts []string) {
 				// and you only listen on one of them, or when you confnigure for 127.0.0.1 only.
 				// this should just be blank, and the lookupd should determine the host it receives a request
 				// from automatically
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, tcpAddr.Port))
 			}
 		case lookupPeer := <-syncTopicChan:
 			topicMutex.RLock()
 			lookupPeer.state = LookupPeerStateSyncing
 			for _, topic := range topicMap {
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, tcpAddr.Port))
 			}
 			topicMutex.RUnlock()
 		}

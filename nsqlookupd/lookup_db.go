@@ -9,7 +9,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 	var data map[string]interface{}
 
 	address := params[0].(string)
-	port := params[1].(string)
+	port := params[1].(int)
 
 	if reflect.TypeOf(dataInterface) == nil {
 		data = make(map[string]interface{})
@@ -21,16 +21,16 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 	}
 
 	// avoid duplicates
-	producers := data["producers"].([]map[string]string)
+	producers := data["producers"].([]map[string]interface{})
 	found := false
 	for _, entry := range producers {
-		if entry["address"] == address && entry["port"] == port {
+		if entry["address"].(string) == address && entry["port"].(int) == port {
 			found = true
 		}
 	}
 
 	if !found {
-		producer := make(map[string]string)
+		producer := make(map[string]interface{})
 		producer["address"] = address
 		producer["port"] = port
 		producers = append(producers, producer)

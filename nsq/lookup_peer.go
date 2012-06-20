@@ -2,6 +2,7 @@ package nsq
 
 import (
 	"net"
+	"strconv"
 )
 
 type LookupPeer struct {
@@ -12,8 +13,8 @@ func NewLookupPeer(tcpAddr *net.TCPAddr) *LookupPeer {
 	return &LookupPeer{&ProtocolClient{tcpAddr: tcpAddr}}
 }
 
-func (c *LookupPeer) Announce(topic string, address string, port string) *ProtocolCommand {
-	var params = [][]byte{[]byte(topic), []byte(address), []byte(port)}
+func (c *LookupPeer) Announce(topic string, address string, port int) *ProtocolCommand {
+	var params = [][]byte{[]byte(topic), []byte(address), []byte(strconv.Itoa(port))}
 	return &ProtocolCommand{[]byte("ANNOUNCE"), params}
 }
 
