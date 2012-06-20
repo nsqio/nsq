@@ -1,7 +1,6 @@
 package nsq
 
 import (
-	"../util" // TODO: this dependency needs to be resolved
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -17,18 +16,18 @@ const (
 )
 
 type DiskQueue struct {
-	name         string
-	dataPath     string
-	readPos      int64
-	writePos     int64
-	readFileNum  int64
-	writeFileNum int64
-	readFile     *os.File
-	writeFile    *os.File
-	inChan       chan util.ChanReq
-	outChan      chan util.ChanRet
-	readChan     chan int
-	exitChan     chan int
+	name              string
+	dataPath          string
+	readPos           int64
+	writePos          int64
+	readFileNum       int64
+	writeFileNum      int64
+	readFile          *os.File
+	writeFile         *os.File
+	readChan          chan int
+	exitChan          chan int
+	readContinueChan  chan int
+	writeContinueChan chan int
 }
 
 func NewDiskQueue(name string, dataPath string) *DiskQueue {
@@ -37,8 +36,10 @@ func NewDiskQueue(name string, dataPath string) *DiskQueue {
 		readPos: 0, writePos: 0,
 		readFileNum: 0, writeFileNum: 0,
 		readFile: nil, writeFile: nil,
-		inChan: make(chan util.ChanReq), outChan: make(chan util.ChanRet),
-		readChan: make(chan int), exitChan: make(chan int),
+		readChan:          make(chan int),
+		exitChan:          make(chan int),
+		readContinueChan:  make(chan int),
+		writeContinueChan: make(chan int),
 	}
 
 	err := diskQueue.retrieveMetaData()
@@ -56,15 +57,15 @@ func (d *DiskQueue) ReadReadyChan() chan int {
 }
 
 func (d *DiskQueue) Get() ([]byte, error) {
-	ret := <-d.outChan
-	return ret.Variable.([]byte), ret.Err
+	buf, err := d.readOne()
+	d.readContinueChan <- 1
+	return buf, err
 }
 
 func (d *DiskQueue) Put(p []byte) error {
-	retChan := make(chan interface{})
-	d.inChan <- util.ChanReq{p, retChan}
-	ret := (<-retChan).(util.ChanRet)
-	return ret.Err
+	err := d.writeOne(p)
+	d.writeContinueChan <- 1
+	return err
 }
 
 func (d *DiskQueue) Close() error {
@@ -268,24 +269,15 @@ func (d *DiskQueue) router() {
 		if d.hasDataToRead() {
 			select {
 			// in order to read only when we actually want a message we use
-			// readChan to wrap outChan (the right hand of the channel in a
-			// select statement is always evaluated)
+			// readChan to wrap outChan
 			case d.readChan <- 1:
-				buf, err := d.readOne()
-				d.outChan <- util.ChanRet{err, buf}
-			case writeRequest := <-d.inChan:
-				buf := writeRequest.Variable.([]byte)
-				err := d.writeOne(buf)
-				writeRequest.RetChan <- util.ChanRet{err, nil}
+				<-d.readContinueChan
 			case <-d.exitChan:
 				return
 			}
 		} else {
 			select {
-			case writeRequest := <-d.inChan:
-				buf := writeRequest.Variable.([]byte)
-				err := d.writeOne(buf)
-				writeRequest.RetChan <- util.ChanRet{err, nil}
+			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return
 			}
