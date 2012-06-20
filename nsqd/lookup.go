@@ -110,11 +110,12 @@ func LookupRouter(lookupHosts []string) {
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
 		case lookupPeer := <-syncTopicChan:
-			// TODO: need to lock on topicMap
+			topicMutex.RLock()
 			lookupPeer.state = LookupPeerStateSyncing
 			for _, topic := range topicMap {
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, strconv.Itoa(tcpAddr.Port)))
 			}
+			topicMutex.RUnlock()
 		}
 		timer.Stop()
 	}
