@@ -160,7 +160,6 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 				data, err := msg.Encode()
 				if err != nil {
 					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-					// TODO: shrug
 					continue
 				}
 				err = t.backend.Put(data)

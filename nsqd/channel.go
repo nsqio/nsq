@@ -76,7 +76,6 @@ func (c *Channel) Router() {
 				data, err := msg.Encode()
 				if err != nil {
 					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-					// TODO: shrug
 					continue
 				}
 				err = c.backend.Put(data)

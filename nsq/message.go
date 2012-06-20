@@ -2,8 +2,6 @@ package nsq
 
 import (
 	"bytes"
-	// we cannot use gob because Message contains a channel (which cannot be encoded)
-	// "encoding/gob"
 	"encoding/binary"
 	"io"
 	"io/ioutil"
@@ -32,7 +30,6 @@ func (m *Message) EndTimer() {
 	select {
 	case m.timerChan <- 1:
 	default:
-		// TODO: when would this happen, how should we handle this?
 	}
 }
 
@@ -76,12 +73,6 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 	msg.Timestamp = timestamp
 	msg.Retries = retries
 
-	// decoder := gob.NewDecoder(buf)
-	// 	err := decoder.Decode(&msg)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-
 	return msg, nil
 }
 
@@ -107,12 +98,6 @@ func (m *Message) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// encoder := gob.NewEncoder(&buf)
-	// 	err := encoder.Encode(*m)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
 
 	return buf.Bytes(), nil
 }

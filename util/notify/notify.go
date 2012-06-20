@@ -63,7 +63,7 @@ func Ignore(event string, outputChan chan interface{}) error {
 		}
 	}
 	events[event] = newArray
-	
+
 	return nil
 }
 
@@ -71,13 +71,13 @@ func Ignore(event string, outputChan chan interface{}) error {
 func Post(event string, data interface{}) error {
 	rwMutex.RLock()
 	defer rwMutex.RUnlock()
-	
+
 	if _, ok := events[event]; !ok {
 		return errors.New("E_NOT_FOUND")
 	}
 	for _, outputChan := range events[event] {
 		outputChan <- data
 	}
-	
+
 	return nil
 }
