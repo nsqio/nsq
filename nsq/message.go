@@ -34,11 +34,15 @@ func (m *Message) EndTimer() {
 }
 
 func (m *Message) ShouldRequeue(sleepMS int) bool {
+	timer := time.NewTimer(time.Duration(sleepMS) * time.Millisecond)
+	defer timer.Stop()
+
 	select {
-	case <-time.After(time.Duration(sleepMS) * time.Millisecond):
+	case <-timer.C:
 	case <-m.timerChan:
 		return false
 	}
+
 	return true
 }
 
