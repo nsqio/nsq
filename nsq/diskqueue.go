@@ -193,6 +193,13 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
+	err = d.writeFile.Sync()
+	if err != nil {
+		d.writeFile.Close()
+		d.writeFile = nil
+		return err
+	}
+
 	d.writePos += int64(totalBytes)
 
 	// log.Printf("DISK: wrote %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
