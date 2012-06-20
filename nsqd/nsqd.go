@@ -74,7 +74,6 @@ func main() {
 	log.Printf("nsqd v%s", VERSION)
 
 	go LookupRouter(lookupAddresses)
-	go TopicFactory(*memQueueSize, *dataPath)
 	go UuidFactory()
 
 	tcpListener, err := net.Listen("tcp", tcpAddr.String())
@@ -93,7 +92,7 @@ func main() {
 
 	tcpListener.Close()
 	webListener.Close()
-	close(newTopicChan)
+
 	for _, topic := range topicMap {
 		topic.Close()
 	}

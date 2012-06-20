@@ -172,8 +172,8 @@ func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) (
 	readyStateChan := make(chan int)
 	client.SetState("ready_state_chan", readyStateChan)
 
-	topic := GetTopic(topicName)
-	client.SetState("channel", topic.GetChannel(channelName))
+	topic := GetTopic(topicName, *memQueueSize, *dataPath)
+	client.SetState("channel", topic.GetChannel(channelName, *memQueueSize, *dataPath))
 
 	client.SetState("state", nsq.ClientStateV2Subscribed)
 

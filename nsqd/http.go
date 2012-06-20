@@ -42,7 +42,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	msg := nsq.NewMessage(<-UuidChan, reqParams.Body)
-	topic := GetTopic(topicName)
+	topic := GetTopic(topicName, *memQueueSize, *dataPath)
 	topic.PutMessage(msg)
 
 	w.Header().Set("Content-Length", "2")

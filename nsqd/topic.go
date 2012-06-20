@@ -2,87 +2,70 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"../util/notify"
 	"log"
 	"sync"
-	"sync/atomic"
 )
 
 type Topic struct {
 	name                string
-	newChannelChan      chan util.ChanReq
 	channelMap          map[string]*Channel
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
-	routerSyncChan      chan int
-	readSyncChan        chan int
 	messagePumpStarter  sync.Once
+	channelMutex        sync.RWMutex
 }
 
 var topicMap = make(map[string]*Topic)
-var newTopicChan = make(chan util.ChanReq)
-var topicFactoryStarted = int32(0)
+var topicMutex sync.RWMutex
 
 // Topic constructor
 func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 	topic := &Topic{
 		name:                topicName,
-		newChannelChan:      make(chan util.ChanReq),
 		channelMap:          make(map[string]*Channel),
 		backend:             nsq.NewDiskQueue(topicName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
-		routerSyncChan:      make(chan int, 1),
-		readSyncChan:        make(chan int),
 	}
-	go topic.Router(inMemSize, dataPath)
+	go topic.Router()
 	notify.Post("new_topic", topic)
 	return topic
 }
 
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
-// see: topicFactory()
-func GetTopic(topicName string) *Topic {
-	topicChan := make(chan interface{})
-	newTopicChan <- util.ChanReq{topicName, topicChan}
-	return (<-topicChan).(*Topic)
-}
+func GetTopic(topicName string, inMemSize int, dataPath string) *Topic {
+	topicMutex.Lock()
+	defer topicMutex.Unlock()
 
-// topicFactory is executed in a goroutine and manages
-// the creation/retrieval of Topic objects
-func TopicFactory(inMemSize int, dataPath string) {
-	var topic *Topic
-
-	if !atomic.CompareAndSwapInt32(&topicFactoryStarted, 0, 1) {
-		return
+	topic, ok := topicMap[topicName]
+	if !ok {
+		topic = NewTopic(topicName, inMemSize, dataPath)
+		topicMap[topicName] = topic
+		log.Printf("TOPIC(%s): created", topic.name)
 	}
 
-	for {
-		topicReq, ok := <-newTopicChan
-		if !ok {
-			break
-		}
-		name := topicReq.Variable.(string)
-		if topic, ok = topicMap[name]; !ok {
-			topic = NewTopic(name, inMemSize, dataPath)
-			topicMap[name] = topic
-			log.Printf("TOPIC(%s): created", topic.name)
-		}
-		topicReq.RetChan <- topic
-	}
+	return topic
 }
 
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
-// see: Topic.Router()
-func (t *Topic) GetChannel(channelName string) *Channel {
-	channelChan := make(chan interface{})
-	t.newChannelChan <- util.ChanReq{channelName, channelChan}
-	return (<-channelChan).(*Channel)
+func (t *Topic) GetChannel(channelName string, inMemSize int, dataPath string) *Channel {
+	t.channelMutex.Lock()
+	defer t.channelMutex.Unlock()
+
+	channel, ok := t.channelMap[channelName]
+	if !ok {
+		channel = NewChannel(channelName, inMemSize, dataPath)
+		t.channelMap[channelName] = channel
+		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
+	}
+	t.messagePumpStarter.Do(func() { go t.MessagePump() })
+
+	return channel
 }
 
 // PutMessage writes to the appropriate incoming
@@ -119,7 +102,7 @@ func (t *Topic) MessagePump() {
 			return
 		}
 
-		t.readSyncChan <- 1
+		t.channelMutex.RLock()
 		log.Printf("TOPIC(%s): channelMap %#v", t.name, t.channelMap)
 		for _, channel := range t.channelMap {
 			// copy the message because each channel
@@ -128,30 +111,19 @@ func (t *Topic) MessagePump() {
 			chanMsg.Timestamp = msg.Timestamp
 			go channel.PutMessage(chanMsg)
 		}
-		t.routerSyncChan <- 1
+		t.channelMutex.RUnlock()
 	}
 }
 
 // Router handles muxing of Topic messages including
-// creation of new Channel objects, proxying messages
-// to memory or backend, and synchronizing reads
-func (t *Topic) Router(inMemSize int, dataPath string) {
+// proxying messages to memory or backend
+func (t *Topic) Router() {
 	var msg *nsq.Message
 
 	exitChan := make(chan interface{})
 	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
-		case channelReq := <-t.newChannelChan:
-			name := channelReq.Variable.(string)
-			channel, ok := t.channelMap[name]
-			if !ok {
-				channel = NewChannel(name, inMemSize, dataPath)
-				t.channelMap[name] = channel
-				log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
-			}
-			channelReq.RetChan <- channel
-			t.messagePumpStarter.Do(func() { go t.MessagePump() })
 		case msg = <-t.incomingMessageChan:
 			select {
 			case t.memoryMsgChan <- msg:
@@ -169,10 +141,6 @@ func (t *Topic) Router(inMemSize int, dataPath string) {
 				}
 				// log.Printf("TOPIC(%s): wrote to backend", t.name)
 			}
-		case <-t.readSyncChan:
-			// log.Printf("TOPIC(%s): read sync START", t.name)
-			<-t.routerSyncChan
-			// log.Printf("TOPIC(%s): read sync END", t.name)
 		case <-exitChan:
 			notify.Ignore(t.name+".topic_close", exitChan)
 			return

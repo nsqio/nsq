@@ -21,11 +21,10 @@ func TestBasicV2(t *testing.T) {
 	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
-	go TopicFactory(10, os.TempDir())
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
 	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
-	topic := GetTopic("test_v2")
+	topic := GetTopic("test_v2", 10, os.TempDir())
 	topic.PutMessage(msg)
 
 	consumer := nsq.NewConsumer(tcpAddr)
@@ -63,13 +62,12 @@ func TestMultipleConsumerV2(t *testing.T) {
 	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
 	defer tcpListener.Close()
 
-	go TopicFactory(10, os.TempDir())
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
 	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
-	topic := GetTopic("test_multiple_v2")
-	topic.GetChannel("ch1")
-	topic.GetChannel("ch2")
+	topic := GetTopic("test_multiple_v2", 10, os.TempDir())
+	topic.GetChannel("ch1", 10, os.TempDir())
+	topic.GetChannel("ch2", 10, os.TempDir())
 	topic.PutMessage(msg)
 
 	for _, i := range []string{"1", "2"} {
