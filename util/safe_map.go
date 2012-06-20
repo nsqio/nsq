@@ -22,7 +22,6 @@ func (sm *SafeMap) Get(key string) (interface{}, error) {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
-	// TODO: should this copy?
 	val, ok := sm.data[key]
 	if !ok {
 		return nil, errors.New("E_NOT_FOUND")
