@@ -41,7 +41,11 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	msg := nsq.NewMessage(<-UuidChan, reqParams.Body)
+	if len(topicName) > nsq.MaxNameLength {
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC","data":null}`))
+		return
+	}
+
 	topic := GetTopic(topicName, *memQueueSize, *dataPath)
 	msg := nsq.NewMessage(<-idChan, reqParams.Body)
 	topic.PutMessage(msg)

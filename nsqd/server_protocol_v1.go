@@ -70,6 +70,10 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 	}
 
 	topicName := params[1]
+	if len(topicName) > nsq.MaxNameLength {
+		return nil, nsq.ClientErrV1BadTopic
+	}
+
 	messageSize, err := strconv.Atoi(params[2])
 	if err != nil {
 		return nil, err

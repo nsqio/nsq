@@ -7,7 +7,8 @@ const (
 )
 
 var (
-	ClientErrV1Invalid = ClientError{"E_INVALID"}
+	ClientErrV1Invalid  = ClientError{"E_INVALID"}
+	ClientErrV1BadTopic = ClientError{"E_BAD_TOPIC"}
 )
 
 type ProtocolV1 interface {

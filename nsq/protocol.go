@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+const (
+	MaxNameLength = 32
+)
+
 type StatefulReadWriter interface {
 	io.ReadWriter
 	GetState(key string) (interface{}, bool)

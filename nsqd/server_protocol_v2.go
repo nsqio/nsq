@@ -163,8 +163,16 @@ func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) (
 		return nil, nsq.ClientErrV2BadTopic
 	}
 
+	if len(topicName) > nsq.MaxNameLength {
+		return nil, nsq.ClientErrV2BadTopic
+	}
+
 	channelName := params[2]
 	if len(channelName) == 0 {
+		return nil, nsq.ClientErrV2BadChannel
+	}
+
+	if len(channelName) > nsq.MaxNameLength {
 		return nil, nsq.ClientErrV2BadChannel
 	}
 
