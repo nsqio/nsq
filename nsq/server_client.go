@@ -2,27 +2,25 @@ package nsq
 
 import (
 	"encoding/binary"
-	"io"
 	"log"
+	"net"
 )
 
 type ServerClient struct {
-	conn  io.ReadWriteCloser
-	name  string
+	conn  net.Conn
 	state map[string]interface{}
 }
 
 // ServerClient constructor
-func NewServerClient(conn io.ReadWriteCloser, name string) *ServerClient {
+func NewServerClient(conn net.Conn) *ServerClient {
 	return &ServerClient{
 		conn:  conn,
-		name:  name,
 		state: make(map[string]interface{}),
 	}
 }
 
 func (c *ServerClient) String() string {
-	return c.name
+	return c.conn.RemoteAddr().String()
 }
 
 func (c *ServerClient) GetState(key string) (interface{}, bool) {

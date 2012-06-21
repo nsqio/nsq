@@ -1,7 +1,6 @@
 package nsq
 
 import (
-	"io"
 	"reflect"
 	"strings"
 )
@@ -10,16 +9,9 @@ const (
 	MaxNameLength = 32
 )
 
-type StatefulReadWriter interface {
-	io.ReadWriter
-	GetState(key string) (interface{}, bool)
-	SetState(key string, val interface{})
-	String() string
-}
-
 type Protocol interface {
-	IOLoop(client StatefulReadWriter) error
-	Execute(client StatefulReadWriter, params ...string) ([]byte, error)
+	IOLoop(client *ServerClient) error
+	Execute(client *ServerClient, params ...string) ([]byte, error)
 }
 
 type ClientError struct {
@@ -35,7 +27,7 @@ var (
 	ClientErrBadProtocol = ClientError{"E_BAD_PROTOCOL"}
 )
 
-func ProtocolExecute(p interface{}, client StatefulReadWriter, params ...string) ([]byte, error) {
+func ProtocolExecute(p interface{}, client *ServerClient, params ...string) ([]byte, error) {
 	var err error
 	var response []byte
 

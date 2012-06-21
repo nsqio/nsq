@@ -48,6 +48,10 @@ func (c *ProtocolClient) Close() {
 	c.state = stateDisconnected
 }
 
+func (c *ProtocolClient) Read(data []byte) (int, error) {
+	return c.conn.Read(data)
+}
+
 func (c *ProtocolClient) Version(version string) error {
 	_, err := c.Write([]byte(version))
 	return err

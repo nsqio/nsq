@@ -11,7 +11,7 @@ import (
 )
 
 type ServerProtocolV2 struct {
-	nsq.ProtocolV2
+	nsq.Protocol
 }
 
 func init() {
@@ -22,7 +22,7 @@ func init() {
 	Protocols[magicInt] = &ServerProtocolV2{}
 }
 
-func (p *ServerProtocolV2) IOLoop(client nsq.StatefulReadWriter) error {
+func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
@@ -92,7 +92,7 @@ func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (p *ServerProtocolV2) PushMessages(client nsq.StatefulReadWriter) {
+func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 	var err error
 
 	client.SetState("ready_count", 0)
@@ -149,7 +149,7 @@ exit:
 	}
 }
 
-func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byte, error) {
 	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Init {
 		return nil, nsq.ClientErrV2Invalid
 	}
@@ -189,7 +189,7 @@ func (p *ServerProtocolV2) SUB(client nsq.StatefulReadWriter, params []string) (
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) RDY(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byte, error) {
 	var err error
 
 	state, _ := client.GetState("state")
@@ -222,7 +222,7 @@ func (p *ServerProtocolV2) RDY(client nsq.StatefulReadWriter, params []string) (
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byte, error) {
 	state, _ := client.GetState("state")
 	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
@@ -243,7 +243,7 @@ func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) (
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byte, error) {
 	state, _ := client.GetState("state")
 	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
@@ -264,7 +264,7 @@ func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) (
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) CLS(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) CLS(client *nsq.ServerClient, params []string) ([]byte, error) {
 	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
 		return nil, nsq.ClientErrV2Invalid
 	}

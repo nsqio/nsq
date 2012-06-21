@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"log"
 	"time"
 )
 
@@ -13,7 +14,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 
 	if reflect.TypeOf(dataInterface) == nil {
 		data = make(map[string]interface{})
-		data["producers"] = make([]map[string]string, 0)
+		data["producers"] = make([]map[string]interface{}, 0)
 		data["channels"] = make([]string, 0)
 		data["timestamp"] = time.Now().Unix()
 	} else {
@@ -36,6 +37,8 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		producers = append(producers, producer)
 		data["producers"] = producers
 	}
+
+	log.Printf("%#v",data)
 
 	return data, nil
 }

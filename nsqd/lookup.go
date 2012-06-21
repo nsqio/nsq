@@ -5,7 +5,6 @@ import (
 	"bitly/notify"
 	"log"
 	"net"
-	"os"
 	"time"
 )
 
@@ -64,11 +63,6 @@ func LookupRouter(lookupHosts []string) {
 	}
 
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Printf("ERROR: failed to get hostname - %s", err.Error())
-		return
-	}
 
 	for _, host := range lookupHosts {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
@@ -104,17 +98,15 @@ func LookupRouter(lookupHosts []string) {
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				// TODO: we can't use hostname here because it doesn't work when a host has multiple addresses
-				// and you only listen on one of them, or when you confnigure for 127.0.0.1 only.
-				// this should just be blank, and the lookupd should determine the host it receives a request
-				// from automatically
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, tcpAddr.Port))
+				// lookupd determines the host it receives a request from automatically
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
 			}
 		case lookupPeer := <-syncTopicChan:
 			topicMutex.RLock()
 			lookupPeer.state = LookupPeerStateSyncing
 			for _, topic := range topicMap {
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, hostname, tcpAddr.Port))
+				// lookupd determines the host it receives a request from automatically
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
 			}
 			topicMutex.RUnlock()
 		}

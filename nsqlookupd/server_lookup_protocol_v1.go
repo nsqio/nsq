@@ -12,7 +12,7 @@ import (
 )
 
 type ServerLookupProtocolV1 struct {
-	nsq.LookupProtocolV1
+	nsq.Protocol
 }
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 	Protocols[magicInt] = &ServerLookupProtocolV1{}
 }
 
-func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
+func (p *ServerLookupProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
@@ -63,24 +63,27 @@ func (p *ServerLookupProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	return err
 }
 
-func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []string) ([]byte, error) {
 	var err error
 
-	if len(params) < 4 {
+	if len(params) < 3 {
 		return nil, nsq.LookupClientErrV1Invalid
 	}
 
 	topicName := params[1]
-	address := params[2]
-	port, err := strconv.Atoi(params[3])
+	port, err := strconv.Atoi(params[2])
 	if err != nil {
 		return nil, err
 	}
 
+	host, _, err := net.SplitHostPort(client.String())
+	if err != nil {
+		return nil, err
+	}
+	
 	smInterface, _ := client.GetState("safe_map")
 	sm := smInterface.(*util.SafeMap)
-
-	err = sm.Set("topic."+topicName, UpdateTopic, address, port)
+	err = sm.Set("topic."+topicName, UpdateTopic, host, port)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +91,6 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client nsq.StatefulReadWriter, params 
 	return []byte("OK"), nil
 }
 
-func (p *ServerLookupProtocolV1) PING(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) PING(client *nsq.ServerClient, params []string) ([]byte, error) {
 	return []byte("OK"), nil
 }

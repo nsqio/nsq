@@ -21,12 +21,3 @@ var (
 	ClientErrV2BadChannel = ClientError{"E_BAD_CHANNEL"}
 	ClientErrV2BadMessage = ClientError{"E_BAD_MESSAGE"}
 )
-
-type ProtocolV2 interface {
-	Protocol
-	SUB(client StatefulReadWriter, params []string) ([]byte, error)
-	RDY(client StatefulReadWriter, params []string) ([]byte, error)
-	FIN(client StatefulReadWriter, params []string) ([]byte, error)
-	REQ(client StatefulReadWriter, params []string) ([]byte, error)
-	CLS(client StatefulReadWriter, params []string) ([]byte, error)
-}

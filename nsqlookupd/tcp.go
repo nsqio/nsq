@@ -8,9 +8,8 @@ import (
 
 var Protocols = map[int32]nsq.Protocol{}
 
-func tcpClientHandler(clientConn net.Conn) error {
-	client := nsq.NewServerClient(clientConn, clientConn.RemoteAddr().String())
+func tcpClientHandler(clientConn net.Conn) {
+	client := nsq.NewServerClient(clientConn)
 	log.Printf("TCP: new client(%s)", client.String())
-	go client.Handle(Protocols)
-	return nil
+	client.Handle(Protocols)
 }

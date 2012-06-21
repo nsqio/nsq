@@ -12,7 +12,7 @@ import (
 )
 
 type ServerProtocolV1 struct {
-	nsq.ProtocolV1
+	nsq.Protocol
 }
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 	Protocols[magicInt] = &ServerProtocolV1{}
 }
 
-func (p *ServerProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
+func (p *ServerProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
@@ -62,7 +62,7 @@ func (p *ServerProtocolV1) IOLoop(client nsq.StatefulReadWriter) error {
 	return err
 }
 
-func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) ([]byte, error) {
+func (p *ServerProtocolV1) PUB(client *nsq.ServerClient, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 3 {

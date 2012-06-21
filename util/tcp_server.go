@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func TcpServer(listener net.Listener, handler func(net.Conn) error) {
+func TcpServer(listener net.Listener, handler func(net.Conn)) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
 
 	for {
