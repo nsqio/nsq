@@ -2,7 +2,7 @@ package main
 
 import (
 	"../nsq"
-	"../util/notify"
+	"bitly/notify"
 	"log"
 	"sync"
 )
