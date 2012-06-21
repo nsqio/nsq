@@ -45,13 +45,12 @@ func BenchmarkPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	go UuidFactory()
 	topicName := "testbench" + strconv.Itoa(b.N)
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
 		topic := GetTopic(topicName, b.N, os.TempDir())
-		msg := nsq.NewMessage(<-UuidChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := nsq.NewMessage(<-idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }

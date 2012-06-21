@@ -81,8 +81,8 @@ func (p *ServerProtocolV1) PUB(client nsq.StatefulReadWriter, params []string) (
 		return nil, err
 	}
 
-	msg := nsq.NewMessage(<-UuidChan, messageBody)
 	topic := GetTopic(topicName, *memQueueSize, *dataPath)
+	msg := nsq.NewMessage(<-idChan, messageBody)
 	topic.PutMessage(msg)
 
 	return []byte("OK"), nil

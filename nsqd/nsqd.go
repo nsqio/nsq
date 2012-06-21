@@ -74,7 +74,6 @@ func main() {
 	log.Printf("nsqd v%s", VERSION)
 
 	go LookupRouter(lookupAddresses)
-	go UuidFactory()
 
 	tcpListener, err := net.Listen("tcp", tcpAddr.String())
 	if err != nil {

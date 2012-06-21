@@ -27,13 +27,13 @@ func (c *ProtocolClient) Ready(count int) *ProtocolCommand {
 	return &ProtocolCommand{[]byte("RDY"), params}
 }
 
-func (c *ProtocolClient) Finish(uuid string) *ProtocolCommand {
-	var params = [][]byte{[]byte(uuid)}
+func (c *ProtocolClient) Finish(id []byte) *ProtocolCommand {
+	var params = [][]byte{id}
 	return &ProtocolCommand{[]byte("FIN"), params}
 }
 
-func (c *ProtocolClient) Requeue(uuid string) *ProtocolCommand {
-	var params = [][]byte{[]byte(uuid)}
+func (c *ProtocolClient) Requeue(id []byte) *ProtocolCommand {
+	var params = [][]byte{id}
 	return &ProtocolCommand{[]byte("REQ"), params}
 }
 

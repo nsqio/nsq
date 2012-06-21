@@ -23,8 +23,8 @@ func TestBasicV2(t *testing.T) {
 
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
-	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
 	topic := GetTopic("test_v2", 10, os.TempDir())
+	msg := nsq.NewMessage(<-idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
 	consumer := nsq.NewConsumer(tcpAddr)
@@ -46,7 +46,7 @@ func TestBasicV2(t *testing.T) {
 	frameType, msgInterface, err := consumer.UnpackResponse(resp)
 	msgOut := msgInterface.(*nsq.Message)
 	assert.Equal(t, frameType, nsq.FrameTypeMessage)
-	assert.Equal(t, msgOut.Uuid, msg.Uuid)
+	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
 	assert.Equal(t, msgOut.Retries, uint16(1))
 }
@@ -64,8 +64,8 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
-	msg := nsq.NewMessage(util.Uuid(), []byte("test body"))
 	topic := GetTopic("test_multiple_v2", 10, os.TempDir())
+	msg := nsq.NewMessage(<-idChan, []byte("test body"))
 	topic.GetChannel("ch1", 10, os.TempDir())
 	topic.GetChannel("ch2", 10, os.TempDir())
 	topic.PutMessage(msg)
@@ -92,11 +92,11 @@ func TestMultipleConsumerV2(t *testing.T) {
 	}
 
 	msgOut := <-msgChan
-	assert.Equal(t, msgOut.Uuid, msg.Uuid)
+	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
 	assert.Equal(t, msgOut.Retries, uint16(1))
 	msgOut = <-msgChan
-	assert.Equal(t, msgOut.Uuid, msg.Uuid)
+	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
 	assert.Equal(t, msgOut.Retries, uint16(1))
 }

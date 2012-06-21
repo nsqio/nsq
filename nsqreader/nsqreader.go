@@ -2,7 +2,6 @@ package nsqreader
 
 import (
 	"../nsq"
-	"../util"
 	"bitly/simplejson"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -68,8 +68,8 @@ type IncomingMessage struct {
 }
 
 type FinishedMessage struct {
-	MessageID []byte
-	Success   bool
+	Id      []byte
+	Success bool
 }
 
 func NewNSQReader(topic string, channel string) (*NSQReader, error) {
@@ -246,7 +246,7 @@ func ConnectionReadLoop(q *NSQReader, c *NSQConnection) {
 			c.messagesReceived += 1
 			q.MessagesReceived += 1
 			msg := data.(*nsq.Message)
-			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, util.UuidToStr(msg.Uuid), msg.Body)
+			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
 			c.messagesInFlight += 1
 			q.messagesInFlight += 1
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
@@ -282,13 +282,13 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 			break
 		}
 		if msg.Success {
-			log.Printf("[%s] successfully finished %s", c.ServerAddress, util.UuidToStr(msg.MessageID))
-			c.consumer.WriteCommand(c.consumer.Finish(util.UuidToStr(msg.MessageID)))
+			log.Printf("[%s] successfully finished %s", c.ServerAddress, msg.Id)
+			c.consumer.WriteCommand(c.consumer.Finish(msg.Id))
 			c.messagesFinished += 1
 			q.MessagesFinished += 1
 		} else {
-			log.Printf("[%s] failed message %s", c.ServerAddress, util.UuidToStr(msg.MessageID))
-			c.consumer.WriteCommand(c.consumer.Requeue(util.UuidToStr(msg.MessageID)))
+			log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
+			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id))
 			c.messagesReQueued += 1
 			q.MessagesReQueued += 1
 		}
@@ -341,7 +341,7 @@ func (q *NSQReader) AddHandler(handler Reader) {
 
 			msg := message.msg
 			err := handler.HandleMessage(msg.Body)
-			message.responseChannel <- &FinishedMessage{msg.Uuid, err == nil}
+			message.responseChannel <- &FinishedMessage{msg.Id, err == nil}
 		}
 	}()
 }
@@ -364,7 +364,7 @@ func (q *NSQReader) AddAsyncHandler(handler AsyncReader) {
 				}
 				break
 			}
-			handler.HandleMessage(message.msg.Uuid, message.msg.Body, message.responseChannel)
+			handler.HandleMessage(message.msg.Id, message.msg.Body, message.responseChannel)
 		}
 	}()
 }

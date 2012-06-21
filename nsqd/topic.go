@@ -19,6 +19,15 @@ type Topic struct {
 
 var topicMap = make(map[string]*Topic)
 var topicMutex sync.RWMutex
+var idChan = make(chan []byte, 10000)
+
+func init() {
+	go func() {
+		for {
+			idChan <- nsq.NewUuid().Hex()
+		}
+	}()
+}
 
 // Topic constructor
 func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
@@ -71,7 +80,7 @@ func (t *Topic) GetChannel(channelName string, inMemSize int, dataPath string) *
 // PutMessage writes to the appropriate incoming
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) {
-	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, util.UuidToStr(msg.Uuid), string(msg.Body))
+	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, msg.Id, msg.Body)
 	t.incomingMessageChan <- msg
 }
 
@@ -107,7 +116,7 @@ func (t *Topic) MessagePump() {
 		for _, channel := range t.channelMap {
 			// copy the message because each channel
 			// needs a unique instance
-			chanMsg := nsq.NewMessage(msg.Uuid, msg.Body)
+			chanMsg := nsq.NewMessage(msg.Id, msg.Body)
 			chanMsg.Timestamp = msg.Timestamp
 			go channel.PutMessage(chanMsg)
 		}

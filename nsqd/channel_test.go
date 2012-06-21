@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -18,11 +17,11 @@ func TestPutMessage(t *testing.T) {
 	topic := GetTopic("test_put_message", 10, os.TempDir())
 	channel1 := topic.GetChannel("ch", 10, os.TempDir())
 
-	msg := nsq.NewMessage(util.Uuid(), []byte("test"))
+	msg := nsq.NewMessage(<-idChan, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg := <-channel1.ClientMessageChan
-	assert.Equal(t, msg.Uuid, outputMsg.Uuid)
+	assert.Equal(t, msg.Id, outputMsg.Id)
 	assert.Equal(t, msg.Body, outputMsg.Body)
 }
 
@@ -35,14 +34,14 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel1 := topic.GetChannel("ch1", 10, os.TempDir())
 	channel2 := topic.GetChannel("ch2", 10, os.TempDir())
 
-	msg := nsq.NewMessage(util.Uuid(), []byte("test"))
+	msg := nsq.NewMessage(<-idChan, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg1 := <-channel1.ClientMessageChan
-	assert.Equal(t, msg.Uuid, outputMsg1.Uuid)
+	assert.Equal(t, msg.Id, outputMsg1.Id)
 	assert.Equal(t, msg.Body, outputMsg1.Body)
 
 	outputMsg2 := <-channel2.ClientMessageChan
-	assert.Equal(t, msg.Uuid, outputMsg2.Uuid)
+	assert.Equal(t, msg.Id, outputMsg2.Id)
 	assert.Equal(t, msg.Body, outputMsg2.Body)
 }

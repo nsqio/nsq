@@ -8,17 +8,19 @@ import (
 	"time"
 )
 
+const MsgIdLength = 32
+
 type Message struct {
-	Uuid      []byte
+	Id        []byte
 	Body      []byte
 	Timestamp int64
 	Retries   uint16
 	timerChan chan int
 }
 
-func NewMessage(uuid []byte, body []byte) *Message {
+func NewMessage(id []byte, body []byte) *Message {
 	return &Message{
-		Uuid:      uuid,
+		Id:        id,
 		Body:      body,
 		Timestamp: time.Now().Unix(),
 		Retries:   0,
@@ -62,8 +64,8 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 		return nil, err
 	}
 
-	uuid := make([]byte, 16)
-	_, err = io.ReadFull(buf, uuid)
+	id := make([]byte, MsgIdLength)
+	_, err = io.ReadFull(buf, id)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +75,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 		return nil, err
 	}
 
-	msg := NewMessage(uuid, body)
+	msg := NewMessage(id, body)
 	msg.Timestamp = timestamp
 	msg.Retries = retries
 
@@ -93,7 +95,7 @@ func (m *Message) Encode() ([]byte, error) {
 		return nil, err
 	}
 
-	_, err = buf.Write(m.Uuid)
+	_, err = buf.Write(m.Id)
 	if err != nil {
 		return nil, err
 	}

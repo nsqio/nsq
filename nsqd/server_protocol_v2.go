@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -118,7 +117,7 @@ func (p *ServerProtocolV2) PushMessages(client nsq.StatefulReadWriter) {
 				client.SetState("ready_count", readyCount-1)
 
 				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-					util.UuidToStr(msg.Uuid), client.String(), string(msg.Body))
+					msg.Id, client.String(), msg.Body)
 
 				data, err := msg.Encode()
 				if err != nil {
@@ -225,10 +224,10 @@ func (p *ServerProtocolV2) FIN(client nsq.StatefulReadWriter, params []string) (
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	uuidStr := params[1]
+	idStr := params[1]
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err := channel.FinishMessage(uuidStr)
+	err := channel.FinishMessage([]byte(idStr))
 	if err != nil {
 		return nil, err
 	}
@@ -246,10 +245,10 @@ func (p *ServerProtocolV2) REQ(client nsq.StatefulReadWriter, params []string) (
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	uuidStr := params[1]
+	idStr := params[1]
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err := channel.RequeueMessage(uuidStr)
+	err := channel.RequeueMessage([]byte(idStr))
 	if err != nil {
 		return nil, err
 	}

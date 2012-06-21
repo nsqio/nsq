@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"../util/notify"
 	"errors"
 	"log"
@@ -40,18 +39,18 @@ func (c *Channel) PutMessage(msg *nsq.Message) {
 	c.incomingMessageChan <- msg
 }
 
-func (c *Channel) FinishMessage(uuidStr string) error {
-	_, err := c.popInFlightMessage(uuidStr)
+func (c *Channel) FinishMessage(id []byte) error {
+	_, err := c.popInFlightMessage(id)
 	if err != nil {
-		log.Printf("ERROR: failed to finish message(%s) - %s", uuidStr, err.Error())
+		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
 	}
 	return err
 }
 
-func (c *Channel) RequeueMessage(uuidStr string) error {
-	msg, err := c.popInFlightMessage(uuidStr)
+func (c *Channel) RequeueMessage(id []byte) error {
+	msg, err := c.popInFlightMessage(id)
 	if err != nil {
-		log.Printf("ERROR: failed to requeue message(%s) - %s", uuidStr, err.Error())
+		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
 		go c.PutMessage(msg)
 	}
@@ -95,19 +94,18 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 
-	uuidStr := util.UuidToStr(msg.Uuid)
-	c.inFlightMessages[uuidStr] = msg
+	c.inFlightMessages[string(msg.Id)] = msg
 }
 
-func (c *Channel) popInFlightMessage(uuidStr string) (*nsq.Message, error) {
+func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 
-	msg, ok := c.inFlightMessages[uuidStr]
+	msg, ok := c.inFlightMessages[string(id)]
 	if !ok {
-		return nil, errors.New("UUID not in flight")
+		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
 	}
-	delete(c.inFlightMessages, uuidStr)
+	delete(c.inFlightMessages, string(id))
 	msg.EndTimer()
 
 	return msg, nil
@@ -141,7 +139,7 @@ func (c *Channel) MessagePump() {
 		c.pushInFlightMessage(msg)
 		go func(msg *nsq.Message) {
 			if msg.ShouldRequeue(60000) {
-				err := c.RequeueMessage(util.UuidToStr(msg.Uuid))
+				err := c.RequeueMessage(msg.Id)
 				if err != nil {
 					log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
 				}
