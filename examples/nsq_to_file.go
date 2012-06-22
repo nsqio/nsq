@@ -69,7 +69,7 @@ func main() {
 		logChan: make(chan *Message, *buffer),
 	}
 
-	r, _ := nsqreader.NewNSQReader(*topic, *channel)
+	r, _ := nsqreader.NewReader(*topic, *channel)
 	r.BufferSize = *buffer
 
 	r.AddAsyncHandler(f)

@@ -12,13 +12,12 @@ import (
 
 type MyTestHandler struct {
 	t                *testing.T
-	q                *NSQReader
+	q                *Reader
 	messagesSent     int
 	messagesReceived int
 }
 
 func (h *MyTestHandler) HandleMessage(d []byte) error {
-
 	data, err := simplejson.NewJson(d)
 	if err != nil {
 		return err
@@ -46,7 +45,7 @@ func (h *MyTestHandler) HandleMessage(d []byte) error {
 
 func TestQueuereader(t *testing.T) {
 	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:5150")
-	q, _ := NewNSQReader("reader_test", "ch")
+	q, _ := NewReader("reader_test", "ch")
 
 	h := &MyTestHandler{t, q, 0, 0}
 	q.AddHandler(h)

@@ -17,18 +17,18 @@ import (
 )
 
 // a syncronous handler that returns an error (or nil to indicate success)
-type Reader interface {
+type Handler interface {
 	HandleMessage([]byte) error
 }
 
 // an async handler that must send a &FinishedMessage{messageID, true|false} onto 
 // responseChannel to indicate that a message has been finished. This is usefull 
 // if you want to batch work together and delay response that processing is complete
-type AsyncReader interface {
+type AsyncHandler interface {
 	HandleMessage(messageID []byte, body []byte, responseChannel chan *FinishedMessage)
 }
 
-type NSQReader struct {
+type Reader struct {
 	TopicName           string // Name of Topic to subscribe to
 	ChannelName         string // Named Channel to consume messages from
 	IncomingMessages    chan *IncomingMessage
@@ -40,17 +40,19 @@ type NSQReader struct {
 	MessagesFinished uint64
 	MessagesReQueued uint64
 
-	nsqConnections map[string]*NSQConnection
+	nsqConnections map[string]*NSQConn
 
-	stopFlag         bool
-	runningFlag      bool
-	runningHandlers  int
-	messagesInFlight int
-	consumer         *nsq.Consumer
-	lookupdAddresses []*net.TCPAddr
+	lookupdExitChan    chan int
+	lookupdRecheckChan chan int
+	stopFlag           bool
+	runningFlag        bool
+	runningHandlers    int
+	messagesInFlight   int
+	consumer           *nsq.Consumer
+	lookupdAddresses   []*net.TCPAddr
 }
 
-type NSQConnection struct {
+type NSQConn struct {
 	ServerAddress    *net.TCPAddr
 	FinishedMessages chan *FinishedMessage
 
@@ -72,29 +74,31 @@ type FinishedMessage struct {
 	Success bool
 }
 
-func NewNSQReader(topic string, channel string) (*NSQReader, error) {
-	q := &NSQReader{
+func NewReader(topic string, channel string) (*Reader, error) {
+	q := &Reader{
 		TopicName:           topic,
 		ChannelName:         channel,
 		IncomingMessages:    make(chan *IncomingMessage),
 		ExitChan:            make(chan int),
-		nsqConnections:      make(map[string]*NSQConnection),
+		nsqConnections:      make(map[string]*NSQConn),
 		BufferSize:          1,
 		LookupdPoolInterval: 300,
+		lookupdExitChan:     make(chan int),
+		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
 	}
 	return q, nil
 }
 
 // get an appropriate buffer size for a single connection
 // essentially the global buffer size distributed amongst # connection
-func (q *NSQReader) getBufferSize() int {
+func (q *Reader) getBufferSize() int {
 	b := float64(q.BufferSize)
 	s := b / (float64(len(q.nsqConnections)) * .75)
 	return int(math.Min(math.Max(1, s), b))
 
 }
 
-func (q *NSQReader) ConnectToLookupd(addr *net.TCPAddr) error {
+func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
 	// make a HTTP req to the lookupd, and ask it for endpoints that have the
 	// topic we are interested in.
 	// this is a go loop that fires every x seconds
@@ -114,7 +118,7 @@ func (q *NSQReader) ConnectToLookupd(addr *net.TCPAddr) error {
 }
 
 // poll all known lookup servers every LookupdPoolInterval seconds
-func (q *NSQReader) LookupdLoop() {
+func (q *Reader) LookupdLoop() {
 	r := rand.New(rand.NewSource(1))
 	interval := q.LookupdPoolInterval + r.Intn(30) - 15
 	if interval < 1 {
@@ -123,18 +127,18 @@ func (q *NSQReader) LookupdLoop() {
 	ticker := time.Tick(time.Duration(interval) * time.Second)
 	select {
 	case <-ticker:
-		// TODO: should this kick out sooner?
-		if q.stopFlag {
-			return
-		}
 		q.QueryLookupd()
+	case <-q.lookupdRecheckChan:
+		q.QueryLookupd()
+	case <-q.lookupdExitChan:
+		return
 	}
 }
 
 // make a HTTP req to the /lookup endpoint on each lookup server
 // to find what nsq's provide the topic we are consuming.
 // for any new topics, initiate a connection to those NSQ's
-func (q *NSQReader) QueryLookupd() {
+func (q *Reader) QueryLookupd() {
 	httpclient := &http.Client{}
 	for _, addr := range q.lookupdAddresses {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
@@ -179,7 +183,7 @@ func (q *NSQReader) QueryLookupd() {
 	}
 }
 
-func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
+func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	if q.runningHandlers == 0 {
 		return errors.New("There are no handlers running")
 	}
@@ -200,7 +204,7 @@ func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
 	consumer.Version(nsq.ProtocolV2Magic)
 	consumer.WriteCommand(consumer.Subscribe(q.TopicName, q.ChannelName))
 
-	connection := &NSQConnection{
+	connection := &NSQConn{
 		ServerAddress:    addr,
 		FinishedMessages: make(chan *FinishedMessage),
 		consumer:         consumer,
@@ -214,16 +218,19 @@ func (q *NSQReader) ConnectToNSQ(addr *net.TCPAddr) error {
 	return nil
 }
 
-func ConnectionReadLoop(q *NSQReader, c *NSQConnection) {
+func ConnectionReadLoop(q *Reader, c *NSQConn) {
 	// prime our ready state
 	c.consumer.WriteCommand(c.consumer.Ready(q.getBufferSize()))
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
-			log.Printf("[%s] stopping read loop ", c.ServerAddress)
 			if c.messagesInFlight == 0 {
+				log.Printf("[%s] closing FinishedMessages channel", c.ServerAddress)
 				close(c.FinishedMessages)
+			} else {
+				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c.ServerAddress, c.messagesInFlight)
 			}
+			log.Printf("[%s] stopped read loop ", c.ServerAddress)
 			break
 		}
 
@@ -263,7 +270,7 @@ func ConnectionReadLoop(q *NSQReader, c *NSQConnection) {
 	}
 }
 
-func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
+func ConnectionFinishLoop(q *Reader, c *NSQConn) {
 	for {
 		msg, ok := <-c.FinishedMessages
 		if !ok {
@@ -278,6 +285,10 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 				if q.stopFlag {
 					q.stopHandlers()
 				}
+			}
+			if len(q.lookupdAddresses) != 0 && !q.stopFlag {
+				// trigger a poll of the lookupd
+				q.lookupdRecheckChan <- 1
 			}
 			break
 		}
@@ -295,6 +306,11 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 		c.messagesInFlight -= 1
 		q.messagesInFlight -= 1
 
+		if c.stopFlag && c.messagesInFlight == 0 {
+			log.Printf("[%s] closing c.FinishedMessages", c.ServerAddress)
+			close(c.FinishedMessages)
+		}
+
 		// TODO: don't write this every time (for when we have batch requesting enabled)
 		if !c.stopFlag {
 			s := q.getBufferSize() - c.messagesInFlight
@@ -306,34 +322,34 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 	}
 }
 
-// stops a NSQReaderReader gracefully
-func (q *NSQReader) Stop() {
-	q.stopFlag = true // kicks out the GET loop
-	// start the stop cycle for each client
+// stops a Reader gracefully
+func (q *Reader) Stop() {
+	q.stopFlag = true
 	for _, c := range q.nsqConnections {
 		c.consumer.WriteCommand(c.consumer.StartClose())
 	}
-
+	if len(q.lookupdAddresses) != 0 {
+		q.lookupdExitChan <- 1
+	}
 }
 
-func (q *NSQReader) stopHandlers() {
+func (q *Reader) stopHandlers() {
+	log.Printf("closing IncomingMessages")
 	close(q.IncomingMessages)
 }
 
-// this starts a handler on the NSQReader
+// this starts a handler on the Reader
 // it's ok to start more than one handler simultaneously
-func (q *NSQReader) AddHandler(handler Reader) {
+func (q *Reader) AddHandler(handler Handler) {
 	q.runningHandlers += 1
-	log.Println("starting handle go-routine")
+	log.Println("starting Handler go-routine")
 	go func() {
 		for {
 			message, ok := <-q.IncomingMessages
 			if !ok {
-				log.Printf("closing handler (after self.IncomingMessages closed)")
+				log.Printf("closing Handler (after self.IncomingMessages closed)")
 				q.runningHandlers -= 1
 				if q.runningHandlers == 0 {
-					// we are done?
-					log.Printf("closed last handler")
 					q.ExitChan <- 1
 				}
 				break
@@ -341,25 +357,26 @@ func (q *NSQReader) AddHandler(handler Reader) {
 
 			msg := message.msg
 			err := handler.HandleMessage(msg.Body)
+			if err != nil {
+				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), msg.Id, msg.Body)
+			}
 			message.responseChannel <- &FinishedMessage{msg.Id, err == nil}
 		}
 	}()
 }
 
-// this starts an async handler on the NSQReader
+// this starts an async handler on the Reader
 // it's ok to start more than one handler simultaneously
-func (q *NSQReader) AddAsyncHandler(handler AsyncReader) {
+func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 	q.runningHandlers += 1
-	log.Println("starting handle go-routine")
+	log.Println("starting AsyncHandler go-routine")
 	go func() {
 		for {
 			message, ok := <-q.IncomingMessages
 			if !ok {
-				log.Printf("closing handler (after self.IncomingMessages closed)")
+				log.Printf("closing AsyncHandler (after self.IncomingMessages closed)")
 				q.runningHandlers -= 1
 				if q.runningHandlers == 0 {
-					// we are done?
-					log.Printf("closed last handler")
 					q.ExitChan <- 1
 				}
 				break
