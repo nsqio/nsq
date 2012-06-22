@@ -273,8 +273,8 @@ func ConnectionFinishLoop(q *NSQReader, c *NSQConnection) {
 
 			log.Printf("there are %d connections left alive", len(q.nsqConnections))
 
-			if len(q.nsqConnections) == 0 && len(q.lookupdAddresses) != 0 {
-				// assume that if we have a lookupd entry, we will be reconnecting
+			if len(q.nsqConnections) == 0 && len(q.lookupdAddresses) == 0 {
+				// no lookupd entry means no reconnection
 				if q.stopFlag {
 					q.stopHandlers()
 				}
