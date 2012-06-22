@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+const (
+	msgTimeoutMs = 60000
+)
+
 type Channel struct {
 	name                string
 	backend             nsq.BackendQueue
@@ -47,6 +51,7 @@ func (c *Channel) FinishMessage(id []byte) error {
 	return err
 }
 
+// TODO: ability to requeue with a timeout
 func (c *Channel) RequeueMessage(id []byte) error {
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
@@ -95,6 +100,14 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 	defer c.inFlightMutex.Unlock()
 
 	c.inFlightMessages[string(msg.Id)] = msg
+	go func(msg *nsq.Message) {
+		if msg.ShouldRequeue(msgTimeoutMs) {
+			err := c.RequeueMessage(msg.Id)
+			if err != nil {
+				log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
+			}
+		}
+	}(msg)
 }
 
 func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
@@ -137,14 +150,6 @@ func (c *Channel) MessagePump() {
 
 		msg.Retries += 1
 		c.pushInFlightMessage(msg)
-		go func(msg *nsq.Message) {
-			if msg.ShouldRequeue(60000) {
-				err := c.RequeueMessage(msg.Id)
-				if err != nil {
-					log.Printf("ERROR: channel(%s) - %s", c.name, err.Error())
-				}
-			}
-		}(msg)
 
 		c.ClientMessageChan <- msg
 	}

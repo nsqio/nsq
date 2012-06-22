@@ -45,6 +45,7 @@ func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
 
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
+// TODO: this should not need to have the inMemSize and dataPath params
 func GetTopic(topicName string, inMemSize int, dataPath string) *Topic {
 	topicMutex.Lock()
 	defer topicMutex.Unlock()
@@ -62,6 +63,7 @@ func GetTopic(topicName string, inMemSize int, dataPath string) *Topic {
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
+// TODO: this should not need to have the inMemSize and dataPath params
 func (t *Topic) GetChannel(channelName string, inMemSize int, dataPath string) *Channel {
 	t.channelMutex.Lock()
 	defer t.channelMutex.Unlock()
