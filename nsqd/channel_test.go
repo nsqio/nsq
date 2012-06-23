@@ -14,7 +14,7 @@ func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	topic := NewTopic("test_put_message", 10, os.TempDir())
+	topic := NewTopic("test_put_message", 10, os.TempDir(), 1024)
 	channel1 := topic.GetChannel("ch")
 
 	msg := nsq.NewMessage(<-idChan, []byte("test"))
@@ -30,7 +30,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	topic := NewTopic("test_put_message_2chan", 10, os.TempDir())
+	topic := NewTopic("test_put_message_2chan", 10, os.TempDir(), 1024)
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 

@@ -14,7 +14,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(nil, nil, nil, 10, os.TempDir())
+	nsqd = NewNSQd(nil, nil, nil, 10, os.TempDir(), 1024)
 
 	topic1 := nsqd.GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -32,7 +32,7 @@ func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	topic := NewTopic("test", 10, os.TempDir())
+	topic := NewTopic("test", 10, os.TempDir(), 1024)
 	channel1 := topic.GetChannel("ch1")
 	assert.NotEqual(t, nil, channel1)
 	assert.Equal(t, "ch1", channel1.name)
@@ -43,12 +43,12 @@ func TestGetChannel(t *testing.T) {
 	assert.Equal(t, channel2, topic.channelMap["ch2"])
 }
 
-func BenchmarkPut(b *testing.B) {
+func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	topicName := "testbench" + strconv.Itoa(b.N)
-	nsqd = NewNSQd(nil, nil, nil, b.N, os.TempDir())
+	nsqd = NewNSQd(nil, nil, nil, int64(b.N), os.TempDir(), 1024)
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {

@@ -27,10 +27,10 @@ type Channel struct {
 }
 
 // Channel constructor
-func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
+func NewChannel(channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
 	channel := &Channel{
 		name:                channelName,
-		backend:             nsq.NewDiskQueue(channelName, dataPath),
+		backend:             nsq.NewDiskQueue(channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		ClientMessageChan:   make(chan *nsq.Message),

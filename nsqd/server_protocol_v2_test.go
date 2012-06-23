@@ -12,7 +12,7 @@ import (
 
 func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	nsqd = NewNSQd(tcpAddr, tcpAddr, nil, 10, os.TempDir())
+	nsqd = NewNSQd(tcpAddr, tcpAddr, nil, 10, os.TempDir(), 1024)
 	nsqd.Main()
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
 }

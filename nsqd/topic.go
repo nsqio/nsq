@@ -15,8 +15,9 @@ type Topic struct {
 	memoryMsgChan       chan *nsq.Message
 	messagePumpStarter  sync.Once
 	channelMutex        sync.RWMutex
-	memQueueSize        int
+	memQueueSize        int64
 	dataPath            string
+	maxBytesPerFile     int64
 }
 
 var idChan = make(chan []byte, 10000)
@@ -30,11 +31,11 @@ func init() {
 }
 
 // Topic constructor
-func NewTopic(topicName string, memQueueSize int, dataPath string) *Topic {
+func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64) *Topic {
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
-		backend:             nsq.NewDiskQueue(topicName, dataPath),
+		backend:             nsq.NewDiskQueue(topicName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
 		memQueueSize:        memQueueSize,
@@ -54,7 +55,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(channelName, t.memQueueSize, t.dataPath)
+		channel = NewChannel(channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}

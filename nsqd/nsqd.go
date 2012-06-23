@@ -9,26 +9,28 @@ import (
 
 type NSQd struct {
 	sync.RWMutex
-	tcpAddr      *net.TCPAddr
-	httpAddr     *net.TCPAddr
-	lookupAddrs  util.StringArray
-	memQueueSize int
-	dataPath     string
-	topicMap     map[string]*Topic
-	tcpListener  net.Listener
-	httpListener net.Listener
+	memQueueSize    int64
+	dataPath        string
+	maxBytesPerFile int64
+	tcpAddr         *net.TCPAddr
+	httpAddr        *net.TCPAddr
+	lookupAddrs     util.StringArray
+	topicMap        map[string]*Topic
+	tcpListener     net.Listener
+	httpListener    net.Listener
 }
 
 var nsqd *NSQd
 
-func NewNSQd(tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int, dataPath string) *NSQd {
+func NewNSQd(tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64) *NSQd {
 	return &NSQd{
-		tcpAddr:      tcpAddr,
-		httpAddr:     httpAddr,
-		lookupAddrs:  lookupAddrs,
-		memQueueSize: memQueueSize,
-		dataPath:     dataPath,
-		topicMap:     make(map[string]*Topic),
+		memQueueSize:    memQueueSize,
+		dataPath:        dataPath,
+		maxBytesPerFile: maxBytesPerFile,
+		tcpAddr:         tcpAddr,
+		httpAddr:        httpAddr,
+		lookupAddrs:     lookupAddrs,
+		topicMap:        make(map[string]*Topic),
 	}
 }
 
@@ -67,7 +69,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		topic = NewTopic(topicName, n.memQueueSize, n.dataPath)
+		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile)
 		n.topicMap[topicName] = topic
 		log.Printf("TOPIC(%s): created", topic.name)
 	}

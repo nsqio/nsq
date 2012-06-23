@@ -10,14 +10,10 @@ import (
 	"path"
 )
 
-const (
-	// 100mb
-	maxBytesPerFile = 104857600
-)
-
 type DiskQueue struct {
 	name              string
 	dataPath          string
+	maxBytesPerFile   int64
 	readPos           int64
 	writePos          int64
 	readFileNum       int64
@@ -31,10 +27,11 @@ type DiskQueue struct {
 	writeContinueChan chan int
 }
 
-func NewDiskQueue(name string, dataPath string) *DiskQueue {
+func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) *DiskQueue {
 	diskQueue := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,
+		maxBytesPerFile:   maxBytesPerFile,
 		readChan:          make(chan int),
 		exitChan:          make(chan int),
 		readContinueChan:  make(chan int),
@@ -99,7 +96,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	var err error
 	var msgSize int32
 
-	if d.readPos > maxBytesPerFile {
+	if d.readPos > d.maxBytesPerFile {
 		d.readFileNum++
 		d.readPos = 0
 		d.readFile.Close()
@@ -153,7 +150,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	var err error
 	var buf bytes.Buffer
 
-	if d.writePos > maxBytesPerFile {
+	if d.writePos > d.maxBytesPerFile {
 		d.writeFileNum++
 		d.writePos = 0
 		d.writeFile.Close()
@@ -257,6 +254,7 @@ func (d *DiskQueue) persistMetaData() error {
 		f.Close()
 		return err
 	}
+	f.Sync()
 	f.Close()
 
 	log.Printf("DISK: persisted meta data for (%s) - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d",
