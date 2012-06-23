@@ -15,10 +15,10 @@ type Topic struct {
 	memoryMsgChan       chan *nsq.Message
 	messagePumpStarter  sync.Once
 	channelMutex        sync.RWMutex
+	memQueueSize        int
+	dataPath            string
 }
 
-var topicMap = make(map[string]*Topic)
-var topicMutex sync.RWMutex
 var idChan = make(chan []byte, 10000)
 
 func init() {
@@ -30,47 +30,31 @@ func init() {
 }
 
 // Topic constructor
-func NewTopic(topicName string, inMemSize int, dataPath string) *Topic {
+func NewTopic(topicName string, memQueueSize int, dataPath string) *Topic {
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
 		backend:             nsq.NewDiskQueue(topicName, dataPath),
 		incomingMessageChan: make(chan *nsq.Message, 5),
-		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
+		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
+		memQueueSize:        memQueueSize,
+		dataPath:            dataPath,
 	}
 	go topic.Router()
 	notify.Post("new_topic", topic)
 	return topic
 }
 
-// GetTopic performs a thread safe operation
-// to return a pointer to a Topic object (potentially new)
-// TODO: this should not need to have the inMemSize and dataPath params
-func GetTopic(topicName string, inMemSize int, dataPath string) *Topic {
-	topicMutex.Lock()
-	defer topicMutex.Unlock()
-
-	topic, ok := topicMap[topicName]
-	if !ok {
-		topic = NewTopic(topicName, inMemSize, dataPath)
-		topicMap[topicName] = topic
-		log.Printf("TOPIC(%s): created", topic.name)
-	}
-
-	return topic
-}
-
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
-// TODO: this should not need to have the inMemSize and dataPath params
-func (t *Topic) GetChannel(channelName string, inMemSize int, dataPath string) *Channel {
+func (t *Topic) GetChannel(channelName string) *Channel {
 	t.channelMutex.Lock()
 	defer t.channelMutex.Unlock()
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(channelName, inMemSize, dataPath)
+		channel = NewChannel(channelName, t.memQueueSize, t.dataPath)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}

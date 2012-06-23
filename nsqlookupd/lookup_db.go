@@ -1,8 +1,8 @@
 package main
 
 import (
-	"reflect"
 	"log"
+	"reflect"
 	"time"
 )
 
@@ -38,7 +38,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		data["producers"] = producers
 	}
 
-	log.Printf("%#v",data)
+	log.Printf("%#v", data)
 
 	return data, nil
 }

@@ -13,10 +13,12 @@ import _ "net/http/pprof"
 
 func HttpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
-	http.HandleFunc("/ping", pingHandler)
-	http.HandleFunc("/put", putHandler)
-	http.HandleFunc("/stats", statsHandler)
-	err := http.Serve(listener, nil)
+	handler := http.NewServeMux()
+	handler.HandleFunc("/ping", pingHandler)
+	handler.HandleFunc("/put", putHandler)
+	handler.HandleFunc("/stats", statsHandler)
+	server := &http.Server{Handler: handler}
+	err := server.Serve(listener)
 	if err != nil {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
@@ -46,7 +48,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic := GetTopic(topicName, *memQueueSize, *dataPath)
+	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-idChan, reqParams.Body)
 	topic.PutMessage(msg)
 

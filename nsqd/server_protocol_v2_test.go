@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -11,25 +10,28 @@ import (
 	"testing"
 )
 
+func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	nsqd = NewNSQd(tcpAddr, tcpAddr, nil, 10, os.TempDir())
+	nsqd.Main()
+	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
+}
+
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.Equal(t, err, nil)
-	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
-	defer tcpListener.Close()
+	tcpAddr, _ := mustStartNSQd(t)
+	defer nsqd.Exit()
 
-	go util.TcpServer(tcpListener, tcpClientHandler)
-
-	topic := GetTopic("test_v2", 10, os.TempDir())
+	topic := nsqd.GetTopic("test_v2")
 	msg := nsq.NewMessage(<-idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
 	consumer := nsq.NewConsumer(tcpAddr)
 
-	err = consumer.Connect()
+	err := consumer.Connect()
 	assert.Equal(t, err, nil)
 
 	err = consumer.Version(nsq.ProtocolV2Magic)
@@ -57,22 +59,18 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	msgChan := make(chan *nsq.Message)
 
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.Equal(t, err, nil)
-	tcpAddr := tcpListener.Addr().(*net.TCPAddr)
-	defer tcpListener.Close()
+	tcpAddr, _ := mustStartNSQd(t)
+	defer nsqd.Exit()
 
-	go util.TcpServer(tcpListener, tcpClientHandler)
-
-	topic := GetTopic("test_multiple_v2", 10, os.TempDir())
+	topic := nsqd.GetTopic("test_multiple_v2")
 	msg := nsq.NewMessage(<-idChan, []byte("test body"))
-	topic.GetChannel("ch1", 10, os.TempDir())
-	topic.GetChannel("ch2", 10, os.TempDir())
+	topic.GetChannel("ch1")
+	topic.GetChannel("ch2")
 	topic.PutMessage(msg)
 
 	for _, i := range []string{"1", "2"} {
 		consumer := nsq.NewConsumer(tcpAddr)
-		err = consumer.Connect()
+		err := consumer.Connect()
 		assert.Equal(t, err, nil)
 
 		err = consumer.Version(nsq.ProtocolV2Magic)

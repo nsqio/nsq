@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -80,7 +81,7 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []str
 	if err != nil {
 		return nil, err
 	}
-	
+
 	smInterface, _ := client.GetState("safe_map")
 	sm := smInterface.(*util.SafeMap)
 	err = sm.Set("topic."+topicName, UpdateTopic, host, port)

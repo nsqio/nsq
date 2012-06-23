@@ -85,7 +85,7 @@ func (p *ServerProtocolV1) PUB(client *nsq.ServerClient, params []string) ([]byt
 		return nil, err
 	}
 
-	topic := GetTopic(topicName, *memQueueSize, *dataPath)
+	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-idChan, messageBody)
 	topic.PutMessage(msg)
 

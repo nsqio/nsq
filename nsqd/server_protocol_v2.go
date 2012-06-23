@@ -179,8 +179,8 @@ func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byt
 	readyStateChan := make(chan int)
 	client.SetState("ready_state_chan", readyStateChan)
 
-	topic := GetTopic(topicName, *memQueueSize, *dataPath)
-	client.SetState("channel", topic.GetChannel(channelName, *memQueueSize, *dataPath))
+	topic := nsqd.GetTopic(topicName)
+	client.SetState("channel", topic.GetChannel(channelName))
 
 	client.SetState("state", nsq.ClientStateV2Subscribed)
 

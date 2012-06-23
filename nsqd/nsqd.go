@@ -2,97 +2,75 @@ package main
 
 import (
 	"../util"
-	"flag"
-	"fmt"
 	"log"
 	"net"
-	"os"
-	"os/signal"
-	"runtime"
-	"runtime/pprof"
+	"sync"
 )
 
-const VERSION = "0.1"
-
-var (
-	showVersion     = flag.Bool("version", false, "print version string")
-	webAddress      = flag.String("web-address", "0.0.0.0:5151", "<addr>:<port> to listen on for HTTP clients")
-	tcpAddress      = flag.String("tcp-address", "0.0.0.0:5150", "<addr>:<port> to listen on for TCP clients")
-	debugMode       = flag.Bool("debug", false, "enable debug mode")
-	memQueueSize    = flag.Int("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
-	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
-	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
-	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
-	lookupAddresses = util.StringArray{}
-)
-
-func init() {
-	flag.Var(&lookupAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+type NSQd struct {
+	tcpAddr      *net.TCPAddr
+	httpAddr     *net.TCPAddr
+	lookupAddrs  util.StringArray
+	memQueueSize int
+	dataPath     string
+	topicMap     map[string]*Topic
+	topicMutex   sync.RWMutex
+	tcpListener  net.Listener
+	httpListener net.Listener
 }
 
-func main() {
-	flag.Parse()
+var nsqd *NSQd
 
-	if *showVersion {
-		fmt.Printf("nsqd v%s\n", VERSION)
-		return
+func NewNSQd(tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int, dataPath string) *NSQd {
+	return &NSQd{
+		tcpAddr:      tcpAddr,
+		httpAddr:     httpAddr,
+		lookupAddrs:  lookupAddrs,
+		memQueueSize: memQueueSize,
+		dataPath:     dataPath,
+		topicMap:     make(map[string]*Topic),
 	}
+}
 
-	if *goMaxProcs > 0 {
-		runtime.GOMAXPROCS(*goMaxProcs)
-	}
+func (n *NSQd) Main() {
+	go LookupRouter(n.lookupAddrs)
 
-	exitChan := make(chan int)
-	signalChan := make(chan os.Signal, 1)
-
-	if *cpuProfile != "" {
-		log.Printf("CPU Profiling Enabled")
-		f, err := os.Create(*cpuProfile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
-
-	go func() {
-		<-signalChan
-		exitChan <- 1
-	}()
-	signal.Notify(signalChan, os.Interrupt)
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
+	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr.String(), err.Error())
 	}
-
-	webAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("nsqd v%s", VERSION)
-
-	go LookupRouter(lookupAddresses)
-
-	tcpListener, err := net.Listen("tcp", tcpAddr.String())
-	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr.String(), err.Error())
-	}
+	n.tcpListener = tcpListener
 	go util.TcpServer(tcpListener, tcpClientHandler)
 
-	webListener, err := net.Listen("tcp", webAddr.String())
+	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr.String(), err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr.String(), err.Error())
 	}
-	go HttpServer(webListener)
+	n.httpListener = httpListener
+	go HttpServer(httpListener)
+}
 
-	<-exitChan
+func (n *NSQd) Exit() {
+	n.tcpListener.Close()
+	n.httpListener.Close()
 
-	tcpListener.Close()
-	webListener.Close()
-
-	for _, topic := range topicMap {
+	for _, topic := range n.topicMap {
 		topic.Close()
 	}
+}
+
+// GetTopic performs a thread safe operation
+// to return a pointer to a Topic object (potentially new)
+func (n *NSQd) GetTopic(topicName string) *Topic {
+	n.topicMutex.Lock()
+	defer n.topicMutex.Unlock()
+
+	topic, ok := n.topicMap[topicName]
+	if !ok {
+		topic = NewTopic(topicName, n.memQueueSize, n.dataPath)
+		n.topicMap[topicName] = topic
+		log.Printf("TOPIC(%s): created", topic.name)
+	}
+
+	return topic
 }
