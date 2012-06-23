@@ -8,13 +8,13 @@ import (
 )
 
 type NSQd struct {
+	sync.RWMutex
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr
 	lookupAddrs  util.StringArray
 	memQueueSize int
 	dataPath     string
 	topicMap     map[string]*Topic
-	topicMutex   sync.RWMutex
 	tcpListener  net.Listener
 	httpListener net.Listener
 }
@@ -62,8 +62,8 @@ func (n *NSQd) Exit() {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQd) GetTopic(topicName string) *Topic {
-	n.topicMutex.Lock()
-	defer n.topicMutex.Unlock()
+	n.Lock()
+	defer n.Unlock()
 
 	topic, ok := n.topicMap[topicName]
 	if !ok {

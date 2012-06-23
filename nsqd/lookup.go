@@ -102,14 +102,13 @@ func LookupRouter(lookupHosts []string) {
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
 			}
 		case lookupPeer := <-syncTopicChan:
-			// TODO: this use of nsqd obj feels like cheating
-			nsqd.topicMutex.RLock()
+			nsqd.RLock()
 			lookupPeer.state = LookupPeerStateSyncing
 			for _, topic := range nsqd.topicMap {
 				// lookupd determines the host it receives a request from automatically
 				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
 			}
-			nsqd.topicMutex.RUnlock()
+			nsqd.RUnlock()
 		}
 	}
 }
