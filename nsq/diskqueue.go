@@ -288,6 +288,7 @@ func (d *DiskQueue) router() {
 			// readChan to wrap outChan
 			case d.readChan <- 1:
 				<-d.readContinueChan
+			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return
 			}

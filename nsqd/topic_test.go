@@ -48,7 +48,7 @@ func BenchmarkPut(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	topicName := "testbench" + strconv.Itoa(b.N)
-	nsqd = NewNSQd(nil, nil, nil, 10, os.TempDir())
+	nsqd = NewNSQd(nil, nil, nil, b.N, os.TempDir())
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
