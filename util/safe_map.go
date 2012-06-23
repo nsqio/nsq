@@ -1,14 +1,13 @@
 package util
 
 import (
-	"errors"
 	"log"
 	"sync"
 )
 
 type SafeMap struct {
-	data  map[string]interface{}
-	mutex sync.RWMutex
+	sync.RWMutex
+	data map[string]interface{}
 }
 
 func NewSafeMap() *SafeMap {
@@ -18,21 +17,21 @@ func NewSafeMap() *SafeMap {
 	return &sm
 }
 
-func (sm *SafeMap) Get(key string) (interface{}, error) {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+func (sm *SafeMap) Get(key string) (interface{}, bool) {
+	sm.RLock()
+	defer sm.RUnlock()
 
 	val, ok := sm.data[key]
 	if !ok {
-		return nil, errors.New("E_NOT_FOUND")
+		return nil, false
 	}
 
-	return val, nil
+	return val, true
 }
 
 func (sm *SafeMap) Set(key string, updateFunc func(data interface{}, params []interface{}) (interface{}, error), params ...interface{}) error {
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.Lock()
+	defer sm.Unlock()
 
 	newData, err := updateFunc(sm.data[key], params)
 	if err != nil {
@@ -45,8 +44,8 @@ func (sm *SafeMap) Set(key string, updateFunc func(data interface{}, params []in
 }
 
 func (sm *SafeMap) Keys() []string {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+	sm.RLock()
+	defer sm.RUnlock()
 
 	keys := make([]string, 0, len(sm.data))
 	for key, _ := range sm.data {
@@ -57,8 +56,8 @@ func (sm *SafeMap) Keys() []string {
 }
 
 func (sm *SafeMap) Iter(iterFunc func(key string, data interface{}) error) error {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+	sm.RLock()
+	defer sm.RUnlock()
 
 	for key, val := range sm.data {
 		err := iterFunc(key, val)
