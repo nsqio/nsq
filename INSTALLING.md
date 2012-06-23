@@ -31,3 +31,7 @@
 
    $ cd ../nsqreader
    $ go test
+
+## Dependencies for tests
+
+* `go get github.com/bmizerany/assert`
