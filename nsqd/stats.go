@@ -10,13 +10,13 @@ import (
 // TODO: json output
 // TODO: show number of connected clients per channel
 func statsHandler(w http.ResponseWriter, req *http.Request) {
-	if len(topicMap) == 0 {
+	nsqd.RLock()
+	if len(nsqd.topicMap) == 0 {
 		io.WriteString(w, "NO_TOPICS\n")
 	}
 
-	// TODO: one cannot simply walk... over a map in a goroutine
-	for topicName, t := range topicMap {
-		io.WriteString(w, fmt.Sprintf("Topic: %s\n", topicName))
+	for topicName, t := range nsqd.topicMap {
+		io.WriteString(w, fmt.Sprintf("\nTopic: %s\n", topicName))
 
 		for channelName, c := range t.channelMap {
 			io.WriteString(w,
@@ -30,4 +30,5 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.TimeoutCount))
 		}
 	}
+	nsqd.RUnlock()
 }
