@@ -134,18 +134,15 @@ func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 
 func (c *Channel) MessagePump() {
 	var msg *nsq.Message
+	var buf []byte
+	var err error
 
 	exitChan := make(chan interface{})
 	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg = <-c.memoryMsgChan:
-		case <-c.backend.ReadReadyChan():
-			buf, err := c.backend.Get()
-			if err != nil {
-				log.Printf("ERROR: c.backend.Get() - %s", err.Error())
-				continue
-			}
+		case buf = <-c.backend.ReadChan():
 			msg, err = nsq.DecodeMessage(buf)
 			if err != nil {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())

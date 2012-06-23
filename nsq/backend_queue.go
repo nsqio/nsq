@@ -1,9 +1,8 @@
 package nsq
 
 type BackendQueue interface {
-	Get() ([]byte, error)
 	Put([]byte) error
-	ReadReadyChan() chan int
+	ReadChan() chan []byte
 	Close() error
 	Depth() int64
 }

@@ -8,22 +8,25 @@ import (
 	"log"
 	"os"
 	"path"
+	"sync"
 )
 
 type DiskQueue struct {
+	readMutex         sync.Mutex
+	writeMutex        sync.Mutex
 	name              string
 	dataPath          string
 	maxBytesPerFile   int64
 	readPos           int64
+	nextReadPos       int64
 	writePos          int64
 	readFileNum       int64
 	writeFileNum      int64
 	depth             int64
 	readFile          *os.File
 	writeFile         *os.File
-	readChan          chan int
+	readChan          chan []byte
 	exitChan          chan int
-	readContinueChan  chan int
 	writeContinueChan chan int
 }
 
@@ -32,9 +35,8 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) *DiskQueu
 		name:              name,
 		dataPath:          dataPath,
 		maxBytesPerFile:   maxBytesPerFile,
-		readChan:          make(chan int),
+		readChan:          make(chan []byte),
 		exitChan:          make(chan int),
-		readContinueChan:  make(chan int),
 		writeContinueChan: make(chan int),
 	}
 
@@ -43,7 +45,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) *DiskQueu
 		log.Printf("WARNING: failed to retrieveMetaData() - %s", err.Error())
 	}
 
-	go diskQueue.router()
+	go diskQueue.readAheadPump()
 
 	return &diskQueue
 }
@@ -52,17 +54,8 @@ func (d *DiskQueue) Depth() int64 {
 	return d.depth
 }
 
-func (d *DiskQueue) ReadReadyChan() chan int {
+func (d *DiskQueue) ReadChan() chan []byte {
 	return d.readChan
-}
-
-func (d *DiskQueue) Get() ([]byte, error) {
-	buf, err := d.readOne()
-	if err == nil {
-		d.depth -= 1
-	}
-	d.readContinueChan <- 1
-	return buf, err
 }
 
 func (d *DiskQueue) Put(p []byte) error {
@@ -95,6 +88,9 @@ func (d *DiskQueue) Close() error {
 func (d *DiskQueue) readOne() ([]byte, error) {
 	var err error
 	var msgSize int32
+
+	d.readMutex.Lock()
+	defer d.readMutex.Unlock()
 
 	if d.readPos > d.maxBytesPerFile {
 		d.readFileNum++
@@ -135,10 +131,12 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	readBuf := make([]byte, msgSize)
 	_, err = io.ReadFull(d.readFile, readBuf)
 	if err != nil {
+		d.readFile.Close()
+		d.readFile = nil
 		return nil, err
 	}
 
-	d.readPos += int64(totalBytes)
+	d.nextReadPos = d.readPos + int64(totalBytes)
 
 	// log.Printf("DISK: read %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
 	// 	totalBytes, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
@@ -149,6 +147,9 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 func (d *DiskQueue) writeOne(data []byte) error {
 	var err error
 	var buf bytes.Buffer
+
+	d.writeMutex.Lock()
+	defer d.writeMutex.Unlock()
 
 	if d.writePos > d.maxBytesPerFile {
 		d.writeFileNum++
@@ -229,6 +230,7 @@ func (d *DiskQueue) retrieveMetaData() error {
 	if err != nil {
 		return err
 	}
+	d.nextReadPos = d.readPos
 
 	log.Printf("DISK: retrieved meta data for (%s) - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d",
 		d.name, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
@@ -276,16 +278,23 @@ func (d *DiskQueue) hasDataToRead() bool {
 	return (d.readFileNum < d.writeFileNum) || (d.readPos < d.writePos)
 }
 
-// Router selects from the input and output channel
-// ensuring that we're either reading from or writing to disk
-func (d *DiskQueue) router() {
+// read the next message off disk to prime ReadChan
+func (d *DiskQueue) readAheadPump() {
+	var data []byte
+	var err error
 	for {
 		if d.hasDataToRead() {
+			if d.nextReadPos == d.readPos {
+				data, err = d.readOne()
+				if err != nil {
+					// TODO: should this be fatal?
+					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s", d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
+					continue
+				}
+			}
 			select {
-			// in order to read only when we actually want a message we use
-			// readChan to wrap outChan
-			case d.readChan <- 1:
-				<-d.readContinueChan
+			case d.readChan <- data:
+				d.readPos = d.nextReadPos
 			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return

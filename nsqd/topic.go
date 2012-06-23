@@ -76,18 +76,15 @@ func (t *Topic) PutMessage(msg *nsq.Message) {
 // with the channel router
 func (t *Topic) MessagePump() {
 	var msg *nsq.Message
+	var buf []byte
+	var err error
 
 	exitChan := make(chan interface{})
 	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
 		case msg = <-t.memoryMsgChan:
-		case <-t.backend.ReadReadyChan():
-			buf, err := t.backend.Get()
-			if err != nil {
-				log.Printf("ERROR: t.backend.Get() - %s", err.Error())
-				continue
-			}
+		case buf = <-t.backend.ReadChan():
 			msg, err = nsq.DecodeMessage(buf)
 			if err != nil {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())

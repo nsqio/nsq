@@ -24,9 +24,7 @@ func TestDiskQueue(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, dq.Depth(), int64(1))
 
-	<-dq.ReadReadyChan()
-	msgOut, err := dq.Get()
-	assert.Equal(t, err, nil)
+	msgOut := <-dq.ReadChan()
 	assert.Equal(t, msgOut, msg)
 }
 
@@ -78,7 +76,6 @@ func BenchmarkDiskQueueGet(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		<-dq.ReadReadyChan()
-		dq.Get()
+		<-dq.ReadChan()
 	}
 }
