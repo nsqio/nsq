@@ -5,4 +5,5 @@ type BackendQueue interface {
 	Put([]byte) error
 	ReadReadyChan() chan int
 	Close() error
+	Depth() int64
 }

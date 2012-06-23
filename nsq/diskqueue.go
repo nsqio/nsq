@@ -22,6 +22,7 @@ type DiskQueue struct {
 	writePos          int64
 	readFileNum       int64
 	writeFileNum      int64
+	depth             int64
 	readFile          *os.File
 	writeFile         *os.File
 	readChan          chan int
@@ -32,10 +33,8 @@ type DiskQueue struct {
 
 func NewDiskQueue(name string, dataPath string) *DiskQueue {
 	diskQueue := DiskQueue{
-		name: name, dataPath: dataPath,
-		readPos: 0, writePos: 0,
-		readFileNum: 0, writeFileNum: 0,
-		readFile: nil, writeFile: nil,
+		name:              name,
+		dataPath:          dataPath,
 		readChan:          make(chan int),
 		exitChan:          make(chan int),
 		readContinueChan:  make(chan int),
@@ -52,18 +51,28 @@ func NewDiskQueue(name string, dataPath string) *DiskQueue {
 	return &diskQueue
 }
 
+func (d *DiskQueue) Depth() int64 {
+	return d.depth
+}
+
 func (d *DiskQueue) ReadReadyChan() chan int {
 	return d.readChan
 }
 
 func (d *DiskQueue) Get() ([]byte, error) {
 	buf, err := d.readOne()
+	if err == nil {
+		d.depth -= 1
+	}
 	d.readContinueChan <- 1
 	return buf, err
 }
 
 func (d *DiskQueue) Put(p []byte) error {
 	err := d.writeOne(p)
+	if err == nil {
+		d.depth += 1
+	}
 	d.writeContinueChan <- 1
 	return err
 }

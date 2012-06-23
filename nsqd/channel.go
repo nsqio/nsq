@@ -20,6 +20,10 @@ type Channel struct {
 	ClientMessageChan   chan *nsq.Message
 	inFlightMutex       sync.RWMutex
 	inFlightMessages    map[string]*nsq.Message
+	RequeueCount        int64
+	GetCount            int64
+	PutCount            int64
+	TimeoutCount        int64
 }
 
 // Channel constructor
@@ -40,6 +44,7 @@ func NewChannel(channelName string, inMemSize int, dataPath string) *Channel {
 // PutMessage writes to the appropriate incoming
 // message channel
 func (c *Channel) PutMessage(msg *nsq.Message) {
+	c.PutCount += 1
 	c.incomingMessageChan <- msg
 }
 
@@ -57,6 +62,8 @@ func (c *Channel) RequeueMessage(id []byte) error {
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
+		c.PutCount -= 1
+		c.RequeueCount += 1
 		go c.PutMessage(msg)
 	}
 	return err
@@ -104,6 +111,7 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 		if msg.ShouldRequeue(msgTimeoutMs) {
 			err := c.RequeueMessage(msg.Id)
 			if err != nil {
+				c.TimeoutCount += 1
 				log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
 			}
 		}
@@ -150,7 +158,7 @@ func (c *Channel) MessagePump() {
 
 		msg.Retries += 1
 		c.pushInFlightMessage(msg)
-
+		c.GetCount += 1
 		c.ClientMessageChan <- msg
 	}
 }
