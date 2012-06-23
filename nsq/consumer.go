@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
 	"strconv"
 )
@@ -32,15 +31,14 @@ func (c *ProtocolClient) Finish(id []byte) *ProtocolCommand {
 	return &ProtocolCommand{[]byte("FIN"), params}
 }
 
-func (c *ProtocolClient) Requeue(id []byte) *ProtocolCommand {
-	var params = [][]byte{id}
+func (c *ProtocolClient) Requeue(id []byte, timeoutMs int) *ProtocolCommand {
+	var params = [][]byte{id, []byte(strconv.Itoa(timeoutMs))}
 	return &ProtocolCommand{[]byte("REQ"), params}
 }
 
+// start a close cycle. server will ACK after which we can finish up 
+// pending messages, and then close the connection
 func (c *ProtocolClient) StartClose() *ProtocolCommand {
-	// start a close cycle. server will ACK after which we can finish up 
-	// pending messages, and then close the connection
-	log.Printf("starting CLS on client")
 	return &ProtocolCommand{[]byte("CLS"), nil}
 }
 

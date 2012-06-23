@@ -253,14 +253,19 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	if len(params) < 2 {
+	if len(params) < 3 {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
 	idStr := params[1]
+	timeoutMs, err := strconv.Atoi(params[2])
+	if err != nil {
+		return nil, nsq.ClientErrV2Invalid
+	}
+
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err := channel.RequeueMessage([]byte(idStr))
+	err = channel.RequeueMessage([]byte(idStr), timeoutMs)
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}

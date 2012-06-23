@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 )
 
 const (
@@ -56,8 +57,30 @@ func (c *Channel) FinishMessage(id []byte) error {
 	return err
 }
 
-// TODO: ability to requeue with a timeout
-func (c *Channel) RequeueMessage(id []byte) error {
+// NOTE: the technique used to defer requeueing a message can be 
+// problematic in the event of daemon failure.  these deferred messages
+// are essentially in limbo until they are requeued.
+// 
+// arguably this is not terribly different from the data loss that would
+// occur if a topic/channel had messages in memory and the daemon failed.
+func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
+	if timeoutMs == 0 {
+		return c.doRequeue(id)
+	}
+	go func() {
+		msg, err := c.getInFlightMessage(id)
+		if err != nil {
+			log.Printf("ERROR: failed to defer requeue message(%s) - %s", id, err.Error())
+			return
+		}
+		msg.EndTimer()
+		<-time.After(time.Duration(timeoutMs) * time.Millisecond)
+		c.doRequeue(id)
+	}()
+	return nil
+}
+
+func (c *Channel) doRequeue(id []byte) error {
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
@@ -109,7 +132,7 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 	c.inFlightMessages[string(msg.Id)] = msg
 	go func(msg *nsq.Message) {
 		if msg.ShouldRequeue(msgTimeoutMs) {
-			err := c.RequeueMessage(msg.Id)
+			err := c.RequeueMessage(msg.Id, 0)
 			if err != nil {
 				c.TimeoutCount += 1
 				log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
@@ -128,6 +151,18 @@ func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 	}
 	delete(c.inFlightMessages, string(id))
 	msg.EndTimer()
+
+	return msg, nil
+}
+
+func (c *Channel) getInFlightMessage(id []byte) (*nsq.Message, error) {
+	c.inFlightMutex.RLock()
+	defer c.inFlightMutex.RUnlock()
+
+	msg, ok := c.inFlightMessages[string(id)]
+	if !ok {
+		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
+	}
 
 	return msg, nil
 }

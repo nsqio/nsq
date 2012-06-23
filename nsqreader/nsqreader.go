@@ -299,7 +299,8 @@ func ConnectionFinishLoop(q *Reader, c *NSQConn) {
 			q.MessagesFinished += 1
 		} else {
 			log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
-			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id))
+			// TODO: add backoff logic to timeout (milliseconds)
+			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, 0))
 			c.messagesReQueued += 1
 			q.MessagesReQueued += 1
 		}
