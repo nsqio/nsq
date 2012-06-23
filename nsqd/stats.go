@@ -11,6 +11,8 @@ import (
 // TODO: show number of connected clients per channel
 func statsHandler(w http.ResponseWriter, req *http.Request) {
 	nsqd.RLock()
+	defer nsqd.RUnlock()
+
 	if len(nsqd.topicMap) == 0 {
 		io.WriteString(w, "NO_TOPICS\n")
 	}
@@ -30,5 +32,4 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.TimeoutCount))
 		}
 	}
-	nsqd.RUnlock()
 }
