@@ -129,7 +129,10 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 					goto exit
 				}
 
-				client.Write(clientData)
+				_, err = client.Write(clientData)
+				if err != nil {
+					goto exit
+				}
 			case <-clientExitChan:
 				goto exit
 			}
@@ -207,10 +210,11 @@ func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byt
 	if len(params) > 1 {
 		count, err = strconv.Atoi(params[1])
 		if err != nil {
-			return nil, err
+			return nil, nsq.ClientErrV2Invalid
 		}
 	}
 
+	// TODO: this should be configurable
 	if count > 1000 {
 		return nil, nsq.ClientErrV2Invalid
 	}
@@ -237,7 +241,7 @@ func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byt
 	channel := channelInterface.(*Channel)
 	err := channel.FinishMessage([]byte(idStr))
 	if err != nil {
-		return nil, err
+		return nil, nsq.ClientErrV2FinishFailed
 	}
 
 	return nil, nil
@@ -258,7 +262,7 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 	channel := channelInterface.(*Channel)
 	err := channel.RequeueMessage([]byte(idStr))
 	if err != nil {
-		return nil, err
+		return nil, nsq.ClientErrV2RequeueFailed
 	}
 
 	return nil, nil
