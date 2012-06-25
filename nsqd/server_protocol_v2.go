@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+const (
+	// 1hr
+	maxTimeoutMs = 3600000
+)
+
 type ServerProtocolV2 struct {
 	nsq.Protocol
 }
@@ -260,6 +265,10 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 	idStr := params[1]
 	timeoutMs, err := strconv.Atoi(params[2])
 	if err != nil {
+		return nil, nsq.ClientErrV2Invalid
+	}
+
+	if timeoutMs < 0 || timeoutMs > maxTimeoutMs {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
