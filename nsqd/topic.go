@@ -8,13 +8,13 @@ import (
 )
 
 type Topic struct {
+	sync.RWMutex
 	name                string
 	channelMap          map[string]*Channel
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
 	messagePumpStarter  sync.Once
-	channelMutex        sync.RWMutex
 	memQueueSize        int64
 	dataPath            string
 	maxBytesPerFile     int64
@@ -50,8 +50,8 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
 func (t *Topic) GetChannel(channelName string) *Channel {
-	t.channelMutex.Lock()
-	defer t.channelMutex.Unlock()
+	t.Lock()
+	defer t.Unlock()
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
@@ -95,7 +95,7 @@ func (t *Topic) MessagePump() {
 			return
 		}
 
-		t.channelMutex.RLock()
+		t.RLock()
 		log.Printf("TOPIC(%s): channelMap %#v", t.name, t.channelMap)
 		for _, channel := range t.channelMap {
 			// copy the message because each channel
@@ -104,7 +104,7 @@ func (t *Topic) MessagePump() {
 			chanMsg.Timestamp = msg.Timestamp
 			go channel.PutMessage(chanMsg)
 		}
-		t.channelMutex.RUnlock()
+		t.RUnlock()
 	}
 }
 

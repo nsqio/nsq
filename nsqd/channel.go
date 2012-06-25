@@ -14,12 +14,12 @@ const (
 )
 
 type Channel struct {
+	sync.RWMutex
 	name                string
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
 	ClientMessageChan   chan *nsq.Message
-	inFlightMutex       sync.RWMutex
 	inFlightMessages    map[string]*nsq.Message
 	RequeueCount        int64
 	GetCount            int64
@@ -126,8 +126,8 @@ func (c *Channel) Router() {
 }
 
 func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
-	c.inFlightMutex.Lock()
-	defer c.inFlightMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	c.inFlightMessages[string(msg.Id)] = msg
 	go func(msg *nsq.Message) {
@@ -142,8 +142,8 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 }
 
 func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
-	c.inFlightMutex.Lock()
-	defer c.inFlightMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	msg, ok := c.inFlightMessages[string(id)]
 	if !ok {
@@ -156,8 +156,8 @@ func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 }
 
 func (c *Channel) getInFlightMessage(id []byte) (*nsq.Message, error) {
-	c.inFlightMutex.RLock()
-	defer c.inFlightMutex.RUnlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	msg, ok := c.inFlightMessages[string(id)]
 	if !ok {
