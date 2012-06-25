@@ -67,12 +67,13 @@ func (p *ServerLookupProtocolV1) IOLoop(client *nsq.ServerClient) error {
 func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []string) ([]byte, error) {
 	var err error
 
-	if len(params) < 3 {
+	if len(params) < 4 {
 		return nil, nsq.LookupClientErrV1Invalid
 	}
 
 	topicName := params[1]
-	port, err := strconv.Atoi(params[2])
+	channelName := params[2]
+	port, err := strconv.Atoi(params[3])
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []str
 
 	smInterface, _ := client.GetState("safe_map")
 	sm := smInterface.(*util.SafeMap)
-	err = sm.Set("topic."+topicName, UpdateTopic, host, port)
+	err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, host, port)
 	if err != nil {
 		return nil, err
 	}

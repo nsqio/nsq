@@ -80,6 +80,7 @@ func LookupRouter(lookupHosts []string) {
 	notify.Observe("new_channel", notifyChannelChan)
 	notify.Observe("new_topic", notifyTopicChan)
 
+	// for announcements, lookupd determines the host automatically
 	ticker := time.Tick(15 * time.Second)
 	for {
 		select {
@@ -90,23 +91,33 @@ func LookupRouter(lookupHosts []string) {
 				lookupPeer.Command(lookupPeer.peer.Ping())
 			}
 		case newChannel := <-notifyChannelChan:
+			// notify all nsqds that a new channel exists
 			channel := newChannel.(*Channel)
 			log.Printf("LOOKUP: new channel %s", channel.name)
-			// TODO: notify all nsqds that a new channel exists
+			for _, lookupPeer := range lookupPeers {
+				lookupPeer.Command(lookupPeer.peer.Announce(channel.topicName, channel.name, tcpAddr.Port))
+			}
 		case newTopic := <-notifyTopicChan:
 			// notify all nsqds that a new topic exists
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				// lookupd determines the host it receives a request from automatically
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
+				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, ".", tcpAddr.Port))
 			}
 		case lookupPeer := <-syncTopicChan:
 			nsqd.RLock()
 			lookupPeer.state = LookupPeerStateSyncing
 			for _, topic := range nsqd.topicMap {
-				// lookupd determines the host it receives a request from automatically
-				lookupPeer.Command(lookupPeer.peer.Announce(topic.name, tcpAddr.Port))
+				topic.RLock()
+				// either send a single topic announcement or send an announcement for each of the channels
+				if len(topic.channelMap) == 0 {
+					lookupPeer.Command(lookupPeer.peer.Announce(topic.name, ".", tcpAddr.Port))
+				} else {
+					for _, channel := range topic.channelMap {
+						lookupPeer.Command(lookupPeer.peer.Announce(channel.topicName, channel.name, tcpAddr.Port))
+					}
+				}
+				topic.RUnlock()
 			}
 			nsqd.RUnlock()
 		}

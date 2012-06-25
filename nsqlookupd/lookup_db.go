@@ -9,11 +9,14 @@ import (
 func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, error) {
 	var data map[string]interface{}
 
-	address := params[0].(string)
-	port := params[1].(int)
+	topicName := params[0].(string)
+	channelName := params[1].(string)
+	address := params[2].(string)
+	port := params[3].(int)
 
 	if reflect.TypeOf(dataInterface) == nil {
 		data = make(map[string]interface{})
+		data["topic"] = topicName
 		data["producers"] = make([]map[string]interface{}, 0)
 		data["channels"] = make([]string, 0)
 		data["timestamp"] = time.Now().Unix()
@@ -21,7 +24,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		data = dataInterface.(map[string]interface{})
 	}
 
-	// avoid duplicates
+	// add topic to list of producers, avoid duplicates
 	producers := data["producers"].([]map[string]interface{})
 	found := false
 	for _, entry := range producers {
@@ -34,8 +37,22 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		producer := make(map[string]interface{})
 		producer["address"] = address
 		producer["port"] = port
-		producers = append(producers, producer)
-		data["producers"] = producers
+		data["producers"] = append(producers, producer)
+	}
+
+	// add channel to list of channels, avoid duplicates
+	if channelName != "." {
+		channels := data["channels"].([]string)
+		found = false
+		for _, entry := range channels {
+			if entry == channelName {
+				found = true
+			}
+		}
+
+		if !found {
+			data["channels"] = append(channels, channelName)
+		}
 	}
 
 	log.Printf("%#v", data)

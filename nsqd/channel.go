@@ -25,11 +25,13 @@ type Channel struct {
 	GetCount            int64
 	PutCount            int64
 	TimeoutCount        int64
+	topicName           string
 }
 
 // Channel constructor
-func NewChannel(channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
+func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
 	channel := &Channel{
+		topicName:           topicName,
 		name:                channelName,
 		backend:             nsq.NewDiskQueue(channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),

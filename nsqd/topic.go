@@ -55,7 +55,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile)
+		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}

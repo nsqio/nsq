@@ -30,19 +30,19 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST", "data":null}`))
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC", "data":null}`))
 		return
 	}
 
-	dataInterface, err := sm.Get("topic." + topicName)
-	if err != nil {
-		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s","data":null}`, err.Error())
+	dataInterface, ok := sm.Get("topic." + topicName)
+	if !ok {
+		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`)
 		w.Write([]byte(errorTxt))
 		return
 	}
@@ -54,7 +54,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	output["status_txt"] = "OK"
 	response, err := json.Marshal(&output)
 	if err != nil {
-		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s","data":null}`, err.Error())
+		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`, err.Error())
 		w.Write([]byte(errorTxt))
 		return
 	}
