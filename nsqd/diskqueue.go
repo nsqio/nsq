@@ -1,6 +1,7 @@
-package nsq
+package main
 
 import (
+	"../nsq"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -30,7 +31,7 @@ type DiskQueue struct {
 	writeContinueChan chan int
 }
 
-func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) *DiskQueue {
+func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.BackendQueue {
 	diskQueue := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,

@@ -2,7 +2,7 @@
 set -e
 # a helper script to run tests in the appropriate directories
 
-for dir in nsqd nsq; do
+for dir in nsqd; do
     pushd $dir
     go test
     popd
@@ -13,7 +13,7 @@ go build
 ./nsqd &
 PID=$!
 
-popd && pushd nsqreader
+popd && pushd nsq
 go test
 kill -s TERM $PID
 popd

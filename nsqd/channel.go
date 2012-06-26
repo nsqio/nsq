@@ -33,7 +33,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	channel := &Channel{
 		topicName:           topicName,
 		name:                channelName,
-		backend:             nsq.NewDiskQueue(channelName, dataPath, maxBytesPerFile),
+		backend:             NewDiskQueue(channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		ClientMessageChan:   make(chan *nsq.Message),

@@ -1,4 +1,4 @@
-package nsqreader
+package nsq
 
 import (
 	"bitly/simplejson"

@@ -1,7 +1,6 @@
-package nsqreader
+package nsq
 
 import (
-	"../nsq"
 	"bitly/simplejson"
 	"errors"
 	"fmt"
@@ -40,7 +39,7 @@ type Reader struct {
 	MessagesFinished uint64
 	MessagesReQueued uint64
 
-	nsqConnections map[string]*NSQConn
+	nsqConnections map[string]*nsqConn
 
 	lookupdExitChan    chan int
 	lookupdRecheckChan chan int
@@ -48,15 +47,15 @@ type Reader struct {
 	runningFlag        bool
 	runningHandlers    int
 	messagesInFlight   int
-	consumer           *nsq.Consumer
+	consumer           *Consumer
 	lookupdAddresses   []*net.TCPAddr
 }
 
-type NSQConn struct {
+type nsqConn struct {
 	ServerAddress    *net.TCPAddr
 	FinishedMessages chan *FinishedMessage
 
-	consumer         *nsq.Consumer
+	consumer         *Consumer
 	stopFlag         bool
 	messagesInFlight int
 	messagesReceived uint64
@@ -65,7 +64,7 @@ type NSQConn struct {
 }
 
 type IncomingMessage struct {
-	msg             *nsq.Message
+	msg             *Message
 	responseChannel chan *FinishedMessage
 }
 
@@ -80,7 +79,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		ChannelName:         channel,
 		IncomingMessages:    make(chan *IncomingMessage),
 		ExitChan:            make(chan int),
-		nsqConnections:      make(map[string]*NSQConn),
+		nsqConnections:      make(map[string]*nsqConn),
 		BufferSize:          1,
 		LookupdPoolInterval: 300,
 		lookupdExitChan:     make(chan int),
@@ -194,17 +193,17 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	}
 
 	log.Printf("[%s] connecting to nsqd", addr)
-	consumer := nsq.NewConsumer(addr)
+	consumer := NewConsumer(addr)
 	err := consumer.Connect()
 	if err != nil {
 		log.Printf("[%s] %s", addr, err.Error())
 		return err
 	}
 
-	consumer.Version(nsq.ProtocolV2Magic)
+	consumer.Version(ProtocolV2Magic)
 	consumer.WriteCommand(consumer.Subscribe(q.TopicName, q.ChannelName))
 
-	connection := &NSQConn{
+	connection := &nsqConn{
 		ServerAddress:    addr,
 		FinishedMessages: make(chan *FinishedMessage),
 		consumer:         consumer,
@@ -218,7 +217,7 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	return nil
 }
 
-func ConnectionReadLoop(q *Reader, c *NSQConn) {
+func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	c.consumer.WriteCommand(c.consumer.Ready(q.getBufferSize()))
 	for {
@@ -249,15 +248,15 @@ func ConnectionReadLoop(q *Reader, c *NSQConn) {
 		}
 
 		switch frameType {
-		case nsq.FrameTypeMessage:
+		case FrameTypeMessage:
 			c.messagesReceived += 1
 			q.MessagesReceived += 1
-			msg := data.(*nsq.Message)
+			msg := data.(*Message)
 			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
 			c.messagesInFlight += 1
 			q.messagesInFlight += 1
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
-		case nsq.FrameTypeCloseWait:
+		case FrameTypeCloseWait:
 			// server is ready for us to close (it ack'd our StartClose)
 			// we can assume we will not receive any more messages over this channel
 			// (but we can still write back responses)
@@ -270,7 +269,7 @@ func ConnectionReadLoop(q *Reader, c *NSQConn) {
 	}
 }
 
-func ConnectionFinishLoop(q *Reader, c *NSQConn) {
+func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 	for {
 		msg, ok := <-c.FinishedMessages
 		if !ok {

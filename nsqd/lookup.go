@@ -13,10 +13,10 @@ var notifyTopicChan = make(chan interface{})
 var syncTopicChan = make(chan *LookupPeerWrapper)
 var lookupPeers = make([]*LookupPeerWrapper, 0)
 
-var (
-	LookupPeerStateDisconnected int32 = 0
-	LookupPeerStateConnected    int32 = 1
-	LookupPeerStateSyncing      int32 = 2
+const (
+	LookupPeerStateDisconnected = 0
+	LookupPeerStateConnected    = 1
+	LookupPeerStateSyncing      = 2
 )
 
 type LookupPeerWrapper struct {

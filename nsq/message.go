@@ -8,7 +8,9 @@ import (
 	"time"
 )
 
-const MsgIdLength = 32
+const (
+	MsgIdLength = 32
+)
 
 type Message struct {
 	Id        []byte

@@ -29,9 +29,8 @@
    $ cd ../nsqlookupd
    $ go build
 
-   $ cd ../nsqreader
-   $ go test
-
 ## Dependencies for tests
 
-* `go get github.com/bmizerany/assert`
+ * `go get github.com/bmizerany/assert`
+ 
+ $ ./test.sh

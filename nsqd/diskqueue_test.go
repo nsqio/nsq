@@ -1,4 +1,4 @@
-package nsq
+package main
 
 import (
 	"github.com/bmizerany/assert"
@@ -44,8 +44,8 @@ func TestDiskQueueRoll(t *testing.T) {
 		assert.Equal(t, dq.Depth(), int64(i+1))
 	}
 
-	assert.Equal(t, dq.writeFileNum, int64(1))
-	assert.Equal(t, dq.writePos, int64(28))
+	assert.Equal(t, dq.(*DiskQueue).writeFileNum, int64(1))
+	assert.Equal(t, dq.(*DiskQueue).writePos, int64(28))
 }
 
 func BenchmarkDiskQueuePut(b *testing.B) {

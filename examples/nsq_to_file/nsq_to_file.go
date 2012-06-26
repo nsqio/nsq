@@ -3,7 +3,7 @@
 package main
 
 import (
-	"../nsqreader"
+	"../nsq"
 	"../util"
 	"flag"
 	"fmt"
@@ -38,15 +38,15 @@ type FileLogger struct {
 type Message struct {
 	id            []byte
 	body          []byte
-	returnChannel chan *nsqreader.FinishedMessage
+	returnChannel chan *nsq.FinishedMessage
 }
 
 type SyncMsg struct {
-	m             *nsqreader.FinishedMessage
-	returnChannel chan *nsqreader.FinishedMessage
+	m             *nsq.FinishedMessage
+	returnChannel chan *nsq.FinishedMessage
 }
 
-func (l *FileLogger) HandleMessage(msgid []byte, data []byte, responseChannel chan *nsqreader.FinishedMessage) {
+func (l *FileLogger) HandleMessage(msgid []byte, data []byte, responseChannel chan *nsq.FinishedMessage) {
 	l.logChan <- &Message{msgid, data, responseChannel}
 }
 
@@ -69,7 +69,7 @@ func main() {
 		logChan: make(chan *Message, *buffer),
 	}
 
-	r, _ := nsqreader.NewReader(*topic, *channel)
+	r, _ := nsq.NewReader(*topic, *channel)
 	r.BufferSize = *buffer
 
 	r.AddAsyncHandler(f)
@@ -91,7 +91,7 @@ func main() {
 				}
 				f.out.Write(m.body)
 				f.out.WriteString("\n")
-				x := &nsqreader.FinishedMessage{m.id, true}
+				x := &nsq.FinishedMessage{m.id, true}
 				output[pos] = &SyncMsg{x, m.returnChannel}
 				pos++
 			}

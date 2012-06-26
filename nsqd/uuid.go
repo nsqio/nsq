@@ -1,4 +1,4 @@
-package nsq
+package main
 
 import (
 	"crypto/rand"

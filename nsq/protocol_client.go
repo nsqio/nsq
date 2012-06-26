@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var (
+const (
 	stateDisconnected = 0
 	stateConnected    = 1
 )

@@ -25,7 +25,7 @@ var idChan = make(chan []byte, 10000)
 func init() {
 	go func() {
 		for {
-			idChan <- nsq.NewUuid().Hex()
+			idChan <- NewUuid().Hex()
 		}
 	}()
 }
@@ -35,7 +35,7 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
-		backend:             nsq.NewDiskQueue(topicName, dataPath, maxBytesPerFile),
+		backend:             NewDiskQueue(topicName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
 		memQueueSize:        memQueueSize,
