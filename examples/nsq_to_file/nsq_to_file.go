@@ -17,7 +17,7 @@ import (
 var (
 	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
-	topic            = flag.String("topic-name", "", "nsq toppic")
+	topic            = flag.String("topic-name", "", "nsq topic")
 	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
 	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
 	nsqAddresses     = util.StringArray{}
