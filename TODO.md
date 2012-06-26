@@ -1,7 +1,6 @@
 
 ### Things for v0.1 - v0.3
 
- * /mput support
  * upon topic creation, lookup channels against lookupd
  * client side code needs to handle deferred requeues
  * persistence of deferred requeues
