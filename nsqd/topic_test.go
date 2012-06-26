@@ -14,7 +14,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(nil, nil, nil, 10, os.TempDir(), 1024)
+	nsqd = NewNSQd(1, nil, nil, nil, 10, os.TempDir(), 1024)
 
 	topic1 := nsqd.GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -48,12 +48,12 @@ func BenchmarkTopicPut(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	topicName := "testbench" + strconv.Itoa(b.N)
-	nsqd = NewNSQd(nil, nil, nil, int64(b.N), os.TempDir(), 1024)
+	nsqd = NewNSQd(1, nil, nil, nil, int64(b.N), os.TempDir(), 1024)
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
-		msg := nsq.NewMessage(<-idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }

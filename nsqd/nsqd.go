@@ -9,6 +9,7 @@ import (
 
 type NSQd struct {
 	sync.RWMutex
+	workerId        int64
 	memQueueSize    int64
 	dataPath        string
 	maxBytesPerFile int64
@@ -18,12 +19,14 @@ type NSQd struct {
 	topicMap        map[string]*Topic
 	tcpListener     net.Listener
 	httpListener    net.Listener
+	idChan          chan []byte
 }
 
 var nsqd *NSQd
 
-func NewNSQd(tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64) *NSQd {
-	return &NSQd{
+func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64) *NSQd {
+	nsqd := &NSQd{
+		workerId:        workerId,
 		memQueueSize:    memQueueSize,
 		dataPath:        dataPath,
 		maxBytesPerFile: maxBytesPerFile,
@@ -31,7 +34,21 @@ func NewNSQd(tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, lookupAddrs util.Strin
 		httpAddr:        httpAddr,
 		lookupAddrs:     lookupAddrs,
 		topicMap:        make(map[string]*Topic),
+		idChan:          make(chan []byte, 4096),
 	}
+
+	go func(n *NSQd) {
+		for {
+			id, err := NewGUID(n.workerId)
+			if err != nil {
+				log.Printf("ERROR: %s", err.Error())
+				continue
+			}
+			n.idChan <- id.Hex()
+		}
+	}(nsqd)
+
+	return nsqd
 }
 
 func (n *NSQd) Main() {

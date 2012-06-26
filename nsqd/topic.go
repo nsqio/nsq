@@ -20,16 +20,6 @@ type Topic struct {
 	maxBytesPerFile     int64
 }
 
-var idChan = make(chan []byte, 10000)
-
-func init() {
-	go func() {
-		for {
-			idChan <- NewUuid().Hex()
-		}
-	}()
-}
-
 // Topic constructor
 func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64) *Topic {
 	topic := &Topic{

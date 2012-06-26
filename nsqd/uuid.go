@@ -8,9 +8,9 @@ import (
 	"log"
 )
 
-type Uuid []byte
+type UUID []byte
 
-func NewUuid() Uuid {
+func NewUUID() UUID {
 	b := make([]byte, 16)
 	_, err := io.ReadFull(rand.Reader, b)
 	if err != nil {
@@ -21,12 +21,12 @@ func NewUuid() Uuid {
 	return b
 }
 
-func (u Uuid) Hex() []byte {
+func (u UUID) Hex() []byte {
 	b := make([]byte, 32)
 	hex.Encode(b, u)
 	return b
 }
 
-func (u Uuid) Hex4() []byte {
+func (u UUID) Hex4() []byte {
 	return []byte(fmt.Sprintf("%x-%x-%x-%x-%x", u[:4], u[4:6], u[6:8], u[8:10], u[10:]))
 }

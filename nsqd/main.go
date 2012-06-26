@@ -2,8 +2,11 @@ package main
 
 import (
 	"../util"
+	"crypto/md5"
 	"flag"
 	"fmt"
+	"hash/crc32"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -24,6 +27,7 @@ var (
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
+	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	lookupAddresses = util.StringArray{}
 )
 
@@ -41,6 +45,16 @@ func main() {
 
 	if *goMaxProcs > 0 {
 		runtime.GOMAXPROCS(*goMaxProcs)
+	}
+
+	if *workerId == 0 {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatal(err)
+		}
+		h := md5.New()
+		io.WriteString(h, hostname)
+		*workerId = int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 	}
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
@@ -64,6 +78,7 @@ func main() {
 	}
 
 	log.Printf("nsqd v%s", VERSION)
+	log.Printf("worker id %d", *workerId)
 
 	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
@@ -73,7 +88,7 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	nsqd = NewNSQd(tcpAddr, webAddr, lookupAddresses, *memQueueSize, *dataPath, *maxBytesPerFile)
+	nsqd = NewNSQd(*workerId, tcpAddr, webAddr, lookupAddresses, *memQueueSize, *dataPath, *maxBytesPerFile)
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()

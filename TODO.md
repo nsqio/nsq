@@ -15,7 +15,6 @@
  * topic/channel cleanup
  * graceful restart
  * test install steps
- * improved message ID generation (host info, etc)
 
 ### Things for v0.3
 

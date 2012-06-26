@@ -51,7 +51,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	topic := nsqd.GetTopic(topicName)
-	msg := nsq.NewMessage(<-idChan, reqParams.Body)
+	msg := nsq.NewMessage(<-nsqd.idChan, reqParams.Body)
 	topic.PutMessage(msg)
 
 	w.Header().Set("Content-Length", "2")
@@ -80,7 +80,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	topic := nsqd.GetTopic(topicName)
 	for _, block := range bytes.Split(reqParams.Body, []byte("\n")) {
 		if len(block) != 0 {
-			msg := nsq.NewMessage(<-idChan, block)
+			msg := nsq.NewMessage(<-nsqd.idChan, block)
 			topic.PutMessage(msg)
 		}
 	}

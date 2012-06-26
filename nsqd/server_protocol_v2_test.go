@@ -12,7 +12,7 @@ import (
 
 func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	nsqd = NewNSQd(tcpAddr, tcpAddr, nil, 10, os.TempDir(), 1024)
+	nsqd = NewNSQd(1, tcpAddr, tcpAddr, nil, 10, os.TempDir(), 1024)
 	nsqd.Main()
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
 }
@@ -26,7 +26,7 @@ func TestBasicV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test_v2")
-	msg := nsq.NewMessage(<-idChan, []byte("test body"))
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
 	consumer := nsq.NewConsumer(tcpAddr)
@@ -63,7 +63,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test_multiple_v2")
-	msg := nsq.NewMessage(<-idChan, []byte("test body"))
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.GetChannel("ch1")
 	topic.GetChannel("ch2")
 	topic.PutMessage(msg)

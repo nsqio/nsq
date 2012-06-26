@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	MsgIdLength = 32
+	MsgIdLength = 16
 )
 
 // Message is the fundamental data type containing
