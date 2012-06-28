@@ -8,41 +8,58 @@ import (
 	"strconv"
 )
 
+// Consumer is a low-level type for connecting/reading/writing to nsqd
 type Consumer struct {
 	*ProtocolClient
 }
 
+// NewConsumer creates a new Consumer, initializes
+// the underlying ProtocolClient, and returns a pointer
 func NewConsumer(tcpAddr *net.TCPAddr) *Consumer {
 	return &Consumer{&ProtocolClient{tcpAddr: tcpAddr}}
 }
 
-func (c *ProtocolClient) Subscribe(topic string, channel string) *ProtocolCommand {
+// Subscribe creates a new ProtocolCommand to subscribe
+// to the given topic/channel
+func (c *Consumer) Subscribe(topic string, channel string) *ProtocolCommand {
 	var params = [][]byte{[]byte(topic), []byte(channel)}
 	return &ProtocolCommand{[]byte("SUB"), params}
 }
 
-func (c *ProtocolClient) Ready(count int) *ProtocolCommand {
+// Ready creates a new ProtocolCommand to specify
+// the number of messages a client is willing to receive
+func (c *Consumer) Ready(count int) *ProtocolCommand {
 	var params = [][]byte{[]byte(strconv.Itoa(count))}
 	return &ProtocolCommand{[]byte("RDY"), params}
 }
 
-func (c *ProtocolClient) Finish(id []byte) *ProtocolCommand {
+// Finish creates a new ProtocolCommand to indiciate that 
+// a given message (by id) has been processed successfully
+func (c *Consumer) Finish(id []byte) *ProtocolCommand {
 	var params = [][]byte{id}
 	return &ProtocolCommand{[]byte("FIN"), params}
 }
 
-func (c *ProtocolClient) Requeue(id []byte, timeoutMs int) *ProtocolCommand {
+// Requeue creats a new ProtocolCommand to indicate that 
+// a given message (by id) should be requeued after the given timeout (in ms)
+// NOTE: a timeout of 0 indicates immediate requeue
+func (c *Consumer) Requeue(id []byte, timeoutMs int) *ProtocolCommand {
 	var params = [][]byte{id, []byte(strconv.Itoa(timeoutMs))}
 	return &ProtocolCommand{[]byte("REQ"), params}
 }
 
-// start a close cycle. server will ACK after which we can finish up 
-// pending messages, and then close the connection
-func (c *ProtocolClient) StartClose() *ProtocolCommand {
+// StartClose creates a new ProtocolCommand to indicate that the
+// client would like to start a close cycle.  nsqd will no longer
+// send messages to a client in this state and the client is expected
+// to ACK after which it can finish pending messages and close the connection
+func (c *Consumer) StartClose() *ProtocolCommand {
 	return &ProtocolCommand{[]byte("CLS"), nil}
 }
 
-func (c *ProtocolClient) UnpackResponse(response []byte) (int32, interface{}, error) {
+// UnpackResponse is a helper function that takes serialized data (as []byte), 
+// unpackes, (optionally) decodes, and returns a triplicate of:
+//    frame type, data (interface {}), error
+func (c *Consumer) UnpackResponse(response []byte) (int32, interface{}, error) {
 	var err error
 	var frameType int32
 	var ret interface{}

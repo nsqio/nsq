@@ -1,8 +1,10 @@
 package nsq
 
+// BackendQueue represents the behavior for the secondary message
+// storage system
 type BackendQueue interface {
 	Put([]byte) error
-	ReadChan() chan []byte
+	ReadChan() chan []byte // this is expected to be an *unbuffered* channel
 	Close() error
 	Depth() int64
 }

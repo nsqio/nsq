@@ -12,44 +12,80 @@ const (
 	MsgIdLength = 32
 )
 
+// Message is the fundamental data type containing
+// the id, body, and metadata
 type Message struct {
-	Id        []byte
-	Body      []byte
-	Timestamp int64
-	Retries   uint16
-	timerChan chan int
+	Id           []byte
+	Body         []byte
+	Timestamp    int64
+	Retries      uint16
+	endTimerChan chan int
 }
 
+// NewMessage creates a Message, initializes some metadata, 
+// and returns a pointer
 func NewMessage(id []byte, body []byte) *Message {
 	return &Message{
-		Id:        id,
-		Body:      body,
-		Timestamp: time.Now().Unix(),
-		Retries:   0,
-		timerChan: make(chan int),
+		Id:           id,
+		Body:         body,
+		Timestamp:    time.Now().Unix(),
+		endTimerChan: make(chan int),
 	}
 }
 
+// EndTimer will close the in-flight loop by force
 func (m *Message) EndTimer() {
 	select {
-	case m.timerChan <- 1:
+	case m.endTimerChan <- 1:
 	default:
 	}
 }
 
+// ShouldRequeue hooks into the message's go channel and waits 
+// for a message or it's own timer to expire, indicating
+// which to the caller
 func (m *Message) ShouldRequeue(sleepMS int) bool {
 	timer := time.NewTimer(time.Duration(sleepMS) * time.Millisecond)
 	defer timer.Stop()
 
 	select {
 	case <-timer.C:
-	case <-m.timerChan:
+	case <-m.endTimerChan:
 		return false
 	}
 
 	return true
 }
 
+// Encode serializes the receiver into []byte
+func (m *Message) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+
+	err := binary.Write(&buf, binary.BigEndian, &m.Timestamp)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(&buf, binary.BigEndian, &m.Retries)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = buf.Write(m.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = buf.Write(m.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// DecodeMessage deseralizes data (as []byte) and creates/returns
+// a pointer to a new Message
 func DecodeMessage(byteBuf []byte) (*Message, error) {
 	var timestamp int64
 	var retries uint16
@@ -82,30 +118,4 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 	msg.Retries = retries
 
 	return msg, nil
-}
-
-func (m *Message) Encode() ([]byte, error) {
-	var buf bytes.Buffer
-
-	err := binary.Write(&buf, binary.BigEndian, &m.Timestamp)
-	if err != nil {
-		return nil, err
-	}
-
-	err = binary.Write(&buf, binary.BigEndian, &m.Retries)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(m.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(m.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
