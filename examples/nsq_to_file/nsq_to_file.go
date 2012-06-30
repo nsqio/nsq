@@ -3,8 +3,8 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
+	"../../nsq"
+	"../../util"
 	"flag"
 	"fmt"
 	"log"
@@ -63,6 +63,9 @@ func main() {
 
 	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
 		log.Fatalf("--nsq-address or --lookupd-address required.")
+	}
+	if len(nsqAddresses) != 0 && len(lookupdAddresses) != 0 {
+		log.Fatalf("use --nsq-address or --lookupd-address not both")
 	}
 
 	f := &FileLogger{
