@@ -26,6 +26,7 @@ type Channel struct {
 	PutCount            int64
 	TimeoutCount        int64
 	topicName           string
+	exitChan            chan int
 }
 
 // Channel constructor
@@ -33,11 +34,12 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	channel := &Channel{
 		topicName:           topicName,
 		name:                channelName,
-		backend:             NewDiskQueue(channelName, dataPath, maxBytesPerFile),
+		backend:             NewDiskQueue(topicName+":"+channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		ClientMessageChan:   make(chan *nsq.Message),
 		inFlightMessages:    make(map[string]*nsq.Message),
+		exitChan:            make(chan int),
 	}
 	go channel.Router()
 	notify.Post("new_channel", channel)
@@ -99,14 +101,11 @@ func (c *Channel) doRequeue(id []byte) error {
 func (c *Channel) Router() {
 	go c.MessagePump()
 
-	exitChan := make(chan interface{})
-	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg := <-c.incomingMessageChan:
 			select {
 			case c.memoryMsgChan <- msg:
-				log.Printf("CHANNEL(%s): wrote to memoryMsgChan", c.name)
 			default:
 				data, err := msg.Encode()
 				if err != nil {
@@ -118,10 +117,8 @@ func (c *Channel) Router() {
 					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
 					// TODO: requeue?
 				}
-				log.Printf("CHANNEL(%s): wrote to backend", c.name)
 			}
-		case <-exitChan:
-			notify.Ignore(c.name+".channel_close", exitChan)
+		case <-c.exitChan:
 			return
 		}
 	}
@@ -174,8 +171,6 @@ func (c *Channel) MessagePump() {
 	var buf []byte
 	var err error
 
-	exitChan := make(chan interface{})
-	notify.Observe(c.name+".channel_close", exitChan)
 	for {
 		select {
 		case msg = <-c.memoryMsgChan:
@@ -185,8 +180,7 @@ func (c *Channel) MessagePump() {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
 			}
-		case <-exitChan:
-			notify.Ignore(c.name+".channel_close", exitChan)
+		case <-c.exitChan:
 			return
 		}
 
@@ -197,12 +191,47 @@ func (c *Channel) MessagePump() {
 	}
 }
 
+func (c *Channel) flushInMemory() {
+	for {
+		select {
+		case msg := <-c.memoryMsgChan:
+			data, err := msg.Encode()
+			if err != nil {
+				log.Printf("ERROR: failed to Encode() message - %s", err.Error())
+				continue
+			}
+			err = c.backend.Put(data)
+			if err != nil {
+				log.Printf("ERROR: t.backend.Put() - %s", err.Error())
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (c *Channel) flushInFlight() {
+	for _, msg := range c.inFlightMessages {
+		data, err := msg.Encode()
+		if err != nil {
+			log.Printf("ERROR: failed to Encode() message - %s", err.Error())
+			continue
+		}
+		err = c.backend.Put(data)
+		if err != nil {
+			log.Printf("ERROR: t.backend.Put() - %s", err.Error())
+		}
+	}
+}
+
 func (c *Channel) Close() error {
 	var err error
 
 	log.Printf("CHANNEL(%s): closing", c.name)
 
-	notify.Post(c.name+".channel_close", nil)
+	close(c.exitChan)
+	c.flushInMemory()
+	c.flushInFlight()
 
 	err = c.backend.Close()
 	if err != nil {

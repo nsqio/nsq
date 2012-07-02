@@ -18,6 +18,7 @@ type Topic struct {
 	memQueueSize        int64
 	dataPath            string
 	maxBytesPerFile     int64
+	exitChan            chan int
 }
 
 // Topic constructor
@@ -30,6 +31,8 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
 		memQueueSize:        memQueueSize,
 		dataPath:            dataPath,
+		maxBytesPerFile:     maxBytesPerFile,
+		exitChan:            make(chan int),
 	}
 	go topic.Router()
 	notify.Post("new_topic", topic)
@@ -69,8 +72,6 @@ func (t *Topic) MessagePump() {
 	var buf []byte
 	var err error
 
-	exitChan := make(chan interface{})
-	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
 		case msg = <-t.memoryMsgChan:
@@ -80,8 +81,7 @@ func (t *Topic) MessagePump() {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
 			}
-		case <-exitChan:
-			notify.Ignore(t.name+".topic_close", exitChan)
+		case <-t.exitChan:
 			return
 		}
 
@@ -103,14 +103,11 @@ func (t *Topic) MessagePump() {
 func (t *Topic) Router() {
 	var msg *nsq.Message
 
-	exitChan := make(chan interface{})
-	notify.Observe(t.name+".topic_close", exitChan)
 	for {
 		select {
 		case msg = <-t.incomingMessageChan:
 			select {
 			case t.memoryMsgChan <- msg:
-				// log.Printf("TOPIC(%s): wrote to messageChan", t.name)
 			default:
 				data, err := msg.Encode()
 				if err != nil {
@@ -122,10 +119,27 @@ func (t *Topic) Router() {
 					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
 					// TODO: requeue?
 				}
-				// log.Printf("TOPIC(%s): wrote to backend", t.name)
 			}
-		case <-exitChan:
-			notify.Ignore(t.name+".topic_close", exitChan)
+		case <-t.exitChan:
+			return
+		}
+	}
+}
+
+func (t *Topic) flushInMemory() {
+	for {
+		select {
+		case msg := <-t.memoryMsgChan:
+			data, err := msg.Encode()
+			if err != nil {
+				log.Printf("ERROR: failed to Encode() message - %s", err.Error())
+				continue
+			}
+			err = t.backend.Put(data)
+			if err != nil {
+				log.Printf("ERROR: t.backend.Put() - %s", err.Error())
+			}
+		default:
 			return
 		}
 	}
@@ -136,8 +150,7 @@ func (t *Topic) Close() error {
 
 	log.Printf("TOPIC(%s): closing", t.name)
 
-	notify.Post(t.name+".topic_close", nil)
-
+	close(t.exitChan)
 	for _, channel := range t.channelMap {
 		err = channel.Close()
 		if err != nil {
@@ -145,6 +158,7 @@ func (t *Topic) Close() error {
 			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
 		}
 	}
+	t.flushInMemory()
 
 	err = t.backend.Close()
 	if err != nil {

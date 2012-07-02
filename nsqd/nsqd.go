@@ -25,7 +25,7 @@ type NSQd struct {
 var nsqd *NSQd
 
 func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64) *NSQd {
-	nsqd := &NSQd{
+	n := &NSQd{
 		workerId:        workerId,
 		memQueueSize:    memQueueSize,
 		dataPath:        dataPath,
@@ -36,19 +36,8 @@ func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.St
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
 	}
-
-	go func(n *NSQd) {
-		for {
-			id, err := NewGUID(n.workerId)
-			if err != nil {
-				log.Printf("ERROR: %s", err.Error())
-				continue
-			}
-			n.idChan <- id.Hex()
-		}
-	}(nsqd)
-
-	return nsqd
+	go n.idPump()
+	return n
 }
 
 func (n *NSQd) Main() {
@@ -70,6 +59,8 @@ func (n *NSQd) Main() {
 }
 
 func (n *NSQd) Exit() {
+	// TODO: gracefully send clients the close signal
+
 	n.tcpListener.Close()
 	n.httpListener.Close()
 
@@ -92,4 +83,15 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 	}
 
 	return topic
+}
+
+func (n *NSQd) idPump() {
+	for {
+		id, err := NewGUID(n.workerId)
+		if err != nil {
+			log.Printf("ERROR: %s", err.Error())
+			continue
+		}
+		n.idChan <- id.Hex()
+	}
 }

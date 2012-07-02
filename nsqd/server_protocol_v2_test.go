@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
@@ -25,7 +27,8 @@ func TestBasicV2(t *testing.T) {
 	tcpAddr, _ := mustStartNSQd(t)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test_v2")
+	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -37,7 +40,7 @@ func TestBasicV2(t *testing.T) {
 	err = consumer.Version(nsq.ProtocolV2Magic)
 	assert.Equal(t, err, nil)
 
-	err = consumer.WriteCommand(consumer.Subscribe("test_v2", "ch"))
+	err = consumer.WriteCommand(consumer.Subscribe(topicName, "ch"))
 	assert.Equal(t, err, nil)
 
 	err = consumer.WriteCommand(consumer.Ready(1))
@@ -62,7 +65,8 @@ func TestMultipleConsumerV2(t *testing.T) {
 	tcpAddr, _ := mustStartNSQd(t)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test_multiple_v2")
+	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.GetChannel("ch1")
 	topic.GetChannel("ch2")
@@ -76,7 +80,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 		err = consumer.Version(nsq.ProtocolV2Magic)
 		assert.Equal(t, err, nil)
 
-		err = consumer.WriteCommand(consumer.Subscribe("test_multiple_v2", "ch"+i))
+		err = consumer.WriteCommand(consumer.Subscribe(topicName, "ch"+i))
 		assert.Equal(t, err, nil)
 
 		err = consumer.WriteCommand(consumer.Ready(1))

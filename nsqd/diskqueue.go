@@ -96,8 +96,11 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	if d.readPos > d.maxBytesPerFile {
 		d.readFileNum++
 		d.readPos = 0
-		d.readFile.Close()
-		d.readFile = nil
+
+		if d.readFile != nil {
+			d.readFile.Close()
+			d.readFile = nil
+		}
 
 		err = d.persistMetaData()
 		if err != nil {
@@ -155,8 +158,11 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	if d.writePos > d.maxBytesPerFile {
 		d.writeFileNum++
 		d.writePos = 0
-		d.writeFile.Close()
-		d.writeFile = nil
+
+		if d.writeFile != nil {
+			d.writeFile.Close()
+			d.writeFile = nil
+		}
 
 		err = d.persistMetaData()
 		if err != nil {

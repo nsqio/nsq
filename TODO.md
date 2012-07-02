@@ -11,7 +11,6 @@
 ### Things for v0.1
 
  * client side code needs to handle deferred requeues
- * persistence of deferred requeues
  * topic/channel cleanup
  * graceful restart
  * test install steps
