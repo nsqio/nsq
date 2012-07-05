@@ -4,6 +4,7 @@ import (
 	"../nsq"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -45,13 +46,13 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.Backe
 
 	err := d.retrieveMetaData("read", &d.readFileNum, &d.readPos)
 	if err != nil {
-		log.Printf("WARNING: failed to retrieveMetaData('read') - %s", err.Error())
+		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData('read') - %s", d.name, err.Error())
 	}
 	d.nextReadPos = d.readPos
 
 	err = d.retrieveMetaData("write", &d.writeFileNum, &d.writePos)
 	if err != nil {
-		log.Printf("WARNING: failed to retrieveMetaData('write') - %s", err.Error())
+		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData('write') - %s", d.name, err.Error())
 	}
 
 	go d.readAheadPump()
@@ -84,7 +85,7 @@ func (d *DiskQueue) Close() error {
 	defer d.writeMutex.Unlock()
 
 	d.open = false
-	d.exitChan <- 1
+	close(d.exitChan)
 
 	if d.readFile != nil {
 		d.readFile.Close()
@@ -181,7 +182,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	defer d.writeMutex.Unlock()
 
 	if !d.open {
-		return nil, errors.New("E_CLOSED")
+		return errors.New("E_CLOSED")
 	}
 
 	if d.writePos > d.maxBytesPerFile {
@@ -316,6 +317,9 @@ func (d *DiskQueue) readAheadPump() {
 			if d.nextReadPos == d.readPos {
 				data, err = d.readOne()
 				if err != nil {
+					if err.Error() == "E_CLOSED" {
+						return
+					}
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
 						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
 					continue
