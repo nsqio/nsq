@@ -17,8 +17,8 @@ type MyTestHandler struct {
 	messagesReceived int
 }
 
-func (h *MyTestHandler) HandleMessage(d []byte) error {
-	data, err := simplejson.NewJson(d)
+func (h *MyTestHandler) HandleMessage(message *Message) error {
+	data, err := simplejson.NewJson(message.Body)
 	if err != nil {
 		return err
 	}

@@ -17,14 +17,14 @@ import (
 
 // a syncronous handler that returns an error (or nil to indicate success)
 type Handler interface {
-	HandleMessage([]byte) error
+	HandleMessage(message *Message) error
 }
 
-// an async handler that must send a &FinishedMessage{messageID, true|false} onto 
+// an async handler that must send a &FinishedMessage{messageID, requeueDelay, true|false} onto 
 // responseChannel to indicate that a message has been finished. This is usefull 
 // if you want to batch work together and delay response that processing is complete
 type AsyncHandler interface {
-	HandleMessage(messageID []byte, body []byte, responseChannel chan *FinishedMessage)
+	HandleMessage(message *Message, responseChannel chan *FinishedMessage)
 }
 
 type Reader struct {
@@ -64,13 +64,14 @@ type nsqConn struct {
 }
 
 type IncomingMessage struct {
-	msg             *Message
+	*Message
 	responseChannel chan *FinishedMessage
 }
 
 type FinishedMessage struct {
-	Id      []byte
-	Success bool
+	Id             []byte
+	RequeueDelayMs int
+	Success        bool
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
@@ -298,8 +299,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			q.MessagesFinished += 1
 		} else {
 			log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
-			// TODO: add backoff logic to timeout (milliseconds)
-			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, 0))
+			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, msg.RequeueDelayMs))
 			c.messagesReQueued += 1
 			q.MessagesReQueued += 1
 		}
@@ -355,12 +355,13 @@ func (q *Reader) AddHandler(handler Handler) {
 				break
 			}
 
-			msg := message.msg
-			err := handler.HandleMessage(msg.Body)
+			err := handler.HandleMessage(message.Message)
 			if err != nil {
-				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), msg.Id, msg.Body)
+				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), message.Id, message.Body)
 			}
-			message.responseChannel <- &FinishedMessage{msg.Id, err == nil}
+			// default to an exponential delay
+			requeueDelay := 90000 * int(message.Retries)
+			message.responseChannel <- &FinishedMessage{message.Id, requeueDelay, err == nil}
 		}
 	}()
 }
@@ -381,7 +382,7 @@ func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 				}
 				break
 			}
-			handler.HandleMessage(message.msg.Id, message.msg.Body, message.responseChannel)
+			handler.HandleMessage(message.Message, message.responseChannel)
 		}
 	}()
 }

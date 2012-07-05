@@ -10,7 +10,6 @@
 
 ### Things for v0.1
 
- * client side code needs to handle deferred requeues
  * topic/channel cleanup
  * test install steps
 

@@ -36,8 +36,7 @@ type FileLogger struct {
 }
 
 type Message struct {
-	id            []byte
-	body          []byte
+	*nsq.Message
 	returnChannel chan *nsq.FinishedMessage
 }
 
@@ -46,8 +45,8 @@ type SyncMsg struct {
 	returnChannel chan *nsq.FinishedMessage
 }
 
-func (l *FileLogger) HandleMessage(msgid []byte, data []byte, responseChannel chan *nsq.FinishedMessage) {
-	l.logChan <- &Message{msgid, data, responseChannel}
+func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.FinishedMessage) {
+	l.logChan <- &Message{m, responseChannel}
 }
 
 func main() {
@@ -92,9 +91,9 @@ func main() {
 				if updateFile(f) {
 					sync = true
 				}
-				f.out.Write(m.body)
+				f.out.Write(m.Body)
 				f.out.WriteString("\n")
-				x := &nsq.FinishedMessage{m.id, true}
+				x := &nsq.FinishedMessage{m.Id, 0, true}
 				output[pos] = &SyncMsg{x, m.returnChannel}
 				pos++
 			}
