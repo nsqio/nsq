@@ -16,8 +16,8 @@ const VERSION = "0.1"
 
 var (
 	showVersion = flag.Bool("version", false, "print version string")
-	tcpAddress  = flag.String("tcp-address", "0.0.0.0:5160", "<addr>:<port> to listen on for TCP clients")
-	webAddress  = flag.String("web-address", "0.0.0.0:5161", "<addr>:<port> to listen on for HTTP clients")
+	tcpAddress  = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
+	webAddress  = flag.String("web-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
 	debugMode   = flag.Bool("debug", false, "enable debug mode")
 	cpuProfile  = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs  = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")

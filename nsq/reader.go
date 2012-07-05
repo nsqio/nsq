@@ -167,7 +167,7 @@ func (q *Reader) QueryLookupd() {
 		}
 
 		// do something with the data
-		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local","port":"5150"}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
+		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local","port":"4150"}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
 		producers, _ := data.Get("data").Get("producers").Array()
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})

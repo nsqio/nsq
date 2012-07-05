@@ -44,7 +44,7 @@ func (h *MyTestHandler) HandleMessage(message *Message) error {
 }
 
 func TestQueuereader(t *testing.T) {
-	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:5150")
+	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:4150")
 	q, _ := NewReader("reader_test", "ch")
 
 	h := &MyTestHandler{t, q, 0, 0}
@@ -52,7 +52,7 @@ func TestQueuereader(t *testing.T) {
 
 	// start a http client, and send in our messages
 	httpclient := &http.Client{}
-	endpoint := "http://127.0.0.1:5151/put?topic=reader_test"
+	endpoint := "http://127.0.0.1:4151/put?topic=reader_test"
 	for i := 0; i < 2; i++ {
 		body := []byte("{\"action\":\"test1\",\"numeric_id\":12345678}")
 		req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
@@ -69,7 +69,7 @@ func TestQueuereader(t *testing.T) {
 		}
 	}
 
-	endpoint = "http://127.0.0.1:5151/mput?topic=reader_test"
+	endpoint = "http://127.0.0.1:4151/mput?topic=reader_test"
 	body := []byte("{\"action\":\"test1\",\"numeric_id\":12345678}\n{\"action\":\"test1\",\"numeric_id\":12345678}")
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
 	log.Println("POST", endpoint, string(body))
