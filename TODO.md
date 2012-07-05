@@ -12,10 +12,9 @@
 
  * client side code needs to handle deferred requeues
  * topic/channel cleanup
- * graceful restart
  * test install steps
 
 ### Things for v0.3
 
  * upon topic creation, lookup channels against lookupd
-
+ * graceful restart
