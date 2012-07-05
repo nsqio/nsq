@@ -32,7 +32,7 @@ type DiskQueue struct {
 }
 
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.BackendQueue {
-	diskQueue := DiskQueue{
+	d := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,
 		maxBytesPerFile:   maxBytesPerFile,
@@ -41,14 +41,20 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.Backe
 		writeContinueChan: make(chan int),
 	}
 
-	err := diskQueue.retrieveMetaData()
+	err := d.retrieveMetaData("read", &d.readFileNum, &d.readPos)
 	if err != nil {
-		log.Printf("WARNING: failed to retrieveMetaData() - %s", err.Error())
+		log.Printf("WARNING: failed to retrieveMetaData('read') - %s", err.Error())
+	}
+	d.nextReadPos = d.readPos
+
+	err = d.retrieveMetaData("write", &d.writeFileNum, &d.writePos)
+	if err != nil {
+		log.Printf("WARNING: failed to retrieveMetaData('write') - %s", err.Error())
 	}
 
-	go diskQueue.readAheadPump()
+	go d.readAheadPump()
 
-	return &diskQueue
+	return &d
 }
 
 func (d *DiskQueue) Depth() int64 {
@@ -71,14 +77,26 @@ func (d *DiskQueue) Put(p []byte) error {
 func (d *DiskQueue) Close() error {
 	d.exitChan <- 1
 
+	d.readMutex.Lock()
+	defer d.readMutex.Unlock()
+
+	d.writeMutex.Lock()
+	defer d.writeMutex.Unlock()
+
 	if d.readFile != nil {
 		d.readFile.Close()
 	}
+
 	if d.writeFile != nil {
 		d.writeFile.Close()
 	}
 
-	err := d.persistMetaData()
+	err := d.persistMetaData("read", &d.readFileNum, &d.readPos)
+	if err != nil {
+		return err
+	}
+
+	err = d.persistMetaData("write", &d.writeFileNum, &d.writePos)
 	if err != nil {
 		return err
 	}
@@ -102,7 +120,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			d.readFile = nil
 		}
 
-		err = d.persistMetaData()
+		err = d.persistMetaData("read", &d.readFileNum, &d.readPos)
 		if err != nil {
 			return nil, err
 		}
@@ -164,7 +182,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 			d.writeFile = nil
 		}
 
-		err = d.persistMetaData()
+		err = d.persistMetaData("write", &d.writeFileNum, &d.writePos)
 		if err != nil {
 			return err
 		}
@@ -222,34 +240,30 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	return nil
 }
 
-func (d *DiskQueue) retrieveMetaData() error {
+func (d *DiskQueue) retrieveMetaData(typ string, fileNum *int64, pos *int64) error {
 	var f *os.File
 	var err error
 
-	fileName := d.metaDataFileName()
+	fileName := d.metaDataFileName(typ)
 	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	_, err = fmt.Fscanf(f, "%d,%d\n%d,%d\n", &d.readFileNum, &d.readPos, &d.writeFileNum, &d.writePos)
+	_, err = fmt.Fscanf(f, "%d,%d\n", fileNum, pos)
 	if err != nil {
 		return err
 	}
-	d.nextReadPos = d.readPos
-
-	log.Printf("DISK: retrieved meta data for (%s) - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d",
-		d.name, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
 
 	return nil
 }
 
-func (d *DiskQueue) persistMetaData() error {
+func (d *DiskQueue) persistMetaData(typ string, fileNum *int64, pos *int64) error {
 	var f *os.File
 	var err error
 
-	fileName := d.metaDataFileName()
+	fileName := d.metaDataFileName(typ)
 	tmpFileName := fileName + ".tmp"
 
 	// write to tmp file
@@ -258,7 +272,7 @@ func (d *DiskQueue) persistMetaData() error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(f, "%d,%d\n%d,%d\n", d.readFileNum, d.readPos, d.writeFileNum, d.writePos)
+	_, err = fmt.Fprintf(f, "%d,%d\n", fileNum, pos)
 	if err != nil {
 		f.Close()
 		return err
@@ -266,15 +280,12 @@ func (d *DiskQueue) persistMetaData() error {
 	f.Sync()
 	f.Close()
 
-	log.Printf("DISK: persisted meta data for (%s) - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d",
-		d.name, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
-
 	// atomically rename
 	return os.Rename(tmpFileName, fileName)
 }
 
-func (d *DiskQueue) metaDataFileName() string {
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.dat"), d.name)
+func (d *DiskQueue) metaDataFileName(typ string) string {
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%smeta.dat"), d.name, typ)
 }
 
 func (d *DiskQueue) fileName(fileNum int64) string {
