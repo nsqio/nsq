@@ -29,6 +29,7 @@ type DiskQueue struct {
 	readChan          chan []byte
 	exitChan          chan int
 	writeContinueChan chan int
+	open              bool
 }
 
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.BackendQueue {
@@ -39,6 +40,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.Backe
 		readChan:          make(chan []byte),
 		exitChan:          make(chan int),
 		writeContinueChan: make(chan int),
+		open:              true,
 	}
 
 	err := d.retrieveMetaData("read", &d.readFileNum, &d.readPos)
@@ -75,13 +77,14 @@ func (d *DiskQueue) Put(p []byte) error {
 }
 
 func (d *DiskQueue) Close() error {
-	d.exitChan <- 1
-
 	d.readMutex.Lock()
 	defer d.readMutex.Unlock()
 
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
+
+	d.open = false
+	d.exitChan <- 1
 
 	if d.readFile != nil {
 		d.readFile.Close()
@@ -110,6 +113,10 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 	d.readMutex.Lock()
 	defer d.readMutex.Unlock()
+
+	if !d.open {
+		return nil, errors.New("E_CLOSED")
+	}
 
 	if d.readPos > d.maxBytesPerFile {
 		d.readFileNum++
@@ -172,6 +179,10 @@ func (d *DiskQueue) writeOne(data []byte) error {
 
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
+
+	if !d.open {
+		return nil, errors.New("E_CLOSED")
+	}
 
 	if d.writePos > d.maxBytesPerFile {
 		d.writeFileNum++
@@ -305,8 +316,8 @@ func (d *DiskQueue) readAheadPump() {
 			if d.nextReadPos == d.readPos {
 				data, err = d.readOne()
 				if err != nil {
-					// TODO: should this be fatal?
-					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s", d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
+					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
+						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
 					continue
 				}
 			}
