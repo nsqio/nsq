@@ -56,8 +56,7 @@ func (w *LookupPeerWrapper) Command(cmd *nsq.ProtocolCommand) ([]byte, error) {
 	return resp, nil
 }
 
-// TODO: this needs a clean shutdown
-func LookupRouter(lookupHosts []string) {
+func LookupRouter(lookupHosts []string, exitChan chan int) {
 	if len(lookupHosts) == 0 {
 		return
 	}
@@ -120,6 +119,10 @@ func LookupRouter(lookupHosts []string) {
 				topic.RUnlock()
 			}
 			nsqd.RUnlock()
+		case <-exitChan:
+			notify.Ignore("new_channel", notifyChannelChan)
+			notify.Ignore("new_topic", notifyTopicChan)
+			return
 		}
 	}
 }

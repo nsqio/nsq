@@ -10,10 +10,11 @@
 
 ### Things for v0.1
 
- * topic/channel cleanup
- * test install steps
+ * empty topic/channel
+ * client tracking
 
 ### Things for v0.3
 
  * upon topic creation, lookup channels against lookupd
  * graceful restart
+ * cleanup (expire) topics/channels

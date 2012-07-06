@@ -12,7 +12,8 @@ import (
 
 const (
 	// 1hr
-	maxTimeoutMs = 3600000
+	maxTimeoutMs  = 3600000
+	maxReadyCount = 2500
 )
 
 type ServerProtocolV2 struct {
@@ -75,7 +76,7 @@ func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 		}
 	}
 
-	clientExitChan <- 1
+	close(clientExitChan)
 
 	return err
 }
@@ -219,8 +220,7 @@ func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byt
 		}
 	}
 
-	// TODO: this should be configurable
-	if count > 1000 {
+	if count > maxReadyCount {
 		return nil, nsq.ClientErrV2Invalid
 	}
 

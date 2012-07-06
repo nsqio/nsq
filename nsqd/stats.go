@@ -41,9 +41,9 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			io.WriteString(w, fmt.Sprintf("\nTopic: %s\n", topicName))
 		}
 
+		t.RLock()
 		channels := make([]interface{}, len(t.channelMap))
 		j := 0
-		t.RLock()
 		for channelName, c := range t.channelMap {
 			if jsonFormat {
 				channels[j] = struct {

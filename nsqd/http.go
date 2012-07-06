@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 )
 
 import _ "net/http/pprof"
@@ -21,7 +22,8 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/stats", statsHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
-	if err != nil {
+	// theres no direct way to detect this error because it is not exposed
+	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
 }

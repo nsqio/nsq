@@ -20,6 +20,7 @@ type NSQd struct {
 	tcpListener     net.Listener
 	httpListener    net.Listener
 	idChan          chan []byte
+	exitChan        chan int
 }
 
 var nsqd *NSQd
@@ -35,13 +36,14 @@ func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.St
 		lookupAddrs:     lookupAddrs,
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
+		exitChan:        make(chan int),
 	}
 	go n.idPump()
 	return n
 }
 
 func (n *NSQd) Main() {
-	go LookupRouter(n.lookupAddrs)
+	go LookupRouter(n.lookupAddrs, n.exitChan)
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
@@ -63,6 +65,8 @@ func (n *NSQd) Exit() {
 
 	n.tcpListener.Close()
 	n.httpListener.Close()
+
+	close(n.exitChan)
 
 	for _, topic := range n.topicMap {
 		topic.Close()
@@ -92,6 +96,10 @@ func (n *NSQd) idPump() {
 			log.Printf("ERROR: %s", err.Error())
 			continue
 		}
-		n.idChan <- id.Hex()
+		select {
+		case n.idChan <- id.Hex():
+		case <-n.exitChan:
+			return
+		}
 	}
 }
