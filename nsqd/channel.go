@@ -27,6 +27,7 @@ type Channel struct {
 	timeoutCount        int64
 	topicName           string
 	exitChan            chan int
+	clients             []*nsq.ServerClient
 }
 
 // Channel constructor
@@ -40,6 +41,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		clientMessageChan:   make(chan *nsq.Message),
 		inFlightMessages:    make(map[string]*nsq.Message),
 		exitChan:            make(chan int),
+		clients:             make([]*nsq.ServerClient, 0, 5),
 	}
 	go channel.Router()
 	notify.Post("new_channel", channel)
@@ -233,4 +235,35 @@ func (c *Channel) Close() error {
 	}
 
 	return nil
+}
+
+func (c *Channel) AddClient(client *nsq.ServerClient) {
+	c.Lock()
+	defer c.Unlock()
+
+	found := false
+	for _, cli := range c.clients {
+		if cli == client {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		c.clients = append(c.clients, client)
+	}
+}
+
+func (c *Channel) RemoveClient(client *nsq.ServerClient) {
+	c.Lock()
+	defer c.Unlock()
+
+	finalClients := make([]*nsq.ServerClient, 0, len(c.clients))
+	for _, cli := range c.clients {
+		if cli != client {
+			finalClients = append(finalClients, cli)
+		}
+	}
+
+	c.clients = finalClients
 }

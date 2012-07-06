@@ -11,7 +11,6 @@
 ### Things for v0.1
 
  * empty topic/channel
- * client tracking
 
 ### Things for v0.3
 

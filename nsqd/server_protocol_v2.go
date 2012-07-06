@@ -76,6 +76,7 @@ func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 		}
 	}
 
+	// TODO: gracefully send clients the close signal
 	close(clientExitChan)
 
 	return err
@@ -153,6 +154,7 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 	}
 
 exit:
+	channel.RemoveClient(client)
 	if err != nil {
 		log.Printf("PROTOCOL(V2): PushMessages error - %s", err.Error())
 	}
@@ -189,8 +191,10 @@ func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byt
 	client.SetState("ready_state_chan", readyStateChan)
 
 	topic := nsqd.GetTopic(topicName)
-	client.SetState("channel", topic.GetChannel(channelName))
+	channel := topic.GetChannel(channelName)
+	channel.AddClient(client)
 
+	client.SetState("channel", channel)
 	client.SetState("state", nsq.ClientStateV2Subscribed)
 
 	go p.PushMessages(client)

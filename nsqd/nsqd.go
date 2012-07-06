@@ -61,8 +61,6 @@ func (n *NSQd) Main() {
 }
 
 func (n *NSQd) Exit() {
-	// TODO: gracefully send clients the close signal
-
 	n.tcpListener.Close()
 	n.httpListener.Close()
 
