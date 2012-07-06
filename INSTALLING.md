@@ -1,4 +1,3 @@
-
 # Prereqs
 
 **install-as** https://github.com/mreiferson/go-install-as
@@ -23,14 +22,13 @@
 
 # installing nsq
 
-   $ cd nsqd
-   $ go build
+    $ cd nsqd
+    $ go build
 
-   $ cd ../nsqlookupd
-   $ go build
+    $ cd ../nsqlookupd
+    $ go build
 
 ## Dependencies for tests
 
- * `go get github.com/bmizerany/assert`
- 
- $ ./test.sh
+    $ go get github.com/bmizerany/assert
+    $ ./test.sh

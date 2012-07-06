@@ -14,6 +14,7 @@ import (
 )
 
 type DiskQueue struct {
+	metaMutex         sync.Mutex
 	readMutex         sync.Mutex
 	writeMutex        sync.Mutex
 	name              string
@@ -44,15 +45,9 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.Backe
 		open:              true,
 	}
 
-	err := d.retrieveMetaData("read", &d.readFileNum, &d.readPos)
+	err := d.retrieveMetaData()
 	if err != nil {
-		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData('read') - %s", d.name, err.Error())
-	}
-	d.nextReadPos = d.readPos
-
-	err = d.retrieveMetaData("write", &d.writeFileNum, &d.writePos)
-	if err != nil {
-		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData('write') - %s", d.name, err.Error())
+		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
 	}
 
 	go d.readAheadPump()
@@ -69,12 +64,7 @@ func (d *DiskQueue) ReadChan() chan []byte {
 }
 
 func (d *DiskQueue) Put(p []byte) error {
-	err := d.writeOne(p)
-	if err == nil {
-		d.depth += 1
-	}
-	d.writeContinueChan <- 1
-	return err
+	return d.writeOne(p)
 }
 
 func (d *DiskQueue) Close() error {
@@ -95,12 +85,7 @@ func (d *DiskQueue) Close() error {
 		d.writeFile.Close()
 	}
 
-	err := d.persistMetaData("read", &d.readFileNum, &d.readPos)
-	if err != nil {
-		return err
-	}
-
-	err = d.persistMetaData("write", &d.writeFileNum, &d.writePos)
+	err := d.persistMetaData()
 	if err != nil {
 		return err
 	}
@@ -120,15 +105,17 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	}
 
 	if d.readPos > d.maxBytesPerFile {
+		d.metaMutex.Lock()
 		d.readFileNum++
 		d.readPos = 0
+		d.metaMutex.Unlock()
 
 		if d.readFile != nil {
 			d.readFile.Close()
 			d.readFile = nil
 		}
 
-		err = d.persistMetaData("read", &d.readFileNum, &d.readPos)
+		err = d.persistMetaData()
 		if err != nil {
 			return nil, err
 		}
@@ -186,15 +173,17 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	}
 
 	if d.writePos > d.maxBytesPerFile {
+		d.metaMutex.Lock()
 		d.writeFileNum++
 		d.writePos = 0
+		d.metaMutex.Unlock()
 
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
 
-		err = d.persistMetaData("write", &d.writeFileNum, &d.writePos)
+		err = d.persistMetaData()
 		if err != nil {
 			return err
 		}
@@ -244,7 +233,12 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
+	d.metaMutex.Lock()
 	d.writePos += int64(totalBytes)
+	d.depth += 1
+	d.metaMutex.Unlock()
+
+	d.writeContinueChan <- 1
 
 	// log.Printf("DISK: wrote %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
 	// 	totalBytes, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
@@ -252,30 +246,40 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	return nil
 }
 
-func (d *DiskQueue) retrieveMetaData(typ string, fileNum *int64, pos *int64) error {
+func (d *DiskQueue) retrieveMetaData() error {
 	var f *os.File
 	var err error
 
-	fileName := d.metaDataFileName(typ)
+	d.metaMutex.Lock()
+	defer d.metaMutex.Unlock()
+
+	fileName := d.metaDataFileName()
 	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	_, err = fmt.Fscanf(f, "%d,%d\n", fileNum, pos)
+	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
+		&d.depth,
+		&d.readFileNum, &d.readPos,
+		&d.writeFileNum, &d.writePos)
 	if err != nil {
 		return err
 	}
+	d.nextReadPos = d.readPos
 
 	return nil
 }
 
-func (d *DiskQueue) persistMetaData(typ string, fileNum *int64, pos *int64) error {
+func (d *DiskQueue) persistMetaData() error {
 	var f *os.File
 	var err error
 
-	fileName := d.metaDataFileName(typ)
+	d.metaMutex.Lock()
+	defer d.metaMutex.Unlock()
+
+	fileName := d.metaDataFileName()
 	tmpFileName := fileName + ".tmp"
 
 	// write to tmp file
@@ -284,7 +288,10 @@ func (d *DiskQueue) persistMetaData(typ string, fileNum *int64, pos *int64) erro
 		return err
 	}
 
-	_, err = fmt.Fprintf(f, "%d,%d\n", fileNum, pos)
+	_, err = fmt.Fprintf(f, "%d\n%d,%d\n%d,%d\n",
+		d.depth,
+		d.readFileNum, d.readPos,
+		d.writeFileNum, d.writePos)
 	if err != nil {
 		f.Close()
 		return err
@@ -296,8 +303,8 @@ func (d *DiskQueue) persistMetaData(typ string, fileNum *int64, pos *int64) erro
 	return os.Rename(tmpFileName, fileName)
 }
 
-func (d *DiskQueue) metaDataFileName(typ string) string {
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%smeta.dat"), d.name, typ)
+func (d *DiskQueue) metaDataFileName() string {
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.dat"), d.name)
 }
 
 func (d *DiskQueue) fileName(fileNum int64) string {
@@ -327,7 +334,9 @@ func (d *DiskQueue) readAheadPump() {
 			}
 			select {
 			case d.readChan <- data:
+				d.metaMutex.Lock()
 				d.readPos = d.nextReadPos
+				d.metaMutex.Unlock()
 			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return
