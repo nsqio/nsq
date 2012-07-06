@@ -61,12 +61,6 @@ func (c *Channel) FinishMessage(id []byte) error {
 	return err
 }
 
-// NOTE: the technique used to defer requeueing a message can be 
-// problematic in the event of daemon failure.  these deferred messages
-// are essentially in limbo until they are requeued.
-// 
-// arguably this is not terribly different from the data loss that would
-// occur if a topic/channel had messages in memory and the daemon failed.
 func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
 	if timeoutMs == 0 {
 		return c.doRequeue(id)
