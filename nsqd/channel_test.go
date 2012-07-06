@@ -23,7 +23,7 @@ func TestPutMessage(t *testing.T) {
 	msg := nsq.NewMessage([]byte("abcdefghijklmnop"), []byte("test"))
 	topic.PutMessage(msg)
 
-	outputMsg := <-channel1.ClientMessageChan
+	outputMsg := <-channel1.clientMessageChan
 	assert.Equal(t, msg.Id, outputMsg.Id)
 	assert.Equal(t, msg.Body, outputMsg.Body)
 }
@@ -41,11 +41,11 @@ func TestPutMessage2Chan(t *testing.T) {
 	msg := nsq.NewMessage([]byte("abcdefghijklmnop"), []byte("test"))
 	topic.PutMessage(msg)
 
-	outputMsg1 := <-channel1.ClientMessageChan
+	outputMsg1 := <-channel1.clientMessageChan
 	assert.Equal(t, msg.Id, outputMsg1.Id)
 	assert.Equal(t, msg.Body, outputMsg1.Body)
 
-	outputMsg2 := <-channel2.ClientMessageChan
+	outputMsg2 := <-channel2.clientMessageChan
 	assert.Equal(t, msg.Id, outputMsg2.Id)
 	assert.Equal(t, msg.Body, outputMsg2.Body)
 }

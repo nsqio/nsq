@@ -19,12 +19,12 @@ type Channel struct {
 	backend             nsq.BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
-	ClientMessageChan   chan *nsq.Message
+	clientMessageChan   chan *nsq.Message
 	inFlightMessages    map[string]*nsq.Message
-	RequeueCount        int64
-	GetCount            int64
-	PutCount            int64
-	TimeoutCount        int64
+	requeueCount        int64
+	getCount            int64
+	putCount            int64
+	timeoutCount        int64
 	topicName           string
 	exitChan            chan int
 }
@@ -37,7 +37,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		backend:             NewDiskQueue(topicName+":"+channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
-		ClientMessageChan:   make(chan *nsq.Message),
+		clientMessageChan:   make(chan *nsq.Message),
 		inFlightMessages:    make(map[string]*nsq.Message),
 		exitChan:            make(chan int),
 	}
@@ -49,7 +49,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 // PutMessage writes to the appropriate incoming
 // message channel
 func (c *Channel) PutMessage(msg *nsq.Message) {
-	c.PutCount += 1
+	c.putCount += 1
 	c.incomingMessageChan <- msg
 }
 
@@ -89,8 +89,8 @@ func (c *Channel) doRequeue(id []byte) error {
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
-		c.PutCount -= 1
-		c.RequeueCount += 1
+		c.putCount -= 1
+		c.requeueCount += 1
 		go c.PutMessage(msg)
 	}
 	return err
@@ -133,7 +133,7 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
 		if msg.ShouldRequeue(msgTimeoutMs) {
 			err := c.RequeueMessage(msg.Id, 0)
 			if err != nil {
-				c.TimeoutCount += 1
+				c.timeoutCount += 1
 				log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
 			}
 		}
@@ -186,8 +186,8 @@ func (c *Channel) MessagePump() {
 
 		msg.Retries += 1
 		c.pushInFlightMessage(msg)
-		c.GetCount += 1
-		c.ClientMessageChan <- msg
+		c.getCount += 1
+		c.clientMessageChan <- msg
 	}
 }
 

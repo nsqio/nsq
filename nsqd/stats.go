@@ -50,18 +50,18 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					ChannelName      string `json:"channel_name"`
 					Depth            int64  `json:"depth"`
 					InFlightMessages int    `json:"in_flight_messages"`
-					GetCount         int64  `json:"get_count"`
-					PutCount         int64  `json:"put_count"`
-					RequeueCount     int64  `json:"requeue_count"`
-					TimeoutCount     int64  `json:"timeout_count"`
+					getCount         int64  `json:"get_count"`
+					putCount         int64  `json:"put_count"`
+					requeueCount     int64  `json:"requeue_count"`
+					timeoutCount     int64  `json:"timeout_count"`
 				}{
 					channelName,
 					c.backend.Depth(),
 					len(c.inFlightMessages),
-					c.GetCount,
-					c.PutCount,
-					c.RequeueCount,
-					c.TimeoutCount,
+					c.getCount,
+					c.putCount,
+					c.requeueCount,
+					c.timeoutCount,
 				}
 				j += 1
 			} else {
@@ -71,10 +71,10 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						channelName,
 						c.backend.Depth(),
 						len(c.inFlightMessages),
-						c.GetCount,
-						c.PutCount,
-						c.RequeueCount,
-						c.TimeoutCount))
+						c.getCount,
+						c.putCount,
+						c.requeueCount,
+						c.timeoutCount))
 			}
 		}
 		t.RUnlock()

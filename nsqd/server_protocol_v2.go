@@ -119,7 +119,7 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 			select {
 			case count := <-readyStateChan:
 				client.SetState("ready_count", count)
-			case msg := <-channel.ClientMessageChan:
+			case msg := <-channel.clientMessageChan:
 				client.SetState("ready_count", readyCount-1)
 
 				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
