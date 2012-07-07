@@ -105,16 +105,20 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	}
 
 	if d.readPos > d.maxBytesPerFile {
-		d.metaMutex.Lock()
-		d.readFileNum++
-		d.readPos = 0
-		d.metaMutex.Unlock()
-
 		if d.readFile != nil {
 			d.readFile.Close()
 			d.readFile = nil
 		}
+		fn := d.fileName(d.readFileNum)
+		err := os.Remove(fn)
+		if err != nil {
+			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+		}
 
+		d.metaMutex.Lock()
+		d.readFileNum++
+		d.readPos = 0
+		d.metaMutex.Unlock()
 		err = d.persistMetaData()
 		if err != nil {
 			return nil, err
@@ -173,16 +177,15 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	}
 
 	if d.writePos > d.maxBytesPerFile {
-		d.metaMutex.Lock()
-		d.writeFileNum++
-		d.writePos = 0
-		d.metaMutex.Unlock()
-
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
 
+		d.metaMutex.Lock()
+		d.writeFileNum++
+		d.writePos = 0
+		d.metaMutex.Unlock()
 		err = d.persistMetaData()
 		if err != nil {
 			return err
@@ -235,7 +238,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 
 	d.metaMutex.Lock()
 	d.writePos += int64(totalBytes)
-	d.depth += 1
+	d.depth++
 	d.metaMutex.Unlock()
 
 	d.writeContinueChan <- 1
@@ -335,6 +338,7 @@ func (d *DiskQueue) readAheadPump() {
 			select {
 			case d.readChan <- data:
 				d.metaMutex.Lock()
+				d.depth--
 				d.readPos = d.nextReadPos
 				d.metaMutex.Unlock()
 			case <-d.writeContinueChan:
