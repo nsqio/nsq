@@ -13,7 +13,7 @@ const (
 )
 
 // Message is the fundamental data type containing
-// the id, body, and metadata
+// the id, body, and meta-data
 type Message struct {
 	Id           []byte
 	Body         []byte
@@ -22,7 +22,7 @@ type Message struct {
 	endTimerChan chan int
 }
 
-// NewMessage creates a Message, initializes some metadata, 
+// NewMessage creates a Message, initializes some meta-data, 
 // and returns a pointer
 func NewMessage(id []byte, body []byte) *Message {
 	return &Message{
