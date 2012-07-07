@@ -100,6 +100,7 @@ func (d *DiskQueue) Empty() error {
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
 
+	d.metaMutex.Lock()
 	for d.readFileNum < d.writeFileNum {
 		fn := d.fileName(d.readFileNum)
 		err := os.Remove(fn)
@@ -112,6 +113,8 @@ func (d *DiskQueue) Empty() error {
 	d.readPos = d.writePos
 	d.nextReadPos = d.readPos
 	d.depth = 0
+	d.metaMutex.Unlock()
+	
 	d.writeContinueChan <- 1
 
 	return nil
@@ -159,6 +162,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		if d.readPos > 0 {
 			_, err = d.readFile.Seek(d.readPos, 0)
 			if err != nil {
+				d.readFile.Close()
+				d.readFile = nil
 				return nil, err
 			}
 		}
@@ -171,8 +176,6 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, err
 	}
 
-	totalBytes := 4 + msgSize
-
 	readBuf := make([]byte, msgSize)
 	_, err = io.ReadFull(d.readFile, readBuf)
 	if err != nil {
@@ -181,6 +184,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, err
 	}
 
+	totalBytes := 4 + msgSize
 	d.nextReadPos = d.readPos + int64(totalBytes)
 
 	// log.Printf("DISK: read %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
@@ -234,7 +238,6 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	}
 
 	dataLen := len(data)
-	totalBytes := 4 + dataLen
 
 	err = binary.Write(&buf, binary.BigEndian, int32(dataLen))
 	if err != nil {
@@ -260,6 +263,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
+	totalBytes := 4 + dataLen
 	d.metaMutex.Lock()
 	d.writePos += int64(totalBytes)
 	d.depth++
