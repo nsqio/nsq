@@ -2,7 +2,6 @@ package main
 
 import (
 	"../util"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +13,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(api_response(500, "INVALID_REQUEST", nil))
+		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
 		return
 	}
 
@@ -26,7 +25,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 
 	if len(nsqd.topicMap) == 0 {
 		if jsonFormat {
-			w.Write(api_response(500, "NO_TOPICS", nil))
+			w.Write(util.ApiResponse(500, "NO_TOPICS", nil))
 		} else {
 			io.WriteString(w, "NO_TOPICS\n")
 		}
@@ -119,26 +118,9 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if jsonFormat {
-		w.Write(api_response(200, "OK", struct {
+		w.Write(util.ApiResponse(200, "OK", struct {
 			Topics []interface{} `json:"topics"`
 		}{topics}))
 	}
 
-}
-
-func api_response(statusCode int, statusTxt string, data interface{}) []byte {
-	response, err := json.Marshal(struct {
-		StatusCode int         `json:"status_code"`
-		StatusTxt  string      `json:"status_txt"`
-		Data       interface{} `json:"data"`
-	}{
-		statusCode,
-		statusTxt,
-		data,
-	})
-	if err != nil {
-		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s","data":null}`, err.Error())
-		return []byte(errorTxt)
-	}
-	return response
 }
