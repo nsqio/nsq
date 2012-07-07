@@ -7,4 +7,5 @@ type BackendQueue interface {
 	ReadChan() chan []byte // this is expected to be an *unbuffered* channel
 	Close() error
 	Depth() int64
+	Empty() error
 }

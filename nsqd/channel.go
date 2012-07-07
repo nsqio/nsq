@@ -48,6 +48,14 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	return channel
 }
 
+func (c *Channel) MemoryChan() chan *nsq.Message {
+	return c.memoryMsgChan
+}
+
+func (c *Channel) BackendQueue() nsq.BackendQueue {
+	return c.backend
+}
+
 // PutMessage writes to the appropriate incoming
 // message channel
 func (c *Channel) PutMessage(msg *nsq.Message) {
@@ -187,25 +195,6 @@ func (c *Channel) MessagePump() {
 	}
 }
 
-func (c *Channel) flushInMemory() {
-	for {
-		select {
-		case msg := <-c.memoryMsgChan:
-			data, err := msg.Encode()
-			if err != nil {
-				log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-				continue
-			}
-			err = c.backend.Put(data)
-			if err != nil {
-				log.Printf("ERROR: t.backend.Put() - %s", err.Error())
-			}
-		default:
-			return
-		}
-	}
-}
-
 func (c *Channel) flushInFlight() {
 	for _, msg := range c.inFlightMessages {
 		data, err := msg.Encode()
@@ -226,7 +215,7 @@ func (c *Channel) Close() error {
 	log.Printf("CHANNEL(%s): closing", c.name)
 
 	close(c.exitChan)
-	c.flushInMemory()
+	FlushQueue(c)
 	c.flushInFlight()
 
 	err = c.backend.Close()

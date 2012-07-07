@@ -39,6 +39,14 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 	return topic
 }
 
+func (t *Topic) MemoryChan() chan *nsq.Message {
+	return t.memoryMsgChan
+}
+
+func (t *Topic) BackendQueue() nsq.BackendQueue {
+	return t.backend
+}
+
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
@@ -126,25 +134,6 @@ func (t *Topic) Router() {
 	}
 }
 
-func (t *Topic) flushInMemory() {
-	for {
-		select {
-		case msg := <-t.memoryMsgChan:
-			data, err := msg.Encode()
-			if err != nil {
-				log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-				continue
-			}
-			err = t.backend.Put(data)
-			if err != nil {
-				log.Printf("ERROR: t.backend.Put() - %s", err.Error())
-			}
-		default:
-			return
-		}
-	}
-}
-
 func (t *Topic) Close() error {
 	var err error
 
@@ -158,7 +147,7 @@ func (t *Topic) Close() error {
 			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
 		}
 	}
-	t.flushInMemory()
+	FlushQueue(t)
 
 	err = t.backend.Close()
 	if err != nil {

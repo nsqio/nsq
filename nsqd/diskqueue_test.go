@@ -48,6 +48,29 @@ func TestDiskQueueRoll(t *testing.T) {
 	assert.Equal(t, dq.(*DiskQueue).writePos, int64(28))
 }
 
+func TestDiskQueueEmpty(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	dqName := "test_disk_queue_empty" + strconv.Itoa(int(time.Now().Unix()))
+	dq := NewDiskQueue(dqName, os.TempDir(), 100)
+	assert.NotEqual(t, dq, nil)
+	assert.Equal(t, dq.Depth(), int64(0))
+
+	msg := []byte("aaaaaaaaaa")
+	for i := 0; i < 100; i++ {
+		err := dq.Put(msg)
+		assert.Equal(t, err, nil)
+		assert.Equal(t, dq.Depth(), int64(i+1))
+	}
+
+	dq.Empty()
+	assert.Equal(t, dq.Depth(), int64(0))
+	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
+	assert.Equal(t, dq.(*DiskQueue).readPos, dq.(*DiskQueue).writePos)
+	assert.Equal(t, dq.(*DiskQueue).nextReadPos, dq.(*DiskQueue).readPos)
+}
+
 func BenchmarkDiskQueuePut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)

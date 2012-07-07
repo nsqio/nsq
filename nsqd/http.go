@@ -20,6 +20,7 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/put", putHandler)
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
+	handler.HandleFunc("/empty", emptyHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
@@ -37,18 +38,18 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST", "data":null}`))
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC", "data":null}`))
 		return
 	}
 
 	if len(topicName) > nsq.MaxNameLength {
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC", "data":null}`))
 		return
 	}
 
@@ -64,18 +65,18 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST", "data":null}`))
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC", "data":null}`))
 		return
 	}
 
 	if len(topicName) > nsq.MaxNameLength {
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC","data":null}`))
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC", "data":null}`))
 		return
 	}
 
@@ -85,6 +86,48 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 			msg := nsq.NewMessage(<-nsqd.idChan, block)
 			topic.PutMessage(msg)
 		}
+	}
+
+	w.Header().Set("Content-Length", "2")
+	io.WriteString(w, "OK")
+}
+
+func emptyHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST", "data":null}`))
+		return
+	}
+
+	topicName, err := reqParams.Query("topic")
+	if err != nil {
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC", "data":null}`))
+		return
+	}
+
+	if len(topicName) > nsq.MaxNameLength {
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC", "data":null}`))
+		return
+	}
+
+	channelName, err := reqParams.Query("channel")
+	if err != nil {
+		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_CHANNEL", "data":null}`))
+		return
+	}
+
+	if len(topicName) > nsq.MaxNameLength {
+		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_CHANNEL", "data":null}`))
+		return
+	}
+
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel(channelName)
+	err = EmptyQueue(channel)
+	if err != nil {
+		w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
+		return
 	}
 
 	w.Header().Set("Content-Length", "2")

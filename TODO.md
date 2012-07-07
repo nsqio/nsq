@@ -8,10 +8,6 @@
  * v0.5 working nsqadmin for seeing overview of nsq topology
  * v0.6 nsqadmin displaying performance/message throughput/stats
 
-### Things for v0.1
-
- * empty topic/channel
-
 ### Things for v0.3
 
  * upon topic creation, lookup channels against lookupd

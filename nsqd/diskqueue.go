@@ -93,6 +93,30 @@ func (d *DiskQueue) Close() error {
 	return nil
 }
 
+func (d *DiskQueue) Empty() error {
+	d.readMutex.Lock()
+	defer d.readMutex.Unlock()
+
+	d.writeMutex.Lock()
+	defer d.writeMutex.Unlock()
+
+	for d.readFileNum < d.writeFileNum {
+		fn := d.fileName(d.readFileNum)
+		err := os.Remove(fn)
+		if err != nil {
+			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+		}
+		d.readFileNum++
+	}
+
+	d.readPos = d.writePos
+	d.nextReadPos = d.readPos
+	d.depth = 0
+	d.writeContinueChan <- 1
+
+	return nil
+}
+
 func (d *DiskQueue) readOne() ([]byte, error) {
 	var err error
 	var msgSize int32
