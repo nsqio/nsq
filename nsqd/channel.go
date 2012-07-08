@@ -10,27 +10,43 @@ import (
 )
 
 const (
+	// the amount of time to wait for a client to respond to a message
 	msgTimeoutMs = 60000
 )
 
+// Channel represents the concrete type for a NSQ channel (and also
+// implements the Queue interface)
+//
+// There can be many channels per topic and each with there own distinct 
+// clients subscribed.
+//
+// Channels maintain all client and message, orchestrating in-flight
+// messages, timeouts, requeueing, etc.
 type Channel struct {
-	sync.RWMutex
-	name                string
-	backend             nsq.BackendQueue
+	sync.RWMutex // embed a r/w mutex
+
+	topicName string
+	name      string
+
+	backend nsq.BackendQueue
+
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
 	clientMessageChan   chan *nsq.Message
-	inFlightMessages    map[string]*nsq.Message
-	requeueCount        int64
-	getCount            int64
-	putCount            int64
-	timeoutCount        int64
-	topicName           string
 	exitChan            chan int
-	clients             []*nsq.ServerClient
+
+	// state tracking
+	clients          []*nsq.ServerClient
+	inFlightMessages map[string]*nsq.Message
+
+	// stat counters
+	requeueCount int64
+	getCount     int64
+	putCount     int64
+	timeoutCount int64
 }
 
-// Channel constructor
+// NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
 	c := &Channel{
 		topicName: topicName,
@@ -40,9 +56,9 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		clientMessageChan:   make(chan *nsq.Message),
-		inFlightMessages:    make(map[string]*nsq.Message),
 		exitChan:            make(chan int),
 		clients:             make([]*nsq.ServerClient, 0, 5),
+		inFlightMessages:    make(map[string]*nsq.Message),
 	}
 	go c.router()
 	go c.messagePump()
@@ -50,21 +66,24 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	return c
 }
 
+// MemoryChan implements the Queue interface
 func (c *Channel) MemoryChan() chan *nsq.Message {
 	return c.memoryMsgChan
 }
 
+// BackendQueue implements the Queue interface
 func (c *Channel) BackendQueue() nsq.BackendQueue {
 	return c.backend
 }
 
-// PutMessage writes to the appropriate incoming
-// message channel
+// PutMessage writes to the appropriate incoming message channel
+// (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {
 	c.putCount += 1
 	c.incomingMessageChan <- msg
 }
 
+// FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(id []byte) error {
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
@@ -75,11 +94,18 @@ func (c *Channel) FinishMessage(id []byte) error {
 	return err
 }
 
+// RequeueMessage requeues a message based on `timeoutMs`, ie:
+//
+// `timeoutMs` == 0 - requeue a message immediately
+// `timeoutMs`  > 0 - asynchronously wait for the specified timeout
+//     and requeue a message (aka "deferred requeue")
+//
 func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
 	if timeoutMs == 0 {
 		return c.doRequeue(id)
 	}
 	go func() {
+		// TODO: we need cleanup for these goroutines
 		msg, err := c.getInFlightMessage(id)
 		if err != nil {
 			log.Printf("ERROR: failed to defer requeue message(%s) - %s", id, err.Error())
@@ -92,6 +118,7 @@ func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
 	return nil
 }
 
+// doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(id []byte) error {
 	msg, err := c.popInFlightMessage(id)
 	if err != nil {
@@ -146,6 +173,7 @@ func (c *Channel) pushInFlightMessage(msg *nsq.Message) error {
 	return nil
 }
 
+// popInFlightMessage atomically removes a message from the in-flight dictionary
 func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -159,6 +187,7 @@ func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 	return msg, nil
 }
 
+// getInFlightMessage retrieves a message from the in-flight dictionary by ID
 func (c *Channel) getInFlightMessage(id []byte) (*nsq.Message, error) {
 	c.RLock()
 	defer c.RUnlock()
@@ -231,6 +260,7 @@ func (c *Channel) messagePump() {
 	}
 }
 
+// flushInFlight writes all in-flight messages to the backend
 func (c *Channel) flushInFlight() {
 	for _, msg := range c.inFlightMessages {
 		data, err := msg.Encode()
@@ -245,6 +275,7 @@ func (c *Channel) flushInFlight() {
 	}
 }
 
+// Close cleanly closes the Channel
 func (c *Channel) Close() error {
 	var err error
 
@@ -262,6 +293,7 @@ func (c *Channel) Close() error {
 	return nil
 }
 
+// AddClient adds the ServerClient the Channel's client list
 func (c *Channel) AddClient(client *nsq.ServerClient) {
 	c.Lock()
 	defer c.Unlock()
@@ -279,6 +311,7 @@ func (c *Channel) AddClient(client *nsq.ServerClient) {
 	}
 }
 
+// RemoveClient removes the ServerClient from the Channel's client list
 func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 	c.Lock()
 	defer c.Unlock()
