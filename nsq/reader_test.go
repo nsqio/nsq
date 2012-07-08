@@ -3,9 +3,11 @@ package nsq
 import (
 	"bitly/simplejson"
 	"bytes"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"testing"
 )
@@ -44,6 +46,9 @@ func (h *MyTestHandler) HandleMessage(message *Message) error {
 }
 
 func TestQueuereader(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:4150")
 	q, _ := NewReader("reader_test", "ch")
 

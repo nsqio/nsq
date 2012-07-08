@@ -3,17 +3,18 @@ set -e
 # a helper script to run tests in the appropriate directories
 
 for dir in nsqd; do
-    pushd $dir
-    go test
-    popd
+    pushd $dir >/dev/null
+    go test -test.v
+    popd >/dev/null
 done
 
-pushd nsqd
+pushd nsqd >/dev/null
 go build
-./nsqd &
+./nsqd >/dev/null 2>&1 &
 PID=$!
 
-popd && pushd nsq
-go test
+popd >/dev/null
+pushd nsq >/dev/null
+go test -test.v
 kill -s TERM $PID
-popd
+popd >/dev/null
