@@ -32,9 +32,10 @@ type Channel struct {
 
 // Channel constructor
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
-	channel := &Channel{
-		topicName:           topicName,
-		name:                channelName,
+	c := &Channel{
+		topicName: topicName,
+		name:      channelName,
+		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 		backend:             NewDiskQueue(topicName+":"+channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
@@ -43,9 +44,10 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		exitChan:            make(chan int),
 		clients:             make([]*nsq.ServerClient, 0, 5),
 	}
-	go channel.Router()
-	notify.Post("new_channel", channel)
-	return channel
+	go c.router()
+	go c.messagePump()
+	notify.Post("new_channel", c)
+	return c
 }
 
 func (c *Channel) MemoryChan() chan *nsq.Message {
@@ -64,9 +66,11 @@ func (c *Channel) PutMessage(msg *nsq.Message) {
 }
 
 func (c *Channel) FinishMessage(id []byte) error {
-	_, err := c.popInFlightMessage(id)
+	msg, err := c.popInFlightMessage(id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
+	} else {
+		c.endWaitToAutoRequeue(msg)
 	}
 	return err
 }
@@ -81,7 +85,7 @@ func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
 			log.Printf("ERROR: failed to defer requeue message(%s) - %s", id, err.Error())
 			return
 		}
-		msg.EndTimer()
+		c.endWaitToAutoRequeue(msg)
 		<-time.After(time.Duration(timeoutMs) * time.Millisecond)
 		c.doRequeue(id)
 	}()
@@ -93,18 +97,18 @@ func (c *Channel) doRequeue(id []byte) error {
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
-		c.putCount -= 1
+		c.endWaitToAutoRequeue(msg)
 		c.requeueCount += 1
-		go c.PutMessage(msg)
+		// decr putCount so that we don't double count requeue puts
+		c.putCount -= 1
+		c.PutMessage(msg)
 	}
 	return err
 }
 
-// Router handles the muxing of Channel messages including
-// the addition of a Client to the Channel
-func (c *Channel) Router() {
-	go c.MessagePump()
-
+// Router handles the muxing of incoming Channel messages, either writing
+// to the in-memory channel or to the backend
+func (c *Channel) router() {
 	for {
 		select {
 		case msg := <-c.incomingMessageChan:
@@ -128,20 +132,18 @@ func (c *Channel) Router() {
 	}
 }
 
-func (c *Channel) pushInFlightMessage(msg *nsq.Message) {
+// pushInFlightMessage atomically adds a message to the in-flight dictionary
+func (c *Channel) pushInFlightMessage(msg *nsq.Message) error {
 	c.Lock()
 	defer c.Unlock()
 
+	_, ok := c.inFlightMessages[string(msg.Id)]
+	if ok {
+		return errors.New("E_ID_ALREADY_IN_FLIGHT")
+	}
 	c.inFlightMessages[string(msg.Id)] = msg
-	go func(msg *nsq.Message) {
-		if msg.ShouldRequeue(msgTimeoutMs) {
-			err := c.RequeueMessage(msg.Id, 0)
-			if err != nil {
-				c.timeoutCount += 1
-				log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
-			}
-		}
-	}(msg)
+
+	return nil
 }
 
 func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
@@ -153,7 +155,6 @@ func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
 		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
 	}
 	delete(c.inFlightMessages, string(id))
-	msg.EndTimer()
 
 	return msg, nil
 }
@@ -170,7 +171,41 @@ func (c *Channel) getInFlightMessage(id []byte) (*nsq.Message, error) {
 	return msg, nil
 }
 
-func (c *Channel) MessagePump() {
+// waitToAutoRequeue sleeps until forcefully closed (doing nothing) or 
+// times out (requeue the message automatically)
+func (c *Channel) waitToAutoRequeue(msg *nsq.Message) {
+	// TODO: we need cleanup for these goroutines
+	timer := time.NewTimer(time.Duration(msgTimeoutMs) * time.Millisecond)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-msg.UtilChan:
+		return
+	}
+
+	c.timeoutCount += 1
+	err := c.RequeueMessage(msg.Id, 0)
+	if err != nil {
+		log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
+	}
+}
+
+// endWaitToAutoRequeue forcefully closes the goroutine for auto-requeue
+// for the specified message
+func (c *Channel) endWaitToAutoRequeue(msg *nsq.Message) {
+	select {
+	case msg.UtilChan <- 1:
+	default:
+	}
+}
+
+// messagePump reads messages from either memory or backend and writes
+// to the client output go channel
+//
+// it is also performs in-flight accounting and initiates the auto-requeue
+// goroutine
+func (c *Channel) messagePump() {
 	var msg *nsq.Message
 	var buf []byte
 	var err error
@@ -190,8 +225,9 @@ func (c *Channel) MessagePump() {
 
 		msg.Retries += 1
 		c.pushInFlightMessage(msg)
-		c.getCount += 1
 		c.clientMessageChan <- msg
+		go c.waitToAutoRequeue(msg)
+		c.getCount += 1
 	}
 }
 

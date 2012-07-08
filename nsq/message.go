@@ -15,46 +15,22 @@ const (
 // Message is the fundamental data type containing
 // the id, body, and meta-data
 type Message struct {
-	Id           []byte
-	Body         []byte
-	Timestamp    int64
-	Retries      uint16
-	endTimerChan chan int
+	Id        []byte
+	Body      []byte
+	Timestamp int64
+	Retries   uint16
+	UtilChan  chan int
 }
 
 // NewMessage creates a Message, initializes some meta-data, 
 // and returns a pointer
 func NewMessage(id []byte, body []byte) *Message {
 	return &Message{
-		Id:           id,
-		Body:         body,
-		Timestamp:    time.Now().Unix(),
-		endTimerChan: make(chan int),
+		Id:        id,
+		Body:      body,
+		Timestamp: time.Now().Unix(),
+		UtilChan:  make(chan int),
 	}
-}
-
-// EndTimer will close the in-flight loop by force
-func (m *Message) EndTimer() {
-	select {
-	case m.endTimerChan <- 1:
-	default:
-	}
-}
-
-// ShouldRequeue hooks into the message's go channel and waits 
-// for a message or it's own timer to expire, indicating
-// which to the caller
-func (m *Message) ShouldRequeue(sleepMS int) bool {
-	timer := time.NewTimer(time.Duration(sleepMS) * time.Millisecond)
-	defer timer.Stop()
-
-	select {
-	case <-timer.C:
-	case <-m.endTimerChan:
-		return false
-	}
-
-	return true
 }
 
 // Encode serializes the receiver into []byte
