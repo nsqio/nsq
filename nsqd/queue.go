@@ -8,6 +8,7 @@ import (
 type Queue interface {
 	MemoryChan() chan *nsq.Message
 	BackendQueue() nsq.BackendQueue
+	InFlight() map[string]*nsq.Message
 }
 
 func EmptyQueue(q Queue) error {
@@ -26,18 +27,33 @@ func FlushQueue(q Queue) error {
 	for {
 		select {
 		case msg := <-q.MemoryChan():
-			data, err := msg.Encode()
+			err := WriteMessageToBackend(msg, q)
 			if err != nil {
-				log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-				continue
-			}
-			err = q.BackendQueue().Put(data)
-			if err != nil {
-				log.Printf("ERROR: BackendQueue().Put() - %s", err.Error())
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}
 		default:
 			return nil
 		}
+	}
+
+	inFlight := q.InFlight()
+	if inFlight != nil {
+		for _, msg := range inFlight {
+			WriteMessageToBackend(msg, q)
+		}
+	}
+
+	return nil
+}
+
+func WriteMessageToBackend(msg *nsq.Message, q Queue) error {
+	data, err := msg.Encode()
+	if err != nil {
+		return err
+	}
+	err = q.BackendQueue().Put(data)
+	if err != nil {
+		return err
 	}
 	return nil
 }

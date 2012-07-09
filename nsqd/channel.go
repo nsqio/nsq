@@ -76,6 +76,11 @@ func (c *Channel) BackendQueue() nsq.BackendQueue {
 	return c.backend
 }
 
+// InFlight implements the Queue interface
+func (c *Channel) InFlight() map[string]*nsq.Message {
+	return c.inFlightMessages
+}
+
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {
@@ -142,14 +147,9 @@ func (c *Channel) router() {
 			select {
 			case c.memoryMsgChan <- msg:
 			default:
-				data, err := msg.Encode()
+				err := WriteMessageToBackend(msg, c)
 				if err != nil {
-					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-					continue
-				}
-				err = c.backend.Put(data)
-				if err != nil {
-					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
+					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 					// TODO: requeue?
 				}
 			}
@@ -260,21 +260,6 @@ func (c *Channel) messagePump() {
 	}
 }
 
-// flushInFlight writes all in-flight messages to the backend
-func (c *Channel) flushInFlight() {
-	for _, msg := range c.inFlightMessages {
-		data, err := msg.Encode()
-		if err != nil {
-			log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-			continue
-		}
-		err = c.backend.Put(data)
-		if err != nil {
-			log.Printf("ERROR: t.backend.Put() - %s", err.Error())
-		}
-	}
-}
-
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
 	var err error
@@ -283,7 +268,6 @@ func (c *Channel) Close() error {
 
 	close(c.exitChan)
 	FlushQueue(c)
-	c.flushInFlight()
 
 	err = c.backend.Close()
 	if err != nil {

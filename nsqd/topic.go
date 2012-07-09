@@ -47,6 +47,10 @@ func (t *Topic) BackendQueue() nsq.BackendQueue {
 	return t.backend
 }
 
+func (c *Topic) InFlight() map[string]*nsq.Message {
+	return nil
+}
+
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
@@ -117,14 +121,9 @@ func (t *Topic) Router() {
 			select {
 			case t.memoryMsgChan <- msg:
 			default:
-				data, err := msg.Encode()
+				err := WriteMessageToBackend(msg, t)
 				if err != nil {
-					log.Printf("ERROR: failed to Encode() message - %s", err.Error())
-					continue
-				}
-				err = t.backend.Put(data)
-				if err != nil {
-					log.Printf("ERROR: t.backend.Put() - %s", err.Error())
+					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 					// TODO: requeue?
 				}
 			}
