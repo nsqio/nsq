@@ -19,6 +19,7 @@ func EmptyQueue(q Queue) error {
 			goto disk
 		}
 	}
+
 disk:
 	return q.BackendQueue().Empty()
 }
@@ -32,14 +33,18 @@ func FlushQueue(q Queue) error {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}
 		default:
-			return nil
+			goto inflight
 		}
 	}
 
+inflight:
 	inFlight := q.InFlight()
 	if inFlight != nil {
 		for _, msg := range inFlight {
-			WriteMessageToBackend(msg, q)
+			err := WriteMessageToBackend(msg, q)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+			}
 		}
 	}
 
