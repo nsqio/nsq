@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -49,6 +50,8 @@ type Reader struct {
 	messagesInFlight   int
 	consumer           *Consumer
 	lookupdAddresses   []*net.TCPAddr
+
+	sync.RWMutex
 }
 
 type nsqConn struct {
@@ -125,14 +128,17 @@ func (q *Reader) LookupdLoop() {
 		interval = 15
 	}
 	ticker := time.Tick(time.Duration(interval) * time.Second)
-	select {
-	case <-ticker:
-		q.QueryLookupd()
-	case <-q.lookupdRecheckChan:
-		q.QueryLookupd()
-	case <-q.lookupdExitChan:
-		return
+	for {
+		select {
+		case <-ticker:
+			q.QueryLookupd()
+		case <-q.lookupdRecheckChan:
+			q.QueryLookupd()
+		case <-q.lookupdExitChan:
+			return
+		}
 	}
+
 }
 
 // make a HTTP req to the /lookup endpoint on each lookup server
@@ -224,7 +230,10 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
-			if c.messagesInFlight == 0 {
+			q.RLock()
+			cInFlight := c.messagesInFlight
+			q.RUnlock()
+			if cInFlight == 0 {
 				log.Printf("[%s] closing FinishedMessages channel", c.ServerAddress)
 				close(c.FinishedMessages)
 			} else {
@@ -254,8 +263,10 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 			q.MessagesReceived += 1
 			msg := data.(*Message)
 			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
+			q.Lock()
 			c.messagesInFlight += 1
 			q.messagesInFlight += 1
+			q.Unlock()
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
 		case FrameTypeCloseWait:
 			// server is ready for us to close (it ack'd our StartClose)
@@ -290,7 +301,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 				// trigger a poll of the lookupd
 				q.lookupdRecheckChan <- 1
 			}
-			break
+			return
 		}
 		if msg.Success {
 			log.Printf("[%s] successfully finished %s", c.ServerAddress, msg.Id)
@@ -303,17 +314,22 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			c.messagesReQueued += 1
 			q.MessagesReQueued += 1
 		}
+		var cInFlight int
+		q.Lock()
 		c.messagesInFlight -= 1
 		q.messagesInFlight -= 1
+		cInFlight = c.messagesInFlight
+		q.Unlock()
 
-		if c.stopFlag && c.messagesInFlight == 0 {
+		if c.stopFlag && cInFlight == 0 {
 			log.Printf("[%s] closing c.FinishedMessages", c.ServerAddress)
 			close(c.FinishedMessages)
+			return
 		}
 
 		// TODO: don't write this every time (for when we have batch requesting enabled)
 		if !c.stopFlag {
-			s := q.getBufferSize() - c.messagesInFlight
+			s := q.getBufferSize() - cInFlight
 			if s >= 1 {
 				log.Printf("RDY %d", s)
 				c.consumer.WriteCommand(c.consumer.Ready(s))
