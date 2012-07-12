@@ -28,6 +28,7 @@ var (
 	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
+	verbose         = flag.Bool("verbose", false, "enable verbose logging")
 	lookupAddresses = util.StringArray{}
 )
 

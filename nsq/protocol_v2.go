@@ -22,4 +22,5 @@ var (
 	ClientErrV2BadMessage    = ClientError{"E_BAD_MESSAGE"}
 	ClientErrV2RequeueFailed = ClientError{"E_REQ_FAILED"}
 	ClientErrV2FinishFailed  = ClientError{"E_FIN_FAILED"}
+	ClientErrV2CloseFailed   = ClientError{"E_CLOSE_FAILED"}
 )

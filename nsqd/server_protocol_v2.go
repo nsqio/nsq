@@ -47,7 +47,9 @@ func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
-		log.Printf("PROTOCOL(V2): %#v", params)
+		if *verbose {
+			log.Printf("PROTOCOL(V2): [%s] %#v", client.String(), params)
+		}
 
 		response, err := nsq.ProtocolExecute(p, client, params...)
 		if err != nil {
@@ -123,8 +125,10 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 			case msg := <-channel.clientMessageChan:
 				client.SetState("ready_count", readyCount-1)
 
-				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-					msg.Id, client.String(), msg.Body)
+				if *verbose {
+					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+						msg.Id, client.String(), msg.Body)
+				}
 
 				data, err := msg.Encode()
 				if err != nil {
@@ -308,9 +312,13 @@ func (p *ServerProtocolV2) CLS(client *nsq.ServerClient, params []string) ([]byt
 	// send a FrameTypeCloseWait response
 	clientData, err := p.Frame(nsq.FrameTypeCloseWait, nil)
 	if err != nil {
-		log.Printf("error writing FrameTypeCloseWait")
+		return nil, nsq.ClientErrV2CloseFailed
 	}
-	client.Write(clientData)
+
+	_, err = client.Write(clientData)
+	if err != nil {
+		return nil, nsq.ClientErrV2CloseFailed
+	}
 
 	return nil, nil
 }

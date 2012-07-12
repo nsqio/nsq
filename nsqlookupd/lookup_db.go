@@ -55,7 +55,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		}
 	}
 
-	log.Printf("%#v", data)
+	log.Printf("LOOKUP: data %#v", data)
 
 	return data, nil
 }

@@ -74,7 +74,7 @@ func (c *ServerClient) Handle(protocols map[int32]Protocol) {
 	// to gracefully upgrade the protocol away from text/line oriented to whatever...
 	err = binary.Read(c.conn, binary.BigEndian, &protocolVersion)
 	if err != nil {
-		log.Printf("CLIENT(%s): failed to read protocol version", c.String())
+		log.Printf("ERROR: client(%s) failed to read protocol version", c.String())
 		return
 	}
 
@@ -83,7 +83,7 @@ func (c *ServerClient) Handle(protocols map[int32]Protocol) {
 	prot, ok := protocols[protocolVersion]
 	if !ok {
 		c.Write([]byte(ClientErrBadProtocol.Error()))
-		log.Printf("CLIENT(%s): bad protocol version %d", c.String(), protocolVersion)
+		log.Printf("ERROR: client(%s) bad protocol version %d", c.String(), protocolVersion)
 		return
 	}
 
