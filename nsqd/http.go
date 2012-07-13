@@ -40,7 +40,7 @@ func memProfileHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	pprof.WriteHeapProfile(f)
 	f.Close()
-	
+
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
 }

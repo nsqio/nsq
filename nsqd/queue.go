@@ -2,13 +2,14 @@ package main
 
 import (
 	"../nsq"
+	"../util/pqueue"
 	"log"
 )
 
 type Queue interface {
 	MemoryChan() chan *nsq.Message
 	BackendQueue() nsq.BackendQueue
-	InFlight() map[string]*nsq.Message
+	InFlight() map[string]interface{}
 }
 
 func EmptyQueue(q Queue) error {
@@ -40,7 +41,8 @@ func FlushQueue(q Queue) error {
 inflight:
 	inFlight := q.InFlight()
 	if inFlight != nil {
-		for _, msg := range inFlight {
+		for _, item := range inFlight {
+			msg := item.(*pqueue.Item).Value.(*nsq.Message)
 			err := WriteMessageToBackend(msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())

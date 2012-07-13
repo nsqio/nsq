@@ -19,7 +19,6 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Retries   uint16
-	UtilChan  chan int
 }
 
 // NewMessage creates a Message, initializes some meta-data, 
@@ -29,7 +28,6 @@ func NewMessage(id []byte, body []byte) *Message {
 		Id:        id,
 		Body:      body,
 		Timestamp: time.Now().Unix(),
-		UtilChan:  make(chan int),
 	}
 }
 

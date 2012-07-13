@@ -47,7 +47,7 @@ func (t *Topic) BackendQueue() nsq.BackendQueue {
 	return t.backend
 }
 
-func (c *Topic) InFlight() map[string]*nsq.Message {
+func (c *Topic) InFlight() map[string]interface{} {
 	return nil
 }
 
@@ -103,7 +103,7 @@ func (t *Topic) MessagePump() {
 			// needs a unique instance
 			chanMsg := nsq.NewMessage(msg.Id, msg.Body)
 			chanMsg.Timestamp = msg.Timestamp
-			go channel.PutMessage(chanMsg)
+			channel.PutMessage(chanMsg)
 		}
 		t.RUnlock()
 	}

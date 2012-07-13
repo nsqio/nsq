@@ -2,7 +2,9 @@ package main
 
 import (
 	"../nsq"
+	"../util/pqueue"
 	"bitly/notify"
+	"container/heap"
 	"errors"
 	"log"
 	"sync"
@@ -10,8 +12,12 @@ import (
 )
 
 const (
+	// TODO: move this into the nsqd object so its overwritable for tests
 	// the amount of time to wait for a client to respond to a message
-	msgTimeoutMs = 60000
+	msgTimeoutMs = int64(60 * time.Second)
+
+	// the amount of time a worker will wait when idle
+	defaultWorkerWaitTimeMs = 250 * time.Millisecond
 )
 
 // Channel represents the concrete type for a NSQ channel (and also
@@ -37,7 +43,11 @@ type Channel struct {
 
 	// state tracking
 	clients          []*nsq.ServerClient
-	inFlightMessages map[string]*nsq.Message
+	requeuePQ        pqueue.PriorityQueue
+	requeueMutex     sync.Mutex
+	inFlightMessages map[string]interface{}
+	inFlightPQ       pqueue.PriorityQueue
+	inFlightMutex    sync.Mutex
 
 	// stat counters
 	requeueCount int64
@@ -58,10 +68,14 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		clientMessageChan:   make(chan *nsq.Message),
 		exitChan:            make(chan int),
 		clients:             make([]*nsq.ServerClient, 0, 5),
-		inFlightMessages:    make(map[string]*nsq.Message),
+		inFlightMessages:    make(map[string]interface{}),
+		inFlightPQ:          make(pqueue.PriorityQueue, 0, inMemSize/10),
+		requeuePQ:           make(pqueue.PriorityQueue, 0, inMemSize/10),
 	}
 	go c.router()
 	go c.messagePump()
+	go c.requeueWorker()
+	go c.inFlightWorker()
 	notify.Post("new_channel", c)
 	return c
 }
@@ -77,7 +91,7 @@ func (c *Channel) BackendQueue() nsq.BackendQueue {
 }
 
 // InFlight implements the Queue interface
-func (c *Channel) InFlight() map[string]*nsq.Message {
+func (c *Channel) InFlight() map[string]interface{} {
 	return c.inFlightMessages
 }
 
@@ -89,11 +103,11 @@ func (c *Channel) PutMessage(msg *nsq.Message) {
 
 // FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(id []byte) error {
-	msg, err := c.popInFlightMessage(id)
+	item, err := c.popInFlightMessage(id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
 	} else {
-		c.endWaitToAutoRequeue(msg)
+		c.removeFromInFlightPQ(item)
 	}
 	return err
 }
@@ -104,35 +118,29 @@ func (c *Channel) FinishMessage(id []byte) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(id []byte, timeoutMs int) error {
+func (c *Channel) RequeueMessage(id []byte, timeoutMs int64) error {
 	if timeoutMs == 0 {
 		return c.doRequeue(id)
 	}
-	go func() {
-		// TODO: we need cleanup for these goroutines
-		msg, err := c.getInFlightMessage(id)
-		if err != nil {
-			log.Printf("ERROR: failed to defer requeue message(%s) - %s", id, err.Error())
-			return
-		}
-		c.endWaitToAutoRequeue(msg)
-		<-time.After(time.Duration(timeoutMs) * time.Millisecond)
-		c.doRequeue(id)
-	}()
+
+	item, err := c.getInFlightMessage(id)
+	if err != nil {
+		return err
+	}
+	c.removeFromInFlightPQ(item)
+	c.addToDeferredPQ(item.Value.(*nsq.Message), timeoutMs)
+
 	return nil
 }
 
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(id []byte) error {
-	msg, err := c.popInFlightMessage(id)
+	item, err := c.popInFlightMessage(id)
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
-		c.endWaitToAutoRequeue(msg)
-		c.requeueCount += 1
-		// decr putCount so that we don't double count requeue puts
-		c.putCount -= 1
-		c.PutMessage(msg)
+		msg := item.Value.(*nsq.Message)
+		c.incomingMessageChan <- msg
 	}
 	return err
 }
@@ -153,7 +161,7 @@ func (c *Channel) router() {
 					continue
 				}
 			}
-			c.putCount += 1
+			c.putCount++
 		case <-c.exitChan:
 			return
 		}
@@ -161,73 +169,64 @@ func (c *Channel) router() {
 }
 
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
-func (c *Channel) pushInFlightMessage(msg *nsq.Message) error {
+func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	c.Lock()
 	defer c.Unlock()
 
-	_, ok := c.inFlightMessages[string(msg.Id)]
+	id := item.Value.(*nsq.Message).Id
+	_, ok := c.inFlightMessages[string(id)]
 	if ok {
 		return errors.New("E_ID_ALREADY_IN_FLIGHT")
 	}
-	c.inFlightMessages[string(msg.Id)] = msg
+	c.inFlightMessages[string(id)] = item
 
 	return nil
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(id []byte) (*nsq.Message, error) {
+func (c *Channel) popInFlightMessage(id []byte) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	msg, ok := c.inFlightMessages[string(id)]
+	item, ok := c.inFlightMessages[string(id)]
 	if !ok {
 		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
 	}
 	delete(c.inFlightMessages, string(id))
 
-	return msg, nil
+	return item.(*pqueue.Item), nil
 }
 
 // getInFlightMessage retrieves a message from the in-flight dictionary by ID
-func (c *Channel) getInFlightMessage(id []byte) (*nsq.Message, error) {
+func (c *Channel) getInFlightMessage(id []byte) (*pqueue.Item, error) {
 	c.RLock()
 	defer c.RUnlock()
 
-	msg, ok := c.inFlightMessages[string(id)]
+	item, ok := c.inFlightMessages[string(id)]
 	if !ok {
 		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
 	}
 
-	return msg, nil
+	return item.(*pqueue.Item), nil
 }
 
-// waitToAutoRequeue sleeps until forcefully closed (doing nothing) or 
-// times out (requeue the message automatically)
-func (c *Channel) waitToAutoRequeue(msg *nsq.Message) {
-	// TODO: we need cleanup for these goroutines
-	timer := time.NewTimer(time.Duration(msgTimeoutMs) * time.Millisecond)
-	defer timer.Stop()
-
-	select {
-	case <-timer.C:
-	case <-msg.UtilChan:
-		return
-	}
-
-	c.timeoutCount += 1
-	err := c.RequeueMessage(msg.Id, 0)
-	if err != nil {
-		log.Printf("ERROR: channel(%s) RequeueMessage(%s) - %s", c.name, msg.Id, err.Error())
-	}
+func (c *Channel) addToInFlightPQ(item *pqueue.Item) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	heap.Push(&c.inFlightPQ, item)
 }
 
-// endWaitToAutoRequeue forcefully closes the goroutine for auto-requeue
-// for the specified message
-func (c *Channel) endWaitToAutoRequeue(msg *nsq.Message) {
-	select {
-	case msg.UtilChan <- 1:
-	default:
-	}
+func (c *Channel) removeFromInFlightPQ(item *pqueue.Item) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	heap.Remove(&c.inFlightPQ, item.Index)
+}
+
+func (c *Channel) addToDeferredPQ(msg *nsq.Message, timeoutMs int64) {
+	c.requeueMutex.Lock()
+	defer c.requeueMutex.Unlock()
+	absTs := time.Now().UnixNano() + timeoutMs
+	heap.Push(&c.requeuePQ, &pqueue.Item{Value: msg, Priority: -absTs})
 }
 
 // messagePump reads messages from either memory or backend and writes
@@ -253,11 +252,16 @@ func (c *Channel) messagePump() {
 			return
 		}
 
-		msg.Retries += 1
-		c.pushInFlightMessage(msg)
+		msg.Retries++
+
 		c.clientMessageChan <- msg
-		go c.waitToAutoRequeue(msg)
-		c.getCount += 1
+
+		absTs := time.Now().UnixNano() + int64(msgTimeoutMs)
+		item := &pqueue.Item{Value: msg, Priority: -absTs}
+		c.pushInFlightMessage(item)
+		c.addToInFlightPQ(item)
+
+		c.getCount++
 	}
 }
 
@@ -309,4 +313,47 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 	}
 
 	c.clients = finalClients
+}
+
+func (c *Channel) requeueWorker() {
+	pqWorker(&c.requeuePQ, &c.requeueMutex, func(item *pqueue.Item) {
+		msg := item.Value.(*nsq.Message)
+		c.requeueCount++
+		c.doRequeue(msg.Id)
+	})
+}
+
+func (c *Channel) inFlightWorker() {
+	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
+		msg := item.Value.(*nsq.Message)
+		c.timeoutCount++
+		c.requeueCount++
+		c.doRequeue(msg.Id)
+	})
+}
+
+func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
+	waitTime := defaultWorkerWaitTimeMs
+	for {
+		<-time.After(waitTime)
+		now := time.Now().UnixNano()
+		for {
+			mutex.Lock()
+			if pq.Len() == 0 {
+				mutex.Unlock()
+				waitTime = defaultWorkerWaitTimeMs
+				break
+			}
+			item := pq.Peek().(*pqueue.Item)
+			if now < -item.Priority {
+				waitTime = time.Duration((-item.Priority)-now) + time.Millisecond
+				mutex.Unlock()
+				break
+			}
+			item = heap.Pop(pq).(*pqueue.Item)
+			mutex.Unlock()
+
+			callback(item)
+		}
+	}
 }

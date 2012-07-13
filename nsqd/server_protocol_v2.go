@@ -282,7 +282,7 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err = channel.RequeueMessage([]byte(idStr), timeoutMs)
+	err = channel.RequeueMessage([]byte(idStr), int64(timeoutMs))
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}

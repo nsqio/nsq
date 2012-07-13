@@ -74,7 +74,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
-	
+
 	for {
 		if len(channel.memoryMsgChan) == b.N {
 			break

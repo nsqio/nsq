@@ -13,7 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	"time"
+	// "time"
 )
 
 const VERSION = "0.1.3"
@@ -58,17 +58,17 @@ func main() {
 		io.WriteString(h, hostname)
 		*workerId = int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 	}
-	
-	go func() {
-		var m runtime.MemStats
-		ticker := time.NewTicker(5 * time.Second)
-		for {
-			<-ticker.C
-			runtime.ReadMemStats(&m)
-			log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
-			log.Printf("GC Runs: %#v", m.PauseNs)
-		}
-	}()
+
+	// go func() {
+	// 	var m runtime.MemStats
+	// 	ticker := time.NewTicker(5 * time.Second)
+	// 	for {
+	// 		<-ticker.C
+	// 		runtime.ReadMemStats(&m)
+	// 		log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
+	// 		log.Printf("GC Runs: %#v", m.PauseNs)
+	// 	}
+	// }()
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
 	if err != nil {

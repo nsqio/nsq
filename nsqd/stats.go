@@ -52,12 +52,15 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				clients := make([]interface{}, len(c.clients))
 				for ci, client := range c.clients {
 					state, _ := client.GetState("state")
+					readyCount, _ := client.GetState("ready_count")
 					clients[ci] = struct {
-						Name  string `json:"name"`
-						State int    `json:"state"`
+						Name       string `json:"name"`
+						State      int    `json:"state"`
+						ReadyCount int    `json:"ready_count"`
 					}{
 						client.String(),
 						state.(int),
+						readyCount.(int),
 					}
 				}
 				channels[j] = struct {
@@ -95,7 +98,8 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						c.timeoutCount))
 				for _, client := range c.clients {
 					state, _ := client.GetState("state")
-					io.WriteString(w, fmt.Sprintf("        [%s] state: %d\n", client.String(), state.(int)))
+					readyCount, _ := client.GetState("ready_count")
+					io.WriteString(w, fmt.Sprintf("        [%s] state: %d rdy: %-4d\n", client.String(), state.(int), readyCount.(int)))
 				}
 			}
 			c.RUnlock()
