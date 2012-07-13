@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 )
@@ -47,13 +48,37 @@ func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	topicName := "testbench" + strconv.Itoa(b.N)
+	topicName := "bench_topic_put" + strconv.Itoa(b.N)
 	nsqd = NewNSQd(1, nil, nil, nil, int64(b.N), os.TempDir(), 1024)
 	b.StartTimer()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
+	}
+}
+
+func BenchmarkTopicToChannelPut(b *testing.B) {
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
+	channelName := "bench"
+	nsqd = NewNSQd(1, nil, nil, nil, int64(b.N), os.TempDir(), 1024)
+	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
+	b.StartTimer()
+
+	for i := 0; i <= b.N; i++ {
+		topic := nsqd.GetTopic(topicName)
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		topic.PutMessage(msg)
+	}
+	
+	for {
+		if len(channel.memoryMsgChan) == b.N {
+			break
+		}
+		runtime.Gosched()
 	}
 }
