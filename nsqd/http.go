@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"runtime/pprof"
 	"strings"
 )
 
@@ -21,12 +23,26 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
 	handler.HandleFunc("/empty", emptyHandler)
+	handler.HandleFunc("/mem_profile", memProfileHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
+}
+
+func memProfileHandler(w http.ResponseWriter, req *http.Request) {
+	log.Printf("MEMORY Profiling Enabled")
+	f, err := os.Create("nsqd.mprof")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pprof.WriteHeapProfile(f)
+	f.Close()
+	
+	w.Header().Set("Content-Length", "2")
+	io.WriteString(w, "OK")
 }
 
 func pingHandler(w http.ResponseWriter, req *http.Request) {
