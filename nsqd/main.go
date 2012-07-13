@@ -15,7 +15,7 @@ import (
 	"runtime/pprof"
 )
 
-const VERSION = "0.1.2"
+const VERSION = "0.1.3"
 
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
