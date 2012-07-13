@@ -335,7 +335,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 		if c.stopFlag && cInFlight == 0 {
 			log.Printf("[%s] closing c.FinishedMessages", c.ServerAddress)
 			close(c.FinishedMessages)
-			return
+			continue
 		}
 
 		// TODO: don't write this every time (for when we have batch requesting enabled)
