@@ -98,7 +98,6 @@ func (t *Topic) MessagePump() {
 		}
 
 		t.RLock()
-		log.Printf("TOPIC(%s): channelMap %#v", t.name, t.channelMap)
 		for _, channel := range t.channelMap {
 			// copy the message because each channel
 			// needs a unique instance
