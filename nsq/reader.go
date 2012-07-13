@@ -190,6 +190,10 @@ func (q *Reader) QueryLookupd() {
 }
 
 func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
+	if q.stopFlag {
+		return errors.New("Queue has been stopped")
+	}
+
 	if q.runningHandlers == 0 {
 		return errors.New("There are no handlers running")
 	}
@@ -224,6 +228,15 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	return nil
 }
 
+func handleReadError(q *Reader, c *nsqConn, errMsg string) {
+	log.Printf(errMsg)
+	c.stopFlag = true
+	if len(q.nsqConnections) == 1 && len(q.lookupdAddresses) == 0 {
+		// This is the only remaining connection, so stop the queue
+		q.stopFlag = true
+	}
+}
+
 func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	c.consumer.WriteCommand(c.consumer.Ready(q.getBufferSize()))
@@ -245,15 +258,13 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 		resp, err := c.consumer.ReadResponse()
 		if err != nil {
-			log.Printf("[%s] error on response %s", c.ServerAddress, err.Error())
-			c.stopFlag = true
+			handleReadError(q, c, fmt.Sprintf("[%s] error on response %s", c.ServerAddress, err.Error()))
 			continue
 		}
 
 		frameType, data, err := c.consumer.UnpackResponse(resp)
 		if err != nil {
-			log.Printf("[%s] error (%s) unpacking response %s %s", c.ServerAddress, err.Error(), frameType, data)
-			c.stopFlag = true
+			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %s %s", c.ServerAddress, err.Error(), frameType, data))
 			continue
 		}
 
