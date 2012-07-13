@@ -84,7 +84,6 @@ func (c *Channel) InFlight() map[string]*nsq.Message {
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {
-	c.putCount += 1
 	c.incomingMessageChan <- msg
 }
 
@@ -151,8 +150,10 @@ func (c *Channel) router() {
 				if err != nil {
 					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 					// TODO: requeue?
+					continue
 				}
 			}
+			c.putCount += 1
 		case <-c.exitChan:
 			return
 		}
