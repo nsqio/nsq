@@ -6,52 +6,54 @@ type Item struct {
 	Index    int
 }
 
-type PriorityQueue struct {
-	Items []*Item
-}
+type PriorityQueue []*Item
 
 func New(capacity int) PriorityQueue {
-	return PriorityQueue{
-		Items: make([]*Item, 0, capacity),
-	}
+	return make(PriorityQueue, 0, capacity)
 }
 
 func (pq PriorityQueue) Len() int {
-	return len(pq.Items)
+	return len(pq)
 }
 
 func (pq PriorityQueue) Less(i, j int) bool {
-	return pq.Items[i].Priority > pq.Items[j].Priority
+	return pq[i].Priority > pq[j].Priority
 }
 
 func (pq PriorityQueue) Swap(i, j int) {
-	pq.Items[i], pq.Items[j] = pq.Items[j], pq.Items[i]
-	pq.Items[i].Index = i
-	pq.Items[j].Index = j
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].Index = i
+	pq[j].Index = j
 }
 
 func (pq *PriorityQueue) Push(x interface{}) {
-	n := len(pq.Items)
-	c := cap(pq.Items)
+	n := len(*pq)
+	c := cap(*pq)
 	if n+1 > c {
-		newItems := make([]*Item, n, c*2)
-		copy(newItems, pq.Items)
-		pq.Items = newItems
+		npq := make(PriorityQueue, n, c*2)
+		copy(npq, *pq)
+		*pq = npq
 	}
-	pq.Items = pq.Items[0 : n+1]
+	*pq = (*pq)[0 : n+1]
 	item := x.(*Item)
 	item.Index = n
-	pq.Items[n] = item
+	(*pq)[n] = item
 }
 
 func (pq *PriorityQueue) Pop() interface{} {
-	n := len(pq.Items)
-	item := pq.Items[n-1]
+	n := len(*pq)
+	c := cap(*pq)
+	if n < (c/2) && c > 25 {
+		npq := make(PriorityQueue, n, c/2)
+		copy(npq, *pq)
+		*pq = npq
+	}
+	item := (*pq)[n-1]
 	item.Index = -1
-	pq.Items = pq.Items[0 : n-1]
+	*pq = (*pq)[0 : n-1]
 	return item
 }
 
-func (pq *PriorityQueue) Peek() interface{} {
-	return pq.Items[len(pq.Items)-1]
+func (pq PriorityQueue) Peek() interface{} {
+	return pq[len(pq)-1]
 }
