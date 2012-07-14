@@ -139,6 +139,9 @@ func (c *Channel) doRequeue(id []byte) error {
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
+		c.Lock()
+		c.requeueCount++
+		c.Unlock()
 		msg := item.Value.(*nsq.Message)
 		c.incomingMessageChan <- msg
 	}
@@ -318,7 +321,6 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 func (c *Channel) requeueWorker() {
 	pqWorker(&c.requeuePQ, &c.requeueMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
-		c.requeueCount++
 		c.doRequeue(msg.Id)
 	})
 }
@@ -326,8 +328,7 @@ func (c *Channel) requeueWorker() {
 func (c *Channel) inFlightWorker() {
 	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
-		c.timeoutCount++
-		c.requeueCount++
+		c.timeoutCount++ // do not need to lock around this
 		c.doRequeue(msg.Id)
 	})
 }
