@@ -3,12 +3,13 @@ package nsq
 import (
 	"bitly/simplejson"
 	"bytes"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"testing"
 )
 
@@ -17,32 +18,46 @@ type MyTestHandler struct {
 	q                *Reader
 	messagesSent     int
 	messagesReceived int
+	messagesFailed   int
+}
+
+func (h *MyTestHandler) LogFailedMessage(message *Message) {
+	h.t.Logf("LogFailedMessage %s %s", message.Id, message.Body)
+	h.messagesFailed += 1
+	h.q.Stop()
 }
 
 func (h *MyTestHandler) HandleMessage(message *Message) error {
+	h.t.Logf("handling message %s %s", message.Id, message.Body)
+	if string(message.Body) == "TOBEFAILED" {
+		h.messagesReceived += 1
+		return errors.New("fail this message")
+	}
+
 	data, err := simplejson.NewJson(message.Body)
 	if err != nil {
 		return err
 	}
 
-	_, ok := data.CheckGet("__heartbeat__")
-	if ok {
-		return nil // Finish this message
-	}
-
-	action, _ := data.Get("action").String()
-	if action != "test1" {
-		h.t.Error("message 'action' was not correct: "+action, data)
-	}
-	numeric_id, _ := data.Get("numeric_id").Int()
-	if numeric_id != 12345678 {
-		h.t.Error("message 'numeric_id' was not correct: "+strconv.Itoa(numeric_id), data)
+	msg, _ := data.Get("msg").String()
+	if msg != "single" && msg != "double" {
+		h.t.Error("message 'action' was not correct: ", msg, data)
 	}
 	h.messagesReceived += 1
-	if h.messagesReceived >= 4 {
-		h.q.Stop()
-	}
 	return nil
+}
+
+func SendMessage(t *testing.T, port int, topic string, method string, body []byte) {
+	httpclient := &http.Client{}
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/%s?topic=%s", port, method, topic)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+	t.Logf("POST %s %s", endpoint, string(body))
+	resp, err := httpclient.Do(req)
+	if err != nil {
+		t.Fatalf(err.Error())
+		return
+	}
+	resp.Body.Close()
 }
 
 func TestQueuereader(t *testing.T) {
@@ -51,41 +66,17 @@ func TestQueuereader(t *testing.T) {
 
 	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:4150")
 	q, _ := NewReader("reader_test", "ch")
+	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
 
-	h := &MyTestHandler{t, q, 0, 0}
+	h := &MyTestHandler{t, q, 0, 0, 0}
 	q.AddHandler(h)
 
-	// start a http client, and send in our messages
-	httpclient := &http.Client{}
-	endpoint := "http://127.0.0.1:4151/put?topic=reader_test"
-	for i := 0; i < 2; i++ {
-		body := []byte("{\"action\":\"test1\",\"numeric_id\":12345678}")
-		req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
-		log.Println("POST", endpoint, string(body))
-		resp, err := httpclient.Do(req)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		h.messagesSent += 1
-		if resp != nil {
-			resp.Body.Close()
-			continue
-		}
-	}
+	SendMessage(t, 4151, "reader_test", "put", []byte(`{"msg":"single"}`))
+	SendMessage(t, 4151, "reader_test", "mput", []byte("{\"msg\":\"double\"}\n{\"msg\":\"double\"}"))
+	SendMessage(t, 4151, "reader_test", "put", []byte("TOBEFAILED"))
+	h.messagesSent = 4
 
-	endpoint = "http://127.0.0.1:4151/mput?topic=reader_test"
-	body := []byte("{\"action\":\"test1\",\"numeric_id\":12345678}\n{\"action\":\"test1\",\"numeric_id\":12345678}")
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
-	log.Println("POST", endpoint, string(body))
-	resp, err := httpclient.Do(req)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-	h.messagesSent += 2
-	resp.Body.Close()
-
-	err = q.ConnectToNSQ(addr)
+	err := q.ConnectToNSQ(addr)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -98,7 +89,10 @@ func TestQueuereader(t *testing.T) {
 	<-q.ExitChan
 
 	log.Println("got", h.messagesReceived, "and sent", h.messagesSent)
-	if h.messagesReceived != 4 || h.messagesReceived != h.messagesSent {
-		t.Fatalf("end of test. should have handled 2 messages", h.messagesReceived)
+	if h.messagesReceived != 9 || h.messagesSent != 4 {
+		t.Fatalf("end of test. should have handled a diff number of messages")
+	}
+	if h.messagesFailed != 1 {
+		t.Fatal("failed message not done")
 	}
 }

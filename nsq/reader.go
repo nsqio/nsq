@@ -21,6 +21,10 @@ type Handler interface {
 	HandleMessage(message *Message) error
 }
 
+type FailedMessageLogger interface {
+	LogFailedMessage(message *Message)
+}
+
 // an async handler that must send a &FinishedMessage{messageID, requeueDelay, true|false} onto 
 // responseChannel to indicate that a message has been finished. This is usefull 
 // if you want to batch work together and delay response that processing is complete
@@ -35,6 +39,8 @@ type Reader struct {
 	ExitChan            chan int
 	BufferSize          int // number of messages to allow in-flight from NSQ's at a time
 	LookupdPoolInterval int // seconds between polling lookupd's (+/- random 15 seconds)
+	MaxAttemptCount     uint16
+	DefaultRequeueDelay int // miliseconds to delay a message on failure
 
 	MessagesReceived uint64
 	MessagesFinished uint64
@@ -85,9 +91,11 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		ExitChan:            make(chan int),
 		nsqConnections:      make(map[string]*nsqConn),
 		BufferSize:          1,
+		MaxAttemptCount:     5,
 		LookupdPoolInterval: 300,
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
+		DefaultRequeueDelay: 90000,
 	}
 	return q, nil
 }
@@ -388,8 +396,20 @@ func (q *Reader) AddHandler(handler Handler) {
 			if err != nil {
 				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), message.Id, message.Body)
 			}
+
+			// message passed the max number of attempts
+			if err != nil && message.Attempts > q.MaxAttemptCount {
+				log.Printf("WARNING: msg attempted %d times. giving up %s %s", message.Attempts, message.Id, message.Body)
+				logger, ok := handler.(FailedMessageLogger)
+				if ok {
+					logger.LogFailedMessage(message.Message)
+				}
+				message.responseChannel <- &FinishedMessage{message.Id, 0, true}
+				continue
+			}
+
 			// default to an exponential delay
-			requeueDelay := 90000 * int(message.Attempts)
+			requeueDelay := q.DefaultRequeueDelay * int(message.Attempts)
 			message.responseChannel <- &FinishedMessage{message.Id, requeueDelay, err == nil}
 		}
 	}()
@@ -411,6 +431,19 @@ func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 				}
 				break
 			}
+
+			// message passed the max number of attempts
+			// note: unfortunately it's not straight forward to do this after passing to async handler, so we don't.
+			if message.Attempts > q.MaxAttemptCount {
+				log.Printf("WARNING: msg attempted %d times. giving up %s %s", message.Attempts, message.Id, message.Body)
+				logger, ok := handler.(FailedMessageLogger)
+				if ok {
+					logger.LogFailedMessage(message.Message)
+				}
+				message.responseChannel <- &FinishedMessage{message.Id, 0, true}
+				continue
+			}
+
 			handler.HandleMessage(message.Message, message.responseChannel)
 		}
 	}()

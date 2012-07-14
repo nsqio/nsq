@@ -32,7 +32,7 @@ func (c *ServerClient) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightMessageCount := atomic.LoadInt64(&c.InFlightMessageCount)
-	log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightMessageCount)
+	//	log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightMessageCount)
 
 	if inFlightMessageCount >= lastReadyCount || readyCount <= 0 {
 		return false
