@@ -68,10 +68,10 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					Depth            int64         `json:"depth"`
 					BackendDepth     int64         `json:"backend_depth"`
 					InFlightMessages int           `json:"in_flight_messages"`
-					GetCount         int64         `json:"get_count"`
-					PutCount         int64         `json:"put_count"`
-					RequeueCount     int64         `json:"requeue_count"`
-					TimeoutCount     int64         `json:"timeout_count"`
+					GetCount         uint64        `json:"get_count"`
+					PutCount         uint64        `json:"put_count"`
+					RequeueCount     uint64        `json:"requeue_count"`
+					TimeoutCount     uint64        `json:"timeout_count"`
 					Clients          []interface{} `json:"clients"`
 				}{
 					channelName,

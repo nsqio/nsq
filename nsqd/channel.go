@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -50,10 +51,10 @@ type Channel struct {
 	inFlightMutex    sync.Mutex
 
 	// stat counters
-	requeueCount int64
-	getCount     int64
-	putCount     int64
-	timeoutCount int64
+	requeueCount uint64
+	getCount     uint64
+	putCount     uint64
+	timeoutCount uint64
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -189,9 +190,7 @@ func (c *Channel) doRequeue(id []byte) error {
 	if err != nil {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
-		c.Lock()
-		c.requeueCount++
-		c.Unlock()
+		atomic.AddUint64(&c.requeueCount, 1)
 		msg := item.Value.(*nsq.Message)
 		c.incomingMessageChan <- msg
 	}
@@ -275,7 +274,7 @@ func (c *Channel) router() {
 					continue
 				}
 			}
-			c.putCount++
+			atomic.AddUint64(&c.putCount, 1)
 		case <-c.exitChan:
 			return
 		}
@@ -314,7 +313,7 @@ func (c *Channel) messagePump() {
 		c.pushInFlightMessage(item)
 		c.addToInFlightPQ(item)
 
-		c.getCount++
+		atomic.AddUint64(&c.getCount, 1)
 	}
 }
 
@@ -328,7 +327,7 @@ func (c *Channel) requeueWorker() {
 func (c *Channel) inFlightWorker() {
 	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
-		c.timeoutCount++ // do not need to lock around this
+		atomic.AddUint64(&c.timeoutCount, 1)
 		c.doRequeue(msg.Id)
 	})
 }
