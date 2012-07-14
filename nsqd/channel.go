@@ -333,6 +333,14 @@ func (c *Channel) inFlightWorker() {
 	})
 }
 
+// generic loop (executed in a goroutine) that periodically wakes up to walk
+// the specified (chronological) priority queue and call the callback
+//
+// if the first element on the queue is not ready (not enough time has elapsed)
+// the amount of time to wait before the next iteration is adjusted to optimize
+//
+// TODO: fix edge case where you're waiting and a new element is concurrently
+// added that has a lower timeout (ie. added as the first element)
 func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	waitTime := defaultWorkerWait
 	for {
