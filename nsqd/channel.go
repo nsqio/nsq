@@ -80,6 +80,23 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	return c
 }
 
+// Close cleanly closes the Channel
+func (c *Channel) Close() error {
+	var err error
+
+	log.Printf("CHANNEL(%s): closing", c.name)
+
+	close(c.exitChan)
+	FlushQueue(c)
+
+	err = c.backend.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // MemoryChan implements the Queue interface
 func (c *Channel) MemoryChan() chan *nsq.Message {
 	return c.memoryMsgChan
@@ -133,6 +150,39 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 	return nil
 }
 
+// AddClient adds the ServerClient the Channel's client list
+func (c *Channel) AddClient(client *nsq.ServerClient) {
+	c.Lock()
+	defer c.Unlock()
+
+	found := false
+	for _, cli := range c.clients {
+		if cli == client {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		c.clients = append(c.clients, client)
+	}
+}
+
+// RemoveClient removes the ServerClient from the Channel's client list
+func (c *Channel) RemoveClient(client *nsq.ServerClient) {
+	c.Lock()
+	defer c.Unlock()
+
+	finalClients := make([]*nsq.ServerClient, 0, len(c.clients))
+	for _, cli := range c.clients {
+		if cli != client {
+			finalClients = append(finalClients, cli)
+		}
+	}
+
+	c.clients = finalClients
+}
+
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(id []byte) error {
 	item, err := c.popInFlightMessage(id)
@@ -146,29 +196,6 @@ func (c *Channel) doRequeue(id []byte) error {
 		c.incomingMessageChan <- msg
 	}
 	return err
-}
-
-// Router handles the muxing of incoming Channel messages, either writing
-// to the in-memory channel or to the backend
-func (c *Channel) router() {
-	for {
-		select {
-		case msg := <-c.incomingMessageChan:
-			select {
-			case c.memoryMsgChan <- msg:
-			default:
-				err := WriteMessageToBackend(msg, c)
-				if err != nil {
-					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-					// TODO: requeue?
-					continue
-				}
-			}
-			c.putCount++
-		case <-c.exitChan:
-			return
-		}
-	}
 }
 
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
@@ -232,6 +259,29 @@ func (c *Channel) addToDeferredPQ(msg *nsq.Message, timeout time.Duration) {
 	heap.Push(&c.requeuePQ, &pqueue.Item{Value: msg, Priority: -absTs})
 }
 
+// Router handles the muxing of incoming Channel messages, either writing
+// to the in-memory channel or to the backend
+func (c *Channel) router() {
+	for {
+		select {
+		case msg := <-c.incomingMessageChan:
+			select {
+			case c.memoryMsgChan <- msg:
+			default:
+				err := WriteMessageToBackend(msg, c)
+				if err != nil {
+					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+					// TODO: requeue?
+					continue
+				}
+			}
+			c.putCount++
+		case <-c.exitChan:
+			return
+		}
+	}
+}
+
 // messagePump reads messages from either memory or backend and writes
 // to the client output go channel
 //
@@ -268,56 +318,6 @@ func (c *Channel) messagePump() {
 	}
 }
 
-// Close cleanly closes the Channel
-func (c *Channel) Close() error {
-	var err error
-
-	log.Printf("CHANNEL(%s): closing", c.name)
-
-	close(c.exitChan)
-	FlushQueue(c)
-
-	err = c.backend.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// AddClient adds the ServerClient the Channel's client list
-func (c *Channel) AddClient(client *nsq.ServerClient) {
-	c.Lock()
-	defer c.Unlock()
-
-	found := false
-	for _, cli := range c.clients {
-		if cli == client {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		c.clients = append(c.clients, client)
-	}
-}
-
-// RemoveClient removes the ServerClient from the Channel's client list
-func (c *Channel) RemoveClient(client *nsq.ServerClient) {
-	c.Lock()
-	defer c.Unlock()
-
-	finalClients := make([]*nsq.ServerClient, 0, len(c.clients))
-	for _, cli := range c.clients {
-		if cli != client {
-			finalClients = append(finalClients, cli)
-		}
-	}
-
-	c.clients = finalClients
-}
-
 func (c *Channel) requeueWorker() {
 	pqWorker(&c.requeuePQ, &c.requeueMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
@@ -346,6 +346,7 @@ func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *p
 				break
 			}
 			item := pq.Peek().(*pqueue.Item)
+			// priorities are stored negative so that Pop() will return the lowest
 			if now < -item.Priority {
 				waitTime = time.Duration((-item.Priority)-now) + time.Millisecond
 				mutex.Unlock()
