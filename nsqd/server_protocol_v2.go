@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -282,7 +283,7 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err = channel.RequeueMessage([]byte(idStr), int64(timeoutMs))
+	err = channel.RequeueMessage([]byte(idStr), time.Duration(timeoutMs)*time.Millisecond)
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}

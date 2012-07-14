@@ -14,10 +14,10 @@ import (
 const (
 	// TODO: move this into the nsqd object so its overwritable for tests
 	// the amount of time to wait for a client to respond to a message
-	msgTimeoutMs = int64(60 * time.Second)
+	msgTimeout = int64(60 * time.Second)
 
 	// the amount of time a worker will wait when idle
-	defaultWorkerWaitTimeMs = 250 * time.Millisecond
+	defaultWorkerWait = 250 * time.Millisecond
 )
 
 // Channel represents the concrete type for a NSQ channel (and also
@@ -118,8 +118,8 @@ func (c *Channel) FinishMessage(id []byte) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(id []byte, timeoutMs int64) error {
-	if timeoutMs == 0 {
+func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
+	if timeout == 0 {
 		return c.doRequeue(id)
 	}
 
@@ -128,7 +128,7 @@ func (c *Channel) RequeueMessage(id []byte, timeoutMs int64) error {
 		return err
 	}
 	c.removeFromInFlightPQ(item)
-	c.addToDeferredPQ(item.Value.(*nsq.Message), timeoutMs)
+	c.addToDeferredPQ(item.Value.(*nsq.Message), timeout)
 
 	return nil
 }
@@ -222,10 +222,10 @@ func (c *Channel) removeFromInFlightPQ(item *pqueue.Item) {
 	heap.Remove(&c.inFlightPQ, item.Index)
 }
 
-func (c *Channel) addToDeferredPQ(msg *nsq.Message, timeoutMs int64) {
+func (c *Channel) addToDeferredPQ(msg *nsq.Message, timeout time.Duration) {
 	c.requeueMutex.Lock()
 	defer c.requeueMutex.Unlock()
-	absTs := time.Now().UnixNano() + timeoutMs
+	absTs := time.Now().UnixNano() + int64(timeout)
 	heap.Push(&c.requeuePQ, &pqueue.Item{Value: msg, Priority: -absTs})
 }
 
@@ -256,7 +256,7 @@ func (c *Channel) messagePump() {
 
 		c.clientMessageChan <- msg
 
-		absTs := time.Now().UnixNano() + int64(msgTimeoutMs)
+		absTs := time.Now().UnixNano() + msgTimeout
 		item := &pqueue.Item{Value: msg, Priority: -absTs}
 		c.pushInFlightMessage(item)
 		c.addToInFlightPQ(item)
@@ -333,7 +333,7 @@ func (c *Channel) inFlightWorker() {
 }
 
 func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
-	waitTime := defaultWorkerWaitTimeMs
+	waitTime := defaultWorkerWait
 	for {
 		<-time.After(waitTime)
 		now := time.Now().UnixNano()
@@ -341,7 +341,7 @@ func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *p
 			mutex.Lock()
 			if pq.Len() == 0 {
 				mutex.Unlock()
-				waitTime = defaultWorkerWaitTimeMs
+				waitTime = defaultWorkerWait
 				break
 			}
 			item := pq.Peek().(*pqueue.Item)
