@@ -69,8 +69,8 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		exitChan:            make(chan int),
 		clients:             make([]*nsq.ServerClient, 0, 5),
 		inFlightMessages:    make(map[string]interface{}),
-		inFlightPQ:          make(pqueue.PriorityQueue, 0, inMemSize/10),
-		requeuePQ:           make(pqueue.PriorityQueue, 0, inMemSize/10),
+		inFlightPQ:          pqueue.New(int(inMemSize / 10)),
+		requeuePQ:           pqueue.New(int(inMemSize / 10)),
 	}
 	go c.router()
 	go c.messagePump()

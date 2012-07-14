@@ -6,49 +6,52 @@ type Item struct {
 	Index    int
 }
 
-type PriorityQueue []*Item
+type PriorityQueue struct {
+	Items []*Item
+}
+
+func New(capacity int) PriorityQueue {
+	return PriorityQueue{
+		Items: make([]*Item, 0, capacity),
+	}
+}
 
 func (pq PriorityQueue) Len() int {
-	return len(pq)
+	return len(pq.Items)
 }
 
 func (pq PriorityQueue) Less(i, j int) bool {
-	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
-	return pq[i].Priority > pq[j].Priority
+	return pq.Items[i].Priority > pq.Items[j].Priority
 }
 
 func (pq PriorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].Index = i
-	pq[j].Index = j
+	pq.Items[i], pq.Items[j] = pq.Items[j], pq.Items[i]
+	pq.Items[i].Index = i
+	pq.Items[j].Index = j
 }
 
 func (pq *PriorityQueue) Push(x interface{}) {
-	// Push and Pop use pointer receivers because they modify the slice's length,
-	// not just its contents.
-	// To simplify indexing expressions in these methods, we save a copy of the
-	// slice object. We could instead write (*pq)[i].
-	a := *pq
-	n := len(a)
-	a = a[0 : n+1]
+	n := len(pq.Items)
+	c := cap(pq.Items)
+	if n+1 > c {
+		newItems := make([]*Item, n, c*2)
+		copy(newItems, pq.Items)
+		pq.Items = newItems
+	}
+	pq.Items = pq.Items[0 : n+1]
 	item := x.(*Item)
 	item.Index = n
-	a[n] = item
-	*pq = a
+	pq.Items[n] = item
 }
 
 func (pq *PriorityQueue) Pop() interface{} {
-	a := *pq
-	n := len(a)
-	item := a[n-1]
-	item.Index = -1 // for safety
-	*pq = a[0 : n-1]
+	n := len(pq.Items)
+	item := pq.Items[n-1]
+	item.Index = -1
+	pq.Items = pq.Items[0 : n-1]
 	return item
 }
 
 func (pq *PriorityQueue) Peek() interface{} {
-	a := *pq
-	n := len(a)
-	item := a[n-1]
-	return item
+	return pq.Items[len(pq.Items)-1]
 }
