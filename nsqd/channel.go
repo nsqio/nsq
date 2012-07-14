@@ -145,6 +145,11 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	// TODO: fix bug where two clients simultaneously REQ the same id
+	// cause this remove to crash (it assumes that the item is on the queue)
+	// a possible better long term solution is to resolve the issue
+	// of overloading the in-flight data structures with deferred requeue 
+	// messages, we would not have to keep the item on the in-flight map
 	c.removeFromInFlightPQ(item)
 	c.addToDeferredPQ(item.Value.(*nsq.Message), timeout)
 
