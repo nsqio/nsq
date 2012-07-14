@@ -13,7 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	// "time"
+	"time"
 )
 
 const VERSION = "0.1.5"
@@ -25,6 +25,7 @@ var (
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 1024768, "number of bytes per diskqueue file before rolling")
+	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
@@ -101,7 +102,8 @@ func main() {
 	}()
 	signal.Notify(signalChan, os.Interrupt)
 
-	nsqd = NewNSQd(*workerId, tcpAddr, webAddr, lookupAddresses, *memQueueSize, *dataPath, *maxBytesPerFile)
+	msgTimeoutDuration := int64(time.Duration(*msgTimeoutMs) * time.Millisecond)
+	nsqd = NewNSQd(*workerId, tcpAddr, webAddr, lookupAddresses, *memQueueSize, *dataPath, *maxBytesPerFile, msgTimeoutDuration)
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()

@@ -13,6 +13,7 @@ type NSQd struct {
 	memQueueSize    int64
 	dataPath        string
 	maxBytesPerFile int64
+	msgTimeout      int64
 	tcpAddr         *net.TCPAddr
 	httpAddr        *net.TCPAddr
 	lookupAddrs     util.StringArray
@@ -25,12 +26,13 @@ type NSQd struct {
 
 var nsqd *NSQd
 
-func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64) *NSQd {
+func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *NSQd {
 	n := &NSQd{
 		workerId:        workerId,
 		memQueueSize:    memQueueSize,
 		dataPath:        dataPath,
 		maxBytesPerFile: maxBytesPerFile,
+		msgTimeout:      msgTimeout,
 		tcpAddr:         tcpAddr,
 		httpAddr:        httpAddr,
 		lookupAddrs:     lookupAddrs,
@@ -79,7 +81,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile)
+		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile, n.msgTimeout)
 		n.topicMap[topicName] = topic
 		log.Printf("TOPIC(%s): created", topic.name)
 	}

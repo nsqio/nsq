@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-const (
-	MaxNameLength = 32
-)
+const MaxNameLength = 32
 
 // Protocol describes the basic behavior of any protocol in the system
 type Protocol interface {

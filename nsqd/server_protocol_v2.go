@@ -11,11 +11,8 @@ import (
 	"time"
 )
 
-const (
-	// 1hr
-	maxTimeoutMs  = 3600000
-	maxReadyCount = 2500
-)
+const maxTimeout = time.Hour
+const maxReadyCount = 2500
 
 type ServerProtocolV2 struct {
 	nsq.Protocol
@@ -276,14 +273,15 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 	if err != nil {
 		return nil, nsq.ClientErrV2Invalid
 	}
+	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
-	if timeoutMs < 0 || timeoutMs > maxTimeoutMs {
+	if timeoutDuration < 0 || timeoutDuration > maxTimeout {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
 	channelInterface, _ := client.GetState("channel")
 	channel := channelInterface.(*Channel)
-	err = channel.RequeueMessage([]byte(idStr), time.Duration(timeoutMs)*time.Millisecond)
+	err = channel.RequeueMessage([]byte(idStr), timeoutDuration)
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}

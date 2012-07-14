@@ -8,9 +8,7 @@ import (
 	"time"
 )
 
-const (
-	MsgIdLength = 16
-)
+const MsgIdLength = 16
 
 // Message is the fundamental data type containing
 // the id, body, and meta-data

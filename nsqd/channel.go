@@ -12,14 +12,8 @@ import (
 	"time"
 )
 
-const (
-	// TODO: move this into the nsqd object so its overwritable for tests
-	// the amount of time to wait for a client to respond to a message
-	msgTimeout = int64(60 * time.Second)
-
-	// the amount of time a worker will wait when idle
-	defaultWorkerWait = 250 * time.Millisecond
-)
+// the amount of time a worker will wait when idle
+const defaultWorkerWait = 250 * time.Millisecond
 
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
@@ -32,8 +26,9 @@ const (
 type Channel struct {
 	sync.RWMutex // embed a r/w mutex
 
-	topicName string
-	name      string
+	topicName  string
+	name       string
+	msgTimeout int64
 
 	backend nsq.BackendQueue
 
@@ -58,10 +53,11 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64) *Channel {
+func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *Channel {
 	c := &Channel{
-		topicName: topicName,
-		name:      channelName,
+		topicName:  topicName,
+		name:       channelName,
+		msgTimeout: msgTimeout,
 		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 		backend:             NewDiskQueue(topicName+":"+channelName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
@@ -313,7 +309,7 @@ func (c *Channel) messagePump() {
 
 		c.clientMessageChan <- msg
 
-		absTs := time.Now().UnixNano() + msgTimeout
+		absTs := time.Now().UnixNano() + c.msgTimeout
 		item := &pqueue.Item{Value: msg, Priority: -absTs}
 		c.pushInFlightMessage(item)
 		c.addToInFlightPQ(item)

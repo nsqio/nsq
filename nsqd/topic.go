@@ -18,11 +18,12 @@ type Topic struct {
 	memQueueSize        int64
 	dataPath            string
 	maxBytesPerFile     int64
+	msgTimeout          int64
 	exitChan            chan int
 }
 
 // Topic constructor
-func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64) *Topic {
+func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *Topic {
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
@@ -32,6 +33,7 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 		memQueueSize:        memQueueSize,
 		dataPath:            dataPath,
 		maxBytesPerFile:     maxBytesPerFile,
+		msgTimeout:          msgTimeout,
 		exitChan:            make(chan int),
 	}
 	go topic.Router()
@@ -60,7 +62,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile)
+		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.msgTimeout)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
