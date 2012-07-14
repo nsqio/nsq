@@ -2,7 +2,7 @@ nsqd/nsqd
 nsqlookupd/nsqlookupd
 nsqreader/nsqreader
 nsqstatsd/nsqstatsd
-nsq_to_file/nsq_to_file
+examples/nsq_to_file/nsq_to_file
 
 *.dat
 

@@ -28,8 +28,8 @@ func (p *ServerLookupProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
-	client.SetState("state", nsq.LookupClientStateV1Init)
-	client.SetState("safe_map", sm)
+	client.State = nsq.LookupClientStateV1Init
+	client.sm = sm
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -83,8 +83,7 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []str
 		return nil, err
 	}
 
-	smInterface, _ := client.GetState("safe_map")
-	sm := smInterface.(*util.SafeMap)
+	sm := client.sm.(*util.SafeMap)
 	err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, host, port)
 	if err != nil {
 		return nil, err

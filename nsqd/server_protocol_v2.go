@@ -30,9 +30,7 @@ func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
-	clientExitChan := make(chan int)
-	client.SetState("state", nsq.ClientStateV2Init)
-	client.SetState("exit_chan", clientExitChan)
+	client.State = nsq.ClientStateV2Init
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -77,7 +75,7 @@ func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
 	}
 
 	// TODO: gracefully send clients the close signal
-	close(clientExitChan)
+	close(client.ExitChan)
 
 	return err
 }
@@ -102,26 +100,21 @@ func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 	var err error
 
-	client.SetState("ready_count", 0)
-
-	readyStateChanInterface, _ := client.GetState("ready_state_chan")
-	readyStateChan := readyStateChanInterface.(chan int)
-
-	clientExitChanInterface, _ := client.GetState("exit_chan")
-	clientExitChan := clientExitChanInterface.(chan int)
-
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
+	channel := client.Channel.(*Channel)
 
 	for {
-		readyCountInterface, _ := client.GetState("ready_count")
-		readyCount := readyCountInterface.(int)
-		if readyCount > 0 {
+		if !client.IsReadyForMessages() {
+			// wait for a change in state
 			select {
-			case count := <-readyStateChan:
-				client.SetState("ready_count", count)
+			case <-client.ReadyStateChange:
+				continue
+			case <-client.ExitChan:
+				goto exit
+			}
+		} else {
+			select {
+			case <-client.ReadyStateChange:
 			case msg := <-channel.clientMessageChan:
-				client.SetState("ready_count", readyCount-1)
 
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
@@ -138,18 +131,14 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 					goto exit
 				}
 
+				channel.StartInflightTimeout(msg, client)
+				client.SendingMessage()
+
 				_, err = client.Write(clientData)
 				if err != nil {
 					goto exit
 				}
-			case <-clientExitChan:
-				goto exit
-			}
-		} else {
-			select {
-			case count := <-readyStateChan:
-				client.SetState("ready_count", count)
-			case <-clientExitChan:
+			case <-client.ExitChan:
 				goto exit
 			}
 		}
@@ -163,7 +152,7 @@ exit:
 }
 
 func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Init {
+	if client.State != nsq.ClientStateV2Init {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -189,15 +178,12 @@ func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byt
 		return nil, nsq.ClientErrV2BadChannel
 	}
 
-	readyStateChan := make(chan int)
-	client.SetState("ready_state_chan", readyStateChan)
-
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client)
 
-	client.SetState("channel", channel)
-	client.SetState("state", nsq.ClientStateV2Subscribed)
+	client.Channel = channel
+	client.State = nsq.ClientStateV2Subscribed
 
 	go p.PushMessages(client)
 
@@ -207,14 +193,13 @@ func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byt
 func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byte, error) {
 	var err error
 
-	state, _ := client.GetState("state")
-	if state.(int) == nsq.ClientStateV2Closing {
+	if client.State == nsq.ClientStateV2Closing {
 		// just ignore ready changes on a closing channel
 		log.Printf("PROTOCOL(V2): ignoring RDY after CLS in state ClientStateV2Closing")
 		return nil, nil
 	}
 
-	if state.(int) != nsq.ClientStateV2Subscribed {
+	if client.State != nsq.ClientStateV2Subscribed {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -230,16 +215,13 @@ func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byt
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	readyStateChanInterface, _ := client.GetState("ready_state_chan")
-	readyStateChan := readyStateChanInterface.(chan int)
-	readyStateChan <- count
+	client.SetReadyCount(count)
 
 	return nil, nil
 }
 
 func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byte, error) {
-	state, _ := client.GetState("state")
-	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
+	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -248,19 +230,18 @@ func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byt
 	}
 
 	idStr := params[1]
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
-	err := channel.FinishMessage([]byte(idStr))
+	err := client.Channel.(*Channel).FinishMessage([]byte(idStr))
 	if err != nil {
 		return nil, nsq.ClientErrV2FinishFailed
 	}
+
+	client.FinishMessage()
 
 	return nil, nil
 }
 
 func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byte, error) {
-	state, _ := client.GetState("state")
-	if state.(int) != nsq.ClientStateV2Subscribed && state.(int) != nsq.ClientStateV2Closing {
+	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -279,18 +260,18 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	channelInterface, _ := client.GetState("channel")
-	channel := channelInterface.(*Channel)
-	err = channel.RequeueMessage([]byte(idStr), timeoutDuration)
+	err = client.Channel.(*Channel).RequeueMessage([]byte(idStr), timeoutDuration)
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}
+
+	client.RequeuedMessage()
 
 	return nil, nil
 }
 
 func (p *ServerProtocolV2) CLS(client *nsq.ServerClient, params []string) ([]byte, error) {
-	if state, _ := client.GetState("state"); state.(int) != nsq.ClientStateV2Subscribed {
+	if client.State != nsq.ClientStateV2Subscribed {
 		return nil, nsq.ClientErrV2Invalid
 	}
 
@@ -299,14 +280,12 @@ func (p *ServerProtocolV2) CLS(client *nsq.ServerClient, params []string) ([]byt
 	}
 
 	// Force the client into ready 0
-	readyStateChanInterface, _ := client.GetState("ready_state_chan")
-	readyStateChan := readyStateChanInterface.(chan int)
-	readyStateChan <- 0
+	client.SetReadyCount(0)
 
 	// mark this client as closing
-	client.SetState("state", nsq.ClientStateV2Closing)
+	client.State = nsq.ClientStateV2Closing
 
-	// TODO start a timer to actually close the channel (in case the client doesn't do it first)
+	//TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 
 	// send a FrameTypeCloseWait response
 	clientData, err := p.Frame(nsq.FrameTypeCloseWait, nil)

@@ -33,7 +33,7 @@ func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	topic := NewTopic("test", 10, os.TempDir(), 1024)
+	topic := NewTopic("test", 10, os.TempDir(), 1024, 60000)
 	channel1 := topic.GetChannel("ch1")
 	assert.NotEqual(t, nil, channel1)
 	assert.Equal(t, "ch1", channel1.name)

@@ -27,7 +27,7 @@ func (p *ServerProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	var err error
 	var line string
 
-	client.SetState("state", nsq.ClientStateV1Init)
+	client.State = nsq.ClientStateV1Init
 
 	err = nil
 	reader := bufio.NewReader(client)

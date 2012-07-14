@@ -42,7 +42,7 @@ inflight:
 	inFlight := q.InFlight()
 	if inFlight != nil {
 		for _, item := range inFlight {
-			msg := item.(*pqueue.Item).Value.(*nsq.Message)
+			msg := item.(*pqueue.Item).Value.(*inflightMessage).msg
 			err := WriteMessageToBackend(msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())

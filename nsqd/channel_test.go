@@ -17,7 +17,7 @@ func TestPutMessage(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
-	topic := NewTopic(topicName, 10, os.TempDir(), 1024)
+	topic := NewTopic(topicName, 10, os.TempDir(), 1024, 60*1000)
 	channel1 := topic.GetChannel("ch")
 
 	msg := nsq.NewMessage([]byte("abcdefghijklmnop"), []byte("test"))
@@ -34,7 +34,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
-	topic := NewTopic(topicName, 10, os.TempDir(), 1024)
+	topic := NewTopic(topicName, 10, os.TempDir(), 1024, 60*1000)
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 

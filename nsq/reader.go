@@ -239,7 +239,9 @@ func handleReadError(q *Reader, c *nsqConn, errMsg string) {
 
 func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
-	c.consumer.WriteCommand(c.consumer.Ready(q.getBufferSize()))
+	s := q.getBufferSize()
+	log.Printf("RDY %d", s)
+	c.consumer.WriteCommand(c.consumer.Ready(s))
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close

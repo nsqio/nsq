@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
 // print out stats for each topic/channel
@@ -51,16 +52,18 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			if jsonFormat {
 				clients := make([]interface{}, len(c.clients))
 				for ci, client := range c.clients {
-					state, _ := client.GetState("state")
-					readyCount, _ := client.GetState("ready_count")
+					readyCount := atomic.LoadInt64(&client.ReadyCount)
+					inFlightMessageCount := atomic.LoadInt64(&client.InFlightMessageCount)
 					clients[ci] = struct {
-						Name       string `json:"name"`
-						State      int    `json:"state"`
-						ReadyCount int    `json:"ready_count"`
+						Name          string `json:"name"`
+						State         int    `json:"state"`
+						ReadyCount    int    `json:"ready_count"`
+						InFlightCount int    `json:"in_flight_count"`
 					}{
 						client.String(),
-						state.(int),
-						readyCount.(int),
+						client.State,
+						int(readyCount),
+						int(inFlightMessageCount),
 					}
 				}
 				channels[j] = struct {
@@ -97,9 +100,9 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						c.requeueCount,
 						c.timeoutCount))
 				for _, client := range c.clients {
-					state, _ := client.GetState("state")
-					readyCount, _ := client.GetState("ready_count")
-					io.WriteString(w, fmt.Sprintf("        [%s] state: %d rdy: %-4d\n", client.String(), state.(int), readyCount.(int)))
+					readyCount := atomic.LoadInt64(&client.ReadyCount)
+					inFlightMessageCount := atomic.LoadInt64(&client.InFlightMessageCount)
+					io.WriteString(w, fmt.Sprintf("        [%s] state: %d inflt: %-4d rdy: %-4d\n", client.String(), client.State, inFlightMessageCount, readyCount))
 				}
 			}
 			c.RUnlock()

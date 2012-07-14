@@ -52,6 +52,11 @@ type Channel struct {
 	timeoutCount uint64
 }
 
+type inflightMessage struct {
+	msg    *nsq.Message
+	client *nsq.ServerClient
+}
+
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *Channel {
 	c := &Channel{
@@ -113,6 +118,7 @@ func (c *Channel) InFlight() map[string]interface{} {
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {
 	c.incomingMessageChan <- msg
+	atomic.AddUint64(&c.putCount, 1)
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -126,7 +132,7 @@ func (c *Channel) FinishMessage(id []byte) error {
 	return err
 }
 
-// RequeueMessage requeues a message based on `timeoutMs`, ie:
+// RequeueMessage requeues a message based on `time.Duration`, ie:
 //
 // `timeoutMs` == 0 - requeue a message immediately
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
@@ -147,7 +153,7 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 	// of overloading the in-flight data structures with deferred requeue 
 	// messages, we would not have to keep the item on the in-flight map
 	c.removeFromInFlightPQ(item)
-	c.addToDeferredPQ(item.Value.(*nsq.Message), timeout)
+	c.addToDeferredPQ(item.Value.(*inflightMessage).msg, timeout)
 
 	return nil
 }
@@ -185,6 +191,18 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 	c.clients = finalClients
 }
 
+func (c *Channel) StartInflightTimeout(msg *nsq.Message, client *nsq.ServerClient) error {
+	value := &inflightMessage{msg, client}
+	absTs := time.Now().UnixNano() + c.msgTimeout
+	item := &pqueue.Item{Value: value, Priority: -absTs}
+	err := c.pushInFlightMessage(item)
+	if err != nil {
+		return err
+	}
+	c.addToInFlightPQ(item)
+	return nil
+}
+
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(id []byte) error {
 	item, err := c.popInFlightMessage(id)
@@ -192,7 +210,7 @@ func (c *Channel) doRequeue(id []byte) error {
 		log.Printf("ERROR: failed to requeue message(%s) - %s", id, err.Error())
 	} else {
 		atomic.AddUint64(&c.requeueCount, 1)
-		msg := item.Value.(*nsq.Message)
+		msg := item.Value.(*inflightMessage).msg
 		c.incomingMessageChan <- msg
 	}
 	return err
@@ -203,7 +221,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	c.Lock()
 	defer c.Unlock()
 
-	id := item.Value.(*nsq.Message).Id
+	id := item.Value.(*inflightMessage).msg.Id
 	_, ok := c.inFlightMessages[string(id)]
 	if ok {
 		return errors.New("E_ID_ALREADY_IN_FLIGHT")
@@ -275,7 +293,6 @@ func (c *Channel) router() {
 					continue
 				}
 			}
-			atomic.AddUint64(&c.putCount, 1)
 		case <-c.exitChan:
 			return
 		}
@@ -308,11 +325,7 @@ func (c *Channel) messagePump() {
 		msg.Attempts++
 
 		c.clientMessageChan <- msg
-
-		absTs := time.Now().UnixNano() + c.msgTimeout
-		item := &pqueue.Item{Value: msg, Priority: -absTs}
-		c.pushInFlightMessage(item)
-		c.addToInFlightPQ(item)
+		// the client will call back to mark as in-flight w/ it's info
 
 		atomic.AddUint64(&c.getCount, 1)
 	}
@@ -327,9 +340,10 @@ func (c *Channel) requeueWorker() {
 
 func (c *Channel) inFlightWorker() {
 	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
-		msg := item.Value.(*nsq.Message)
+		value := item.Value.(*inflightMessage)
 		atomic.AddUint64(&c.timeoutCount, 1)
-		c.doRequeue(msg.Id)
+		value.client.TimedOutMessage()
+		c.doRequeue(value.msg.Id)
 	})
 }
 
