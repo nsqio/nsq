@@ -53,7 +53,7 @@ func TestBasicV2(t *testing.T) {
 	assert.Equal(t, frameType, nsq.FrameTypeMessage)
 	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Retries, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint16(1))
 }
 
 func TestMultipleConsumerV2(t *testing.T) {
@@ -96,9 +96,9 @@ func TestMultipleConsumerV2(t *testing.T) {
 	msgOut := <-msgChan
 	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Retries, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint16(1))
 	msgOut = <-msgChan
 	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Retries, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint16(1))
 }

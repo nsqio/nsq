@@ -387,7 +387,7 @@ func (q *Reader) AddHandler(handler Handler) {
 				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), message.Id, message.Body)
 			}
 			// default to an exponential delay
-			requeueDelay := 90000 * int(message.Retries)
+			requeueDelay := 90000 * int(message.Attempts)
 			message.responseChannel <- &FinishedMessage{message.Id, requeueDelay, err == nil}
 		}
 	}()

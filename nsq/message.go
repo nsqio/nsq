@@ -18,7 +18,7 @@ type Message struct {
 	Id        []byte
 	Body      []byte
 	Timestamp int64
-	Retries   uint16
+	Attempts  uint16
 }
 
 // NewMessage creates a Message, initializes some meta-data, 
@@ -40,7 +40,7 @@ func (m *Message) Encode() ([]byte, error) {
 		return nil, err
 	}
 
-	err = binary.Write(&buf, binary.BigEndian, &m.Retries)
+	err = binary.Write(&buf, binary.BigEndian, &m.Attempts)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (m *Message) Encode() ([]byte, error) {
 // a pointer to a new Message
 func DecodeMessage(byteBuf []byte) (*Message, error) {
 	var timestamp int64
-	var retries uint16
+	var attempts uint16
 
 	buf := bytes.NewBuffer(byteBuf)
 
@@ -71,7 +71,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 		return nil, err
 	}
 
-	err = binary.Read(buf, binary.BigEndian, &retries)
+	err = binary.Read(buf, binary.BigEndian, &attempts)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 
 	msg := NewMessage(id, body)
 	msg.Timestamp = timestamp
-	msg.Retries = retries
+	msg.Attempts = attempts
 
 	return msg, nil
 }

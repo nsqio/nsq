@@ -252,7 +252,7 @@ func (c *Channel) messagePump() {
 			return
 		}
 
-		msg.Retries++
+		msg.Attempts++
 
 		c.clientMessageChan <- msg
 
