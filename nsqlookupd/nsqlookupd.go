@@ -12,8 +12,6 @@ import (
 	"runtime/pprof"
 )
 
-const VERSION = "0.1"
-
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 	tcpAddress  = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")

@@ -16,8 +16,6 @@ import (
 	"time"
 )
 
-const VERSION = "0.1.5"
-
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
 	webAddress      = flag.String("web-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
