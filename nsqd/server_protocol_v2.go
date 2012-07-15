@@ -26,10 +26,11 @@ func init() {
 	Protocols[magicInt] = &ServerProtocolV2{}
 }
 
-func (p *ServerProtocolV2) IOLoop(client *nsq.ServerClient) error {
+func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 	var err error
 	var line string
 
+	client := NewServerClientV2(sc)
 	client.State = nsq.ClientStateV2Init
 
 	err = nil
@@ -97,10 +98,8 @@ func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
+func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 	var err error
-
-	channel := client.Channel.(*Channel)
 
 	for {
 		if !client.IsReadyForMessages() {
@@ -114,7 +113,7 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 		} else {
 			select {
 			case <-client.ReadyStateChange:
-			case msg := <-channel.clientMessageChan:
+			case msg := <-client.Channel.clientMessageChan:
 
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
@@ -131,7 +130,7 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 					goto exit
 				}
 
-				channel.StartInFlightTimeout(msg, client)
+				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
 				_, err = client.Write(clientData)
@@ -145,13 +144,13 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 	}
 
 exit:
-	channel.RemoveClient(client)
+	client.Channel.RemoveClient(client)
 	if err != nil {
 		log.Printf("PROTOCOL(V2): PushMessages error - %s", err.Error())
 	}
 }
 
-func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) SUB(client *ServerClientV2, params []string) ([]byte, error) {
 	if client.State != nsq.ClientStateV2Init {
 		return nil, nsq.ClientErrV2Invalid
 	}
@@ -190,7 +189,7 @@ func (p *ServerProtocolV2) SUB(client *nsq.ServerClient, params []string) ([]byt
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) RDY(client *ServerClientV2, params []string) ([]byte, error) {
 	var err error
 
 	if client.State == nsq.ClientStateV2Closing {
@@ -220,7 +219,7 @@ func (p *ServerProtocolV2) RDY(client *nsq.ServerClient, params []string) ([]byt
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) FIN(client *ServerClientV2, params []string) ([]byte, error) {
 	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
@@ -230,7 +229,7 @@ func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byt
 	}
 
 	idStr := params[1]
-	err := client.Channel.(*Channel).FinishMessage([]byte(idStr))
+	err := client.Channel.FinishMessage([]byte(idStr))
 	if err != nil {
 		return nil, nsq.ClientErrV2FinishFailed
 	}
@@ -240,7 +239,7 @@ func (p *ServerProtocolV2) FIN(client *nsq.ServerClient, params []string) ([]byt
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) REQ(client *ServerClientV2, params []string) ([]byte, error) {
 	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
 		return nil, nsq.ClientErrV2Invalid
 	}
@@ -260,7 +259,7 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 		return nil, nsq.ClientErrV2Invalid
 	}
 
-	err = client.Channel.(*Channel).RequeueMessage([]byte(idStr), timeoutDuration)
+	err = client.Channel.RequeueMessage([]byte(idStr), timeoutDuration)
 	if err != nil {
 		return nil, nsq.ClientErrV2RequeueFailed
 	}
@@ -270,7 +269,7 @@ func (p *ServerProtocolV2) REQ(client *nsq.ServerClient, params []string) ([]byt
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) CLS(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV2) CLS(client *ServerClientV2, params []string) ([]byte, error) {
 	if client.State != nsq.ClientStateV2Subscribed {
 		return nil, nsq.ClientErrV2Invalid
 	}

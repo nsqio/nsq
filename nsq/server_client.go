@@ -4,74 +4,16 @@ import (
 	"encoding/binary"
 	"log"
 	"net"
-	"sync/atomic"
 )
 
 type ServerClient struct {
-	conn                 net.Conn
-	State                int
-	ReadyCount           int64
-	LastReadyCount       int64
-	ReadyStateChange     chan int
-	ExitChan             chan int
-	Channel              interface{}
-	InFlightMessageCount int64
+	conn net.Conn
 }
 
 // ServerClient constructor
 func NewServerClient(conn net.Conn) *ServerClient {
 	return &ServerClient{
-		conn:             conn,
-		ReadyStateChange: make(chan int, 10),
-		ExitChan:         make(chan int),
-	}
-}
-
-func (c *ServerClient) IsReadyForMessages() bool {
-	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
-	inFlightMessageCount := atomic.LoadInt64(&c.InFlightMessageCount)
-	//	log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightMessageCount)
-
-	if inFlightMessageCount >= lastReadyCount || readyCount <= 0 {
-		return false
-	}
-	return true
-}
-
-func (c *ServerClient) SetReadyCount(count int) {
-	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
-	atomic.StoreInt64(&c.ReadyCount, int64(count))
-	atomic.StoreInt64(&c.LastReadyCount, int64(count))
-	if readyCount == 0 || int64(count) > lastReadyCount {
-		c.ReadyStateChange <- 1
-	}
-}
-
-func (c *ServerClient) FinishMessage() {
-	if atomic.AddInt64(&c.InFlightMessageCount, -1) <= 1 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
-	}
-}
-
-func (c *ServerClient) SendingMessage() {
-	atomic.AddInt64(&c.ReadyCount, -1)
-	atomic.AddInt64(&c.InFlightMessageCount, 1)
-}
-
-func (c *ServerClient) TimedOutMessage() {
-	if atomic.AddInt64(&c.InFlightMessageCount, -1) <= 1 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
-	}
-}
-
-func (c *ServerClient) RequeuedMessage() {
-	if atomic.AddInt64(&c.InFlightMessageCount, -1) <= 1 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
+		conn: conn,
 	}
 }
 

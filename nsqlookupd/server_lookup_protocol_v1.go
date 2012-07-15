@@ -23,10 +23,11 @@ func init() {
 	Protocols[magicInt] = &ServerLookupProtocolV1{}
 }
 
-func (p *ServerLookupProtocolV1) IOLoop(client *nsq.ServerClient) error {
+func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	var err error
 	var line string
 
+	client := NewServerClientV1(sc)
 	client.State = nsq.LookupClientStateV1Init
 
 	err = nil

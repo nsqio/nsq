@@ -32,7 +32,7 @@ var (
 
 // ProtocolExecute is a helper function to call the method specified by the client
 // with the given arguments
-func ProtocolExecute(p interface{}, client *ServerClient, params ...string) ([]byte, error) {
+func ProtocolExecute(p interface{}, client interface{}, params ...string) ([]byte, error) {
 	var err error
 	var response []byte
 

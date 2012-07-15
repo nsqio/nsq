@@ -38,7 +38,7 @@ type Channel struct {
 	exitChan            chan int
 
 	// state tracking
-	clients          []*nsq.ServerClient
+	clients          []ClientInterface
 	requeuePQ        pqueue.PriorityQueue
 	requeueMutex     sync.Mutex
 	inFlightMessages map[string]interface{}
@@ -54,7 +54,7 @@ type Channel struct {
 
 type inFlightMessage struct {
 	msg    *nsq.Message
-	client *nsq.ServerClient
+	client ClientInterface
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -69,7 +69,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		clientMessageChan:   make(chan *nsq.Message),
 		exitChan:            make(chan int),
-		clients:             make([]*nsq.ServerClient, 0, 5),
+		clients:             make([]ClientInterface, 0, 5),
 		inFlightMessages:    make(map[string]interface{}),
 		inFlightPQ:          pqueue.New(int(inMemSize / 10)),
 		requeuePQ:           pqueue.New(int(inMemSize / 10)),
@@ -159,7 +159,7 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 }
 
 // AddClient adds the ServerClient the Channel's client list
-func (c *Channel) AddClient(client *nsq.ServerClient) {
+func (c *Channel) AddClient(client ClientInterface) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -177,7 +177,7 @@ func (c *Channel) AddClient(client *nsq.ServerClient) {
 }
 
 // RemoveClient removes the ServerClient from the Channel's client list
-func (c *Channel) RemoveClient(client *nsq.ServerClient) {
+func (c *Channel) RemoveClient(client ClientInterface) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -185,7 +185,7 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 		return
 	}
 
-	finalClients := make([]*nsq.ServerClient, 0, len(c.clients)-1)
+	finalClients := make([]ClientInterface, 0, len(c.clients)-1)
 	for _, cli := range c.clients {
 		if cli != client {
 			finalClients = append(finalClients, cli)
@@ -195,7 +195,7 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 	c.clients = finalClients
 }
 
-func (c *Channel) StartInflightTimeout(msg *nsq.Message, client *nsq.ServerClient) error {
+func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientInterface) error {
 	value := &inFlightMessage{msg, client}
 	absTs := time.Now().UnixNano() + c.msgTimeout
 	item := &pqueue.Item{Value: value, Priority: -absTs}

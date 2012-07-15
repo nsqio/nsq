@@ -6,8 +6,15 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sync/atomic"
 )
+
+type ClientStats struct {
+	version       string
+	name          string
+	state         int
+	inFlightCount int64
+	readyCount    int64
+}
 
 // print out stats for each topic/channel
 func statsHandler(w http.ResponseWriter, req *http.Request) {
@@ -52,18 +59,19 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			if jsonFormat {
 				clients := make([]interface{}, len(c.clients))
 				for ci, client := range c.clients {
-					readyCount := atomic.LoadInt64(&client.ReadyCount)
-					inFlightMessageCount := atomic.LoadInt64(&client.InFlightMessageCount)
+					clientStats := client.Stats()
 					clients[ci] = struct {
+						Version       string `json:"version"`
 						Name          string `json:"name"`
 						State         int    `json:"state"`
-						ReadyCount    int    `json:"ready_count"`
-						InFlightCount int    `json:"in_flight_count"`
+						ReadyCount    int64  `json:"ready_count"`
+						InFlightCount int64  `json:"in_flight_count"`
 					}{
-						client.String(),
-						client.State,
-						int(readyCount),
-						int(inFlightMessageCount),
+						clientStats.version,
+						clientStats.name,
+						clientStats.state,
+						clientStats.readyCount,
+						clientStats.inFlightCount,
 					}
 				}
 				channels[j] = struct {
@@ -100,9 +108,10 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						c.requeueCount,
 						c.timeoutCount))
 				for _, client := range c.clients {
-					readyCount := atomic.LoadInt64(&client.ReadyCount)
-					inFlightMessageCount := atomic.LoadInt64(&client.InFlightMessageCount)
-					io.WriteString(w, fmt.Sprintf("        [%s] state: %d inflt: %-4d rdy: %-4d\n", client.String(), client.State, inFlightMessageCount, readyCount))
+					clientStats := client.Stats()
+					io.WriteString(w, fmt.Sprintf("        [%s %s] state: %d inflt: %-4d rdy: %-4d\n",
+						clientStats.version, clientStats.name, clientStats.state,
+						clientStats.inFlightCount, clientStats.readyCount))
 				}
 			}
 			c.RUnlock()

@@ -6,6 +6,11 @@ import (
 	"net"
 )
 
+type ClientInterface interface {
+	TimedOutMessage()
+	Stats() ClientStats
+}
+
 var Protocols = map[int32]nsq.Protocol{}
 
 func tcpClientHandler(clientConn net.Conn) {

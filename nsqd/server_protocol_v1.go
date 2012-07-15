@@ -23,10 +23,11 @@ func init() {
 	Protocols[magicInt] = &ServerProtocolV1{}
 }
 
-func (p *ServerProtocolV1) IOLoop(client *nsq.ServerClient) error {
+func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	var err error
 	var line string
 
+	client := NewServerClientV1(sc)
 	client.State = nsq.ClientStateV1Init
 
 	err = nil
@@ -64,7 +65,7 @@ func (p *ServerProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	return err
 }
 
-func (p *ServerProtocolV1) PUB(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerProtocolV1) PUB(client *ServerClientV1, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 3 {
