@@ -45,7 +45,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	topics := make([]interface{}, len(nsqd.topicMap))
-	i := 0
+	topic_index := 0
 	for topicName, t := range nsqd.topicMap {
 		t.RLock()
 
@@ -58,14 +58,14 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		}
 
 		channels := make([]interface{}, len(t.channelMap))
-		j := 0
+		channel_index := 0
 		for channelName, c := range t.channelMap {
 			c.RLock()
 			if jsonFormat {
 				clients := make([]interface{}, len(c.clients))
-				for ci, client := range c.clients {
+				for client_index, client := range c.clients {
 					clientStats := client.Stats()
-					clients[ci] = struct {
+					clients[client_index] = struct {
 						Version       string `json:"version"`
 						Name          string `json:"name"`
 						State         int    `json:"state"`
@@ -83,7 +83,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						clientStats.connectTime.Unix(),
 					}
 				}
-				channels[j] = struct {
+				channels[channel_index] = struct {
 					ChannelName   string        `json:"channel_name"`
 					Depth         int64         `json:"depth"`
 					BackendDepth  int64         `json:"backend_depth"`
@@ -104,7 +104,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.timeoutCount,
 					clients,
 				}
-				j++
+				channel_index++
 			} else {
 				io.WriteString(w,
 					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d msgs: %-8d re-q: %-5d timeout: %-5d\n",
@@ -133,7 +133,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			c.RUnlock()
 		}
 
-		topics[i] = struct {
+		topics[topic_index] = struct {
 			TopicName    string        `json:"topic_name"`
 			Channels     []interface{} `json:"channels"`
 			Depth        int64         `json:"depth"`
@@ -146,7 +146,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			BackendDepth: t.backend.Depth(),
 			MessageCount: t.messageCount,
 		}
-		i++
+		topic_index++
 
 		t.RUnlock()
 	}
