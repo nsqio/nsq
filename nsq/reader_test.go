@@ -22,13 +22,11 @@ type MyTestHandler struct {
 }
 
 func (h *MyTestHandler) LogFailedMessage(message *Message) {
-	h.t.Logf("LogFailedMessage %s %s", message.Id, message.Body)
 	h.messagesFailed += 1
 	h.q.Stop()
 }
 
 func (h *MyTestHandler) HandleMessage(message *Message) error {
-	h.t.Logf("handling message %s %s", message.Id, message.Body)
 	if string(message.Body) == "TOBEFAILED" {
 		h.messagesReceived += 1
 		return errors.New("fail this message")
@@ -51,7 +49,6 @@ func SendMessage(t *testing.T, port int, topic string, method string, body []byt
 	httpclient := &http.Client{}
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/%s?topic=%s", port, method, topic)
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
-	t.Logf("POST %s %s", endpoint, string(body))
 	resp, err := httpclient.Do(req)
 	if err != nil {
 		t.Fatalf(err.Error())
