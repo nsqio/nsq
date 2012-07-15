@@ -75,20 +75,22 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					}
 				}
 				channels[j] = struct {
-					ChannelName      string        `json:"channel_name"`
-					Depth            int64         `json:"depth"`
-					BackendDepth     int64         `json:"backend_depth"`
-					InFlightMessages int           `json:"in_flight_messages"`
-					GetCount         uint64        `json:"get_count"`
-					PutCount         uint64        `json:"put_count"`
-					RequeueCount     uint64        `json:"requeue_count"`
-					TimeoutCount     uint64        `json:"timeout_count"`
-					Clients          []interface{} `json:"clients"`
+					ChannelName   string        `json:"channel_name"`
+					Depth         int64         `json:"depth"`
+					BackendDepth  int64         `json:"backend_depth"`
+					InFlightCount int           `json:"in_flight_count"`
+					DeferredCount int           `json:"deferred_count"`
+					GetCount      uint64        `json:"get_count"`
+					PutCount      uint64        `json:"put_count"`
+					RequeueCount  uint64        `json:"requeue_count"`
+					TimeoutCount  uint64        `json:"timeout_count"`
+					Clients       []interface{} `json:"clients"`
 				}{
 					channelName,
 					int64(len(c.memoryMsgChan)) + c.backend.Depth(),
 					c.backend.Depth(),
 					len(c.inFlightMessages),
+					len(c.deferredMessages),
 					c.getCount,
 					c.putCount,
 					c.requeueCount,
@@ -98,11 +100,12 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				j += 1
 			} else {
 				io.WriteString(w,
-					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d get: %-8d put: %-8d re-q: %-5d timeout: %-5d\n",
+					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d get: %-8d put: %-8d re-q: %-5d timeout: %-5d\n",
 						channelName,
 						int64(len(c.memoryMsgChan))+c.backend.Depth(),
 						c.backend.Depth(),
 						len(c.inFlightMessages),
+						len(c.deferredMessages),
 						c.getCount,
 						c.putCount,
 						c.requeueCount,

@@ -10,6 +10,7 @@ type Queue interface {
 	MemoryChan() chan *nsq.Message
 	BackendQueue() nsq.BackendQueue
 	InFlight() map[string]interface{}
+	Deferred() map[string]interface{}
 }
 
 func EmptyQueue(q Queue) error {
@@ -34,15 +35,26 @@ func FlushQueue(q Queue) error {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}
 		default:
-			goto inflight
+			goto finish
 		}
 	}
 
-inflight:
+finish:
 	inFlight := q.InFlight()
 	if inFlight != nil {
 		for _, item := range inFlight {
 			msg := item.(*pqueue.Item).Value.(*inFlightMessage).msg
+			err := WriteMessageToBackend(msg, q)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+			}
+		}
+	}
+
+	deferred := q.Deferred()
+	if deferred != nil {
+		for _, item := range deferred {
+			msg := item.(*pqueue.Item).Value.(*nsq.Message)
 			err := WriteMessageToBackend(msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())

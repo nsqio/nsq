@@ -53,6 +53,10 @@ func (c *Topic) InFlight() map[string]interface{} {
 	return nil
 }
 
+func (c *Topic) Deferred() map[string]interface{} {
+	return nil
+}
+
 // GetChannel performs a thread safe operation
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
