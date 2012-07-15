@@ -22,13 +22,13 @@ type MyTestHandler struct {
 }
 
 func (h *MyTestHandler) LogFailedMessage(message *Message) {
-	h.messagesFailed += 1
+	h.messagesFailed++
 	h.q.Stop()
 }
 
 func (h *MyTestHandler) HandleMessage(message *Message) error {
 	if string(message.Body) == "TOBEFAILED" {
-		h.messagesReceived += 1
+		h.messagesReceived++
 		return errors.New("fail this message")
 	}
 
@@ -41,7 +41,7 @@ func (h *MyTestHandler) HandleMessage(message *Message) error {
 	if msg != "single" && msg != "double" {
 		h.t.Error("message 'action' was not correct: ", msg, data)
 	}
-	h.messagesReceived += 1
+	h.messagesReceived++
 	return nil
 }
 

@@ -97,7 +97,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.timeoutCount,
 					clients,
 				}
-				j += 1
+				j++
 			} else {
 				io.WriteString(w,
 					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d get: %-8d put: %-8d re-q: %-5d timeout: %-5d\n",
@@ -131,7 +131,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			Depth:        int64(len(t.memoryMsgChan)) + t.backend.Depth(),
 			BackendDepth: t.backend.Depth(),
 		}
-		i += 1
+		i++
 
 		t.RUnlock()
 	}
