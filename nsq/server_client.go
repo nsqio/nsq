@@ -15,7 +15,6 @@ type ServerClient struct {
 	ReadyStateChange     chan int
 	ExitChan             chan int
 	Channel              interface{}
-	sm                   *interface{}
 	InFlightMessageCount int64
 }
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -29,7 +28,6 @@ func (p *ServerLookupProtocolV1) IOLoop(client *nsq.ServerClient) error {
 	var line string
 
 	client.State = nsq.LookupClientStateV1Init
-	client.sm = sm
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -83,7 +81,6 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []str
 		return nil, err
 	}
 
-	sm := client.sm.(*util.SafeMap)
 	err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, host, port)
 	if err != nil {
 		return nil, err
