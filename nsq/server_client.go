@@ -4,16 +4,19 @@ import (
 	"encoding/binary"
 	"log"
 	"net"
+	"time"
 )
 
 type ServerClient struct {
-	conn net.Conn
+	conn        net.Conn
+	ConnectTime time.Time
 }
 
 // ServerClient constructor
 func NewServerClient(conn net.Conn) *ServerClient {
 	return &ServerClient{
-		conn: conn,
+		conn:        conn,
+		ConnectTime: time.Now(),
 	}
 }
 

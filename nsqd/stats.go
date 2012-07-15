@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 type ClientStats struct {
@@ -14,6 +15,8 @@ type ClientStats struct {
 	state         int
 	inFlightCount int64
 	readyCount    int64
+	messageCount  uint64
+	connectTime   time.Time
 }
 
 // print out stats for each topic/channel
@@ -27,6 +30,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 
 	formatString, _ := reqParams.Query("format")
 	jsonFormat := formatString == "json"
+	now := time.Now()
 
 	nsqd.RLock()
 	defer nsqd.RUnlock()
@@ -46,10 +50,11 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		t.RLock()
 
 		if !jsonFormat {
-			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d\n",
+			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d msgs %-8d\n",
 				topicName,
 				int64(len(t.memoryMsgChan))+t.backend.Depth(),
-				t.backend.Depth()))
+				t.backend.Depth(),
+				t.messageCount))
 		}
 
 		channels := make([]interface{}, len(t.channelMap))
@@ -66,12 +71,16 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						State         int    `json:"state"`
 						ReadyCount    int64  `json:"ready_count"`
 						InFlightCount int64  `json:"in_flight_count"`
+						MessageCount  uint64 `json:"message_count"`
+						ConnectTime   int64  `json:"connect_ts"`
 					}{
 						clientStats.version,
 						clientStats.name,
 						clientStats.state,
 						clientStats.readyCount,
 						clientStats.inFlightCount,
+						clientStats.messageCount,
+						clientStats.connectTime.Unix(),
 					}
 				}
 				channels[j] = struct {
@@ -80,8 +89,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					BackendDepth  int64         `json:"backend_depth"`
 					InFlightCount int           `json:"in_flight_count"`
 					DeferredCount int           `json:"deferred_count"`
-					GetCount      uint64        `json:"get_count"`
-					PutCount      uint64        `json:"put_count"`
+					MessageCount  uint64        `json:"message_count"`
 					RequeueCount  uint64        `json:"requeue_count"`
 					TimeoutCount  uint64        `json:"timeout_count"`
 					Clients       []interface{} `json:"clients"`
@@ -91,8 +99,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.backend.Depth(),
 					len(c.inFlightMessages),
 					len(c.deferredMessages),
-					c.getCount,
-					c.putCount,
+					c.messageCount,
 					c.requeueCount,
 					c.timeoutCount,
 					clients,
@@ -100,21 +107,27 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				j++
 			} else {
 				io.WriteString(w,
-					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d get: %-8d put: %-8d re-q: %-5d timeout: %-5d\n",
+					fmt.Sprintf("    [%s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d msgs: %-8d re-q: %-5d timeout: %-5d\n",
 						channelName,
 						int64(len(c.memoryMsgChan))+c.backend.Depth(),
 						c.backend.Depth(),
 						len(c.inFlightMessages),
 						len(c.deferredMessages),
-						c.getCount,
-						c.putCount,
+						c.messageCount,
 						c.requeueCount,
 						c.timeoutCount))
 				for _, client := range c.clients {
 					clientStats := client.Stats()
-					io.WriteString(w, fmt.Sprintf("        [%s %s] state: %d inflt: %-4d rdy: %-4d\n",
-						clientStats.version, clientStats.name, clientStats.state,
-						clientStats.inFlightCount, clientStats.readyCount))
+					duration := now.Sub(clientStats.connectTime).Seconds()
+					io.WriteString(w, fmt.Sprintf("        [%s %s] state: %d inflt: %-4d rdy: %-4d msgs: %-8d connected: %s\n",
+						clientStats.version,
+						clientStats.name,
+						clientStats.state,
+						clientStats.inFlightCount,
+						clientStats.readyCount,
+						clientStats.messageCount,
+						time.Duration(int64(duration))*time.Second, // truncate to the second
+					))
 				}
 			}
 			c.RUnlock()
@@ -125,11 +138,13 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 			Channels     []interface{} `json:"channels"`
 			Depth        int64         `json:"depth"`
 			BackendDepth int64         `json:"backend_depth"`
+			MessageCount uint64        `json:"message_count"`
 		}{
 			TopicName:    topicName,
 			Channels:     channels,
 			Depth:        int64(len(t.memoryMsgChan)) + t.backend.Depth(),
 			BackendDepth: t.backend.Depth(),
+			MessageCount: t.messageCount,
 		}
 		i++
 

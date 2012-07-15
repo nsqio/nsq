@@ -50,8 +50,7 @@ type Channel struct {
 
 	// stat counters
 	requeueCount uint64
-	getCount     uint64
-	putCount     uint64
+	messageCount uint64
 	timeoutCount uint64
 }
 
@@ -128,7 +127,7 @@ func (c *Channel) Deferred() map[string]interface{} {
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {
 	c.incomingMessageChan <- msg
-	atomic.AddUint64(&c.putCount, 1)
+	atomic.AddUint64(&c.messageCount, 1)
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -356,8 +355,6 @@ func (c *Channel) messagePump() {
 
 		c.clientMessageChan <- msg
 		// the client will call back to mark as in-flight w/ it's info
-
-		atomic.AddUint64(&c.getCount, 1)
 	}
 }
 

@@ -11,6 +11,7 @@ type ServerClientV2 struct {
 	ReadyCount       int64
 	LastReadyCount   int64
 	InFlightCount    int64
+	MessageCount     uint64
 	Channel          *Channel
 	ReadyStateChange chan int
 	ExitChan         chan int
@@ -25,14 +26,14 @@ func NewServerClientV2(client *nsq.ServerClient) *ServerClientV2 {
 }
 
 func (c *ServerClientV2) Stats() ClientStats {
-	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 	return ClientStats{
 		version:       "V2",
 		name:          c.String(),
 		state:         c.State,
-		readyCount:    readyCount,
-		inFlightCount: inFlightCount,
+		readyCount:    atomic.LoadInt64(&c.ReadyCount),
+		inFlightCount: atomic.LoadInt64(&c.InFlightCount),
+		messageCount:  atomic.LoadUint64(&c.MessageCount),
+		connectTime:   c.ConnectTime,
 	}
 }
 
@@ -69,6 +70,7 @@ func (c *ServerClientV2) FinishMessage() {
 func (c *ServerClientV2) SendingMessage() {
 	atomic.AddInt64(&c.ReadyCount, -1)
 	atomic.AddInt64(&c.InFlightCount, 1)
+	atomic.AddUint64(&c.MessageCount, 1)
 }
 
 func (c *ServerClientV2) TimedOutMessage() {

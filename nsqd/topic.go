@@ -5,6 +5,7 @@ import (
 	"bitly/notify"
 	"log"
 	"sync"
+	"sync/atomic"
 )
 
 type Topic struct {
@@ -20,6 +21,7 @@ type Topic struct {
 	maxBytesPerFile     int64
 	msgTimeout          int64
 	exitChan            chan int
+	messageCount        uint64
 }
 
 // Topic constructor
@@ -79,6 +81,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) {
 	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, msg.Id, msg.Body)
+	atomic.AddUint64(&t.messageCount, 1)
 	t.incomingMessageChan <- msg
 }
 
