@@ -16,6 +16,8 @@ type ClientStats struct {
 	inFlightCount int64
 	readyCount    int64
 	messageCount  uint64
+	finishCount   uint64
+	requeueCount  uint64
 	connectTime   time.Time
 }
 
@@ -72,6 +74,8 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						ReadyCount    int64  `json:"ready_count"`
 						InFlightCount int64  `json:"in_flight_count"`
 						MessageCount  uint64 `json:"message_count"`
+						FinishCount   uint64 `json:"finish_count"`
+						RequeueCount  uint64 `json:"requeue_count"`
 						ConnectTime   int64  `json:"connect_ts"`
 					}{
 						clientStats.version,
@@ -80,6 +84,8 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						clientStats.readyCount,
 						clientStats.inFlightCount,
 						clientStats.messageCount,
+						clientStats.finishCount,
+						clientStats.requeueCount,
 						clientStats.connectTime.Unix(),
 					}
 				}
@@ -119,12 +125,14 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				for _, client := range c.clients {
 					clientStats := client.Stats()
 					duration := now.Sub(clientStats.connectTime).Seconds()
-					io.WriteString(w, fmt.Sprintf("        [%s %s] state: %d inflt: %-4d rdy: %-4d msgs: %-8d connected: %s\n",
+					io.WriteString(w, fmt.Sprintf("        [%s %s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 						clientStats.version,
 						clientStats.name,
 						clientStats.state,
 						clientStats.inFlightCount,
 						clientStats.readyCount,
+						clientStats.finishCount,
+						clientStats.requeueCount,
 						clientStats.messageCount,
 						time.Duration(int64(duration))*time.Second, // truncate to the second
 					))

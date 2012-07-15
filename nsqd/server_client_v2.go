@@ -12,6 +12,8 @@ type ServerClientV2 struct {
 	LastReadyCount   int64
 	InFlightCount    int64
 	MessageCount     uint64
+	FinishedCount    uint64
+	RequeueCount     uint64
 	Channel          *Channel
 	ReadyStateChange chan int
 	ExitChan         chan int
@@ -33,6 +35,8 @@ func (c *ServerClientV2) Stats() ClientStats {
 		readyCount:    atomic.LoadInt64(&c.ReadyCount),
 		inFlightCount: atomic.LoadInt64(&c.InFlightCount),
 		messageCount:  atomic.LoadUint64(&c.MessageCount),
+		finishCount:   atomic.LoadUint64(&c.FinishCount),
+		requeueCount:  atomic.LoadUint64(&c.RequeueCount),
 		connectTime:   c.ConnectTime,
 	}
 }
@@ -61,6 +65,7 @@ func (c *ServerClientV2) SetReadyCount(count int) {
 }
 
 func (c *ServerClientV2) FinishMessage() {
+	atomic.AddUint64(&c.FinishCount, 1)
 	if atomic.AddInt64(&c.InFlightCount, -1) <= 1 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		c.ReadyStateChange <- 1
@@ -81,6 +86,7 @@ func (c *ServerClientV2) TimedOutMessage() {
 }
 
 func (c *ServerClientV2) RequeuedMessage() {
+	atomic.AddUint64(&c.RequeueCount, 1)
 	if atomic.AddInt64(&c.InFlightCount, -1) <= 1 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		c.ReadyStateChange <- 1
