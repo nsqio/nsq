@@ -12,7 +12,7 @@ type ServerClientV2 struct {
 	LastReadyCount   int64
 	InFlightCount    int64
 	MessageCount     uint64
-	FinishedCount    uint64
+	FinishCount      uint64
 	RequeueCount     uint64
 	Channel          *Channel
 	ReadyStateChange chan int
