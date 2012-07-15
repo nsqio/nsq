@@ -104,3 +104,17 @@ func TestMultipleConsumerV2(t *testing.T) {
 	assert.Equal(t, msgOut.Body, msg.Body)
 	assert.Equal(t, msgOut.Attempts, uint16(1))
 }
+
+func BenchmarkProtocolV2(b *testing.B) {
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	p := &ServerProtocolV2{}
+	c := NewServerClientV2(nil)
+	params := []string{"SUB", "test", "ch"}
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		nsq.ProtocolExecute(p, c, params...)
+	}
+}
