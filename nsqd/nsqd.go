@@ -4,6 +4,7 @@ import (
 	"../util"
 	"log"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -26,16 +27,13 @@ type NSQd struct {
 
 var nsqd *NSQd
 
-func NewNSQd(workerId int64, tcpAddr, httpAddr *net.TCPAddr, lookupAddrs util.StringArray, memQueueSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *NSQd {
+func NewNSQd(workerId int64) *NSQd {
 	n := &NSQd{
 		workerId:        workerId,
-		memQueueSize:    memQueueSize,
-		dataPath:        dataPath,
-		maxBytesPerFile: maxBytesPerFile,
-		msgTimeout:      msgTimeout,
-		tcpAddr:         tcpAddr,
-		httpAddr:        httpAddr,
-		lookupAddrs:     lookupAddrs,
+		memQueueSize:    10000,
+		dataPath:        os.TempDir(),
+		maxBytesPerFile: 104857600,
+		msgTimeout:      60000,
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
 		exitChan:        make(chan int),

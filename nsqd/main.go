@@ -24,7 +24,7 @@ var (
 	tcpAddress      = flag.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
-	maxBytesPerFile = flag.Int64("max-bytes-per-file", 1024768, "number of bytes per diskqueue file before rolling")
+	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
@@ -76,7 +76,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	webAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -103,7 +103,14 @@ func main() {
 	signal.Notify(signalChan, os.Interrupt)
 
 	msgTimeoutDuration := int64(time.Duration(*msgTimeoutMs) * time.Millisecond)
-	nsqd = NewNSQd(*workerId, tcpAddr, webAddr, lookupAddresses, *memQueueSize, *dataPath, *maxBytesPerFile, msgTimeoutDuration)
+	nsqd = NewNSQd(*workerId)
+	nsqd.tcpAddr = tcpAddr
+	nsqd.httpAddr = httpAddr
+	nsqd.lookupAddrs = lookupAddresses
+	nsqd.memQueueSize = *memQueueSize
+	nsqd.dataPath = *dataPath
+	nsqd.maxBytesPerFile = *maxBytesPerFile
+	nsqd.msgTimeout = msgTimeoutDuration
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()
