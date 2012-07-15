@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestDiskQueue(t *testing.T) {
+func TestPriorityQueue(t *testing.T) {
 	c := 100
 	pq := New(c)
 
