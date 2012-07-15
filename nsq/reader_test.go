@@ -65,7 +65,10 @@ func TestQueuereader(t *testing.T) {
 	q, _ := NewReader("reader_test", "ch")
 	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
 
-	h := &MyTestHandler{t, q, 0, 0, 0}
+	h := &MyTestHandler{
+		t: t,
+		q: q,
+	}
 	q.AddHandler(h)
 
 	SendMessage(t, 4151, "reader_test", "put", []byte(`{"msg":"single"}`))

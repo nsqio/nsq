@@ -17,7 +17,11 @@ type ServerClientV2 struct {
 }
 
 func NewServerClientV2(client *nsq.ServerClient) *ServerClientV2 {
-	return &ServerClientV2{client, 0, 0, 0, 0, nil, make(chan int, 10), make(chan int)}
+	return &ServerClientV2{
+		ServerClient:     client,
+		ReadyStateChange: make(chan int, 10),
+		ExitChan:         make(chan int),
+	}
 }
 
 func (c *ServerClientV2) Stats() ClientStats {
