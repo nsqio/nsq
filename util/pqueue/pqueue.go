@@ -58,19 +58,16 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-func (pq PriorityQueue) Peek() *Item {
-	return pq[len(pq)-1]
-}
-
-func (pq *PriorityQueue) PeekAndPop(cutoff int64) (*Item, int64) {
+func (pq *PriorityQueue) PeekAndShift(min int64) (*Item, int64) {
 	if pq.Len() == 0 {
 		return nil, 0
 	}
 
-	item := pq.Peek()
-	if cutoff > item.Priority {
-		return nil, cutoff - item.Priority
+	item := (*pq)[0]
+	if item.Priority < min {
+		return nil, min - item.Priority
 	}
+	heap.Remove(pq, 0)
 
-	return heap.Pop(pq).(*Item), 0
+	return item, 0
 }
