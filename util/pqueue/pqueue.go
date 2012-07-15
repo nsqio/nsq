@@ -1,5 +1,9 @@
 package pqueue
 
+import (
+	"container/heap"
+)
+
 type Item struct {
 	Value    interface{}
 	Priority int64
@@ -54,6 +58,19 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-func (pq PriorityQueue) Peek() interface{} {
+func (pq PriorityQueue) Peek() *Item {
 	return pq[len(pq)-1]
+}
+
+func (pq *PriorityQueue) PeekAndPop(cutoff int64) (*Item, int64) {
+	if pq.Len() == 0 {
+		return nil, 0
+	}
+
+	item := pq.Peek()
+	if cutoff > item.Priority {
+		return nil, cutoff - item.Priority
+	}
+
+	return heap.Pop(pq).(*Item), 0
 }

@@ -5,6 +5,7 @@ import (
 	"../util"
 	"../util/pqueue"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -44,15 +45,9 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, channelName, err := getTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_TOPIC", nil))
-		return
-	}
-
-	channelName, err := reqParams.Query("channel")
-	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_CHANNEL", nil))
+		w.Write(util.ApiResponse(500, err.Error(), nil))
 		return
 	}
 
@@ -61,12 +56,22 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel(channelName)
 
+	fmt.Fprintf(w, "inFlightMessages:\n")
 	channel.Lock()
-	defer channel.Unlock()
 	for _, item := range channel.inFlightMessages {
 		msg := item.(*pqueue.Item).Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "%s %s %d: %s\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, msg.Body)
+		fmt.Fprintf(w, "%s %s %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts)
 	}
+	channel.Unlock()
+
+	fmt.Fprintf(w, "inFlightPQ:\n")
+	channel.deferredMutex.Lock()
+	for i := 0; i < len(channel.inFlightPQ); i++ {
+		item := channel.inFlightPQ[i]
+		msg := item.Value.(*inFlightMessage).msg
+		fmt.Fprintf(w, "id: %s created: %s attempts: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Priority)
+	}
+	channel.deferredMutex.Unlock()
 }
 
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {
@@ -153,25 +158,9 @@ func emptyHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, channelName, err := getTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_TOPIC", nil))
-		return
-	}
-
-	if len(topicName) > nsq.MaxNameLength {
-		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
-		return
-	}
-
-	channelName, err := reqParams.Query("channel")
-	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_CHANNEL", nil))
-		return
-	}
-
-	if len(topicName) > nsq.MaxNameLength {
-		w.Write(util.ApiResponse(500, "INVALID_ARG_CHANNEL", nil))
+		w.Write(util.ApiResponse(500, err.Error(), nil))
 		return
 	}
 
@@ -185,4 +174,26 @@ func emptyHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
+}
+
+func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
+	topicName, err := rp.Query("topic")
+	if err != nil {
+		return "", "", errors.New("MISSING_ARG_TOPIC")
+	}
+
+	if len(topicName) > nsq.MaxNameLength {
+		return "", "", errors.New("INVALID_ARG_TOPIC")
+	}
+
+	channelName, err := rp.Query("channel")
+	if err != nil {
+		return "", "", errors.New("MISSING_ARG_CHANNEL")
+	}
+
+	if len(topicName) > nsq.MaxNameLength {
+		return "", "", errors.New("INVALID_ARG_CHANNEL")
+	}
+
+	return topicName, channelName, nil
 }

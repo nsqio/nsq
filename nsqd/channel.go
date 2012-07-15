@@ -398,20 +398,18 @@ func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *p
 		now := time.Now().UnixNano()
 		for {
 			mutex.Lock()
-			if pq.Len() == 0 {
-				mutex.Unlock()
-				waitTime = defaultWorkerWait
-				break
-			}
-			item := pq.Peek().(*pqueue.Item)
-			// priorities are stored negative so that Pop() will return the lowest
-			if now < -item.Priority {
-				waitTime = time.Duration((-item.Priority)-now) + time.Millisecond
-				mutex.Unlock()
-				break
-			}
-			item = heap.Pop(pq).(*pqueue.Item)
+			item, diff := pq.PeekAndPop(-now)
 			mutex.Unlock()
+
+			if diff == 0 {
+				waitTime = defaultWorkerWait
+			} else {
+				waitTime = time.Duration(diff) + time.Millisecond
+			}
+
+			if item == nil {
+				break
+			}
 
 			callback(item)
 		}
