@@ -181,7 +181,11 @@ func (c *Channel) RemoveClient(client *nsq.ServerClient) {
 	c.Lock()
 	defer c.Unlock()
 
-	finalClients := make([]*nsq.ServerClient, 0, len(c.clients))
+	if len(c.clients) == 0 {
+		return
+	}
+
+	finalClients := make([]*nsq.ServerClient, 0, len(c.clients)-1)
 	for _, cli := range c.clients {
 		if cli != client {
 			finalClients = append(finalClients, cli)
