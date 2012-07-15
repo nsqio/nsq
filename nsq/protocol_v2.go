@@ -9,10 +9,9 @@ const (
 )
 
 const (
-	FrameTypeResponse  int32 = 0
-	FrameTypeError     int32 = 1
-	FrameTypeMessage   int32 = 2
-	FrameTypeCloseWait int32 = 3
+	FrameTypeResponse int32 = 0
+	FrameTypeError    int32 = 1
+	FrameTypeMessage  int32 = 2
 )
 
 var (
@@ -22,5 +21,4 @@ var (
 	ClientErrV2BadMessage    = ClientError{"E_BAD_MESSAGE"}
 	ClientErrV2RequeueFailed = ClientError{"E_REQ_FAILED"}
 	ClientErrV2FinishFailed  = ClientError{"E_FIN_FAILED"}
-	ClientErrV2CloseFailed   = ClientError{"E_CLOSE_FAILED"}
 )

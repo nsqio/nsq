@@ -55,6 +55,7 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 				break
 			}
 
+			// TODO: these writes need to be synchronized
 			_, err = client.Write(clientData)
 			if err != nil {
 				break
@@ -68,6 +69,7 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 				break
 			}
 
+			// TODO: these writes need to be synchronized
 			_, err = client.Write(clientData)
 			if err != nil {
 				break
@@ -114,7 +116,6 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 			select {
 			case <-client.ReadyStateChange:
 			case msg := <-client.Channel.clientMessageChan:
-
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
 						msg.Id, client.String(), msg.Body)
@@ -133,6 +134,7 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
+				// TODO: these writes need to be synchronized
 				_, err = client.Write(clientData)
 				if err != nil {
 					goto exit
@@ -286,16 +288,5 @@ func (p *ServerProtocolV2) CLS(client *ServerClientV2, params []string) ([]byte,
 
 	//TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 
-	// send a FrameTypeCloseWait response
-	clientData, err := p.Frame(nsq.FrameTypeCloseWait, nil)
-	if err != nil {
-		return nil, nsq.ClientErrV2CloseFailed
-	}
-
-	_, err = client.Write(clientData)
-	if err != nil {
-		return nil, nsq.ClientErrV2CloseFailed
-	}
-
-	return nil, nil
+	return []byte("CLOSE_WAIT"), nil
 }

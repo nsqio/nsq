@@ -2,6 +2,7 @@ package nsq
 
 import (
 	"bitly/simplejson"
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -289,12 +290,14 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 			q.messagesInFlight += 1
 			q.Unlock()
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
-		case FrameTypeCloseWait:
-			// server is ready for us to close (it ack'd our StartClose)
-			// we can assume we will not receive any more messages over this channel
-			// (but we can still write back responses)
-			log.Printf("[%s] received ACK from server. now in CloseWait %d", c.ServerAddress, frameType)
-			c.stopFlag = true
+		case FrameTypeResponse:
+			if bytes.Equal(data.([]byte), []byte("CLOSE_WAIT")) {
+				// server is ready for us to close (it ack'd our StartClose)
+				// we can assume we will not receive any more messages over this channel
+				// (but we can still write back responses)
+				log.Printf("[%s] received ACK from server. now in CloseWait %d", c.ServerAddress, frameType)
+				c.stopFlag = true
+			}
 		default:
 			log.Printf("[%s] unknown message type %d", c.ServerAddress, frameType)
 		}
