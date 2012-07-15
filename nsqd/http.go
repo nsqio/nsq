@@ -3,7 +3,9 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"../util/pqueue"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"strings"
+	"time"
 )
 
 import _ "net/http/pprof"
@@ -24,11 +27,45 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/stats", statsHandler)
 	handler.HandleFunc("/empty", emptyHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
+	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
+	}
+}
+
+func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		return
+	}
+
+	topicName, err := reqParams.Query("topic")
+	if err != nil {
+		w.Write(util.ApiResponse(500, "MISSING_ARG_TOPIC", nil))
+		return
+	}
+
+	channelName, err := reqParams.Query("channel")
+	if err != nil {
+		w.Write(util.ApiResponse(500, "MISSING_ARG_CHANNEL", nil))
+		return
+	}
+
+	log.Printf("NOTICE: dumping inflight for %s:%s", topicName, channelName)
+
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel(channelName)
+
+	channel.Lock()
+	defer channel.Unlock()
+	for _, item := range channel.inFlightMessages {
+		msg := item.(*pqueue.Item).Value.(*inFlightMessage).msg
+		fmt.Fprintf(w, "%s %s %d: %s\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, msg.Body)
 	}
 }
 
