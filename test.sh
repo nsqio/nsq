@@ -24,7 +24,7 @@ popd >/dev/null
 
 # no tests, but a build is something
 
-pushd nsqlokupd >/dev/null
+pushd nsqlookupd >/dev/null
 echo "building nsqlookupd"
 go build
 popd >/dev/null
