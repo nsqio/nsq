@@ -131,7 +131,7 @@ func (p *ServerProtocolV2) PushMessages(client *nsq.ServerClient) {
 					goto exit
 				}
 
-				channel.StartInflightTimeout(msg, client)
+				channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
 				_, err = client.Write(clientData)
