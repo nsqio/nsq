@@ -40,7 +40,7 @@ type Channel struct {
 	// state tracking
 	clients []ClientInterface
 
-	// TODO: these can DRYd up
+	// TODO: these can be DRYd up
 	deferredMessages map[string]interface{}
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
@@ -62,12 +62,13 @@ type inFlightMessage struct {
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *Channel {
+	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
+	backendName := topicName + ":" + channelName
 	c := &Channel{
-		topicName:  topicName,
-		name:       channelName,
-		msgTimeout: msgTimeout,
-		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
-		backend:             NewDiskQueue(topicName+":"+channelName, dataPath, maxBytesPerFile),
+		topicName:           topicName,
+		name:                channelName,
+		msgTimeout:          msgTimeout,
+		backend:             NewDiskQueue(backendName, dataPath, maxBytesPerFile),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		clientMessageChan:   make(chan *nsq.Message),
