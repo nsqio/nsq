@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-import _ "net/http/pprof"
+import httpprof "net/http/pprof"
 
 func HttpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
@@ -28,6 +28,7 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/stats", statsHandler)
 	handler.HandleFunc("/empty", emptyHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
+	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
