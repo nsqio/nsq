@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"syscall"
 	"time"
 )
 
@@ -98,7 +99,7 @@ func main() {
 		<-signalChan
 		exitChan <- 1
 	}()
-	signal.Notify(signalChan, os.Interrupt)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	msgTimeoutDuration := int64(time.Duration(*msgTimeoutMs) * time.Millisecond)
 	nsqd = NewNSQd(*workerId)
