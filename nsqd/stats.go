@@ -76,7 +76,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		t.RLock()
 
 		if !jsonFormat {
-			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d msgs %-8d\n",
+			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
 				t.name,
 				int64(len(t.memoryMsgChan))+t.backend.Depth(),
 				t.backend.Depth(),
