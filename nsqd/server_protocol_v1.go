@@ -45,7 +45,7 @@ func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 			log.Printf("PROTOCOL(V1) [%s]: %#v", client, params)
 		}
 
-		response, err := nsq.ProtocolExecute(p, client, params...)
+		response, err := p.Exec(client, params)
 		if err != nil {
 			_, err = client.Write([]byte(err.Error()))
 			if err != nil {
@@ -63,6 +63,14 @@ func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	}
 
 	return err
+}
+
+func (p *ServerProtocolV1) Exec(client *ServerClientV1, params []string) ([]byte, error) {
+	switch params[0] {
+	case "PUB":
+		return p.PUB(client, params)
+	}
+	return nil, nsq.ClientErrV1Invalid
 }
 
 func (p *ServerProtocolV1) PUB(client *ServerClientV1, params []string) ([]byte, error) {

@@ -41,9 +41,7 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
-		log.Printf("PROTOCOL(V1) [%s]: %#v", client, params)
-
-		response, err := nsq.ProtocolExecute(p, client, params...)
+		response, err := p.Exec(client, params)
 		if err != nil {
 			_, err = client.Write([]byte(err.Error()))
 			if err != nil {
@@ -61,6 +59,16 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	}
 
 	return err
+}
+
+func (p *ServerLookupProtocolV1) Exec(client *nsq.ServerClient, params []string) ([]byte, error) {
+	switch params[0] {
+	case "ANNOUNCE":
+		return p.ANNOUNCE(client, params)
+	case "PING":
+		return p.PING(client, params)
+	}
+	return nil, nsq.LookupClientErrV1Invalid
 }
 
 func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []string) ([]byte, error) {

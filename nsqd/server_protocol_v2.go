@@ -48,7 +48,7 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 			log.Printf("PROTOCOL(V2): [%s] %#v", client.String(), params)
 		}
 
-		response, err := nsq.ProtocolExecute(p, client, params...)
+		response, err := p.Exec(client, params)
 		if err != nil {
 			clientData, err := p.Frame(nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
@@ -81,6 +81,22 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 	close(client.ExitChan)
 
 	return err
+}
+
+func (p *ServerProtocolV2) Exec(client *ServerClientV2, params []string) ([]byte, error) {
+	switch params[0] {
+	case "SUB":
+		return p.SUB(client, params)
+	case "RDY":
+		return p.RDY(client, params)
+	case "FIN":
+		return p.FIN(client, params)
+	case "REQ":
+		return p.REQ(client, params)
+	case "CLS":
+		return p.CLS(client, params)
+	}
+	return nil, nsq.ClientErrV2Invalid
 }
 
 func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
