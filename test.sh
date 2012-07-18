@@ -12,7 +12,7 @@ done
 pushd nsqd >/dev/null
 go build
 rm -f *.dat
-./nsqd>/dev/null 2>&1 &
+./nsqd --data-path=/tmp >/dev/null 2>&1 &
 PID=$!
 
 popd >/dev/null
