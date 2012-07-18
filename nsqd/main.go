@@ -24,6 +24,7 @@ var (
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
+	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
 	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
@@ -109,6 +110,7 @@ func main() {
 	nsqd.memQueueSize = *memQueueSize
 	nsqd.dataPath = *dataPath
 	nsqd.maxBytesPerFile = *maxBytesPerFile
+	nsqd.syncEvery = *syncEvery
 	nsqd.msgTimeout = msgTimeoutDuration
 	nsqd.Main()
 	<-exitChan

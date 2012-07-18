@@ -26,6 +26,7 @@ type DiskQueue struct {
 	name            string
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
+	syncEvery       int64 // number of writes per sync
 
 	// run-time state (also persisted to disk)
 	readPos      int64
@@ -52,7 +53,7 @@ type DiskQueue struct {
 
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving meta-data
 // from the filesystem and starting the read ahead goroutine
-func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.BackendQueue {
+func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) nsq.BackendQueue {
 	d := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,
@@ -61,6 +62,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64) nsq.Backe
 		exitChan:          make(chan int),
 		writeContinueChan: make(chan int),
 		open:              true,
+		syncEvery:         syncEvery,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
@@ -294,11 +296,13 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
-	err = d.writeFile.Sync()
-	if err != nil {
-		d.writeFile.Close()
-		d.writeFile = nil
-		return err
+	if d.depth % d.syncEvery == 0 {
+		err = d.writeFile.Sync()
+		if err != nil {
+			d.writeFile.Close()
+			d.writeFile = nil
+			return err
+		}
 	}
 
 	totalBytes := 4 + dataLen

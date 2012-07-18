@@ -14,6 +14,7 @@ type NSQd struct {
 	memQueueSize    int64
 	dataPath        string
 	maxBytesPerFile int64
+	syncEvery       int64
 	msgTimeout      int64
 	tcpAddr         *net.TCPAddr
 	httpAddr        *net.TCPAddr
@@ -33,6 +34,7 @@ func NewNSQd(workerId int64) *NSQd {
 		memQueueSize:    10000,
 		dataPath:        os.TempDir(),
 		maxBytesPerFile: 104857600,
+		syncEvery:       2500,
 		msgTimeout:      60000,
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
@@ -79,7 +81,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile, n.msgTimeout)
+		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile, n.syncEvery, n.msgTimeout)
 		n.topicMap[topicName] = topic
 		log.Printf("TOPIC(%s): created", topic.name)
 	}

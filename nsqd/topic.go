@@ -19,22 +19,24 @@ type Topic struct {
 	memQueueSize        int64
 	dataPath            string
 	maxBytesPerFile     int64
+	syncEvery           int64
 	msgTimeout          int64
 	exitChan            chan int
 	messageCount        uint64
 }
 
 // Topic constructor
-func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, msgTimeout int64) *Topic {
+func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout int64) *Topic {
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
-		backend:             NewDiskQueue(topicName, dataPath, maxBytesPerFile),
+		backend:             NewDiskQueue(topicName, dataPath, maxBytesPerFile, syncEvery),
 		incomingMessageChan: make(chan *nsq.Message, 5),
 		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
 		memQueueSize:        memQueueSize,
 		dataPath:            dataPath,
 		maxBytesPerFile:     maxBytesPerFile,
+		syncEvery:           syncEvery,
 		msgTimeout:          msgTimeout,
 		exitChan:            make(chan int),
 	}
@@ -68,7 +70,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.msgTimeout)
+		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.syncEvery, t.msgTimeout)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
