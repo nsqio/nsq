@@ -115,6 +115,6 @@ func BenchmarkProtocolV2(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		nsq.ProtocolExecute(p, c, params...)
+		p.Exec(c, params)
 	}
 }
