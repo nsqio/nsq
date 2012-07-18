@@ -12,9 +12,11 @@ var MagicV1 = []byte("  V1")
 var MagicV2 = []byte("  V2")
 
 const (
-	FrameTypeResponse int32 = 0
-	FrameTypeError    int32 = 1
-	FrameTypeMessage  int32 = 2
+	FrameTypeResponse    int32 = 0
+	FrameTypeError       int32 = 1
+	FrameTypeMessage     int32 = 2
+	MaxTopicNameLength   int   = 32
+	MaxChannelNameLength int   = 32
 )
 
 // describes the basic behavior of any protocol in the system

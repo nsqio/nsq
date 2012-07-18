@@ -11,3 +11,9 @@
  * upon topic creation, lookup channels against lookupd
  * graceful restart
  * cleanup (expire) topics/channels
+
+
+### other items
+
+  * switch to --nsqd-tcp-address, --nsqd-http-address naming; it's terribly unclear which options need 
+    the TCP interface and which needs the HTTP interface

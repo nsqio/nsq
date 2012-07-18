@@ -82,7 +82,7 @@ func (p *ProtocolV1) PUB(client *ClientV1, params []string) ([]byte, error) {
 	}
 
 	topicName := params[1]
-	if len(topicName) > MaxNameLength {
+	if len(topicName) > nsq.MaxTopicNameLength {
 		return nil, nsq.ClientErrBadTopic
 	}
 

@@ -24,7 +24,9 @@ popd >/dev/null
 
 # no tests, but a build is something
 
-pushd nsqlookupd >/dev/null
-echo "building nsqlookupd"
-go build
-popd >/dev/null
+for dir in nsqlookupd examples/nsq_to_file examples/nsq_pubsub; do
+    pushd $dir >/dev/null
+    echo "building $dir"
+    go build
+    popd >/dev/null
+done

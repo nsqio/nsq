@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -60,6 +61,7 @@ type Reader struct {
 	runningHandlers    int64
 	messagesInFlight   int64
 	lookupdAddresses   []*net.TCPAddr
+	stopHandler        sync.Once
 }
 
 type nsqConn struct {
@@ -89,6 +91,13 @@ type FinishedMessage struct {
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
+	if len(topic) == 0 || len(topic) > MaxTopicNameLength {
+		return nil, errors.New("INVALID_TOPIC_NAME")
+	}
+	if len(channel) == 0 || len(channel) > MaxChannelNameLength {
+		return nil, errors.New("INVALID_CHANNEL_NAME")
+	}
+
 	hostname, _ := os.Hostname()
 	q := &Reader{
 		TopicName:           topic,
@@ -394,14 +403,14 @@ func (q *Reader) Stop() {
 	log.Printf("Stopping reader")
 	q.stopFlag = true
 	if len(q.nsqConnections) == 0 {
-		close(q.IncomingMessages)
+		q.stopHandlers()
 	} else {
 		for _, c := range q.nsqConnections {
 			SendCommand(c.Conn, StartClose())
 		}
 		go func() {
 			<-time.After(time.Duration(30) * time.Second)
-			close(q.IncomingMessages)
+			q.stopHandlers()
 		}()
 	}
 	if len(q.lookupdAddresses) != 0 {
@@ -410,8 +419,10 @@ func (q *Reader) Stop() {
 }
 
 func (q *Reader) stopHandlers() {
-	log.Printf("closing IncomingMessages")
-	close(q.IncomingMessages)
+	q.stopHandler.Do(func() {
+		log.Printf("closing IncomingMessages")
+		close(q.IncomingMessages)
+	})
 }
 
 // this starts a handler on the Reader

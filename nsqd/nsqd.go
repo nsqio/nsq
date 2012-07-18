@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-const MaxNameLength = 32
-
 var protocols = map[int32]nsq.Protocol{}
 
 type NSQd struct {

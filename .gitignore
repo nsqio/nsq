@@ -3,6 +3,7 @@ nsqlookupd/nsqlookupd
 nsqreader/nsqreader
 nsqstatsd/nsqstatsd
 examples/nsq_to_file/nsq_to_file
+examples/nsq_pubsub/nsq_pubsub
 
 *.dat
 
