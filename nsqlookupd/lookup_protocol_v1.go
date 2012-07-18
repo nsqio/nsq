@@ -10,24 +10,24 @@ import (
 	"strings"
 )
 
-type ServerLookupProtocolV1 struct {
+type LookupProtocolV1 struct {
 	nsq.Protocol
 }
 
 func init() {
 	// BigEndian client byte sequence "  V1"
 	var magicInt int32
-	buf := bytes.NewBuffer([]byte(nsq.LookupProtocolV1Magic))
+	buf := bytes.NewBuffer([]byte(nsq.MagicV1))
 	binary.Read(buf, binary.BigEndian, &magicInt)
-	Protocols[magicInt] = &ServerLookupProtocolV1{}
+	protocols[magicInt] = &LookupProtocolV1{}
 }
 
-func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
+func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	var err error
 	var line string
 
-	client := NewServerClientV1(sc)
-	client.State = nsq.LookupClientStateV1Init
+	client := NewClientV1(conn)
+	client.State = nsq.StateInit
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -42,7 +42,7 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			_, err = client.Write([]byte(err.Error()))
+			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -50,7 +50,7 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 		}
 
 		if response != nil {
-			_, err = client.Write(response)
+			_, err = nsq.SendResponse(client, response)
 			if err != nil {
 				break
 			}
@@ -60,21 +60,21 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	return err
 }
 
-func (p *ServerLookupProtocolV1) Exec(client *ServerClientV1, params []string) ([]byte, error) {
+func (p *LookupProtocolV1) Exec(client *ClientV1, params []string) ([]byte, error) {
 	switch params[0] {
 	case "ANNOUNCE":
 		return p.ANNOUNCE(client, params)
 	case "PING":
 		return p.PING(client, params)
 	}
-	return nil, nsq.LookupClientErrV1Invalid
+	return nil, nsq.ClientErrInvalid
 }
 
-func (p *ServerLookupProtocolV1) ANNOUNCE(client *ServerClientV1, params []string) ([]byte, error) {
+func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 4 {
-		return nil, nsq.LookupClientErrV1Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	topicName := params[1]
@@ -84,7 +84,7 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *ServerClientV1, params []strin
 		return nil, err
 	}
 
-	host, _, err := net.SplitHostPort(client.String())
+	host, _, err := net.SplitHostPort(client.RemoteAddr().String())
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +97,6 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *ServerClientV1, params []strin
 	return []byte("OK"), nil
 }
 
-func (p *ServerLookupProtocolV1) PING(client *ServerClientV1, params []string) ([]byte, error) {
+func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
 	return []byte("OK"), nil
 }

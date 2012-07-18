@@ -107,7 +107,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(topicName) > nsq.MaxNameLength {
+	if len(topicName) > MaxNameLength {
 		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
 		return
 	}
@@ -134,7 +134,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(topicName) > nsq.MaxNameLength {
+	if len(topicName) > MaxNameLength {
 		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
 		return
 	}
@@ -183,7 +183,7 @@ func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_TOPIC")
 	}
 
-	if len(topicName) > nsq.MaxNameLength {
+	if len(topicName) > MaxNameLength {
 		return "", "", errors.New("INVALID_ARG_TOPIC")
 	}
 
@@ -192,7 +192,7 @@ func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_CHANNEL")
 	}
 
-	if len(topicName) > nsq.MaxNameLength {
+	if len(topicName) > MaxNameLength {
 		return "", "", errors.New("INVALID_ARG_CHANNEL")
 	}
 

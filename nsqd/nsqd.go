@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"log"
 	"net"
@@ -8,6 +9,10 @@ import (
 	"runtime"
 	"sync"
 )
+
+const MaxNameLength = 32
+
+var protocols = map[int32]nsq.Protocol{}
 
 type NSQd struct {
 	sync.RWMutex
@@ -50,14 +55,14 @@ func (n *NSQd) Main() {
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr.String(), err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
 	}
 	n.tcpListener = tcpListener
-	go util.TcpServer(tcpListener, tcpClientHandler)
+	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols})
 
 	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr.String(), err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
 	}
 	n.httpListener = httpListener
 	go HttpServer(httpListener)

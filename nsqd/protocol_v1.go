@@ -7,28 +7,29 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 )
 
-type ServerProtocolV1 struct {
+type ProtocolV1 struct {
 	nsq.Protocol
 }
 
 func init() {
 	// BigEndian client byte sequence "  V1"
 	var magicInt int32
-	buf := bytes.NewBuffer([]byte(nsq.ProtocolV1Magic))
+	buf := bytes.NewBuffer([]byte(nsq.MagicV1))
 	binary.Read(buf, binary.BigEndian, &magicInt)
-	Protocols[magicInt] = &ServerProtocolV1{}
+	protocols[magicInt] = &ProtocolV1{}
 }
 
-func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
+func (p *ProtocolV1) IOLoop(conn net.Conn) error {
 	var err error
 	var line string
 
-	client := NewServerClientV1(sc)
-	client.State = nsq.ClientStateV1Init
+	client := NewClientV1(conn)
+	client.State = nsq.StateInit
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -47,7 +48,7 @@ func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			_, err = client.Write([]byte(err.Error()))
+			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -55,7 +56,7 @@ func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 		}
 
 		if response != nil {
-			_, err = client.Write(response)
+			_, err = nsq.SendResponse(client, response)
 			if err != nil {
 				break
 			}
@@ -65,24 +66,24 @@ func (p *ServerProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	return err
 }
 
-func (p *ServerProtocolV1) Exec(client *ServerClientV1, params []string) ([]byte, error) {
+func (p *ProtocolV1) Exec(client *ClientV1, params []string) ([]byte, error) {
 	switch params[0] {
 	case "PUB":
 		return p.PUB(client, params)
 	}
-	return nil, nsq.ClientErrV1Invalid
+	return nil, nsq.ClientErrInvalid
 }
 
-func (p *ServerProtocolV1) PUB(client *ServerClientV1, params []string) ([]byte, error) {
+func (p *ProtocolV1) PUB(client *ClientV1, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 3 {
-		return nil, nsq.ClientErrV1Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	topicName := params[1]
-	if len(topicName) > nsq.MaxNameLength {
-		return nil, nsq.ClientErrV1BadTopic
+	if len(topicName) > MaxNameLength {
+		return nil, nsq.ClientErrBadTopic
 	}
 
 	messageSize, err := strconv.Atoi(params[2])

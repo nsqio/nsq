@@ -12,7 +12,7 @@ type Topic struct {
 	sync.RWMutex
 	name                string
 	channelMap          map[string]*Channel
-	backend             nsq.BackendQueue
+	backend             BackendQueue
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
 	messagePumpStarter  sync.Once
@@ -49,7 +49,7 @@ func (t *Topic) MemoryChan() chan *nsq.Message {
 	return t.memoryMsgChan
 }
 
-func (t *Topic) BackendQueue() nsq.BackendQueue {
+func (t *Topic) BackendQueue() BackendQueue {
 	return t.backend
 }
 

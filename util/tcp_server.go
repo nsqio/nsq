@@ -6,7 +6,11 @@ import (
 	"strings"
 )
 
-func TcpServer(listener net.Listener, handler func(net.Conn)) {
+type TcpHandler interface {
+	Handle(net.Conn)
+}
+
+func TcpServer(listener net.Listener, handler TcpHandler) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
 
 	for {
@@ -22,6 +26,6 @@ func TcpServer(listener net.Listener, handler func(net.Conn)) {
 			}
 			break
 		}
-		go handler(clientConn)
+		go handler.Handle(clientConn)
 	}
 }

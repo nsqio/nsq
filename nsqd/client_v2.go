@@ -1,13 +1,14 @@
 package main
 
 import (
-	"../nsq"
 	"log"
+	"net"
 	"sync/atomic"
+	"time"
 )
 
-type ServerClientV2 struct {
-	*nsq.ServerClient
+type ClientV2 struct {
+	net.Conn
 	State            int
 	ReadyCount       int64
 	LastReadyCount   int64
@@ -15,23 +16,25 @@ type ServerClientV2 struct {
 	MessageCount     uint64
 	FinishCount      uint64
 	RequeueCount     uint64
+	ConnectTime      time.Time
 	Channel          *Channel
 	ReadyStateChange chan int
 	ExitChan         chan int
 }
 
-func NewServerClientV2(client *nsq.ServerClient) *ServerClientV2 {
-	return &ServerClientV2{
-		ServerClient:     client,
+func NewClientV2(conn net.Conn) *ClientV2 {
+	return &ClientV2{
+		net.Conn:         conn,
 		ReadyStateChange: make(chan int, 10),
 		ExitChan:         make(chan int),
+		ConnectTime:      time.Now(),
 	}
 }
 
-func (c *ServerClientV2) Stats() ClientStats {
+func (c *ClientV2) Stats() ClientStats {
 	return ClientStats{
 		version:       "V2",
-		name:          c.String(),
+		name:          c.RemoteAddr().String(),
 		state:         c.State,
 		readyCount:    atomic.LoadInt64(&c.ReadyCount),
 		inFlightCount: atomic.LoadInt64(&c.InFlightCount),
@@ -42,12 +45,13 @@ func (c *ServerClientV2) Stats() ClientStats {
 	}
 }
 
-func (c *ServerClientV2) IsReadyForMessages() bool {
+func (c *ClientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+
 	if *verbose {
-		log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightCount)
+		log.Printf("[%s] state rdy: %4d inflt: %4d", c.RemoteAddr().String(), readyCount, inFlightCount)
 	}
 
 	if inFlightCount >= lastReadyCount || readyCount <= 0 {
@@ -57,7 +61,7 @@ func (c *ServerClientV2) IsReadyForMessages() bool {
 	return true
 }
 
-func (c *ServerClientV2) SetReadyCount(newCount int) {
+func (c *ClientV2) SetReadyCount(newCount int) {
 	count := int64(newCount)
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	// lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
@@ -69,12 +73,12 @@ func (c *ServerClientV2) SetReadyCount(newCount int) {
 	}
 }
 
-func (c *ServerClientV2) FinishMessage() {
+func (c *ClientV2) FinishMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
 	c.decrementInFlightCount()
 }
 
-func (c *ServerClientV2) decrementInFlightCount() {
+func (c *ClientV2) decrementInFlightCount() {
 	ready := atomic.LoadInt64(&c.ReadyCount)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	if ready > 0 {
@@ -83,17 +87,17 @@ func (c *ServerClientV2) decrementInFlightCount() {
 	}
 }
 
-func (c *ServerClientV2) SendingMessage() {
+func (c *ClientV2) SendingMessage() {
 	atomic.AddInt64(&c.ReadyCount, -1)
 	atomic.AddInt64(&c.InFlightCount, 1)
 	atomic.AddUint64(&c.MessageCount, 1)
 }
 
-func (c *ServerClientV2) TimedOutMessage() {
+func (c *ClientV2) TimedOutMessage() {
 	c.decrementInFlightCount()
 }
 
-func (c *ServerClientV2) RequeuedMessage() {
+func (c *ClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	c.decrementInFlightCount()
 }

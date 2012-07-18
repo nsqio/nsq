@@ -1,4 +1,4 @@
-package nsq
+package main
 
 // BackendQueue represents the behavior for the secondary message
 // storage system

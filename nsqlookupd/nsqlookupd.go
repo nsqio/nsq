@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ var (
 	goMaxProcs  = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 )
 
+var protocols = map[int32]nsq.Protocol{}
 var sm *util.SafeMap
 
 func main() {
@@ -69,13 +71,13 @@ func main() {
 
 	tcpListener, err := net.Listen("tcp", tcpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr.String(), err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr, err.Error())
 	}
-	go util.TcpServer(tcpListener, tcpClientHandler)
+	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols})
 
 	webListener, err := net.Listen("tcp", webAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr.String(), err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr, err.Error())
 	}
 	go HttpServer(webListener)
 

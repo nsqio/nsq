@@ -8,7 +8,7 @@ import (
 
 type Queue interface {
 	MemoryChan() chan *nsq.Message
-	BackendQueue() nsq.BackendQueue
+	BackendQueue() BackendQueue
 	InFlight() map[string]interface{}
 	Deferred() map[string]interface{}
 }

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
+func mustStartNSQd() (*net.TCPAddr, *net.TCPAddr) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	nsqd = NewNSQd(1)
 	nsqd.tcpAddr = tcpAddr
@@ -21,12 +21,21 @@ func mustStartNSQd(t *testing.T) (*net.TCPAddr, *net.TCPAddr) {
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
 }
 
+func mustConnectNSQd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
+	conn, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second)
+	if err != nil {
+		t.Fatal("failed to connect to nsqd")
+	}
+	conn.Write(nsq.MagicV2)
+	return conn
+}
+
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := mustStartNSQd(t)
+	tcpAddr, _ := mustStartNSQd()
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -34,24 +43,18 @@ func TestBasicV2(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
-	consumer := nsq.NewConsumer(tcpAddr)
+	conn := mustConnectNSQd(t, tcpAddr)
 
-	err := consumer.Connect()
+	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"))
 	assert.Equal(t, err, nil)
 
-	err = consumer.Version(nsq.ProtocolV2Magic)
+	err = nsq.SendCommand(conn, nsq.Ready(1))
 	assert.Equal(t, err, nil)
 
-	err = consumer.WriteCommand(consumer.Subscribe(topicName, "ch"))
+	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
-
-	err = consumer.WriteCommand(consumer.Ready(1))
-	assert.Equal(t, err, nil)
-
-	resp, err := consumer.ReadResponse()
-	assert.Equal(t, err, nil)
-	frameType, msgInterface, err := consumer.UnpackResponse(resp)
-	msgOut := msgInterface.(*nsq.Message)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := nsq.DecodeMessage(data)
 	assert.Equal(t, frameType, nsq.FrameTypeMessage)
 	assert.Equal(t, msgOut.Id, msg.Id)
 	assert.Equal(t, msgOut.Body, msg.Body)
@@ -64,7 +67,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	msgChan := make(chan *nsq.Message)
 
-	tcpAddr, _ := mustStartNSQd(t)
+	tcpAddr, _ := mustStartNSQd()
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -75,24 +78,20 @@ func TestMultipleConsumerV2(t *testing.T) {
 	topic.PutMessage(msg)
 
 	for _, i := range []string{"1", "2"} {
-		consumer := nsq.NewConsumer(tcpAddr)
-		err := consumer.Connect()
+		conn := mustConnectNSQd(t, tcpAddr)
+
+		err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"+i))
 		assert.Equal(t, err, nil)
 
-		err = consumer.Version(nsq.ProtocolV2Magic)
+		err = nsq.SendCommand(conn, nsq.Ready(1))
 		assert.Equal(t, err, nil)
 
-		err = consumer.WriteCommand(consumer.Subscribe(topicName, "ch"+i))
-		assert.Equal(t, err, nil)
-
-		err = consumer.WriteCommand(consumer.Ready(1))
-		assert.Equal(t, err, nil)
-
-		go func(c *nsq.Consumer) {
-			resp, _ := c.ReadResponse()
-			_, msgInterface, _ := c.UnpackResponse(resp)
-			msgChan <- msgInterface.(*nsq.Message)
-		}(consumer)
+		go func(c net.Conn) {
+			resp, _ := nsq.ReadResponse(c)
+			_, data, _ := nsq.UnpackResponse(resp)
+			msg, _ := nsq.DecodeMessage(data)
+			msgChan <- msg
+		}(conn)
 	}
 
 	msgOut := <-msgChan
@@ -109,8 +108,8 @@ func BenchmarkProtocolV2(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	p := &ServerProtocolV2{}
-	c := NewServerClientV2(nil)
+	p := &ProtocolV2{}
+	c := NewClientV2(nil)
 	params := []string{"SUB", "test", "ch"}
 	b.StartTimer()
 

@@ -15,6 +15,11 @@ import (
 // the amount of time a worker will wait when idle
 const defaultWorkerWait = 250 * time.Millisecond
 
+type ClientStatTracker interface {
+	TimedOutMessage()
+	Stats() ClientStats
+}
+
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
@@ -30,7 +35,7 @@ type Channel struct {
 	name       string
 	msgTimeout int64
 
-	backend nsq.BackendQueue
+	backend BackendQueue
 
 	incomingMessageChan chan *nsq.Message
 	memoryMsgChan       chan *nsq.Message
@@ -38,7 +43,7 @@ type Channel struct {
 	exitChan            chan int
 
 	// state tracking
-	clients []ClientInterface
+	clients []ClientStatTracker
 
 	// TODO: these can be DRYd up
 	deferredMessages map[string]interface{}
@@ -56,7 +61,7 @@ type Channel struct {
 
 type inFlightMessage struct {
 	msg    *nsq.Message
-	client ClientInterface
+	client ClientStatTracker
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -72,7 +77,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
 		clientMessageChan:   make(chan *nsq.Message),
 		exitChan:            make(chan int),
-		clients:             make([]ClientInterface, 0, 5),
+		clients:             make([]ClientStatTracker, 0, 5),
 		inFlightMessages:    make(map[string]interface{}),
 		inFlightPQ:          pqueue.New(int(inMemSize / 10)),
 		deferredMessages:    make(map[string]interface{}),
@@ -109,7 +114,7 @@ func (c *Channel) MemoryChan() chan *nsq.Message {
 }
 
 // BackendQueue implements the Queue interface
-func (c *Channel) BackendQueue() nsq.BackendQueue {
+func (c *Channel) BackendQueue() BackendQueue {
 	return c.backend
 }
 
@@ -166,7 +171,7 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 }
 
 // AddClient adds the ServerClient the Channel's client list
-func (c *Channel) AddClient(client ClientInterface) {
+func (c *Channel) AddClient(client ClientStatTracker) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -184,7 +189,7 @@ func (c *Channel) AddClient(client ClientInterface) {
 }
 
 // RemoveClient removes the ServerClient from the Channel's client list
-func (c *Channel) RemoveClient(client ClientInterface) {
+func (c *Channel) RemoveClient(client ClientStatTracker) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -192,7 +197,7 @@ func (c *Channel) RemoveClient(client ClientInterface) {
 		return
 	}
 
-	finalClients := make([]ClientInterface, 0, len(c.clients)-1)
+	finalClients := make([]ClientStatTracker, 0, len(c.clients)-1)
 	for _, cli := range c.clients {
 		if cli != client {
 			finalClients = append(finalClients, cli)
@@ -202,7 +207,7 @@ func (c *Channel) RemoveClient(client ClientInterface) {
 	c.clients = finalClients
 }
 
-func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientInterface) error {
+func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
 	value := &inFlightMessage{msg, client}
 	absTs := time.Now().UnixNano() + c.msgTimeout
 	item := &pqueue.Item{Value: value, Priority: -absTs}

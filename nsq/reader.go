@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -56,22 +55,22 @@ type Reader struct {
 	runningFlag        bool
 	runningHandlers    int64
 	messagesInFlight   int64
-	consumer           *Consumer
 	lookupdAddresses   []*net.TCPAddr
 }
 
 type nsqConn struct {
-	sync.RWMutex     // embed a r/w mutex
-	ServerAddress    *net.TCPAddr
-	FinishedMessages chan *FinishedMessage
-
-	consumer            *Consumer
+	net.Conn
 	stopFlag            bool
+	FinishedMessages    chan *FinishedMessage
 	messagesInFlight    int64
 	messagesReceived    uint64
 	messagesFinished    uint64
 	messagesRequeued    uint64
 	bufferSizeRemaining int64
+}
+
+func (c *nsqConn) String() string {
+	return c.RemoteAddr().String()
 }
 
 type IncomingMessage struct {
@@ -148,7 +147,6 @@ func (q *Reader) LookupdLoop() {
 			return
 		}
 	}
-
 }
 
 // make a HTTP req to the /lookup endpoint on each lookup server
@@ -216,20 +214,17 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	}
 
 	log.Printf("[%s] connecting to nsqd", addr)
-	consumer := NewConsumer(addr)
-	err := consumer.Connect()
+	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
 	if err != nil {
 		log.Printf("[%s] %s", addr, err.Error())
 		return err
 	}
-
-	consumer.Version(ProtocolV2Magic)
-	consumer.WriteCommand(consumer.Subscribe(q.TopicName, q.ChannelName))
+	conn.Write(MagicV2)
+	SendCommand(conn, Subscribe(q.TopicName, q.ChannelName))
 
 	connection := &nsqConn{
-		ServerAddress:    addr,
+		net.Conn:         conn,
 		FinishedMessages: make(chan *FinishedMessage),
-		consumer:         consumer,
 		stopFlag:         false,
 	}
 
@@ -253,59 +248,64 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	s := q.ConnectionBufferSize()
 	if q.VerboseLogging {
-		log.Printf("[%s] RDY %d", c.ServerAddress, s)
+		log.Printf("[%s] RDY %d", c, s)
 	}
 	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-	c.consumer.WriteCommand(c.consumer.Ready(s))
+	SendCommand(c.Conn, Ready(s))
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 {
-				log.Printf("[%s] closing FinishedMessages channel", c.ServerAddress)
+				log.Printf("[%s] closing FinishedMessages channel", c)
 				close(c.FinishedMessages)
 			} else {
-				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c.ServerAddress, c.messagesInFlight)
+				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
-			log.Printf("[%s] stopped read loop ", c.ServerAddress)
+			log.Printf("[%s] stopped read loop ", c)
 			break
 		}
 
-		resp, err := c.consumer.ReadResponse()
+		resp, err := ReadResponse(c.Conn)
 		if err != nil {
-			handleReadError(q, c, fmt.Sprintf("[%s] error on response %s", c.ServerAddress, err.Error()))
+			handleReadError(q, c, fmt.Sprintf("[%s] error on response %s", c, err.Error()))
 			continue
 		}
 
-		frameType, data, err := c.consumer.UnpackResponse(resp)
+		frameType, data, err := UnpackResponse(resp)
 		if err != nil {
-			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %s %s", c.ServerAddress, err.Error(), frameType, data))
+			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %s %s", c, err.Error(), frameType, data))
 			continue
 		}
 
 		switch frameType {
 		case FrameTypeMessage:
+			msg, err := DecodeMessage(data)
+			if err != nil {
+				handleReadError(q, c, fmt.Sprintf("[%s] error (%s) decoding message %s", c, err.Error(), data))
+				continue
+			}
+
 			remain := atomic.AddInt64(&c.bufferSizeRemaining, -1)
 			atomic.AddUint64(&c.messagesReceived, 1)
 			atomic.AddUint64(&q.MessagesReceived, 1)
 			atomic.AddInt64(&c.messagesInFlight, 1)
 			atomic.AddInt64(&q.messagesInFlight, 1)
 
-			msg := data.(*Message)
 			if q.VerboseLogging {
-				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c.ServerAddress, remain, msg.Id, msg.Body)
+				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c, remain, msg.Id, msg.Body)
 			}
 
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
 		case FrameTypeResponse:
-			if bytes.Equal(data.([]byte), []byte("CLOSE_WAIT")) {
+			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
 				// server is ready for us to close (it ack'd our StartClose)
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
-				log.Printf("[%s] received ACK from server. now in CloseWait %d", c.ServerAddress, frameType)
+				log.Printf("[%s] received ACK from server. now in CloseWait %d", c, frameType)
 				c.stopFlag = true
 			}
 		default:
-			log.Printf("[%s] unknown message type %d", c.ServerAddress, frameType)
+			log.Printf("[%s] unknown message type %d", c, frameType)
 		}
 
 	}
@@ -315,9 +315,9 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 	for {
 		msg, ok := <-c.FinishedMessages
 		if !ok {
-			log.Printf("[%s] stopping finish loop ", c.ServerAddress)
-			c.consumer.Close()
-			delete(q.nsqConnections, c.ServerAddress.String())
+			log.Printf("[%s] stopping finish loop ", c)
+			c.Close()
+			delete(q.nsqConnections, c.String())
 
 			log.Printf("there are %d connections left alive", len(q.nsqConnections))
 
@@ -341,23 +341,23 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 		}
 		if msg.Success {
 			if q.VerboseLogging {
-				log.Printf("[%s] finishing %s", c.ServerAddress, msg.Id)
+				log.Printf("[%s] finishing %s", c, msg.Id)
 			}
-			c.consumer.WriteCommand(c.consumer.Finish(msg.Id))
+			SendCommand(c.Conn, Finish(msg.Id))
 			atomic.AddUint64(&c.messagesFinished, 1)
 			atomic.AddUint64(&q.MessagesFinished, 1)
 		} else {
 			if q.VerboseLogging {
-				log.Printf("[%s] requeuing %s", c.ServerAddress, msg.Id)
+				log.Printf("[%s] requeuing %s", c, msg.Id)
 			}
-			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, msg.RequeueDelayMs))
+			SendCommand(c.Conn, Requeue(msg.Id, msg.RequeueDelayMs))
 			atomic.AddUint64(&c.messagesRequeued, 1)
 			atomic.AddUint64(&q.MessagesRequeued, 1)
 		}
 
 		atomic.AddInt64(&q.messagesInFlight, -1)
 		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && c.stopFlag {
-			log.Printf("[%s] closing c.FinishedMessages", c.ServerAddress)
+			log.Printf("[%s] closing c.FinishedMessages", c)
 			close(c.FinishedMessages)
 			continue
 		}
@@ -368,15 +368,14 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			// refill when at 1, or at 25% whichever comes first
 			if remain <= 1 || remain < (int64(s)/int64(4)) {
 				if q.VerboseLogging {
-					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c.ServerAddress, s, remain)
+					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
 				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-				c.consumer.WriteCommand(c.consumer.Ready(s))
+				SendCommand(c.Conn, Ready(s))
 			} else {
 				if q.VerboseLogging {
-					log.Printf("[%s] no rdy; remain %d (out of %d)", c.ServerAddress, remain, s)
+					log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
 				}
-
 			}
 		}
 	}
@@ -393,7 +392,7 @@ func (q *Reader) Stop() {
 		close(q.IncomingMessages)
 	} else {
 		for _, c := range q.nsqConnections {
-			c.consumer.WriteCommand(c.consumer.StartClose())
+			SendCommand(c.Conn, StartClose())
 		}
 		go func() {
 			<-time.After(time.Duration(30) * time.Second)

@@ -2,30 +2,75 @@ package nsq
 
 import (
 	"net"
-	"strconv"
+	"time"
 )
 
 // LookupPeer is a low-level type for connecting/reading/writing to nsqlookupd
 type LookupPeer struct {
-	*ProtocolClient
+	tcpAddr         *net.TCPAddr
+	conn            net.Conn
+	state           int32
+	connectCallback func(*LookupPeer)
 }
 
-// NewLookupPeer creates a new LookupPeer, initializes 
-// the underlying ProtocolClient, and returns a pointer
-func NewLookupPeer(tcpAddr *net.TCPAddr) *LookupPeer {
-	return &LookupPeer{&ProtocolClient{tcpAddr: tcpAddr}}
+// NewLookupPeer creates a new LookupPeer instance
+func NewLookupPeer(tcpAddr *net.TCPAddr, connectCallback func(*LookupPeer)) *LookupPeer {
+	return &LookupPeer{
+		tcpAddr:         tcpAddr,
+		state:           StateDisconnected,
+		connectCallback: connectCallback,
+	}
 }
 
-// Announce creates a new ProtocolCommand to announce the existence of
-// a given topic and/or channel.
-// NOTE: if channel == "." then it is considered n/a
-func (c *LookupPeer) Announce(topic string, channel string, port int) *ProtocolCommand {
-	var params = [][]byte{[]byte(topic), []byte(channel), []byte(strconv.Itoa(port))}
-	return &ProtocolCommand{[]byte("ANNOUNCE"), params}
+func (lp *LookupPeer) Connect() error {
+	conn, err := net.DialTimeout("tcp", lp.tcpAddr.String(), time.Second)
+	if err != nil {
+		return err
+	}
+	lp.conn = conn
+	return nil
 }
 
-// Ping creates a new ProtocolCommand to keep-alive the state of all the 
-// announced topic/channels for a given client
-func (c *LookupPeer) Ping() *ProtocolCommand {
-	return &ProtocolCommand{[]byte("PING"), make([][]byte, 0)}
+func (lp *LookupPeer) String() string {
+	return lp.tcpAddr.String()
+}
+
+func (lp *LookupPeer) Read(data []byte) (int, error) {
+	return lp.conn.Read(data)
+}
+
+func (lp *LookupPeer) Write(data []byte) (int, error) {
+	return lp.conn.Write(data)
+}
+
+func (lp *LookupPeer) Close() error {
+	return lp.conn.Close()
+}
+
+func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
+	initialState := lp.state
+	if lp.state != StateConnected {
+		err := lp.Connect()
+		if err != nil {
+			return nil, err
+		}
+		lp.state = StateConnected
+		lp.Write(MagicV1)
+		if initialState == StateDisconnected {
+			lp.connectCallback(lp)
+		}
+	}
+	err := SendCommand(lp, cmd)
+	if err != nil {
+		lp.Close()
+		lp.state = StateDisconnected
+		return nil, err
+	}
+	resp, err := ReadResponse(lp)
+	if err != nil {
+		lp.Close()
+		lp.state = StateDisconnected
+		return nil, err
+	}
+	return resp, nil
 }

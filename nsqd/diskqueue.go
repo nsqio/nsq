@@ -1,7 +1,6 @@
 package main
 
 import (
-	"../nsq"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -15,7 +14,7 @@ import (
 	"sync/atomic"
 )
 
-// DiskQueue implements the nsq.BackendQueue interface
+// DiskQueue implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type DiskQueue struct {
 	// separate mutexes are used to be able to exclusively
@@ -57,7 +56,7 @@ type DiskQueue struct {
 
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving meta-data
 // from the filesystem and starting the read ahead goroutine
-func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) nsq.BackendQueue {
+func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) BackendQueue {
 	d := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,

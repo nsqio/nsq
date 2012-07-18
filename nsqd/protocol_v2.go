@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -14,24 +15,24 @@ import (
 const maxTimeout = time.Hour
 const maxReadyCount = 2500
 
-type ServerProtocolV2 struct {
+type ProtocolV2 struct {
 	nsq.Protocol
 }
 
 func init() {
 	// BigEndian client byte sequence "  V2"
 	var magicInt int32
-	buf := bytes.NewBuffer([]byte(nsq.ProtocolV2Magic))
+	buf := bytes.NewBuffer([]byte(nsq.MagicV2))
 	binary.Read(buf, binary.BigEndian, &magicInt)
-	Protocols[magicInt] = &ServerProtocolV2{}
+	protocols[magicInt] = &ProtocolV2{}
 }
 
-func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
+func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var err error
 	var line string
 
-	client := NewServerClientV2(sc)
-	client.State = nsq.ClientStateV2Init
+	client := NewClientV2(conn)
+	client.State = nsq.StateInit
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -45,18 +46,18 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 		params := strings.Split(line, " ")
 
 		if *verbose {
-			log.Printf("PROTOCOL(V2): [%s] %#v", client.String(), params)
+			log.Printf("PROTOCOL(V2): [%s] %#v", client.RemoteAddr().String(), params)
 		}
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			clientData, err := p.Frame(nsq.FrameTypeError, []byte(err.Error()))
+			clientData, err := nsq.Frame(nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
 				break
 			}
 
 			// TODO: these writes need to be synchronized
-			_, err = client.Write(clientData)
+			_, err = nsq.SendResponse(client, clientData)
 			if err != nil {
 				break
 			}
@@ -64,13 +65,13 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 		}
 
 		if response != nil {
-			clientData, err := p.Frame(nsq.FrameTypeResponse, response)
+			clientData, err := nsq.Frame(nsq.FrameTypeResponse, response)
 			if err != nil {
 				break
 			}
 
 			// TODO: these writes need to be synchronized
-			_, err = client.Write(clientData)
+			_, err = nsq.SendResponse(client, clientData)
 			if err != nil {
 				break
 			}
@@ -83,7 +84,7 @@ func (p *ServerProtocolV2) IOLoop(sc *nsq.ServerClient) error {
 	return err
 }
 
-func (p *ServerProtocolV2) Exec(client *ServerClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
 	switch params[0] {
 	case "SUB":
 		return p.SUB(client, params)
@@ -96,27 +97,10 @@ func (p *ServerProtocolV2) Exec(client *ServerClientV2, params []string) ([]byte
 	case "CLS":
 		return p.CLS(client, params)
 	}
-	return nil, nsq.ClientErrV2Invalid
+	return nil, nsq.ClientErrInvalid
 }
 
-func (p *ServerProtocolV2) Frame(frameType int32, data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	var err error
-
-	err = binary.Write(&buf, binary.BigEndian, &frameType)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
+func (p *ProtocolV2) PushMessages(client *ClientV2) {
 	var err error
 
 	for {
@@ -133,7 +117,7 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 			case msg := <-client.Channel.clientMessageChan:
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-						msg.Id, client.String(), msg.Body)
+						msg.Id, client.RemoteAddr().String(), msg.Body)
 				}
 
 				data, err := msg.Encode()
@@ -141,7 +125,7 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 					goto exit
 				}
 
-				clientData, err := p.Frame(nsq.FrameTypeMessage, data)
+				clientData, err := nsq.Frame(nsq.FrameTypeMessage, data)
 				if err != nil {
 					goto exit
 				}
@@ -150,7 +134,7 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 				client.SendingMessage()
 
 				// TODO: these writes need to be synchronized
-				_, err = client.Write(clientData)
+				_, err = nsq.SendResponse(client, clientData)
 				if err != nil {
 					goto exit
 				}
@@ -167,31 +151,31 @@ exit:
 	}
 }
 
-func (p *ServerProtocolV2) SUB(client *ServerClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.ClientStateV2Init {
-		return nil, nsq.ClientErrV2Invalid
+func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
+	if client.State != nsq.StateInit {
+		return nil, nsq.ClientErrInvalid
 	}
 
 	if len(params) < 3 {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	topicName := params[1]
 	if len(topicName) == 0 {
-		return nil, nsq.ClientErrV2BadTopic
+		return nil, nsq.ClientErrBadTopic
 	}
 
-	if len(topicName) > nsq.MaxNameLength {
-		return nil, nsq.ClientErrV2BadTopic
+	if len(topicName) > MaxNameLength {
+		return nil, nsq.ClientErrBadTopic
 	}
 
 	channelName := params[2]
 	if len(channelName) == 0 {
-		return nil, nsq.ClientErrV2BadChannel
+		return nil, nsq.ClientErrBadChannel
 	}
 
-	if len(channelName) > nsq.MaxNameLength {
-		return nil, nsq.ClientErrV2BadChannel
+	if len(channelName) > MaxNameLength {
+		return nil, nsq.ClientErrBadChannel
 	}
 
 	topic := nsqd.GetTopic(topicName)
@@ -199,37 +183,37 @@ func (p *ServerProtocolV2) SUB(client *ServerClientV2, params []string) ([]byte,
 	channel.AddClient(client)
 
 	client.Channel = channel
-	client.State = nsq.ClientStateV2Subscribed
+	client.State = nsq.StateSubscribed
 
 	go p.PushMessages(client)
 
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) RDY(client *ServerClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 	var err error
 
-	if client.State == nsq.ClientStateV2Closing {
+	if client.State == nsq.StateClosing {
 		// just ignore ready changes on a closing channel
 		log.Printf("PROTOCOL(V2): ignoring RDY after CLS in state ClientStateV2Closing")
 		return nil, nil
 	}
 
-	if client.State != nsq.ClientStateV2Subscribed {
-		return nil, nsq.ClientErrV2Invalid
+	if client.State != nsq.StateSubscribed {
+		return nil, nsq.ClientErrInvalid
 	}
 
 	count := 1
 	if len(params) > 1 {
 		count, err = strconv.Atoi(params[1])
 		if err != nil {
-			return nil, nsq.ClientErrV2Invalid
+			return nil, nsq.ClientErrInvalid
 		}
 	}
 
 	if count > maxReadyCount {
 		log.Printf("PROTOCOL(V2): client(%s) sent ready count %d. Thats over the max of %d",
-			client.String(), count, maxReadyCount)
+			client, count, maxReadyCount)
 		count = maxReadyCount
 	}
 
@@ -238,19 +222,19 @@ func (p *ServerProtocolV2) RDY(client *ServerClientV2, params []string) ([]byte,
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) FIN(client *ServerClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
-		return nil, nsq.ClientErrV2Invalid
+func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
+	if client.State != nsq.StateSubscribed && client.State != nsq.StateClosing {
+		return nil, nsq.ClientErrInvalid
 	}
 
 	if len(params) < 2 {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	idStr := params[1]
 	err := client.Channel.FinishMessage([]byte(idStr))
 	if err != nil {
-		return nil, nsq.ClientErrV2FinishFailed
+		return nil, nsq.ClientErrFinishFailed
 	}
 
 	client.FinishMessage()
@@ -258,29 +242,29 @@ func (p *ServerProtocolV2) FIN(client *ServerClientV2, params []string) ([]byte,
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) REQ(client *ServerClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.ClientStateV2Subscribed && client.State != nsq.ClientStateV2Closing {
-		return nil, nsq.ClientErrV2Invalid
+func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
+	if client.State != nsq.StateSubscribed && client.State != nsq.StateClosing {
+		return nil, nsq.ClientErrInvalid
 	}
 
 	if len(params) < 3 {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	idStr := params[1]
 	timeoutMs, err := strconv.Atoi(params[2])
 	if err != nil {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
 	if timeoutDuration < 0 || timeoutDuration > maxTimeout {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	err = client.Channel.RequeueMessage([]byte(idStr), timeoutDuration)
 	if err != nil {
-		return nil, nsq.ClientErrV2RequeueFailed
+		return nil, nsq.ClientErrRequeueFailed
 	}
 
 	client.RequeuedMessage()
@@ -288,22 +272,22 @@ func (p *ServerProtocolV2) REQ(client *ServerClientV2, params []string) ([]byte,
 	return nil, nil
 }
 
-func (p *ServerProtocolV2) CLS(client *ServerClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.ClientStateV2Subscribed {
-		return nil, nsq.ClientErrV2Invalid
+func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
+	if client.State != nsq.StateSubscribed {
+		return nil, nsq.ClientErrInvalid
 	}
 
 	if len(params) > 1 {
-		return nil, nsq.ClientErrV2Invalid
+		return nil, nsq.ClientErrInvalid
 	}
 
 	// Force the client into ready 0
 	client.SetReadyCount(0)
 
 	// mark this client as closing
-	client.State = nsq.ClientStateV2Closing
+	client.State = nsq.StateClosing
 
-	//TODO: start a timer to actually close the channel (in case the client doesn't do it first)
+	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 
 	return []byte("CLOSE_WAIT"), nil
 }
