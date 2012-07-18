@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 )
 
 // DiskQueue implements the nsq.BackendQueue interface
@@ -37,7 +38,8 @@ type DiskQueue struct {
 
 	// keeps track of the position where we have read
 	// (but not yet sent over readChan)
-	nextReadPos int64
+	nextReadPos     int64
+	nextReadFileNum int64
 
 	readFile  *os.File
 	writeFile *os.File
@@ -47,6 +49,7 @@ type DiskQueue struct {
 	readChan chan []byte
 
 	// internal channels
+	emptyChan         chan int
 	writeContinueChan chan int
 	exitChan          chan int
 }
@@ -59,6 +62,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 		dataPath:          dataPath,
 		maxBytesPerFile:   maxBytesPerFile,
 		readChan:          make(chan []byte),
+		emptyChan:         make(chan int),
 		exitChan:          make(chan int),
 		writeContinueChan: make(chan int),
 		open:              true,
@@ -78,7 +82,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 
 // Depth returns the depth of the queue
 func (d *DiskQueue) Depth() int64 {
-	return d.depth
+	return atomic.LoadInt64(&d.depth)
 }
 
 // ReadChan returns the []byte channel for reading data
@@ -123,29 +127,46 @@ func (d *DiskQueue) Close() error {
 // Empty destructively clears out any pending data in the queue
 // by fast forwarding read positions and removing intermediate files
 func (d *DiskQueue) Empty() error {
+	d.emptyChan <- 1
+	return nil
+}
+
+func (d *DiskQueue) doEmpty() error {
 	d.readMutex.Lock()
 	defer d.readMutex.Unlock()
 
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
 
-	d.metaMutex.Lock()
-	for d.readFileNum < d.writeFileNum {
-		fn := d.fileName(d.readFileNum)
+	readFileNum := atomic.LoadInt64(&d.readFileNum)
+	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
+	writePos := atomic.LoadInt64(&d.writePos)
+
+	// make a list of read file numbers to remove (later)
+	numsToRemove := make([]int64, 0)
+	for readFileNum < writeFileNum {
+		numsToRemove = append(numsToRemove, readFileNum)
+		readFileNum++
+	}
+
+	atomic.StoreInt64(&d.readFileNum, writeFileNum)
+	atomic.StoreInt64(&d.readPos, writePos)
+	atomic.StoreInt64(&d.nextReadPos, writePos)
+	atomic.StoreInt64(&d.depth, 0)
+
+	err := d.persistMetaData()
+	if err != nil {
+		return err
+	}
+
+	// only if we've successfully persisted metadata do we remove old files
+	for _, num := range numsToRemove {
+		fn := d.fileName(num)
 		err := os.Remove(fn)
 		if err != nil {
-			// only log this state because, although unexpected, 
-			// it's effectively the same as having removed the file
-			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+			return err
 		}
-		d.readFileNum++
 	}
-	d.readPos = d.writePos
-	d.nextReadPos = d.readPos
-	d.depth = 0
-	d.metaMutex.Unlock()
-
-	d.writeContinueChan <- 1
 
 	return nil
 }
@@ -163,24 +184,29 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, errors.New("E_CLOSED")
 	}
 
-	if d.readPos > d.maxBytesPerFile {
+	// because readOne is only called inside readAheadPump
+	// we do not need to lock around these
+	readPos := atomic.LoadInt64(&d.readPos)
+	readFileNum := atomic.LoadInt64(&d.readFileNum)
+
+	if readPos > d.maxBytesPerFile {
 		if d.readFile != nil {
 			d.readFile.Close()
 			d.readFile = nil
 		}
 
 		// get the current filename before incr
-		fn := d.fileName(d.readFileNum)
+		fn := d.fileName(readFileNum)
 
-		d.metaMutex.Lock()
-		d.readFileNum++
-		d.readPos = 0
-		d.metaMutex.Unlock()
+		readFileNum++
+		readPos = 0
+
 		err = d.persistMetaData()
 		if err != nil {
 			return nil, err
 		}
 
+		// only if we've successfully persisted metadata do we remove old files
 		err := os.Remove(fn)
 		if err != nil {
 			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
@@ -188,14 +214,16 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	}
 
 	if d.readFile == nil {
-		curFileName := d.fileName(d.readFileNum)
+		curFileName := d.fileName(readFileNum)
 		d.readFile, err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
 		if err != nil {
 			return nil, err
 		}
 
-		if d.readPos > 0 {
-			_, err = d.readFile.Seek(d.readPos, 0)
+		log.Printf("DISKQUEUE: readOne() opened %s", curFileName)
+
+		if readPos > 0 {
+			_, err = d.readFile.Seek(readPos, 0)
 			if err != nil {
 				d.readFile.Close()
 				d.readFile = nil
@@ -219,14 +247,12 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, err
 	}
 
-	totalBytes := 4 + msgSize
-	// we only advance nextReadPos because we have not yet sent
-	// this to consumers of the queue (where readPos will actually
-	// be advanced)
-	d.nextReadPos = d.readPos + int64(totalBytes)
+	totalBytes := int64(4 + msgSize)
 
-	// log.Printf("DISK: read %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
-	// 	totalBytes, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
+	// we only advance next* because we have not yet sent this to consumers 
+	// (where readFileNum, readPos will actually be advanced)
+	atomic.StoreInt64(&d.nextReadFileNum, readFileNum)
+	atomic.StoreInt64(&d.nextReadPos, d.readPos+totalBytes)
 
 	return readBuf, nil
 }
@@ -244,16 +270,18 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return errors.New("E_CLOSED")
 	}
 
-	if d.writePos > d.maxBytesPerFile {
+	writePos := atomic.LoadInt64(&d.writePos)
+	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
+
+	if writePos > d.maxBytesPerFile {
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
 
-		d.metaMutex.Lock()
-		d.writeFileNum++
-		d.writePos = 0
-		d.metaMutex.Unlock()
+		writeFileNum++
+		writePos = 0
+
 		err = d.persistMetaData()
 		if err != nil {
 			return err
@@ -261,14 +289,16 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	}
 
 	if d.writeFile == nil {
-		curFileName := d.fileName(d.writeFileNum)
+		curFileName := d.fileName(writeFileNum)
 		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
 			return err
 		}
 
-		if d.writePos > 0 {
-			_, err = d.writeFile.Seek(d.writePos, 0)
+		log.Printf("DISKQUEUE: writeOne() opened %s", curFileName)
+
+		if writePos > 0 {
+			_, err = d.writeFile.Seek(writePos, 0)
 			if err != nil {
 				d.writeFile.Close()
 				d.writeFile = nil
@@ -289,6 +319,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
+	// only write to the file once
 	_, err = d.writeFile.Write(buf.Bytes())
 	if err != nil {
 		d.writeFile.Close()
@@ -296,7 +327,8 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
-	if d.depth % d.syncEvery == 0 {
+	// dont sync all the time :)
+	if d.depth%d.syncEvery == 0 {
 		err = d.writeFile.Sync()
 		if err != nil {
 			d.writeFile.Close()
@@ -305,16 +337,15 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		}
 	}
 
-	totalBytes := 4 + dataLen
+	writePos += int64(4 + dataLen)
+
 	d.metaMutex.Lock()
-	d.writePos += int64(totalBytes)
-	d.depth++
+	atomic.StoreInt64(&d.writeFileNum, writeFileNum)
+	atomic.StoreInt64(&d.writePos, writePos)
+	atomic.AddInt64(&d.depth, 1)
 	d.metaMutex.Unlock()
 
 	d.writeContinueChan <- 1
-
-	// log.Printf("DISK: wrote %d bytes - readFileNum=%d writeFileNum=%d readPos=%d writePos=%d\n",
-	// 	totalBytes, d.readFileNum, d.writeFileNum, d.readPos, d.writePos)
 
 	return nil
 }
@@ -323,9 +354,6 @@ func (d *DiskQueue) writeOne(data []byte) error {
 func (d *DiskQueue) retrieveMetaData() error {
 	var f *os.File
 	var err error
-
-	d.metaMutex.Lock()
-	defer d.metaMutex.Unlock()
 
 	fileName := d.metaDataFileName()
 	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
@@ -341,6 +369,7 @@ func (d *DiskQueue) retrieveMetaData() error {
 	if err != nil {
 		return err
 	}
+	d.nextReadFileNum = d.readFileNum
 	d.nextReadPos = d.readPos
 
 	return nil
@@ -352,7 +381,12 @@ func (d *DiskQueue) persistMetaData() error {
 	var err error
 
 	d.metaMutex.Lock()
-	defer d.metaMutex.Unlock()
+	depth := atomic.LoadInt64(&d.depth)
+	readFileNum := atomic.LoadInt64(&d.readFileNum)
+	readPos := atomic.LoadInt64(&d.readPos)
+	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
+	writePos := atomic.LoadInt64(&d.writePos)
+	d.metaMutex.Unlock()
 
 	fileName := d.metaDataFileName()
 	tmpFileName := fileName + ".tmp"
@@ -364,9 +398,9 @@ func (d *DiskQueue) persistMetaData() error {
 	}
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d\n%d,%d\n",
-		d.depth,
-		d.readFileNum, d.readPos,
-		d.writeFileNum, d.writePos)
+		depth,
+		readFileNum, readPos,
+		writeFileNum, writePos)
 	if err != nil {
 		f.Close()
 		return err
@@ -386,10 +420,6 @@ func (d *DiskQueue) fileName(fileNum int64) string {
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
 }
 
-func (d *DiskQueue) hasDataToRead() bool {
-	return (d.readFileNum < d.writeFileNum) || (d.readPos < d.writePos)
-}
-
 // readAheadPump provides the backend for exposing a go channel (via ReadChan())
 // in support of multiple concurrent queue consumers
 //
@@ -402,33 +432,55 @@ func (d *DiskQueue) readAheadPump() {
 	var data []byte
 	var err error
 	for {
-		if d.hasDataToRead() {
-			if d.nextReadPos == d.readPos {
+		nextReadPos := atomic.LoadInt64(&d.nextReadPos)
+
+		readFileNum := atomic.LoadInt64(&d.readFileNum)
+		readPos := atomic.LoadInt64(&d.readPos)
+
+		d.metaMutex.Lock()
+		writeFileNum := atomic.LoadInt64(&d.writeFileNum)
+		writePos := atomic.LoadInt64(&d.writePos)
+		d.metaMutex.Unlock()
+
+		if (readFileNum < writeFileNum) || (readPos < writePos) {
+			if nextReadPos == readPos {
 				data, err = d.readOne()
 				if err != nil {
 					if err.Error() == "E_CLOSED" {
 						return
 					}
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
-						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
+						d.name, readPos, d.fileName(readFileNum), err.Error())
 					// we assume that all read errors are recoverable...
 					// it will probably turn out that this is a terrible assumption
 					// as this could certainly result in an infinite busy loop
 					continue
 				}
 			}
+
 			select {
 			case d.readChan <- data:
 				d.metaMutex.Lock()
-				d.depth--
-				d.readPos = d.nextReadPos
+				atomic.AddInt64(&d.depth, -1)
+				atomic.StoreInt64(&d.readFileNum, atomic.LoadInt64(&d.nextReadFileNum))
+				atomic.StoreInt64(&d.readPos, atomic.LoadInt64(&d.nextReadPos))
 				d.metaMutex.Unlock()
+			case <-d.emptyChan:
+				err := d.doEmpty()
+				if err != nil {
+					log.Printf("ERROR: doEmpty() - %s", err.Error())
+				}
 			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return
 			}
 		} else {
 			select {
+			case <-d.emptyChan:
+				err := d.doEmpty()
+				if err != nil {
+					log.Printf("ERROR: doEmpty() - %s", err.Error())
+				}
 			case <-d.writeContinueChan:
 			case <-d.exitChan:
 				return
