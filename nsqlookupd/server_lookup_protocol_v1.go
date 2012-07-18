@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -61,7 +60,7 @@ func (p *ServerLookupProtocolV1) IOLoop(sc *nsq.ServerClient) error {
 	return err
 }
 
-func (p *ServerLookupProtocolV1) Exec(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) Exec(client *ServerClientV1, params []string) ([]byte, error) {
 	switch params[0] {
 	case "ANNOUNCE":
 		return p.ANNOUNCE(client, params)
@@ -71,7 +70,7 @@ func (p *ServerLookupProtocolV1) Exec(client *nsq.ServerClient, params []string)
 	return nil, nsq.LookupClientErrV1Invalid
 }
 
-func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) ANNOUNCE(client *ServerClientV1, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 4 {
@@ -98,6 +97,6 @@ func (p *ServerLookupProtocolV1) ANNOUNCE(client *nsq.ServerClient, params []str
 	return []byte("OK"), nil
 }
 
-func (p *ServerLookupProtocolV1) PING(client *nsq.ServerClient, params []string) ([]byte, error) {
+func (p *ServerLookupProtocolV1) PING(client *ServerClientV1, params []string) ([]byte, error) {
 	return []byte("OK"), nil
 }
