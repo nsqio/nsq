@@ -166,11 +166,9 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			d.readFile.Close()
 			d.readFile = nil
 		}
+
+		// get the current filename before incr
 		fn := d.fileName(d.readFileNum)
-		err := os.Remove(fn)
-		if err != nil {
-			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
-		}
 
 		d.metaMutex.Lock()
 		d.readFileNum++
@@ -179,6 +177,11 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		err = d.persistMetaData()
 		if err != nil {
 			return nil, err
+		}
+
+		err := os.Remove(fn)
+		if err != nil {
+			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
 		}
 	}
 
