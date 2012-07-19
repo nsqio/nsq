@@ -48,11 +48,9 @@ func TestUnsortedInsert(t *testing.T) {
 
 	sort.Sort(Reverse{sort.IntSlice(ints)})
 
-	firstItem, _ := pq.PeekAndShift(int64(ints[c-1]))
-	assert.Equal(t, firstItem.Priority, int64(ints[0]))
-	for i := 1; i < c; i++ {
-		item := heap.Pop(&pq)
-		assert.Equal(t, item.(*Item).Priority, int64(ints[i]))
+	for i := 0; i < c; i++ {
+		item, _ := pq.PeekAndShift(int64(ints[c-1]))
+		assert.Equal(t, item.Priority, int64(ints[i]))
 	}
 }
 
