@@ -42,7 +42,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 
 	dataInterface, ok := sm.Get("topic." + topicName)
 	if !ok {
-		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`)
+		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC", "data":null}`)
 		w.Write([]byte(errorTxt))
 		return
 	}
