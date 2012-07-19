@@ -270,6 +270,10 @@ func (c *Channel) addToInFlightPQ(item *pqueue.Item) {
 func (c *Channel) removeFromInFlightPQ(item *pqueue.Item) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
+	if item.Index == -1 {
+		// this item has already been Pop'd off the pqueue
+		return
+	}
 	heap.Remove(&c.inFlightPQ, item.Index)
 }
 
@@ -388,23 +392,23 @@ func (c *Channel) inFlightWorker() {
 //
 // if the first element on the queue is not ready (not enough time has elapsed)
 // the amount of time to wait before the next iteration is adjusted to optimize
-//
-// TODO: fix edge case where you're waiting and a new element is concurrently
-// added that has a lower timeout (ie. added as the first element)
 func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	waitTime := defaultWorkerWait
 	for {
-		<-time.After(waitTime)
+		time.Sleep(waitTime)
 		now := time.Now().UnixNano()
 		for {
 			mutex.Lock()
 			item, diff := pq.PeekAndShift(-now)
 			mutex.Unlock()
 
-			if diff == 0 {
+			// never wait a negative amount of time
+			// or longer than a second
+			duration := time.Duration(diff)
+			if duration <= 0 || duration > time.Second {
 				waitTime = defaultWorkerWait
 			} else {
-				waitTime = time.Duration(diff) + time.Millisecond
+				waitTime = duration + time.Millisecond
 			}
 
 			if item == nil {
