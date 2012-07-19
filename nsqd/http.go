@@ -70,7 +70,7 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	for i := 0; i < len(channel.inFlightPQ); i++ {
 		item := channel.inFlightPQ[i]
 		msg := item.Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "id: %s created: %s attempts: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Priority)
+		fmt.Fprintf(w, "id: %s created: %s attempts: %d index: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Index, item.Priority)
 	}
 	channel.deferredMutex.Unlock()
 }
