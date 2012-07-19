@@ -90,12 +90,17 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 }
 
 func (n *NSQd) idPump() {
+	var numErrors uint64
 	for {
 		id, err := NewGUID(n.workerId)
 		if err != nil {
-			log.Printf("ERROR: %s", err.Error())
+			numErrors++
+			if numErrors > uint64(cap(n.idChan)) {
+				log.Printf("ERROR: %s", err.Error())
+			}
 			continue
 		}
+		numErrors = 0
 		select {
 		case n.idChan <- id.Hex():
 		case <-n.exitChan:
