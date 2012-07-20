@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -184,10 +183,10 @@ func (q *Reader) QueryLookupd() {
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
 			address := producerData["address"].(string)
-			port := producerData["port"].(int)
+			port := int(producerData["port"].(float64))
 
 			// make an address, start a connection
-			nsqAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(address, strconv.Itoa(port)))
+			nsqAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)))
 			if err == nil {
 				q.ConnectToNSQ(nsqAddr)
 			}
