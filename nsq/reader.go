@@ -68,6 +68,7 @@ type nsqConn struct {
 	messagesReceived uint64
 	messagesFinished uint64
 	messagesRequeued uint64
+	bufferSizeRemaining int64
 }
 
 type IncomingMessage struct {
@@ -246,6 +247,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	s := q.getBufferSize()
 	log.Printf("RDY %d", s)
+	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 	c.consumer.WriteCommand(c.consumer.Ready(s))
 	for {
 		if c.stopFlag || q.stopFlag {
@@ -274,6 +276,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 		switch frameType {
 		case FrameTypeMessage:
+			atomic.AddInt64(&c.bufferSizeRemaining, -1)
 			atomic.AddUint64(&c.messagesReceived, 1)
 			atomic.AddUint64(&q.MessagesReceived, 1)
 			atomic.AddInt64(&c.messagesInFlight, 1)
@@ -339,11 +342,13 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			continue
 		}
 
-		// TODO: don't write this every time (for when we have batch requesting enabled)
 		if !c.stopFlag {
-			s := q.getBufferSize() - int(atomic.LoadInt64(&c.messagesInFlight))
-			if s >= 1 {
+			remain := atomic.LoadInt64(&c.bufferSizeRemaining)
+			s := q.getBufferSize()
+			// refill when at 1, or at 25% whichever comes first
+			if remain <= 1 || remain < (int64(s)/int64(4)) {
 				log.Printf("RDY %d", s)
+				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 				c.consumer.WriteCommand(c.consumer.Ready(s))
 			}
 		}
