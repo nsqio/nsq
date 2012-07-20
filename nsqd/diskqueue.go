@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -137,6 +138,11 @@ func (d *DiskQueue) doEmpty() error {
 
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
+
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
 
 	readFileNum := atomic.LoadInt64(&d.readFileNum)
 	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
@@ -454,6 +460,7 @@ func (d *DiskQueue) readAheadPump() {
 					// we assume that all read errors are recoverable...
 					// it will probably turn out that this is a terrible assumption
 					// as this could certainly result in an infinite busy loop
+					runtime.Gosched()
 					continue
 				}
 			}
