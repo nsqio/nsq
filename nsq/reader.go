@@ -102,7 +102,8 @@ func NewReader(topic string, channel string) (*Reader, error) {
 
 // get an appropriate buffer size for a single connection
 // essentially the global buffer size distributed amongst # connection
-func (q *Reader) getBufferSize() int {
+// this may change dynamically based on the number of NSQD connection
+func (q *Reader) ConnectionBufferSize() int {
 	b := float64(q.BufferSize)
 	s := b / (float64(len(q.nsqConnections)) * .75)
 	return int(math.Min(math.Max(1, s), b))
@@ -248,7 +249,7 @@ func handleReadError(q *Reader, c *nsqConn, errMsg string) {
 
 func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
-	s := q.getBufferSize()
+	s := q.ConnectionBufferSize()
 	if q.VerboseLogging {
 		log.Printf("RDY %d", s)
 	}
@@ -355,7 +356,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 
 		if !c.stopFlag {
 			remain := atomic.LoadInt64(&c.bufferSizeRemaining)
-			s := q.getBufferSize()
+			s := q.ConnectionBufferSize()
 			// refill when at 1, or at 25% whichever comes first
 			if remain <= 1 || remain < (int64(s)/int64(4)) {
 				if q.VerboseLogging {

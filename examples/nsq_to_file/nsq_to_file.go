@@ -100,7 +100,10 @@ func main() {
 				pos++
 			}
 
-			if sync || pos >= (*buffer-1) {
+			// in the case where you have N connections, flush after the 
+			// smallest buffer size for a single connection (otherwise the async handler will wait to finish message)
+			// and you will starve your connection
+			if sync || pos >= *buffer || pos >= r.ConnectionBufferSize() {
 				if pos > 0 {
 					log.Printf("syncing %d records to disk", pos)
 					f.out.Sync()
