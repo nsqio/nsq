@@ -258,7 +258,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	// we only advance next* because we have not yet sent this to consumers 
 	// (where readFileNum, readPos will actually be advanced)
 	atomic.StoreInt64(&d.nextReadFileNum, readFileNum)
-	atomic.StoreInt64(&d.nextReadPos, d.readPos+totalBytes)
+	atomic.StoreInt64(&d.nextReadPos, readPos+totalBytes)
 
 	return readBuf, nil
 }

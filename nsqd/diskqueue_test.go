@@ -58,13 +58,37 @@ func TestDiskQueueEmpty(t *testing.T) {
 	assert.Equal(t, dq.Depth(), int64(0))
 
 	msg := []byte("aaaaaaaaaa")
+
 	for i := 0; i < 100; i++ {
 		err := dq.Put(msg)
 		assert.Equal(t, err, nil)
 		assert.Equal(t, dq.Depth(), int64(i+1))
 	}
 
-	dq.Empty()
+	for i := 0; i < 3; i++ {
+		<-dq.ReadChan()
+	}
+	assert.Equal(t, dq.Depth(), int64(97))
+
+	// cheat and use the lower level method so that the test doesn't
+	// break due to timing
+	dq.(*DiskQueue).doEmpty()
+
+	assert.Equal(t, dq.Depth(), int64(0))
+	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
+	assert.Equal(t, dq.(*DiskQueue).readPos, dq.(*DiskQueue).writePos)
+	assert.Equal(t, dq.(*DiskQueue).nextReadPos, dq.(*DiskQueue).readPos)
+
+	for i := 0; i < 100; i++ {
+		err := dq.Put(msg)
+		assert.Equal(t, err, nil)
+		assert.Equal(t, dq.Depth(), int64(i+1))
+	}
+
+	for i := 0; i < 100; i++ {
+		<-dq.ReadChan()
+	}
+
 	assert.Equal(t, dq.Depth(), int64(0))
 	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
 	assert.Equal(t, dq.(*DiskQueue).readPos, dq.(*DiskQueue).writePos)
