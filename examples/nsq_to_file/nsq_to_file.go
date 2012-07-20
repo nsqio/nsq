@@ -20,6 +20,7 @@ var (
 	topic            = flag.String("topic-name", "", "nsq topic")
 	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
 	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
+	verbose			 = flag.Bool("verbose", false, "verbose logging")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
@@ -73,6 +74,7 @@ func main() {
 
 	r, _ := nsq.NewReader(*topic, *channel)
 	r.BufferSize = *buffer
+	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)
 	go func() {
@@ -98,7 +100,7 @@ func main() {
 				pos++
 			}
 
-			if sync || pos >= *buffer {
+			if sync || pos >= (*buffer-1) {
 				if pos > 0 {
 					log.Printf("syncing %d records to disk", pos)
 					f.out.Sync()

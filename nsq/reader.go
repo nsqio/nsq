@@ -41,6 +41,7 @@ type Reader struct {
 	LookupdPoolInterval int // seconds between polling lookupd's (+/- random 15 seconds)
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay int // miliseconds to delay a message on failure
+	VerboseLogging      bool
 
 	MessagesReceived uint64
 	MessagesFinished uint64
@@ -62,12 +63,12 @@ type nsqConn struct {
 	ServerAddress    *net.TCPAddr
 	FinishedMessages chan *FinishedMessage
 
-	consumer         *Consumer
-	stopFlag         bool
-	messagesInFlight int64
-	messagesReceived uint64
-	messagesFinished uint64
-	messagesRequeued uint64
+	consumer            *Consumer
+	stopFlag            bool
+	messagesInFlight    int64
+	messagesReceived    uint64
+	messagesFinished    uint64
+	messagesRequeued    uint64
 	bufferSizeRemaining int64
 }
 
@@ -165,7 +166,9 @@ func (q *Reader) QueryLookupd() {
 			continue
 		}
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("LOOKUPD %s responded with %s", addr, body)
+		if q.VerboseLogging {
+			log.Printf("LOOKUPD %s responded with %s", addr, body)
+		}
 		data, err := simplejson.NewJson(body)
 		resp.Body.Close()
 		if err != nil {
@@ -246,7 +249,9 @@ func handleReadError(q *Reader, c *nsqConn, errMsg string) {
 func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	s := q.getBufferSize()
-	log.Printf("RDY %d", s)
+	if q.VerboseLogging {
+		log.Printf("RDY %d", s)
+	}
 	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 	c.consumer.WriteCommand(c.consumer.Ready(s))
 	for {
@@ -283,7 +288,9 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 			atomic.AddInt64(&q.messagesInFlight, 1)
 
 			msg := data.(*Message)
-			log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
+			if q.VerboseLogging {
+				log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
+			}
 
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
 		case FrameTypeResponse:
@@ -324,12 +331,16 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			return
 		}
 		if msg.Success {
-			log.Printf("[%s] successfully finished %s", c.ServerAddress, msg.Id)
+			if q.VerboseLogging {
+				log.Printf("[%s] successfully finished %s", c.ServerAddress, msg.Id)
+			}
 			c.consumer.WriteCommand(c.consumer.Finish(msg.Id))
 			atomic.AddUint64(&c.messagesFinished, 1)
 			atomic.AddUint64(&q.MessagesFinished, 1)
 		} else {
-			log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
+			if q.VerboseLogging {
+				log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
+			}
 			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, msg.RequeueDelayMs))
 			atomic.AddUint64(&c.messagesRequeued, 1)
 			atomic.AddUint64(&q.MessagesRequeued, 1)
@@ -347,7 +358,9 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			s := q.getBufferSize()
 			// refill when at 1, or at 25% whichever comes first
 			if remain <= 1 || remain < (int64(s)/int64(4)) {
-				log.Printf("RDY %d", s)
+				if q.VerboseLogging {
+					log.Printf("RDY %d", s)
+				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 				c.consumer.WriteCommand(c.consumer.Ready(s))
 			}
