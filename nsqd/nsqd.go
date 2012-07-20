@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 )
 
@@ -90,17 +91,19 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 }
 
 func (n *NSQd) idPump() {
-	var numErrors uint64
+	var errorLast bool
 	for {
 		id, err := NewGUID(n.workerId)
 		if err != nil {
-			numErrors++
-			if numErrors > uint64(cap(n.idChan)) {
+			// only print the error once in a series
+			if errorLast {
 				log.Printf("ERROR: %s", err.Error())
 			}
+			errorLast = true
+			runtime.Gosched()
 			continue
 		}
-		numErrors = 0
+		errorLast = false
 		select {
 		case n.idChan <- id.Hex():
 		case <-n.exitChan:
