@@ -251,7 +251,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	// prime our ready state
 	s := q.ConnectionBufferSize()
 	if q.VerboseLogging {
-		log.Printf("RDY %d", s)
+		log.Printf("[%s] RDY %d", c.ServerAddress, s)
 	}
 	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 	c.consumer.WriteCommand(c.consumer.Ready(s))
@@ -366,7 +366,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			// refill when at 1, or at 25% whichever comes first
 			if remain <= 1 || remain < (int64(s)/int64(4)) {
 				if q.VerboseLogging {
-					log.Printf("RDY %d", s)
+					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c.ServerAddress, s, remain)
 				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 				c.consumer.WriteCommand(c.consumer.Ready(s))
