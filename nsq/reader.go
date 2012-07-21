@@ -282,7 +282,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 		switch frameType {
 		case FrameTypeMessage:
-			atomic.AddInt64(&c.bufferSizeRemaining, -1)
+			remain := atomic.AddInt64(&c.bufferSizeRemaining, -1)
 			atomic.AddUint64(&c.messagesReceived, 1)
 			atomic.AddUint64(&q.MessagesReceived, 1)
 			atomic.AddInt64(&c.messagesInFlight, 1)
@@ -290,7 +290,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 			msg := data.(*Message)
 			if q.VerboseLogging {
-				log.Printf("[%s] FrameTypeMessage: %s - %s", c.ServerAddress, msg.Id, msg.Body)
+				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c.ServerAddress, remain, msg.Id, msg.Body)
 			}
 
 			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
@@ -370,6 +370,11 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 				c.consumer.WriteCommand(c.consumer.Ready(s))
+			} else {
+				if q.VerboseLogging {
+					log.Printf("[%s] no rdy; remain %d (out of %d)", c.ServerAddress, remain, s)
+				}
+
 			}
 		}
 	}

@@ -55,18 +55,26 @@ func (c *ServerClientV2) IsReadyForMessages() bool {
 }
 
 func (c *ServerClientV2) SetReadyCount(count int) {
+	c := int64(count)
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
-	atomic.StoreInt64(&c.ReadyCount, int64(count))
-	atomic.StoreInt64(&c.LastReadyCount, int64(count))
-	if readyCount == 0 || int64(count) > lastReadyCount {
+	atomic.StoreInt64(&c.ReadyCount, c)
+	atomic.StoreInt64(&c.LastReadyCount, c)
+	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+	if count == 0 || readyCount == 0 || c > lastReadyCount || c > inFlightCount{
 		c.ReadyStateChange <- 1
 	}
 }
 
 func (c *ServerClientV2) FinishMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
-	if atomic.AddInt64(&c.InFlightCount, -1) <= 1 {
+	c.decrementInFlightCount()
+}
+
+func (c *ServerClientV2) decrementInFlightCount() {
+	ready := atomic.LoadInt64(&c.ReadyCount)
+	inFlight := atomic.AddInt64(&c.InFlightCount, -1)
+	if ready > 0 && inFlight == ready - 1 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		c.ReadyStateChange <- 1
 	}
@@ -79,16 +87,10 @@ func (c *ServerClientV2) SendingMessage() {
 }
 
 func (c *ServerClientV2) TimedOutMessage() {
-	if atomic.AddInt64(&c.InFlightCount, -1) <= 1 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
-	}
+	c.decrementInFlightCount()
 }
 
 func (c *ServerClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
-	if atomic.AddInt64(&c.InFlightCount, -1) <= 1 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
-	}
+	c.decrementInFlightCount()
 }
