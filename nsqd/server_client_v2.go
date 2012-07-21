@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"log"
 	"sync/atomic"
 )
 
@@ -45,7 +46,9 @@ func (c *ServerClientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
-	// log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightCount)
+	if *verbose {
+		log.Printf("[%s] state rdy: %4d inflt: %4d", c.String(), readyCount, inFlightCount)
+	}
 
 	if inFlightCount >= lastReadyCount || readyCount <= 0 {
 		return false
@@ -57,11 +60,11 @@ func (c *ServerClientV2) IsReadyForMessages() bool {
 func (c *ServerClientV2) SetReadyCount(newCount int) {
 	count := int64(newCount)
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
+	// lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	atomic.StoreInt64(&c.ReadyCount, count)
 	atomic.StoreInt64(&c.LastReadyCount, count)
-	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
-	if count == 0 || readyCount == 0 || count > lastReadyCount || count > inFlightCount {
+	// inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+	if count != readyCount {
 		c.ReadyStateChange <- 1
 	}
 }
@@ -73,8 +76,8 @@ func (c *ServerClientV2) FinishMessage() {
 
 func (c *ServerClientV2) decrementInFlightCount() {
 	ready := atomic.LoadInt64(&c.ReadyCount)
-	inFlight := atomic.AddInt64(&c.InFlightCount, -1)
-	if ready > 0 && inFlight == ready-1 {
+	atomic.AddInt64(&c.InFlightCount, -1)
+	if ready > 0 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		c.ReadyStateChange <- 1
 	}

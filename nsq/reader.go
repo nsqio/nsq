@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -60,6 +61,7 @@ type Reader struct {
 }
 
 type nsqConn struct {
+	sync.RWMutex     // embed a r/w mutex
 	ServerAddress    *net.TCPAddr
 	FinishedMessages chan *FinishedMessage
 
@@ -339,14 +341,14 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 		}
 		if msg.Success {
 			if q.VerboseLogging {
-				log.Printf("[%s] successfully finished %s", c.ServerAddress, msg.Id)
+				log.Printf("[%s] finishing %s", c.ServerAddress, msg.Id)
 			}
 			c.consumer.WriteCommand(c.consumer.Finish(msg.Id))
 			atomic.AddUint64(&c.messagesFinished, 1)
 			atomic.AddUint64(&q.MessagesFinished, 1)
 		} else {
 			if q.VerboseLogging {
-				log.Printf("[%s] failed message %s", c.ServerAddress, msg.Id)
+				log.Printf("[%s] requeuing %s", c.ServerAddress, msg.Id)
 			}
 			c.consumer.WriteCommand(c.consumer.Requeue(msg.Id, msg.RequeueDelayMs))
 			atomic.AddUint64(&c.messagesRequeued, 1)

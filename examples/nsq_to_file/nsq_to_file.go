@@ -80,7 +80,7 @@ func main() {
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
-	r.BufferSize = *buffer
+	r.BufferSize = *buffer * 2
 	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)

@@ -124,7 +124,6 @@ func (p *ServerProtocolV2) PushMessages(client *ServerClientV2) {
 			// wait for a change in state
 			select {
 			case <-client.ReadyStateChange:
-				continue
 			case <-client.ExitChan:
 				goto exit
 			}
@@ -229,7 +228,9 @@ func (p *ServerProtocolV2) RDY(client *ServerClientV2, params []string) ([]byte,
 	}
 
 	if count > maxReadyCount {
-		return nil, nsq.ClientErrV2Invalid
+		log.Printf("PROTOCOL(V2): client(%s) sent ready count %d. Thats over the max of %d",
+			client.String(), count, maxReadyCount)
+		count = maxReadyCount
 	}
 
 	client.SetReadyCount(count)
