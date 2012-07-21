@@ -54,14 +54,14 @@ func (c *ServerClientV2) IsReadyForMessages() bool {
 	return true
 }
 
-func (c *ServerClientV2) SetReadyCount(count int) {
-	c := int64(count)
+func (c *ServerClientV2) SetReadyCount(newCount int) {
+	count := int64(newCount)
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
-	atomic.StoreInt64(&c.ReadyCount, c)
-	atomic.StoreInt64(&c.LastReadyCount, c)
+	atomic.StoreInt64(&c.ReadyCount, count)
+	atomic.StoreInt64(&c.LastReadyCount, count)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
-	if count == 0 || readyCount == 0 || c > lastReadyCount || c > inFlightCount{
+	if count == 0 || readyCount == 0 || count > lastReadyCount || count > inFlightCount {
 		c.ReadyStateChange <- 1
 	}
 }
@@ -74,7 +74,7 @@ func (c *ServerClientV2) FinishMessage() {
 func (c *ServerClientV2) decrementInFlightCount() {
 	ready := atomic.LoadInt64(&c.ReadyCount)
 	inFlight := atomic.AddInt64(&c.InFlightCount, -1)
-	if ready > 0 && inFlight == ready - 1 {
+	if ready > 0 && inFlight == ready-1 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		c.ReadyStateChange <- 1
 	}
