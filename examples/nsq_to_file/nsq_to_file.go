@@ -10,7 +10,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -20,7 +22,7 @@ var (
 	topic            = flag.String("topic-name", "", "nsq topic")
 	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
 	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
-	verbose			 = flag.Bool("verbose", false, "verbose logging")
+	verbose          = flag.Bool("verbose", false, "verbose logging")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
@@ -68,6 +70,11 @@ func main() {
 		log.Fatalf("use --nsq-address or --lookupd-address not both")
 	}
 
+	hupChan := make(chan os.Signal, 1)
+	termChan := make(chan os.Signal, 1)
+	signal.Notify(hupChan, syscall.SIGHUP)
+	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
+
 	f := &FileLogger{
 		logChan: make(chan *Message, *buffer),
 	}
@@ -84,6 +91,16 @@ func main() {
 		var ticker = time.Tick(time.Duration(30) * time.Second)
 		for {
 			select {
+			case <-termChan:
+				r.Stop()
+				sync = true
+			case <-hupChan:
+				f.out.Close()
+				f.out = nil
+				updateFile(f)
+				if pos != 0 {
+					sync = true
+				}
 			case <-ticker:
 				if pos != 0 || f.out != nil {
 					updateFile(f)

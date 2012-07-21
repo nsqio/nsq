@@ -371,9 +371,21 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 
 // stops a Reader gracefully
 func (q *Reader) Stop() {
+	if q.stopFlag == true {
+		return
+	}
+	log.Printf("Stopping reader")
 	q.stopFlag = true
-	for _, c := range q.nsqConnections {
-		c.consumer.WriteCommand(c.consumer.StartClose())
+	if len(q.nsqConnections) == 0 {
+		close(q.IncomingMessages)
+	} else {
+		for _, c := range q.nsqConnections {
+			c.consumer.WriteCommand(c.consumer.StartClose())
+		}
+		go func() {
+			<-time.After(time.Duration(30) * time.Second)
+			close(q.IncomingMessages)
+		}()
 	}
 	if len(q.lookupdAddresses) != 0 {
 		q.lookupdExitChan <- 1
