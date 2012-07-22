@@ -56,8 +56,9 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 				break
 			}
 
-			// TODO: these writes need to be synchronized
+			client.Lock()
 			_, err = nsq.SendResponse(client, clientData)
+			client.Unlock()
 			if err != nil {
 				break
 			}
@@ -70,8 +71,9 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 				break
 			}
 
-			// TODO: these writes need to be synchronized
+			client.Lock()
 			_, err = nsq.SendResponse(client, clientData)
+			client.Unlock()
 			if err != nil {
 				break
 			}
@@ -133,8 +135,9 @@ func (p *ProtocolV2) PushMessages(client *ClientV2) {
 				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
-				// TODO: these writes need to be synchronized
+				client.Lock()
 				_, err = nsq.SendResponse(client, clientData)
+				client.Unlock()
 				if err != nil {
 					goto exit
 				}

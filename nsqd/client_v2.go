@@ -3,12 +3,14 @@ package main
 import (
 	"log"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type ClientV2 struct {
 	net.Conn
+	sync.Mutex
 	State            int
 	ReadyCount       int64
 	LastReadyCount   int64
