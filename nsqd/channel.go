@@ -327,8 +327,8 @@ func (c *Channel) router() {
 				err := WriteMessageToBackend(msg, c)
 				if err != nil {
 					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-					// TODO: requeue?
-					continue
+					// theres not really much we can do at this point, you're certainly
+					// going to lose messages...
 				}
 			}
 		case <-c.exitChan:
@@ -387,16 +387,22 @@ func (c *Channel) inFlightWorker() {
 			return
 		}
 		atomic.AddUint64(&c.timeoutCount, 1)
+		// TODO: because we do not modify the id of the message that timed out (and requeued)
+		// theres an accounting issue if a different client gets the message the next time
+		// and in the interim the original client finishes processing and either FIN or REQ
+		// the message.  original client will be -1 and new client will be +1 in flight count.
 		client.TimedOutMessage()
 		c.doRequeue(msg)
 	})
 }
 
 // generic loop (executed in a goroutine) that periodically wakes up to walk
-// the specified (chronological) priority queue and call the callback
+// the priority queue and call the callback
 //
 // if the first element on the queue is not ready (not enough time has elapsed)
 // the amount of time to wait before the next iteration is adjusted to optimize
+//
+// TODO: this should be re-written to use interfaces not callbacks
 func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	waitTime := defaultWorkerWait
 	for {

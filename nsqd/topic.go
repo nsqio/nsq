@@ -134,7 +134,8 @@ func (t *Topic) Router() {
 				err := WriteMessageToBackend(msg, t)
 				if err != nil {
 					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-					// TODO: requeue?
+					// theres not really much we can do at this point, you're certainly
+					// going to lose messages...
 				}
 			}
 		case <-t.exitChan:

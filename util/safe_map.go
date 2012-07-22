@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+// TODO: this should be re-written to use interfaces not callbacks
+
 type SafeMap struct {
 	sync.RWMutex
 	data map[string]interface{}
