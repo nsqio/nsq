@@ -18,6 +18,7 @@ import (
 
 var (
 	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
+	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
 	topic            = flag.String("topic-name", "", "nsq topic")
 	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
@@ -161,8 +162,13 @@ func updateFile(f *FileLogger) bool {
 	t := time.Now()
 
 	hostname, _ := os.Hostname()
-	shortHostname := strings.Split(hostname, ".")
-	filename := fmt.Sprintf(filenamePattern, *topic, shortHostname[0], t.Year(), t.Month(), t.Day(), t.Hour())
+	shortHostname := strings.Split(hostname, ".")[0]
+	identifier := shortHostname
+	if len(*hostIdentifier) != 0 {
+		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
+		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
+	}
+	filename := fmt.Sprintf(filenamePattern, *topic, identifier, t.Year(), t.Month(), t.Day(), t.Hour())
 	if filename != f.filename || f.out == nil {
 		log.Printf("old %s new %s", f.filename, filename)
 		// roll it
