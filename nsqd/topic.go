@@ -24,6 +24,7 @@ type Topic struct {
 	syncEvery           int64
 	msgTimeout          time.Duration
 	exitChan            chan int
+	exitFlag            int32
 	messageCount        uint64
 }
 
@@ -98,6 +99,14 @@ func (t *Topic) MessagePump() {
 	var err error
 
 	for {
+
+		// do an extra check for exit before we select on all the memory/backend/exitChan
+		// this solves the case where we are closed and something else is writing into
+		// backend. we don't want to reverse that
+		if atomic.LoadInt32(&t.exitFlag) == 1 {
+			return
+		}
+
 		select {
 		case msg = <-t.memoryMsgChan:
 		case buf = <-t.backend.ReadChan():
@@ -151,6 +160,7 @@ func (t *Topic) Close() error {
 
 	log.Printf("TOPIC(%s): closing", t.name)
 
+	atomic.AddInt32(&t.exitFlag, 1)
 	close(t.exitChan)
 	for _, channel := range t.channelMap {
 		err = channel.Close()

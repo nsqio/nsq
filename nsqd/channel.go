@@ -41,6 +41,7 @@ type Channel struct {
 	memoryMsgChan       chan *nsq.Message
 	clientMessageChan   chan *nsq.Message
 	exitChan            chan int
+	exitFlag            int32
 
 	// state tracking
 	clients []ClientStatTracker
@@ -87,6 +88,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	}
 	go c.router()
 	go c.messagePump()
+	// TODO: close deferredWorker and inFlightWorker goroutine on c.exitChan
 	go c.deferredWorker()
 	go c.inFlightWorker()
 	notify.Post("new_channel", c)
@@ -99,8 +101,22 @@ func (c *Channel) Close() error {
 
 	log.Printf("CHANNEL(%s): closing", c.name)
 
+	atomic.AddInt32(&c.exitFlag, 1)
 	close(c.exitChan)
 	FlushQueue(c)
+	select {
+	case msg, ok := <-c.clientMessageChan:
+		if ok {
+			log.Printf("WARNING: recovered buffered message from clientMessageChan")
+			WriteMessageToBackend(msg, c)
+		}
+	case msg, ok := <-c.incomingMessageChan:
+		if ok {
+			log.Printf("WARNING: recovered buffered message from incomingMessageChan")
+			WriteMessageToBackend(msg, c)
+		}
+	default:
+	}
 
 	err = c.backend.Close()
 	if err != nil {
@@ -339,6 +355,7 @@ func (c *Channel) router() {
 				}
 			}
 		case <-c.exitChan:
+			log.Printf("CHANNEL(%s): closing ... router", c.name)
 			return
 		}
 	}
@@ -355,6 +372,15 @@ func (c *Channel) messagePump() {
 	var err error
 
 	for {
+
+		// do an extra check for closed exit before we select on all the memory/backend/exitChan
+		// this solves the case where we are closed and something else is draining clientMessageChan into
+		// backend. we don't want to reverse that
+		if atomic.LoadInt32(&c.exitFlag) == 1 {
+			log.Printf("CHANNEL(%s): closing ... messagePump", c.name)
+			return
+		}
+
 		select {
 		case msg = <-c.memoryMsgChan:
 		case buf = <-c.backend.ReadChan():
@@ -364,6 +390,7 @@ func (c *Channel) messagePump() {
 				continue
 			}
 		case <-c.exitChan:
+			log.Printf("CHANNEL(%s): closing ... messagePump", c.name)
 			return
 		}
 
