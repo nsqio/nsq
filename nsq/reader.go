@@ -131,12 +131,10 @@ func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
 
 // poll all known lookup servers every LookupdPollInterval seconds
 func (q *Reader) LookupdLoop() {
-	r := rand.New(rand.NewSource(1))
-	interval := q.LookupdPollInterval + r.Intn(30) - 15
-	if interval < 1 {
-		interval = 15
-	}
-	ticker := time.Tick(time.Duration(interval) * time.Second)
+	rand.Seed(time.Now().UnixNano())
+	randInterval := int(q.LookupdPollInterval / 10)
+	time.Sleep(time.Duration(rand.Intn(randInterval)) * time.Second)
+	ticker := time.Tick(time.Duration(q.LookupdPollInterval) * time.Second)
 	for {
 		select {
 		case <-ticker:
