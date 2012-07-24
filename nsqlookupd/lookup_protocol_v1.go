@@ -98,5 +98,6 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, params []string) ([]byte, 
 }
 
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
+	// TODO: this should actually update metadata for the topic/channel
 	return []byte("OK"), nil
 }
