@@ -38,7 +38,7 @@ type Reader struct {
 	IncomingMessages    chan *IncomingMessage
 	ExitChan            chan int
 	BufferSize          int // number of messages to allow in-flight from NSQ's at a time
-	LookupdPoolInterval int // seconds between polling lookupd's (+/- random 15 seconds)
+	LookupdPollInterval int // seconds between polling lookupd's (+/- random 15 seconds)
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay int // miliseconds to delay a message on failure
 	VerboseLogging      bool
@@ -93,7 +93,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		nsqConnections:      make(map[string]*nsqConn),
 		BufferSize:          1,
 		MaxAttemptCount:     5,
-		LookupdPoolInterval: 300,
+		LookupdPollInterval: 120,
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90000,
@@ -129,10 +129,10 @@ func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
 	return nil
 }
 
-// poll all known lookup servers every LookupdPoolInterval seconds
+// poll all known lookup servers every LookupdPollInterval seconds
 func (q *Reader) LookupdLoop() {
 	r := rand.New(rand.NewSource(1))
-	interval := q.LookupdPoolInterval + r.Intn(30) - 15
+	interval := q.LookupdPollInterval + r.Intn(30) - 15
 	if interval < 1 {
 		interval = 15
 	}
