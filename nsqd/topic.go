@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util/pqueue"
 	"bitly/notify"
 	"log"
 	"sync"
@@ -53,11 +54,11 @@ func (t *Topic) BackendQueue() BackendQueue {
 	return t.backend
 }
 
-func (c *Topic) InFlight() map[string]interface{} {
+func (c *Topic) InFlight() map[string]*pqueue.Item {
 	return nil
 }
 
-func (c *Topic) Deferred() map[string]interface{} {
+func (c *Topic) Deferred() map[string]*pqueue.Item {
 	return nil
 }
 

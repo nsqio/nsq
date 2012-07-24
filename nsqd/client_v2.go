@@ -75,7 +75,7 @@ func (c *ClientV2) SetReadyCount(newCount int) {
 	}
 }
 
-func (c *ClientV2) FinishMessage() {
+func (c *ClientV2) FinishedMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
 	c.decrementInFlightCount()
 }

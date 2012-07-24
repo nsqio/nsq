@@ -9,8 +9,8 @@ import (
 type Queue interface {
 	MemoryChan() chan *nsq.Message
 	BackendQueue() BackendQueue
-	InFlight() map[string]interface{}
-	Deferred() map[string]interface{}
+	InFlight() map[string]*pqueue.Item
+	Deferred() map[string]*pqueue.Item
 }
 
 func EmptyQueue(q Queue) error {
@@ -43,7 +43,7 @@ finish:
 	inFlight := q.InFlight()
 	if inFlight != nil {
 		for _, item := range inFlight {
-			msg := item.(*pqueue.Item).Value.(*inFlightMessage).msg
+			msg := item.Value.(*inFlightMessage).msg
 			err := WriteMessageToBackend(msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
@@ -54,7 +54,7 @@ finish:
 	deferred := q.Deferred()
 	if deferred != nil {
 		for _, item := range deferred {
-			msg := item.(*pqueue.Item).Value.(*nsq.Message)
+			msg := item.Value.(*nsq.Message)
 			err := WriteMessageToBackend(msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())

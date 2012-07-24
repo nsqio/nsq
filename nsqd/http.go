@@ -3,7 +3,6 @@ package main
 import (
 	"../nsq"
 	"../util"
-	"../util/pqueue"
 	"bytes"
 	"errors"
 	"fmt"
@@ -60,7 +59,7 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "inFlightMessages:\n")
 	channel.Lock()
 	for _, item := range channel.inFlightMessages {
-		msg := item.(*pqueue.Item).Value.(*inFlightMessage).msg
+		msg := item.Value.(*inFlightMessage).msg
 		fmt.Fprintf(w, "%s %s %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts)
 	}
 	channel.Unlock()

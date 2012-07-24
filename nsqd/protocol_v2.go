@@ -235,12 +235,12 @@ func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	idStr := params[1]
-	err := client.Channel.FinishMessage([]byte(idStr))
+	err := client.Channel.FinishMessage(client, []byte(idStr))
 	if err != nil {
 		return nil, nsq.ClientErrFinishFailed
 	}
 
-	client.FinishMessage()
+	client.FinishedMessage()
 
 	return nil, nil
 }
@@ -265,7 +265,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
 		return nil, nsq.ClientErrInvalid
 	}
 
-	err = client.Channel.RequeueMessage([]byte(idStr), timeoutDuration)
+	err = client.Channel.RequeueMessage(client, []byte(idStr), timeoutDuration)
 	if err != nil {
 		return nil, nsq.ClientErrRequeueFailed
 	}

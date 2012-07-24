@@ -46,10 +46,10 @@ type Channel struct {
 	clients []ClientStatTracker
 
 	// TODO: these can be DRYd up
-	deferredMessages map[string]interface{}
+	deferredMessages map[string]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
-	inFlightMessages map[string]interface{}
+	inFlightMessages map[string]*pqueue.Item
 	inFlightPQ       pqueue.PriorityQueue
 	inFlightMutex    sync.Mutex
 
@@ -78,9 +78,9 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		clientMessageChan:   make(chan *nsq.Message),
 		exitChan:            make(chan int),
 		clients:             make([]ClientStatTracker, 0, 5),
-		inFlightMessages:    make(map[string]interface{}),
+		inFlightMessages:    make(map[string]*pqueue.Item),
 		inFlightPQ:          pqueue.New(int(inMemSize / 10)),
-		deferredMessages:    make(map[string]interface{}),
+		deferredMessages:    make(map[string]*pqueue.Item),
 		deferredPQ:          pqueue.New(int(inMemSize / 10)),
 	}
 	go c.router()
@@ -119,12 +119,12 @@ func (c *Channel) BackendQueue() BackendQueue {
 }
 
 // InFlight implements the Queue interface
-func (c *Channel) InFlight() map[string]interface{} {
+func (c *Channel) InFlight() map[string]*pqueue.Item {
 	return c.inFlightMessages
 }
 
 // Deferred implements the Queue interface
-func (c *Channel) Deferred() map[string]interface{} {
+func (c *Channel) Deferred() map[string]*pqueue.Item {
 	return c.deferredMessages
 }
 
@@ -136,8 +136,8 @@ func (c *Channel) PutMessage(msg *nsq.Message) {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(id []byte) error {
-	item, err := c.popInFlightMessage(id)
+func (c *Channel) FinishMessage(client ClientStatTracker, id []byte) error {
+	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
 	} else {
@@ -152,9 +152,9 @@ func (c *Channel) FinishMessage(id []byte) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(client ClientStatTracker, id []byte, timeout time.Duration) error {
 	// remove from inflight first
-	item, err := c.popInFlightMessage(id)
+	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (c *Channel) RequeueMessage(id []byte, timeout time.Duration) error {
 	return c.StartDeferredTimeout(msg, timeout)
 }
 
-// AddClient adds the ServerClient the Channel's client list
+// AddClient adds a client to the Channel's client list
 func (c *Channel) AddClient(client ClientStatTracker) {
 	c.Lock()
 	defer c.Unlock()
@@ -188,7 +188,7 @@ func (c *Channel) AddClient(client ClientStatTracker) {
 	}
 }
 
-// RemoveClient removes the ServerClient from the Channel's client list
+// RemoveClient removes a client from the Channel's client list
 func (c *Channel) RemoveClient(client ClientStatTracker) {
 	c.Lock()
 	defer c.Unlock()
@@ -245,7 +245,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	id := item.Value.(*inFlightMessage).msg.Id
 	_, ok := c.inFlightMessages[string(id)]
 	if ok {
-		return errors.New("E_ID_ALREADY_IN_FLIGHT")
+		return errors.New("E_ID_IN_FLIGHT")
 	}
 	c.inFlightMessages[string(id)] = item
 
@@ -253,7 +253,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(id []byte) (*pqueue.Item, error) {
+func (c *Channel) popInFlightMessage(client ClientStatTracker, id []byte) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -261,9 +261,14 @@ func (c *Channel) popInFlightMessage(id []byte) (*pqueue.Item, error) {
 	if !ok {
 		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
 	}
+
+	if item.Value.(*inFlightMessage).client != client {
+		return nil, errors.New("E_INVALID_CLIENT")
+	}
+
 	delete(c.inFlightMessages, string(id))
 
-	return item.(*pqueue.Item), nil
+	return item, nil
 }
 
 func (c *Channel) addToInFlightPQ(item *pqueue.Item) {
@@ -306,7 +311,7 @@ func (c *Channel) popDeferredMessage(id []byte) (*pqueue.Item, error) {
 	}
 	delete(c.deferredMessages, string(id))
 
-	return item.(*pqueue.Item), nil
+	return item, nil
 }
 
 func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
@@ -382,15 +387,11 @@ func (c *Channel) inFlightWorker() {
 	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		client := item.Value.(*inFlightMessage).client
 		msg := item.Value.(*inFlightMessage).msg
-		_, err := c.popInFlightMessage(msg.Id)
+		_, err := c.popInFlightMessage(client, msg.Id)
 		if err != nil {
 			return
 		}
 		atomic.AddUint64(&c.timeoutCount, 1)
-		// TODO: because we do not modify the id of the message that timed out (and requeued)
-		// theres an accounting issue if a different client gets the message the next time
-		// and in the interim the original client finishes processing and either FIN or REQ
-		// the message.  original client will be -1 and new client will be +1 in flight count.
 		client.TimedOutMessage()
 		c.doRequeue(msg)
 	})
