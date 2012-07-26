@@ -6,6 +6,7 @@ import (
 
 type ClientStats struct {
 	version string
+	address string
 	name    string
 	state   int
 }

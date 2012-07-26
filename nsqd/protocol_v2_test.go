@@ -45,7 +45,7 @@ func TestBasicV2(t *testing.T) {
 
 	conn := mustConnectNSQd(t, tcpAddr)
 
-	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"))
+	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestBasicV2", "TestBasicV2"))
 	assert.Equal(t, err, nil)
 
 	err = nsq.SendCommand(conn, nsq.Ready(1))
@@ -80,7 +80,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	for _, i := range []string{"1", "2"} {
 		conn := mustConnectNSQd(t, tcpAddr)
 
-		err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"+i))
+		err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"+i, "TestMultipleConsumerV2", "TestMultipleConsumerV2"))
 		assert.Equal(t, err, nil)
 
 		err = nsq.SendCommand(conn, nsq.Ready(1))

@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -42,6 +44,8 @@ type Reader struct {
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay int // miliseconds to delay a message on failure
 	VerboseLogging      bool
+	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
+	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
 
 	MessagesReceived uint64
 	MessagesFinished uint64
@@ -85,6 +89,7 @@ type FinishedMessage struct {
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
+	hostname, _ := os.Hostname()
 	q := &Reader{
 		TopicName:           topic,
 		ChannelName:         channel,
@@ -97,6 +102,8 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90000,
+		ShortIdentifier:     strings.Split(hostname, ".")[0],
+		LongIdentifier:      hostname,
 	}
 	return q, nil
 }
@@ -218,7 +225,7 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 		return err
 	}
 	conn.Write(MagicV2)
-	SendCommand(conn, Subscribe(q.TopicName, q.ChannelName))
+	SendCommand(conn, Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier))
 
 	connection := &nsqConn{
 		net.Conn:         conn,

@@ -22,6 +22,7 @@ func (c *ClientV1) Stats() ClientStats {
 	return ClientStats{
 		version:     "V1",
 		name:        c.RemoteAddr().String(),
+		address:     c.RemoteAddr().String(),
 		state:       c.State,
 		connectTime: c.ConnectTime,
 	}

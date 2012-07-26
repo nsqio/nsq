@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sort"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 type ClientStats struct {
 	version       string
+	address       string
 	name          string
 	state         int
 	inFlightCount int64
@@ -101,6 +103,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					clientStats := client.Stats()
 					clients[client_index] = struct {
 						Version       string `json:"version"`
+						RemoteAddress string `json:"remote_address"`
 						Name          string `json:"name"`
 						State         int    `json:"state"`
 						ReadyCount    int64  `json:"ready_count"`
@@ -111,6 +114,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						ConnectTime   int64  `json:"connect_ts"`
 					}{
 						clientStats.version,
+						clientStats.address,
 						clientStats.name,
 						clientStats.state,
 						clientStats.readyCount,
@@ -158,9 +162,10 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				for _, client := range c.clients {
 					clientStats := client.Stats()
 					duration := now.Sub(clientStats.connectTime).Seconds()
+					_, port, _ := net.SplitHostPort(clientStats.address)
 					io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 						clientStats.version,
-						clientStats.name,
+						fmt.Sprintf("%s:%s", clientStats.name, port),
 						clientStats.state,
 						clientStats.inFlightCount,
 						clientStats.readyCount,

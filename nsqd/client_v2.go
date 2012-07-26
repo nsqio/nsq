@@ -22,21 +22,30 @@ type ClientV2 struct {
 	Channel          *Channel
 	ReadyStateChange chan int
 	ExitChan         chan int
+	ShortIdentifier  string
+	LongIdentifier   string
 }
 
 func NewClientV2(conn net.Conn) *ClientV2 {
+	var identifier string
+	if conn != nil {
+		identifier = conn.RemoteAddr().String()
+	}
 	return &ClientV2{
 		net.Conn:         conn,
 		ReadyStateChange: make(chan int, 10),
 		ExitChan:         make(chan int),
 		ConnectTime:      time.Now(),
+		ShortIdentifier:  identifier,
+		LongIdentifier:   identifier,
 	}
 }
 
 func (c *ClientV2) Stats() ClientStats {
 	return ClientStats{
 		version:       "V2",
-		name:          c.RemoteAddr().String(),
+		address:       c.RemoteAddr().String(),
+		name:          c.ShortIdentifier,
 		state:         c.State,
 		readyCount:    atomic.LoadInt64(&c.ReadyCount),
 		inFlightCount: atomic.LoadInt64(&c.InFlightCount),

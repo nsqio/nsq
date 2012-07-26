@@ -155,6 +155,7 @@ exit:
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
+	log.Printf("SUB %v", params)
 	if client.State != nsq.StateInit {
 		return nil, nsq.ClientErrInvalid
 	}
@@ -179,6 +180,11 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 
 	if len(channelName) > MaxNameLength {
 		return nil, nsq.ClientErrBadChannel
+	}
+
+	if len(params) == 5 {
+		client.ShortIdentifier = params[3]
+		client.LongIdentifier = params[4]
 	}
 
 	topic := nsqd.GetTopic(topicName)

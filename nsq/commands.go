@@ -31,8 +31,8 @@ func Publish(size int, body []byte) *Command {
 
 // Subscribe creates a new Command to subscribe
 // to the given topic/channel
-func Subscribe(topic string, channel string) *Command {
-	var params = [][]byte{[]byte(topic), []byte(channel)}
+func Subscribe(topic string, channel string, shortIdentifier string, longIdentifier string) *Command {
+	var params = [][]byte{[]byte(topic), []byte(channel), []byte(shortIdentifier), []byte(longIdentifier)}
 	return &Command{[]byte("SUB"), params, nil}
 }
 
