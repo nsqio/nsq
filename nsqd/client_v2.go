@@ -29,7 +29,7 @@ type ClientV2 struct {
 func NewClientV2(conn net.Conn) *ClientV2 {
 	var identifier string
 	if conn != nil {
-		identifier = conn.RemoteAddr().String()
+		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 	return &ClientV2{
 		net.Conn:         conn,
