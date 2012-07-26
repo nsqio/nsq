@@ -90,6 +90,10 @@ func (t *Topic) PutMessage(msg *nsq.Message) {
 	t.incomingMessageChan <- msg
 }
 
+func (t *Topic) Depth() int64 {
+	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
+}
+
 // MessagePump selects over the in-memory and backend queue and 
 // writes messages to every channel for this topic, synchronizing
 // with the channel router

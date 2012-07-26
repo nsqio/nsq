@@ -80,8 +80,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		if !jsonFormat {
 			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
 				t.name,
-				// TODO: topic should have a Depth() method
-				int64(len(t.memoryMsgChan))+t.backend.Depth(),
+				t.Depth(),
 				t.backend.Depth(),
 				t.messageCount))
 		}
@@ -137,8 +136,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					Clients       []interface{} `json:"clients"`
 				}{
 					c.name,
-					// TODO: channel should have a Depth() method
-					int64(len(c.memoryMsgChan)) + c.backend.Depth(),
+					c.Depth(),
 					c.backend.Depth(),
 					len(c.inFlightMessages),
 					len(c.deferredMessages),
@@ -152,7 +150,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				io.WriteString(w,
 					fmt.Sprintf("    [%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
 						c.name,
-						int64(len(c.memoryMsgChan))+c.backend.Depth(),
+						c.Depth(),
 						c.backend.Depth(),
 						len(c.inFlightMessages),
 						len(c.deferredMessages),
@@ -188,7 +186,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		}{
 			TopicName:    t.name,
 			Channels:     channels,
-			Depth:        int64(len(t.memoryMsgChan)) + t.backend.Depth(),
+			Depth:        t.Depth(),
 			BackendDepth: t.backend.Depth(),
 			MessageCount: t.messageCount,
 		}

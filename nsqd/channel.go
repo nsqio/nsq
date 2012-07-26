@@ -146,6 +146,10 @@ func (c *Channel) Deferred() map[string]*pqueue.Item {
 	return c.deferredMessages
 }
 
+func (c *Channel) Depth() int64 {
+	return int64(len(c.memoryMsgChan)) + c.backend.Depth()
+}
+
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) {

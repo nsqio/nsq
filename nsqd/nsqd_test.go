@@ -48,7 +48,7 @@ func TestStartup(t *testing.T) {
 
 	log.Printf("checking that put's are finished")
 	for {
-		count := int64(len(topic.memoryMsgChan)) + topic.backend.Depth()
+		count := topic.Depth()
 		log.Printf("there are %d and %d", len(topic.memoryMsgChan), topic.backend.Depth())
 		if count == int64(iterations-1) { // this will always be one short because the channel buffer is primed
 			break
@@ -61,8 +61,8 @@ func TestStartup(t *testing.T) {
 
 	// channel should drain topic
 	for {
-		topic_count := int64(len(topic.memoryMsgChan)) + topic.backend.Depth()
-		chan_count := int64(len(channel1.memoryMsgChan)) + channel1.backend.Depth()
+		topic_count := topic.Depth()
+		chan_count := channel1.Depth()
 
 		log.Printf("%d %d; waiting for channel to drain topic; there are %d and %d in topic and %d and %d in channel",
 			topic_count, chan_count,
@@ -80,7 +80,7 @@ func TestStartup(t *testing.T) {
 		assert.Equal(t, msg.Body, body)
 	}
 
-	// chan_count := int64(len(channel1.memoryMsgChan)) + channel1.backend.Depth()
+	// chan_count := channel1.Depth()
 	// assert.Equal(t, chan_count, int64(iterations / 2))
 
 	exitChan <- 1
@@ -103,12 +103,12 @@ func TestStartup(t *testing.T) {
 
 	topic = nsqdd.GetTopic(topicName)
 	// should be empty; channel should have drained everything
-	count := int64(len(topic.memoryMsgChan)) + topic.backend.Depth()
+	count := topic.Depth()
 	assert.Equal(t, count, int64(0))
 
 	channel1 = topic.GetChannel("ch1")
 	// it may be off by one if a msg is primed in the channel
-	// chan_count := int64(len(channel1.memoryMsgChan)) + channel1.backend.Depth()
+	// chan_count := channel1.Depth()
 	// assert.Equal(t, chan_count, int64(iterations / 2 ))
 
 	// read the other half of the messages
