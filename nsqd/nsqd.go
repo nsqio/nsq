@@ -97,19 +97,19 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 }
 
 func (n *NSQd) idPump() {
-	var errorLast bool
+	lastError := time.Now()
 	for {
 		id, err := NewGUID(n.workerId)
 		if err != nil {
-			// only print the error once in a series
-			if errorLast {
+			now := time.Now()
+			if now.Sub(lastError) > time.Second {
+				// only print the error once/second
 				log.Printf("ERROR: %s", err.Error())
+				lastError = now
 			}
-			errorLast = true
 			runtime.Gosched()
 			continue
 		}
-		errorLast = false
 		select {
 		case n.idChan <- id.Hex():
 		case <-n.exitChan:
