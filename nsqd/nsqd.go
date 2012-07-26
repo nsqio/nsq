@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 )
 
 const MaxNameLength = 32
@@ -21,7 +22,7 @@ type NSQd struct {
 	dataPath        string
 	maxBytesPerFile int64
 	syncEvery       int64
-	msgTimeout      int64
+	msgTimeout      time.Duration
 	tcpAddr         *net.TCPAddr
 	httpAddr        *net.TCPAddr
 	lookupAddrs     util.StringArray
@@ -41,7 +42,7 @@ func NewNSQd(workerId int64) *NSQd {
 		dataPath:        os.TempDir(),
 		maxBytesPerFile: 104857600,
 		syncEvery:       2500,
-		msgTimeout:      60000,
+		msgTimeout:      60 * time.Second,
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
 		exitChan:        make(chan int),

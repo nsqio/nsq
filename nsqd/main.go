@@ -102,7 +102,6 @@ func main() {
 	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	msgTimeoutDuration := int64(time.Duration(*msgTimeoutMs) * time.Millisecond)
 	nsqd = NewNSQd(*workerId)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
@@ -111,7 +110,7 @@ func main() {
 	nsqd.dataPath = *dataPath
 	nsqd.maxBytesPerFile = *maxBytesPerFile
 	nsqd.syncEvery = *syncEvery
-	nsqd.msgTimeout = msgTimeoutDuration
+	nsqd.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()

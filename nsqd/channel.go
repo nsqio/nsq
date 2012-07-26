@@ -33,7 +33,7 @@ type Channel struct {
 
 	topicName  string
 	name       string
-	msgTimeout int64
+	msgTimeout time.Duration
 
 	backend BackendQueue
 
@@ -65,7 +65,7 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout int64) *Channel {
+func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
 	c := &Channel{
@@ -209,7 +209,7 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
 	value := &inFlightMessage{msg, client}
-	absTs := time.Now().UnixNano() + c.msgTimeout
+	absTs := time.Now().Add(c.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {
@@ -220,7 +220,7 @@ func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracke
 }
 
 func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) error {
-	absTs := time.Now().UnixNano() + int64(timeout)
+	absTs := time.Now().Add(timeout).UnixNano()
 	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushDeferredMessage(item)
 	if err != nil {

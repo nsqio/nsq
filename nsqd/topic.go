@@ -7,6 +7,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Topic struct {
@@ -21,13 +22,13 @@ type Topic struct {
 	dataPath            string
 	maxBytesPerFile     int64
 	syncEvery           int64
-	msgTimeout          int64
+	msgTimeout          time.Duration
 	exitChan            chan int
 	messageCount        uint64
 }
 
 // Topic constructor
-func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout int64) *Topic {
+func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Topic {
 	topic := &Topic{
 		name:                topicName,
 		channelMap:          make(map[string]*Channel),
