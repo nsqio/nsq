@@ -76,7 +76,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		t.RLock()
 
 		if !jsonFormat {
-			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
+			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
 				t.name,
 				// TODO: topic should have a Depth() method
 				int64(len(t.memoryMsgChan))+t.backend.Depth(),
@@ -146,7 +146,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				channel_index++
 			} else {
 				io.WriteString(w,
-					fmt.Sprintf("    [%-10s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d msgs: %-8d re-q: %-5d timeout: %-5d\n",
+					fmt.Sprintf("    [%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d msgs: %-8d re-q: %-5d timeout: %-5d\n",
 						c.name,
 						int64(len(c.memoryMsgChan))+c.backend.Depth(),
 						c.backend.Depth(),
@@ -158,7 +158,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				for _, client := range c.clients {
 					clientStats := client.Stats()
 					duration := now.Sub(clientStats.connectTime).Seconds()
-					io.WriteString(w, fmt.Sprintf("        [%s %-12s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+					io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 						clientStats.version,
 						clientStats.name,
 						clientStats.state,
