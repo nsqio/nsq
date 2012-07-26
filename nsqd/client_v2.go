@@ -94,7 +94,10 @@ func (c *ClientV2) decrementInFlightCount() {
 	atomic.AddInt64(&c.InFlightCount, -1)
 	if ready > 0 {
 		// potentially push into the readyStateChange, as this could unblock the client
-		c.ReadyStateChange <- 1
+		select {
+		case c.ReadyStateChange <- 1:
+		case <-c.ExitChan:
+		}
 	}
 }
 
