@@ -78,6 +78,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		if !jsonFormat {
 			io.WriteString(w, fmt.Sprintf("\n[%s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
 				t.name,
+				// TODO: topic should have a Depth() method
 				int64(len(t.memoryMsgChan))+t.backend.Depth(),
 				t.backend.Depth(),
 				t.messageCount))
@@ -132,6 +133,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					Clients       []interface{} `json:"clients"`
 				}{
 					c.name,
+					// TODO: channel should have a Depth() method
 					int64(len(c.memoryMsgChan)) + c.backend.Depth(),
 					c.backend.Depth(),
 					len(c.inFlightMessages),

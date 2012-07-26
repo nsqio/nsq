@@ -372,7 +372,6 @@ func (c *Channel) messagePump() {
 	var err error
 
 	for {
-
 		// do an extra check for closed exit before we select on all the memory/backend/exitChan
 		// this solves the case where we are closed and something else is draining clientMessageChan into
 		// backend. we don't want to reverse that
@@ -396,6 +395,7 @@ func (c *Channel) messagePump() {
 
 		msg.Attempts++
 
+		// TODO: account for this message in depth
 		c.clientMessageChan <- msg
 		// the client will call back to mark as in-flight w/ it's info
 	}
