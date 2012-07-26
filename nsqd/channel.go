@@ -402,7 +402,7 @@ func (c *Channel) messagePump() {
 }
 
 func (c *Channel) deferredWorker() {
-	pqWorker("deferred", &c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
+	pqWorker(c.name+".deferred", &c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
 		_, err := c.popDeferredMessage(msg.Id)
 		if err != nil {
@@ -413,7 +413,7 @@ func (c *Channel) deferredWorker() {
 }
 
 func (c *Channel) inFlightWorker() {
-	pqWorker("inflight", &c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
+	pqWorker(c.name+".inflight", &c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		client := item.Value.(*inFlightMessage).client
 		msg := item.Value.(*inFlightMessage).msg
 		_, err := c.popInFlightMessage(client, msg.Id)
@@ -475,11 +475,11 @@ func recordPqWorker(name string, field string, value int64) {
 	}
 
 	if _, ok := pqWorkerDebug[name][field]; !ok {
-		pqWorkerDebug[name][field] = make([]int64, 0, 10000)
+		pqWorkerDebug[name][field] = make([]int64, 0, 250)
 	}
 
 	pqWorkerDebug[name][field] = append(pqWorkerDebug[name][field], value)
-	if len(pqWorkerDebug[name][field]) > 10 {
+	if len(pqWorkerDebug[name][field]) > 250 {
 		pqWorkerDebug[name][field] = pqWorkerDebug[name][field][1:]
 	}
 }

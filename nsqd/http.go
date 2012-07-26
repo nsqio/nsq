@@ -81,8 +81,8 @@ func pqDebugHandler(w http.ResponseWriter, req *http.Request) {
 	for name, m := range pqWorkerDebug {
 		for field, s := range m {
 			fmt.Fprintf(w, "name: %s - field %s:\n", name, field)
-			for _, v := range s {
-				fmt.Fprintf(w, "   v: %d", v)
+			for i, v := range s {
+				fmt.Fprintf(w, "   %d: %d", i, v)
 				switch field {
 				case "now":
 					fmt.Fprintf(w, " (%s)", time.Unix(0, v))
