@@ -53,3 +53,27 @@ func TestPutMessage2Chan(t *testing.T) {
 	assert.Equal(t, msg.Id, outputMsg2.Id)
 	assert.Equal(t, msg.Body, outputMsg2.Body)
 }
+
+func TestInFlightWorker(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	nsqd := NewNSQd(1)
+	nsqd.msgTimeout = 300 * time.Millisecond
+
+	topic := nsqd.GetTopic("topic")
+	channel := topic.GetChannel("channel")
+
+	for i := 0; i < 1000; i++ {
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		channel.StartInFlightTimeout(msg, NewClientV2(nil))
+	}
+
+	assert.Equal(t, len(channel.inFlightMessages), 1000)
+	assert.Equal(t, len(channel.inFlightPQ), 1000)
+
+	time.Sleep(350 * time.Millisecond)
+
+	assert.Equal(t, len(channel.inFlightMessages), 0)
+	assert.Equal(t, len(channel.inFlightPQ), 0)
+}
