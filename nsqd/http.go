@@ -29,6 +29,7 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
+	handler.HandleFunc("/pq_debug", pqDebugHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
@@ -72,6 +73,28 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "id: %s created: %s attempts: %d index: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Index, item.Priority)
 	}
 	channel.inFlightMutex.Unlock()
+}
+
+func pqDebugHandler(w http.ResponseWriter, req *http.Request) {
+	log.Printf("NOTICE: pq debug")
+
+	for name, m := range pqWorkerDebug {
+		for field, s := range m {
+			fmt.Fprintf(w, "name: %s - field %s:\n", name, field)
+			for _, v := range s {
+				fmt.Fprintf(w, "   v: %d", v)
+				switch field {
+				case "now":
+					fmt.Fprintf(w, " (%s)", time.Unix(0, v))
+					break
+				case "sleep":
+					fmt.Fprintf(w, " (%f)", time.Duration(v).Seconds())
+					break
+				}
+				fmt.Fprint(w, "\n")
+			}
+		}
+	}
 }
 
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {

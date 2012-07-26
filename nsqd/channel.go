@@ -64,6 +64,8 @@ type inFlightMessage struct {
 	client ClientStatTracker
 }
 
+var pqWorkerDebug = make(map[string]map[string][]int64)
+
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
@@ -373,7 +375,7 @@ func (c *Channel) messagePump() {
 }
 
 func (c *Channel) deferredWorker() {
-	pqWorker(&c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
+	pqWorker("deferred", &c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
 		_, err := c.popDeferredMessage(msg.Id)
 		if err != nil {
@@ -384,7 +386,7 @@ func (c *Channel) deferredWorker() {
 }
 
 func (c *Channel) inFlightWorker() {
-	pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
+	pqWorker("inflight", &c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		client := item.Value.(*inFlightMessage).client
 		msg := item.Value.(*inFlightMessage).msg
 		_, err := c.popInFlightMessage(client, msg.Id)
@@ -404,11 +406,16 @@ func (c *Channel) inFlightWorker() {
 // the amount of time to wait before the next iteration is adjusted to optimize
 //
 // TODO: this should be re-written to use interfaces not callbacks
-func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
+func pqWorker(name string, pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	waitTime := defaultWorkerWait
 	for {
+		recordPqWorker(name, "sleep", int64(waitTime))
+
 		time.Sleep(waitTime)
 		now := time.Now().UnixNano()
+
+		recordPqWorker(name, "now", now)
+		c := int64(0)
 		for {
 			mutex.Lock()
 			item, diff := pq.PeekAndShift(now)
@@ -426,8 +433,26 @@ func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *p
 			if item == nil {
 				break
 			}
+			c++
 
 			callback(item)
 		}
+		recordPqWorker(name, "items", c)
+	}
+	log.Printf("ERROR: unexpected exit of '%s' pqWorker", name)
+}
+
+func recordPqWorker(name string, field string, value int64) {
+	if _, ok := pqWorkerDebug[name]; !ok {
+		pqWorkerDebug[name] = make(map[string][]int64)
+	}
+
+	if _, ok := pqWorkerDebug[name][field]; !ok {
+		pqWorkerDebug[name][field] = make([]int64, 0, 10000)
+	}
+
+	pqWorkerDebug[name][field] = append(pqWorkerDebug[name][field], value)
+	if len(pqWorkerDebug[name][field]) > 10 {
+		pqWorkerDebug[name][field] = pqWorkerDebug[name][field][1:]
 	}
 }
