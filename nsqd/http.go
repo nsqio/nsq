@@ -65,13 +65,13 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	channel.Unlock()
 
 	fmt.Fprintf(w, "inFlightPQ:\n")
-	channel.deferredMutex.Lock()
+	channel.inFlightMutex.Lock()
 	for i := 0; i < len(channel.inFlightPQ); i++ {
 		item := channel.inFlightPQ[i]
 		msg := item.Value.(*inFlightMessage).msg
 		fmt.Fprintf(w, "id: %s created: %s attempts: %d index: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Index, item.Priority)
 	}
-	channel.deferredMutex.Unlock()
+	channel.inFlightMutex.Unlock()
 }
 
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {

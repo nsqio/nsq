@@ -210,7 +210,7 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
 	value := &inFlightMessage{msg, client}
 	absTs := time.Now().UnixNano() + c.msgTimeout
-	item := &pqueue.Item{Value: value, Priority: -absTs}
+	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {
 		return err
@@ -221,7 +221,7 @@ func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracke
 
 func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) error {
 	absTs := time.Now().UnixNano() + int64(timeout)
-	item := &pqueue.Item{Value: msg, Priority: -absTs}
+	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushDeferredMessage(item)
 	if err != nil {
 		return err
@@ -411,7 +411,7 @@ func pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *p
 		now := time.Now().UnixNano()
 		for {
 			mutex.Lock()
-			item, diff := pq.PeekAndShift(-now)
+			item, diff := pq.PeekAndShift(now)
 			mutex.Unlock()
 
 			// never wait a negative amount of time

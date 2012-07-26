@@ -10,6 +10,8 @@ type Item struct {
 	Index    int
 }
 
+// this is a priority queue as implemented by a min heap
+// ie. the 0th element is the *lowest* value
 type PriorityQueue []*Item
 
 func New(capacity int) PriorityQueue {
@@ -21,7 +23,7 @@ func (pq PriorityQueue) Len() int {
 }
 
 func (pq PriorityQueue) Less(i, j int) bool {
-	return pq[i].Priority > pq[j].Priority
+	return pq[i].Priority < pq[j].Priority
 }
 
 func (pq PriorityQueue) Swap(i, j int) {
@@ -58,14 +60,14 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-func (pq *PriorityQueue) PeekAndShift(min int64) (*Item, int64) {
+func (pq *PriorityQueue) PeekAndShift(max int64) (*Item, int64) {
 	if pq.Len() == 0 {
 		return nil, 0
 	}
 
 	item := (*pq)[0]
-	if item.Priority < min {
-		return nil, min - item.Priority
+	if item.Priority > max {
+		return nil, item.Priority - max
 	}
 	heap.Remove(pq, 0)
 

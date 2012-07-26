@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-type Reverse struct {
-	sort.Interface
-}
-
-func (r Reverse) Less(i, j int) bool {
-	return r.Interface.Less(j, i)
-}
-
 func TestPriorityQueue(t *testing.T) {
 	c := 100
 	pq := New(c)
@@ -28,7 +20,7 @@ func TestPriorityQueue(t *testing.T) {
 
 	for i := 0; i < c+1; i++ {
 		item := heap.Pop(&pq)
-		assert.Equal(t, item.(*Item).Value.(int), c-i)
+		assert.Equal(t, item.(*Item).Value.(int), i)
 	}
 	assert.Equal(t, cap(pq), c/4)
 }
@@ -46,10 +38,10 @@ func TestUnsortedInsert(t *testing.T) {
 	assert.Equal(t, pq.Len(), c)
 	assert.Equal(t, cap(pq), c)
 
-	sort.Sort(Reverse{sort.IntSlice(ints)})
+	sort.Sort(sort.IntSlice(ints))
 
 	for i := 0; i < c; i++ {
-		item, _ := pq.PeekAndShift(int64(ints[c-1]))
+		item, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))
 		assert.Equal(t, item.Priority, int64(ints[i]))
 	}
 }
@@ -70,7 +62,7 @@ func TestRemove(t *testing.T) {
 	lastPriority := heap.Pop(&pq).(*Item).Priority
 	for i := 0; i < (c - 10 - 1); i++ {
 		item := heap.Pop(&pq)
-		assert.Equal(t, lastPriority > item.(*Item).Priority, true)
+		assert.Equal(t, lastPriority < item.(*Item).Priority, true)
 		lastPriority = item.(*Item).Priority
 	}
 }
