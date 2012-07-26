@@ -55,9 +55,10 @@ type Channel struct {
 	inFlightMutex    sync.Mutex
 
 	// stat counters
-	requeueCount uint64
-	messageCount uint64
-	timeoutCount uint64
+	requeueCount  uint64
+	messageCount  uint64
+	timeoutCount  uint64
+	bufferedCount int32
 }
 
 type inFlightMessage struct {
@@ -147,7 +148,7 @@ func (c *Channel) Deferred() map[string]*pqueue.Item {
 }
 
 func (c *Channel) Depth() int64 {
-	return int64(len(c.memoryMsgChan)) + c.backend.Depth()
+	return int64(len(c.memoryMsgChan)) + c.backend.Depth() + int64(atomic.LoadInt32(&c.bufferedCount))
 }
 
 // PutMessage writes to the appropriate incoming message channel
@@ -399,8 +400,9 @@ func (c *Channel) messagePump() {
 
 		msg.Attempts++
 
-		// TODO: account for this message in depth
+		atomic.AddInt32(&c.bufferedCount, 1)
 		c.clientMessageChan <- msg
+		atomic.AddInt32(&c.bufferedCount, -1)
 		// the client will call back to mark as in-flight w/ it's info
 	}
 }

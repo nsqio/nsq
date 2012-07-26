@@ -60,6 +60,7 @@ func TestStartup(t *testing.T) {
 	channel1 := topic.GetChannel("ch1")
 
 	// channel should drain topic
+	// topic -> channel is buffered, so this may take a few cycles
 	for {
 		topic_count := topic.Depth()
 		chan_count := channel1.Depth()
@@ -80,8 +81,8 @@ func TestStartup(t *testing.T) {
 		assert.Equal(t, msg.Body, body)
 	}
 
-	// chan_count := channel1.Depth()
-	// assert.Equal(t, chan_count, int64(iterations / 2))
+	chan_count := channel1.Depth()
+	assert.Equal(t, chan_count, int64(iterations/2))
 
 	exitChan <- 1
 	<-doneExitChan
@@ -107,9 +108,9 @@ func TestStartup(t *testing.T) {
 	assert.Equal(t, count, int64(0))
 
 	channel1 = topic.GetChannel("ch1")
-	// it may be off by one if a msg is primed in the channel
-	// chan_count := channel1.Depth()
-	// assert.Equal(t, chan_count, int64(iterations / 2 ))
+
+	chan_count = channel1.Depth()
+	assert.Equal(t, chan_count, int64(iterations/2))
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
