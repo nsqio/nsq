@@ -150,15 +150,15 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 				channel_index++
 			} else {
 				io.WriteString(w,
-					fmt.Sprintf("    [%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d msgs: %-8d re-q: %-5d timeout: %-5d\n",
+					fmt.Sprintf("    [%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
 						c.name,
 						int64(len(c.memoryMsgChan))+c.backend.Depth(),
 						c.backend.Depth(),
 						len(c.inFlightMessages),
 						len(c.deferredMessages),
-						c.messageCount,
 						c.requeueCount,
-						c.timeoutCount))
+						c.timeoutCount,
+						c.messageCount))
 				for _, client := range c.clients {
 					clientStats := client.Stats()
 					duration := now.Sub(clientStats.connectTime).Seconds()
