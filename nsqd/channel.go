@@ -318,10 +318,12 @@ func (c *Channel) addToInFlightPQ(item *pqueue.Item) {
 func (c *Channel) removeFromInFlightPQ(item *pqueue.Item) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
+
 	if item.Index == -1 {
 		// this item has already been Pop'd off the pqueue
 		return
 	}
+
 	heap.Remove(&c.inFlightPQ, item.Index)
 }
 

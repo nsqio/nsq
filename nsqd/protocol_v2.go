@@ -5,10 +5,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"log"
 	"net"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,7 +34,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var line string
 
 	client := NewClientV2(conn)
-	client.State = nsq.StateInit
+	atomic.StoreInt32(&client.State, nsq.StateInit)
 
 	err = nil
 	reader := bufio.NewReader(client)
@@ -56,9 +58,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 				break
 			}
 
-			client.Lock()
-			_, err = nsq.SendResponse(client, clientData)
-			client.Unlock()
+			err = p.Write(client, clientData)
 			if err != nil {
 				break
 			}
@@ -71,19 +71,40 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 				break
 			}
 
-			client.Lock()
-			_, err = nsq.SendResponse(client, clientData)
-			client.Unlock()
+			err = p.Write(client, clientData)
 			if err != nil {
 				break
 			}
 		}
 	}
 
+	log.Printf("PROTOCOL(V2): [%s] exiting ioloop", client.RemoteAddr().String())
 	// TODO: gracefully send clients the close signal
 	close(client.ExitChan)
 
 	return err
+}
+
+func (p *ProtocolV2) Write(client *ClientV2, data []byte) error {
+	attempts := 0
+	for {
+		client.Lock()
+		client.SetWriteDeadline(time.Now().Add(time.Second))
+		_, err := nsq.SendResponse(client, data)
+		client.Unlock()
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				attempts++
+				if attempts == 3 {
+					return errors.New("E_WRITE_TIMEOUT")
+				}
+				continue
+			}
+			return err
+		}
+		break
+	}
+	return nil
 }
 
 func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
@@ -102,7 +123,7 @@ func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
 	return nil, nsq.ClientErrInvalid
 }
 
-func (p *ProtocolV2) PushMessages(client *ClientV2) {
+func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 
 	for {
@@ -135,9 +156,7 @@ func (p *ProtocolV2) PushMessages(client *ClientV2) {
 				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
-				client.Lock()
-				_, err = nsq.SendResponse(client, clientData)
-				client.Unlock()
+				err = p.Write(client, clientData)
 				if err != nil {
 					goto exit
 				}
@@ -148,14 +167,15 @@ func (p *ProtocolV2) PushMessages(client *ClientV2) {
 	}
 
 exit:
+	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client.RemoteAddr().String())
 	client.Channel.RemoveClient(client)
 	if err != nil {
-		log.Printf("PROTOCOL(V2): PushMessages error - %s", err.Error())
+		log.Printf("PROTOCOL(V2): messagePump error - %s", err.Error())
 	}
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.StateInit {
+	if atomic.LoadInt32(&client.State) != nsq.StateInit {
 		return nil, nsq.ClientErrInvalid
 	}
 
@@ -191,9 +211,9 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 	channel.AddClient(client)
 
 	client.Channel = channel
-	client.State = nsq.StateSubscribed
+	atomic.StoreInt32(&client.State, nsq.StateSubscribed)
 
-	go p.PushMessages(client)
+	go p.messagePump(client)
 
 	return nil, nil
 }
@@ -201,13 +221,15 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 	var err error
 
-	if client.State == nsq.StateClosing {
+	state := atomic.LoadInt32(&client.State)
+
+	if state == nsq.StateClosing {
 		// just ignore ready changes on a closing channel
 		log.Printf("PROTOCOL(V2): ignoring RDY after CLS in state ClientStateV2Closing")
 		return nil, nil
 	}
 
-	if client.State != nsq.StateSubscribed {
+	if state != nsq.StateSubscribed {
 		return nil, nsq.ClientErrInvalid
 	}
 
@@ -231,7 +253,8 @@ func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 }
 
 func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.StateSubscribed && client.State != nsq.StateClosing {
+	state := atomic.LoadInt32(&client.State)
+	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.ClientErrInvalid
 	}
 
@@ -251,7 +274,8 @@ func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
 }
 
 func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.StateSubscribed && client.State != nsq.StateClosing {
+	state := atomic.LoadInt32(&client.State)
+	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.ClientErrInvalid
 	}
 
@@ -281,7 +305,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
 }
 
 func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
-	if client.State != nsq.StateSubscribed {
+	if atomic.LoadInt32(&client.State) != nsq.StateSubscribed {
 		return nil, nsq.ClientErrInvalid
 	}
 

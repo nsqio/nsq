@@ -15,7 +15,7 @@ type ClientStats struct {
 	version       string
 	address       string
 	name          string
-	state         int
+	state         int32
 	inFlightCount int64
 	readyCount    int64
 	messageCount  uint64
@@ -104,7 +104,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 						Version       string `json:"version"`
 						RemoteAddress string `json:"remote_address"`
 						Name          string `json:"name"`
-						State         int    `json:"state"`
+						State         int32  `json:"state"`
 						ReadyCount    int64  `json:"ready_count"`
 						InFlightCount int64  `json:"in_flight_count"`
 						MessageCount  uint64 `json:"message_count"`

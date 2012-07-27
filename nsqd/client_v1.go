@@ -7,7 +7,7 @@ import (
 
 type ClientV1 struct {
 	net.Conn
-	State       int
+	State       int32
 	ConnectTime time.Time
 }
 

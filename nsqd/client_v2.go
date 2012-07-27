@@ -12,7 +12,7 @@ import (
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
-	State           int
+	State           int32
 	ReadyCount      int64
 	LastReadyCount  int64
 	InFlightCount   int64
@@ -47,7 +47,7 @@ func (c *ClientV2) Stats() ClientStats {
 		version:       "V2",
 		address:       c.RemoteAddr().String(),
 		name:          c.ShortIdentifier,
-		state:         c.State,
+		state:         atomic.LoadInt32(&c.State),
 		readyCount:    atomic.LoadInt64(&c.ReadyCount),
 		inFlightCount: atomic.LoadInt64(&c.InFlightCount),
 		messageCount:  atomic.LoadUint64(&c.MessageCount),
@@ -78,6 +78,7 @@ func (c *ClientV2) SetReadyCount(newCount int) {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	atomic.StoreInt64(&c.ReadyCount, count)
 	atomic.StoreInt64(&c.LastReadyCount, count)
+
 	if count != readyCount {
 		select {
 		case c.ReadyStateChan <- 1:
@@ -92,9 +93,8 @@ func (c *ClientV2) FinishedMessage() {
 }
 
 func (c *ClientV2) decrementInFlightCount() {
-	ready := atomic.LoadInt64(&c.ReadyCount)
 	atomic.AddInt64(&c.InFlightCount, -1)
-	if ready > 0 {
+	if atomic.LoadInt64(&c.ReadyCount) > 0 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		select {
 		case c.ReadyStateChan <- 1:
@@ -126,6 +126,6 @@ func (c *ClientV2) StartClose() {
 	// Force the client into ready 0
 	c.SetReadyCount(0)
 	// mark this client as closing
-	c.State = nsq.StateClosing
+	atomic.StoreInt32(&c.State, nsq.StateClosing)
 	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 }

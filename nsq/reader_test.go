@@ -63,6 +63,7 @@ func TestQueuereader(t *testing.T) {
 
 	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:4150")
 	q, _ := NewReader("reader_test", "ch")
+	q.VerboseLogging = true
 	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
 
 	h := &MyTestHandler{
