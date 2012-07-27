@@ -11,19 +11,19 @@ import (
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
-	State            int
-	ReadyCount       int64
-	LastReadyCount   int64
-	InFlightCount    int64
-	MessageCount     uint64
-	FinishCount      uint64
-	RequeueCount     uint64
-	ConnectTime      time.Time
-	Channel          *Channel
-	ReadyStateChange chan int
-	ExitChan         chan int
-	ShortIdentifier  string
-	LongIdentifier   string
+	State           int
+	ReadyCount      int64
+	LastReadyCount  int64
+	InFlightCount   int64
+	MessageCount    uint64
+	FinishCount     uint64
+	RequeueCount    uint64
+	ConnectTime     time.Time
+	Channel         *Channel
+	ReadyStateChan  chan int
+	ExitChan        chan int
+	ShortIdentifier string
+	LongIdentifier  string
 }
 
 func NewClientV2(conn net.Conn) *ClientV2 {
@@ -32,12 +32,12 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 	return &ClientV2{
-		net.Conn:         conn,
-		ReadyStateChange: make(chan int, 10),
-		ExitChan:         make(chan int),
-		ConnectTime:      time.Now(),
-		ShortIdentifier:  identifier,
-		LongIdentifier:   identifier,
+		net.Conn:        conn,
+		ReadyStateChan:  make(chan int, 1),
+		ExitChan:        make(chan int),
+		ConnectTime:     time.Now(),
+		ShortIdentifier: identifier,
+		LongIdentifier:  identifier,
 	}
 }
 
@@ -79,7 +79,7 @@ func (c *ClientV2) SetReadyCount(newCount int) {
 	atomic.StoreInt64(&c.LastReadyCount, count)
 	if count != readyCount {
 		select {
-		case c.ReadyStateChange <- 1:
+		case c.ReadyStateChan <- 1:
 		case <-c.ExitChan:
 		}
 	}
@@ -96,7 +96,7 @@ func (c *ClientV2) decrementInFlightCount() {
 	if ready > 0 {
 		// potentially push into the readyStateChange, as this could unblock the client
 		select {
-		case c.ReadyStateChange <- 1:
+		case c.ReadyStateChan <- 1:
 		case <-c.ExitChan:
 		}
 	}

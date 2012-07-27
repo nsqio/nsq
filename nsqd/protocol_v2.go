@@ -109,13 +109,13 @@ func (p *ProtocolV2) PushMessages(client *ClientV2) {
 		if !client.IsReadyForMessages() {
 			// wait for a change in state
 			select {
-			case <-client.ReadyStateChange:
+			case <-client.ReadyStateChan:
 			case <-client.ExitChan:
 				goto exit
 			}
 		} else {
 			select {
-			case <-client.ReadyStateChange:
+			case <-client.ReadyStateChan:
 			case msg := <-client.Channel.clientMessageChan:
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
