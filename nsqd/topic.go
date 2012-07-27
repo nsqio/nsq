@@ -4,6 +4,7 @@ import (
 	"../nsq"
 	"../util/pqueue"
 	"bitly/notify"
+	"errors"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -12,38 +13,40 @@ import (
 
 type Topic struct {
 	sync.RWMutex
-	name                string
-	channelMap          map[string]*Channel
-	backend             BackendQueue
-	incomingMessageChan chan *nsq.Message
-	memoryMsgChan       chan *nsq.Message
-	messagePumpStarter  sync.Once
-	memQueueSize        int64
-	dataPath            string
-	maxBytesPerFile     int64
-	syncEvery           int64
-	msgTimeout          time.Duration
-	exitChan            chan int
-	exitFlag            int32
-	messageCount        uint64
+	name               string
+	channelMap         map[string]*Channel
+	backend            BackendQueue
+	incomingMsgChan    chan *nsq.Message
+	memoryMsgChan      chan *nsq.Message
+	messagePumpStarter sync.Once
+	memQueueSize       int64
+	dataPath           string
+	maxBytesPerFile    int64
+	syncEvery          int64
+	msgTimeout         time.Duration
+	exitChan           chan int
+	exitSyncChan       chan int
+	exitFlag           int32
+	messageCount       uint64
 }
 
 // Topic constructor
 func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Topic {
 	topic := &Topic{
-		name:                topicName,
-		channelMap:          make(map[string]*Channel),
-		backend:             NewDiskQueue(topicName, dataPath, maxBytesPerFile, syncEvery),
-		incomingMessageChan: make(chan *nsq.Message, 5),
-		memoryMsgChan:       make(chan *nsq.Message, memQueueSize),
-		memQueueSize:        memQueueSize,
-		dataPath:            dataPath,
-		maxBytesPerFile:     maxBytesPerFile,
-		syncEvery:           syncEvery,
-		msgTimeout:          msgTimeout,
-		exitChan:            make(chan int),
+		name:            topicName,
+		channelMap:      make(map[string]*Channel),
+		backend:         NewDiskQueue(topicName, dataPath, maxBytesPerFile, syncEvery),
+		incomingMsgChan: make(chan *nsq.Message, 5),
+		memoryMsgChan:   make(chan *nsq.Message, memQueueSize),
+		memQueueSize:    memQueueSize,
+		dataPath:        dataPath,
+		maxBytesPerFile: maxBytesPerFile,
+		syncEvery:       syncEvery,
+		msgTimeout:      msgTimeout,
+		exitChan:        make(chan int),
+		exitSyncChan:    make(chan int),
 	}
-	go topic.Router()
+	go topic.router()
 	notify.Post("new_topic", topic)
 	return topic
 }
@@ -77,38 +80,40 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
-	t.messagePumpStarter.Do(func() { go t.MessagePump() })
+	t.messagePumpStarter.Do(func() { go t.messagePump() })
 
 	return channel
 }
 
 // PutMessage writes to the appropriate incoming
 // message channel
-func (t *Topic) PutMessage(msg *nsq.Message) {
-	// log.Printf("TOPIC(%s): PutMessage(%s, %s)", t.name, msg.Id, msg.Body)
+func (t *Topic) PutMessage(msg *nsq.Message) error {
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
 	atomic.AddUint64(&t.messageCount, 1)
-	t.incomingMessageChan <- msg
+	t.incomingMsgChan <- msg
+	return nil
 }
 
 func (t *Topic) Depth() int64 {
 	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
 }
 
-// MessagePump selects over the in-memory and backend queue and 
+// messagePump selects over the in-memory and backend queue and 
 // writes messages to every channel for this topic, synchronizing
 // with the channel router
-func (t *Topic) MessagePump() {
+func (t *Topic) messagePump() {
 	var msg *nsq.Message
 	var buf []byte
 	var err error
 
 	for {
-
 		// do an extra check for exit before we select on all the memory/backend/exitChan
 		// this solves the case where we are closed and something else is writing into
 		// backend. we don't want to reverse that
 		if atomic.LoadInt32(&t.exitFlag) == 1 {
-			return
+			goto exit
 		}
 
 		select {
@@ -120,7 +125,7 @@ func (t *Topic) MessagePump() {
 				continue
 			}
 		case <-t.exitChan:
-			return
+			goto exit
 		}
 
 		t.RLock()
@@ -133,16 +138,18 @@ func (t *Topic) MessagePump() {
 		}
 		t.RUnlock()
 	}
+
+exit:
+	log.Printf("TOPIC(%s): closing ... messagePump", t.name)
+	t.exitSyncChan <- 1
 }
 
-// Router handles muxing of Topic messages including
+// router handles muxing of Topic messages including
 // proxying messages to memory or backend
-func (t *Topic) Router() {
-	var msg *nsq.Message
-
+func (t *Topic) router() {
 	for {
 		select {
-		case msg = <-t.incomingMessageChan:
+		case msg := <-t.incomingMsgChan:
 			select {
 			case t.memoryMsgChan <- msg:
 			default:
@@ -154,9 +161,13 @@ func (t *Topic) Router() {
 				}
 			}
 		case <-t.exitChan:
-			return
+			goto exit
 		}
 	}
+
+exit:
+	log.Printf("TOPIC(%s): closing ... router", t.name)
+	t.exitSyncChan <- 1
 }
 
 func (t *Topic) Close() error {
@@ -164,8 +175,15 @@ func (t *Topic) Close() error {
 
 	log.Printf("TOPIC(%s): closing", t.name)
 
+	// initiate exit
 	atomic.AddInt32(&t.exitFlag, 1)
 	close(t.exitChan)
+
+	// synchronize the close of router() and messagePump()
+	<-t.exitSyncChan
+	<-t.exitSyncChan
+
+	// close all the channels
 	for _, channel := range t.channelMap {
 		err = channel.Close()
 		if err != nil {
@@ -173,8 +191,9 @@ func (t *Topic) Close() error {
 			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
 		}
 	}
-	FlushQueue(t)
 
+	// write anything leftover to disk
+	FlushQueue(t)
 	err = t.backend.Close()
 	if err != nil {
 		return err

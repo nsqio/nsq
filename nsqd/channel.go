@@ -16,6 +16,7 @@ import (
 const defaultWorkerWait = 250 * time.Millisecond
 
 type ClientStatTracker interface {
+	Exit()
 	TimedOutMessage()
 	Stats() ClientStats
 }
@@ -37,11 +38,12 @@ type Channel struct {
 
 	backend BackendQueue
 
-	incomingMessageChan chan *nsq.Message
-	memoryMsgChan       chan *nsq.Message
-	clientMessageChan   chan *nsq.Message
-	exitChan            chan int
-	exitFlag            int32
+	incomingMsgChan chan *nsq.Message
+	memoryMsgChan   chan *nsq.Message
+	clientMsgChan   chan *nsq.Message
+	exitChan        chan int
+	exitSyncChan    chan int
+	exitFlag        int32
 
 	// state tracking
 	clients []ClientStatTracker
@@ -66,30 +68,28 @@ type inFlightMessage struct {
 	client ClientStatTracker
 }
 
-var pqWorkerDebug = make(map[string]map[string][]int64)
-
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
 	c := &Channel{
-		topicName:           topicName,
-		name:                channelName,
-		msgTimeout:          msgTimeout,
-		backend:             NewDiskQueue(backendName, dataPath, maxBytesPerFile, syncEvery),
-		incomingMessageChan: make(chan *nsq.Message, 5),
-		memoryMsgChan:       make(chan *nsq.Message, inMemSize),
-		clientMessageChan:   make(chan *nsq.Message),
-		exitChan:            make(chan int),
-		clients:             make([]ClientStatTracker, 0, 5),
-		inFlightMessages:    make(map[string]*pqueue.Item),
-		inFlightPQ:          pqueue.New(int(inMemSize / 10)),
-		deferredMessages:    make(map[string]*pqueue.Item),
-		deferredPQ:          pqueue.New(int(inMemSize / 10)),
+		topicName:        topicName,
+		name:             channelName,
+		msgTimeout:       msgTimeout,
+		backend:          NewDiskQueue(backendName, dataPath, maxBytesPerFile, syncEvery),
+		incomingMsgChan:  make(chan *nsq.Message, 5),
+		memoryMsgChan:    make(chan *nsq.Message, inMemSize),
+		clientMsgChan:    make(chan *nsq.Message),
+		exitChan:         make(chan int),
+		exitSyncChan:     make(chan int),
+		clients:          make([]ClientStatTracker, 0, 5),
+		inFlightMessages: make(map[string]*pqueue.Item),
+		inFlightPQ:       pqueue.New(int(inMemSize / 10)),
+		deferredMessages: make(map[string]*pqueue.Item),
+		deferredPQ:       pqueue.New(int(inMemSize / 10)),
 	}
 	go c.router()
 	go c.messagePump()
-	// TODO: close deferredWorker and inFlightWorker goroutine on c.exitChan
 	go c.deferredWorker()
 	go c.inFlightWorker()
 	notify.Post("new_channel", c)
@@ -102,23 +102,30 @@ func (c *Channel) Close() error {
 
 	log.Printf("CHANNEL(%s): closing", c.name)
 
+	// initiate exit
 	atomic.AddInt32(&c.exitFlag, 1)
-	close(c.exitChan)
-	FlushQueue(c)
-	select {
-	case msg, ok := <-c.clientMessageChan:
-		if ok {
-			log.Printf("WARNING: recovered buffered message from clientMessageChan")
-			WriteMessageToBackend(msg, c)
-		}
-	case msg, ok := <-c.incomingMessageChan:
-		if ok {
-			log.Printf("WARNING: recovered buffered message from incomingMessageChan")
-			WriteMessageToBackend(msg, c)
-		}
-	default:
+
+	for _, client := range c.clients {
+		client.Exit()
 	}
 
+	close(c.exitChan)
+	close(c.incomingMsgChan)
+
+	// synchronize the close of router() and pqWorkers (2)
+	<-c.exitSyncChan
+	<-c.exitSyncChan
+	<-c.exitSyncChan
+
+	// messagePump is responsible for closing the channel it writes to
+	// this will read until its closed (exited)
+	for msg := range c.clientMsgChan {
+		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
+		WriteMessageToBackend(msg, c)
+	}
+
+	// write anything leftover to disk
+	FlushQueue(c)
 	err = c.backend.Close()
 	if err != nil {
 		return err
@@ -153,9 +160,13 @@ func (c *Channel) Depth() int64 {
 
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
-func (c *Channel) PutMessage(msg *nsq.Message) {
-	c.incomingMessageChan <- msg
+func (c *Channel) PutMessage(msg *nsq.Message) error {
+	if atomic.LoadInt32(&c.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
+	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.messageCount, 1)
+	return nil
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -255,7 +266,10 @@ func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) 
 
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(msg *nsq.Message) error {
-	c.incomingMessageChan <- msg
+	if atomic.LoadInt32(&c.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
+	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
@@ -297,6 +311,7 @@ func (c *Channel) popInFlightMessage(client ClientStatTracker, id []byte) (*pque
 func (c *Channel) addToInFlightPQ(item *pqueue.Item) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
+
 	heap.Push(&c.inFlightPQ, item)
 }
 
@@ -340,30 +355,27 @@ func (c *Channel) popDeferredMessage(id []byte) (*pqueue.Item, error) {
 func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	c.deferredMutex.Lock()
 	defer c.deferredMutex.Unlock()
+
 	heap.Push(&c.deferredPQ, item)
 }
 
 // Router handles the muxing of incoming Channel messages, either writing
 // to the in-memory channel or to the backend
 func (c *Channel) router() {
-	for {
+	for msg := range c.incomingMsgChan {
 		select {
-		case msg := <-c.incomingMessageChan:
-			select {
-			case c.memoryMsgChan <- msg:
-			default:
-				err := WriteMessageToBackend(msg, c)
-				if err != nil {
-					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-					// theres not really much we can do at this point, you're certainly
-					// going to lose messages...
-				}
+		case c.memoryMsgChan <- msg:
+		default:
+			err := WriteMessageToBackend(msg, c)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+				// theres not really much we can do at this point, you're certainly
+				// going to lose messages...
 			}
-		case <-c.exitChan:
-			log.Printf("CHANNEL(%s): closing ... router", c.name)
-			return
 		}
 	}
+	log.Printf("CHANNEL(%s): closing ... router", c.name)
+	c.exitSyncChan <- 1
 }
 
 // messagePump reads messages from either memory or backend and writes
@@ -378,11 +390,10 @@ func (c *Channel) messagePump() {
 
 	for {
 		// do an extra check for closed exit before we select on all the memory/backend/exitChan
-		// this solves the case where we are closed and something else is draining clientMessageChan into
+		// this solves the case where we are closed and something else is draining clientMsgChan into
 		// backend. we don't want to reverse that
 		if atomic.LoadInt32(&c.exitFlag) == 1 {
-			log.Printf("CHANNEL(%s): closing ... messagePump", c.name)
-			return
+			goto exit
 		}
 
 		select {
@@ -394,21 +405,24 @@ func (c *Channel) messagePump() {
 				continue
 			}
 		case <-c.exitChan:
-			log.Printf("CHANNEL(%s): closing ... messagePump", c.name)
-			return
+			goto exit
 		}
 
 		msg.Attempts++
 
-		atomic.AddInt32(&c.bufferedCount, 1)
-		c.clientMessageChan <- msg
-		atomic.AddInt32(&c.bufferedCount, -1)
+		atomic.StoreInt32(&c.bufferedCount, 1)
+		c.clientMsgChan <- msg
+		atomic.StoreInt32(&c.bufferedCount, 0)
 		// the client will call back to mark as in-flight w/ it's info
 	}
+
+exit:
+	log.Printf("CHANNEL(%s): closing ... messagePump", c.name)
+	close(c.clientMsgChan)
 }
 
 func (c *Channel) deferredWorker() {
-	pqWorker(c.name+".deferred", &c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
+	c.pqWorker(&c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
 		msg := item.Value.(*nsq.Message)
 		_, err := c.popDeferredMessage(msg.Id)
 		if err != nil {
@@ -419,7 +433,7 @@ func (c *Channel) deferredWorker() {
 }
 
 func (c *Channel) inFlightWorker() {
-	pqWorker(c.name+".inflight", &c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
+	c.pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
 		client := item.Value.(*inFlightMessage).client
 		msg := item.Value.(*inFlightMessage).msg
 		_, err := c.popInFlightMessage(client, msg.Id)
@@ -439,16 +453,15 @@ func (c *Channel) inFlightWorker() {
 // the amount of time to wait before the next iteration is adjusted to optimize
 //
 // TODO: this should be re-written to use interfaces not callbacks
-func pqWorker(name string, pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
+func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	waitTime := defaultWorkerWait
 	for {
-		recordPqWorker(name, "sleep", int64(waitTime))
-
-		time.Sleep(waitTime)
+		select {
+		case <-time.After(waitTime):
+		case <-c.exitChan:
+			goto exit
+		}
 		now := time.Now().UnixNano()
-
-		recordPqWorker(name, "now", now)
-		c := int64(0)
 		for {
 			mutex.Lock()
 			item, diff := pq.PeekAndShift(now)
@@ -466,26 +479,12 @@ func pqWorker(name string, pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback
 			if item == nil {
 				break
 			}
-			c++
 
 			callback(item)
 		}
-		recordPqWorker(name, "items", c)
-	}
-	log.Printf("ERROR: unexpected exit of '%s' pqWorker", name)
-}
-
-func recordPqWorker(name string, field string, value int64) {
-	if _, ok := pqWorkerDebug[name]; !ok {
-		pqWorkerDebug[name] = make(map[string][]int64)
 	}
 
-	if _, ok := pqWorkerDebug[name][field]; !ok {
-		pqWorkerDebug[name][field] = make([]int64, 0, 250)
-	}
-
-	pqWorkerDebug[name][field] = append(pqWorkerDebug[name][field], value)
-	if len(pqWorkerDebug[name][field]) > 250 {
-		pqWorkerDebug[name][field] = pqWorkerDebug[name][field][1:]
-	}
+exit:
+	log.Printf("CHANNEL(%s): closing ... pqueue worker", c.name)
+	c.exitSyncChan <- 1
 }

@@ -29,3 +29,5 @@ func (c *ClientV1) Stats() ClientStats {
 }
 
 func (c *ClientV1) TimedOutMessage() {}
+
+func (c *ClientV1) Exit() {}

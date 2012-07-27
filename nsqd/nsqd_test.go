@@ -14,11 +14,11 @@ import (
 )
 
 func TestStartup(t *testing.T) {
-	iterations := 300
-	doneExitChan := make(chan int)
-
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
+
+	iterations := 300
+	doneExitChan := make(chan int)
 
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
@@ -68,7 +68,7 @@ func TestStartup(t *testing.T) {
 		log.Printf("%d %d; waiting for channel to drain topic; there are %d and %d in topic and %d and %d in channel",
 			topic_count, chan_count,
 			len(topic.memoryMsgChan), topic.backend.Depth(), len(channel1.memoryMsgChan), channel1.backend.Depth())
-		if topic_count == 0 && chan_count == int64(iterations-1) {
+		if topic_count == 0 && chan_count == int64(iterations) {
 			break
 		}
 		runtime.Gosched()
@@ -76,13 +76,17 @@ func TestStartup(t *testing.T) {
 
 	log.Printf("read %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
-		msg := <-channel1.clientMessageChan
+		msg := <-channel1.clientMsgChan
 		log.Printf("read message %d", i+1)
 		assert.Equal(t, msg.Body, body)
 	}
 
-	chan_count := channel1.Depth()
-	assert.Equal(t, chan_count, int64(iterations/2))
+	for {
+		if channel1.Depth() == int64(iterations/2) {
+			break
+		}
+		runtime.Gosched()
+	}
 
 	exitChan <- 1
 	<-doneExitChan
@@ -109,12 +113,12 @@ func TestStartup(t *testing.T) {
 
 	channel1 = topic.GetChannel("ch1")
 
-	chan_count = channel1.Depth()
+	chan_count := channel1.Depth()
 	assert.Equal(t, chan_count, int64(iterations/2))
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
-		msg := <-channel1.clientMessageChan
+		msg := <-channel1.clientMsgChan
 		log.Printf("read message %d", i+1)
 		assert.Equal(t, msg.Body, body)
 	}

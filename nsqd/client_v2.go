@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"log"
 	"net"
 	"sync"
@@ -115,4 +116,16 @@ func (c *ClientV2) TimedOutMessage() {
 func (c *ClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	c.decrementInFlightCount()
+}
+
+func (c *ClientV2) Exit() {
+	c.StartClose()
+}
+
+func (c *ClientV2) StartClose() {
+	// Force the client into ready 0
+	c.SetReadyCount(0)
+	// mark this client as closing
+	c.State = nsq.StateClosing
+	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 }

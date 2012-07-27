@@ -29,7 +29,6 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
-	handler.HandleFunc("/pq_debug", pqDebugHandler)
 	server := &http.Server{Handler: handler}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
@@ -75,28 +74,6 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	channel.inFlightMutex.Unlock()
 }
 
-func pqDebugHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("NOTICE: pq debug")
-
-	for name, m := range pqWorkerDebug {
-		for field, s := range m {
-			fmt.Fprintf(w, "name: %s - field %s:\n", name, field)
-			for i, v := range s {
-				fmt.Fprintf(w, "   %d: %d", i, v)
-				switch field {
-				case "now":
-					fmt.Fprintf(w, " (%s)", time.Unix(0, v))
-					break
-				case "sleep":
-					fmt.Fprintf(w, " (%f)", time.Duration(v).Seconds())
-					break
-				}
-				fmt.Fprint(w, "\n")
-			}
-		}
-	}
-}
-
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("MEMORY Profiling Enabled")
 	f, err := os.Create("nsqd.mprof")
@@ -136,7 +113,13 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 
 	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, reqParams.Body)
-	topic.PutMessage(msg)
+	err = topic.PutMessage(msg)
+	if err != nil {
+		w.WriteHeader(500)
+		w.Header().Set("Content-Length", "3")
+		io.WriteString(w, "NOK")
+		return
+	}
 
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
@@ -165,7 +148,13 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	for _, block := range bytes.Split(reqParams.Body, []byte("\n")) {
 		if len(block) != 0 {
 			msg := nsq.NewMessage(<-nsqd.idChan, block)
-			topic.PutMessage(msg)
+			err := topic.PutMessage(msg)
+			if err != nil {
+				w.WriteHeader(500)
+				w.Header().Set("Content-Length", "3")
+				io.WriteString(w, "NOK")
+				return
+			}
 		}
 	}
 

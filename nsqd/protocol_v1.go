@@ -88,18 +88,21 @@ func (p *ProtocolV1) PUB(client *ClientV1, params []string) ([]byte, error) {
 
 	messageSize, err := strconv.Atoi(params[2])
 	if err != nil {
-		return nil, err
+		return nil, nsq.ClientErrBadMessage
 	}
 
 	messageBody := make([]byte, messageSize)
 	_, err = io.ReadFull(client, messageBody)
 	if err != nil {
-		return nil, err
+		return nil, nsq.ClientErrBadMessage
 	}
 
 	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, messageBody)
-	topic.PutMessage(msg)
+	err = topic.PutMessage(msg)
+	if err != nil {
+		return nil, nsq.ClientErrPutFailed
+	}
 
 	return []byte("OK"), nil
 }

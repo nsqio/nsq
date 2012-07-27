@@ -116,7 +116,7 @@ func (p *ProtocolV2) PushMessages(client *ClientV2) {
 		} else {
 			select {
 			case <-client.ReadyStateChan:
-			case msg := <-client.Channel.clientMessageChan:
+			case msg := <-client.Channel.clientMsgChan:
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
 						msg.Id, client.RemoteAddr().String(), msg.Body)
@@ -289,13 +289,7 @@ func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
 		return nil, nsq.ClientErrInvalid
 	}
 
-	// Force the client into ready 0
-	client.SetReadyCount(0)
-
-	// mark this client as closing
-	client.State = nsq.StateClosing
-
-	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
+	client.StartClose()
 
 	return []byte("CLOSE_WAIT"), nil
 }
