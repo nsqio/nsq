@@ -155,7 +155,6 @@ exit:
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
-	log.Printf("SUB %v", params)
 	if client.State != nsq.StateInit {
 		return nil, nsq.ClientErrInvalid
 	}
