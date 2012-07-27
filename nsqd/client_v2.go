@@ -75,12 +75,13 @@ func (c *ClientV2) IsReadyForMessages() bool {
 func (c *ClientV2) SetReadyCount(newCount int) {
 	count := int64(newCount)
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	// lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	atomic.StoreInt64(&c.ReadyCount, count)
 	atomic.StoreInt64(&c.LastReadyCount, count)
-	// inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 	if count != readyCount {
-		c.ReadyStateChange <- 1
+		select {
+		case c.ReadyStateChange <- 1:
+		case <-c.ExitChan:
+		}
 	}
 }
 
