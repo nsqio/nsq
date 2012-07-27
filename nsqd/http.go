@@ -29,7 +29,11 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
-	server := &http.Server{Handler: handler}
+	server := &http.Server{
+		Handler: handler,
+		ReadTimeout: 5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
