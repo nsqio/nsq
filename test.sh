@@ -15,11 +15,16 @@ rm -f *.dat
 ./nsqd --data-path=/tmp >/dev/null 2>&1 &
 PID=$!
 
+cleanup() {
+    kill -s TERM $PID
+}
+
+trap cleanup INT TERM EXIT
+
 popd >/dev/null
 pushd nsq >/dev/null
 echo "testing nsq"
 go test -v -timeout 2s
-kill -s TERM $PID
 popd >/dev/null
 
 # no tests, but a build is something
