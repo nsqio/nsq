@@ -126,6 +126,9 @@ func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
 func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 
+	// ReadyStateChan has a buffer of 1 to guarantee that in the event
+	// there is a race before we enter either of the select loops where 
+	// ReadyStateChan is read from that the update is not lost
 	for {
 		if !client.IsReadyForMessages() {
 			// wait for a change in state
@@ -247,7 +250,7 @@ func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 		count = maxReadyCount
 	}
 
-	client.SetReadyCount(count)
+	client.SetReadyCount(int64(count))
 
 	return nil, nil
 }

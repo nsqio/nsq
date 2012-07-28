@@ -63,7 +63,8 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if *verbose {
-		log.Printf("[%s] state rdy: %4d inflt: %4d", c.RemoteAddr().String(), readyCount, inFlightCount)
+		log.Printf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c.RemoteAddr().String(),
+			readyCount, lastReadyCount, inFlightCount)
 	}
 
 	if inFlightCount >= lastReadyCount || readyCount <= 0 {
@@ -73,34 +74,26 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	return true
 }
 
-func (c *ClientV2) SetReadyCount(newCount int) {
-	count := int64(newCount)
-	readyCount := atomic.LoadInt64(&c.ReadyCount)
+func (c *ClientV2) SetReadyCount(count int64) {
 	atomic.StoreInt64(&c.ReadyCount, count)
 	atomic.StoreInt64(&c.LastReadyCount, count)
+	c.tryUpdateReadyState()
+}
 
-	if count != readyCount {
-		select {
-		case c.ReadyStateChan <- 1:
-		case <-c.ExitChan:
-		}
+func (c *ClientV2) tryUpdateReadyState() {
+	// you can always *try* to write to ReadyStateChan because in the cases
+	// where you cannot the message pump loop would have iterated anyway.
+	// the atomic integer operations guarantee correctness of the value.
+	select {
+	case c.ReadyStateChan <- 1:
+	default:
 	}
 }
 
 func (c *ClientV2) FinishedMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
-	c.decrementInFlightCount()
-}
-
-func (c *ClientV2) decrementInFlightCount() {
 	atomic.AddInt64(&c.InFlightCount, -1)
-	if atomic.LoadInt64(&c.ReadyCount) > 0 {
-		// potentially push into the readyStateChange, as this could unblock the client
-		select {
-		case c.ReadyStateChan <- 1:
-		case <-c.ExitChan:
-		}
-	}
+	c.tryUpdateReadyState()
 }
 
 func (c *ClientV2) SendingMessage() {
@@ -110,12 +103,14 @@ func (c *ClientV2) SendingMessage() {
 }
 
 func (c *ClientV2) TimedOutMessage() {
-	c.decrementInFlightCount()
+	atomic.AddInt64(&c.InFlightCount, -1)
+	c.tryUpdateReadyState()
 }
 
 func (c *ClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
-	c.decrementInFlightCount()
+	atomic.AddInt64(&c.InFlightCount, -1)
+	c.tryUpdateReadyState()
 }
 
 func (c *ClientV2) Exit() {
