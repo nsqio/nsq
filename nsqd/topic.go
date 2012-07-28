@@ -91,8 +91,9 @@ func (t *Topic) PutMessage(msg *nsq.Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
-	atomic.AddUint64(&t.messageCount, 1)
+	// TODO: theres still a race condition here when closing incomingMsgChan
 	t.incomingMsgChan <- msg
+	atomic.AddUint64(&t.messageCount, 1)
 	return nil
 }
 
@@ -101,8 +102,7 @@ func (t *Topic) Depth() int64 {
 }
 
 // messagePump selects over the in-memory and backend queue and 
-// writes messages to every channel for this topic, synchronizing
-// with the channel router
+// writes messages to every channel for this topic
 func (t *Topic) messagePump() {
 	var msg *nsq.Message
 	var buf []byte
@@ -150,25 +150,19 @@ exit:
 // router handles muxing of Topic messages including
 // proxying messages to memory or backend
 func (t *Topic) router() {
-	for {
+	for msg := range t.incomingMsgChan {
 		select {
-		case msg := <-t.incomingMsgChan:
-			select {
-			case t.memoryMsgChan <- msg:
-			default:
-				err := WriteMessageToBackend(msg, t)
-				if err != nil {
-					log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-					// theres not really much we can do at this point, you're certainly
-					// going to lose messages...
-				}
+		case t.memoryMsgChan <- msg:
+		default:
+			err := WriteMessageToBackend(msg, t)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+				// theres not really much we can do at this point, you're certainly
+				// going to lose messages...
 			}
-		case <-t.exitChan:
-			goto exit
 		}
 	}
 
-exit:
 	log.Printf("TOPIC(%s): closing ... router", t.name)
 	t.exitSyncChan <- 1
 }
@@ -181,6 +175,7 @@ func (t *Topic) Close() error {
 	// initiate exit
 	atomic.AddInt32(&t.exitFlag, 1)
 	close(t.exitChan)
+	close(t.incomingMsgChan)
 
 	// synchronize the close of router() and messagePump()
 	<-t.exitSyncChan
