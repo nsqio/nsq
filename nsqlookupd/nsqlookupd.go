@@ -38,6 +38,7 @@ func main() {
 	}
 
 	exitChan := make(chan int)
+	exitSyncChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
 	sm = util.NewSafeMap()
 
@@ -73,16 +74,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr, err.Error())
 	}
-	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols})
+	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}, exitSyncChan)
 
 	webListener, err := net.Listen("tcp", webAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr, err.Error())
 	}
-	go HttpServer(webListener)
+	go httpServer(webListener, exitSyncChan)
 
 	<-exitChan
 
 	tcpListener.Close()
 	webListener.Close()
+	<-exitSyncChan
+	<-exitSyncChan
 }

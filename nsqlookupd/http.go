@@ -9,16 +9,30 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
-func HttpServer(listener net.Listener) {
+func httpServer(listener net.Listener, exitSyncChan chan int) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
-	http.HandleFunc("/ping", pingHandler)
-	http.HandleFunc("/lookup", lookupHandler)
-	err := http.Serve(listener, nil)
-	if err != nil {
-		log.Fatal("http.ListenAndServe:", err)
+
+	handler := http.NewServeMux()
+	handler.HandleFunc("/ping", pingHandler)
+	handler.HandleFunc("/lookup", lookupHandler)
+
+	server := &http.Server{
+		Handler:      handler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	}
+	err := server.Serve(listener)
+	// theres no direct way to detect this error because it is not exposed
+	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+		log.Printf("ERROR: http.Serve() - %s", err.Error())
+	}
+
+	log.Printf("HTTP: closing %s", listener.Addr().String())
+	exitSyncChan <- 1
 }
 
 func pingHandler(w http.ResponseWriter, req *http.Request) {

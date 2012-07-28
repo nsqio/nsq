@@ -13,11 +13,7 @@ var notifyTopicChan = make(chan interface{})
 var syncTopicChan = make(chan *nsq.LookupPeer)
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
-func LookupRouter(lookupHosts []string, exitChan chan int) {
-	if len(lookupHosts) == 0 {
-		return
-	}
-
+func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
 
 	for _, host := range lookupHosts {
@@ -34,8 +30,10 @@ func LookupRouter(lookupHosts []string, exitChan chan int) {
 		lookupPeers = append(lookupPeers, lookupPeer)
 	}
 
-	notify.Observe("new_channel", notifyChannelChan)
-	notify.Observe("new_topic", notifyTopicChan)
+	if len(lookupPeers) > 0 {
+		notify.Observe("new_channel", notifyChannelChan)
+		notify.Observe("new_topic", notifyTopicChan)
+	}
 
 	// for announcements, lookupd determines the host automatically
 	ticker := time.Tick(15 * time.Second)
@@ -92,9 +90,15 @@ func LookupRouter(lookupHosts []string, exitChan chan int) {
 			}
 			nsqd.RUnlock()
 		case <-exitChan:
-			notify.Ignore("new_channel", notifyChannelChan)
-			notify.Ignore("new_topic", notifyTopicChan)
-			return
+			goto exit
 		}
 	}
+
+exit:
+	log.Printf("LOOKUP: closing")
+	if len(lookupPeers) > 0 {
+		notify.Ignore("new_channel", notifyChannelChan)
+		notify.Ignore("new_topic", notifyTopicChan)
+	}
+	exitSyncChan <- 1
 }

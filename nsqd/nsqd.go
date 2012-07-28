@@ -29,6 +29,7 @@ type NSQd struct {
 	httpListener    net.Listener
 	idChan          chan []byte
 	exitChan        chan int
+	exitSyncChan    chan int
 }
 
 var nsqd *NSQd
@@ -44,38 +45,46 @@ func NewNSQd(workerId int64) *NSQd {
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
 		exitChan:        make(chan int),
+		exitSyncChan:    make(chan int),
 	}
 	go n.idPump()
 	return n
 }
 
 func (n *NSQd) Main() {
-	go LookupRouter(n.lookupAddrs, n.exitChan)
+	go lookupRouter(n.lookupAddrs, n.exitChan, n.exitSyncChan)
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
 	}
 	n.tcpListener = tcpListener
-	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols})
+	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}, n.exitSyncChan)
 
 	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
 	}
 	n.httpListener = httpListener
-	go HttpServer(httpListener)
+	go httpServer(httpListener, n.exitSyncChan)
 }
 
 func (n *NSQd) Exit() {
 	n.tcpListener.Close()
 	n.httpListener.Close()
+	<-n.exitSyncChan
+	<-n.exitSyncChan
 
-	close(n.exitChan)
-
+	log.Printf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
 		topic.Close()
 	}
+
+	// we want to do this last as it closes the idPump (if closed first it
+	// could potentially starve items in process and deadlock)
+	close(n.exitChan)
+	<-n.exitSyncChan
+	<-n.exitSyncChan
 }
 
 // GetTopic performs a thread safe operation
@@ -111,7 +120,11 @@ func (n *NSQd) idPump() {
 		select {
 		case n.idChan <- id.Hex():
 		case <-n.exitChan:
-			return
+			goto exit
 		}
 	}
+
+exit:
+	log.Printf("GUID: closing")
+	n.exitSyncChan <- 1
 }

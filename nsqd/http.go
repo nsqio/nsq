@@ -18,8 +18,9 @@ import (
 
 import httpprof "net/http/pprof"
 
-func HttpServer(listener net.Listener) {
+func httpServer(listener net.Listener, exitSyncChan chan int) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
+
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/put", putHandler)
@@ -29,9 +30,10 @@ func HttpServer(listener net.Listener) {
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
+
 	server := &http.Server{
-		Handler: handler,
-		ReadTimeout: 5 * time.Second,
+		Handler:      handler,
+		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 	err := server.Serve(listener)
@@ -39,6 +41,9 @@ func HttpServer(listener net.Listener) {
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
+
+	log.Printf("HTTP: closing %s", listener.Addr().String())
+	exitSyncChan <- 1
 }
 
 func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {

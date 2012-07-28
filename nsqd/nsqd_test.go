@@ -104,6 +104,7 @@ func TestStartup(t *testing.T) {
 		nsqdd.Main()
 		<-exitChan
 		nsqdd.Exit()
+		doneExitChan <- 1
 	}()
 
 	topic = nsqdd.GetTopic(topicName)
@@ -128,4 +129,5 @@ func TestStartup(t *testing.T) {
 	assert.Equal(t, topic.backend.Depth(), int64(0))
 
 	exitChan <- 1
+	<-doneExitChan
 }
