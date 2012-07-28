@@ -47,6 +47,8 @@ type Reader struct {
 	VerboseLogging      bool
 	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
 	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
+	ReadTimeout         time.Duration
+	WriteTimeout        time.Duration
 
 	MessagesReceived uint64
 	MessagesFinished uint64
@@ -73,10 +75,46 @@ type nsqConn struct {
 	messagesFinished    uint64
 	messagesRequeued    uint64
 	bufferSizeRemaining int64
+	readTimeout         time.Duration
+	writeTimeout        time.Duration
+}
+
+func NewNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
+	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	nc := &nsqConn{
+		net.Conn:         conn,
+		FinishedMessages: make(chan *FinishedMessage),
+		stopFlag:         false,
+		readTimeout:      readTimeout,
+		writeTimeout:     writeTimeout,
+	}
+
+	nc.SetWriteDeadline(time.Now().Add(nc.writeTimeout))
+	_, err = nc.Write(MagicV2)
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("[%s] failed to write magic - %s", addr, err.Error())
+	}
+
+	return nc, nil
 }
 
 func (c *nsqConn) String() string {
 	return c.RemoteAddr().String()
+}
+
+func (c *nsqConn) SendCommand(cmd *Command) error {
+	c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+	return SendCommand(c, cmd)
+}
+
+func (c *nsqConn) ReadResponse() ([]byte, error) {
+	c.SetReadDeadline(time.Now().Add(c.readTimeout))
+	return ReadResponse(c)
 }
 
 type IncomingMessage struct {
@@ -113,6 +151,8 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		DefaultRequeueDelay: 90 * time.Second,
 		ShortIdentifier:     strings.Split(hostname, ".")[0],
 		LongIdentifier:      hostname,
+		ReadTimeout:         time.Second,
+		WriteTimeout:        time.Second,
 	}
 	return q, nil
 }
@@ -228,24 +268,22 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	}
 
 	log.Printf("[%s] connecting to nsqd", addr)
-	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
+	connection, err := NewNSQConn(addr, q.ReadTimeout, q.WriteTimeout)
 	if err != nil {
-		log.Printf("[%s] %s", addr, err.Error())
 		return err
 	}
-	conn.Write(MagicV2)
-	SendCommand(conn, Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier))
 
-	connection := &nsqConn{
-		net.Conn:         conn,
-		FinishedMessages: make(chan *FinishedMessage),
-		stopFlag:         false,
+	err = connection.SendCommand(Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier))
+	if err != nil {
+		connection.Close()
+		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", q.TopicName, q.ChannelName, err.Error())
 	}
 
 	q.nsqConnections[addr.String()] = connection
 
 	go ConnectionReadLoop(q, connection)
 	go ConnectionFinishLoop(q, connection)
+
 	return nil
 }
 
@@ -265,7 +303,17 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 		log.Printf("[%s] RDY %d", c, s)
 	}
 	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-	SendCommand(c.Conn, Ready(s))
+
+	err := c.SendCommand(Ready(s))
+	if err != nil {
+		// even though this is a *write* that failed, this function does all the work we'd
+		// need to do anyway
+		handleReadError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
+		// since we're not yet in the loop we need to close this manually
+		close(c.FinishedMessages)
+		return
+	}
+
 	for {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
@@ -279,9 +327,9 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 			break
 		}
 
-		resp, err := ReadResponse(c.Conn)
+		resp, err := c.ReadResponse()
 		if err != nil {
-			handleReadError(q, c, fmt.Sprintf("[%s] error on response %s", c, err.Error()))
+			handleReadError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
 			continue
 		}
 
@@ -321,7 +369,6 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
 		}
-
 	}
 }
 
@@ -353,18 +400,29 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			}
 			return
 		}
+
 		if msg.Success {
 			if q.VerboseLogging {
 				log.Printf("[%s] finishing %s", c, msg.Id)
 			}
-			SendCommand(c.Conn, Finish(msg.Id))
+			err := c.SendCommand(Finish(msg.Id))
+			if err != nil {
+				log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
+				c.stopFlag = true
+				continue
+			}
 			atomic.AddUint64(&c.messagesFinished, 1)
 			atomic.AddUint64(&q.MessagesFinished, 1)
 		} else {
 			if q.VerboseLogging {
 				log.Printf("[%s] requeuing %s", c, msg.Id)
 			}
-			SendCommand(c.Conn, Requeue(msg.Id, msg.RequeueDelayMs))
+			err := c.SendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
+			if err != nil {
+				log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
+				c.stopFlag = true
+				continue
+			}
 			atomic.AddUint64(&c.messagesRequeued, 1)
 			atomic.AddUint64(&q.MessagesRequeued, 1)
 		}
@@ -385,7 +443,12 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
 				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-				SendCommand(c.Conn, Ready(s))
+				err := c.SendCommand(Ready(s))
+				if err != nil {
+					log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
+					c.stopFlag = true
+					continue
+				}
 			} else {
 				if q.VerboseLogging {
 					log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
@@ -406,7 +469,10 @@ func (q *Reader) Stop() {
 		q.stopHandlers()
 	} else {
 		for _, c := range q.nsqConnections {
-			SendCommand(c.Conn, StartClose())
+			err := c.SendCommand(StartClose())
+			if err != nil {
+				log.Printf("[%s] failed to start close - %s", c, err.Error())
+			}
 		}
 		go func() {
 			<-time.After(time.Duration(30) * time.Second)
