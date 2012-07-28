@@ -69,7 +69,7 @@ type Reader struct {
 type nsqConn struct {
 	net.Conn
 	stopFlag            bool
-	FinishedMessages    chan *FinishedMessage
+	finishedMessages    chan *FinishedMessage
 	messagesInFlight    int64
 	messagesReceived    uint64
 	messagesFinished    uint64
@@ -87,7 +87,7 @@ func NewNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.
 
 	nc := &nsqConn{
 		net.Conn:         conn,
-		FinishedMessages: make(chan *FinishedMessage),
+		finishedMessages: make(chan *FinishedMessage),
 		stopFlag:         false,
 		readTimeout:      readTimeout,
 		writeTimeout:     writeTimeout,
@@ -310,7 +310,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 		// need to do anyway
 		handleReadError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
 		// since we're not yet in the loop we need to close this manually
-		close(c.FinishedMessages)
+		close(c.finishedMessages)
 		return
 	}
 
@@ -318,8 +318,8 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 		if c.stopFlag || q.stopFlag {
 			// start the connection close
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 {
-				log.Printf("[%s] closing FinishedMessages channel", c)
-				close(c.FinishedMessages)
+				log.Printf("[%s] closing finishedMessages channel", c)
+				close(c.finishedMessages)
 			} else {
 				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
@@ -357,7 +357,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c, remain, msg.Id, msg.Body)
 			}
 
-			q.IncomingMessages <- &IncomingMessage{msg, c.FinishedMessages}
+			q.IncomingMessages <- &IncomingMessage{msg, c.finishedMessages}
 		case FrameTypeResponse:
 			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
 				// server is ready for us to close (it ack'd our StartClose)
@@ -374,7 +374,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 	for {
-		msg, ok := <-c.FinishedMessages
+		msg, ok := <-c.finishedMessages
 		if !ok {
 			log.Printf("[%s] stopping finish loop ", c)
 			c.Close()
@@ -429,8 +429,8 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 
 		atomic.AddInt64(&q.messagesInFlight, -1)
 		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && c.stopFlag {
-			log.Printf("[%s] closing c.FinishedMessages", c)
-			close(c.FinishedMessages)
+			log.Printf("[%s] closing c.finishedMessages", c)
+			close(c.finishedMessages)
 			continue
 		}
 
