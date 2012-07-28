@@ -125,6 +125,10 @@ func (c *Channel) Close() error {
 	}
 
 	// write anything leftover to disk
+	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
+		log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
+			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
+	}
 	FlushQueue(c)
 	err = c.backend.Close()
 	if err != nil {
@@ -376,6 +380,7 @@ func (c *Channel) router() {
 			}
 		}
 	}
+
 	log.Printf("CHANNEL(%s): closing ... router", c.name)
 	c.exitSyncChan <- 1
 }

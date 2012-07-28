@@ -134,7 +134,10 @@ func (t *Topic) messagePump() {
 			// needs a unique instance
 			chanMsg := nsq.NewMessage(msg.Id, msg.Body)
 			chanMsg.Timestamp = msg.Timestamp
-			channel.PutMessage(chanMsg)
+			err := channel.PutMessage(chanMsg)
+			if err != nil {
+				log.Printf("ERROR: failed to put msg(%s) to channel(%s) - %s", msg.Id, channel.name, err.Error())
+			}
 		}
 		t.RUnlock()
 	}
@@ -193,6 +196,9 @@ func (t *Topic) Close() error {
 	}
 
 	// write anything leftover to disk
+	if len(t.memoryMsgChan) > 0 {
+		log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
+	}
 	FlushQueue(t)
 	err = t.backend.Close()
 	if err != nil {

@@ -125,6 +125,6 @@ func (n *NSQd) idPump() {
 	}
 
 exit:
-	log.Printf("GUID: closing")
+	log.Printf("ID: closing")
 	n.exitSyncChan <- 1
 }
