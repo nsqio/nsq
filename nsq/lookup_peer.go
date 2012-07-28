@@ -36,10 +36,12 @@ func (lp *LookupPeer) String() string {
 }
 
 func (lp *LookupPeer) Read(data []byte) (int, error) {
+	lp.conn.SetReadDeadline(time.Now().Add(time.Second))
 	return lp.conn.Read(data)
 }
 
 func (lp *LookupPeer) Write(data []byte) (int, error) {
+	lp.conn.SetWriteDeadline(time.Now().Add(time.Second))
 	return lp.conn.Write(data)
 }
 
