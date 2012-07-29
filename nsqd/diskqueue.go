@@ -28,6 +28,7 @@ type DiskQueue struct {
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
 	syncEvery       int64 // number of writes per sync
+	exitFlag        int32
 
 	// run-time state (also persisted to disk)
 	readPos      int64
@@ -43,30 +44,30 @@ type DiskQueue struct {
 
 	readFile  *os.File
 	writeFile *os.File
-	open      bool
 
 	// exposed via ReadChan()
 	readChan chan []byte
 
 	// internal channels
-	emptyChan         chan int
-	writeContinueChan chan int
-	exitChan          chan int
+	emptyChan     chan int
+	readStateChan chan int
+	exitChan      chan int
+	exitSyncChan  chan int
 }
 
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving meta-data
 // from the filesystem and starting the read ahead goroutine
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) BackendQueue {
 	d := DiskQueue{
-		name:              name,
-		dataPath:          dataPath,
-		maxBytesPerFile:   maxBytesPerFile,
-		readChan:          make(chan []byte),
-		emptyChan:         make(chan int),
-		exitChan:          make(chan int),
-		writeContinueChan: make(chan int),
-		open:              true,
-		syncEvery:         syncEvery,
+		name:            name,
+		dataPath:        dataPath,
+		maxBytesPerFile: maxBytesPerFile,
+		readChan:        make(chan []byte),
+		emptyChan:       make(chan int),
+		exitChan:        make(chan int),
+		exitSyncChan:    make(chan int),
+		readStateChan:   make(chan int, 1),
+		syncEvery:       syncEvery,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
@@ -97,15 +98,15 @@ func (d *DiskQueue) Put(p []byte) error {
 
 // Close cleans up the queue and persists meta-data
 func (d *DiskQueue) Close() error {
-	d.readMutex.Lock()
-	defer d.readMutex.Unlock()
-
-	d.writeMutex.Lock()
-	defer d.writeMutex.Unlock()
+	log.Printf("DISKQUEUE(%s): closing", d.name)
 
 	// this guarantees that no other goroutines can successfully read/write that may
-	// currently be waiting on either of the above mutex
-	d.open = false
+	// currently be waiting on either of the below mutex
+	atomic.StoreInt32(&d.exitFlag, 1)
+
+	d.readMutex.Lock()
+	d.writeMutex.Lock()
+
 	close(d.exitChan)
 
 	if d.readFile != nil {
@@ -117,11 +118,15 @@ func (d *DiskQueue) Close() error {
 	}
 
 	err := d.persistMetaData()
-	if err != nil {
-		return err
-	}
 
-	return nil
+	d.readMutex.Unlock()
+	d.writeMutex.Unlock()
+
+	// ensure that readAheadPump has exited
+	// this needs to be done *after* readMutex is unlocked
+	<-d.exitSyncChan
+
+	return err
 }
 
 // Empty destructively clears out any pending data in the queue
@@ -137,6 +142,10 @@ func (d *DiskQueue) doEmpty() error {
 
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
+
+	if atomic.LoadInt32(&d.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
 
 	if d.readFile != nil {
 		d.readFile.Close()
@@ -185,8 +194,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	d.readMutex.Lock()
 	defer d.readMutex.Unlock()
 
-	if !d.open {
-		return nil, errors.New("E_CLOSED")
+	if atomic.LoadInt32(&d.exitFlag) == 1 {
+		return nil, errors.New("E_EXITING")
 	}
 
 	// because readOne is only called inside readAheadPump
@@ -271,8 +280,8 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	d.writeMutex.Lock()
 	defer d.writeMutex.Unlock()
 
-	if !d.open {
-		return errors.New("E_CLOSED")
+	if atomic.LoadInt32(&d.exitFlag) == 1 {
+		return errors.New("E_EXITING")
 	}
 
 	writePos := atomic.LoadInt64(&d.writePos)
@@ -350,7 +359,12 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	atomic.AddInt64(&d.depth, 1)
 	d.metaMutex.Unlock()
 
-	d.writeContinueChan <- 1
+	// you can always *try* to write to readStateChan because in the cases
+	// where you cannot the message pump loop would have iterated anyway
+	select {
+	case d.readStateChan <- 1:
+	default:
+	}
 
 	return nil
 }
@@ -436,6 +450,10 @@ func (d *DiskQueue) fileName(fileNum int64) string {
 func (d *DiskQueue) readAheadPump() {
 	var data []byte
 	var err error
+
+	// readStateChan has a buffer of 1 to guarantee that in the event
+	// there is a race before we enter either of the select loops where 
+	// readStateChan is read from that the update is not lost
 	for {
 		nextReadPos := atomic.LoadInt64(&d.nextReadPos)
 
@@ -451,8 +469,8 @@ func (d *DiskQueue) readAheadPump() {
 			if nextReadPos == readPos {
 				data, err = d.readOne()
 				if err != nil {
-					if err.Error() == "E_CLOSED" {
-						return
+					if err.Error() == "E_EXITING" {
+						goto exit
 					}
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
 						d.name, readPos, d.fileName(readFileNum), err.Error())
@@ -476,9 +494,9 @@ func (d *DiskQueue) readAheadPump() {
 				if err != nil {
 					log.Printf("ERROR: doEmpty() - %s", err.Error())
 				}
-			case <-d.writeContinueChan:
+			case <-d.readStateChan:
 			case <-d.exitChan:
-				return
+				goto exit
 			}
 		} else {
 			select {
@@ -487,10 +505,14 @@ func (d *DiskQueue) readAheadPump() {
 				if err != nil {
 					log.Printf("ERROR: doEmpty() - %s", err.Error())
 				}
-			case <-d.writeContinueChan:
+			case <-d.readStateChan:
 			case <-d.exitChan:
-				return
+				goto exit
 			}
 		}
 	}
+
+exit:
+	log.Printf("DISKQUEUE(%s): closing ... readAheadPump", d.name)
+	d.exitSyncChan <- 1
 }
