@@ -39,35 +39,15 @@ type AsyncHandler interface {
 	HandleMessage(message *Message, responseChannel chan *FinishedMessage)
 }
 
-type Reader struct {
-	TopicName           string // Name of Topic to subscribe to
-	ChannelName         string // Named Channel to consume messages from
-	IncomingMessages    chan *IncomingMessage
-	ExitChan            chan int
-	BufferSize          int // number of messages to allow in-flight from NSQ's at a time
-	LookupdPollInterval int // seconds between polling lookupd's (+/- random 15 seconds)
-	MaxAttemptCount     uint16
-	DefaultRequeueDelay time.Duration
-	VerboseLogging      bool
-	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
-	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
-	ReadTimeout         time.Duration
-	WriteTimeout        time.Duration
+type incomingMessage struct {
+	*Message
+	responseChannel chan *FinishedMessage
+}
 
-	MessagesReceived uint64
-	MessagesFinished uint64
-	MessagesRequeued uint64
-
-	nsqConnections map[string]*nsqConn
-
-	lookupdExitChan    chan int
-	lookupdRecheckChan chan int
-	stopFlag           bool
-	runningFlag        bool
-	runningHandlers    int64
-	messagesInFlight   int64
-	lookupdAddresses   []*net.TCPAddr
-	stopHandler        sync.Once
+type FinishedMessage struct {
+	Id             []byte
+	RequeueDelayMs int
+	Success        bool
 }
 
 type nsqConn struct {
@@ -83,7 +63,7 @@ type nsqConn struct {
 	writeTimeout        time.Duration
 }
 
-func NewNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
+func newNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
 	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
 	if err != nil {
 		return nil, err
@@ -111,25 +91,43 @@ func (c *nsqConn) String() string {
 	return c.RemoteAddr().String()
 }
 
-func (c *nsqConn) SendCommand(cmd *Command) error {
+func (c *nsqConn) sendCommand(cmd *Command) error {
 	c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 	return SendCommand(c, cmd)
 }
 
-func (c *nsqConn) ReadResponse() ([]byte, error) {
+func (c *nsqConn) readResponse() ([]byte, error) {
 	c.SetReadDeadline(time.Now().Add(c.readTimeout))
 	return ReadResponse(c)
 }
 
-type IncomingMessage struct {
-	*Message
-	responseChannel chan *FinishedMessage
-}
+type Reader struct {
+	TopicName           string        // Name of Topic to subscribe to
+	ChannelName         string        // Named Channel to consume messages from
+	BufferSize          int           // number of messages to allow in-flight at a time
+	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value)
+	MaxAttemptCount     uint16
+	DefaultRequeueDelay time.Duration
+	VerboseLogging      bool
+	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
+	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
+	ReadTimeout         time.Duration
+	WriteTimeout        time.Duration
+	MessagesReceived    uint64
+	MessagesFinished    uint64
+	MessagesRequeued    uint64
+	ExitChan            chan int
 
-type FinishedMessage struct {
-	Id             []byte
-	RequeueDelayMs int
-	Success        bool
+	incomingMessages   chan *incomingMessage
+	nsqConnections     map[string]*nsqConn
+	lookupdExitChan    chan int
+	lookupdRecheckChan chan int
+	stopFlag           bool
+	runningFlag        bool
+	runningHandlers    int64
+	messagesInFlight   int64
+	lookupdAddresses   []*net.TCPAddr
+	stopHandler        sync.Once
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
@@ -144,12 +142,12 @@ func NewReader(topic string, channel string) (*Reader, error) {
 	q := &Reader{
 		TopicName:           topic,
 		ChannelName:         channel,
-		IncomingMessages:    make(chan *IncomingMessage),
+		incomingMessages:    make(chan *incomingMessage),
 		ExitChan:            make(chan int),
 		nsqConnections:      make(map[string]*nsqConn),
 		BufferSize:          1,
 		MaxAttemptCount:     5,
-		LookupdPollInterval: 120,
+		LookupdPollInterval: 120 * time.Second,
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90 * time.Second,
@@ -183,24 +181,23 @@ func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
 
 	// if this is the first one, kick off the go loop
 	if len(q.lookupdAddresses) == 1 {
-		q.QueryLookupd()
-		go q.LookupdLoop()
+		q.queryLookupd()
+		go q.lookupdLoop()
 	}
 	return nil
 }
 
-// poll all known lookup servers every LookupdPollInterval seconds
-func (q *Reader) LookupdLoop() {
+// poll all known lookup servers every LookupdPollInterval
+func (q *Reader) lookupdLoop() {
 	rand.Seed(time.Now().UnixNano())
-	randInterval := int(q.LookupdPollInterval / 10)
-	time.Sleep(time.Duration(rand.Intn(randInterval)) * time.Second)
-	ticker := time.Tick(time.Duration(q.LookupdPollInterval) * time.Second)
+	time.Sleep(time.Duration(rand.Int63n(int64(q.LookupdPollInterval / 10))))
+	ticker := time.Tick(q.LookupdPollInterval)
 	for {
 		select {
 		case <-ticker:
-			q.QueryLookupd()
+			q.queryLookupd()
 		case <-q.lookupdRecheckChan:
-			q.QueryLookupd()
+			q.queryLookupd()
 		case <-q.lookupdExitChan:
 			return
 		}
@@ -210,7 +207,7 @@ func (q *Reader) LookupdLoop() {
 // make a HTTP req to the /lookup endpoint on each lookup server
 // to find what nsq's provide the topic we are consuming.
 // for any new topics, initiate a connection to those NSQ's
-func (q *Reader) QueryLookupd() {
+func (q *Reader) queryLookupd() {
 	httpclient := &http.Client{}
 	for _, addr := range q.lookupdAddresses {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
@@ -288,12 +285,12 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 
 	log.Printf("[%s] connecting to nsqd", addr)
 
-	connection, err := NewNSQConn(addr, q.ReadTimeout, q.WriteTimeout)
+	connection, err := newNSQConn(addr, q.ReadTimeout, q.WriteTimeout)
 	if err != nil {
 		return err
 	}
 
-	err = connection.SendCommand(Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier))
+	err = connection.sendCommand(Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier))
 	if err != nil {
 		connection.Close()
 		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", q.TopicName, q.ChannelName, err.Error())
@@ -301,8 +298,8 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 
 	q.nsqConnections[addr.String()] = connection
 
-	go ConnectionReadLoop(q, connection)
-	go ConnectionFinishLoop(q, connection)
+	go q.readLoop(connection)
+	go q.finishLoop(connection)
 
 	return nil
 }
@@ -316,7 +313,7 @@ func handleReadError(q *Reader, c *nsqConn, errMsg string) {
 	}
 }
 
-func ConnectionReadLoop(q *Reader, c *nsqConn) {
+func (q *Reader) readLoop(c *nsqConn) {
 	// prime our ready state
 	s := q.ConnectionBufferSize()
 	if q.VerboseLogging {
@@ -324,7 +321,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	}
 	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 
-	err := c.SendCommand(Ready(s))
+	err := c.sendCommand(Ready(s))
 	if err != nil {
 		// even though this is a *write* that failed, this function does all the work we'd
 		// need to do anyway
@@ -347,7 +344,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 			break
 		}
 
-		resp, err := c.ReadResponse()
+		resp, err := c.readResponse()
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				// TODO: until we have heartbeats, continue indefinitely
@@ -381,7 +378,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c, remain, msg.Id, msg.Body)
 			}
 
-			q.IncomingMessages <- &IncomingMessage{msg, c.finishedMessages}
+			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
 		case FrameTypeResponse:
 			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
 				// server is ready for us to close (it ack'd our StartClose)
@@ -396,7 +393,7 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 	}
 }
 
-func ConnectionFinishLoop(q *Reader, c *nsqConn) {
+func (q *Reader) finishLoop(c *nsqConn) {
 	for {
 		msg, ok := <-c.finishedMessages
 		if !ok {
@@ -430,7 +427,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			if q.VerboseLogging {
 				log.Printf("[%s] finishing %s", c, msg.Id)
 			}
-			err := c.SendCommand(Finish(msg.Id))
+			err := c.sendCommand(Finish(msg.Id))
 			if err != nil {
 				log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
 				c.stopFlag = true
@@ -442,7 +439,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 			if q.VerboseLogging {
 				log.Printf("[%s] requeuing %s", c, msg.Id)
 			}
-			err := c.SendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
+			err := c.sendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
 			if err != nil {
 				log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
 				c.stopFlag = true
@@ -468,7 +465,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
 				}
 				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-				err := c.SendCommand(Ready(s))
+				err := c.sendCommand(Ready(s))
 				if err != nil {
 					log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
 					c.stopFlag = true
@@ -494,7 +491,7 @@ func (q *Reader) Stop() {
 		q.stopHandlers()
 	} else {
 		for _, c := range q.nsqConnections {
-			err := c.SendCommand(StartClose())
+			err := c.sendCommand(StartClose())
 			if err != nil {
 				log.Printf("[%s] failed to start close - %s", c, err.Error())
 			}
@@ -511,8 +508,8 @@ func (q *Reader) Stop() {
 
 func (q *Reader) stopHandlers() {
 	q.stopHandler.Do(func() {
-		log.Printf("closing IncomingMessages")
-		close(q.IncomingMessages)
+		log.Printf("closing incomingMessages")
+		close(q.incomingMessages)
 	})
 }
 
@@ -523,9 +520,9 @@ func (q *Reader) AddHandler(handler Handler) {
 	log.Println("starting Handler go-routine")
 	go func() {
 		for {
-			message, ok := <-q.IncomingMessages
+			message, ok := <-q.incomingMessages
 			if !ok {
-				log.Printf("closing Handler (after self.IncomingMessages closed)")
+				log.Printf("closing Handler (after self.incomingMessages closed)")
 				if atomic.AddInt64(&q.runningHandlers, -1) == 0 {
 					q.ExitChan <- 1
 				}
@@ -562,9 +559,9 @@ func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 	log.Println("starting AsyncHandler go-routine")
 	go func() {
 		for {
-			message, ok := <-q.IncomingMessages
+			message, ok := <-q.incomingMessages
 			if !ok {
-				log.Printf("closing AsyncHandler (after self.IncomingMessages closed)")
+				log.Printf("closing AsyncHandler (after self.incomingMessages closed)")
 				if atomic.AddInt64(&q.runningHandlers, -1) == 0 {
 					q.ExitChan <- 1
 				}
