@@ -329,6 +329,10 @@ func ConnectionReadLoop(q *Reader, c *nsqConn) {
 
 		resp, err := c.ReadResponse()
 		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// TODO: until we have heartbeats, continue indefinitely
+				continue
+			}
 			handleReadError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
 			continue
 		}
