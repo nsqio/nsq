@@ -232,10 +232,15 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (sr *StreamReader) HeartbeatLoop() {
 	heartbeatTicker := time.NewTicker(30 * time.Second)
+	defer func(){
+		sr.conn.Close()
+		heartbeatTicker.Stop()
+		streamServer.Del(sr)
+	}()
 	for {
 		select {
 		case <-sr.reader.ExitChan:
-			break
+			return
 		case ts := <-heartbeatTicker.C:
 			sr.Lock()
 			sr.bufrw.WriteString(fmt.Sprintf("{\"_heartbeat_\":%d}\n", ts.Unix()))
@@ -243,10 +248,6 @@ func (sr *StreamReader) HeartbeatLoop() {
 			sr.Unlock()
 		}
 	}
-	sr.conn.Close()
-	heartbeatTicker.Stop()
-	streamServer.Del(sr)
-
 }
 
 func (sr *StreamReader) HandleMessage(message *nsq.Message) error {
