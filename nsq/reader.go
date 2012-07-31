@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+var ErrNoHandlers = errors.New("no handlers")
+var ErrAlreadyConnected = errors.New("already connected")
+var ErrReaderStopped = errors.New("reader stopped")
+
 // a syncronous handler that returns an error (or nil to indicate success)
 type Handler interface {
 	HandleMessage(message *Message) error
@@ -210,29 +214,36 @@ func (q *Reader) QueryLookupd() {
 	httpclient := &http.Client{}
 	for _, addr := range q.lookupdAddresses {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
+
+		log.Printf("LOOKUPD: querying %s", endpoint)
 		req, err := http.NewRequest("GET", endpoint, nil)
 		if err != nil {
-			log.Printf("LOOKUPD %s error %s", addr, err.Error())
+			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
 			continue
 		}
+
 		resp, err := httpclient.Do(req)
 		if err != nil {
-			log.Printf("LOOKUPD %s error %s", addr, err.Error())
+			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
 			continue
 		}
-		body, _ := ioutil.ReadAll(resp.Body)
-		if q.VerboseLogging {
-			log.Printf("LOOKUPD %s responded with %s", addr, body)
-		}
-		data, err := simplejson.NewJson(body)
+
+		body, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Printf("LOOKUPD %s error %s", addr, err.Error())
+			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
+			continue
+		}
+
+		data, err := simplejson.NewJson(body)
+		if err != nil {
+			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
 			continue
 		}
 
 		statusCode, err := data.Get("status_code").Int()
 		if err != nil || statusCode != 200 {
+			log.Printf("ERROR: lookupd %s - invalid status code", addr)
 			continue
 		}
 
@@ -245,9 +256,17 @@ func (q *Reader) QueryLookupd() {
 			port := int(producerData["port"].(float64))
 
 			// make an address, start a connection
-			nsqAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)))
-			if err == nil {
-				q.ConnectToNSQ(nsqAddr)
+			joined := net.JoinHostPort(address, fmt.Sprintf("%d", port))
+			nsqAddr, err := net.ResolveTCPAddr("tcp", joined)
+			if err != nil {
+				log.Printf("ERROR: could not resolve tcp address (%s) from lookupd - %s", joined, err.Error())
+				continue
+			}
+
+			err = q.ConnectToNSQ(nsqAddr)
+			if err != nil && err != ErrAlreadyConnected {
+				log.Printf("ERROR: failed to connect to nsqd (%s) - %s", nsqAddr.String(), err.Error())
+				continue
 			}
 		}
 	}
@@ -255,19 +274,20 @@ func (q *Reader) QueryLookupd() {
 
 func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 	if q.stopFlag {
-		return errors.New("Queue has been stopped")
+		return ErrReaderStopped
 	}
 
 	if q.runningHandlers == 0 {
-		return errors.New("There are no handlers running")
+		return ErrNoHandlers
 	}
 
 	_, ok := q.nsqConnections[addr.String()]
 	if ok {
-		return errors.New("already connected")
+		return ErrAlreadyConnected
 	}
 
 	log.Printf("[%s] connecting to nsqd", addr)
+
 	connection, err := NewNSQConn(addr, q.ReadTimeout, q.WriteTimeout)
 	if err != nil {
 		return err
@@ -393,6 +413,7 @@ func ConnectionFinishLoop(q *Reader, c *nsqConn) {
 				}
 				return
 			}
+
 			// ie: we were the last one, and stopping
 			if len(q.nsqConnections) == 0 && q.stopFlag {
 				q.stopHandlers()
