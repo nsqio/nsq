@@ -52,7 +52,7 @@ type FinishedMessage struct {
 
 type nsqConn struct {
 	net.Conn
-	stopFlag            bool
+	stopFlag            int32
 	finishedMessages    chan *FinishedMessage
 	messagesInFlight    int64
 	messagesReceived    uint64
@@ -72,7 +72,6 @@ func newNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.
 	nc := &nsqConn{
 		net.Conn:         conn,
 		finishedMessages: make(chan *FinishedMessage),
-		stopFlag:         false,
 		readTimeout:      readTimeout,
 		writeTimeout:     writeTimeout,
 	}
@@ -122,9 +121,8 @@ type Reader struct {
 	nsqConnections     map[string]*nsqConn
 	lookupdExitChan    chan int
 	lookupdRecheckChan chan int
-	stopFlag           bool
-	runningFlag        bool
-	runningHandlers    int64
+	stopFlag           int32
+	runningHandlers    int32
 	messagesInFlight   int64
 	lookupdAddresses   []*net.TCPAddr
 	stopHandler        sync.Once
@@ -270,11 +268,11 @@ func (q *Reader) queryLookupd() {
 }
 
 func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
-	if q.stopFlag {
+	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return ErrReaderStopped
 	}
 
-	if q.runningHandlers == 0 {
+	if atomic.LoadInt32(&q.runningHandlers) == 0 {
 		return ErrNoHandlers
 	}
 
@@ -306,10 +304,10 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 
 func handleReadError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
-	c.stopFlag = true
+	atomic.StoreInt32(&c.stopFlag, 1)
 	if len(q.nsqConnections) == 1 && len(q.lookupdAddresses) == 0 {
 		// This is the only remaining connection, so stop the queue
-		q.stopFlag = true
+		atomic.StoreInt32(&q.stopFlag, 1)
 	}
 }
 
@@ -326,17 +324,15 @@ func (q *Reader) readLoop(c *nsqConn) {
 		// even though this is a *write* that failed, this function does all the work we'd
 		// need to do anyway
 		handleReadError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
-		// since we're not yet in the loop we need to close this manually
-		close(c.finishedMessages)
+		stopFinishLoop(c)
 		return
 	}
 
 	for {
-		if c.stopFlag || q.stopFlag {
+		if atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1 {
 			// start the connection close
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 {
-				log.Printf("[%s] closing finishedMessages channel", c)
-				close(c.finishedMessages)
+				stopFinishLoop(c)
 			} else {
 				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
@@ -385,7 +381,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
 				log.Printf("[%s] received ACK from server. now in CloseWait %d", c, frameType)
-				c.stopFlag = true
+				atomic.StoreInt32(&c.stopFlag, 1)
 			}
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
@@ -405,18 +401,18 @@ func (q *Reader) finishLoop(c *nsqConn) {
 
 			if len(q.nsqConnections) == 0 && len(q.lookupdAddresses) == 0 {
 				// no lookupd entry means no reconnection
-				if q.stopFlag {
+				if atomic.LoadInt32(&q.stopFlag) == 1 {
 					q.stopHandlers()
 				}
 				return
 			}
 
 			// ie: we were the last one, and stopping
-			if len(q.nsqConnections) == 0 && q.stopFlag {
+			if len(q.nsqConnections) == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
 				q.stopHandlers()
 			}
 
-			if len(q.lookupdAddresses) != 0 && !q.stopFlag {
+			if len(q.lookupdAddresses) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
 				// trigger a poll of the lookupd
 				q.lookupdRecheckChan <- 1
 			}
@@ -430,7 +426,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			err := c.sendCommand(Finish(msg.Id))
 			if err != nil {
 				log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
-				c.stopFlag = true
+				stopFinishLoop(c)
 				continue
 			}
 			atomic.AddUint64(&c.messagesFinished, 1)
@@ -442,7 +438,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			err := c.sendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
 			if err != nil {
 				log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
-				c.stopFlag = true
+				stopFinishLoop(c)
 				continue
 			}
 			atomic.AddUint64(&c.messagesRequeued, 1)
@@ -450,13 +446,12 @@ func (q *Reader) finishLoop(c *nsqConn) {
 		}
 
 		atomic.AddInt64(&q.messagesInFlight, -1)
-		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && c.stopFlag {
-			log.Printf("[%s] closing c.finishedMessages", c)
-			close(c.finishedMessages)
+		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && atomic.LoadInt32(&c.stopFlag) == 1 {
+			stopFinishLoop(c)
 			continue
 		}
 
-		if !c.stopFlag {
+		if atomic.LoadInt32(&c.stopFlag) == 0 {
 			remain := atomic.LoadInt64(&c.bufferSizeRemaining)
 			s := q.ConnectionBufferSize()
 			// refill when at 1, or at 25% whichever comes first
@@ -468,7 +463,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 				err := c.sendCommand(Ready(s))
 				if err != nil {
 					log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
-					c.stopFlag = true
+					stopFinishLoop(c)
 					continue
 				}
 			} else {
@@ -480,13 +475,18 @@ func (q *Reader) finishLoop(c *nsqConn) {
 	}
 }
 
+func stopFinishLoop(c *nsqConn) {
+	log.Printf("[%s] closing finishedMessages channel", c)
+	close(c.finishedMessages)
+}
+
 // stops a Reader gracefully
 func (q *Reader) Stop() {
-	if q.stopFlag == true {
+	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return
 	}
 	log.Printf("Stopping reader")
-	q.stopFlag = true
+	atomic.StoreInt32(&q.stopFlag, 1)
 	if len(q.nsqConnections) == 0 {
 		q.stopHandlers()
 	} else {
@@ -516,14 +516,14 @@ func (q *Reader) stopHandlers() {
 // this starts a handler on the Reader
 // it's ok to start more than one handler simultaneously
 func (q *Reader) AddHandler(handler Handler) {
-	atomic.AddInt64(&q.runningHandlers, 1)
+	atomic.AddInt32(&q.runningHandlers, 1)
 	log.Println("starting Handler go-routine")
 	go func() {
 		for {
 			message, ok := <-q.incomingMessages
 			if !ok {
 				log.Printf("closing Handler (after self.incomingMessages closed)")
-				if atomic.AddInt64(&q.runningHandlers, -1) == 0 {
+				if atomic.AddInt32(&q.runningHandlers, -1) == 0 {
 					q.ExitChan <- 1
 				}
 				break
@@ -555,14 +555,14 @@ func (q *Reader) AddHandler(handler Handler) {
 // this starts an async handler on the Reader
 // it's ok to start more than one handler simultaneously
 func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
-	atomic.AddInt64(&q.runningHandlers, 1)
+	atomic.AddInt32(&q.runningHandlers, 1)
 	log.Println("starting AsyncHandler go-routine")
 	go func() {
 		for {
 			message, ok := <-q.incomingMessages
 			if !ok {
 				log.Printf("closing AsyncHandler (after self.incomingMessages closed)")
-				if atomic.AddInt64(&q.runningHandlers, -1) == 0 {
+				if atomic.AddInt32(&q.runningHandlers, -1) == 0 {
 					q.ExitChan <- 1
 				}
 				break
