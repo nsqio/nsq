@@ -169,20 +169,19 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	topicName, channelName, err := getTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, err.Error(), nil))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		http.Error(w, "httpserver doesn't support hijacking", http.StatusInternalServerError)
 		return
 	}
 	conn, bufrw, err := hj.Hijack()
@@ -192,7 +191,6 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r, err := nsq.NewReader(topicName, channelName)
-
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -204,16 +202,18 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		reader:      r,
 		req:         req,
 		conn:        conn,
-		bufrw:       bufrw, // todo: latency writer
+		bufrw:       bufrw, // TODO: latency writer
 		connectTime: time.Now(),
 	}
 	s.Set(sr)
 
-	log.Printf("new connection from %s", conn.RemoteAddr().String())
+	log.Printf("[%s] new connection", conn.RemoteAddr().String())
 	bufrw.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n")
 	bufrw.Flush()
 
 	r.AddHandler(sr)
+
+	// TODO: handle the error cases better (ie. at all :) )
 	errors := ConnectToNSQAndLookupd(r, nsqAddresses, lookupdAddresses)
 	log.Printf("connected to NSQ %v", errors)
 
