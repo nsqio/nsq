@@ -29,8 +29,8 @@ var (
 )
 
 func init() {
-	flag.Var(&nsqAddresses, "nsq-address", "nsq address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+	flag.Var(&nsqAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdAddresses, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
 type FileLogger struct {
