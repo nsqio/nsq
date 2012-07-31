@@ -70,10 +70,19 @@ func (n *NSQd) Main() {
 }
 
 func (n *NSQd) Exit() {
-	n.tcpListener.Close()
-	n.httpListener.Close()
-	<-n.exitSyncChan
-	<-n.exitSyncChan
+	err := n.tcpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close tcp listener - %s", err.Error())
+	} else {
+		<-n.exitSyncChan
+	}
+
+	err = n.httpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close http listener - %s", err.Error())
+	} else {
+		<-n.exitSyncChan
+	}
 
 	log.Printf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
