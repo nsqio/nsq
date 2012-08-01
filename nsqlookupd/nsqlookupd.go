@@ -16,7 +16,7 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 	tcpAddress  = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
-	webAddress  = flag.String("web-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
+	httpAddress = flag.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
 	debugMode   = flag.Bool("debug", false, "enable debug mode")
 	cpuProfile  = flag.String("cpu-profile", "", "write cpu profile to file")
 	goMaxProcs  = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
@@ -63,7 +63,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	webAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -76,16 +76,25 @@ func main() {
 	}
 	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}, exitSyncChan)
 
-	webListener, err := net.Listen("tcp", webAddr.String())
+	httpListener, err := net.Listen("tcp", httpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", webAddr, err.Error())
+		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr, err.Error())
 	}
-	go httpServer(webListener, exitSyncChan)
+	go httpServer(httpListener, exitSyncChan)
 
 	<-exitChan
 
-	tcpListener.Close()
-	webListener.Close()
-	<-exitSyncChan
-	<-exitSyncChan
+	err = tcpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close tcp listener - %s", err.Error())
+	} else {
+		<-exitSyncChan
+	}
+
+	err = httpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close http listener - %s", err.Error())
+	} else {
+		<-exitSyncChan
+	}
 }
