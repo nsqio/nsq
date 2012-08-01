@@ -20,15 +20,15 @@ import (
 )
 
 var (
-	webAddress       = flag.String("web-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
-	buffer           = flag.Int("buffer", 100, "number of messages to buffer in channel for clients")
+	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
+	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel for clients")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&nsqAddresses, "nsq-address", "nsq address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+	flag.Var(&nsqAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdAddresses, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
 type StreamServer struct {
@@ -37,13 +37,12 @@ type StreamServer struct {
 	messageCount uint64
 }
 
-var streamServer *StreamServer
-
 func (s *StreamServer) Set(sr *StreamReader) {
 	s.Lock()
 	defer s.Unlock()
 	s.clients = append(s.clients, sr)
 }
+
 func (s *StreamServer) Del(sr *StreamReader) {
 	s.Lock()
 	defer s.Unlock()
@@ -55,6 +54,8 @@ func (s *StreamServer) Del(sr *StreamReader) {
 	}
 	s.clients = n
 }
+
+var streamServer *StreamServer
 
 type StreamReader struct {
 	sync.RWMutex // embed a r/w mutex
@@ -84,41 +85,8 @@ func ConnectToNSQAndLookupd(r *nsq.Reader, nsqAddrs []string, lookupd []string) 
 			return err
 		}
 	}
+
 	return nil
-}
-
-func main() {
-	flag.Parse()
-
-	if *buffer < 0 {
-		log.Fatalf("--buffer must be > 0")
-	}
-
-	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
-		log.Fatalf("--nsq-address or --lookupd-address required.")
-	}
-	if len(nsqAddresses) != 0 && len(lookupdAddresses) != 0 {
-		log.Fatalf("use --nsq-address or --lookupd-address not both")
-	}
-
-	httpAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	httpListener, err := net.Listen("tcp", httpAddr.String())
-	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr.String(), err.Error())
-	}
-	log.Printf("listening on %s", httpAddr.String())
-	streamServer = &StreamServer{}
-	server := &http.Server{Handler: streamServer}
-	err = server.Serve(httpListener)
-
-	// theres no direct way to detect this error because it is not exposed
-	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-		log.Printf("ERROR: http.Serve() - %s", err.Error())
-	}
 }
 
 func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
@@ -156,7 +124,6 @@ func StatsHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
 	path := req.URL.Path
 	if path == "/stats" {
 		StatsHandler(w, req)
@@ -169,20 +136,19 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	topicName, channelName, err := getTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, err.Error(), nil))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+		http.Error(w, "httpserver doesn't support hijacking", http.StatusInternalServerError)
 		return
 	}
 	conn, bufrw, err := hj.Hijack()
@@ -192,7 +158,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r, err := nsq.NewReader(topicName, channelName)
-
+	r.BufferSize = *buffer
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -204,21 +170,24 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		reader:      r,
 		req:         req,
 		conn:        conn,
-		bufrw:       bufrw, // todo: latency writer
+		bufrw:       bufrw, // TODO: latency writer
 		connectTime: time.Now(),
 	}
 	s.Set(sr)
 
-	log.Printf("new connection from %s", conn.RemoteAddr().String())
+	log.Printf("[%s] new connection", conn.RemoteAddr().String())
 	bufrw.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n")
 	bufrw.Flush()
 
 	r.AddHandler(sr)
+
+	// TODO: handle the error cases better (ie. at all :) )
 	errors := ConnectToNSQAndLookupd(r, nsqAddresses, lookupdAddresses)
 	log.Printf("connected to NSQ %v", errors)
 
-	go func(r *bufio.ReadWriter) {
-		b, err := r.ReadByte()
+	// this read allows us to detect clients that disconnect
+	go func(rw *bufio.ReadWriter) {
+		b, err := rw.ReadByte()
 		if err != nil {
 			log.Printf("got connection err %s", err.Error())
 		} else {
@@ -258,4 +227,39 @@ func (sr *StreamReader) HandleMessage(message *nsq.Message) error {
 	sr.Unlock()
 	atomic.AddUint64(&streamServer.messageCount, 1)
 	return nil
+}
+
+func main() {
+	flag.Parse()
+
+	if *buffer < 0 {
+		log.Fatalf("--buffer must be > 0")
+	}
+
+	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
+		log.Fatalf("--nsqd-tcp-address or --lookupd-tcp-address required.")
+	}
+
+	if len(nsqAddresses) != 0 && len(lookupdAddresses) != 0 {
+		log.Fatalf("use --nsqd-tcp-address or --lookupd-tcp-address not both")
+	}
+
+	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+	httpListener, err := net.Listen("tcp", httpAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr.String(), err.Error())
+	}
+	log.Printf("listening on %s", httpAddr.String())
+
+	streamServer = &StreamServer{}
+	server := &http.Server{Handler: streamServer}
+	err = server.Serve(httpListener)
+
+	// theres no direct way to detect this error because it is not exposed
+	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+		log.Printf("ERROR: http.Serve() - %s", err.Error())
+	}
 }

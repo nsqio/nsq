@@ -19,7 +19,7 @@ import (
 
 var (
 	showVersion     = flag.Bool("version", false, "print version string")
-	webAddress      = flag.String("web-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
+	httpAddress     = flag.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	tcpAddress      = flag.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
 	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
@@ -76,7 +76,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	httpAddr, err := net.ResolveTCPAddr("tcp", *webAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
