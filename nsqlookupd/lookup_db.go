@@ -11,8 +11,9 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 
 	topicName := params[0].(string)
 	channelName := params[1].(string)
-	address := params[2].(string)
-	port := params[3].(int)
+	id := params[2].(string)
+	address := params[3].(string)
+	port := params[4].(int)
 
 	if reflect.TypeOf(dataInterface) == nil {
 		data = make(map[string]interface{})
@@ -27,17 +28,33 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 	// add topic to list of producers, avoid duplicates
 	producers := data["producers"].([]map[string]interface{})
 	found := false
-	for _, entry := range producers {
-		if entry["address"].(string) == address && entry["port"].(int) == port {
+	var idx int
+	for i, entry := range producers {
+		if entry["id"].(string) == id {
 			found = true
+			idx = i
 		}
 	}
 
 	if !found {
 		producer := make(map[string]interface{})
-		producer["address"] = address
+		producer["id"] = id
 		producer["port"] = port
+		ips := make([]string, 1)
+		ips[0] = address
+		producer["ips"] = ips
 		data["producers"] = append(producers, producer)
+	} else {
+		found = false
+		ips := producers[idx]["ips"].([]string)
+		for _, entry := range ips {
+			if entry == address {
+				found = true
+			}
+		}
+		if !found {
+			producers[idx]["ips"] = append(ips, address)
+		}
 	}
 
 	// add channel to list of channels, avoid duplicates
@@ -55,7 +72,7 @@ func UpdateTopic(dataInterface interface{}, params []interface{}) (interface{}, 
 		}
 	}
 
-	log.Printf("LOOKUP: data %#v", data)
+	log.Printf("LOOKUP: data %+v", data)
 
 	return data, nil
 }
