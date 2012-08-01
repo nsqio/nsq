@@ -21,7 +21,7 @@ import (
 
 var (
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
-	buffer           = flag.Int("buffer", 100, "number of messages to buffer in channel for clients")
+	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel for clients")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
@@ -124,7 +124,6 @@ func StatsHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
 	path := req.URL.Path
 	if path == "/stats" {
 		StatsHandler(w, req)
@@ -159,6 +158,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r, err := nsq.NewReader(topicName, channelName)
+	r.BufferSize = *buffer
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -185,8 +185,9 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	errors := ConnectToNSQAndLookupd(r, nsqAddresses, lookupdAddresses)
 	log.Printf("connected to NSQ %v", errors)
 
-	go func(r *bufio.ReadWriter) {
-		b, err := r.ReadByte()
+	// this read allows us to detect clients that disconnect
+	go func(rw *bufio.ReadWriter) {
+		b, err := rw.ReadByte()
 		if err != nil {
 			log.Printf("got connection err %s", err.Error())
 		} else {
