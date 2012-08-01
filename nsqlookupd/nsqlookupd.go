@@ -84,8 +84,17 @@ func main() {
 
 	<-exitChan
 
-	tcpListener.Close()
-	httpListener.Close()
-	<-exitSyncChan
-	<-exitSyncChan
+	err = tcpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close tcp listener - %s", err.Error())
+	} else {
+		<-exitSyncChan
+	}
+
+	err = httpListener.Close()
+	if err != nil {
+		log.Printf("ERROR: failed to close http listener - %s", err.Error())
+	} else {
+		<-exitSyncChan
+	}
 }
