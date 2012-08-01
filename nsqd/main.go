@@ -35,7 +35,7 @@ var (
 )
 
 func init() {
-	flag.Var(&lookupAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+	flag.Var(&lookupAddresses, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
 func main() {
