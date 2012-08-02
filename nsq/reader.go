@@ -482,11 +482,12 @@ func stopFinishLoop(c *nsqConn) {
 
 // stops a Reader gracefully
 func (q *Reader) Stop() {
-	if atomic.LoadInt32(&q.stopFlag) == 1 {
+	if !atomic.CompareAndSwapInt32(&q.stopFlag, 0, 1) {
 		return
 	}
+
 	log.Printf("Stopping reader")
-	atomic.StoreInt32(&q.stopFlag, 1)
+
 	if len(q.nsqConnections) == 0 {
 		q.stopHandlers()
 	} else {
@@ -501,6 +502,7 @@ func (q *Reader) Stop() {
 			q.stopHandlers()
 		}()
 	}
+
 	if len(q.lookupdAddresses) != 0 {
 		q.lookupdExitChan <- 1
 	}
