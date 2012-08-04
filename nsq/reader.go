@@ -53,17 +53,17 @@ type FinishedMessage struct {
 
 type nsqConn struct {
 	net.Conn
-	addr                string
-	stopFlag            int32
-	finishedMessages    chan *FinishedMessage
-	messagesInFlight    int64
-	messagesReceived    uint64
-	messagesFinished    uint64
-	messagesRequeued    uint64
-	bufferSizeRemaining int64
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
-	stopper             sync.Once
+	addr             string
+	stopFlag         int32
+	finishedMessages chan *FinishedMessage
+	messagesInFlight int64
+	messagesReceived uint64
+	messagesFinished uint64
+	messagesRequeued uint64
+	rdyCount         int64
+	readTimeout      time.Duration
+	writeTimeout     time.Duration
+	stopper          sync.Once
 }
 
 func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
@@ -112,9 +112,9 @@ func (c *nsqConn) stopFinishLoop() {
 }
 
 type Reader struct {
-	TopicName           string        // Name of Topic to subscribe to
-	ChannelName         string        // Named Channel to consume messages from
-	BufferSize          int           // number of messages to allow in-flight at a time
+	TopicName           string        // name of topic to subscribe to
+	ChannelName         string        // name of channel to subscribe to
+	MaxInFlight         int           // max number of messages to allow in-flight at a time
 	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value)
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay time.Duration
@@ -155,7 +155,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		incomingMessages:    make(chan *incomingMessage),
 		ExitChan:            make(chan int),
 		nsqConnections:      make(map[string]*nsqConn),
-		BufferSize:          1,
+		MaxInFlight:         1,
 		MaxAttemptCount:     5,
 		LookupdPollInterval: 120 * time.Second,
 		lookupdExitChan:     make(chan int),
@@ -169,11 +169,10 @@ func NewReader(topic string, channel string) (*Reader, error) {
 	return q, nil
 }
 
-// get an appropriate buffer size for a single connection
-// essentially the global buffer size distributed amongst # connection
-// this may change dynamically based on the number of NSQD connection
-func (q *Reader) ConnectionBufferSize() int {
-	b := float64(q.BufferSize)
+// calculate the max in flight count per connection
+// this may change dynamically based on the number of connections
+func (q *Reader) ConnectionMaxInFlight() int {
+	b := float64(q.MaxInFlight)
 	s := b / float64(len(q.nsqConnections))
 	return int(math.Min(math.Max(1, s), b))
 }
@@ -320,11 +319,11 @@ func handleError(q *Reader, c *nsqConn, errMsg string) {
 
 func (q *Reader) readLoop(c *nsqConn) {
 	// prime our ready state
-	s := q.ConnectionBufferSize()
+	s := q.ConnectionMaxInFlight()
 	if q.VerboseLogging {
 		log.Printf("[%s] RDY %d", c, s)
 	}
-	atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
+	atomic.StoreInt64(&c.rdyCount, int64(s))
 
 	err := c.sendCommand(Ready(s))
 	if err != nil {
@@ -365,7 +364,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 				continue
 			}
 
-			remain := atomic.AddInt64(&c.bufferSizeRemaining, -1)
+			remain := atomic.AddInt64(&c.rdyCount, -1)
 			atomic.AddUint64(&c.messagesReceived, 1)
 			atomic.AddUint64(&q.MessagesReceived, 1)
 			atomic.AddInt64(&c.messagesInFlight, 1)
@@ -475,14 +474,14 @@ func (q *Reader) updateReady(c *nsqConn) {
 		return
 	}
 
-	remain := atomic.LoadInt64(&c.bufferSizeRemaining)
-	s := q.ConnectionBufferSize()
+	remain := atomic.LoadInt64(&c.rdyCount)
+	s := q.ConnectionMaxInFlight()
 	// refill when at 1, or at 25% whichever comes first
 	if remain <= 1 || remain < (int64(s)/int64(4)) {
 		if q.VerboseLogging {
 			log.Printf("[%s] sending RDY %d (%d remain)", c, s, remain)
 		}
-		atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
+		atomic.StoreInt64(&c.rdyCount, int64(s))
 		err := c.sendCommand(Ready(s))
 		if err != nil {
 			handleError(q, c, fmt.Sprintf("[%s] error sending RDY %d - %s", c, s, err.Error()))
