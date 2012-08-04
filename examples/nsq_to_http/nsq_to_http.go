@@ -5,84 +5,100 @@ package main
 import (
 	"../../nsq"
 	"../../util"
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"bytes"
-	"net/http"
-	"net/url"
+)
+
+const (
+	ModeAll = iota
+	ModeRoundRobin
 )
 
 var (
 	topic            = flag.String("topic-name", "", "nsq topic")
 	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
-	buffer           = flag.Int("buffer", 200, "number of messages to buffer in channel and disk before sync/ack")
-	verbose          = flag.Bool("verbose", false, "verbose logging")
-	post             = flag.String("post", "", "Address to make a POST request to. Data will be in the body")
-	get              = flag.String("get", "", `Address to make a GET request to.
-     Address should be a format string where data can be subbed in`)
-	numPublishers    = flag.Int("n", 100, "Number of concurrent publishers")
+	buffer           = flag.Int("buffer", 200, "number of messages to allow in flight")
+	verbose          = flag.Bool("verbose", false, "enable verbose logging")
+	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
+	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
+	getAddresses     = util.StringArray{}
+	postAddresses    = util.StringArray{}
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&nsqAddresses, "nsq-address", "nsq address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-address", "lookupd address (may be given multiple times)")
+	flag.Var(&postAddresses, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
+	flag.Var(&getAddresses, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
+	flag.Var(&nsqAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
 type Publisher interface {
-	Publish(string) error
-}
-
-type PublisherInfo struct {
-	addr string
+	Publish(string, []byte) error
 }
 
 type PublishHandler struct {
 	Publisher
+	addresses util.StringArray
+	counter   uint64
+	mode      int
 }
 
-func (ph *PublishHandler) HandleMessage(m *nsq.Message) (err error) {
-	return ph.Publish(string(m.Body))
+func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
+	switch ph.mode {
+	case ModeAll:
+		for _, addr := range ph.addresses {
+			err := ph.Publish(addr, m.Body)
+			if err != nil {
+				return err
+			}
+		}
+		break
+	case ModeRoundRobin:
+		idx := ph.counter % uint64(len(ph.addresses))
+		err := ph.Publish(ph.addresses[idx], m.Body)
+		if err != nil {
+			return err
+		}
+		ph.counter++
+	}
+
+	return nil
 }
 
-// ---------- Post -------------------------
+type PostPublisher struct{}
 
-type PostPublisher struct {
-	PublisherInfo
-}
-
-func (p *PostPublisher) Publish(msg string) error {
-	var buffer bytes.Buffer
-	buffer.Write([]byte(msg))
-	resp, err := http.Post(p.addr, "application/octet-stream", &buffer)
-	defer resp.Body.Close()
-	defer buffer.Reset()
+func (p *PostPublisher) Publish(addr string, msg []byte) error {
+	reader := bytes.NewReader(msg)
+	resp, err := http.Post(addr, "application/octet-stream", reader)
+	resp.Body.Close()
 	return err
 }
 
+type GetPublisher struct{}
 
-// ----------- Get ---------------------------
-
-type GetPublisher struct {
-	PublisherInfo
-}
-
-func (p *GetPublisher) Publish(msg string) error {
-	endpoint := fmt.Sprintf(p.addr, url.QueryEscape(msg))
+func (p *GetPublisher) Publish(addr string, msg []byte) error {
+	endpoint := fmt.Sprintf(addr, url.QueryEscape(string(msg)))
 	resp, err := http.Get(endpoint)
-	defer resp.Body.Close()
+	resp.Body.Close()
 	return err
 }
-
 
 func main() {
+	var publisher Publisher
+	var addresses util.StringArray
+	var mode int
+
 	flag.Parse()
 
 	if *topic == "" || *channel == "" {
@@ -94,10 +110,28 @@ func main() {
 	}
 
 	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
-		log.Fatalf("--nsq-address or --lookupd-address required.")
+		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
 	}
-	if len(nsqAddresses) != 0 && len(lookupdAddresses) != 0 {
-		log.Fatalf("use --nsq-address or --lookupd-address not both")
+	if len(nsqAddresses) > 0 && len(lookupdAddresses) > 0 {
+		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
+	}
+
+	if len(getAddresses) == 0 && len(postAddresses) == 0 {
+		log.Fatalf("--get or --post required")
+	}
+	if len(getAddresses) > 0 && len(postAddresses) > 0 {
+		log.Fatalf("use --get or --post not both")
+	}
+	if len(getAddresses) > 0 {
+		for _, get := range getAddresses {
+			if strings.Count(get, "%s") != 1 {
+				log.Fatal("invalid GET address - must be a printf string")
+			}
+		}
+	}
+
+	if *roundRobin {
+		mode = ModeRoundRobin
 	}
 
 	hupChan := make(chan os.Signal, 1)
@@ -105,16 +139,12 @@ func main() {
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	var publisher Publisher
-	if len(*post) > 0 {
-		publisher = &PostPublisher{PublisherInfo{*post}}
-	} else if len(*get) > 0 {
-		if strings.Count(*get, "%s") != 1 {
-			log.Fatal("Invalid get address - must be a format string")
-		}
-		publisher = &GetPublisher{PublisherInfo{*get}}
+	if len(postAddresses) > 0 {
+		publisher = &PostPublisher{}
+		addresses = postAddresses
 	} else {
-		log.Fatal("Need get or post address!")
+		publisher = &GetPublisher{}
+		addresses = getAddresses
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
@@ -122,7 +152,12 @@ func main() {
 	r.VerboseLogging = *verbose
 
 	for i := 0; i < *numPublishers; i++ {
-		r.AddHandler(&PublishHandler{publisher})
+		handler := &PublishHandler{
+			Publisher: publisher,
+			addresses: addresses,
+			mode:      mode,
+		}
+		r.AddHandler(handler)
 	}
 
 	for _, addrString := range nsqAddresses {
@@ -152,5 +187,4 @@ func main() {
 		r.Stop()
 		break
 	}
-
 }
