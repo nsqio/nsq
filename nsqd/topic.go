@@ -47,7 +47,7 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 		exitSyncChan:    make(chan int),
 	}
 	go topic.router()
-	notify.Post("new_topic", topic)
+	go notify.Post("new_topic", topic)
 	return topic
 }
 

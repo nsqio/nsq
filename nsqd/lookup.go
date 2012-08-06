@@ -31,8 +31,8 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 	}
 
 	if len(lookupPeers) > 0 {
-		notify.Observe("new_channel", notifyChannelChan)
-		notify.Observe("new_topic", notifyTopicChan)
+		notify.Start("new_channel", notifyChannelChan)
+		notify.Start("new_topic", notifyTopicChan)
 	}
 
 	// for announcements, lookupd determines the host automatically
@@ -97,8 +97,8 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 exit:
 	log.Printf("LOOKUP: closing")
 	if len(lookupPeers) > 0 {
-		notify.Ignore("new_channel", notifyChannelChan)
-		notify.Ignore("new_topic", notifyTopicChan)
+		notify.Stop("new_channel", notifyChannelChan)
+		notify.Stop("new_topic", notifyTopicChan)
 	}
 	exitSyncChan <- 1
 }

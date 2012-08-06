@@ -92,7 +92,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	go c.messagePump()
 	go c.deferredWorker()
 	go c.inFlightWorker()
-	notify.Post("new_channel", c)
+	go notify.Post("new_channel", c)
 	return c
 }
 
