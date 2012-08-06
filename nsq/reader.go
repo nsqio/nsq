@@ -352,7 +352,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 
 		frameType, data, err := UnpackResponse(resp)
 		if err != nil {
-			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %s %s", c, err.Error(), frameType, data))
+			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %d %s", c, err.Error(), frameType, data))
 			continue
 		}
 
