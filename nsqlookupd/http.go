@@ -168,19 +168,17 @@ func identifyBestAddress(ips []string, preferLocal bool, preferV6 bool, preferre
 		}
 
 		ip := net.ParseIP(address)
-		if ip.IsLoopback() && !preferLocal {
-			continue
+		if preferLocal && ip.IsLoopback() {
+			return ip.String(), nil
 		}
 
-		if strings.Contains(ip.String(), ":") && !preferV6 {
-			continue
+		if preferV6 && strings.Contains(ip.String(), ":") {
+			return ip.String(), nil
 		}
 
-		if preferredNetwork != nil && !preferredNetwork.Contains(ip) {
-			continue
+		if preferredNetwork != nil && preferredNetwork.Contains(ip) {
+			return ip.String(), nil
 		}
-
-		return ip.String(), nil
 	}
 
 	// should be impossible?
