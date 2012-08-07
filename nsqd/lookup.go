@@ -17,11 +17,7 @@ var lookupPeers = make([]*nsq.LookupPeer, 0)
 func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
 	port := tcpAddr.Port
-
-	netIps := getNetworkIPs(tcpAddr)
-	for _, ip := range netIps {
-		log.Printf("LOOKUP: identified interface %s", ip)
-	}
+	netAddrs := getNetworkAddrs(tcpAddr)
 
 	for _, host := range lookupHosts {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
@@ -60,7 +56,7 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 			channel := newChannel.(*Channel)
 			log.Printf("LOOKUP: new channel %s", channel.name)
 			for _, lookupPeer := range lookupPeers {
-				_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netIps))
+				_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netAddrs))
 				if err != nil {
 					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 				}
@@ -70,7 +66,7 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 			topic := newTopic.(*Topic)
 			log.Printf("LOOKUP: new topic %s", topic.name)
 			for _, lookupPeer := range lookupPeers {
-				_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netIps))
+				_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netAddrs))
 				if err != nil {
 					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 				}
@@ -81,13 +77,13 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 				topic.RLock()
 				// either send a single topic announcement or send an announcement for each of the channels
 				if len(topic.channelMap) == 0 {
-					_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netIps))
+					_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netAddrs))
 					if err != nil {
 						log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 					}
 				} else {
 					for _, channel := range topic.channelMap {
-						_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netIps))
+						_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netAddrs))
 						if err != nil {
 							log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 						}
@@ -110,27 +106,11 @@ exit:
 	exitSyncChan <- 1
 }
 
-func getNetworkIPs(tcpAddr *net.TCPAddr) []string {
-	interfaceAddrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log.Fatalf("ERROR: failed to identify interface addresses - %s", err.Error())
-	}
-
-	netIps := make([]string, 0)
-	if tcpAddr.IP.Equal(net.IPv4zero) || tcpAddr.IP.Equal(net.IPv6zero) {
-		// we're listening on all interfaces so send them all
-		for _, intAddr := range interfaceAddrs {
-			ip, _, err := net.ParseCIDR(intAddr.String())
-			if err != nil {
-				log.Fatalf("ERROR: %s", err.Error())
-			}
-			// eliminate any link local addresses, for simplicity
-			if !ip.IsLinkLocalMulticast() && !ip.IsLinkLocalUnicast() {
-				netIps = append(netIps, ip.String())
-			}
-		}
-	} else {
-		netIps = append(netIps, tcpAddr.IP.String())
+func getNetworkAddrs(tcpAddr *net.TCPAddr) []string {
+	netAddrs := make([]string, 0)
+	if tcpAddr.IP.Equal(net.IPv4zero) || tcpAddr.IP.Equal(net.IPv6zero) || tcpAddr.IP.IsLoopback() {
+		// we're listening on localhost
+		netAddrs = append(netAddrs, "127.0.0.1")
 	}
 
 	// always append the hostname last
@@ -138,7 +118,7 @@ func getNetworkIPs(tcpAddr *net.TCPAddr) []string {
 	if err != nil {
 		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
 	}
-	netIps = append(netIps, hostname)
+	netAddrs = append(netAddrs, hostname)
 
-	return netIps
+	return netAddrs
 }
