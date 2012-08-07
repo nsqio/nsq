@@ -201,7 +201,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (sr *StreamReader) HeartbeatLoop() {
 	heartbeatTicker := time.NewTicker(30 * time.Second)
-	defer func(){
+	defer func() {
 		sr.conn.Close()
 		heartbeatTicker.Stop()
 		streamServer.Del(sr)
