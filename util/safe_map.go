@@ -1,7 +1,6 @@
 package util
 
 import (
-	"log"
 	"sync"
 )
 
@@ -40,7 +39,6 @@ func (sm *SafeMap) Set(key string, updateFunc func(data interface{}, params []in
 		return err
 	}
 	sm.data[key] = newData
-	log.Printf("DATA: %#v", sm.data[key])
 
 	return nil
 }

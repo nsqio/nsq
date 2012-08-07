@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -40,7 +41,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
-		response, err := p.Exec(client, params)
+		response, err := p.Exec(client, reader, params)
 		if err != nil {
 			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
@@ -60,17 +61,17 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *LookupProtocolV1) Exec(client *ClientV1, params []string) ([]byte, error) {
+func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	switch params[0] {
 	case "ANNOUNCE":
-		return p.ANNOUNCE(client, params)
+		return p.ANNOUNCE(client, reader, params)
 	case "PING":
 		return p.PING(client, params)
 	}
 	return nil, nsq.ClientErrInvalid
 }
 
-func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, params []string) ([]byte, error) {
+func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 4 {
@@ -89,9 +90,25 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, params []string) ([]byte, 
 		return nil, err
 	}
 
-	err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, host, port)
+	id := net.JoinHostPort(host, strconv.Itoa(port))
+
+	var bodyLen int32
+	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
 		return nil, err
+	}
+
+	body := make([]byte, bodyLen)
+	_, err = io.ReadFull(reader, body)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ip := range bytes.Split(body, []byte("\n")) {
+		err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, id, string(ip), port)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return []byte("OK"), nil

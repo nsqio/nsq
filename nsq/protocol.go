@@ -86,6 +86,17 @@ func SendCommand(w io.Writer, cmd *Command) error {
 			return err
 		}
 	}
+	if cmd.Body != nil {
+		bodySize := int32(len(cmd.Body))
+		err := binary.Write(w, binary.BigEndian, &bodySize)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(cmd.Body)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

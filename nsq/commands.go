@@ -2,6 +2,7 @@ package nsq
 
 import (
 	"strconv"
+	"strings"
 )
 
 type Command struct {
@@ -13,9 +14,9 @@ type Command struct {
 // Announce creates a new Command to announce the existence of
 // a given topic and/or channel.
 // NOTE: if channel == "." then it is considered n/a
-func Announce(topic string, channel string, port int) *Command {
+func Announce(topic string, channel string, port int, ips []string) *Command {
 	var params = [][]byte{[]byte(topic), []byte(channel), []byte(strconv.Itoa(port))}
-	return &Command{[]byte("ANNOUNCE"), params, nil}
+	return &Command{[]byte("ANNOUNCE"), params, []byte(strings.Join(ips, "\n"))}
 }
 
 // Ping creates a new Command to keep-alive the state of all the 
