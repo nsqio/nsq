@@ -82,13 +82,9 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	// to lookupd.  if none are optimal send the hostname (last entry)
 	producers := make([]map[string]interface{}, 0)
 	for _, entry := range lookupData["producers"].([]map[string]interface{}) {
-		preferLocal, preferV6, preferredNetwork, err := identifyNetworkPreferences(conn, entry["id"].(string))
-		if err != nil {
-			w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
-			return
-		}
-
-		chosen, err := identifyBestAddress(entry["ips"].([]string), preferLocal, preferV6, preferredNetwork)
+		preferLocal := shouldPreferLocal(conn, entry["id"].(string))
+		log.Printf("preferLocal: %v", preferLocal)
+		chosen, err := identifyBestAddress(entry["ips"].([]string), preferLocal)
 		if err != nil {
 			w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
 			return
@@ -115,52 +111,14 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	bufrw.Flush()
 }
 
-func identifyNetworkPreferences(conn net.Conn, address string) (bool, bool, *net.IPNet, error) {
-	var preferredNetwork *net.IPNet
-
-	remoteIP := conn.RemoteAddr().(*net.TCPAddr).IP
-	connLocalIP := conn.LocalAddr().(*net.TCPAddr).IP
-
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return false, false, nil, err
-	}
-	ip := net.ParseIP(host)
-
-	log.Printf("remoteIP: %s", remoteIP)
-	log.Printf("connLocalIP: %s", connLocalIP)
-	log.Printf("ip: %s", ip)
-
-	interfaceAddrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return false, false, nil, err
-	}
-
-	// try to find the interface that both the client and nsqd connected on
-	for _, intAddr := range interfaceAddrs {
-		addrIp, netMask, err := net.ParseCIDR(intAddr.String())
-		if err != nil {
-			return false, false, nil, err
-		}
-		if !addrIp.IsLinkLocalMulticast() && !addrIp.IsLinkLocalUnicast() {
-			log.Printf("interface: %s - netmask - %s", intAddr, netMask)
-			if netMask.Contains(ip) && netMask.Contains(connLocalIP) {
-				preferredNetwork = netMask
-			}
-		}
-	}
-
-	preferLocal := remoteIP.IsLoopback()
-	preferV6 := strings.Contains(remoteIP.String(), ":")
-
-	log.Printf("preferLocal: %v", preferLocal)
-	log.Printf("preferV6: %v", preferV6)
-	log.Printf("preferredNetwork: %v", preferredNetwork)
-
-	return preferLocal, preferV6, preferredNetwork, nil
+func shouldPreferLocal(conn net.Conn, addr string) bool {
+	remoteAddr := conn.RemoteAddr().(*net.TCPAddr)
+	addrHost, _, _ := net.SplitHostPort(addr)
+	addrIP := net.ParseIP(addrHost)
+	return remoteAddr.IP.IsLoopback() && addrIP.IsLoopback()
 }
 
-func identifyBestAddress(ips []string, preferLocal bool, preferV6 bool, preferredNetwork *net.IPNet) (string, error) {
+func identifyBestAddress(ips []string, preferLocal bool) (string, error) {
 	for i, address := range ips {
 		if i == len(ips)-1 {
 			// last entry is always hostname
@@ -169,14 +127,6 @@ func identifyBestAddress(ips []string, preferLocal bool, preferV6 bool, preferre
 
 		ip := net.ParseIP(address)
 		if preferLocal && ip.IsLoopback() {
-			return ip.String(), nil
-		}
-
-		if preferV6 && strings.Contains(ip.String(), ":") {
-			return ip.String(), nil
-		}
-
-		if preferredNetwork != nil && preferredNetwork.Contains(ip) {
 			return ip.String(), nil
 		}
 	}
