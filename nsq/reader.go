@@ -371,6 +371,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 			}
 
 			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
+			break
 		case FrameTypeResponse:
 			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
 				// server is ready for us to close (it ack'd our StartClose)
@@ -379,6 +380,10 @@ func (q *Reader) readLoop(c *nsqConn) {
 				log.Printf("[%s] received ACK from server. now in CloseWait %d", c, frameType)
 				atomic.StoreInt32(&c.stopFlag, 1)
 			}
+			break
+		case FrameTypeError:
+			log.Printf("[%s] error from nsqd %s", c, data)
+			break
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
 		}
