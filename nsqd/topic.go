@@ -80,7 +80,9 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
-	t.messagePumpStarter.Do(func() { go t.messagePump() })
+	t.messagePumpStarter.Do(func() {
+		go t.messagePump()
+	})
 
 	return channel
 }
@@ -176,6 +178,14 @@ func (t *Topic) Close() error {
 	atomic.AddInt32(&t.exitFlag, 1)
 	close(t.exitChan)
 	close(t.incomingMsgChan)
+
+	// guarantee that if messagePump() hasn't been started
+	// yet that we will write to the exitSyncChan
+	t.messagePumpStarter.Do(func() {
+		go func() {
+			t.exitSyncChan <- 1
+		}()
+	})
 
 	// synchronize the close of router() and messagePump()
 	<-t.exitSyncChan
