@@ -20,12 +20,8 @@ func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int
 	netAddrs := getNetworkAddrs(tcpAddr)
 
 	for _, host := range lookupHosts {
-		tcpAddr, err := net.ResolveTCPAddr("tcp", host)
-		if err != nil {
-			log.Fatal("LOOKUP: could not resolve TCP address for %s", host)
-		}
-		log.Printf("LOOKUP: adding peer %s", tcpAddr.String())
-		lookupPeer := nsq.NewLookupPeer(tcpAddr, func(lp *nsq.LookupPeer) {
+		log.Printf("LOOKUP: adding peer %s", host)
+		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
 			go func() {
 				syncTopicChan <- lp
 			}()

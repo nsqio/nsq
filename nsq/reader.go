@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,8 +64,8 @@ type nsqConn struct {
 	writeTimeout        time.Duration
 }
 
-func newNSQConn(addr *net.TCPAddr, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
-	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
+func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
+	conn, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ type Reader struct {
 	stopFlag           int32
 	runningHandlers    int32
 	messagesInFlight   int64
-	lookupdAddresses   []*net.TCPAddr
+	lookupdAddresses   []string
 	stopHandler        sync.Once
 }
 
@@ -166,7 +167,7 @@ func (q *Reader) ConnectionBufferSize() int {
 	return int(math.Min(math.Max(1, s), b))
 }
 
-func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
+func (q *Reader) ConnectToLookupd(addr string) error {
 	// make a HTTP req to the lookupd, and ask it for endpoints that have the
 	// topic we are interested in.
 	// this is a go loop that fires every x seconds
@@ -182,6 +183,7 @@ func (q *Reader) ConnectToLookupd(addr *net.TCPAddr) error {
 		q.queryLookupd()
 		go q.lookupdLoop()
 	}
+
 	return nil
 }
 
@@ -251,23 +253,17 @@ func (q *Reader) queryLookupd() {
 			port := int(producerData["port"].(float64))
 
 			// make an address, start a connection
-			joined := net.JoinHostPort(address, fmt.Sprintf("%d", port))
-			nsqAddr, err := net.ResolveTCPAddr("tcp", joined)
-			if err != nil {
-				log.Printf("ERROR: could not resolve tcp address (%s) from lookupd - %s", joined, err.Error())
-				continue
-			}
-
-			err = q.ConnectToNSQ(nsqAddr)
+			joined := net.JoinHostPort(address, strconv.Itoa(port))
+			err = q.ConnectToNSQ(joined)
 			if err != nil && err != ErrAlreadyConnected {
-				log.Printf("ERROR: failed to connect to nsqd (%s) - %s", nsqAddr.String(), err.Error())
+				log.Printf("ERROR: failed to connect to nsqd (%s) - %s", joined, err.Error())
 				continue
 			}
 		}
 	}
 }
 
-func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
+func (q *Reader) ConnectToNSQ(addr string) error {
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return ErrReaderStopped
 	}
@@ -276,7 +272,7 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 		return ErrNoHandlers
 	}
 
-	_, ok := q.nsqConnections[addr.String()]
+	_, ok := q.nsqConnections[addr]
 	if ok {
 		return ErrAlreadyConnected
 	}
@@ -294,7 +290,7 @@ func (q *Reader) ConnectToNSQ(addr *net.TCPAddr) error {
 		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", q.TopicName, q.ChannelName, err.Error())
 	}
 
-	q.nsqConnections[addr.String()] = connection
+	q.nsqConnections[addr] = connection
 
 	go q.readLoop(connection)
 	go q.finishLoop(connection)

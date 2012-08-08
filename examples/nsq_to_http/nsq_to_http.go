@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -161,8 +160,7 @@ func main() {
 	}
 
 	for _, addrString := range nsqAddresses {
-		addr, _ := net.ResolveTCPAddr("tcp", addrString)
-		err := r.ConnectToNSQ(addr)
+		err := r.ConnectToNSQ(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -170,8 +168,7 @@ func main() {
 
 	for _, addrString := range lookupdAddresses {
 		log.Printf("lookupd addr %s", addrString)
-		addr, _ := net.ResolveTCPAddr("tcp", addrString)
-		err := r.ConnectToLookupd(addr)
+		err := r.ConnectToLookupd(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
