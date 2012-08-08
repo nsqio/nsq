@@ -70,8 +70,7 @@ type StreamReader struct {
 
 func ConnectToNSQAndLookupd(r *nsq.Reader, nsqAddrs []string, lookupd []string) error {
 	for _, addrString := range nsqAddrs {
-		addr, _ := net.ResolveTCPAddr("tcp", addrString)
-		err := r.ConnectToNSQ(addr)
+		err := r.ConnectToNSQ(addrString)
 		if err != nil {
 			return err
 		}
@@ -79,8 +78,7 @@ func ConnectToNSQAndLookupd(r *nsq.Reader, nsqAddrs []string, lookupd []string) 
 
 	for _, addrString := range lookupd {
 		log.Printf("lookupd addr %s", addrString)
-		addr, _ := net.ResolveTCPAddr("tcp", addrString)
-		err := r.ConnectToLookupd(addr)
+		err := r.ConnectToLookupd(addrString)
 		if err != nil {
 			return err
 		}

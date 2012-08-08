@@ -7,23 +7,23 @@ import (
 
 // LookupPeer is a low-level type for connecting/reading/writing to nsqlookupd
 type LookupPeer struct {
-	tcpAddr         *net.TCPAddr
+	addr            string
 	conn            net.Conn
 	state           int32
 	connectCallback func(*LookupPeer)
 }
 
 // NewLookupPeer creates a new LookupPeer instance
-func NewLookupPeer(tcpAddr *net.TCPAddr, connectCallback func(*LookupPeer)) *LookupPeer {
+func NewLookupPeer(addr string, connectCallback func(*LookupPeer)) *LookupPeer {
 	return &LookupPeer{
-		tcpAddr:         tcpAddr,
+		addr:            addr,
 		state:           StateDisconnected,
 		connectCallback: connectCallback,
 	}
 }
 
 func (lp *LookupPeer) Connect() error {
-	conn, err := net.DialTimeout("tcp", lp.tcpAddr.String(), time.Second)
+	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func (lp *LookupPeer) Connect() error {
 }
 
 func (lp *LookupPeer) String() string {
-	return lp.tcpAddr.String()
+	return lp.addr
 }
 
 func (lp *LookupPeer) Read(data []byte) (int, error) {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"testing"
@@ -61,7 +60,7 @@ func TestQueuereader(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:4150")
+	addr := "127.0.0.1:4150"
 	q, _ := NewReader("reader_test", "ch")
 	q.VerboseLogging = true
 	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
