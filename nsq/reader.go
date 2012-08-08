@@ -53,6 +53,7 @@ type FinishedMessage struct {
 
 type nsqConn struct {
 	net.Conn
+	addr                string
 	stopFlag            int32
 	finishedMessages    chan *FinishedMessage
 	messagesInFlight    int64
@@ -72,6 +73,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 
 	nc := &nsqConn{
 		net.Conn:         conn,
+		addr:             addr,
 		finishedMessages: make(chan *FinishedMessage),
 		readTimeout:      readTimeout,
 		writeTimeout:     writeTimeout,
@@ -88,7 +90,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 }
 
 func (c *nsqConn) String() string {
-	return c.RemoteAddr().String()
+	return c.addr
 }
 
 func (c *nsqConn) sendCommand(cmd *Command) error {
@@ -290,7 +292,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", q.TopicName, q.ChannelName, err.Error())
 	}
 
-	q.nsqConnections[addr] = connection
+	q.nsqConnections[connection.String()] = connection
 
 	go q.readLoop(connection)
 	go q.finishLoop(connection)
