@@ -103,6 +103,11 @@ func (c *nsqConn) readResponse() ([]byte, error) {
 	return ReadResponse(c)
 }
 
+func (c *nsqConn) stopFinishLoop() {
+	log.Printf("[%s] closing finishedMessages channel", c)
+	close(c.finishedMessages)
+}
+
 type Reader struct {
 	TopicName           string        // Name of Topic to subscribe to
 	ChannelName         string        // Named Channel to consume messages from
@@ -150,7 +155,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		MaxAttemptCount:     5,
 		LookupdPollInterval: 120 * time.Second,
 		lookupdExitChan:     make(chan int),
-		lookupdRecheckChan:  make(chan int), // used at connection close to force a possible reconnect
+		lookupdRecheckChan:  make(chan int, 1), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90 * time.Second,
 		ShortIdentifier:     strings.Split(hostname, ".")[0],
 		LongIdentifier:      hostname,
@@ -165,7 +170,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 // this may change dynamically based on the number of NSQD connection
 func (q *Reader) ConnectionBufferSize() int {
 	b := float64(q.BufferSize)
-	s := b / (float64(len(q.nsqConnections)) * .75)
+	s := b / float64(len(q.nsqConnections))
 	return int(math.Min(math.Max(1, s), b))
 }
 
@@ -322,7 +327,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 		// even though this is a *write* that failed, this function does all the work we'd
 		// need to do anyway
 		handleReadError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
-		stopFinishLoop(c)
+		c.stopFinishLoop()
 		return
 	}
 
@@ -330,7 +335,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 		if atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1 {
 			// start the connection close
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 {
-				stopFinishLoop(c)
+				c.stopFinishLoop()
 			} else {
 				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
@@ -379,7 +384,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 				// server is ready for us to close (it ack'd our StartClose)
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
-				log.Printf("[%s] received ACK from server. now in CloseWait %d", c, frameType)
+				log.Printf("[%s] received ACK from server. now in CLOSE_WAIT", c)
 				atomic.StoreInt32(&c.stopFlag, 1)
 			}
 			break
@@ -389,6 +394,8 @@ func (q *Reader) readLoop(c *nsqConn) {
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
 		}
+
+		q.updateReady(c)
 	}
 }
 
@@ -417,7 +424,10 @@ func (q *Reader) finishLoop(c *nsqConn) {
 
 			if len(q.lookupdAddresses) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
 				// trigger a poll of the lookupd
-				q.lookupdRecheckChan <- 1
+				select {
+				case q.lookupdRecheckChan <- 1:
+				default:
+				}
 			}
 			return
 		}
@@ -429,7 +439,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			err := c.sendCommand(Finish(msg.Id))
 			if err != nil {
 				log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
-				stopFinishLoop(c)
+				c.stopFinishLoop()
 				continue
 			}
 			atomic.AddUint64(&c.messagesFinished, 1)
@@ -441,7 +451,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			err := c.sendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
 			if err != nil {
 				log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
-				stopFinishLoop(c)
+				c.stopFinishLoop()
 				continue
 			}
 			atomic.AddUint64(&c.messagesRequeued, 1)
@@ -449,38 +459,37 @@ func (q *Reader) finishLoop(c *nsqConn) {
 		}
 
 		atomic.AddInt64(&q.messagesInFlight, -1)
-		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && atomic.LoadInt32(&c.stopFlag) == 1 {
-			stopFinishLoop(c)
+		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && (atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1) {
+			c.stopFinishLoop()
 			continue
-		}
-
-		if atomic.LoadInt32(&c.stopFlag) == 0 {
-			remain := atomic.LoadInt64(&c.bufferSizeRemaining)
-			s := q.ConnectionBufferSize()
-			// refill when at 1, or at 25% whichever comes first
-			if remain <= 1 || remain < (int64(s)/int64(4)) {
-				if q.VerboseLogging {
-					log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
-				}
-				atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
-				err := c.sendCommand(Ready(s))
-				if err != nil {
-					log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
-					stopFinishLoop(c)
-					continue
-				}
-			} else {
-				if q.VerboseLogging {
-					log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
-				}
-			}
 		}
 	}
 }
 
-func stopFinishLoop(c *nsqConn) {
-	log.Printf("[%s] closing finishedMessages channel", c)
-	close(c.finishedMessages)
+func (q *Reader) updateReady(c *nsqConn) {
+	if atomic.LoadInt32(&c.stopFlag) != 0 {
+		return
+	}
+
+	remain := atomic.LoadInt64(&c.bufferSizeRemaining)
+	s := q.ConnectionBufferSize()
+	// refill when at 1, or at 25% whichever comes first
+	if remain <= 1 || remain < (int64(s)/int64(4)) {
+		if q.VerboseLogging {
+			log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
+		}
+		atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
+		err := c.sendCommand(Ready(s))
+		if err != nil {
+			log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
+			c.stopFinishLoop()
+			return
+		}
+	} else {
+		if q.VerboseLogging {
+			log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
+		}
+	}
 }
 
 // stops a Reader gracefully
@@ -540,7 +549,7 @@ func (q *Reader) AddHandler(handler Handler) {
 			}
 
 			// message passed the max number of attempts
-			if err != nil && message.Attempts > q.MaxAttemptCount {
+			if err != nil && q.MaxAttemptCount > 0 && message.Attempts > q.MaxAttemptCount {
 				log.Printf("WARNING: msg attempted %d times. giving up %s %s", message.Attempts, message.Id, message.Body)
 				logger, ok := handler.(FailedMessageLogger)
 				if ok {
@@ -575,7 +584,7 @@ func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 
 			// message passed the max number of attempts
 			// note: unfortunately it's not straight forward to do this after passing to async handler, so we don't.
-			if message.Attempts > q.MaxAttemptCount {
+			if q.MaxAttemptCount > 0 && message.Attempts > q.MaxAttemptCount {
 				log.Printf("WARNING: msg attempted %d times. giving up %s %s", message.Attempts, message.Id, message.Body)
 				logger, ok := handler.(FailedMessageLogger)
 				if ok {
