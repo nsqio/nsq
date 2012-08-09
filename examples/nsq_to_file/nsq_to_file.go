@@ -56,25 +56,24 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 	pos := 0
 	output := make([]*Message, *buffer)
 	sync := false
-	ticker := time.Tick(time.Duration(30) * time.Second)
+	ticker := time.NewTicker(time.Duration(30) * time.Second)
+	closing := false
 
 	for {
 		select {
 		case <-termChan:
+			ticker.Stop()
 			r.Stop()
-			sync = true
+			// ensures that we keep flushing whatever is left in the channels
+			closing = true
 		case <-hupChan:
 			f.out.Close()
 			f.out = nil
 			updateFile(f)
-			if pos != 0 {
-				sync = true
-			}
-		case <-ticker:
-			if pos != 0 || f.out != nil {
-				updateFile(f)
-				sync = true
-			}
+			sync = true
+		case <-ticker.C:
+			updateFile(f)
+			sync = true
 		case m := <-f.logChan:
 			if updateFile(f) {
 				sync = true
@@ -91,7 +90,7 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 			pos++
 		}
 
-		if sync || pos >= *buffer {
+		if closing || sync || pos >= r.ConnectionBufferSize() {
 			if pos > 0 {
 				log.Printf("syncing %d records to disk", pos)
 				err := f.out.Sync()
