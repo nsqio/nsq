@@ -54,7 +54,7 @@ func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.Fin
 
 func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan os.Signal) {
 	pos := 0
-	output := make([]*SyncMsg, *buffer)
+	output := make([]*Message, *buffer)
 	sync := false
 	ticker := time.Tick(time.Duration(30) * time.Second)
 
@@ -79,24 +79,29 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 			if updateFile(f) {
 				sync = true
 			}
-			f.out.Write(m.Body)
-			f.out.WriteString("\n")
-			x := &nsq.FinishedMessage{m.Id, 0, true}
-			output[pos] = &SyncMsg{x, m.returnChannel}
+			_, err := f.out.Write(m.Body)
+			if err != nil {
+				log.Fatalf("ERROR: writing message to disk - %s", err.Error())
+			}
+			_, err = f.out.WriteString("\n")
+			if err != nil {
+				log.Fatalf("ERROR: writing newline to disk - %s", err.Error())
+			}
+			output[pos] = m
 			pos++
 		}
 
-		// in the case where you have N connections, flush after the 
-		// smallest buffer size for a single connection (otherwise the async handler will wait to finish message)
-		// and you will starve your connection
-		if sync || pos >= *buffer || pos >= r.ConnectionBufferSize() {
+		if sync || pos >= *buffer {
 			if pos > 0 {
 				log.Printf("syncing %d records to disk", pos)
-				f.out.Sync()
+				err := f.out.Sync()
+				if err != nil {
+					log.Fatalf("ERROR: failed syncing messages - %s", err.Error())
+				}
 				for pos > 0 {
 					pos--
 					m := output[pos]
-					m.returnChannel <- m.m
+					m.returnChannel <- &nsq.FinishedMessage{m.Id, 0, true}
 					output[pos] = nil
 				}
 			}
@@ -160,11 +165,11 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	f := &FileLogger{
-		logChan: make(chan *Message, *buffer),
+		logChan: make(chan *Message, 1),
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
-	r.BufferSize = *buffer * 2
+	r.BufferSize = *buffer
 	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)
