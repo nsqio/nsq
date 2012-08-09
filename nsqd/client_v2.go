@@ -42,6 +42,10 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 	}
 }
 
+func (c *ClientV2) String() string {
+	return c.RemoteAddr().String()
+}
+
 func (c *ClientV2) Stats() ClientStats {
 	return ClientStats{
 		version:       "V2",

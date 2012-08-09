@@ -143,7 +143,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			case msg := <-client.Channel.clientMsgChan:
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-						msg.Id, client.RemoteAddr().String(), msg.Body)
+						msg.Id, client, msg.Body)
 				}
 
 				data, err := msg.Encode()
@@ -245,8 +245,7 @@ func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	if count > maxReadyCount {
-		log.Printf("PROTOCOL(V2): client(%s) sent ready count %d. Thats over the max of %d",
-			client, count, maxReadyCount)
+		log.Printf("ERROR: client(%s) sent ready count %d > %d", client, count, maxReadyCount)
 		count = maxReadyCount
 	}
 
