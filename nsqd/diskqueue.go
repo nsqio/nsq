@@ -282,6 +282,11 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		writeFileNum++
 		writePos = 0
 
+		d.metaMutex.Lock()
+		atomic.StoreInt64(&d.writeFileNum, writeFileNum)
+		atomic.StoreInt64(&d.writePos, writePos)
+		d.metaMutex.Unlock()
+
 		err = d.persistMetaData()
 		if err != nil {
 			return err
