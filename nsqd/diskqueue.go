@@ -209,22 +209,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			d.readFile = nil
 		}
 
-		// get the current filename before incr
-		fn := d.fileName(readFileNum)
-
 		readFileNum++
 		readPos = 0
-
-		err = d.persistMetaData()
-		if err != nil {
-			return nil, err
-		}
-
-		// only if we've successfully persisted metadata do we remove old files
-		err := os.Remove(fn)
-		if err != nil {
-			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
-		}
 	}
 
 	if d.readFile == nil {
@@ -484,11 +470,31 @@ func (d *DiskQueue) readAheadPump() {
 
 			select {
 			case d.readChan <- data:
+				readFileNum := atomic.LoadInt64(&d.readFileNum)
+				nextReadFileNum := atomic.LoadInt64(&d.nextReadFileNum)
+
 				d.metaMutex.Lock()
 				atomic.AddInt64(&d.depth, -1)
-				atomic.StoreInt64(&d.readFileNum, atomic.LoadInt64(&d.nextReadFileNum))
+				atomic.StoreInt64(&d.readFileNum, nextReadFileNum)
 				atomic.StoreInt64(&d.readPos, atomic.LoadInt64(&d.nextReadPos))
 				d.metaMutex.Unlock()
+
+				// see if we need to clean up the old file
+				if readFileNum != nextReadFileNum {
+					fn := d.fileName(readFileNum)
+
+					err := d.persistMetaData()
+					if err != nil {
+						log.Printf("ERROR: failed to persistMetaData (not removing %s) - %s", fn, err.Error())
+						continue
+					}
+
+					// only if we've successfully persisted metadata do we remove old files
+					err = os.Remove(fn)
+					if err != nil {
+						log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+					}
+				}
 			case <-d.emptyChan:
 				err := d.doEmpty()
 				if err != nil {
