@@ -5,7 +5,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -95,92 +97,92 @@ func TestDiskQueueEmpty(t *testing.T) {
 	assert.Equal(t, dq.(*DiskQueue).nextReadPos, dq.(*DiskQueue).readPos)
 }
 
-// THIS TEST IS COMMENTED OUT BECAUSE IT TAKES FOREVER
-// import "runtime"
-// import "sync/atomic"
-// func TestDiskQueueTorture(t *testing.T) {
-// 	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
-// 	dq := NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
-// 	assert.NotEqual(t, dq, nil)
-// 	assert.Equal(t, dq.Depth(), int64(0))
-// 
-// 	msg := []byte("aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff")
-// 
-// 	numWriters := 4
-// 	numReaders := 4
-// 	readExitChan := make(chan int)
-// 	readExitSyncChan := make(chan int)
-// 	writeExitChan := make(chan int)
-// 	writeExitSyncChan := make(chan int)
-// 
-// 	var depth int64
-// 	for i := 0; i < numWriters; i++ {
-// 		go func() {
-// 			for {
-// 				runtime.Gosched()
-// 				select {
-// 				case <-writeExitChan:
-// 					writeExitSyncChan <- 1
-// 					return
-// 				default:
-// 					err := dq.Put(msg)
-// 					if err == nil {
-// 						atomic.AddInt64(&depth, 1)
-// 					}
-// 				}
-// 			}
-// 		}()
-// 	}
-// 
-// 	time.Sleep(5 * time.Second)
-// 
-// 	dq.Close()
-// 
-// 	log.Printf("closing writeExitChan")
-// 	close(writeExitChan)
-// 	for i := 0; i < numWriters; i++ {
-// 		<-writeExitSyncChan
-// 	}
-// 
-// 	dq = NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
-// 	assert.NotEqual(t, dq, nil)
-// 	assert.Equal(t, dq.Depth(), depth)
-// 
-// 	var read int64
-// 	for i := 0; i < numReaders; i++ {
-// 		go func() {
-// 			for {
-// 				runtime.Gosched()
-// 				select {
-// 				case m := <-dq.ReadChan():
-// 					assert.Equal(t, msg, m)
-// 					atomic.AddInt64(&read, 1)
-// 				case <-readExitChan:
-// 					readExitSyncChan <- 1
-// 					return
-// 				}
-// 			}
-// 		}()
-// 	}
-// 
-// 	log.Printf("waiting for depth 0")
-// 	for {
-// 		if dq.Depth() == 0 {
-// 			break
-// 		}
-// 		runtime.Gosched()
-// 	}
-// 
-// 	log.Printf("closing readExitChan")
-// 	close(readExitChan)
-// 	for i := 0; i < numReaders; i++ {
-// 		<-readExitSyncChan
-// 	}
-// 
-// 	assert.Equal(t, read, depth)
-// 
-// 	dq.Close()
-// }
+func TestDiskQueueTorture(t *testing.T) {
+	// this test is disabled because it takes a long time
+	return
+
+	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
+	dq := NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
+	assert.NotEqual(t, dq, nil)
+	assert.Equal(t, dq.Depth(), int64(0))
+
+	msg := []byte("aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff")
+
+	numWriters := 4
+	numReaders := 4
+	readExitChan := make(chan int)
+	readExitSyncChan := make(chan int)
+	writeExitChan := make(chan int)
+	writeExitSyncChan := make(chan int)
+
+	var depth int64
+	for i := 0; i < numWriters; i++ {
+		go func() {
+			for {
+				runtime.Gosched()
+				select {
+				case <-writeExitChan:
+					writeExitSyncChan <- 1
+					return
+				default:
+					err := dq.Put(msg)
+					if err == nil {
+						atomic.AddInt64(&depth, 1)
+					}
+				}
+			}
+		}()
+	}
+
+	time.Sleep(5 * time.Second)
+
+	dq.Close()
+
+	log.Printf("closing writeExitChan")
+	close(writeExitChan)
+	for i := 0; i < numWriters; i++ {
+		<-writeExitSyncChan
+	}
+
+	dq = NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
+	assert.NotEqual(t, dq, nil)
+	assert.Equal(t, dq.Depth(), depth)
+
+	var read int64
+	for i := 0; i < numReaders; i++ {
+		go func() {
+			for {
+				runtime.Gosched()
+				select {
+				case m := <-dq.ReadChan():
+					assert.Equal(t, msg, m)
+					atomic.AddInt64(&read, 1)
+				case <-readExitChan:
+					readExitSyncChan <- 1
+					return
+				}
+			}
+		}()
+	}
+
+	log.Printf("waiting for depth 0")
+	for {
+		if dq.Depth() == 0 {
+			break
+		}
+		runtime.Gosched()
+	}
+
+	log.Printf("closing readExitChan")
+	close(readExitChan)
+	for i := 0; i < numReaders; i++ {
+		<-readExitSyncChan
+	}
+
+	assert.Equal(t, read, depth)
+
+	dq.Close()
+}
 
 func BenchmarkDiskQueuePut(b *testing.B) {
 	b.StopTimer()
