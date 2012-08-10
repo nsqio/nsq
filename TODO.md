@@ -9,11 +9,10 @@
 ### Things for v0.3
 
  * upon topic creation, lookup channels against lookupd
- * graceful restart
+ * graceful restart (load topics/channels you had previously)
  * cleanup (expire) topics/channels
 
 ### other items
 
- * switch to --nsqd-tcp-address, --nsqd-http-address naming; it's terribly unclear which options need 
-   the TCP interface and which needs the HTTP interface
  * heartbeats for TCP clients (and a timeout for idle clients not responding)
+ * diskqueue negative depth bug
