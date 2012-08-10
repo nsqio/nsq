@@ -149,6 +149,8 @@ func (d *DiskQueue) doEmpty() error {
 		return errors.New("E_EXITING")
 	}
 
+	log.Printf("DISKQUEUE(%s): emptying", d.name)
+
 	if d.readFile != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -227,7 +229,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			return nil, err
 		}
 
-		log.Printf("DISKQUEUE: readOne() opened %s", curFileName)
+		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
 
 		if readPos > 0 {
 			_, err = d.readFile.Seek(readPos, 0)
@@ -309,7 +311,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 			return err
 		}
 
-		log.Printf("DISKQUEUE: writeOne() opened %s", curFileName)
+		log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
 
 		if writePos > 0 {
 			_, err = d.writeFile.Seek(writePos, 0)

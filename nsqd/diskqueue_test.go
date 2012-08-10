@@ -80,6 +80,7 @@ func TestDiskQueueEmpty(t *testing.T) {
 	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
 	assert.Equal(t, dq.(*DiskQueue).readPos, dq.(*DiskQueue).writePos)
 	assert.Equal(t, dq.(*DiskQueue).nextReadPos, dq.(*DiskQueue).readPos)
+	assert.Equal(t, dq.(*DiskQueue).nextReadFileNum, dq.(*DiskQueue).readFileNum)
 
 	for i := 0; i < 100; i++ {
 		err := dq.Put(msg)
