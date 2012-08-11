@@ -207,20 +207,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, errors.New("E_EXITING")
 	}
 
-	// because readOne is only called inside readAheadPump
-	// we do not need to lock around these
 	readPos := d.readPos
 	readFileNum := d.readFileNum
-
-	if readPos > d.maxBytesPerFile {
-		if d.readFile != nil {
-			d.readFile.Close()
-			d.readFile = nil
-		}
-
-		readFileNum++
-		readPos = 0
-	}
 
 	if d.readFile == nil {
 		curFileName := d.fileName(readFileNum)
@@ -258,10 +246,25 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 	totalBytes := int64(4 + msgSize)
 
+	// because readOne is only called inside readAheadPump
+	// we do not need to lock around these
+	nextReadPos := readPos + totalBytes
+	nextReadFileNum := readFileNum
+
+	if nextReadPos > d.maxBytesPerFile {
+		if d.readFile != nil {
+			d.readFile.Close()
+			d.readFile = nil
+		}
+
+		nextReadFileNum++
+		nextReadPos = 0
+	}
+
 	// we only advance next* because we have not yet sent this to consumers 
 	// (where readFileNum, readPos will actually be advanced)
-	d.nextReadFileNum = readFileNum
-	d.nextReadPos = readPos + totalBytes
+	d.nextReadFileNum = nextReadFileNum
+	d.nextReadPos = nextReadPos
 
 	return readBuf, nil
 }
@@ -279,30 +282,12 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return errors.New("E_EXITING")
 	}
 
+	persist := false
+
 	d.metaMutex.Lock()
 	writePos := d.writePos
 	writeFileNum := d.writeFileNum
 	d.metaMutex.Unlock()
-
-	if writePos > d.maxBytesPerFile {
-		if d.writeFile != nil {
-			d.writeFile.Close()
-			d.writeFile = nil
-		}
-
-		writeFileNum++
-		writePos = 0
-
-		d.metaMutex.Lock()
-		d.writeFileNum = writeFileNum
-		d.writePos = writePos
-		d.metaMutex.Unlock()
-
-		err = d.persistMetaData()
-		if err != nil {
-			return err
-		}
-	}
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(writeFileNum)
@@ -343,23 +328,44 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
-	// dont sync all the time :)
-	if d.depth%d.syncEvery == 0 {
-		err = d.writeFile.Sync()
-		if err != nil {
-			d.writeFile.Close()
-			d.writeFile = nil
-			return err
-		}
-	}
+	totalBytes := int64(4 + dataLen)
+	writePos += totalBytes
 
-	writePos += int64(4 + dataLen)
+	if writePos > d.maxBytesPerFile {
+		d.writeFile.Close()
+		d.writeFile = nil
+
+		writeFileNum++
+		writePos = 0
+
+		persist = true
+	}
 
 	d.metaMutex.Lock()
 	d.writeFileNum = writeFileNum
 	d.writePos = writePos
 	d.depth++
 	d.metaMutex.Unlock()
+
+	// dont sync all the time :)
+	sync := d.depth % d.syncEvery
+	if d.writeFile != nil && sync == 0 {
+		err = d.writeFile.Sync()
+		if err != nil {
+			d.writeFile.Close()
+			d.writeFile = nil
+			return err
+		}
+
+		persist = true
+	}
+
+	if persist {
+		err = d.persistMetaData()
+		if err != nil {
+			return err
+		}
+	}
 
 	// you can always *try* to write to readStateChan because in the cases
 	// where you cannot the message pump loop would have iterated anyway
