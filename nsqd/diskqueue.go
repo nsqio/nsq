@@ -251,6 +251,9 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	nextReadPos := readPos + totalBytes
 	nextReadFileNum := readFileNum
 
+	// TODO: each data file should embed the maxBytesPerFile
+	// as the first 8 bytes (at creation time) ensuring that
+	// the value can change without affecting runtime
 	if nextReadPos > d.maxBytesPerFile {
 		if d.readFile != nil {
 			d.readFile.Close()
