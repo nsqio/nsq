@@ -15,4 +15,3 @@
 ### other items
 
  * heartbeats for TCP clients (and a timeout for idle clients not responding)
- * diskqueue negative depth bug
