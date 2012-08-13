@@ -1,3 +1,3 @@
 package nsq
 
-const VERSION = "0.1.24"
+const VERSION = "0.1.25"

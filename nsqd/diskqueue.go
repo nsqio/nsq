@@ -83,7 +83,9 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 
 // Depth returns the depth of the queue
 func (d *DiskQueue) Depth() int64 {
-	return atomic.LoadInt64(&d.depth)
+	d.metaMutex.Lock()
+	defer d.metaMutex.Unlock()
+	return d.depth
 }
 
 // ReadChan returns the []byte channel for reading data
@@ -147,14 +149,18 @@ func (d *DiskQueue) doEmpty() error {
 		return errors.New("E_EXITING")
 	}
 
+	log.Printf("DISKQUEUE(%s): emptying", d.name)
+
 	if d.readFile != nil {
 		d.readFile.Close()
 		d.readFile = nil
 	}
 
-	readFileNum := atomic.LoadInt64(&d.readFileNum)
-	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
-	writePos := atomic.LoadInt64(&d.writePos)
+	d.metaMutex.Lock()
+
+	readFileNum := d.readFileNum
+	writeFileNum := d.writeFileNum
+	writePos := d.writePos
 
 	// make a list of read file numbers to remove (later)
 	numsToRemove := make([]int64, 0)
@@ -163,10 +169,13 @@ func (d *DiskQueue) doEmpty() error {
 		readFileNum++
 	}
 
-	atomic.StoreInt64(&d.readFileNum, writeFileNum)
-	atomic.StoreInt64(&d.readPos, writePos)
-	atomic.StoreInt64(&d.nextReadPos, writePos)
-	atomic.StoreInt64(&d.depth, 0)
+	d.readFileNum = writeFileNum
+	d.readPos = writePos
+	d.nextReadFileNum = writeFileNum
+	d.nextReadPos = writePos
+	d.depth = 0
+
+	d.metaMutex.Unlock()
 
 	err := d.persistMetaData()
 	if err != nil {
@@ -198,34 +207,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 		return nil, errors.New("E_EXITING")
 	}
 
-	// because readOne is only called inside readAheadPump
-	// we do not need to lock around these
-	readPos := atomic.LoadInt64(&d.readPos)
-	readFileNum := atomic.LoadInt64(&d.readFileNum)
-
-	if readPos > d.maxBytesPerFile {
-		if d.readFile != nil {
-			d.readFile.Close()
-			d.readFile = nil
-		}
-
-		// get the current filename before incr
-		fn := d.fileName(readFileNum)
-
-		readFileNum++
-		readPos = 0
-
-		err = d.persistMetaData()
-		if err != nil {
-			return nil, err
-		}
-
-		// only if we've successfully persisted metadata do we remove old files
-		err := os.Remove(fn)
-		if err != nil {
-			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
-		}
-	}
+	readPos := d.readPos
+	readFileNum := d.readFileNum
 
 	if d.readFile == nil {
 		curFileName := d.fileName(readFileNum)
@@ -234,7 +217,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			return nil, err
 		}
 
-		log.Printf("DISKQUEUE: readOne() opened %s", curFileName)
+		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
 
 		if readPos > 0 {
 			_, err = d.readFile.Seek(readPos, 0)
@@ -263,10 +246,28 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 	totalBytes := int64(4 + msgSize)
 
+	// because readOne is only called inside readAheadPump
+	// we do not need to lock around these
+	nextReadPos := readPos + totalBytes
+	nextReadFileNum := readFileNum
+
+	// TODO: each data file should embed the maxBytesPerFile
+	// as the first 8 bytes (at creation time) ensuring that
+	// the value can change without affecting runtime
+	if nextReadPos > d.maxBytesPerFile {
+		if d.readFile != nil {
+			d.readFile.Close()
+			d.readFile = nil
+		}
+
+		nextReadFileNum++
+		nextReadPos = 0
+	}
+
 	// we only advance next* because we have not yet sent this to consumers 
 	// (where readFileNum, readPos will actually be advanced)
-	atomic.StoreInt64(&d.nextReadFileNum, readFileNum)
-	atomic.StoreInt64(&d.nextReadPos, readPos+totalBytes)
+	d.nextReadFileNum = nextReadFileNum
+	d.nextReadPos = nextReadPos
 
 	return readBuf, nil
 }
@@ -284,23 +285,12 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return errors.New("E_EXITING")
 	}
 
-	writePos := atomic.LoadInt64(&d.writePos)
-	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
+	persist := false
 
-	if writePos > d.maxBytesPerFile {
-		if d.writeFile != nil {
-			d.writeFile.Close()
-			d.writeFile = nil
-		}
-
-		writeFileNum++
-		writePos = 0
-
-		err = d.persistMetaData()
-		if err != nil {
-			return err
-		}
-	}
+	d.metaMutex.Lock()
+	writePos := d.writePos
+	writeFileNum := d.writeFileNum
+	d.metaMutex.Unlock()
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(writeFileNum)
@@ -309,7 +299,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 			return err
 		}
 
-		log.Printf("DISKQUEUE: writeOne() opened %s", curFileName)
+		log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
 
 		if writePos > 0 {
 			_, err = d.writeFile.Seek(writePos, 0)
@@ -341,23 +331,44 @@ func (d *DiskQueue) writeOne(data []byte) error {
 		return err
 	}
 
+	totalBytes := int64(4 + dataLen)
+	writePos += totalBytes
+
+	if writePos > d.maxBytesPerFile {
+		d.writeFile.Close()
+		d.writeFile = nil
+
+		writeFileNum++
+		writePos = 0
+
+		persist = true
+	}
+
+	d.metaMutex.Lock()
+	d.writeFileNum = writeFileNum
+	d.writePos = writePos
+	d.depth++
+	d.metaMutex.Unlock()
+
 	// dont sync all the time :)
-	if d.depth%d.syncEvery == 0 {
+	sync := d.depth % d.syncEvery
+	if d.writeFile != nil && sync == 0 {
 		err = d.writeFile.Sync()
 		if err != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 			return err
 		}
+
+		persist = true
 	}
 
-	writePos += int64(4 + dataLen)
-
-	d.metaMutex.Lock()
-	atomic.StoreInt64(&d.writeFileNum, writeFileNum)
-	atomic.StoreInt64(&d.writePos, writePos)
-	atomic.AddInt64(&d.depth, 1)
-	d.metaMutex.Unlock()
+	if persist {
+		err = d.persistMetaData()
+		if err != nil {
+			return err
+		}
+	}
 
 	// you can always *try* to write to readStateChan because in the cases
 	// where you cannot the message pump loop would have iterated anyway
@@ -400,11 +411,11 @@ func (d *DiskQueue) persistMetaData() error {
 	var err error
 
 	d.metaMutex.Lock()
-	depth := atomic.LoadInt64(&d.depth)
-	readFileNum := atomic.LoadInt64(&d.readFileNum)
-	readPos := atomic.LoadInt64(&d.readPos)
-	writeFileNum := atomic.LoadInt64(&d.writeFileNum)
-	writePos := atomic.LoadInt64(&d.writePos)
+	depth := d.depth
+	readFileNum := d.readFileNum
+	readPos := d.readPos
+	writeFileNum := d.writeFileNum
+	writePos := d.writePos
 	d.metaMutex.Unlock()
 
 	fileName := d.metaDataFileName()
@@ -455,14 +466,13 @@ func (d *DiskQueue) readAheadPump() {
 	// there is a race before we enter either of the select loops where 
 	// readStateChan is read from that the update is not lost
 	for {
-		nextReadPos := atomic.LoadInt64(&d.nextReadPos)
-
-		readFileNum := atomic.LoadInt64(&d.readFileNum)
-		readPos := atomic.LoadInt64(&d.readPos)
+		nextReadPos := d.nextReadPos
+		readFileNum := d.readFileNum
+		readPos := d.readPos
 
 		d.metaMutex.Lock()
-		writeFileNum := atomic.LoadInt64(&d.writeFileNum)
-		writePos := atomic.LoadInt64(&d.writePos)
+		writeFileNum := d.writeFileNum
+		writePos := d.writePos
 		d.metaMutex.Unlock()
 
 		if (readFileNum < writeFileNum) || (readPos < writePos) {
@@ -484,11 +494,30 @@ func (d *DiskQueue) readAheadPump() {
 
 			select {
 			case d.readChan <- data:
+				oldReadFileNum := d.readFileNum
+
 				d.metaMutex.Lock()
-				atomic.AddInt64(&d.depth, -1)
-				atomic.StoreInt64(&d.readFileNum, atomic.LoadInt64(&d.nextReadFileNum))
-				atomic.StoreInt64(&d.readPos, atomic.LoadInt64(&d.nextReadPos))
+				d.depth--
+				d.readFileNum = d.nextReadFileNum
+				d.readPos = d.nextReadPos
 				d.metaMutex.Unlock()
+
+				// see if we need to clean up the old file
+				if oldReadFileNum != d.nextReadFileNum {
+					fn := d.fileName(readFileNum)
+
+					err := d.persistMetaData()
+					if err != nil {
+						log.Printf("ERROR: failed to persistMetaData (not removing %s) - %s", fn, err.Error())
+						continue
+					}
+
+					// only if we've successfully persisted metadata do we remove old files
+					err = os.Remove(fn)
+					if err != nil {
+						log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+					}
+				}
 			case <-d.emptyChan:
 				err := d.doEmpty()
 				if err != nil {
