@@ -187,20 +187,12 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	topicName := params[1]
-	if len(topicName) == 0 {
-		return nil, nsq.ClientErrBadTopic
-	}
-
-	if len(topicName) > nsq.MaxTopicNameLength {
+	if !nsq.IsValidName(topicName) {
 		return nil, nsq.ClientErrBadTopic
 	}
 
 	channelName := params[2]
-	if len(channelName) == 0 {
-		return nil, nsq.ClientErrBadChannel
-	}
-
-	if len(channelName) > nsq.MaxChannelNameLength {
+	if !nsq.IsValidName(channelName) {
 		return nil, nsq.ClientErrBadChannel
 	}
 

@@ -137,10 +137,11 @@ type Reader struct {
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
-	if len(topic) == 0 || len(topic) > MaxTopicNameLength {
+	if !IsValidName(topic) {
 		return nil, errors.New("INVALID_TOPIC_NAME")
 	}
-	if len(channel) == 0 || len(channel) > MaxChannelNameLength {
+
+	if !IsValidName(channel) {
 		return nil, errors.New("INVALID_CHANNEL_NAME")
 	}
 
