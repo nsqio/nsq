@@ -111,6 +111,7 @@ func main() {
 	nsqd.maxBytesPerFile = *maxBytesPerFile
 	nsqd.syncEvery = *syncEvery
 	nsqd.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+	nsqd.LoadMetadata()
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()
