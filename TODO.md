@@ -9,7 +9,6 @@
 ### Things for v0.3
 
  * upon topic creation, lookup channels against lookupd
- * graceful restart (load topics/channels you had previously)
  * cleanup (expire) topics/channels
 
 ### other items

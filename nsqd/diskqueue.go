@@ -72,8 +72,8 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
-	if err != nil {
-		log.Printf("WARNING: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
 	}
 
 	go d.readAheadPump()
