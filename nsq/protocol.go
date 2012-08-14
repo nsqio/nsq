@@ -6,18 +6,23 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 )
 
 var MagicV1 = []byte("  V1")
 var MagicV2 = []byte("  V2")
 
 const (
-	FrameTypeResponse    int32 = 0
-	FrameTypeError       int32 = 1
-	FrameTypeMessage     int32 = 2
-	MaxTopicNameLength   int   = 32
-	MaxChannelNameLength int   = 32
+	FrameTypeResponse int32 = 0
+	FrameTypeError    int32 = 1
+	FrameTypeMessage  int32 = 2
 )
+
+var validNameRegex = regexp.MustCompile(`[a-zA-Z0-9_-]{1,32}`)
+
+func IsValidName(name string) bool {
+	return validNameRegex.MatchString(name)
+}
 
 // describes the basic behavior of any protocol in the system
 type Protocol interface {

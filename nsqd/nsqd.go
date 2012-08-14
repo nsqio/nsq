@@ -3,10 +3,14 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
+	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -69,6 +73,38 @@ func (n *NSQd) Main() {
 	go httpServer(httpListener, n.exitSyncChan)
 }
 
+func (n *NSQd) LoadMetadata() {
+	fn := fmt.Sprintf(path.Join(n.dataPath, "nsqd.%d.dat"), n.workerId)
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("ERROR: failed to read channel metadata from %s - %s", fn, err.Error())
+		}
+		return
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if line != "" {
+			parts := strings.Split(line, ":")
+			if len(parts) < 2 {
+				log.Printf("WARNING: skipping topic/channel creation for %s", line)
+				continue
+			}
+
+			if !nsq.IsValidName(parts[0]) {
+				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
+				continue
+			}
+			topic := n.GetTopic(parts[0])
+
+			if !nsq.IsValidName(parts[1]) {
+				log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
+			}
+			topic.GetChannel(parts[1])
+		}
+	}
+}
+
 func (n *NSQd) Exit() {
 	err := n.tcpListener.Close()
 	if err != nil {
@@ -84,9 +120,31 @@ func (n *NSQd) Exit() {
 		<-n.exitSyncChan
 	}
 
+	// persist metadata about what topics/channels we have
+	// so that upon restart we can get back to the same state
+	fn := fmt.Sprintf(path.Join(n.dataPath, "nsqd.%d.dat"), n.workerId)
+	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())
+	}
+
 	log.Printf("NSQ: closing topics")
+	n.Lock()
 	for _, topic := range n.topicMap {
+		if f != nil {
+			topic.Lock()
+			for _, channel := range topic.channelMap {
+				fmt.Fprintf(f, "%s:%s\n", topic.name, channel.name)
+			}
+			topic.Unlock()
+		}
 		topic.Close()
+	}
+	n.Unlock()
+
+	if f != nil {
+		f.Sync()
+		f.Close()
 	}
 
 	// we want to do this last as it closes the idPump (if closed first it
