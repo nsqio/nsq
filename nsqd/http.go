@@ -31,6 +31,8 @@ func httpServer(listener net.Listener, exitSyncChan chan int) {
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
 
+	// these timeouts are absolute per server connection NOT per request
+	// this means that a single persistent connection will only last N seconds
 	server := &http.Server{
 		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
