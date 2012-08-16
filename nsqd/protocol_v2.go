@@ -39,6 +39,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	err = nil
 	reader := bufio.NewReader(client)
 	for {
+		client.SetReadDeadline(time.Now().Add(nsqd.clientTimeout))
 		line, err = reader.ReadString('\n')
 		if err != nil {
 			break
@@ -120,12 +121,30 @@ func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
 		return p.REQ(client, params)
 	case "CLS":
 		return p.CLS(client, params)
+	case "NOP":
+		return p.NOP(client, params)
 	}
 	return nil, nsq.ClientErrInvalid
 }
 
+func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
+	clientData, err := nsq.Frame(nsq.FrameTypeResponse, []byte("_heartbeat_"))
+	if err != nil {
+		return err
+	}
+
+	err = p.Write(client, clientData)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
+
+	heartbeat := time.NewTicker(nsqd.clientTimeout / 2)
 
 	// ReadyStateChan has a buffer of 1 to guarantee that in the event
 	// there is a race before we enter either of the select loops where 
@@ -135,12 +154,22 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// wait for a change in state
 			select {
 			case <-client.ReadyStateChan:
+			case <-heartbeat.C:
+				err := p.sendHeartbeat(client)
+				if err != nil {
+					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				}
 			case <-client.ExitChan:
 				goto exit
 			}
 		} else {
 			select {
 			case <-client.ReadyStateChan:
+			case <-heartbeat.C:
+				err := p.sendHeartbeat(client)
+				if err != nil {
+					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				}
 			case msg := <-client.Channel.clientMsgChan:
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
@@ -172,6 +201,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 
 exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client.RemoteAddr().String())
+	heartbeat.Stop()
 	client.Channel.RemoveClient(client)
 	if err != nil {
 		log.Printf("PROTOCOL(V2): messagePump error - %s", err.Error())
@@ -311,4 +341,8 @@ func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
 	client.StartClose()
 
 	return []byte("CLOSE_WAIT"), nil
+}
+
+func (p *ProtocolV2) NOP(client *ClientV2, params []string) ([]byte, error) {
+	return nil, nil
 }

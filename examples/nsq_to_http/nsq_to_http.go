@@ -62,7 +62,6 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 				return err
 			}
 		}
-		break
 	case ModeRoundRobin:
 		idx := ph.counter % uint64(len(ph.addresses))
 		err := ph.Publish(ph.addresses[idx], m.Body)
@@ -176,12 +175,9 @@ func main() {
 
 	select {
 	case <-r.ExitChan:
-		break
 	case <-hupChan:
 		r.Stop()
-		break
 	case <-termChan:
 		r.Stop()
-		break
 	}
 }

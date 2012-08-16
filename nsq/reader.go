@@ -163,7 +163,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		DefaultRequeueDelay: 90 * time.Second,
 		ShortIdentifier:     strings.Split(hostname, ".")[0],
 		LongIdentifier:      hostname,
-		ReadTimeout:         time.Second,
+		ReadTimeout:         DefaultClientTimeout,
 		WriteTimeout:        time.Second,
 	}
 	return q, nil
@@ -376,19 +376,24 @@ func (q *Reader) readLoop(c *nsqConn) {
 			}
 
 			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
-			break
 		case FrameTypeResponse:
-			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
+			switch {
+			case bytes.Equal(data, []byte("CLOSE_WAIT")):
 				// server is ready for us to close (it ack'd our StartClose)
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
 				log.Printf("[%s] received ACK from nsqd - now in CLOSE_WAIT", c)
 				atomic.StoreInt32(&c.stopFlag, 1)
+			case bytes.Equal(data, []byte("_heartbeat_")):
+				log.Printf("[%s] received heartbeat from nsqd", c)
+				err := c.sendCommand(Nop())
+				if err != nil {
+					handleError(q, c, fmt.Sprintf("[%s] error sending NOP - %s", c, err.Error()))
+					return
+				}
 			}
-			break
 		case FrameTypeError:
 			log.Printf("[%s] error from nsqd %s", c, data)
-			break
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
 		}

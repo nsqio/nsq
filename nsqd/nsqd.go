@@ -34,6 +34,7 @@ type NSQd struct {
 	idChan          chan []byte
 	exitChan        chan int
 	exitSyncChan    chan int
+	clientTimeout   time.Duration
 }
 
 var nsqd *NSQd
@@ -50,6 +51,7 @@ func NewNSQd(workerId int64) *NSQd {
 		idChan:          make(chan []byte, 4096),
 		exitChan:        make(chan int),
 		exitSyncChan:    make(chan int),
+		clientTimeout:   nsq.DefaultClientTimeout,
 	}
 	go n.idPump()
 	return n
