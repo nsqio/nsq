@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"testing"
+	"time"
 )
 
 type MyTestHandler struct {
@@ -61,7 +63,8 @@ func TestQueuereader(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	addr := "127.0.0.1:4150"
-	q, _ := NewReader("reader_test", "ch")
+	topicName := "reader_test" + strconv.Itoa(int(time.Now().Unix()))
+	q, _ := NewReader(topicName, "ch")
 	q.VerboseLogging = true
 	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
 
@@ -71,9 +74,9 @@ func TestQueuereader(t *testing.T) {
 	}
 	q.AddHandler(h)
 
-	SendMessage(t, 4151, "reader_test", "put", []byte(`{"msg":"single"}`))
-	SendMessage(t, 4151, "reader_test", "mput", []byte("{\"msg\":\"double\"}\n{\"msg\":\"double\"}"))
-	SendMessage(t, 4151, "reader_test", "put", []byte("TOBEFAILED"))
+	SendMessage(t, 4151, topicName, "put", []byte(`{"msg":"single"}`))
+	SendMessage(t, 4151, topicName, "mput", []byte("{\"msg\":\"double\"}\n{\"msg\":\"double\"}"))
+	SendMessage(t, 4151, topicName, "put", []byte("TOBEFAILED"))
 	h.messagesSent = 4
 
 	err := q.ConnectToNSQ(addr)
