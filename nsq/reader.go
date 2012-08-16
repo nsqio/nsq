@@ -385,7 +385,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 				// server is ready for us to close (it ack'd our StartClose)
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
-				log.Printf("[%s] received ACK from server. now in CLOSE_WAIT", c)
+				log.Printf("[%s] received ACK from nsqd - now in CLOSE_WAIT", c)
 				atomic.StoreInt32(&c.stopFlag, 1)
 			}
 			break
@@ -477,18 +477,18 @@ func (q *Reader) updateReady(c *nsqConn) {
 	// refill when at 1, or at 25% whichever comes first
 	if remain <= 1 || remain < (int64(s)/int64(4)) {
 		if q.VerboseLogging {
-			log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
+			log.Printf("[%s] sending RDY %d (%d remain)", c, s, remain)
 		}
 		atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 		err := c.sendCommand(Ready(s))
 		if err != nil {
-			log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
+			log.Printf("[%s] error sending RDY %d - %s", c, s, err.Error())
 			c.stopFinishLoop()
 			return
 		}
 	} else {
 		if q.VerboseLogging {
-			log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
+			log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, s)
 		}
 	}
 }
