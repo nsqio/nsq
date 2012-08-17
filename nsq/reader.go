@@ -63,6 +63,7 @@ type nsqConn struct {
 	bufferSizeRemaining int64
 	readTimeout         time.Duration
 	writeTimeout        time.Duration
+	stopper             sync.Once
 }
 
 func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
@@ -104,8 +105,10 @@ func (c *nsqConn) readResponse() ([]byte, error) {
 }
 
 func (c *nsqConn) stopFinishLoop() {
-	log.Printf("[%s] closing finishedMessages channel", c)
-	close(c.finishedMessages)
+	c.stopper.Do(func() {
+		log.Printf("[%s] closing finishedMessages channel", c)
+		close(c.finishedMessages)
+	})
 }
 
 type Reader struct {
@@ -160,7 +163,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		DefaultRequeueDelay: 90 * time.Second,
 		ShortIdentifier:     strings.Split(hostname, ".")[0],
 		LongIdentifier:      hostname,
-		ReadTimeout:         time.Second,
+		ReadTimeout:         DefaultClientTimeout,
 		WriteTimeout:        time.Second,
 	}
 	return q, nil
@@ -306,7 +309,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	return nil
 }
 
-func handleReadError(q *Reader, c *nsqConn, errMsg string) {
+func handleError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
 	atomic.StoreInt32(&c.stopFlag, 1)
 	if len(q.nsqConnections) == 1 && len(q.lookupdAddresses) == 0 {
@@ -325,9 +328,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 
 	err := c.sendCommand(Ready(s))
 	if err != nil {
-		// even though this is a *write* that failed, this function does all the work we'd
-		// need to do anyway
-		handleReadError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
+		handleError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
 		c.stopFinishLoop()
 		return
 	}
@@ -346,17 +347,13 @@ func (q *Reader) readLoop(c *nsqConn) {
 
 		resp, err := c.readResponse()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// TODO: until we have heartbeats, continue indefinitely
-				continue
-			}
-			handleReadError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
+			handleError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
 			continue
 		}
 
 		frameType, data, err := UnpackResponse(resp)
 		if err != nil {
-			handleReadError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %d %s", c, err.Error(), frameType, data))
+			handleError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %d %s", c, err.Error(), frameType, data))
 			continue
 		}
 
@@ -364,7 +361,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 		case FrameTypeMessage:
 			msg, err := DecodeMessage(data)
 			if err != nil {
-				handleReadError(q, c, fmt.Sprintf("[%s] error (%s) decoding message %s", c, err.Error(), data))
+				handleError(q, c, fmt.Sprintf("[%s] error (%s) decoding message %s", c, err.Error(), data))
 				continue
 			}
 
@@ -379,19 +376,24 @@ func (q *Reader) readLoop(c *nsqConn) {
 			}
 
 			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
-			break
 		case FrameTypeResponse:
-			if bytes.Equal(data, []byte("CLOSE_WAIT")) {
+			switch {
+			case bytes.Equal(data, []byte("CLOSE_WAIT")):
 				// server is ready for us to close (it ack'd our StartClose)
 				// we can assume we will not receive any more messages over this channel
 				// (but we can still write back responses)
-				log.Printf("[%s] received ACK from server. now in CLOSE_WAIT", c)
+				log.Printf("[%s] received ACK from nsqd - now in CLOSE_WAIT", c)
 				atomic.StoreInt32(&c.stopFlag, 1)
+			case bytes.Equal(data, []byte("_heartbeat_")):
+				log.Printf("[%s] received heartbeat from nsqd", c)
+				err := c.sendCommand(Nop())
+				if err != nil {
+					handleError(q, c, fmt.Sprintf("[%s] error sending NOP - %s", c, err.Error()))
+					return
+				}
 			}
-			break
 		case FrameTypeError:
 			log.Printf("[%s] error from nsqd %s", c, data)
-			break
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
 		}
@@ -460,7 +462,8 @@ func (q *Reader) finishLoop(c *nsqConn) {
 		}
 
 		atomic.AddInt64(&q.messagesInFlight, -1)
-		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 && (atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1) {
+		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 &&
+			(atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1) {
 			c.stopFinishLoop()
 			continue
 		}
@@ -477,18 +480,17 @@ func (q *Reader) updateReady(c *nsqConn) {
 	// refill when at 1, or at 25% whichever comes first
 	if remain <= 1 || remain < (int64(s)/int64(4)) {
 		if q.VerboseLogging {
-			log.Printf("[%s] RDY %d (%d remaining from last RDY)", c, s, remain)
+			log.Printf("[%s] sending RDY %d (%d remain)", c, s, remain)
 		}
 		atomic.StoreInt64(&c.bufferSizeRemaining, int64(s))
 		err := c.sendCommand(Ready(s))
 		if err != nil {
-			log.Printf("[%s] error sending rdy %d - %s", c, s, err.Error())
-			c.stopFinishLoop()
+			handleError(q, c, fmt.Sprintf("[%s] error sending RDY %d - %s", c, s, err.Error()))
 			return
 		}
 	} else {
 		if q.VerboseLogging {
-			log.Printf("[%s] no RDY; remain %d (out of %d)", c, remain, s)
+			log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, s)
 		}
 	}
 }

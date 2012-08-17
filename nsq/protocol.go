@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"time"
 )
 
 var MagicV1 = []byte("  V1")
@@ -17,6 +18,8 @@ const (
 	FrameTypeError    int32 = 1
 	FrameTypeMessage  int32 = 2
 )
+
+const DefaultClientTimeout = 60 * time.Second
 
 var validNameRegex = regexp.MustCompile(`[a-zA-Z0-9_-]{1,32}`)
 
