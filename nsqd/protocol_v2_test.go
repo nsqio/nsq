@@ -104,6 +104,76 @@ func TestMultipleConsumerV2(t *testing.T) {
 	assert.Equal(t, msgOut.Attempts, uint16(1))
 }
 
+func TestClientTimeout(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	tcpAddr, _ := mustStartNSQd()
+	defer nsqd.Exit()
+
+	nsqd.clientTimeout = 50 * time.Millisecond
+
+	conn := mustConnectNSQd(t, tcpAddr)
+
+	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientTimeoutV2", "TestClientTimeoutV2"))
+	assert.Equal(t, err, nil)
+
+	time.Sleep(50 * time.Millisecond)
+
+	// depending on timing there may be 1 or 2 hearbeats sent
+	// just read until we get an error
+	timer := time.After(100 * time.Millisecond)
+	for {
+		select {
+		case <-timer:
+			t.Fatalf("test timed out")
+		default:
+			_, err := nsq.ReadResponse(conn)
+			if err != nil {
+				goto done
+			}
+		}
+	}
+done:
+}
+
+func TestClientHeartbeat(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	topicName := "test_client_hearbeat_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	tcpAddr, _ := mustStartNSQd()
+	defer nsqd.Exit()
+
+	nsqd.clientTimeout = 100 * time.Millisecond
+
+	conn := mustConnectNSQd(t, tcpAddr)
+
+	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientHeartbeatV2", "TestClientHeartbeatV2"))
+	assert.Equal(t, err, nil)
+
+	err = nsq.SendCommand(conn, nsq.Ready(1))
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	assert.Equal(t, data, []byte("_heartbeat_"))
+
+	time.Sleep(10 * time.Millisecond)
+
+	err = nsq.SendCommand(conn, nsq.Nop())
+	assert.Equal(t, err, nil)
+
+	// wait long enough that would have timed out (had we not sent the above cmd)
+	time.Sleep(50 * time.Millisecond)
+
+	err = nsq.SendCommand(conn, nsq.Nop())
+	assert.Equal(t, err, nil)
+}
+
 func BenchmarkProtocolV2(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)

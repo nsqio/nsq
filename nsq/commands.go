@@ -66,3 +66,7 @@ func Requeue(id []byte, timeoutMs int) *Command {
 func StartClose() *Command {
 	return &Command{[]byte("CLS"), nil, nil}
 }
+
+func Nop() *Command {
+	return &Command{[]byte("NOP"), nil, nil}
+}
