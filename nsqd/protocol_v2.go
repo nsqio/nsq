@@ -80,6 +80,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 	log.Printf("PROTOCOL(V2): [%s] exiting ioloop", client.RemoteAddr().String())
 	// TODO: gracefully send clients the close signal
+	conn.Close()
 	close(client.ExitChan)
 
 	return err
