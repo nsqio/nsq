@@ -11,7 +11,7 @@ type TcpHandler interface {
 	Handle(net.Conn)
 }
 
-func TcpServer(listener net.Listener, handler TcpHandler, exitSyncChan chan int) {
+func TcpServer(listener net.Listener, handler TcpHandler) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
 
 	for {
@@ -32,5 +32,4 @@ func TcpServer(listener net.Listener, handler TcpHandler, exitSyncChan chan int)
 	}
 
 	log.Printf("TCP: closing %s", listener.Addr().String())
-	exitSyncChan <- 1
 }

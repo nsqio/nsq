@@ -33,7 +33,7 @@ type NSQd struct {
 	httpListener    net.Listener
 	idChan          chan []byte
 	exitChan        chan int
-	exitSyncChan    chan int
+	waitGroup       util.WaitGroupWrapper
 	clientTimeout   time.Duration
 }
 
@@ -50,29 +50,30 @@ func NewNSQd(workerId int64) *NSQd {
 		topicMap:        make(map[string]*Topic),
 		idChan:          make(chan []byte, 4096),
 		exitChan:        make(chan int),
-		exitSyncChan:    make(chan int),
 		clientTimeout:   nsq.DefaultClientTimeout,
 	}
-	go n.idPump()
+
+	n.waitGroup.Wrap(func() { n.idPump() })
+
 	return n
 }
 
 func (n *NSQd) Main() {
-	go lookupRouter(n.lookupAddrs, n.exitChan, n.exitSyncChan)
+	n.waitGroup.Wrap(func() { lookupRouter(n.lookupAddrs, n.exitChan) })
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
 	}
 	n.tcpListener = tcpListener
-	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}, n.exitSyncChan)
+	n.waitGroup.Wrap(func() { util.TcpServer(n.tcpListener, &TcpProtocol{protocols: protocols}) })
 
 	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
 	}
 	n.httpListener = httpListener
-	go httpServer(httpListener, n.exitSyncChan)
+	n.waitGroup.Wrap(func() { httpServer(n.httpListener) })
 }
 
 func (n *NSQd) LoadMetadata() {
@@ -108,19 +109,8 @@ func (n *NSQd) LoadMetadata() {
 }
 
 func (n *NSQd) Exit() {
-	err := n.tcpListener.Close()
-	if err != nil {
-		log.Printf("ERROR: failed to close tcp listener - %s", err.Error())
-	} else {
-		<-n.exitSyncChan
-	}
-
-	err = n.httpListener.Close()
-	if err != nil {
-		log.Printf("ERROR: failed to close http listener - %s", err.Error())
-	} else {
-		<-n.exitSyncChan
-	}
+	n.tcpListener.Close()
+	n.httpListener.Close()
 
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
@@ -152,8 +142,7 @@ func (n *NSQd) Exit() {
 	// we want to do this last as it closes the idPump (if closed first it
 	// could potentially starve items in process and deadlock)
 	close(n.exitChan)
-	<-n.exitSyncChan
-	<-n.exitSyncChan
+	n.waitGroup.Wait()
 }
 
 // GetTopic performs a thread safe operation
@@ -195,5 +184,4 @@ func (n *NSQd) idPump() {
 
 exit:
 	log.Printf("ID: closing")
-	n.exitSyncChan <- 1
 }

@@ -14,7 +14,7 @@ var notifyTopicChan = make(chan interface{})
 var syncTopicChan = make(chan *nsq.LookupPeer)
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
-func lookupRouter(lookupHosts []string, exitChan chan int, exitSyncChan chan int) {
+func lookupRouter(lookupHosts []string, exitChan chan int) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
 	port := tcpAddr.Port
 	netAddrs := getNetworkAddrs(tcpAddr)
@@ -99,7 +99,6 @@ exit:
 		notify.Stop("new_channel", notifyChannelChan)
 		notify.Stop("new_topic", notifyTopicChan)
 	}
-	exitSyncChan <- 1
 }
 
 func getNetworkAddrs(tcpAddr *net.TCPAddr) []string {
