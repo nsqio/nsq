@@ -21,7 +21,7 @@ import (
 
 var (
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
-	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel for clients")
+	maxInFlight      = flag.Int("max-in-flight", 100, "max number of messages to allow in flight")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
@@ -156,7 +156,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r, err := nsq.NewReader(topicName, channelName)
-	r.BufferSize = *buffer
+	r.MaxInFlight = *maxInFlight
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -230,8 +230,8 @@ func (sr *StreamReader) HandleMessage(message *nsq.Message) error {
 func main() {
 	flag.Parse()
 
-	if *buffer < 0 {
-		log.Fatalf("--buffer must be > 0")
+	if *maxInFlight < 0 {
+		log.Fatalf("--max-in-flight must be > 0")
 	}
 
 	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {

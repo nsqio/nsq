@@ -23,9 +23,9 @@ const (
 )
 
 var (
-	topic            = flag.String("topic-name", "", "nsq topic")
-	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
-	buffer           = flag.Int("buffer", 200, "number of messages to allow in flight")
+	topic            = flag.String("topic", "", "nsq topic")
+	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
+	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	verbose          = flag.Bool("verbose", false, "enable verbose logging")
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
 	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
@@ -100,11 +100,11 @@ func main() {
 	flag.Parse()
 
 	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic-name and --channel-name are required")
+		log.Fatalf("--topic and --channel are required")
 	}
 
-	if *buffer < 0 {
-		log.Fatalf("--buffer must be > 0")
+	if *maxInFlight < 0 {
+		log.Fatalf("--max-in-flight must be > 0")
 	}
 
 	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
@@ -146,7 +146,7 @@ func main() {
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
-	r.BufferSize = *buffer
+	r.MaxInFlight = *maxInFlight
 	r.VerboseLogging = *verbose
 
 	for i := 0; i < *numPublishers; i++ {
