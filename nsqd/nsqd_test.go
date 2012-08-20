@@ -46,7 +46,7 @@ func TestStartup(t *testing.T) {
 		topic.PutMessage(msg)
 	}
 
-	log.Printf("checking that put's are finished")
+	log.Printf("checking that PUTs are finished")
 	for {
 		count := topic.Depth()
 		log.Printf("there are %d and %d", len(topic.memoryMsgChan), topic.backend.Depth())
