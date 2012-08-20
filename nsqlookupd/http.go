@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func httpServer(listener net.Listener, exitSyncChan chan int) {
+func httpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
 
 	handler := http.NewServeMux()
@@ -32,7 +32,6 @@ func httpServer(listener net.Listener, exitSyncChan chan int) {
 	}
 
 	log.Printf("HTTP: closing %s", listener.Addr().String())
-	exitSyncChan <- 1
 }
 
 func pingHandler(w http.ResponseWriter, req *http.Request) {

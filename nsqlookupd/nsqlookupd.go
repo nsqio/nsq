@@ -26,6 +26,8 @@ var protocols = map[int32]nsq.Protocol{}
 var sm *util.SafeMap
 
 func main() {
+	var waitGroup util.WaitGroupWrapper
+
 	flag.Parse()
 
 	if *showVersion {
@@ -38,7 +40,6 @@ func main() {
 	}
 
 	exitChan := make(chan int)
-	exitSyncChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
 	sm = util.NewSafeMap()
 
@@ -74,27 +75,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", tcpAddr, err.Error())
 	}
-	go util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}, exitSyncChan)
+	waitGroup.Wrap(func() { util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}) })
 
 	httpListener, err := net.Listen("tcp", httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr, err.Error())
 	}
-	go httpServer(httpListener, exitSyncChan)
+	waitGroup.Wrap(func() { httpServer(httpListener) })
 
 	<-exitChan
 
-	err = tcpListener.Close()
-	if err != nil {
-		log.Printf("ERROR: failed to close tcp listener - %s", err.Error())
-	} else {
-		<-exitSyncChan
-	}
+	tcpListener.Close()
+	httpListener.Close()
 
-	err = httpListener.Close()
-	if err != nil {
-		log.Printf("ERROR: failed to close http listener - %s", err.Error())
-	} else {
-		<-exitSyncChan
-	}
+	waitGroup.Wait()
 }

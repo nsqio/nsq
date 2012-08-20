@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"../util/pqueue"
 	"bitly/notify"
 	"container/heap"
@@ -42,7 +43,7 @@ type Channel struct {
 	memoryMsgChan   chan *nsq.Message
 	clientMsgChan   chan *nsq.Message
 	exitChan        chan int
-	exitSyncChan    chan int
+	waitGroup       util.WaitGroupWrapper
 	exitFlag        int32
 
 	// state tracking
@@ -81,18 +82,20 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		memoryMsgChan:    make(chan *nsq.Message, inMemSize),
 		clientMsgChan:    make(chan *nsq.Message),
 		exitChan:         make(chan int),
-		exitSyncChan:     make(chan int),
 		clients:          make([]ClientStatTracker, 0, 5),
 		inFlightMessages: make(map[string]*pqueue.Item),
 		inFlightPQ:       pqueue.New(int(inMemSize / 10)),
 		deferredMessages: make(map[string]*pqueue.Item),
 		deferredPQ:       pqueue.New(int(inMemSize / 10)),
 	}
-	go c.router()
+
 	go c.messagePump()
-	go c.deferredWorker()
-	go c.inFlightWorker()
+	c.waitGroup.Wrap(func() { c.router() })
+	c.waitGroup.Wrap(func() { c.deferredWorker() })
+	c.waitGroup.Wrap(func() { c.inFlightWorker() })
+
 	go notify.Post("new_channel", c)
+
 	return c
 }
 
@@ -113,9 +116,7 @@ func (c *Channel) Close() error {
 	close(c.incomingMsgChan)
 
 	// synchronize the close of router() and pqWorkers (2)
-	<-c.exitSyncChan
-	<-c.exitSyncChan
-	<-c.exitSyncChan
+	c.waitGroup.Wait()
 
 	// messagePump is responsible for closing the channel it writes to
 	// this will read until its closed (exited)
@@ -382,7 +383,6 @@ func (c *Channel) router() {
 	}
 
 	log.Printf("CHANNEL(%s): closing ... router", c.name)
-	c.exitSyncChan <- 1
 }
 
 // messagePump reads messages from either memory or backend and writes
@@ -493,5 +493,4 @@ func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback
 
 exit:
 	log.Printf("CHANNEL(%s): closing ... pqueue worker", c.name)
-	c.exitSyncChan <- 1
 }

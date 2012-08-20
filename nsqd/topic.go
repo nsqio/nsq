@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"../util/pqueue"
 	"bitly/notify"
 	"errors"
@@ -25,7 +26,7 @@ type Topic struct {
 	syncEvery          int64
 	msgTimeout         time.Duration
 	exitChan           chan int
-	exitSyncChan       chan int
+	waitGroup          util.WaitGroupWrapper
 	exitFlag           int32
 	messageCount       uint64
 }
@@ -44,10 +45,12 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 		syncEvery:       syncEvery,
 		msgTimeout:      msgTimeout,
 		exitChan:        make(chan int),
-		exitSyncChan:    make(chan int),
 	}
-	go topic.router()
+
+	topic.waitGroup.Wrap(func() { topic.router() })
+
 	go notify.Post("new_topic", topic)
+
 	return topic
 }
 
@@ -80,9 +83,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
-	t.messagePumpStarter.Do(func() {
-		go t.messagePump()
-	})
+	t.messagePumpStarter.Do(func() { t.waitGroup.Wrap(func() { t.messagePump() }) })
 
 	return channel
 }
@@ -146,7 +147,6 @@ func (t *Topic) messagePump() {
 
 exit:
 	log.Printf("TOPIC(%s): closing ... messagePump", t.name)
-	t.exitSyncChan <- 1
 }
 
 // router handles muxing of Topic messages including
@@ -166,7 +166,6 @@ func (t *Topic) router() {
 	}
 
 	log.Printf("TOPIC(%s): closing ... router", t.name)
-	t.exitSyncChan <- 1
 }
 
 func (t *Topic) Close() error {
@@ -179,17 +178,8 @@ func (t *Topic) Close() error {
 	close(t.exitChan)
 	close(t.incomingMsgChan)
 
-	// guarantee that if messagePump() hasn't been started
-	// yet that we will write to the exitSyncChan
-	t.messagePumpStarter.Do(func() {
-		go func() {
-			t.exitSyncChan <- 1
-		}()
-	})
-
 	// synchronize the close of router() and messagePump()
-	<-t.exitSyncChan
-	<-t.exitSyncChan
+	t.waitGroup.Wait()
 
 	// close all the channels
 	for _, channel := range t.channelMap {
