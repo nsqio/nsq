@@ -19,9 +19,9 @@ var (
 	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
-	topic            = flag.String("topic-name", "", "nsq topic")
-	channel          = flag.String("channel-name", "nsq_to_file", "nsq channel")
-	buffer           = flag.Int("buffer", 1000, "number of messages to buffer in channel and disk before sync/ack")
+	topic            = flag.String("topic", "", "nsq topic")
+	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
+	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
 	nsqAddresses     = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
@@ -90,7 +90,7 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 			pos++
 		}
 
-		if closing || sync || pos >= r.ConnectionBufferSize() {
+		if closing || sync || pos >= r.ConnectionMaxInFlight() {
 			if pos > 0 {
 				log.Printf("syncing %d records to disk", pos)
 				err := f.out.Sync()
@@ -144,11 +144,11 @@ func main() {
 	flag.Parse()
 
 	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic-name and --channel-name are required")
+		log.Fatalf("--topic and --channel are required")
 	}
 
-	if *buffer < 0 {
-		log.Fatalf("--buffer must be > 0")
+	if *maxInFlight < 0 {
+		log.Fatalf("--max-in-flight must be > 0")
 	}
 
 	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
@@ -168,7 +168,7 @@ func main() {
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
-	r.BufferSize = *buffer
+	r.MaxInFlight = *maxInFlight
 	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)
