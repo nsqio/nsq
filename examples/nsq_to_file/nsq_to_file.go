@@ -54,7 +54,7 @@ func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.Fin
 
 func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan os.Signal) {
 	pos := 0
-	output := make([]*Message, *buffer)
+	output := make([]*Message, *maxInFlight)
 	sync := false
 	ticker := time.NewTicker(time.Duration(30) * time.Second)
 	closing := false
