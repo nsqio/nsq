@@ -168,7 +168,7 @@ func main() {
 	}
 
 	r, _ := nsq.NewReader(*topic, *channel)
-	r.MaxInFlight = *maxInFlight
+	r.SetMaxInFlight(*maxInFlight)
 	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)

@@ -114,7 +114,6 @@ func (c *nsqConn) stopFinishLoop() {
 type Reader struct {
 	TopicName           string        // name of topic to subscribe to
 	ChannelName         string        // name of channel to subscribe to
-	MaxInFlight         int           // max number of messages to allow in-flight at a time
 	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value)
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay time.Duration
@@ -128,6 +127,7 @@ type Reader struct {
 	MessagesRequeued    uint64
 	ExitChan            chan int
 
+	maxInFlight        int // max number of messages to allow in-flight at a time
 	incomingMessages   chan *incomingMessage
 	nsqConnections     map[string]*nsqConn
 	lookupdExitChan    chan int
@@ -155,7 +155,6 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		incomingMessages:    make(chan *incomingMessage),
 		ExitChan:            make(chan int),
 		nsqConnections:      make(map[string]*nsqConn),
-		MaxInFlight:         1,
 		MaxAttemptCount:     5,
 		LookupdPollInterval: 120 * time.Second,
 		lookupdExitChan:     make(chan int),
@@ -165,6 +164,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		LongIdentifier:      hostname,
 		ReadTimeout:         DefaultClientTimeout,
 		WriteTimeout:        time.Second,
+		maxInFlight:         1,
 	}
 	return q, nil
 }
@@ -172,9 +172,39 @@ func NewReader(topic string, channel string) (*Reader, error) {
 // calculate the max in flight count per connection
 // this may change dynamically based on the number of connections
 func (q *Reader) ConnectionMaxInFlight() int {
-	b := float64(q.MaxInFlight)
+	b := float64(q.maxInFlight)
 	s := b / float64(len(q.nsqConnections))
 	return int(math.Min(math.Max(1, s), b))
+}
+
+// update the reader ready state, updating each connection as appropriate
+func (q *Reader) SetMaxInFlight(maxInFlight int) {
+	if q.maxInFlight == maxInFlight {
+		return
+	}
+	if atomic.LoadInt32(&q.stopFlag) == 1 {
+		return
+	}
+	q.maxInFlight = maxInFlight
+	for _, c := range q.nsqConnections {
+		if atomic.LoadInt32(&c.stopFlag) == 1 {
+			continue
+		}
+		s := q.ConnectionMaxInFlight()
+		if q.VerboseLogging {
+			log.Printf("[%s] RDY %d", c, s)
+		}
+		atomic.StoreInt64(&c.rdyCount, int64(s))
+		err := c.sendCommand(Ready(s))
+		if err != nil {
+			handleError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
+		}
+	}
+}
+
+// max number of messages to allow in-flight at a time
+func (q *Reader) MaxInFlight() int {
+	return q.maxInFlight
 }
 
 func (q *Reader) ConnectToLookupd(addr string) error {
