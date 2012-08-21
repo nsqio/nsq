@@ -156,7 +156,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r, err := nsq.NewReader(topicName, channelName)
-	r.MaxInFlight = *maxInFlight
+	r.SetMaxInFlight(*maxInFlight)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
