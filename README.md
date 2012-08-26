@@ -1,103 +1,208 @@
-### NSQ
+# Not Simple Queue
 
-An infrastructure component designed to support highly available, distributed, fault tolerant, "guaranteed" message
-delivery.
+An infrastructure component designed to support highly available, distributed, fault tolerant,
+loosely guaranteed message processing.
 
-#### Background
+## Background
 
-`simplequeue` was developed as a dead-simple in-memory message queue. It spoke HTTP and had no knowledge (or care) for
-the data you put in or took out. Life was good.
+[simplequeue][1] was developed, you guessed it, as a *simple* in-memory message queue with an HTTP
+interface. It is agnostic to the type and format of the data you put in and take out.
 
-We used `simplequeue` as the foundation for a distributed message queue. In production, we silo'd a `simplequeue` right
-where messages were produced (ie. frontends) and effectively reduced the potential for data loss in a system which did
-not persist messages (by guaranteeing that the loss of any single `simplequeue` would not prevent the rest of the
-message producers or workers, to function).
+We use `simplequeue` as the foundation for a distributed message queue by siloing an instance on
+each host that produces messages. This effectively reduces the potential for data loss in a system
+which otherwise does not persist messages (by guaranteeing that the loss of any single host would
+not prevent the rest of the message producers or consumers from functioning).
 
-We added `pubsub`, an HTTP server to aggregate streams and provide a long-lived `/sub` endpoint. We leveraged `pubsub`
-to transmit streams across data-centers in order to daisy chain a given feed to various downstream services. A nice
-property of this setup is that producers are de-coupled from downstream consumers (a downstream consumer only needs to
-know of the `pubsub` to receive data).
+We also use [pubsub][1], an HTTP server to aggregate streams and provide an endpoint for N number of
+clients to subscribe. We use it to transmit streams across hosts (or datacenters) and be queued
+again for writing to various downstream services.
 
-There are a few issues with this combination of tools...
+We use this foundation to process 100s of millions of messages a day. It is the core upon which
+*everything* is built.
 
-One is simply the operational complexity of having to setup the data pipe to begin with. Often this involves services
-setup as follows:
+This setup has several nice properties:
 
-    `api` > `simplequeue` > `queuereader` > `pubsub` > `ps_to_http` > `simplequeue` > `queuereader`
+ * producers are de-coupled from downstream consumers
+ * no producer-side single point of failures
+ * easy to interact with (all HTTP)
 
-Of particular note are the `pubsub` > `ps_to_http` links. We repeatedly encounter the problem of consuming a single
-stream with the desire to avoid a SPOF. You have 2 options, none ideal. Often we just put the `ps_to_http` process on a
-single box and pray. Alternatively we've chosen to consume the full stream multiple times but only process a % of the
-stream on a given host (essentially sharding). To make things even more complicated we need to repeat this chain for
-each stream of data we're interested in.
+But, it also has its issues...
 
-Messages traveling through the system have no guarantee that they will be delivered to a client and the responsibility
-of requeueing is placed on the client. This churn of messages being passed back and forth increases the potential for
-errors resulting in message loss.
+One is simply the operational overhead/complexity of having to setup and configure the various tools
+in the chain. This often looks like:
 
-#### Enter NSQ
+    api > simplequeue > queuereader > pubsub > ps_to_http > simplequeue > queuereader
 
-`NSQ` is designed to address the fragile nature of the combination of components listed above as well as provide
-high-availability as a byproduct of a messaging pattern that includes no SPOF. It also addresses the need for stronger
-guarantees around the delivery of a message.
+Of particular note are the `pubsub > ps_to_http` links. Given this setup, consuming a stream in a
+way that avoids SPOFs is a challenge. There are two options, neither of which is ideal:
 
-A single `nsqd` process handles multiple "topics" (by convention, this would previously have been referred to as a
-"stream"). Second, a topic can have multiple "channels". In practice, a channel maps to a downstream service. Each
-channel receives all the messages from a topic. The channels buffer data independently of each other, preventing a slow
-consumer from causing a backlog for other channels. A channel can have multiple clients, a message (assuming successful
-delivery) will only be delivered to one of the connected clients, at random.
+ 1. just put the `ps_to_http` process on a single box and pray
+ 2. shard by *consuming* the full stream but *processing* only a percentage of it on each host 
+    (though this does not resolve the issue of seamless failover)
 
-For example, the "decodes" topic could have a channel for "clickatron", "spam", and "fishnet", etc. The benefit should
-be easy to see, there are no additional services needed to be setup for new queues or to daisy chain a new downstream
-service.
+To make things even more complicated, we need to repeat this for *each* stream of data we're
+interested in.
 
-`NSQ` is fully distributed with no single broker or point of failure. `nsqd` clients (aka "queuereaders") are connected
-over TCP sockets to **all** `nsqd` instances providing the specified topic. There are no middle-men, no brokers, and no
-SPOF. The *topology* solves the problems described above:
+Also, messages traveling through the system have no delivery guarantee and the responsibility of
+requeueing is placed on the client (for instance, if processing fails). This churn increases the
+potential for situations that result in message loss.
+
+## Enter NSQ
+
+`NSQ` is designed to:
+
+ 1. greatly simplify configuration complexity
+ 2. provide a straightforward upgrade path
+ 3. provide easy topology solutions that enable high-availability and eliminate SPOFs
+ 4. address the need for stronger message delivery guarantees
+ 5. bound the memory footprint of a single process (by persisting some messages to disk)
+ 6. improve efficiency
+ 
+### Simplifying Configuration Complexity
+
+A single `nsqd` instance is designed to handle multiple streams of data at once. Streams are called
+"topics" and a topic has 1 or more "channels". Each channel receives a *copy* of all the
+messages for a topic. In practice, a channel maps to a downstream service consuming a topic.
+
+Topics and channels all buffer data independently of each other, preventing a slow consumer from
+causing a backlog for other channels (the same applies at the topic level).
+
+A channel can, and generally does, have multiple clients connected. Assuming all connected clients
+are in a state where they are ready to receive messages, a message will be delivered to a random
+client.
+
+For example:
+    
+    "clicks" (topic)
+       |                             |- client 
+       |>---- "metrics" (channel) --<|- ...
+       |                             |- client
+       |
+       |                                   |- client
+       |>---- "spam_analysis" (channel) --<|- ...
+       |                                   |- client
+       |
+       |                             |- client
+       |>---- "archive" (channel) --<|- ...
+                                     |- client
+
+Configuration is greatly simplified because there is no additional setup required to introduce a new
+distinct consumer for a given topic nor is there any need to setup new services to introduce a new
+topic.
+
+`NSQ` also includes a helper application, `nsqlookupd`, which provides a directory service where
+consumers can lookup the addresses of `nsqd` instances that provide the topics they are interested
+in subscribing to. In terms of configuration, this decouples the consumers from the producers (they
+both individually only need to know where to contact common instances of `nsqlookupd`, never each
+other) reducing complexity and maintenance.
+
+At a lower level each `nsqd` has a long-lived TCP connection to `nsqlookupd` over which it
+periodically pushes its state. This data is used to inform which `nsqd` addresses `nsqlookupd` will
+give to consumers. For consumers, a HTTP `/lookup` endpoint is exposed for polling.
+
+NOTE: in future versions, the heuristic `nsqlookupd` uses to return addresses could be based on
+depth, number of connected clients, or other "intelligent" strategies. The current implementation is
+simply *all*. Ultimately, the goal is to ensure that all producers are being read from such that
+depth stays near zero.
+
+### Straightforward Upgrade Path
+
+This was one of our **highest** priorities. Our production systems handle a large volume of traffic,
+all built upon our existing messaging tools, so we needed a way to slowly and methodically upgrade
+specific parts of our infrastructure with little to no impact.
+
+First, on the message *producer* side we built `nsqd` to match `simplequeue`, ie. a HTTP `/put`
+endpoint to POST binary data (with the one caveat that the endpoint takes an additional query
+parameter specifying the "topic"). Services that wanted to start writing to `nsqd` now just had to
+point to `nsqd`.
+
+Second, we built libraries in both Python and Go that matched the functionality and idioms we had
+been accustomed to in our existing libraries. This eased the transition on the message *consumer*
+side by limiting the code changes to bootstrapping.  All business logic remained the same.
+
+Finally, we built utilities to glue old and new components together. These are all available in the
+`examples` directory in the repository:
+
+ * `nsq_pubsub` - expose a `pubsub` like HTTP interface to topics in an `NSQ` cluster
+ * `nsq_to_file` - durably write all messages for a given topic to a file
+ * `nsq_to_http` - perform HTTP requests for all messages in a topic to (multiple) endpoints
+
+### Eliminating SPOFs
+
+`NSQ` is designed to be used in a distributed fashion. `nsqd` clients are connected (over TCP) to
+**all** instances providing the specified topic. There are no middle-men, no brokers, and no SPOFs:
 
     NSQ     NSQ    NSQ
-      \     /\     /
-       \   /  \   /
-        \ /    \ /
-         X      X
-        / \    / \
-       /   \  /   \
-    ...  consumers  ...
+     |\     /\     /|
+     | \   /  \   / |
+     |  \ /    \ /  |
+     |   X      X   |
+     |  / \    / \  |
+     | /   \  /   \ |
+     C      C       C     (consumers)
 
-You don't have to deal with figuring out how to robustly distribute an aggregated feed, instead you consume directly
-from *all* producers. It also doesn't *technically* matter which client connects to which `NSQ`, as long as there are
-enough clients connected to all producers to satisfy the volume of messages, you're guaranteed that all will be
-delivered downstream.
+This topology eliminates the need to chain single, aggregated, feeds. Instead you consume directly
+from **all** producers. *Technically*, it doesn't matter which client connects to which `NSQ`, as
+long as there are enough clients connected to all producers to satisfy the volume of messages,
+you're guaranteed that all will be eventually processed.
 
-It's also worth pointing out the bandwidth efficiency when you have >1 consumers of a topic. You're no longer daisy
-chaining multiple copies of the stream over the network, it's all happening right at the source. Moving away from HTTP
-as the only available transport also significantly reduces the per-message overhead.
+For `nsqlookupd`, high availability is achieved by running multiple instances. They don't
+communicate directly to each other and data is considered to be eventually consistent. Consumers
+poll *all* of the `nsqlookupd` instances they are configured with resulting in a union of all the
+responses. Stale, inaccessible, or otherwise faulty nodes don't grind the system to a halt.
 
-#### Message Delivery Guarantees
+### Message Delivery Guarantees
 
-`NSQ` guarantees that a message will be delivered **at least once**. Duplicate messages are possible and downstream
-systems should be designed to perform idempotent operations.
+`NSQ` guarantees that a message will be delivered **at least once**. Duplicate messages are a
+possibility and downstream systems should be designed to perform idempotent operations.
 
-It accomplishes this by performing a handshake with the client, as follows:
+This is accomplished by performing a handshake with the client, as follows (assume the client has
+successfully connected and subscribed to a topic):
 
-  1. client GET message
-  2. `NSQ` sends message and stores in temporary internal location
-  3. client replies SUCCESS or FAIL
-     * if client does not reply `NSQ` will automatically timeout and requeue the message
-  4. `NSQ` requeues on FAIL and purges on SUCCESS
+  1. client sends RDY command indicating the # of messages they are willing to accept
+  2. `NSQ` sends message and stores in temporary internal location (decrementing RDY count for that 
+     client)
+  3. client replies FIN or REQ indicating success or failure (requeue) respectively (if client does
+     not reply`NSQ` will automatically timeout after a configurable amount of time and automatically 
+     REQ the message)
 
-#### Lookup Service (nsqlookupd)
+This ensures that the only edge case that would result in message loss is an unclean shutdown of a
+`nsqd` process (and only for the messages that were in memory).
 
-`NSQ` includes a helper application, `nsqlookupd`, which provides a directory service where queuereaders can lookup the
-addresses of `NSQ` instances that contain the topics they are interested in subscribing to. This decouples the consumers
-from the producers (they both individually only need to have intimate knowledge of `nsqlookupd`, never each other).
+### Bounded Memory Footprint
 
-At a lower level each `nsqd` has a long-lived connection to `nsqlookupd` over which it periodically pushes it's state.
-This data is used to inform which addresses `nsqlookupd` will give to queuereaders. The heuristic could be based on
-depth, number of connected queuereaders or naive strategies like round-robin, etc. The goal is to ensure that all
-producers are being read from.  On the client side an HTTP interface is exposed for queuereaders to poll.
+`nsqd` provides a configuration option (`--mem-queue-size`) that will determine the number of
+messages that are kept in memory for a given queue (for both topics *and* channels). If the depth of
+a queue exceeds this threshold messages will be written to disk. This bounds the footprint of a
+given `nsqd` process to:
 
-High availability of `nsqlookupd` is achieved by running multiple instances. They don't communicate directly to each
-other and don't require strong data consistency between themselves. The data is considered *eventually* consistent, the
-queuereaders randomly choose a `nsqlookupd` to poll. Stale (or otherwise inaccessible) nodes don't grind the system to a
-halt.
+    mem-queue-size * #_of_channels_and_topics
+
+Also, an astute observer might have identified that this is a convenient way to gain an even higher
+guarantee of delivery by setting this value to something low (like 1 or even 0). The disk-backed
+queue is designed to survive unclean restarts (although messages might be delivered twice).
+
+Also, related to message delivery guarantees, *clean* shutdowns (by sending a `nsqd` process the
+TERM signal) safely persist messages in memory, in-flight, deferred, and in various internal
+buffers.
+
+### Efficiency
+
+`NSQ` was designed to communicate over a `memcached` like command protocol with simple size-prefixed
+responses. Compared to the previous toolchain using HTTP, this is significantly more efficient
+per-message.
+
+Also, by eliminating the daisy chained stream copies, configuration, setup, and development time is
+greatly reduced (especially in cases where there are >1 consumers of a topic). All the duplication
+happens at the source.
+
+Finally, because `simplequeue` has no high-level functionality built in, the client is responsible
+for maintaining message state (it does so by embedding this information and sending the message back
+and forth for retries). In `NSQ` all of this information is kept in the core.
+
+## EOL
+
+We've been using `NSQ` in production for several months. It's already made an improvement in terms
+of robustness, development time, and simplicity to systems that have moved over to it.
+
+[1]: https://github.com/bitly/simplehttp
