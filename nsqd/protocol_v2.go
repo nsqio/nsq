@@ -170,7 +170,11 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 				if err != nil {
 					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
 				}
-			case msg := <-client.Channel.clientMsgChan:
+			case msg, ok := <-client.Channel.clientMsgChan:
+				if !ok {
+					goto exit
+				}
+
 				if *verbose {
 					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
 						msg.Id, client, msg.Body)
