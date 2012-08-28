@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -46,33 +45,8 @@ func TestStartup(t *testing.T) {
 		topic.PutMessage(msg)
 	}
 
-	log.Printf("checking that PUTs are finished")
-	for {
-		count := topic.Depth()
-		log.Printf("there are %d and %d", len(topic.memoryMsgChan), topic.backend.Depth())
-		if count == int64(iterations-1) { // this will always be one short because the channel buffer is primed
-			break
-		}
-		runtime.Gosched()
-	}
-
 	log.Printf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
-
-	// channel should drain topic
-	// topic -> channel is buffered, so this may take a few cycles
-	for {
-		topic_count := topic.Depth()
-		chan_count := channel1.Depth()
-
-		log.Printf("%d %d; waiting for channel to drain topic; there are %d and %d in topic and %d and %d in channel",
-			topic_count, chan_count,
-			len(topic.memoryMsgChan), topic.backend.Depth(), len(channel1.memoryMsgChan), channel1.backend.Depth())
-		if topic_count == 0 && chan_count == int64(iterations) {
-			break
-		}
-		runtime.Gosched()
-	}
 
 	log.Printf("read %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
@@ -85,7 +59,7 @@ func TestStartup(t *testing.T) {
 		if channel1.Depth() == int64(iterations/2) {
 			break
 		}
-		runtime.Gosched()
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	exitChan <- 1
