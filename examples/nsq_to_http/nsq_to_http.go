@@ -79,8 +79,11 @@ type PostPublisher struct{}
 func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	reader := bytes.NewReader(msg)
 	resp, err := http.Post(addr, "application/octet-stream", reader)
+	if err != nil {
+		return err
+	}
 	resp.Body.Close()
-	return err
+	return nil
 }
 
 type GetPublisher struct{}
@@ -88,8 +91,11 @@ type GetPublisher struct{}
 func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	endpoint := fmt.Sprintf(addr, url.QueryEscape(string(msg)))
 	resp, err := http.Get(endpoint)
+	if err != nil {
+		return err
+	}
 	resp.Body.Close()
-	return err
+	return nil
 }
 
 func main() {
