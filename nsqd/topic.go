@@ -37,7 +37,7 @@ func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPer
 		name:            topicName,
 		channelMap:      make(map[string]*Channel),
 		backend:         NewDiskQueue(topicName, dataPath, maxBytesPerFile, syncEvery),
-		incomingMsgChan: make(chan *nsq.Message, 5),
+		incomingMsgChan: make(chan *nsq.Message, 1),
 		memoryMsgChan:   make(chan *nsq.Message, memQueueSize),
 		memQueueSize:    memQueueSize,
 		dataPath:        dataPath,
