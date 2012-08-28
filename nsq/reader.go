@@ -117,6 +117,7 @@ type Reader struct {
 	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value)
 	MaxAttemptCount     uint16
 	DefaultRequeueDelay time.Duration
+	MaxRequeueDelay     time.Duration
 	VerboseLogging      bool
 	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
 	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
@@ -160,6 +161,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int, 1), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90 * time.Second,
+		MaxRequeueDelay:     15 * time.Minute,
 		ShortIdentifier:     strings.Split(hostname, ".")[0],
 		LongIdentifier:      hostname,
 		ReadTimeout:         DefaultClientTimeout,
@@ -591,8 +593,13 @@ func (q *Reader) AddHandler(handler Handler) {
 				continue
 			}
 
-			// default to an exponential delay
+			// linear delay
 			requeueDelay := int(q.DefaultRequeueDelay.Nanoseconds() / 1e6 * int64(message.Attempts))
+			// bound the requeueDelay to configured max
+			if requeueDelay > q.MaxRequeueDelay {
+				requeueDelay = q.MaxRequeueDelay
+			}
+
 			message.responseChannel <- &FinishedMessage{message.Id, requeueDelay, err == nil}
 		}
 	}()
