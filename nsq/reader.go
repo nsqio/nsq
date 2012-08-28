@@ -594,13 +594,13 @@ func (q *Reader) AddHandler(handler Handler) {
 			}
 
 			// linear delay
-			requeueDelay := int(q.DefaultRequeueDelay.Nanoseconds() / 1e6 * int64(message.Attempts))
+			requeueDelay := q.DefaultRequeueDelay * time.Duration(message.Attempts)
 			// bound the requeueDelay to configured max
 			if requeueDelay > q.MaxRequeueDelay {
 				requeueDelay = q.MaxRequeueDelay
 			}
 
-			message.responseChannel <- &FinishedMessage{message.Id, requeueDelay, err == nil}
+			message.responseChannel <- &FinishedMessage{message.Id, int(requeueDelay / time.Millisecond), err == nil}
 		}
 	}()
 }
