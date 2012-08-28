@@ -70,6 +70,13 @@ func TestDiskQueueEmpty(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		<-dq.ReadChan()
 	}
+
+	for {
+		if dq.Depth() == 97 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	assert.Equal(t, dq.Depth(), int64(97))
 
 	// cheat and use the lower level method so that the test doesn't
@@ -90,6 +97,13 @@ func TestDiskQueueEmpty(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		<-dq.ReadChan()
+	}
+
+	for {
+		if dq.Depth() == 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	assert.Equal(t, dq.Depth(), int64(0))
@@ -171,7 +185,7 @@ func TestDiskQueueTorture(t *testing.T) {
 		if dq.Depth() == 0 {
 			break
 		}
-		runtime.Gosched()
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	log.Printf("closing readExitChan")
