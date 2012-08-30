@@ -2,7 +2,7 @@
 
 **install-as** https://github.com/mreiferson/go-install-as
 
-    $ git clone git://github.com/bitly/go-install-as.git
+    $ git clone git://github.com/mreiferson/go-install-as.git
     $ cd <repo_root>
     $ make
 
