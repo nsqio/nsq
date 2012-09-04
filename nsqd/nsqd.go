@@ -88,19 +88,19 @@ func (n *NSQd) LoadMetadata() {
 
 	for _, line := range strings.Split(string(data), "\n") {
 		if line != "" {
-			parts := strings.Split(line, ":")
+			parts := strings.SplitN(line, ":", 2)
 			if len(parts) < 2 {
 				log.Printf("WARNING: skipping topic/channel creation for %s", line)
 				continue
 			}
 
-			if !nsq.IsValidName(parts[0]) {
+			if !nsq.IsValidTopicName(parts[0]) {
 				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
 				continue
 			}
 			topic := n.GetTopic(parts[0])
 
-			if !nsq.IsValidName(parts[1]) {
+			if !nsq.IsValidChannelName(parts[1]) {
 				log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
 			}
 			topic.GetChannel(parts[1])

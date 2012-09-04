@@ -141,11 +141,11 @@ type Reader struct {
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
-	if !IsValidName(topic) {
+	if !IsValidTopicName(topic) {
 		return nil, errors.New("INVALID_TOPIC_NAME")
 	}
 
-	if !IsValidName(channel) {
+	if !IsValidChannelName(channel) {
 		return nil, errors.New("INVALID_CHANNEL_NAME")
 	}
 

@@ -88,6 +88,15 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 	return channel
 }
 
+// RemoveChannel removes a channel from the topic
+// this is generally used to cleanup ephemeral channels
+func (t *Topic) RemoveChannel(channel *Channel) {
+	t.Lock()
+	defer t.Unlock()
+	delete(t.channelMap, channel.name)
+	channel.Close()
+}
+
 // PutMessage writes to the appropriate incoming
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) error {
@@ -139,7 +148,13 @@ func (t *Topic) messagePump() {
 			chanMsg.Timestamp = msg.Timestamp
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				log.Printf("ERROR: failed to put msg(%s) to channel(%s) - %s", msg.Id, channel.name, err.Error())
+				switch err.(type){
+				case *EphemeralSkipError:
+					log.Printf("TOPIC(%s) removing ephemeral channel %s", t.name, channel.name)
+					go func() { t.RemoveChannel(channel) }()
+				default:
+					log.Printf("TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.Id, channel.name, err.Error())
+				}
 			}
 		}
 		t.RUnlock()

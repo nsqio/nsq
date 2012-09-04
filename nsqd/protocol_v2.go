@@ -222,12 +222,12 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	topicName := params[1]
-	if !nsq.IsValidName(topicName) {
+	if !nsq.IsValidTopicName(topicName) {
 		return nil, nsq.ClientErrBadTopic
 	}
 
 	channelName := params[2]
-	if !nsq.IsValidName(channelName) {
+	if !nsq.IsValidChannelName(channelName) {
 		return nil, nsq.ClientErrBadChannel
 	}
 

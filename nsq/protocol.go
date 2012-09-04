@@ -21,10 +21,21 @@ const (
 
 const DefaultClientTimeout = 60 * time.Second
 
-var validNameRegex = regexp.MustCompile(`[a-zA-Z0-9_-]{1,32}`)
+var validTopicNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var validChannelNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+(#ephemeral)?$`)
 
-func IsValidName(name string) bool {
-	return validNameRegex.MatchString(name)
+func IsValidTopicName(name string) bool {
+	if len(name) > 32 || len(name) < 1 {
+		return false
+	}
+	return validTopicNameRegex.MatchString(name)
+}
+
+func IsValidChannelName(name string) bool {
+	if len(name) > 32 || len(name) < 1 {
+		return false
+	}
+	return validChannelNameRegex.MatchString(name)
 }
 
 // describes the basic behavior of any protocol in the system
