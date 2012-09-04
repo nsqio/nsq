@@ -13,7 +13,8 @@ type ClientStats struct {
 
 type ClientV1 struct {
 	net.Conn
-	State int
+	State    int
+	Producer *Producer
 }
 
 func NewClientV1(conn net.Conn) *ClientV1 {

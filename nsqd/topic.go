@@ -88,12 +88,21 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 	return channel
 }
 
+// HasChannel performs a thread safe operation to check for channel existance
+func (t *Topic) HasChannel(channelName string) bool {
+	t.RLock()
+	defer t.RUnlock()
+	_, ok := t.channelMap[channelName]
+	return ok
+}
+
 // RemoveChannel removes a channel from the topic
 // this is generally used to cleanup ephemeral channels
 func (t *Topic) RemoveChannel(channel *Channel) {
 	t.Lock()
-	defer t.Unlock()
 	delete(t.channelMap, channel.name)
+	t.Unlock()          // not defered so that the topic can continue while the channel async closes
+	EmptyQueue(channel) // since we are closing in this fashion it's ok to drop messages instead of persisting them
 	channel.Close()
 }
 
@@ -148,7 +157,7 @@ func (t *Topic) messagePump() {
 			chanMsg.Timestamp = msg.Timestamp
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				switch err.(type){
+				switch err.(type) {
 				case *EphemeralSkipError:
 					log.Printf("TOPIC(%s) removing ephemeral channel %s", t.name, channel.name)
 					go func() { t.RemoveChannel(channel) }()

@@ -3,7 +3,6 @@ package main
 import (
 	"../util"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +18,8 @@ func httpServer(listener net.Listener) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
+	handler.HandleFunc("/topics", TopicsHandler)
+	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 
 	server := &http.Server{
 		Handler:      handler,
@@ -39,63 +40,91 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
+func TopicsHandler(w http.ResponseWriter, req *http.Request) {
+	lookupdb.RLock()
+	defer lookupdb.RUnlock()
+
+	topics := make([]string, 0)
+	for topic, _ := range lookupdb.Topics {
+		topics = append(topics, topic)
+	}
+
+	data := make(map[string]interface{})
+	data["topics"] = topics
+	util.ApiResponse(w, 200, "OK", data)
+}
+
 func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_REQUEST", "data":null}`))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write([]byte(`{"status_code":500, "status_txt":"MISSING_ARG_TOPIC", "data":null}`))
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
 	}
 
-	lookupDataInterface, ok := sm.Get("topic." + topicName)
+	lookupdb.RLock()
+	defer lookupdb.RUnlock()
+
+	topic, ok := lookupdb.Topics[topicName]
 	if !ok {
-		w.Write([]byte(`{"status_code":500, "status_txt":"INVALID_ARG_TOPIC", "data":null}`))
+		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
 		return
 	}
-	lookupData := lookupDataInterface.(map[string]interface{})
 
 	// hijack the request so we can access the connection directly (in order to get the local addr)
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
+		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
 		return
 	}
 
 	conn, bufrw, err := hj.Hijack()
 	if err != nil {
-		w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
+		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
 		return
 	}
 	defer conn.Close()
 
 	data := make(map[string]interface{})
-	data["channels"] = lookupData["channels"]
+	data["channels"] = topic.Channels
 
 	// for each producer try to identify the optimal address based on the ones announced
 	// to lookupd.  if none are optimal send the hostname (last entry)
 	producers := make([]map[string]interface{}, 0)
-	for _, entry := range lookupData["producers"].([]map[string]interface{}) {
-		preferLocal := shouldPreferLocal(conn, entry["id"].(string))
-		log.Printf("preferLocal: %v", preferLocal)
-		chosen, err := identifyBestAddress(entry["ips"].([]string), preferLocal)
+	now := time.Now()
+	for _, p := range topic.Producers {
+		// TODO: make this a command line parameter
+		if now.Sub(p.LastUpdate) > time.Duration(300)*time.Second {
+			// it's a producer that has not checked in. Drop it
+			continue
+		}
+		preferLocal := shouldPreferLocal(conn, p.ProducerId)
+		chosenAddress, err := p.identifyBestAddress(preferLocal)
 		if err != nil {
 			w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
 			return
 		}
 
 		producer := make(map[string]interface{})
-		producer["address"] = chosen
-		producer["port"] = entry["port"]
+		producer["address"] = chosenAddress
+		producer["port"] = p.TCPPort // TODO: drop this field in a future rev (backwards compatible)
+		producer["tcp_port"] = p.TCPPort
+		producer["http_port"] = p.HTTPPort
 		producers = append(producers, producer)
 	}
 	data["producers"] = producers
 
+	util.ApiResponse(w, 200, "OK", data)
 	output := make(map[string]interface{})
 	output["data"] = data
 	output["status_code"] = 200
@@ -110,26 +139,39 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	bufrw.Flush()
 }
 
+func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	if err != nil {
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
+	}
+
+	lookupdb.Lock()
+	defer lookupdb.Unlock()
+
+	topic, ok := lookupdb.Topics[topicName]
+	if !ok {
+		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
+		return
+	}
+
+	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
+	delete(topic.Channels, channelName)
+	util.ApiResponse(w, 200, "OK", nil)
+
+}
+
 func shouldPreferLocal(conn net.Conn, addr string) bool {
 	remoteAddr := conn.RemoteAddr().(*net.TCPAddr)
 	addrHost, _, _ := net.SplitHostPort(addr)
 	addrIP := net.ParseIP(addrHost)
-	return remoteAddr.IP.IsLoopback() && addrIP.IsLoopback()
-}
-
-func identifyBestAddress(ips []string, preferLocal bool) (string, error) {
-	for i, address := range ips {
-		if i == len(ips)-1 {
-			// last entry is always hostname
-			return address, nil
-		}
-
-		ip := net.ParseIP(address)
-		if preferLocal && ip.IsLoopback() {
-			return ip.String(), nil
-		}
-	}
-
-	// should be impossible?
-	return "", errors.New("no address available")
+	preferLocal := remoteAddr.IP.IsLoopback() && addrIP.IsLoopback()
+	log.Printf("preferLocal: %v (%s and %s)", preferLocal, conn.RemoteAddr().String(), addr)
+	return preferLocal
 }

@@ -106,7 +106,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	return c
 }
 
-type EphemeralSkipError struct {}
+type EphemeralSkipError struct{}
 
 func (e *EphemeralSkipError) Error() string {
 	return "E_EPHEMERAL_SKIP"
