@@ -105,3 +105,50 @@ func TestStartup(t *testing.T) {
 	exitChan <- 1
 	<-doneExitChan
 }
+
+func TestEphemeralChannel(t *testing.T) {
+	// a normal channel sticks around after clients disconnect; an ephemeral channel is
+	// lazily removed after the last client disconnects
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
+	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
+
+	nsqd := NewNSQd(1)
+	nsqd.tcpAddr = tcpAddr
+	nsqd.httpAddr = httpAddr
+	nsqd.memQueueSize = 100
+
+	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
+	doneExitChan := make(chan int)
+
+	exitChan := make(chan int)
+	go func() {
+		nsqd.Main()
+		<-exitChan
+		nsqd.Exit()
+		doneExitChan <- 1
+	}()
+
+	body := []byte("an_ephermeal_message")
+	topic := nsqd.GetTopic(topicName)
+	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
+
+	msg := nsq.NewMessage(<-nsqd.idChan, body)
+	topic.PutMessage(msg)
+	msg = <-ephemeralChannel.clientMsgChan
+	assert.Equal(t, msg.Body, body)
+
+	log.Printf("pulling from channel")
+	ephemeralChannel.RemoveClient(nil)
+
+	// trigger the lazy cleanup
+	msg = nsq.NewMessage(<-nsqd.idChan, body)
+	topic.PutMessage(msg)
+	time.Sleep(50 * time.Millisecond)
+
+	assert.Equal(t, len(topic.channelMap), 0)
+	exitChan <- 1
+	<-doneExitChan
+}

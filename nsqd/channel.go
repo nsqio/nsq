@@ -8,6 +8,7 @@ import (
 	"container/heap"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,15 +40,17 @@ type Channel struct {
 
 	backend BackendQueue
 
-	incomingMsgChan chan *nsq.Message
-	memoryMsgChan   chan *nsq.Message
-	clientMsgChan   chan *nsq.Message
-	exitChan        chan int
-	waitGroup       util.WaitGroupWrapper
-	exitFlag        int32
+	incomingMsgChan   chan *nsq.Message
+	memoryMsgChan     chan *nsq.Message
+	clientMsgChan     chan *nsq.Message
+	exitChan          chan int
+	waitGroup         util.WaitGroupWrapper
+	exitFlag          int32
+	ephemeralKillFlag int32
 
 	// state tracking
-	clients []ClientStatTracker
+	clients          []ClientStatTracker
+	ephemeralChannel bool
 
 	// TODO: these can be DRYd up
 	deferredMessages map[string]*pqueue.Item
@@ -77,7 +80,6 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		topicName:        topicName,
 		name:             channelName,
 		msgTimeout:       msgTimeout,
-		backend:          NewDiskQueue(backendName, dataPath, maxBytesPerFile, syncEvery),
 		incomingMsgChan:  make(chan *nsq.Message, 1),
 		memoryMsgChan:    make(chan *nsq.Message, inMemSize),
 		clientMsgChan:    make(chan *nsq.Message),
@@ -88,7 +90,12 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		deferredMessages: make(map[string]*pqueue.Item),
 		deferredPQ:       pqueue.New(int(inMemSize / 10)),
 	}
-
+	if strings.HasSuffix(channelName, "#ephemeral") {
+		c.ephemeralChannel = true
+		c.backend = NewDummyBackendQueue()
+	} else {
+		c.backend = NewDiskQueue(backendName, dataPath, maxBytesPerFile, syncEvery)
+	}
 	go c.messagePump()
 	c.waitGroup.Wrap(func() { c.router() })
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
@@ -99,8 +106,18 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	return c
 }
 
+type EphemeralSkipError struct {}
+
+func (e *EphemeralSkipError) Error() string {
+	return "E_EPHEMERAL_SKIP"
+}
+
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
+	if atomic.LoadInt32(&c.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
+
 	var err error
 
 	log.Printf("CHANNEL(%s): closing", c.name)
@@ -169,6 +186,11 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
+	// this is a lazy skip which happens on the next put 
+	// so we are in a context to return info to the topic
+	if atomic.LoadInt32(&c.ephemeralKillFlag) == 1 {
+		return &EphemeralSkipError{}
+	}
 	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.messageCount, 1)
 	return nil
@@ -232,18 +254,20 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 	c.Lock()
 	defer c.Unlock()
 
-	if len(c.clients) == 0 {
-		return
-	}
-
-	finalClients := make([]ClientStatTracker, 0, len(c.clients)-1)
-	for _, cli := range c.clients {
-		if cli != client {
-			finalClients = append(finalClients, cli)
+	if len(c.clients) != 0 {
+		finalClients := make([]ClientStatTracker, 0, len(c.clients)-1)
+		for _, cli := range c.clients {
+			if cli != client {
+				finalClients = append(finalClients, cli)
+			}
 		}
+		c.clients = finalClients
 	}
 
-	c.clients = finalClients
+	if len(c.clients) == 0 && c.ephemeralChannel == true {
+		atomic.AddInt32(&c.ephemeralKillFlag, 1)
+	}
+
 }
 
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
@@ -375,7 +399,7 @@ func (c *Channel) router() {
 		default:
 			err := WriteMessageToBackend(msg, c)
 			if err != nil {
-				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s", c.name, err.Error())
 				// theres not really much we can do at this point, you're certainly
 				// going to lose messages...
 			}

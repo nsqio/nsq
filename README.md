@@ -186,6 +186,10 @@ Also, related to message delivery guarantees, *clean* shutdowns (by sending a `n
 TERM signal) safely persist messages in memory, in-flight, deferred, and in various internal
 buffers.
 
+Note, channels ending in the string `#ephemeral` will not be buffered to disk and will instead drop messages
+after passing the mem-queue-size. This enables consumers which do not need message guarantees to subscribe to a channel.
+These ephemeral channels will also not persist after the last client disconnects.
+
 ### Efficiency
 
 `NSQ` was designed to communicate over a `memcached` like command protocol with simple size-prefixed
