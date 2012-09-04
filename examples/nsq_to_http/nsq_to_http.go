@@ -151,7 +151,10 @@ func main() {
 		addresses = getAddresses
 	}
 
-	r, _ := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	r.SetMaxInFlight(*maxInFlight)
 	r.VerboseLogging = *verbose
 

@@ -167,7 +167,10 @@ func main() {
 		logChan: make(chan *Message, 1),
 	}
 
-	r, _ := nsq.NewReader(*topic, *channel)
+	r, err := nsq.NewReader(*topic, *channel)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	r.SetMaxInFlight(*maxInFlight)
 	r.VerboseLogging = *verbose
 

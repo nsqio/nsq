@@ -116,7 +116,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !nsq.IsValidName(topicName) {
+	if !nsq.IsValidTopicName(topicName) {
 		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
 		return
 	}
@@ -149,7 +149,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !nsq.IsValidName(topicName) {
+	if !nsq.IsValidTopicName(topicName) {
 		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
 		return
 	}
@@ -204,7 +204,7 @@ func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_TOPIC")
 	}
 
-	if !nsq.IsValidName(topicName) {
+	if !nsq.IsValidTopicName(topicName) {
 		return "", "", errors.New("INVALID_ARG_TOPIC")
 	}
 
@@ -213,7 +213,7 @@ func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_CHANNEL")
 	}
 
-	if !nsq.IsValidName(channelName) {
+	if !nsq.IsValidChannelName(channelName) {
 		return "", "", errors.New("INVALID_ARG_CHANNEL")
 	}
 

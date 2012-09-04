@@ -30,6 +30,15 @@ func mustConnectNSQd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
 	return conn
 }
 
+// test channel/topic names
+func TestChannelTopicNames(t *testing.T) {
+	assert.Equal(t, nsq.IsValidChannelName("test"), true)
+	assert.Equal(t, nsq.IsValidChannelName("test#ephemeral"), true)
+	assert.Equal(t, nsq.IsValidTopicName("test"), true)
+	assert.Equal(t, nsq.IsValidTopicName("test#ephemeral"), false)
+	assert.Equal(t, nsq.IsValidTopicName("test:ephemeral"), false)
+}
+
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
@@ -143,7 +152,7 @@ func TestClientHeartbeat(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	topicName := "test_client_hearbeat_v2" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	tcpAddr, _ := mustStartNSQd()
 	defer nsqd.Exit()
