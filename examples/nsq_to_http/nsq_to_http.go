@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,6 +30,7 @@ var (
 	verbose          = flag.Bool("verbose", false, "enable verbose logging")
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
 	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
+	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
 	getAddresses     = util.StringArray{}
 	postAddresses    = util.StringArray{}
 	nsqAddresses     = util.StringArray{}
@@ -54,6 +56,11 @@ type PublishHandler struct {
 }
 
 func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
+	// skip messages if rand float is greater than throttle
+	// short-circuit to avoid needless calls to rand
+	if *throttleFraction < 1.0 && rand.Float64() > *throttleFraction {
+		return nil
+	}
 	switch ph.mode {
 	case ModeAll:
 		for _, addr := range ph.addresses {
@@ -136,6 +143,10 @@ func main() {
 
 	if *roundRobin {
 		mode = ModeRoundRobin
+	}
+
+	if *throttleFraction > 1.0 || *throttleFraction < 0.0 {
+		log.Fatalf("Throttle fraction must be between 0.0 and 1.0")
 	}
 
 	hupChan := make(chan os.Signal, 1)
