@@ -6,6 +6,7 @@ import (
 	"../../nsq"
 	"../../util"
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -90,6 +91,9 @@ func (p *PostPublisher) Publish(addr string, msg []byte) error {
 		return err
 	}
 	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+	}
 	return nil
 }
 
@@ -102,6 +106,9 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 		return err
 	}
 	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+	}
 	return nil
 }
 
