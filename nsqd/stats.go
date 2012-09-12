@@ -45,7 +45,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -58,7 +58,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 
 	if len(nsqd.topicMap) == 0 {
 		if jsonFormat {
-			w.Write(util.ApiResponse(500, "NO_TOPICS", nil))
+			util.ApiResponse(w, 500, "NO_TOPICS", nil)
 		} else {
 			io.WriteString(w, "NO_TOPICS\n")
 		}
@@ -196,9 +196,9 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if jsonFormat {
-		w.Write(util.ApiResponse(200, "OK", struct {
+		util.ApiResponse(w, 200, "OK", struct {
 			Topics []interface{} `json:"topics"`
-		}{topics}))
+		}{topics})
 	}
 
 }

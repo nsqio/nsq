@@ -3,6 +3,16 @@
 An infrastructure component designed to support highly available, distributed, fault tolerant,
 loosely guaranteed message processing.
 
+## Components
+
+* `nsqd` is the daemon that receives, buffers, and delivers messages to clients.
+* `nsqlookupd` is the daemon that manages topology information
+* `nsqadmin` is the Web UI to view message statistics and to perform administrative tasks
+* `nsq` is a go library for writing nsq clients
+* `pynsq` is a python library for writing nsq clients
+
+Examples: several example nsq clients are included: `nsq_pubsub`, `nsq_to_file`, `nsq_to_http`
+
 ## Background
 
 [simplequeue][1] was developed, you guessed it, as a *simple* in-memory message queue with an HTTP

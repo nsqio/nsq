@@ -161,6 +161,14 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 	return topic
 }
 
+// HasTopic performs a thread safe operation to check for topic existance
+func (n *NSQd) HasTopic(topicName string) bool {
+	n.RLock()
+	defer n.RUnlock()
+	_, ok := n.topicMap[topicName]
+	return ok
+}
+
 func (n *NSQd) idPump() {
 	lastError := time.Now()
 	for {

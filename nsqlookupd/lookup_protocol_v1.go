@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type LookupProtocolV1 struct {
@@ -80,41 +82,71 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, para
 
 	topicName := params[1]
 	channelName := params[2]
-	port, err := strconv.Atoi(params[3])
-	if err != nil {
-		return nil, err
-	}
 
-	host, _, err := net.SplitHostPort(client.RemoteAddr().String())
-	if err != nil {
-		return nil, err
-	}
-
-	id := net.JoinHostPort(host, strconv.Itoa(port))
-
-	var bodyLen int32
-	err = binary.Read(reader, binary.BigEndian, &bodyLen)
-	if err != nil {
-		return nil, err
-	}
-
-	body := make([]byte, bodyLen)
-	_, err = io.ReadFull(reader, body)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, ip := range bytes.Split(body, []byte("\n")) {
-		err = sm.Set("topic."+topicName, UpdateTopic, topicName, channelName, id, string(ip), port)
+	// TODO: move this client information into a separate message so the ANNOUNCE can return to just
+	// be about topic and channel
+	if client.Producer == nil {
+		tcpPort, err := strconv.Atoi(params[3])
 		if err != nil {
 			return nil, err
 		}
+		httpPort := tcpPort + 1
+		if len(params) > 4 {
+			httpPort, err = strconv.Atoi(params[4])
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// build an identifier to use to track this client. We use remote Address + TCP port number
+		host, _, err := net.SplitHostPort(client.RemoteAddr().String())
+		if err != nil {
+			return nil, err
+		}
+		producerId := net.JoinHostPort(host, strconv.Itoa(tcpPort))
+
+		var bodyLen int32
+		err = binary.Read(reader, binary.BigEndian, &bodyLen)
+		if err != nil {
+			return nil, err
+		}
+
+		body := make([]byte, bodyLen)
+		_, err = io.ReadFull(reader, body)
+		if err != nil {
+			return nil, err
+		}
+		var ipAddresses []string
+		// client sends multiple source IP address as the message body
+		for _, ip := range bytes.Split(body, []byte("\n")) {
+			ipAddresses = append(ipAddresses, string(ip))
+		}
+
+		client.Producer = &Producer{
+			ProducerId:  producerId,
+			TCPPort:     tcpPort,
+			HTTPPort:    httpPort,
+			IpAddresses: ipAddresses,
+			LastUpdate:  time.Now(),
+		}
+		log.Printf("CLIENT(%s) -> CLIENT(%s) registered TCP:%d HTTP:%d addresses:%s", client.RemoteAddr(), producerId, tcpPort, httpPort, ipAddresses)
+	}
+
+	log.Printf("CLIENT(%s) announcing Topic:%s Channel:%s", client.Producer.ProducerId, topicName, channelName)
+	err = lookupdb.Update(topicName, channelName, client.Producer)
+	if err != nil {
+		return nil, err
 	}
 
 	return []byte("OK"), nil
 }
 
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
-	// TODO: this should actually update metadata for the topic/channel
+	if client.Producer != nil {
+		// we could get a PING before an ANNOUNCE on the same client connection
+		now := time.Now()
+		log.Printf("CLIENT(%s) pinged (last ping %s)", client.Producer.ProducerId, now.Sub(client.Producer.LastUpdate))
+		client.Producer.LastUpdate = now
+	}
 	return []byte("OK"), nil
 }

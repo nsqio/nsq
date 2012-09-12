@@ -23,7 +23,7 @@ var (
 )
 
 var protocols = map[int32]nsq.Protocol{}
-var sm *util.SafeMap
+var lookupdb *LookupDB
 
 func main() {
 	var waitGroup util.WaitGroupWrapper
@@ -41,7 +41,7 @@ func main() {
 
 	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
-	sm = util.NewSafeMap()
+	lookupdb = NewLookupDB()
 
 	if *cpuProfile != "" {
 		log.Printf("CPU Profiling Enabled")
