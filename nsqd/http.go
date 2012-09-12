@@ -4,7 +4,6 @@ import (
 	"../nsq"
 	"../util"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -26,7 +25,8 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/put", putHandler)
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
-	handler.HandleFunc("/empty", emptyHandler)
+	handler.HandleFunc("/empty_channel", emptyChannelHandler)
+	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
@@ -51,13 +51,13 @@ func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
-	topicName, channelName, err := getTopicChannelArgs(reqParams)
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, err.Error(), nil))
+		util.ApiResponse(w, 500, err.Error(), nil)
 		return
 	}
 
@@ -106,18 +106,18 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_TOPIC", nil))
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
 	}
 
 	if !nsq.IsValidTopicName(topicName) {
-		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
+		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
 		return
 	}
 
@@ -139,18 +139,18 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
-		w.Write(util.ApiResponse(500, "MISSING_ARG_TOPIC", nil))
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
 	}
 
 	if !nsq.IsValidTopicName(topicName) {
-		w.Write(util.ApiResponse(500, "INVALID_ARG_TOPIC", nil))
+		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
 		return
 	}
 
@@ -172,17 +172,17 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func emptyHandler(w http.ResponseWriter, req *http.Request) {
+func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		w.Write(util.ApiResponse(500, "INVALID_REQUEST", nil))
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
-	topicName, channelName, err := getTopicChannelArgs(reqParams)
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		w.Write(util.ApiResponse(500, err.Error(), nil))
+		util.ApiResponse(w, 500, err.Error(), nil)
 		return
 	}
 
@@ -190,7 +190,7 @@ func emptyHandler(w http.ResponseWriter, req *http.Request) {
 	channel := topic.GetChannel(channelName)
 	err = EmptyQueue(channel)
 	if err != nil {
-		w.Write(util.ApiResponse(500, "INTERNAL_ERROR", nil))
+		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
 		return
 	}
 
@@ -198,24 +198,32 @@ func emptyHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
-	topicName, err := rp.Query("topic")
+func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		return "", "", errors.New("MISSING_ARG_TOPIC")
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
 	}
 
-	if !nsq.IsValidTopicName(topicName) {
-		return "", "", errors.New("INVALID_ARG_TOPIC")
-	}
-
-	channelName, err := rp.Query("channel")
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return "", "", errors.New("MISSING_ARG_CHANNEL")
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
 	}
 
-	if !nsq.IsValidChannelName(channelName) {
-		return "", "", errors.New("INVALID_ARG_CHANNEL")
+	if !nsqd.HasTopic(topicName) {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
 	}
+	topic := nsqd.GetTopic(topicName)
+	if !topic.HasChannel(channelName) {
+		util.ApiResponse(w, 500, "INVALID_CHANNEL", nil)
+		return
+	}
+	channel := topic.GetChannel(channelName)
+	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
+	topic.RemoveChannel(channel)
 
-	return topicName, channelName, nil
+	util.ApiResponse(w, 200, "OK", nil)
 }
