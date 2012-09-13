@@ -23,8 +23,6 @@ func httpServer(listener net.Listener) {
 
 	server := &http.Server{
 		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
 	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed

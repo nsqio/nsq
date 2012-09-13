@@ -34,9 +34,7 @@ func httpServer(listener net.Listener) {
 	// these timeouts are absolute per server connection NOT per request
 	// this means that a single persistent connection will only last N seconds
 	server := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
+		Handler: handler,
 	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
