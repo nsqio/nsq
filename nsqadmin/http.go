@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 var templates *template.Template
@@ -34,7 +33,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
 
 	server := &http.Server{
-		Handler:      handler,
+		Handler: handler,
 	}
 	err = server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed

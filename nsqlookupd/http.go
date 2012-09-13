@@ -22,7 +22,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 
 	server := &http.Server{
-		Handler:      handler,
+		Handler: handler,
 	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
