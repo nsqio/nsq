@@ -1,6 +1,7 @@
 package nsq
 
 import (
+	"log"
 	"net"
 	"time"
 )
@@ -23,6 +24,7 @@ func NewLookupPeer(addr string, connectCallback func(*LookupPeer)) *LookupPeer {
 }
 
 func (lp *LookupPeer) Connect() error {
+	log.Printf("LOOKUP connecting to %s", lp.addr)
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
 		return err

@@ -60,11 +60,6 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
-	}
 
 	topicName, err := reqParams.Query("topic")
 	if err != nil {
@@ -96,7 +91,11 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	defer conn.Close()
 
 	data := make(map[string]interface{})
-	data["channels"] = topic.Channels
+	channels := make([]string, 0)
+	for channel, _ := range topic.Channels {
+		channels = append(channels, channel)
+	}
+	data["channels"] = channels
 
 	// for each producer try to identify the optimal address based on the ones announced
 	// to lookupd.  if none are optimal send the hostname (last entry)

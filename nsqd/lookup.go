@@ -50,9 +50,10 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 		case newChannel := <-notifyChannelChan:
 			// notify all nsqds that a new channel exists
 			channel := newChannel.(*Channel)
-			log.Printf("LOOKUP: new channel %s", channel.name)
+			cmd := nsq.Announce(channel.topicName, channel.name, port, netAddrs)
 			for _, lookupPeer := range lookupPeers {
-				_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netAddrs))
+				log.Printf("LOOKUP: [%s] new channel %s", lookupPeer, cmd)
+				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 				}
@@ -60,34 +61,39 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 		case newTopic := <-notifyTopicChan:
 			// notify all nsqds that a new topic exists
 			topic := newTopic.(*Topic)
-			log.Printf("LOOKUP: new topic %s", topic.name)
+			cmd := nsq.Announce(topic.name, ".", port, netAddrs)
 			for _, lookupPeer := range lookupPeers {
-				_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netAddrs))
+				log.Printf("LOOKUP: [%s] new topic %s", lookupPeer, cmd)
+				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
 				}
 			}
 		case lookupPeer := <-syncTopicChan:
+			commands := make([]*nsq.Command, 0)
+			// build all the commands first so we exit the lock(s) as fast as possible
 			nsqd.RLock()
 			for _, topic := range nsqd.topicMap {
 				topic.RLock()
-				// either send a single topic announcement or send an announcement for each of the channels
 				if len(topic.channelMap) == 0 {
-					_, err := lookupPeer.Command(nsq.Announce(topic.name, ".", port, netAddrs))
-					if err != nil {
-						log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
-					}
+					commands = append(commands, nsq.Announce(topic.name, ".", port, netAddrs))
 				} else {
 					for _, channel := range topic.channelMap {
-						_, err := lookupPeer.Command(nsq.Announce(channel.topicName, channel.name, port, netAddrs))
-						if err != nil {
-							log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
-						}
+						commands = append(commands, nsq.Announce(channel.topicName, channel.name, port, netAddrs))
 					}
 				}
 				topic.RUnlock()
 			}
 			nsqd.RUnlock()
+
+			for _, cmd := range commands {
+				log.Printf("LOOKUP: [%s] %s", lookupPeer, cmd)
+				_, err := lookupPeer.Command(cmd)
+				if err != nil {
+					log.Printf("ERROR: [%s] announce %v failed - %s", lookupPeer, cmd, err.Error())
+					break
+				}
+			}
 		case <-exitChan:
 			goto exit
 		}

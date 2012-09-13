@@ -70,6 +70,7 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 	case "PING":
 		return p.PING(client, params)
 	}
+	log.Printf("ERROR: invalid method %s from client %s", client.RemoteAddr(), params[0])
 	return nil, nsq.ClientErrInvalid
 }
 
@@ -79,9 +80,20 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, para
 	if len(params) < 4 {
 		return nil, nsq.ClientErrInvalid
 	}
-
 	topicName := params[1]
 	channelName := params[2]
+
+	var bodyLen int32
+	err = binary.Read(reader, binary.BigEndian, &bodyLen)
+	if err != nil {
+		return nil, err
+	}
+
+	body := make([]byte, bodyLen)
+	_, err = io.ReadFull(reader, body)
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO: move this client information into a separate message so the ANNOUNCE can return to just
 	// be about topic and channel
@@ -105,17 +117,6 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, para
 		}
 		producerId := net.JoinHostPort(host, strconv.Itoa(tcpPort))
 
-		var bodyLen int32
-		err = binary.Read(reader, binary.BigEndian, &bodyLen)
-		if err != nil {
-			return nil, err
-		}
-
-		body := make([]byte, bodyLen)
-		_, err = io.ReadFull(reader, body)
-		if err != nil {
-			return nil, err
-		}
 		var ipAddresses []string
 		// client sends multiple source IP address as the message body
 		for _, ip := range bytes.Split(body, []byte("\n")) {
