@@ -8,7 +8,7 @@ import (
 
 func ApiResponse(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(200)
+	w.WriteHeader(statusCode)
 	response, err := json.Marshal(struct {
 		StatusCode int         `json:"status_code"`
 		StatusTxt  string      `json:"status_txt"`

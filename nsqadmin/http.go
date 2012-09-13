@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -53,6 +54,7 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 
 func indexHandler(w http.ResponseWriter, req *http.Request) {
 	topics, _ := getLookupdTopics(lookupdAddresses)
+	sort.Strings(topics)
 	p := struct {
 		Topics  []string
 		Version string
