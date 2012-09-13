@@ -1,6 +1,8 @@
 package nsq
 
 import (
+	"bytes"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -9,6 +11,13 @@ type Command struct {
 	Name   []byte
 	Params [][]byte
 	Body   []byte
+}
+
+func (c *Command) String() string {
+	if len(c.Params) > 0 {
+		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, []byte(" "))))
+	}
+	return string(c.Name)
 }
 
 // Announce creates a new Command to announce the existence of
