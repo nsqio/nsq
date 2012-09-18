@@ -79,7 +79,10 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.syncEvery, t.msgTimeout)
+		deleteCallback := func(c *Channel) {
+			t.DeleteChannel(c)
+		}
+		channel = NewChannel(deleteCallback, t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.syncEvery, t.msgTimeout)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}
@@ -96,13 +99,21 @@ func (t *Topic) HasChannel(channelName string) bool {
 	return ok
 }
 
-// RemoveChannel removes a channel from the topic
+// DeleteChannel removes a channel from the topic
 // this is generally used to cleanup ephemeral channels
-func (t *Topic) RemoveChannel(channel *Channel) {
+func (t *Topic) DeleteChannel(channel *Channel) {
 	t.Lock()
+	_, ok := t.channelMap[channel.name]
+	if !ok {
+		t.Unlock()
+		return
+	}
 	delete(t.channelMap, channel.name)
-	t.Unlock()          // not defered so that the topic can continue while the channel async closes
-	EmptyQueue(channel) // since we are closing in this fashion it's ok to drop messages instead of persisting them
+	// not defered so that the topic can continue while the channel async closes
+	t.Unlock()
+
+	// since we are closing in this fashion it's ok to drop messages instead of persisting them
+	EmptyQueue(channel)
 	channel.Close()
 }
 
@@ -157,13 +168,7 @@ func (t *Topic) messagePump() {
 			chanMsg.Timestamp = msg.Timestamp
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				switch err.(type) {
-				case *EphemeralSkipError:
-					log.Printf("TOPIC(%s) removing ephemeral channel %s", t.name, channel.name)
-					go func() { t.RemoveChannel(channel) }()
-				default:
-					log.Printf("TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.Id, channel.name, err.Error())
-				}
+				log.Printf("TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.Id, channel.name, err.Error())
 			}
 		}
 		t.RUnlock()

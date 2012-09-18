@@ -131,7 +131,7 @@ func TestEphemeralChannel(t *testing.T) {
 		doneExitChan <- 1
 	}()
 
-	body := []byte("an_ephermeal_message")
+	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
 
@@ -143,9 +143,6 @@ func TestEphemeralChannel(t *testing.T) {
 	log.Printf("pulling from channel")
 	ephemeralChannel.RemoveClient(nil)
 
-	// trigger the lazy cleanup
-	msg = nsq.NewMessage(<-nsqd.idChan, body)
-	topic.PutMessage(msg)
 	time.Sleep(50 * time.Millisecond)
 
 	assert.Equal(t, len(topic.channelMap), 0)

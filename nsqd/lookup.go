@@ -9,12 +9,13 @@ import (
 	"time"
 )
 
-var notifyChannelChan = make(chan interface{})
-var notifyTopicChan = make(chan interface{})
-var syncTopicChan = make(chan *nsq.LookupPeer)
 var lookupPeers = make([]*nsq.LookupPeer, 0)
 
 func lookupRouter(lookupHosts []string, exitChan chan int) {
+	notifyChannelChan := make(chan interface{})
+	notifyTopicChan := make(chan interface{})
+	syncTopicChan := make(chan *nsq.LookupPeer)
+
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
 	port := tcpAddr.Port
 	netAddrs := getNetworkAddrs(tcpAddr)

@@ -220,8 +220,8 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	channel := topic.GetChannel(channelName)
-	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
-	topic.RemoveChannel(channel)
+	log.Printf("Deleting Topic:%s Channel:%s", topicName, channelName)
+	topic.DeleteChannel(channel)
 
 	util.ApiResponse(w, 200, "OK", nil)
 }

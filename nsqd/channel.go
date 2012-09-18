@@ -40,17 +40,18 @@ type Channel struct {
 
 	backend BackendQueue
 
-	incomingMsgChan   chan *nsq.Message
-	memoryMsgChan     chan *nsq.Message
-	clientMsgChan     chan *nsq.Message
-	exitChan          chan int
-	waitGroup         util.WaitGroupWrapper
-	exitFlag          int32
-	ephemeralKillFlag int32
+	incomingMsgChan chan *nsq.Message
+	memoryMsgChan   chan *nsq.Message
+	clientMsgChan   chan *nsq.Message
+	exitChan        chan int
+	waitGroup       util.WaitGroupWrapper
+	exitFlag        int32
 
 	// state tracking
 	clients          []ClientStatTracker
 	ephemeralChannel bool
+	deleteCallback   func(*Channel)
+	deleter          sync.Once
 
 	// TODO: these can be DRYd up
 	deferredMessages map[string]*pqueue.Item
@@ -73,7 +74,7 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
+func NewChannel(deleteCallback func(*Channel), topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
 	c := &Channel{
@@ -89,6 +90,7 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 		inFlightPQ:       pqueue.New(int(inMemSize / 10)),
 		deferredMessages: make(map[string]*pqueue.Item),
 		deferredPQ:       pqueue.New(int(inMemSize / 10)),
+		deleteCallback:   deleteCallback,
 	}
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeralChannel = true
@@ -104,12 +106,6 @@ func NewChannel(topicName string, channelName string, inMemSize int64, dataPath 
 	go notify.Post("new_channel", c)
 
 	return c
-}
-
-type EphemeralSkipError struct{}
-
-func (e *EphemeralSkipError) Error() string {
-	return "E_EPHEMERAL_SKIP"
 }
 
 // Close cleanly closes the Channel
@@ -186,11 +182,6 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
-	// this is a lazy skip which happens on the next put 
-	// so we are in a context to return info to the topic
-	if atomic.LoadInt32(&c.ephemeralKillFlag) == 1 {
-		return &EphemeralSkipError{}
-	}
 	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.messageCount, 1)
 	return nil
@@ -265,9 +256,8 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 	}
 
 	if len(c.clients) == 0 && c.ephemeralChannel == true {
-		atomic.AddInt32(&c.ephemeralKillFlag, 1)
+		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
-
 }
 
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
