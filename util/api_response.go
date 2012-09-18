@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 func ApiResponse(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(statusCode)
 	response, err := json.Marshal(struct {
 		StatusCode int         `json:"status_code"`
 		StatusTxt  string      `json:"status_txt"`
@@ -19,9 +18,11 @@ func ApiResponse(w http.ResponseWriter, statusCode int, statusTxt string, data i
 		data,
 	})
 	if err != nil {
-		errorTxt := fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`, err.Error())
-		w.Write([]byte(errorTxt))
-	} else {
-		w.Write(response)
+		response = []byte(fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`, err.Error()))
 	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	w.WriteHeader(statusCode)
+	w.Write(response)
 }

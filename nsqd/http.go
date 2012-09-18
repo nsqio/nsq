@@ -123,9 +123,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	msg := nsq.NewMessage(<-nsqd.idChan, reqParams.Body)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		w.WriteHeader(500)
-		w.Header().Set("Content-Length", "3")
-		io.WriteString(w, "NOK")
+		util.ApiResponse(w, 500, "NOK", nil)
 		return
 	}
 
@@ -158,9 +156,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 			msg := nsq.NewMessage(<-nsqd.idChan, block)
 			err := topic.PutMessage(msg)
 			if err != nil {
-				w.WriteHeader(500)
-				w.Header().Set("Content-Length", "3")
-				io.WriteString(w, "NOK")
+				util.ApiResponse(w, 500, "NOK", nil)
 				return
 			}
 		}

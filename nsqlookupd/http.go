@@ -121,7 +121,6 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	data["producers"] = producers
 
-	util.ApiResponse(w, 200, "OK", data)
 	output := make(map[string]interface{})
 	output["data"] = data
 	output["status_code"] = 200
@@ -131,6 +130,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 		response = []byte(`{"status_code":500, "status_txt":"INVALID_JSON", "data":null}`)
 	}
 
+	// this is a hijacked connection so we have to write the response manually
 	resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\n\r\n%s", len(response), response)
 	bufrw.WriteString(resp)
 	bufrw.Flush()
@@ -161,7 +161,6 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
 	delete(topic.Channels, channelName)
 	util.ApiResponse(w, 200, "OK", nil)
-
 }
 
 func shouldPreferLocal(conn net.Conn, addr string) bool {
