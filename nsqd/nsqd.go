@@ -115,7 +115,7 @@ func (n *NSQd) Exit() {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fn := fmt.Sprintf(path.Join(n.dataPath, "nsqd.%d.dat"), n.workerId)
-	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE, 0600)
+	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())
 	}
@@ -126,7 +126,9 @@ func (n *NSQd) Exit() {
 		if f != nil {
 			topic.Lock()
 			for _, channel := range topic.channelMap {
-				fmt.Fprintf(f, "%s:%s\n", topic.name, channel.name)
+				if !channel.ephemeralChannel {
+					fmt.Fprintf(f, "%s:%s\n", topic.name, channel.name)
+				}
 			}
 			topic.Unlock()
 		}
