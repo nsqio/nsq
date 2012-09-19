@@ -17,6 +17,7 @@ func TestPutMessage(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1)
+	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -36,6 +37,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1)
+	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -59,6 +61,8 @@ func TestInFlightWorker(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1)
+	defer nsqd.Exit()
+
 	nsqd.msgTimeout = 300 * time.Millisecond
 
 	topic := nsqd.GetTopic("topic")

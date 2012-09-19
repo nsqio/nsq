@@ -1,7 +1,6 @@
 package util
 
 import (
-	"../nsq"
 	"errors"
 	"io/ioutil"
 	"net/http"
@@ -33,26 +32,4 @@ func (r *ReqParams) Query(key string) (string, error) {
 		return "", errors.New("key not in query params")
 	}
 	return keyData[0], nil
-}
-
-func GetTopicChannelArgs(rp *ReqParams) (string, string, error) {
-	topicName, err := rp.Query("topic")
-	if err != nil {
-		return "", "", errors.New("MISSING_ARG_TOPIC")
-	}
-
-	if !nsq.IsValidTopicName(topicName) {
-		return "", "", errors.New("INVALID_ARG_TOPIC")
-	}
-
-	channelName, err := rp.Query("channel")
-	if err != nil {
-		return "", "", errors.New("MISSING_ARG_CHANNEL")
-	}
-
-	if !nsq.IsValidChannelName(channelName) {
-		return "", "", errors.New("INVALID_ARG_CHANNEL")
-	}
-
-	return topicName, channelName, nil
 }
