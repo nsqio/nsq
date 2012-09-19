@@ -6,7 +6,6 @@ import (
 	"../../nsq"
 	"../../util"
 	"bufio"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -87,20 +86,6 @@ func ConnectToNSQAndLookupd(r *nsq.Reader, nsqAddrs []string, lookupd []string) 
 	return nil
 }
 
-func getTopicChannelArgs(rp *util.ReqParams) (string, string, error) {
-	topicName, err := rp.Query("topic")
-	if err != nil {
-		return "", "", errors.New("MISSING_ARG_TOPIC")
-	}
-
-	channelName, err := rp.Query("channel")
-	if err != nil {
-		return "", "", errors.New("MISSING_ARG_CHANNEL")
-	}
-
-	return topicName, channelName, nil
-}
-
 func StatsHandler(w http.ResponseWriter, req *http.Request) {
 	totalMessages := atomic.LoadUint64(&streamServer.messageCount)
 	io.WriteString(w, fmt.Sprintf("Total Messages: %d\n\n", totalMessages))
@@ -138,7 +123,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, channelName, err := getTopicChannelArgs(reqParams)
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

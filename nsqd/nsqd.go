@@ -109,8 +109,13 @@ func (n *NSQd) LoadMetadata() {
 }
 
 func (n *NSQd) Exit() {
-	n.tcpListener.Close()
-	n.httpListener.Close()
+	if n.tcpListener != nil {
+		n.tcpListener.Close()
+	}
+
+	if n.httpListener != nil {
+		n.httpListener.Close()
+	}
 
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
