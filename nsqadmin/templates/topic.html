@@ -56,7 +56,7 @@
         {{ if $c.Selected }}
         <td>{{$c.ChannelName}}</td>
         {{ else }}
-        <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName}}">{{$c.ChannelName}}</a></th>
+        <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a></th>
         {{ end }}
         <td>{{$c.Depth}}</td>
         <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
