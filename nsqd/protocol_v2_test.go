@@ -2,6 +2,9 @@ package main
 
 import (
 	"../nsq"
+	"../util"
+	"bufio"
+	"bytes"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -183,7 +186,7 @@ func TestClientHeartbeat(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
-func BenchmarkProtocolV2(b *testing.B) {
+func BenchmarkProtocolV2Command(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
@@ -194,5 +197,23 @@ func BenchmarkProtocolV2(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		p.Exec(c, params)
+	}
+}
+
+func BenchmarkProtocolV2Data(b *testing.B) {
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	p := &ProtocolV2{}
+	var cb bytes.Buffer
+	rw := bufio.NewReadWriter(bufio.NewReader(&cb), bufio.NewWriter(ioutil.Discard))
+	conn := util.MockConn{rw}
+	c := NewClientV2(conn)
+	msg := nsq.NewMessage([]byte("0123456789abcdef"), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	b.StartTimer()
+
+	for i := 0; i < b.N; i += 1 {
+		msgBody, _ := msg.Encode()
+		p.Send(c, nsq.FrameTypeMessage, msgBody)
 	}
 }
