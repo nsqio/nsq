@@ -53,9 +53,11 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	topics, _ := getLookupdTopics(lookupdAddresses)
 	sort.Strings(topics)
 	p := struct {
+		Title   string
 		Topics  []string
 		Version string
 	}{
+		Title:   "",
 		Topics:  topics,
 		Version: VERSION,
 	}
@@ -74,49 +76,66 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	topic := matches[1]
-	var selectedChannel string
-	if len(matches) >= 4 {
-		selectedChannel = matches[3]
+	if len(matches) >= 4 && len(matches[3]) > 0 {
+		channel := matches[3]
+		channelHandler(w, req, topic, channel)
+		return
 	}
-
-	log.Printf("Topic:%s Channel:%s", topic, selectedChannel)
 
 	producers, _ := getLookupdTopicProducers(topic, lookupdAddresses)
-	hostStats, channelStats, _ := getNSQDStats(producers, topic)
-	var selectedChannelInfo ChannelStats
-	var ok bool
-	if len(selectedChannel) != 0 {
-		selectedChannelInfo, ok = channelStats[selectedChannel]
-		if !ok {
-			http.NotFound(w, req)
-			return
-		}
-		selectedChannelInfo.Selected = true
-		channelStats[selectedChannel] = selectedChannelInfo
-	}
+	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
 
 	p := struct {
-		Version             string
-		Topic               string
-		SelectedChannel     string
-		TopicProducers      []string
-		HostStats           []HostStats
-		ChannelStats        map[string]ChannelStats
-		SelectedChannelInfo ChannelStats
+		Title          string
+		Version        string
+		Topic          string
+		TopicProducers []string
+		TopicHostStats []TopicHostStats
+		ChannelStats   map[string]*ChannelStats
 	}{
-		Version:             VERSION,
-		Topic:               topic,
-		SelectedChannel:     selectedChannel,
-		TopicProducers:      producers,
-		HostStats:           hostStats,
-		ChannelStats:        channelStats,
-		SelectedChannelInfo: selectedChannelInfo,
+		Title:          fmt.Sprintf("NSQ %s", topic),
+		Version:        VERSION,
+		Topic:          topic,
+		TopicProducers: producers,
+		TopicHostStats: topicHostStats,
+		ChannelStats:   channelStats,
 	}
 	err := templates.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
 	}
+}
+
+func channelHandler(w http.ResponseWriter, req *http.Request, topic string, channel string) {
+	producers, _ := getLookupdTopicProducers(topic, lookupdAddresses)
+	topicHostStats, allChannelStats, _ := getNSQDStats(producers, topic)
+	channelStats := allChannelStats[channel]
+
+	p := struct {
+		Title          string
+		Version        string
+		Topic          string
+		Channel        string
+		TopicProducers []string
+		TopicHostStats []TopicHostStats
+		ChannelStats   *ChannelStats
+	}{
+		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
+		Version:        VERSION,
+		Topic:          topic,
+		Channel:        channel,
+		TopicProducers: producers,
+		TopicHostStats: topicHostStats,
+		ChannelStats:   channelStats,
+	}
+
+	err := templates.ExecuteTemplate(w, "channel.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
+
 }
 
 func removeChannelHandler(w http.ResponseWriter, req *http.Request) {

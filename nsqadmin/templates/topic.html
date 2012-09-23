@@ -3,19 +3,14 @@
 
 <ul class="breadcrumb">
   <li><a href="/">Topics</a> <span class="divider">/</span></li>
-  {{if .SelectedChannel}}
-  <li><a href="/topic/{{.Topic}}">{{.Topic}}</a> <span class="divider">/</span></li>
-  <li class="active">{{.SelectedChannel}}</li>
-  {{ else }}
   <li class="active">{{.Topic}}</li>
-  {{ end }}
 </ul>
 
 <div class="row-fluid"><div class="span12">
-<h1>{{.Topic}}</h1>
+<h1>Topic: {{.Topic}}</h1>
 </div></div>
 <div class="row-fluid"><div class="span12">
-<h2>nsqd Hosts</h2>
+<h2>Topic Message Queue</h2>
 <table class="table table-bordered">
     <tr>
         <th>nsqd Host</th>
@@ -24,7 +19,7 @@
         <th>Messages Processed</th>
         <th>Channels</th>
     </tr>
-    {{range .HostStats }}
+    {{range .TopicHostStats }}
         <tr>
         <th>{{.HostAddress}}</th>
         <td>{{.Depth}}</td>
@@ -52,12 +47,8 @@
     </tr>
 
 {{range $c := .ChannelStats}}
-    <tr {{ if $c.Selected }}class="info"{{ end }}>
-        {{ if $c.Selected }}
-        <td>{{$c.ChannelName}}</td>
-        {{ else }}
+    <tr >
         <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a></th>
-        {{ end }}
         <td>{{$c.Depth}}</td>
         <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
         <td>{{$c.InFlightCount}}</td>
@@ -70,52 +61,6 @@
 {{ end }}
 </table>
 </div></div>
-
-{{ if .SelectedChannelInfo.ChannelName }}
-<h3>{{.SelectedChannelInfo.ChannelName}} Client Connection Stats</h3>
-<div class="row-fluid"><div class="span2">
-    <form action="/empty_channel" method="GET">
-        <input type="hidden" name="topic" value="{{.SelectedChannelInfo.Topic}}">
-        <input type="hidden" name="channel" value="{{.SelectedChannelInfo.ChannelName}}">
-        <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
-    </form>
-</div><div class="span2">
-    <form action="/delete_channel" method="GET">
-        <input type="hidden" name="topic" value="{{.SelectedChannelInfo.Topic}}">
-        <input type="hidden" name="channel" value="{{.SelectedChannelInfo.ChannelName}}">
-        <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
-    </form>
-</div></div>
-
-<div class="row-fluid"><div class="span12">
-<table class="table table-bordered">
-    <tr>
-        <th>NSQd Host</th>
-        <th>Client</th>
-        <th>In-Flight</th>
-        <th>Ready Count</th>
-        <th>Finished</th>
-        <th>Requeued</th>
-        <th>Messages Processed</th>
-        <th>Connected</th>
-    </tr>
-
-{{range .SelectedChannelInfo.Clients}}
-    <tr>
-        <td>{{.HostAddress}}</td>
-        <td>{{.ClientVersion}} {{.ClientIdentifier}}</td>
-        <td>{{.InFlightCount}}</td>
-        <td>{{.ReadyCount}}</td>
-        <td>{{.FinishCount}}</td>
-        <td>{{.RequeueCount}}</td>
-        <td>{{.MessageCount}}</td>
-        <td>{{.ConnectedDuration}}</td>
-    </tr>
-{{end}}
-</table>
-</div></div>
-
-{{end}}
 
 {{template "footer.html" .}}
 
