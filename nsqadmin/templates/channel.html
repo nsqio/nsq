@@ -1,0 +1,108 @@
+
+{{template "header.html" .}}
+
+<ul class="breadcrumb">
+  <li><a href="/">Topics</a> <span class="divider">/</span></li>
+  <li><a href="/topic/{{.Topic}}">{{.Topic}}</a> <span class="divider">/</span></li>
+  <li class="active">{{.Channel}}</li>
+</ul>
+
+<div class="row-fluid"><div class="span12">
+<h1>Topic: {{.Topic}} Channel: {{.Channel}}</h1>
+</div></div>
+
+<div class="row-fluid"><div class="span2">
+    <form action="/empty_channel" method="GET">
+        <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+        <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+        <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
+    </form>
+</div><div class="span2">
+    <form action="/delete_channel" method="GET">
+        <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+        <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+        <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
+    </form>
+</div></div>
+
+
+<div class="row-fluid"><div class="span12">
+<h2>Channel Message Queue</h2>
+<table class="table table-bordered">
+    <tr>
+        <th>Host</th>
+        <th>Depth</th>
+        <th>Memory + Disk</th>
+        <th>In-Flight</th>
+        <th>Deferred</th>
+        <th>Requeued</th>
+        <th>Timed Out</th>
+        <th>Messages Processed</th>
+        <th>Clients</th>
+    </tr>
+
+{{range $c := .ChannelStats.HostStats}}
+    <tr>
+        <td>{{$c.HostAddress}}</td>
+        <td>{{$c.Depth}}</td>
+        <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
+        <td>{{$c.InFlightCount}}</td>
+        <td>{{$c.DeferredCount}}</td>
+        <td>{{$c.RequeueCount}}</td>
+        <td>{{$c.TimeoutCount}}</td>
+        <td>{{$c.MessageCount}}</td>
+        <td>{{$c.ClientCount}}</td>
+    </tr>
+{{ end }}
+{{ with $c := .ChannelStats }}
+    <tr class="info">
+        <td>Total:</td>
+        <td>{{$c.Depth}}</td>
+        <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
+        <td>{{$c.InFlightCount}}</td>
+        <td>{{$c.DeferredCount}}</td>
+        <td>{{$c.RequeueCount}}</td>
+        <td>{{$c.TimeoutCount}}</td>
+        <td>{{$c.MessageCount}}</td>
+        <td>{{$c.ClientCount}}</td>
+    </tr>
+{{ end }}
+</table>
+</div></div>
+
+{{ if .ChannelStats.ChannelName }}
+<h3>{{.ChannelStats.ChannelName}} Client Connection Stats</h3>
+
+<div class="row-fluid"><div class="span12">
+<table class="table table-bordered">
+    <tr>
+        <th>NSQd Host</th>
+        <th>Client</th>
+        <th>In-Flight</th>
+        <th>Ready Count</th>
+        <th>Finished</th>
+        <th>Requeued</th>
+        <th>Messages Processed</th>
+        <th>Connected</th>
+    </tr>
+
+{{range .ChannelStats.Clients}}
+    <tr>
+        <td>{{.HostAddress}}</td>
+        <td>{{.ClientVersion}} {{.ClientIdentifier}}</td>
+        <td>{{.InFlightCount}}</td>
+        <td>{{.ReadyCount}}</td>
+        <td>{{.FinishCount}}</td>
+        <td>{{.RequeueCount}}</td>
+        <td>{{.MessageCount}}</td>
+        <td>{{.ConnectedDuration}}</td>
+    </tr>
+{{end}}
+</table>
+</div></div>
+
+{{end}}
+
+{{template "footer.html" .}}
+
+
