@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-type HostStats struct {
+type TopicHostStats struct {
 	HostAddress  string
 	Depth        int64
 	MemoryDepth  int64
@@ -14,6 +14,7 @@ type HostStats struct {
 }
 
 type ChannelStats struct {
+	HostAddress   string
 	ChannelName   string
 	Depth         int64
 	MemoryDepth   int64
@@ -26,6 +27,7 @@ type ChannelStats struct {
 	ClientCount   int
 	Selected      bool
 	Topic         string
+	HostStats     []*ChannelStats
 	Clients       []ClientInfo
 }
 
@@ -39,4 +41,17 @@ type ClientInfo struct {
 	FinishCount       int64
 	RequeueCount      int64
 	MessageCount      int64
+}
+
+func (c *ChannelStats) AddHostStats(a *ChannelStats) {
+	c.Depth += a.Depth
+	c.MemoryDepth += a.MemoryDepth
+	c.BackendDepth += a.BackendDepth
+	c.InFlightCount += a.InFlightCount
+	c.DeferredCount += a.DeferredCount
+	c.RequeueCount += a.RequeueCount
+	c.TimeoutCount += a.TimeoutCount
+	c.MessageCount += a.MessageCount
+	c.ClientCount += a.ClientCount
+	c.HostStats = append(c.HostStats, a)
 }

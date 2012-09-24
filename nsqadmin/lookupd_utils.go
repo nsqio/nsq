@@ -120,9 +120,9 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 	return allSources, nil
 }
 
-func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]HostStats, map[string]ChannelStats, error) {
-	hostStats := make([]HostStats, 0)
-	channelStats := make(map[string]ChannelStats)
+func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]TopicHostStats, map[string]*ChannelStats, error) {
+	topicHostStats := make([]TopicHostStats, 0)
+	channelStats := make(map[string]*ChannelStats)
 	success := false
 	for _, addr := range nsqdAddresses {
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
@@ -143,7 +143,7 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]HostStats, ma
 			}
 			depth := int64(topicInfo["depth"].(float64))
 			backendDepth := int64(topicInfo["backend_depth"].(float64))
-			h := HostStats{
+			h := TopicHostStats{
 				HostAddress:  addr,
 				Depth:        depth,
 				BackendDepth: backendDepth,
@@ -151,7 +151,7 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]HostStats, ma
 				MessageCount: int64(topicInfo["message_count"].(float64)),
 				ChannelCount: len(topicInfo["channels"].([]interface{})),
 			}
-			hostStats = append(hostStats, h)
+			topicHostStats = append(topicHostStats, h)
 
 			channels := topicInfo["channels"].([]interface{})
 			for _, c := range channels {
@@ -159,23 +159,25 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]HostStats, ma
 				channelName := c["channel_name"].(string)
 				channel, ok := channelStats[channelName]
 				if !ok {
-					channel = ChannelStats{ChannelName: channelName, Topic: selectedTopic}
+					channel = &ChannelStats{ChannelName: channelName, Topic: selectedTopic}
 					channelStats[channelName] = channel
 				}
+				h := &ChannelStats{HostAddress: addr, ChannelName: channelName, Topic: selectedTopic}
 				depth := int64(c["depth"].(float64))
 				backendDepth := int64(c["backend_depth"].(float64))
-				channel.Depth += depth
-				channel.BackendDepth += backendDepth
-				channel.MemoryDepth += depth - backendDepth
-				channel.InFlightCount += int64(c["in_flight_count"].(float64))
-				channel.DeferredCount += int64(c["deferred_count"].(float64))
-				channel.MessageCount += int64(c["message_count"].(float64))
-				channel.RequeueCount += int64(c["requeue_count"].(float64))
-				channel.TimeoutCount += int64(c["timeout_count"].(float64))
+				h.Depth = depth
+				h.BackendDepth = backendDepth
+				h.MemoryDepth = depth - backendDepth
+				h.InFlightCount = int64(c["in_flight_count"].(float64))
+				h.DeferredCount = int64(c["deferred_count"].(float64))
+				h.MessageCount = int64(c["message_count"].(float64))
+				h.RequeueCount = int64(c["requeue_count"].(float64))
+				h.TimeoutCount = int64(c["timeout_count"].(float64))
 				clients := c["clients"].([]interface{})
 				// TODO: this is sort of wrong; client's should be de-duped
 				// client A that connects to NSQD-a and NSQD-b should only be counted once. right?
-				channel.ClientCount += len(clients)
+				h.ClientCount = len(clients)
+				channel.AddHostStats(h)
 
 				// "clients": [
 				//   {
@@ -208,14 +210,13 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]HostStats, ma
 					}
 					channel.Clients = append(channel.Clients, clientInfo)
 				}
-				channelStats[channelName] = channel
 			}
 		}
 	}
 	if success == false {
 		return nil, nil, errors.New("unable to query any lookupd")
 	}
-	return hostStats, channelStats, nil
+	return topicHostStats, channelStats, nil
 
 }
 
