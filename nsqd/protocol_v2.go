@@ -54,12 +54,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			clientData, err := nsq.Frame(nsq.FrameTypeError, []byte(err.Error()))
-			if err != nil {
-				break
-			}
-
-			err = p.Write(client, clientData)
+			err = p.Send(client, nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -67,12 +62,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		}
 
 		if response != nil {
-			clientData, err := nsq.Frame(nsq.FrameTypeResponse, response)
-			if err != nil {
-				break
-			}
-
-			err = p.Write(client, clientData)
+			err = p.Send(client, nsq.FrameTypeResponse, response)
 			if err != nil {
 				break
 			}
@@ -87,12 +77,17 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *ProtocolV2) Write(client *ClientV2, data []byte) error {
+func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
+	clientData, err := nsq.Frame(frameType, data)
+	if err != nil {
+		return err
+	}
+	
 	attempts := 0
 	for {
 		client.Lock()
 		client.SetWriteDeadline(time.Now().Add(time.Second))
-		_, err := nsq.SendResponse(client, data)
+		_, err := nsq.SendResponse(client, clientData)
 		client.Unlock()
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -128,12 +123,7 @@ func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
 }
 
 func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
-	clientData, err := nsq.Frame(nsq.FrameTypeResponse, []byte("_heartbeat_"))
-	if err != nil {
-		return err
-	}
-
-	err = p.Write(client, clientData)
+	err := p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
 	if err != nil {
 		return err
 	}
@@ -185,15 +175,10 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 					goto exit
 				}
 
-				clientData, err := nsq.Frame(nsq.FrameTypeMessage, data)
-				if err != nil {
-					goto exit
-				}
-
 				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
-				err = p.Write(client, clientData)
+				err = p.Send(client, nsq.FrameTypeMessage, data)
 				if err != nil {
 					goto exit
 				}
