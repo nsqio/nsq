@@ -192,7 +192,7 @@ func BenchmarkProtocolV2Command(b *testing.B) {
 	defer log.SetOutput(os.Stdout)
 	p := &ProtocolV2{}
 	c := NewClientV2(nil)
-	params := []string{"SUB", "test", "ch"}
+	params := [][]byte{[]byte("SUB"), []byte("test"), []byte("ch")}
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
@@ -209,11 +209,13 @@ func BenchmarkProtocolV2Data(b *testing.B) {
 	rw := bufio.NewReadWriter(bufio.NewReader(&cb), bufio.NewWriter(ioutil.Discard))
 	conn := util.MockConn{rw}
 	c := NewClientV2(conn)
+	var buf bytes.Buffer
 	msg := nsq.NewMessage([]byte("0123456789abcdef"), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	b.StartTimer()
 
 	for i := 0; i < b.N; i += 1 {
-		msgBody, _ := msg.Encode()
-		p.Send(c, nsq.FrameTypeMessage, msgBody)
+		buf.Reset()
+		msg.Encode(&buf)
+		p.Send(c, nsq.FrameTypeMessage, buf.Bytes())
 	}
 }

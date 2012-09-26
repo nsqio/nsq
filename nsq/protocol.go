@@ -119,21 +119,20 @@ func SendCommand(w io.Writer, cmd *Command) error {
 	return nil
 }
 
-func Frame(frameType int32, data []byte) ([]byte, error) {
-	var buf bytes.Buffer
+func Frame(w io.Writer, frameType int32, data []byte) error {
 	var err error
 
-	err = binary.Write(&buf, binary.BigEndian, &frameType)
+	err = binary.Write(w, binary.BigEndian, &frameType)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	_, err = buf.Write(data)
+	_, err = w.Write(data)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return buf.Bytes(), nil
+	return nil
 }
 
 // UnpackResponse is a helper function that takes serialized data (as []byte), 
