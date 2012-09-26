@@ -149,7 +149,10 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		return nil, errors.New("INVALID_CHANNEL_NAME")
 	}
 
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
+	}
 	q := &Reader{
 		TopicName:           topic,
 		ChannelName:         channel,

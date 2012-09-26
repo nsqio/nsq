@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-var protocols = map[int32]nsq.Protocol{}
-
 type NSQd struct {
 	sync.RWMutex
 	workerId        int64
@@ -36,8 +34,6 @@ type NSQd struct {
 	waitGroup       util.WaitGroupWrapper
 	clientTimeout   time.Duration
 }
-
-var nsqd *NSQd
 
 func NewNSQd(workerId int64) *NSQd {
 	n := &NSQd{

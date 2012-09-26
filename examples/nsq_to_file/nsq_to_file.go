@@ -111,7 +111,10 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 
 func updateFile(f *FileLogger) bool {
 	t := time.Now()
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
+	}
 	shortHostname := strings.Split(hostname, ".")[0]
 	identifier := shortHostname
 	if len(*hostIdentifier) != 0 {

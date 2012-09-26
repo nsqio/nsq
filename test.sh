@@ -2,7 +2,7 @@
 set -e
 # a helper script to run tests in the appropriate directories
 
-for dir in nsqd util/pqueue; do
+for dir in nsqd nsqlookupd util/pqueue; do
     echo "testing $dir"
     pushd $dir >/dev/null
     go test -test.v -timeout 5s

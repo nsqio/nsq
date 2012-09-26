@@ -1,49 +1,14 @@
 package main
 
 import (
-	"bitly/simplejson"
+	"../util"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
-
-func makeReq(endpoint string) (*simplejson.Json, error) {
-	httpclient := &http.Client{}
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := httpclient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := simplejson.NewJson(body)
-	if err != nil {
-		return nil, err
-	}
-
-	statusCode, err := data.Get("status_code").Int()
-	if err != nil {
-		return nil, err
-	}
-	if statusCode != 200 {
-		return nil, errors.New(fmt.Sprintf("response status_code == %d", statusCode))
-	}
-	return data.Get("data"), nil
-}
 
 func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
 	success := false
@@ -53,7 +18,7 @@ func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
-		data, err := makeReq(endpoint)
+		data, err := util.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
@@ -77,7 +42,7 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
-		data, err := makeReq(endpoint)
+		data, err := util.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
@@ -128,7 +93,7 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]TopicHostStat
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)
 
-		data, err := makeReq(endpoint)
+		data, err := util.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue

@@ -25,10 +25,8 @@ Command Line Options
 --------------------
 
     Usage of ./nsqd:
-      -cpu-profile="": write cpu profile to file
       -data-path="": path to store disk-backed messages
       -debug=false: enable debug mode
-      -go-max-procs=0: runtime configuration for GOMAXPROCS
       -http-address="0.0.0.0:4151": <addr>:<port> to listen on for HTTP clients
       -lookupd-tcp-address=[]: lookupd TCP address (may be given multiple times)
       -max-bytes-per-file=104857600: number of bytes per diskqueue file before rolling

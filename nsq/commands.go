@@ -2,7 +2,9 @@ package nsq
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -26,6 +28,43 @@ func (c *Command) String() string {
 func Announce(topic string, channel string, port int, ips []string) *Command {
 	var params = [][]byte{[]byte(topic), []byte(channel), []byte(strconv.Itoa(port))}
 	return &Command{[]byte("ANNOUNCE"), params, []byte(strings.Join(ips, "\n"))}
+}
+
+// Identify is the first message sent to the Lookupd and provides information about the client
+func Identify(version string, tcpPort int, httpPort int, address string) *Command {
+	body, err := json.Marshal(struct {
+		Version   string `json:"version"`
+		TcpPort   int    `json:"tcp_port"`
+		HttpPort  int    `json:"http_port"`
+		Addresses string `json:"address"`
+	}{
+		version,
+		tcpPort,
+		httpPort,
+		address,
+	})
+	if err != nil {
+		log.Fatal("failed to create json %s", err.Error())
+	}
+	return &Command{[]byte("IDENTIFY"), [][]byte{}, body}
+}
+
+// REGISTER a topic/channel for this nsqd
+func Register(topic string, channel string) *Command {
+	params := [][]byte{[]byte(topic)}
+	if len(channel) > 0 {
+		params = append(params, []byte(channel))
+	}
+	return &Command{[]byte("REGISTER"), params, nil}
+}
+
+// UNREGISTER removes a topic/channel from this nsqd
+func UnRegister(topic string, channel string) *Command {
+	params := [][]byte{[]byte(topic)}
+	if len(channel) > 0 {
+		params = append(params, []byte(channel))
+	}
+	return &Command{[]byte("UNREGISTER"), params, nil}
 }
 
 // Ping creates a new Command to keep-alive the state of all the 
