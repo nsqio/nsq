@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"bytes"
 	"log"
 	"net"
 	"sync"
@@ -12,6 +13,7 @@ import (
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
+	frameBuf        bytes.Buffer
 	State           int32
 	ReadyCount      int64
 	LastReadyCount  int64

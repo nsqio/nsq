@@ -29,31 +29,39 @@ func NewMessage(id []byte, body []byte) *Message {
 	}
 }
 
-// Encode serializes the receiver into []byte
-func (m *Message) Encode() ([]byte, error) {
+// EncodeBytes serializes the message into a new []byte
+func (m *Message) EncodeBytes() ([]byte, error) {
 	var buf bytes.Buffer
-
-	err := binary.Write(&buf, binary.BigEndian, &m.Timestamp)
+	err := m.Encode(&buf)
 	if err != nil {
 		return nil, err
 	}
-
-	err = binary.Write(&buf, binary.BigEndian, &m.Attempts)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(m.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = buf.Write(m.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	return buf.Bytes(), nil
+}
+
+// Encode serializes the message into the supplied writer
+func (m *Message) Encode(w io.Writer) error {
+	err := binary.Write(w, binary.BigEndian, &m.Timestamp)
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, &m.Attempts)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(m.Id)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(m.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // DecodeMessage deseralizes data (as []byte) and creates/returns
