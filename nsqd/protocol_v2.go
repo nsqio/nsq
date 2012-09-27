@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -31,7 +30,7 @@ func init() {
 
 func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var err error
-	var line string
+	var line []byte
 
 	client := NewClientV2(conn)
 	atomic.StoreInt32(&client.State, nsq.StateInit)
@@ -40,13 +39,20 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	reader := bufio.NewReader(client)
 	for {
 		client.SetReadDeadline(time.Now().Add(nsqd.clientTimeout))
-		line, err = reader.ReadString('\n')
+		// ReadSlice does not allocate new space for the data each request
+		// ie. the returned slice is only valid until the next call to it
+		line, err = reader.ReadSlice('\n')
 		if err != nil {
 			break
 		}
 
-		line = strings.TrimSpace(line)
-		params := strings.Split(line, " ")
+		// trim the '\n'
+		line = line[:len(line)-1]
+		// optionally trim the '\r'
+		if line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
+		params := bytes.Split(line, []byte(" "))
 
 		if *verbose {
 			log.Printf("PROTOCOL(V2): [%s] %#v", client.RemoteAddr().String(), params)
@@ -54,12 +60,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			clientData, err := nsq.Frame(nsq.FrameTypeError, []byte(err.Error()))
-			if err != nil {
-				break
-			}
-
-			err = p.Write(client, clientData)
+			err = p.Send(client, nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
 				break
 			}
@@ -67,12 +68,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		}
 
 		if response != nil {
-			clientData, err := nsq.Frame(nsq.FrameTypeResponse, response)
-			if err != nil {
-				break
-			}
-
-			err = p.Write(client, clientData)
+			err = p.Send(client, nsq.FrameTypeResponse, response)
 			if err != nil {
 				break
 			}
@@ -87,13 +83,20 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *ProtocolV2) Write(client *ClientV2, data []byte) error {
+func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
+	client.Lock()
+	defer client.Unlock()
+
+	client.frameBuf.Reset()
+	err := nsq.Frame(&client.frameBuf, frameType, data)
+	if err != nil {
+		return err
+	}
+
 	attempts := 0
 	for {
-		client.Lock()
 		client.SetWriteDeadline(time.Now().Add(time.Second))
-		_, err := nsq.SendResponse(client, data)
-		client.Unlock()
+		_, err := nsq.SendResponse(client, client.frameBuf.Bytes())
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				attempts++
@@ -106,34 +109,30 @@ func (p *ProtocolV2) Write(client *ClientV2, data []byte) error {
 		}
 		break
 	}
+
 	return nil
 }
 
-func (p *ProtocolV2) Exec(client *ClientV2, params []string) ([]byte, error) {
-	switch params[0] {
-	case "SUB":
+func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
+	switch {
+	case bytes.Equal(params[0], []byte("SUB")):
 		return p.SUB(client, params)
-	case "RDY":
+	case bytes.Equal(params[0], []byte("RDY")):
 		return p.RDY(client, params)
-	case "FIN":
+	case bytes.Equal(params[0], []byte("FIN")):
 		return p.FIN(client, params)
-	case "REQ":
+	case bytes.Equal(params[0], []byte("REQ")):
 		return p.REQ(client, params)
-	case "CLS":
+	case bytes.Equal(params[0], []byte("CLS")):
 		return p.CLS(client, params)
-	case "NOP":
+	case bytes.Equal(params[0], []byte("NOP")):
 		return p.NOP(client, params)
 	}
 	return nil, nsq.ClientErrInvalid
 }
 
 func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
-	clientData, err := nsq.Frame(nsq.FrameTypeResponse, []byte("_heartbeat_"))
-	if err != nil {
-		return err
-	}
-
-	err = p.Write(client, clientData)
+	err := p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
 	if err != nil {
 		return err
 	}
@@ -143,6 +142,7 @@ func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
 
 func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
+	var buf bytes.Buffer
 
 	heartbeat := time.NewTicker(nsqd.clientTimeout / 2)
 
@@ -155,7 +155,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			select {
 			case <-client.ReadyStateChan:
 			case <-heartbeat.C:
-				err := p.sendHeartbeat(client)
+				err = p.sendHeartbeat(client)
 				if err != nil {
 					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
 				}
@@ -166,7 +166,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			select {
 			case <-client.ReadyStateChan:
 			case <-heartbeat.C:
-				err := p.sendHeartbeat(client)
+				err = p.sendHeartbeat(client)
 				if err != nil {
 					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
 				}
@@ -180,12 +180,8 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 						msg.Id, client, msg.Body)
 				}
 
-				data, err := msg.Encode()
-				if err != nil {
-					goto exit
-				}
-
-				clientData, err := nsq.Frame(nsq.FrameTypeMessage, data)
+				buf.Reset()
+				err = msg.Encode(&buf)
 				if err != nil {
 					goto exit
 				}
@@ -193,7 +189,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 				client.Channel.StartInFlightTimeout(msg, client)
 				client.SendingMessage()
 
-				err = p.Write(client, clientData)
+				err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
 				if err != nil {
 					goto exit
 				}
@@ -212,7 +208,7 @@ exit:
 	}
 }
 
-func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
 		return nil, nsq.ClientErrInvalid
 	}
@@ -221,19 +217,19 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 		return nil, nsq.ClientErrInvalid
 	}
 
-	topicName := params[1]
+	topicName := string(params[1])
 	if !nsq.IsValidTopicName(topicName) {
 		return nil, nsq.ClientErrBadTopic
 	}
 
-	channelName := params[2]
+	channelName := string(params[2])
 	if !nsq.IsValidChannelName(channelName) {
 		return nil, nsq.ClientErrBadChannel
 	}
 
 	if len(params) == 5 {
-		client.ShortIdentifier = params[3]
-		client.LongIdentifier = params[4]
+		client.ShortIdentifier = string(params[3])
+		client.LongIdentifier = string(params[4])
 	}
 
 	topic := nsqd.GetTopic(topicName)
@@ -248,7 +244,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 	var err error
 
 	state := atomic.LoadInt32(&client.State)
@@ -265,7 +261,7 @@ func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 
 	count := 1
 	if len(params) > 1 {
-		count, err = strconv.Atoi(params[1])
+		count, err = strconv.Atoi(string(params[1]))
 		if err != nil {
 			return nil, nsq.ClientErrInvalid
 		}
@@ -281,7 +277,7 @@ func (p *ProtocolV2) RDY(client *ClientV2, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.ClientErrInvalid
@@ -292,7 +288,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	idStr := params[1]
-	err := client.Channel.FinishMessage(client, []byte(idStr))
+	err := client.Channel.FinishMessage(client, idStr)
 	if err != nil {
 		return nil, nsq.ClientErrFinishFailed
 	}
@@ -302,7 +298,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.ClientErrInvalid
@@ -313,7 +309,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
 	}
 
 	idStr := params[1]
-	timeoutMs, err := strconv.Atoi(params[2])
+	timeoutMs, err := strconv.Atoi(string(params[2]))
 	if err != nil {
 		return nil, nsq.ClientErrInvalid
 	}
@@ -323,7 +319,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
 		return nil, nsq.ClientErrInvalid
 	}
 
-	err = client.Channel.RequeueMessage(client, []byte(idStr), timeoutDuration)
+	err = client.Channel.RequeueMessage(client, idStr, timeoutDuration)
 	if err != nil {
 		return nil, nsq.ClientErrRequeueFailed
 	}
@@ -333,7 +329,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params []string) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) CLS(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateSubscribed {
 		return nil, nsq.ClientErrInvalid
 	}
@@ -347,6 +343,6 @@ func (p *ProtocolV2) CLS(client *ClientV2, params []string) ([]byte, error) {
 	return []byte("CLOSE_WAIT"), nil
 }
 
-func (p *ProtocolV2) NOP(client *ClientV2, params []string) ([]byte, error) {
+func (p *ProtocolV2) NOP(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }

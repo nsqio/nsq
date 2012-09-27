@@ -66,7 +66,8 @@ finish:
 }
 
 func WriteMessageToBackend(msg *nsq.Message, q Queue) error {
-	data, err := msg.Encode()
+	// TODO: refactor this to use Encode with a supplied, reusable, buffer
+	data, err := msg.EncodeBytes()
 	if err != nil {
 		return err
 	}
