@@ -2,9 +2,9 @@ package main
 
 import (
 	"../nsq"
-	"bitly/notify"
 	"bytes"
 	"encoding/json"
+	"github.com/bitly/go-notify"
 	"log"
 	"net"
 	"os"

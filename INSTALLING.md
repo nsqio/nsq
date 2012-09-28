@@ -1,24 +1,12 @@
 # Pre-requisites
 
-**install-as** https://github.com/mreiferson/go-install-as
-
-    $ git clone git://github.com/mreiferson/go-install-as.git
-    $ cd $REPO
-    $ make
-
 **simplejson** https://github.com/bitly/go-simplejson
 
-    # installed under a custom import path so you can control versioning
-    $ git clone git://github.com/bitly/go-simplejson.git
-    $ cd $REPO
-    $ go tool install_as --import-as=bitly/simplejson
+    $ go get github.com/bitly/go-simplejson
 
 **notify** https://github.com/bitly/go-notify
 
-    # installed under a custom import path so you can control versioning
-    $ git clone git://github.com/bitly/go-notify.git
-    $ cd $REPO
-    $ go tool install_as --import-as=bitly/notify
+    $ go get github.com/bitly/go-notify
 
 **assert** https://github.com/bmizerany/assert
 
@@ -28,14 +16,16 @@
 
 Binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps)
 
-    $ git clone git://github.com/bitly/nsq.git
+Note: Binaries can not be built from within $GOPATH because of relative imports. To build, checkout to a directory
+outside of $GOPATH
+
+    $ git clone https://github.com/bitly/nsq.git
     $ cd $REPO
     $ ./install.sh
 
 Go package (for building Go readers)
 
-    $ cd $REPO/nsq
-    $ go tool install_as --import-as=bitly/nsq
+    $ go get github.com/bitly/nsq/nsq
 
 Python module (for building Python readers)
 
