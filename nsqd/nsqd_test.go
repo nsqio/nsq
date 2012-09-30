@@ -22,11 +22,13 @@ func TestStartup(t *testing.T) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
 
-	nsqd = NewNSQd(1)
+	options := NewNsqdOptions()
+	options.memQueueSize = 100
+	options.maxBytesPerFile = 10240
+
+	nsqd := NewNSQd(1, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
-	nsqd.memQueueSize = 100
-	nsqd.maxBytesPerFile = 10240
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -67,12 +69,9 @@ func TestStartup(t *testing.T) {
 
 	// start up a new nsqd w/ the same folder
 
-	nsqdd := NewNSQd(1)
+	nsqdd := NewNSQd(1, options)
 	nsqdd.tcpAddr = tcpAddr
 	nsqdd.httpAddr = httpAddr
-	nsqdd.memQueueSize = 100
-	nsqdd.maxBytesPerFile = 10240
-	nsqdd.dataPath = nsqd.dataPath
 
 	go func() {
 		nsqdd.Main()
@@ -115,10 +114,11 @@ func TestEphemeralChannel(t *testing.T) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
 
-	nsqd := NewNSQd(1)
+	options := NewNsqdOptions()
+	options.memQueueSize = 100
+	nsqd := NewNSQd(1, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
-	nsqd.memQueueSize = 100
 
 	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
 	doneExitChan := make(chan int)
