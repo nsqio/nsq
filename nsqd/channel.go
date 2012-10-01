@@ -103,9 +103,14 @@ func NewChannel(deleteCallback func(*Channel), topicName string, channelName str
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
-	go notify.Post("new_channel", c)
+	go notify.Post("channel_change", c)
 
 	return c
+}
+
+// Exiting returns a boolean indicating if this channel is closed/exiting
+func (c *Channel) Exiting() bool {
+	return atomic.LoadInt32(&c.exitFlag) == 1
 }
 
 // Close cleanly closes the Channel

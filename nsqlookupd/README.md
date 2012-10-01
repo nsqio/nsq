@@ -18,9 +18,7 @@ Command Line Options
 --------------------
 
     Usage of ./nsqlookupd:
-      -cpu-profile="": write cpu profile to file
       -debug=false: enable debug mode
-      -go-max-procs=0: runtime configuration for GOMAXPROCS
       -http-address="0.0.0.0:4161": <addr>:<port> to listen on for HTTP clients
       -tcp-address="0.0.0.0:4160": <addr>:<port> to listen on for TCP clients
       -version=false: print version string

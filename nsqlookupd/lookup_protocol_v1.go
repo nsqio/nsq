@@ -5,6 +5,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -45,7 +47,8 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, reader, params)
 		if err != nil {
-			_, err = nsq.SendResponse(client, []byte(err.Error()))
+			log.Printf("ERROR: CLIENT(%s) %s for %v", client.RemoteAddr(), err.Error(), params)
+			_, err = nsq.SendResponse(client, []byte(nsq.ClientErrInvalid.Error()))
 			if err != nil {
 				break
 			}
@@ -60,28 +63,91 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
+	log.Printf("CLIENT(%s) closing", client.RemoteAddr())
+	if client.Producer != nil {
+		registrations := lookupd.DB.LookupRegistrations(client.Producer)
+		for _, r := range registrations {
+			lookupd.DB.Remove(*r, client.Producer)
+		}
+	}
 	return err
 }
 
 func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	switch params[0] {
-	case "ANNOUNCE":
-		return p.ANNOUNCE(client, reader, params)
 	case "PING":
 		return p.PING(client, params)
+	case "IDENTIFY":
+		return p.IDENTIFY(client, reader, params[1:])
+	case "REGISTER":
+		return p.REGISTER(client, reader, params[1:])
+	case "UNREGISTER":
+		return p.UNREGISTER(client, reader, params[1:])
+	case "ANNOUNCE":
+		return p.ANNOUNCE_OLD(client, reader, params[1:])
 	}
 	log.Printf("ERROR: invalid method %s from client %s", client.RemoteAddr(), params[0])
 	return nil, nsq.ClientErrInvalid
 }
 
-func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
-	var err error
+func getTopicChan(params []string) (string, string, error) {
+	if len(params) == 0 {
+		return "", "", errors.New("Wrong number of parameters")
+	}
+	topicName := params[0]
+	var channelName string
+	if len(params) == 2 {
+		channelName = params[1]
+	}
+	if !nsq.IsValidTopicName(topicName) {
+		return "", "", errors.New("INVALID_TOPIC")
+	}
+	if channelName != "" && !nsq.IsValidChannelName(channelName) {
+		return "", "", errors.New("INVALID_CHANNEL")
+	}
+	return topicName, channelName, nil
+}
 
-	if len(params) < 4 {
+func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
+	if client.Producer == nil {
 		return nil, nsq.ClientErrInvalid
 	}
-	topicName := params[1]
-	channelName := params[2]
+	topic, channel, err := getTopicChan(params)
+	if err != nil {
+		return nil, err
+	}
+	if channel != "" {
+		key := Registration{"channel", topic, channel}
+		lookupd.DB.Add(key, client.Producer)
+	}
+	key := Registration{"topic", topic, ""}
+	lookupd.DB.Add(key, client.Producer)
+	return []byte("OK"), nil
+}
+
+func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
+	if client.Producer == nil {
+		return nil, nsq.ClientErrInvalid
+	}
+	topic, channel, err := getTopicChan(params)
+	if err != nil {
+		return nil, err
+	}
+	if channel != "" {
+		key := Registration{"channel", topic, channel}
+		lookupd.DB.Remove(key, client.Producer)
+	}
+	return []byte("OK"), nil
+}
+
+func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
+	if len(params) < 3 {
+		return nil, nsq.ClientErrInvalid
+	}
+	topic, channel, err := getTopicChan(params)
+	if err != nil {
+		return nil, err
+	}
 
 	var bodyLen int32
 	err = binary.Read(reader, binary.BigEndian, &bodyLen)
@@ -98,24 +164,17 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, para
 	// TODO: move this client information into a separate message so the ANNOUNCE can return to just
 	// be about topic and channel
 	if client.Producer == nil {
-		tcpPort, err := strconv.Atoi(params[3])
+		tcpPort, err := strconv.Atoi(params[2])
 		if err != nil {
 			return nil, err
 		}
 		httpPort := tcpPort + 1
-		if len(params) > 4 {
+		if len(params) > 3 {
 			httpPort, err = strconv.Atoi(params[4])
 			if err != nil {
 				return nil, err
 			}
 		}
-
-		// build an identifier to use to track this client. We use remote Address + TCP port number
-		host, _, err := net.SplitHostPort(client.RemoteAddr().String())
-		if err != nil {
-			return nil, err
-		}
-		producerId := net.JoinHostPort(host, strconv.Itoa(tcpPort))
 
 		var ipAddresses []string
 		// client sends multiple source IP address as the message body
@@ -124,20 +183,70 @@ func (p *LookupProtocolV1) ANNOUNCE(client *ClientV1, reader *bufio.Reader, para
 		}
 
 		client.Producer = &Producer{
-			ProducerId:  producerId,
-			TCPPort:     tcpPort,
-			HTTPPort:    httpPort,
-			IpAddresses: ipAddresses,
-			LastUpdate:  time.Now(),
+			producerId: client.RemoteAddr().String(),
+			TcpPort:    tcpPort,
+			HttpPort:   httpPort,
+			Address:    ipAddresses[len(ipAddresses)-1],
+			LastUpdate: time.Now(),
 		}
-		log.Printf("CLIENT(%s) -> CLIENT(%s) registered TCP:%d HTTP:%d addresses:%s", client.RemoteAddr(), producerId, tcpPort, httpPort, ipAddresses)
+		log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s", client.RemoteAddr(), tcpPort, httpPort, client.Producer.Address)
 	}
 
-	log.Printf("CLIENT(%s) announcing Topic:%s Channel:%s", client.Producer.ProducerId, topicName, channelName)
-	err = lookupdb.Update(topicName, channelName, client.Producer)
+	log.Printf("CLIENT(%s) announcing Topic:%s Channel:%s", client.Producer.producerId, topic, channel)
+
+	var key Registration
+
+	if len(channel) != 0 {
+		key = Registration{"channel", topic, channel}
+		lookupd.DB.Add(key, client.Producer)
+	}
+
+	if channel != "." {
+		key = Registration{"channel", topic, channel}
+		lookupd.DB.Add(key, client.Producer)
+	}
+
+	key = Registration{"topic", topic, ""}
+	lookupd.DB.Add(key, client.Producer)
+
+	return []byte("OK"), nil
+}
+
+func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
+	var err error
+
+	var bodyLen int32
+	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
 		return nil, err
 	}
+
+	body := make([]byte, bodyLen)
+	_, err = io.ReadFull(reader, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// body is a json structure with producer information
+	producer := Producer{producerId: client.RemoteAddr().String()}
+	err = json.Unmarshal(body, &producer)
+	if err != nil {
+		return nil, err
+	}
+
+	// require all fields
+	if producer.Address == "" || producer.TcpPort == 0 || producer.HttpPort == 0 || producer.Version == "" {
+		log.Printf("ERROR: missing fields in IDENTIFY from %s", client.RemoteAddr())
+		return nil, errors.New("MISSING_FIELDS")
+	}
+	producer.LastUpdate = time.Now()
+
+	client.Producer = &producer
+	log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s",
+		client.RemoteAddr(),
+		producer.TcpPort,
+		producer.HttpPort,
+		producer.Address)
 
 	return []byte("OK"), nil
 }
@@ -146,7 +255,7 @@ func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, erro
 	if client.Producer != nil {
 		// we could get a PING before an ANNOUNCE on the same client connection
 		now := time.Now()
-		log.Printf("CLIENT(%s) pinged (last ping %s)", client.Producer.ProducerId, now.Sub(client.Producer.LastUpdate))
+		log.Printf("CLIENT(%s) pinged (last ping %s)", client.Producer.producerId, now.Sub(client.Producer.LastUpdate))
 		client.Producer.LastUpdate = now
 	}
 	return []byte("OK"), nil

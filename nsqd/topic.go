@@ -115,6 +115,9 @@ func (t *Topic) DeleteChannel(channel *Channel) {
 	// since we are closing in this fashion it's ok to drop messages instead of persisting them
 	EmptyQueue(channel)
 	channel.Close()
+	// since we are explicitly deleting a channel (not just at system exit time)
+	// de-register this from the lookupd
+	go notify.Post("channel_change", channel)
 }
 
 // PutMessage writes to the appropriate incoming

@@ -4,7 +4,6 @@ import (
 	"../nsq"
 	"bitly/notify"
 	"log"
-	"net"
 	"os"
 	"time"
 )
@@ -16,13 +15,19 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 	notifyTopicChan := make(chan interface{})
 	syncTopicChan := make(chan *nsq.LookupPeer)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", *tcpAddress)
-	port := tcpAddr.Port
-	netAddrs := getNetworkAddrs(tcpAddr)
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
+	}
 
 	for _, host := range lookupHosts {
 		log.Printf("LOOKUP: adding peer %s", host)
 		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
+			cmd := nsq.Identify(VERSION, nsqd.tcpAddr.Port, nsqd.httpAddr.Port, hostname)
+			_, err := lp.Command(cmd)
+			if err != nil {
+				log.Printf("Error writing to %s %s", host, err.Error())
+			}
 			go func() {
 				syncTopicChan <- lp
 			}()
@@ -31,7 +36,7 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 	}
 
 	if len(lookupPeers) > 0 {
-		notify.Start("new_channel", notifyChannelChan)
+		notify.Start("channel_change", notifyChannelChan)
 		notify.Start("new_topic", notifyTopicChan)
 	}
 
@@ -48,21 +53,26 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 					log.Printf("ERROR: [%s] ping failed - %s", lookupPeer, err.Error())
 				}
 			}
-		case newChannel := <-notifyChannelChan:
-			// notify all nsqds that a new channel exists
-			channel := newChannel.(*Channel)
-			cmd := nsq.Announce(channel.topicName, channel.name, port, netAddrs)
+		case channelObj := <-notifyChannelChan:
+			// notify all nsqds that a new channel exists, or that it's removed
+			channel := channelObj.(*Channel)
+			var cmd *nsq.Command
+			if channel.Exiting() == true {
+				cmd = nsq.UnRegister(channel.topicName, channel.name)
+			} else {
+				cmd = nsq.Register(channel.topicName, channel.name)
+			}
 			for _, lookupPeer := range lookupPeers {
-				log.Printf("LOOKUP: [%s] new channel %s", lookupPeer, cmd)
+				log.Printf("LOOKUP: [%s] channel %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
-					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
+					log.Printf("ERROR: [%s] %s failed - %s", lookupPeer, cmd, err.Error())
 				}
 			}
 		case newTopic := <-notifyTopicChan:
 			// notify all nsqds that a new topic exists
 			topic := newTopic.(*Topic)
-			cmd := nsq.Announce(topic.name, ".", port, netAddrs)
+			cmd := nsq.Register(topic.name, "")
 			for _, lookupPeer := range lookupPeers {
 				log.Printf("LOOKUP: [%s] new topic %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
@@ -77,10 +87,10 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 			for _, topic := range nsqd.topicMap {
 				topic.RLock()
 				if len(topic.channelMap) == 0 {
-					commands = append(commands, nsq.Announce(topic.name, ".", port, netAddrs))
+					commands = append(commands, nsq.Register(topic.name, ""))
 				} else {
 					for _, channel := range topic.channelMap {
-						commands = append(commands, nsq.Announce(channel.topicName, channel.name, port, netAddrs))
+						commands = append(commands, nsq.Register(channel.topicName, channel.name))
 					}
 				}
 				topic.RUnlock()
@@ -103,24 +113,7 @@ func lookupRouter(lookupHosts []string, exitChan chan int) {
 exit:
 	log.Printf("LOOKUP: closing")
 	if len(lookupPeers) > 0 {
-		notify.Stop("new_channel", notifyChannelChan)
+		notify.Stop("channel_change", notifyChannelChan)
 		notify.Stop("new_topic", notifyTopicChan)
 	}
-}
-
-func getNetworkAddrs(tcpAddr *net.TCPAddr) []string {
-	netAddrs := make([]string, 0)
-	if tcpAddr.IP.Equal(net.IPv4zero) || tcpAddr.IP.Equal(net.IPv6zero) || tcpAddr.IP.IsLoopback() {
-		// we're listening on localhost
-		netAddrs = append(netAddrs, "127.0.0.1")
-	}
-
-	// always append the hostname last
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
-	}
-	netAddrs = append(netAddrs, hostname)
-
-	return netAddrs
 }
