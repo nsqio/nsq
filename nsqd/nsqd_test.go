@@ -22,7 +22,7 @@ func TestStartup(t *testing.T) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
 
-	nsqd := NewNSQd(1)
+	nsqd = NewNSQd(1)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.memQueueSize = 100

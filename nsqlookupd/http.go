@@ -2,14 +2,11 @@ package main
 
 import (
 	"../util"
-	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"strings"
-	"time"
 )
 
 func httpServer(listener net.Listener) {
@@ -39,14 +36,8 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func TopicsHandler(w http.ResponseWriter, req *http.Request) {
-	lookupdb.RLock()
-	defer lookupdb.RUnlock()
-
-	topics := make([]string, 0)
-	for topic, _ := range lookupdb.Topics {
-		topics = append(topics, topic)
-	}
-
+	topics := lookupd.DB.FindRegistrations("topic", "*", "").Keys()
+	log.Printf("registrations topics %v", topics)
 	data := make(map[string]interface{})
 	data["topics"] = topics
 	util.ApiResponse(w, 200, "OK", data)
@@ -65,75 +56,19 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	lookupdb.RLock()
-	defer lookupdb.RUnlock()
+	registration := lookupd.DB.FindRegistrations("topic", topicName, "")
 
-	topic, ok := lookupdb.Topics[topicName]
-	if !ok {
+	if len(registration) == 0 {
 		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
 		return
 	}
 
-	// hijack the request so we can access the connection directly (in order to get the local addr)
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
-		return
-	}
-
-	conn, bufrw, err := hj.Hijack()
-	if err != nil {
-		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
-		return
-	}
-	defer conn.Close()
-
+	channels := lookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := lookupd.DB.FindProducers("topic", topicName, "").CurrentProducers()
 	data := make(map[string]interface{})
-	channels := make([]string, 0)
-	for channel, _ := range topic.Channels {
-		channels = append(channels, channel)
-	}
 	data["channels"] = channels
-
-	// for each producer try to identify the optimal address based on the ones announced
-	// to lookupd.  if none are optimal send the hostname (last entry)
-	producers := make([]map[string]interface{}, 0)
-	now := time.Now()
-	for _, p := range topic.Producers {
-		// TODO: make this a command line parameter
-		if now.Sub(p.LastUpdate) > time.Duration(300)*time.Second {
-			// it's a producer that has not checked in. Drop it
-			continue
-		}
-		preferLocal := shouldPreferLocal(conn, p.ProducerId)
-		chosenAddress, err := p.identifyBestAddress(preferLocal)
-		if err != nil {
-			w.Write([]byte(`{"status_code":500, "status_txt":"INTERNAL_ERROR", "data":null}`))
-			return
-		}
-
-		producer := make(map[string]interface{})
-		producer["address"] = chosenAddress
-		producer["port"] = p.TCPPort // TODO: drop this field in a future rev (backwards compatible)
-		producer["tcp_port"] = p.TCPPort
-		producer["http_port"] = p.HTTPPort
-		producers = append(producers, producer)
-	}
 	data["producers"] = producers
-
-	output := make(map[string]interface{})
-	output["data"] = data
-	output["status_code"] = 200
-	output["status_txt"] = "OK"
-	response, err := json.Marshal(&output)
-	if err != nil {
-		response = []byte(`{"status_code":500, "status_txt":"INVALID_JSON", "data":null}`)
-	}
-
-	// this is a hijacked connection so we have to write the response manually
-	resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\n\r\n%s", len(response), response)
-	bufrw.WriteString(resp)
-	bufrw.Flush()
+	util.ApiResponse(w, 200, "OK", data)
 }
 
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
@@ -149,17 +84,17 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	lookupdb.Lock()
-	defer lookupdb.Unlock()
-
-	topic, ok := lookupdb.Topics[topicName]
-	if !ok {
-		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
+	registrations := lookupd.DB.FindRegistrations("channel", topicName, channelName)
+	if len(registrations) == 0 {
+		util.ApiResponse(w, 404, "NOT_FOUND", nil)
 		return
 	}
 
 	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
-	delete(topic.Channels, channelName)
+	for _, registration := range registrations {
+		lookupd.DB.RemoveRegistration(*registration)
+	}
+
 	util.ApiResponse(w, 200, "OK", nil)
 }
 

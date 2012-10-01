@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"crypto/md5"
 	"flag"
@@ -11,8 +12,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/pprof"
 	"syscall"
 	"time"
 )
@@ -26,8 +25,6 @@ var (
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
 	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
-	cpuProfile      = flag.String("cpu-profile", "", "write cpu profile to file")
-	goMaxProcs      = flag.Int("go-max-procs", 0, "runtime configuration for GOMAXPROCS")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
@@ -38,16 +35,15 @@ func init() {
 	flag.Var(&lookupAddresses, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
+var nsqd *NSQd
+var protocols = map[int32]nsq.Protocol{}
+
 func main() {
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("nsqd v%s\n", VERSION)
 		return
-	}
-
-	if *goMaxProcs > 0 {
-		runtime.GOMAXPROCS(*goMaxProcs)
 	}
 
 	if *workerId == 0 {
@@ -79,16 +75,6 @@ func main() {
 	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	if *cpuProfile != "" {
-		log.Printf("CPU Profiling Enabled")
-		f, err := os.Create(*cpuProfile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
 	}
 
 	log.Printf("nsqd v%s", VERSION)
