@@ -56,17 +56,6 @@ func main() {
 		*workerId = int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 	}
 
-	// go func() {
-	// 	var m runtime.MemStats
-	// 	ticker := time.NewTicker(5 * time.Second)
-	// 	for {
-	// 		<-ticker.C
-	// 		runtime.ReadMemStats(&m)
-	// 		log.Printf("GoRoutines: %d - HeapInuse: %d - HeapReleased: %d - HeapObjects: %d", runtime.NumGoroutine(), m.HeapInuse, m.HeapReleased, m.HeapObjects)
-	// 		log.Printf("GC Runs: %#v", m.PauseNs)
-	// 	}
-	// }()
-
 	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
 	if err != nil {
 		log.Fatal(err)
@@ -88,15 +77,18 @@ func main() {
 	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	nsqd = NewNSQd(*workerId)
+	options := NewNsqdOptions()
+	options.memQueueSize = *memQueueSize
+	options.dataPath = *dataPath
+	options.maxBytesPerFile = *maxBytesPerFile
+	options.syncEvery = *syncEvery
+	options.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+
+	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.lookupAddrs = lookupAddresses
-	nsqd.memQueueSize = *memQueueSize
-	nsqd.dataPath = *dataPath
-	nsqd.maxBytesPerFile = *maxBytesPerFile
-	nsqd.syncEvery = *syncEvery
-	nsqd.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+
 	nsqd.LoadMetadata()
 	nsqd.Main()
 	<-exitChan

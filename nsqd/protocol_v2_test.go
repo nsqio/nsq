@@ -15,9 +15,11 @@ import (
 	"time"
 )
 
-func mustStartNSQd() (*net.TCPAddr, *net.TCPAddr) {
+func mustStartNSQd(timeout time.Duration) (*net.TCPAddr, *net.TCPAddr) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	nsqd = NewNSQd(1)
+	options := NewNsqdOptions()
+	options.clientTimeout = timeout
+	nsqd = NewNSQd(1, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = tcpAddr
 	nsqd.Main()
@@ -47,7 +49,7 @@ func TestBasicV2(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := mustStartNSQd()
+	tcpAddr, _ := mustStartNSQd(60 * time.Second)
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -79,7 +81,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	msgChan := make(chan *nsq.Message)
 
-	tcpAddr, _ := mustStartNSQd()
+	tcpAddr, _ := mustStartNSQd(60 * time.Second)
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -122,10 +124,8 @@ func TestClientTimeout(t *testing.T) {
 
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	tcpAddr, _ := mustStartNSQd()
+	tcpAddr, _ := mustStartNSQd(50 * time.Millisecond)
 	defer nsqd.Exit()
-
-	nsqd.clientTimeout = 50 * time.Millisecond
 
 	conn := mustConnectNSQd(t, tcpAddr)
 
@@ -157,10 +157,8 @@ func TestClientHeartbeat(t *testing.T) {
 
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	tcpAddr, _ := mustStartNSQd()
+	tcpAddr, _ := mustStartNSQd(100 * time.Millisecond)
 	defer nsqd.Exit()
-
-	nsqd.clientTimeout = 100 * time.Millisecond
 
 	conn := mustConnectNSQd(t, tcpAddr)
 
