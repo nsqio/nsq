@@ -28,6 +28,7 @@ func httpServer(listener net.Listener) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/", indexHandler)
+	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/topic/", topicHandler)
 	handler.HandleFunc("/delete_channel", removeChannelHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
@@ -57,7 +58,7 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 		Topics  []string
 		Version string
 	}{
-		Title:   "",
+		Title:   "NSQ",
 		Topics:  topics,
 		Version: VERSION,
 	}
@@ -85,20 +86,27 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	producers, _ := getLookupdTopicProducers(topic, lookupdAddresses)
 	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
 
+	globalTopicStats := &TopicHostStats{HostAddress: "Total"}
+	for _, t := range topicHostStats {
+		globalTopicStats.AddHostStats(t)
+	}
+
 	p := struct {
-		Title          string
-		Version        string
-		Topic          string
-		TopicProducers []string
-		TopicHostStats []TopicHostStats
-		ChannelStats   map[string]*ChannelStats
+		Title            string
+		Version          string
+		Topic            string
+		TopicProducers   []string
+		TopicHostStats   []*TopicHostStats
+		GlobalTopicStats *TopicHostStats
+		ChannelStats     map[string]*ChannelStats
 	}{
-		Title:          fmt.Sprintf("NSQ %s", topic),
-		Version:        VERSION,
-		Topic:          topic,
-		TopicProducers: producers,
-		TopicHostStats: topicHostStats,
-		ChannelStats:   channelStats,
+		Title:            fmt.Sprintf("NSQ %s", topic),
+		Version:          VERSION,
+		Topic:            topic,
+		TopicProducers:   producers,
+		TopicHostStats:   topicHostStats,
+		GlobalTopicStats: globalTopicStats,
+		ChannelStats:     channelStats,
 	}
 	err := templates.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
@@ -118,7 +126,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		Topic          string
 		Channel        string
 		TopicProducers []string
-		TopicHostStats []TopicHostStats
+		TopicHostStats []*TopicHostStats
 		ChannelStats   *ChannelStats
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
@@ -205,5 +213,23 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+}
 
+func nodesHandler(w http.ResponseWriter, req *http.Request) {
+	producers, _ := getLookupdProducers(lookupdAddresses)
+
+	p := struct {
+		Title     string
+		Version   string
+		Producers []*Producer
+	}{
+		Title:     "NSQD Hosts",
+		Version:   VERSION,
+		Producers: producers,
+	}
+	err := templates.ExecuteTemplate(w, "nodes.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
 }

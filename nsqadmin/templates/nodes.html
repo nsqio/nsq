@@ -1,0 +1,38 @@
+
+{{template "header.html" .}}
+
+<div class="row-fluid"><div class="span12">
+<h1>NSQD Hosts ({{.Producers | len}})</h1>
+</div></div>
+
+<div class="row-fluid"><div class="span8">
+<table class="table table-bordered">
+    <tr>
+        <th>Host</th>
+        <th>TCP Port</th>
+        <th>HTTP Port</th>
+        <th>Version</th>
+        <th>Topics</th>
+    </tr>
+    {{range .Producers }}
+    <tr {{if .OutOfDate}} class="warning"{{end}} >
+        <td>{{.Address}}</td>
+        <td>{{.TcpPort}}</td>
+        <td>{{.HttpPort}}</td>
+        <td>{{.Version}}</td>
+        <td>
+        {{if .Topics}}
+            <span class="badge">{{.Topics | len}}</span>
+            {{range .Topics}}
+            <a href="/topic/{{.}}">{{.}}</a>
+            {{end}}
+        {{end}}
+        </td>
+    </tr>
+    {{ end }}
+</table>
+</div></div>
+
+{{template "footer.html" .}}
+
+

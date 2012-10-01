@@ -72,13 +72,20 @@ func TestBasicLookupd(t *testing.T) {
 	topicName = "connectmsg"
 	tcpPort := 5000
 	httpPort := 5555
-	cmd := nsq.Identify("version", tcpPort, httpPort, "ip.address")
+	cmd := nsq.Identify("fake-version", tcpPort, httpPort, "ip.address")
 	log.Printf("cmd is %s", string(cmd.Body))
 	err = nsq.SendCommand(conn, cmd)
 	assert.Equal(t, err, nil)
 	err = nsq.SendCommand(conn, nsq.Register(topicName, "channel1"))
 
 	time.Sleep(10 * time.Millisecond)
+
+	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
+	data, err := util.ApiRequest(endpoint)
+	log.Printf("got %v", data)
+	returnedProducers, err := data.Get("producers").Array()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, len(returnedProducers), 1)
 
 	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
 	assert.Equal(t, len(topics), 1)
@@ -91,8 +98,8 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, producer.TcpPort, tcpPort)
 	assert.Equal(t, producer.HttpPort, httpPort)
 
-	endpoint := fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err := util.ApiRequest(endpoint)
+	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
@@ -106,7 +113,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedChannels), 1)
 
-	returnedProducers, err := data.Get("producers").Array()
+	returnedProducers, err = data.Get("producers").Array()
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
 	for i, _ := range returnedProducers {
@@ -122,6 +129,9 @@ func TestBasicLookupd(t *testing.T) {
 		address, err := producer.Get("address").String()
 		assert.Equal(t, err, nil)
 		assert.Equal(t, address, "ip.address")
+		ver, err := producer.Get("version").String()
+		assert.Equal(t, err, nil)
+		assert.Equal(t, ver, "fake-version")
 	}
 
 	conn.Close()

@@ -1,18 +1,21 @@
 {{template "header.html" .}}
 
-<ul class="breadcrumb">
-  <li class="active">Topics</li>
-</ul>
+<div class="row-fluid"><div class="span12">
+<h1>Topics</h1>
+</div></div>
+
 
 <div class="row-fluid"><div class="span12">
-<ul class="nav nav-list">
-    {{if .Topics}}{{else}}
-        <li><span class="label label-warning">Warning</span> No Topics Found</li>
-    {{ end }}
-    {{range .Topics}}
-        <li><a href="/topic/{{.}}">{{.}}</a></li>
-    {{end}}
+{{if .Topics}}
+<ul>
+{{range .Topics}}
+    <li><a href="/topic/{{.}}">{{.}}</a></li>
+{{end}}
 </ul>
+{{else}}
+    <p><span class="label label-warning">Warning</span> No Topics Found</p>
+{{ end }}
+
 </div></div>
 
 {{template "footer.html" .}}
