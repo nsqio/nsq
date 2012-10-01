@@ -9,7 +9,6 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type Topic struct {
@@ -20,30 +19,22 @@ type Topic struct {
 	incomingMsgChan    chan *nsq.Message
 	memoryMsgChan      chan *nsq.Message
 	messagePumpStarter sync.Once
-	memQueueSize       int64
-	dataPath           string
-	maxBytesPerFile    int64
-	syncEvery          int64
-	msgTimeout         time.Duration
 	exitChan           chan int
 	waitGroup          util.WaitGroupWrapper
 	exitFlag           int32
 	messageCount       uint64
+	options            *nsqdOptions
 }
 
 // Topic constructor
-func NewTopic(topicName string, memQueueSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Topic {
+func NewTopic(topicName string, options *nsqdOptions) *Topic {
 	topic := &Topic{
 		name:            topicName,
 		channelMap:      make(map[string]*Channel),
-		backend:         NewDiskQueue(topicName, dataPath, maxBytesPerFile, syncEvery),
+		backend:         NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
 		incomingMsgChan: make(chan *nsq.Message, 1),
-		memoryMsgChan:   make(chan *nsq.Message, memQueueSize),
-		memQueueSize:    memQueueSize,
-		dataPath:        dataPath,
-		maxBytesPerFile: maxBytesPerFile,
-		syncEvery:       syncEvery,
-		msgTimeout:      msgTimeout,
+		memoryMsgChan:   make(chan *nsq.Message, options.memQueueSize),
+		options:         options,
 		exitChan:        make(chan int),
 	}
 
@@ -82,7 +73,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		deleteCallback := func(c *Channel) {
 			t.DeleteChannel(c)
 		}
-		channel = NewChannel(deleteCallback, t.name, channelName, t.memQueueSize, t.dataPath, t.maxBytesPerFile, t.syncEvery, t.msgTimeout)
+		channel = NewChannel(t.name, channelName, t.options, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 	}

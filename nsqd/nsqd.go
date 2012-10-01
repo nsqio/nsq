@@ -17,36 +17,46 @@ import (
 
 type NSQd struct {
 	sync.RWMutex
-	workerId        int64
+	options      *nsqdOptions
+	workerId     int64
+	topicMap     map[string]*Topic
+	lookupAddrs  util.StringArray
+	tcpAddr      *net.TCPAddr
+	httpAddr     *net.TCPAddr
+	tcpListener  net.Listener
+	httpListener net.Listener
+	idChan       chan []byte
+	exitChan     chan int
+	waitGroup    util.WaitGroupWrapper
+}
+
+type nsqdOptions struct {
 	memQueueSize    int64
 	dataPath        string
 	maxBytesPerFile int64
 	syncEvery       int64
 	msgTimeout      time.Duration
-	tcpAddr         *net.TCPAddr
-	httpAddr        *net.TCPAddr
-	lookupAddrs     util.StringArray
-	topicMap        map[string]*Topic
-	tcpListener     net.Listener
-	httpListener    net.Listener
-	idChan          chan []byte
-	exitChan        chan int
-	waitGroup       util.WaitGroupWrapper
 	clientTimeout   time.Duration
 }
 
-func NewNSQd(workerId int64) *NSQd {
-	n := &NSQd{
-		workerId:        workerId,
+func NewNsqdOptions() *nsqdOptions {
+	return &nsqdOptions{
 		memQueueSize:    10000,
 		dataPath:        os.TempDir(),
 		maxBytesPerFile: 104857600,
 		syncEvery:       2500,
 		msgTimeout:      60 * time.Second,
-		topicMap:        make(map[string]*Topic),
-		idChan:          make(chan []byte, 4096),
-		exitChan:        make(chan int),
 		clientTimeout:   nsq.DefaultClientTimeout,
+	}
+}
+
+func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
+	n := &NSQd{
+		workerId: workerId,
+		options:  options,
+		topicMap: make(map[string]*Topic),
+		idChan:   make(chan []byte, 4096),
+		exitChan: make(chan int),
 	}
 
 	n.waitGroup.Wrap(func() { n.idPump() })
@@ -73,7 +83,7 @@ func (n *NSQd) Main() {
 }
 
 func (n *NSQd) LoadMetadata() {
-	fn := fmt.Sprintf(path.Join(n.dataPath, "nsqd.%d.dat"), n.workerId)
+	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -115,7 +125,7 @@ func (n *NSQd) Exit() {
 
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
-	fn := fmt.Sprintf(path.Join(n.dataPath, "nsqd.%d.dat"), n.workerId)
+	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
 	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())
@@ -156,7 +166,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		topic = NewTopic(topicName, n.memQueueSize, n.dataPath, n.maxBytesPerFile, n.syncEvery, n.msgTimeout)
+		topic = NewTopic(topicName, n.options)
 		n.topicMap[topicName] = topic
 		log.Printf("TOPIC(%s): created", topic.name)
 	}

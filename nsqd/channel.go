@@ -26,17 +26,17 @@ type ClientStatTracker interface {
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
-// There can be many channels per topic and each with there own distinct 
-// clients subscribed.
+// There can be multiple channels per topic, each with there own unique set 
+// of subscribers (clients).
 //
-// Channels maintain all client and message, orchestrating in-flight
+// Channels maintain all client and message metadata, orchestrating in-flight
 // messages, timeouts, requeueing, etc.
 type Channel struct {
 	sync.RWMutex // embed a r/w mutex
 
-	topicName  string
-	name       string
-	msgTimeout time.Duration
+	topicName string
+	name      string
+	options   *nsqdOptions
 
 	backend BackendQueue
 
@@ -74,29 +74,29 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(deleteCallback func(*Channel), topicName string, channelName string, inMemSize int64, dataPath string, maxBytesPerFile int64, syncEvery int64, msgTimeout time.Duration) *Channel {
+func NewChannel(topicName string, channelName string, options *nsqdOptions, deleteCallback func(*Channel)) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
 	c := &Channel{
 		topicName:        topicName,
 		name:             channelName,
-		msgTimeout:       msgTimeout,
 		incomingMsgChan:  make(chan *nsq.Message, 1),
-		memoryMsgChan:    make(chan *nsq.Message, inMemSize),
+		memoryMsgChan:    make(chan *nsq.Message, options.memQueueSize),
 		clientMsgChan:    make(chan *nsq.Message),
 		exitChan:         make(chan int),
 		clients:          make([]ClientStatTracker, 0, 5),
 		inFlightMessages: make(map[string]*pqueue.Item),
-		inFlightPQ:       pqueue.New(int(inMemSize / 10)),
+		inFlightPQ:       pqueue.New(int(options.memQueueSize / 10)),
 		deferredMessages: make(map[string]*pqueue.Item),
-		deferredPQ:       pqueue.New(int(inMemSize / 10)),
+		deferredPQ:       pqueue.New(int(options.memQueueSize / 10)),
 		deleteCallback:   deleteCallback,
+		options:          options,
 	}
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeralChannel = true
 		c.backend = NewDummyBackendQueue()
 	} else {
-		c.backend = NewDiskQueue(backendName, dataPath, maxBytesPerFile, syncEvery)
+		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile, options.syncEvery)
 	}
 	go c.messagePump()
 	c.waitGroup.Wrap(func() { c.router() })
@@ -267,7 +267,7 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
 	value := &inFlightMessage{msg, client}
-	absTs := time.Now().Add(c.msgTimeout).UnixNano()
+	absTs := time.Now().Add(c.options.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {

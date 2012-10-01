@@ -15,7 +15,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(1)
+	nsqd = NewNSQd(1, NewNsqdOptions())
 
 	topic1 := nsqd.GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -33,7 +33,7 @@ func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1)
+	nsqd := NewNSQd(1, NewNsqdOptions())
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
@@ -51,8 +51,9 @@ func BenchmarkTopicPut(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
-	nsqd = NewNSQd(1)
-	nsqd.memQueueSize = int64(b.N)
+	options := NewNsqdOptions()
+	options.memQueueSize = int64(b.N)
+	nsqd = NewNSQd(1, options)
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
@@ -68,8 +69,9 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	defer log.SetOutput(os.Stdout)
 	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
 	channelName := "bench"
-	nsqd = NewNSQd(1)
-	nsqd.memQueueSize = int64(b.N)
+	options := NewNsqdOptions()
+	options.memQueueSize = int64(b.N)
+	nsqd = NewNSQd(1, options)
 	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
 	b.StartTimer()
 

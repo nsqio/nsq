@@ -38,7 +38,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	err = nil
 	reader := bufio.NewReader(client)
 	for {
-		client.SetReadDeadline(time.Now().Add(nsqd.clientTimeout))
+		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
 		// ReadSlice does not allocate new space for the data each request
 		// ie. the returned slice is only valid until the next call to it
 		line, err = reader.ReadSlice('\n')
@@ -144,7 +144,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 	var buf bytes.Buffer
 
-	heartbeat := time.NewTicker(nsqd.clientTimeout / 2)
+	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)
 
 	// ReadyStateChan has a buffer of 1 to guarantee that in the event
 	// there is a race before we enter either of the select loops where 
