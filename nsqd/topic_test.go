@@ -15,7 +15,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQd(1, NewNsqdOptions())
 
 	topic1 := nsqd.GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -53,7 +53,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	nsqd = NewNSQd(1, options)
+	nsqd := NewNSQd(1, options)
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
@@ -71,7 +71,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	channelName := "bench"
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	nsqd = NewNSQd(1, options)
+	nsqd := NewNSQd(1, options)
 	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
 	b.StartTimer()
 

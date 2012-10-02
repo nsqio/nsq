@@ -68,7 +68,11 @@ func (c *Topic) Deferred() map[string]*pqueue.Item {
 func (t *Topic) GetChannel(channelName string) *Channel {
 	t.Lock()
 	defer t.Unlock()
+	return t.getOrCreateChannel(channelName)
+}
 
+// this expects the caller to handle locking
+func (t *Topic) getOrCreateChannel(channelName string) *Channel {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
 		deleteCallback := func(c *Channel) {
@@ -77,9 +81,9 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		channel = NewChannel(t.name, channelName, t.options, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
+		// start the topic message pump lazily using a `once` on the first channel creation
+		t.messagePumpStarter.Do(func() { t.waitGroup.Wrap(func() { t.messagePump() }) })
 	}
-	t.messagePumpStarter.Do(func() { t.waitGroup.Wrap(func() { t.messagePump() }) })
-
 	return channel
 }
 

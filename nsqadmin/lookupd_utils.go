@@ -34,7 +34,7 @@ func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
 			// {"data":{"topics":["test"]}}
 			// TODO: convert this to a StringArray() function in simplejson
 			topics, _ := data.Get("topics").Array()
-			allTopics = stringUnion(allTopics, topics)
+			allTopics = util.StringUnion(allTopics, topics)
 		}(endpoint)
 	}
 	wg.Wait()
@@ -141,7 +141,7 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 				address := producer["address"].(string)
 				port := int(producer["http_port"].(float64))
 				key := fmt.Sprintf("%s:%d", address, port)
-				allSources = stringAdd(allSources, key)
+				allSources = util.StringAdd(allSources, key)
 			}
 		}(endpoint)
 	}
@@ -176,7 +176,7 @@ func getNSQDTopics(nsqdAddresses []string) ([]string, error) {
 			for _, topicInfo := range topicList {
 				topicInfo := topicInfo.(map[string]interface{})
 				topicName := topicInfo["topic_name"].(string)
-				topics = stringAdd(topics, topicName)
+				topics = util.StringAdd(topics, topicName)
 			}
 		}(endpoint)
 	}
@@ -332,37 +332,4 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]*TopicHostSta
 	}
 	return topicHostStats, channelStats, nil
 
-}
-
-func stringAdd(s []string, a string) []string {
-	o := s
-	found := false
-	for _, existing := range s {
-		if a == existing {
-			found = true
-			return s
-		}
-	}
-	if found == false {
-		o = append(o, a)
-	}
-	return o
-
-}
-
-func stringUnion(s []string, a []interface{}) []string {
-	o := s
-	for _, entry := range a {
-		found := false
-		for _, existing := range s {
-			if entry.(string) == existing {
-				found = true
-				break
-			}
-		}
-		if found == false {
-			o = append(o, entry.(string))
-		}
-	}
-	return o
 }

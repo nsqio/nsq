@@ -12,6 +12,14 @@ type LookupPeer struct {
 	conn            net.Conn
 	state           int32
 	connectCallback func(*LookupPeer)
+	PeerInfo        PeerInfo
+}
+
+type PeerInfo struct {
+	TcpPort  int    `json:"tcp_port"`
+	HttpPort int    `json:"http_port"`
+	Version  string `json:"version"`
+	Address  string `json:"address"`
 }
 
 // NewLookupPeer creates a new LookupPeer instance
@@ -63,6 +71,9 @@ func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
 		if initialState == StateDisconnected {
 			lp.connectCallback(lp)
 		}
+	}
+	if cmd == nil {
+		return nil, nil
 	}
 	err := SendCommand(lp, cmd)
 	if err != nil {
