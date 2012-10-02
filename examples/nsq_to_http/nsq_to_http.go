@@ -34,14 +34,14 @@ var (
 	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
 	getAddresses     = util.StringArray{}
 	postAddresses    = util.StringArray{}
-	nsqAddresses     = util.StringArray{}
+	nsqdAddresses    = util.StringArray{}
 	lookupdAddresses = util.StringArray{}
 )
 
 func init() {
 	flag.Var(&postAddresses, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddresses, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
-	flag.Var(&nsqAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&nsqdAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
@@ -127,10 +127,10 @@ func main() {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 
-	if len(nsqAddresses) == 0 && len(lookupdAddresses) == 0 {
+	if len(nsqdAddresses) == 0 && len(lookupdAddresses) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
 	}
-	if len(nsqAddresses) > 0 && len(lookupdAddresses) > 0 {
+	if len(nsqdAddresses) > 0 && len(lookupdAddresses) > 0 {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
@@ -185,7 +185,7 @@ func main() {
 		r.AddHandler(handler)
 	}
 
-	for _, addrString := range nsqAddresses {
+	for _, addrString := range nsqdAddresses {
 		err := r.ConnectToNSQ(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())

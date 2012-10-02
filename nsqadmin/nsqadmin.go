@@ -14,10 +14,12 @@ var (
 	httpAddress      = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
 	templateDir      = flag.String("template-dir", "templates", "path to templates directory")
 	lookupdAddresses = util.StringArray{}
+	nsqdAddresses    = util.StringArray{}
 )
 
 func init() {
 	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&nsqdAddresses, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
 }
 
 func main() {
@@ -30,8 +32,12 @@ func main() {
 		return
 	}
 
-	if len(lookupdAddresses) == 0 {
-		log.Fatalf("ERROR: --lookupd-http-address not specified")
+	if len(nsqdAddresses) == 0 && len(lookupdAddresses) == 0 {
+		log.Fatalf("--nsqd-http-address or --lookupd-http-address required.")
+	}
+
+	if len(nsqdAddresses) != 0 && len(lookupdAddresses) != 0 {
+		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
 	}
 
 	exitChan := make(chan int)
