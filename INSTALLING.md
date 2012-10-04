@@ -42,6 +42,11 @@
     $ go build
     $ cp nsqlookupd /usr/local/bin/
 
+    # nsqadmin binary
+    $ cd <repo_root>/nsqadmin
+    $ go build
+    $ cp nsqadmin /usr/local/bin/
+
     # pynsq Python module (for building Python readers)
     $ cd <repo_root>/pynsq
     $ python setup.py install
