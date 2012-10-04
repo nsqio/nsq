@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -46,7 +45,7 @@ func (p *ProtocolV1) IOLoop(conn net.Conn) error {
 			log.Printf("PROTOCOL(V1) [%s]: %#v", client, params)
 		}
 
-		response, err := p.Exec(client, params)
+		response, err := p.Exec(client, reader, params)
 		if err != nil {
 			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
@@ -66,18 +65,18 @@ func (p *ProtocolV1) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *ProtocolV1) Exec(client *ClientV1, params []string) ([]byte, error) {
+func (p *ProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	switch params[0] {
 	case "PUB":
-		return p.PUB(client, params)
+		return p.PUB(client, reader, params)
 	}
 	return nil, nsq.ClientErrInvalid
 }
 
-func (p *ProtocolV1) PUB(client *ClientV1, params []string) ([]byte, error) {
+func (p *ProtocolV1) PUB(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
 
-	if len(params) < 3 {
+	if len(params) < 2 {
 		return nil, nsq.ClientErrInvalid
 	}
 
@@ -86,12 +85,13 @@ func (p *ProtocolV1) PUB(client *ClientV1, params []string) ([]byte, error) {
 		return nil, nsq.ClientErrBadTopic
 	}
 
-	messageSize, err := strconv.Atoi(params[2])
+	var bodyLen int32
+	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
 		return nil, nsq.ClientErrBadMessage
 	}
 
-	messageBody := make([]byte, messageSize)
+	messageBody := make([]byte, bodyLen)
 	_, err = io.ReadFull(client, messageBody)
 	if err != nil {
 		return nil, nsq.ClientErrBadMessage

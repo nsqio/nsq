@@ -73,8 +73,9 @@ func Ping() *Command {
 	return &Command{[]byte("PING"), nil, nil}
 }
 
-func Publish(size int, body []byte) *Command {
-	var params = [][]byte{[]byte(strconv.Itoa(size))}
+// Publish creates a new Command to write a message to a given topic
+func Publish(topic string, body []byte) *Command {
+	var params = [][]byte{[]byte(topic)}
 	return &Command{[]byte("PUB"), params, body}
 }
 
