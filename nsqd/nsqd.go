@@ -95,10 +95,6 @@ func (n *NSQd) LoadMetadata() {
 	for _, line := range strings.Split(string(data), "\n") {
 		if line != "" {
 			parts := strings.SplitN(line, ":", 2)
-			if len(parts) < 2 {
-				log.Printf("WARNING: skipping topic/channel creation for %s", line)
-				continue
-			}
 
 			if !nsq.IsValidTopicName(parts[0]) {
 				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
@@ -106,6 +102,9 @@ func (n *NSQd) LoadMetadata() {
 			}
 			topic := n.GetTopic(parts[0])
 
+			if len(parts) < 2 {
+				continue
+			}
 			if !nsq.IsValidChannelName(parts[1]) {
 				log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
 			}
@@ -136,6 +135,7 @@ func (n *NSQd) Exit() {
 	for _, topic := range n.topicMap {
 		if f != nil {
 			topic.Lock()
+			fmt.Fprintf(f, "%s\n", topic.name)
 			for _, channel := range topic.channelMap {
 				if !channel.ephemeralChannel {
 					fmt.Fprintf(f, "%s:%s\n", topic.name, channel.name)
