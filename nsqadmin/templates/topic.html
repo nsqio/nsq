@@ -2,38 +2,51 @@
 {{template "header.html" .}}
 
 <ul class="breadcrumb">
-  <li><a href="/">Topics</a> <span class="divider">/</span></li>
+  <li><a href="/">Streams</a> <span class="divider">/</span></li>
   <li class="active">{{.Topic}}</li>
 </ul>
 
 <div class="row-fluid"><div class="span12">
 <h1>Topic: {{.Topic}}</h1>
 </div></div>
-<div class="row-fluid"><div class="span12">
-<h2>Topic Message Queue</h2>
-<table class="table table-bordered">
+<div class="row-fluid"><div class="span8">
+<h3>Topic Message Queue</h3>
+<table class="table table-bordered table-condensed">
     <tr>
         <th>nsqd Host</th>
         <th>Depth</th>
         <th>Memory + Disk</th>
-        <th>Messages Processed</th>
+        <th>Messages</th>
         <th>Channels</th>
     </tr>
     {{range .TopicHostStats }}
-        <tr>
-        <th>{{.HostAddress}}</th>
+    <tr>
+        <td>{{.HostAddress}}</td>
         <td>{{.Depth}}</td>
         <td>{{.MemoryDepth}} + {{.BackendDepth}}</td>
         <td>{{.MessageCount}}</td>
         <td>{{.ChannelCount}}</td>
-        </tr>
+    </tr>
+    {{ end }}
+    {{ with .GlobalTopicStats }} 
+    <tr class="info">
+        <td>Total:</td>
+        <td>{{.Depth}}</td>
+        <td>{{.MemoryDepth}} + {{.BackendDepth}}</td>
+        <td>{{.MessageCount}}</td>
+        <td>{{.ChannelCount}}</td>
+    </tr>
     {{ end }}
 </table>
 </div></div>
 
 <div class="row-fluid"><div class="span12">
-<h2>Channels</h2>
-<table class="table table-bordered">
+<h3>Channel Message Queues</h3>
+{{ if not .ChannelStats }}
+    <p><span class="label label-warning">Warning</span> no channels have been created. Messages will queue at the topic
+        message queue until a client connects.</p>
+{{else}}
+<table class="table table-bordered table-condensed">
     <tr>
         <th>Channel</th>
         <th>Depth</th>
@@ -42,7 +55,7 @@
         <th>Deferred</th>
         <th>Requeued</th>
         <th>Timed Out</th>
-        <th>Messages Processed</th>
+        <th>Messages</th>
         <th>Clients</th>
     </tr>
 
@@ -60,6 +73,7 @@
     </tr>
 {{ end }}
 </table>
+{{end}}
 </div></div>
 
 {{template "footer.html" .}}

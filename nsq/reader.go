@@ -289,19 +289,12 @@ func (q *Reader) queryLookupd() {
 			continue
 		}
 
-		// do something with the data
-		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local","port":4150, "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
+		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local", "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
 		producers, _ := data.Get("data").Get("producers").Array()
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
 			address := producerData["address"].(string)
-			var port int
-			if _, ok := producerData["tcp_port"]; ok {
-				port = int(producerData["tcp_port"].(float64))
-			} else {
-				// backwards compatible
-				port = int(producerData["port"].(float64))
-			}
+			port := int(producerData["tcp_port"].(float64))
 
 			// make an address, start a connection
 			joined := net.JoinHostPort(address, strconv.Itoa(port))

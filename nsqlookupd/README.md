@@ -13,6 +13,7 @@ The HTTP interface has the following API endpoints
  * `/topics`
  * `/delete_channel?topic=...&channel=...`
  * `/ping` (returns "OK" for use with monitoring)
+ * `/info` returns server version information.
 
 Command Line Options
 --------------------
