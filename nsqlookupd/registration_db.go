@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -29,6 +30,10 @@ type Producer struct {
 
 type Producers []*Producer
 
+func (p *Producer) String() string {
+	return fmt.Sprintf("%s [%d, %d]", p.Address, p.TcpPort, p.HttpPort)
+}
+
 func NewRegistrationDB() *RegistrationDB {
 	return &RegistrationDB{
 		registrationMap: make(map[Registration]Producers),
@@ -39,7 +44,7 @@ func NewRegistrationDB() *RegistrationDB {
 func (r *RegistrationDB) Add(k Registration, p *Producer) {
 	r.Lock()
 	defer r.Unlock()
-	log.Printf("requested add registration for %v, %v", k, p)
+	log.Printf("requested add registration for %v, %s", k, p)
 	producers := r.registrationMap[k]
 	found := false
 	for _, producer := range producers {
@@ -56,6 +61,7 @@ func (r *RegistrationDB) Add(k Registration, p *Producer) {
 func (r *RegistrationDB) Remove(k Registration, p *Producer) {
 	r.Lock()
 	defer r.Unlock()
+	log.Printf("requested remove registration for %v, %s", k, p)
 	producers, ok := r.registrationMap[k]
 	if !ok {
 		return
@@ -141,6 +147,16 @@ func (k Registration) IsMatch(category string, key string, subkey string) bool {
 		return false
 	}
 	return true
+}
+
+func (rr Registrations) Filter(category string, key string, subkey string) Registrations {
+	output := make(Registrations, 0)
+	for _, k := range rr {
+		if k.IsMatch(category, key, subkey) {
+			output = append(output, k)
+		}
+	}
+	return output
 }
 
 func (rr Registrations) Keys() []string {

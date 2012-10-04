@@ -20,6 +20,8 @@ HTTP API
 * `/delete_channel?topic=...&channel=...`
 * `/stats` [?format=json]
 * `/ping` (returns "OK" for use with monitoring)
+* `/info` returns server version information.
+
 
 Command Line Options
 --------------------

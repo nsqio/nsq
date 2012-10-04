@@ -22,6 +22,7 @@ func httpServer(listener net.Listener) {
 
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
+	handler.HandleFunc("/info", infoHandler)
 	handler.HandleFunc("/put", putHandler)
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
@@ -98,6 +99,14 @@ func memProfileHandler(w http.ResponseWriter, req *http.Request) {
 func pingHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
+}
+
+func infoHandler(w http.ResponseWriter, req *http.Request) {
+	util.ApiResponse(w, 200, "OK", struct {
+		Version string `json:"version"`
+	}{
+		Version: VERSION,
+	})
 }
 
 func putHandler(w http.ResponseWriter, req *http.Request) {

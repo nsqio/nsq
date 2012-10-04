@@ -65,6 +65,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	log.Printf("CLIENT(%s) closing", client.RemoteAddr())
 	if client.Producer != nil {
+		lookupd.DB.Remove(Registration{"client", "", ""}, client.Producer)
 		registrations := lookupd.DB.LookupRegistrations(client.Producer)
 		for _, r := range registrations {
 			lookupd.DB.Remove(*r, client.Producer)
@@ -242,6 +243,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	producer.LastUpdate = time.Now()
 
 	client.Producer = &producer
+	lookupd.DB.Add(Registration{"client", "", ""}, client.Producer)
 	log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s",
 		client.RemoteAddr(),
 		producer.TcpPort,

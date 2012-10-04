@@ -15,8 +15,10 @@ func httpServer(listener net.Listener) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
-	handler.HandleFunc("/topics", TopicsHandler)
+	handler.HandleFunc("/topics", topicsHandler)
+	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
+	handler.HandleFunc("/info", infoHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -35,9 +37,8 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func TopicsHandler(w http.ResponseWriter, req *http.Request) {
+func topicsHandler(w http.ResponseWriter, req *http.Request) {
 	topics := lookupd.DB.FindRegistrations("topic", "*", "").Keys()
-	log.Printf("registrations topics %v", topics)
 	data := make(map[string]interface{})
 	data["topics"] = topics
 	util.ApiResponse(w, 200, "OK", data)
@@ -98,11 +99,37 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func shouldPreferLocal(conn net.Conn, addr string) bool {
-	remoteAddr := conn.RemoteAddr().(*net.TCPAddr)
-	addrHost, _, _ := net.SplitHostPort(addr)
-	addrIP := net.ParseIP(addrHost)
-	preferLocal := remoteAddr.IP.IsLoopback() && addrIP.IsLoopback()
-	log.Printf("preferLocal: %v (%s and %s)", preferLocal, conn.RemoteAddr().String(), addr)
-	return preferLocal
+// note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
+type producerTopic struct {
+	Address  string   `json:"address"`
+	TcpPort  int      `json:"tcp_port"`
+	HttpPort int      `json:"http_port"`
+	Version  string   `json:"version"`
+	Topics   []string `json:"topics"`
+}
+
+func nodesHandler(w http.ResponseWriter, req *http.Request) {
+	producers := lookupd.DB.FindProducers("client", "", "")
+	producerTopics := make([]*producerTopic, len(producers))
+	for i, p := range producers {
+		producerTopics[i] = &producerTopic{
+			Address:  p.Address,
+			TcpPort:  p.TcpPort,
+			HttpPort: p.HttpPort,
+			Version:  p.Version,
+			Topics:   lookupd.DB.LookupRegistrations(p).Filter("topic", "*", "").Keys(),
+		}
+	}
+
+	data := make(map[string]interface{})
+	data["producers"] = producerTopics
+	util.ApiResponse(w, 200, "OK", data)
+}
+
+func infoHandler(w http.ResponseWriter, req *http.Request) {
+	util.ApiResponse(w, 200, "OK", struct {
+		Version string `json:"version"`
+	}{
+		Version: VERSION,
+	})
 }
