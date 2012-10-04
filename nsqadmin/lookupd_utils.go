@@ -152,6 +152,79 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 	return allSources, nil
 }
 
+func getNSQDTopics(nsqdAddresses []string) ([]string, error) {
+	topics := make([]string, 0)
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	success := false
+	for _, addr := range nsqdAddresses {
+		wg.Add(1)
+		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+		log.Printf("NSQD: querying %s", endpoint)
+
+		go func(endpoint string) {
+			data, err := util.ApiRequest(endpoint)
+			lock.Lock()
+			defer lock.Unlock()
+			defer wg.Done()
+			if err != nil {
+				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				return
+			}
+			success = true
+			topicList, _ := data.Get("topics").Array()
+			for _, topicInfo := range topicList {
+				topicInfo := topicInfo.(map[string]interface{})
+				topicName := topicInfo["topic_name"].(string)
+				topics = stringAdd(topics, topicName)
+			}
+		}(endpoint)
+	}
+	wg.Wait()
+	if success == false {
+		return nil, errors.New("unable to query any nsqd")
+	}
+	return topics, nil
+}
+
+func getNsqdTopicProducers(topic string, nsqdAddresses []string) ([]string, error) {
+	addresses := make([]string, 0)
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	success := false
+	for _, addr := range nsqdAddresses {
+		wg.Add(1)
+		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+		log.Printf("NSQD: querying %s", endpoint)
+
+		go func(endpoint string) {
+			data, err := util.ApiRequest(endpoint)
+			lock.Lock()
+			defer lock.Unlock()
+			defer wg.Done()
+			if err != nil {
+				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				return
+			}
+			success = true
+			topicList, _ := data.Get("topics").Array()
+			for _, topicInfo := range topicList {
+				topicInfo := topicInfo.(map[string]interface{})
+				topicName := topicInfo["topic_name"].(string)
+				if topicName == topic {
+					addresses = append(addresses, addr)
+					return
+				}
+			}
+		}(endpoint)
+	}
+	wg.Wait()
+	if success == false {
+		return nil, errors.New("unable to query any nsqd")
+	}
+	return addresses, nil
+}
+
 func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
 	topicHostStats := make([]*TopicHostStats, 0)
 	channelStats := make(map[string]*ChannelStats)
@@ -163,7 +236,7 @@ func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]*TopicHostSta
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)
 
-		go func(endpiont string, addr string) {
+		go func(endpoint string, addr string) {
 			data, err := util.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()

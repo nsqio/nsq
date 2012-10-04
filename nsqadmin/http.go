@@ -51,7 +51,12 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func indexHandler(w http.ResponseWriter, req *http.Request) {
-	topics, _ := getLookupdTopics(lookupdAddresses)
+	var topics []string
+	if len(lookupdAddresses) != 0 {
+		topics, _ = getLookupdTopics(lookupdAddresses)
+	} else {
+		topics, _ = getNSQDTopics(nsqdAddresses)
+	}
 	sort.Strings(topics)
 	p := struct {
 		Title   string
@@ -83,7 +88,12 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	producers, _ := getLookupdTopicProducers(topic, lookupdAddresses)
+	var producers []string
+	if len(lookupdAddresses) != 0 {
+		producers, _ = getLookupdTopicProducers(topic, lookupdAddresses)
+	} else {
+		producers, _ = getNsqdTopicProducers(topic, nsqdAddresses)
+	}
 	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
 
 	globalTopicStats := &TopicHostStats{HostAddress: "Total"}
@@ -116,7 +126,12 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func channelHandler(w http.ResponseWriter, req *http.Request, topic string, channel string) {
-	producers, _ := getLookupdTopicProducers(topic, lookupdAddresses)
+	var producers []string
+	if len(lookupdAddresses) != 0 {
+		producers, _ = getLookupdTopicProducers(topic, lookupdAddresses)
+	} else {
+		producers, _ = getNsqdTopicProducers(topic, nsqdAddresses)
+	}
 	topicHostStats, allChannelStats, _ := getNSQDStats(producers, topic)
 	channelStats := allChannelStats[channel]
 
