@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util/pqueue"
+	"bytes"
 	"log"
 )
 
@@ -27,10 +28,12 @@ disk:
 }
 
 func FlushQueue(q Queue) error {
+	var msgBuf bytes.Buffer
+
 	for {
 		select {
 		case msg := <-q.MemoryChan():
-			err := WriteMessageToBackend(msg, q)
+			err := WriteMessageToBackend(&msgBuf, msg, q)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}
@@ -40,38 +43,32 @@ func FlushQueue(q Queue) error {
 	}
 
 finish:
-	inFlight := q.InFlight()
-	if inFlight != nil {
-		for _, item := range inFlight {
-			msg := item.Value.(*inFlightMessage).msg
-			err := WriteMessageToBackend(msg, q)
-			if err != nil {
-				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-			}
+	for _, item := range q.InFlight() {
+		msg := item.Value.(*inFlightMessage).msg
+		err := WriteMessageToBackend(&msgBuf, msg, q)
+		if err != nil {
+			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 		}
 	}
 
-	deferred := q.Deferred()
-	if deferred != nil {
-		for _, item := range deferred {
-			msg := item.Value.(*nsq.Message)
-			err := WriteMessageToBackend(msg, q)
-			if err != nil {
-				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
-			}
+	for _, item := range q.Deferred() {
+		msg := item.Value.(*nsq.Message)
+		err := WriteMessageToBackend(&msgBuf, msg, q)
+		if err != nil {
+			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 		}
 	}
 
 	return nil
 }
 
-func WriteMessageToBackend(msg *nsq.Message, q Queue) error {
-	// TODO: refactor this to use Encode with a supplied, reusable, buffer
-	data, err := msg.EncodeBytes()
+func WriteMessageToBackend(buf *bytes.Buffer, msg *nsq.Message, q Queue) error {
+	buf.Reset()
+	err := msg.Encode(buf)
 	if err != nil {
 		return err
 	}
-	err = q.BackendQueue().Put(data)
+	err = q.BackendQueue().Put(buf.Bytes())
 	if err != nil {
 		return err
 	}
