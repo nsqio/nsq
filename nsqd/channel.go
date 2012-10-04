@@ -119,19 +119,20 @@ func (c *Channel) Close() error {
 		return errors.New("E_EXITING")
 	}
 
-	var err error
-
 	log.Printf("CHANNEL(%s): closing", c.name)
 
 	// initiate exit
-	atomic.AddInt32(&c.exitFlag, 1)
+	atomic.StoreInt32(&c.exitFlag, 1)
 
 	for _, client := range c.clients {
 		client.Exit()
 	}
 
 	close(c.exitChan)
+
+	c.Lock()
 	close(c.incomingMsgChan)
+	c.Unlock()
 
 	// synchronize the close of router() and pqWorkers (2)
 	c.waitGroup.Wait()
@@ -149,7 +150,7 @@ func (c *Channel) Close() error {
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
 	}
 	FlushQueue(c)
-	err = c.backend.Close()
+	err := c.backend.Close()
 	if err != nil {
 		return err
 	}
@@ -184,6 +185,8 @@ func (c *Channel) Depth() int64 {
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) error {
+	c.RLock()
+	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
