@@ -5,6 +5,7 @@ import (
 	"../util"
 	"../util/pqueue"
 	"bitly/notify"
+	"bytes"
 	"container/heap"
 	"errors"
 	"log"
@@ -115,11 +116,12 @@ func (c *Channel) Exiting() bool {
 
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
+	var err error
+	var msgBuf bytes.Buffer
+
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
-
-	var err error
 
 	log.Printf("CHANNEL(%s): closing", c.name)
 
@@ -140,7 +142,7 @@ func (c *Channel) Close() error {
 	// this will read until its closed (exited)
 	for msg := range c.clientMsgChan {
 		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		WriteMessageToBackend(msg, c)
+		WriteMessageToBackend(&msgBuf, msg, c)
 	}
 
 	// write anything leftover to disk
@@ -388,11 +390,12 @@ func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 // Router handles the muxing of incoming Channel messages, either writing
 // to the in-memory channel or to the backend
 func (c *Channel) router() {
+	var msgBuf bytes.Buffer
 	for msg := range c.incomingMsgChan {
 		select {
 		case c.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(msg, c)
+			err := WriteMessageToBackend(&msgBuf, msg, c)
 			if err != nil {
 				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s", c.name, err.Error())
 				// theres not really much we can do at this point, you're certainly

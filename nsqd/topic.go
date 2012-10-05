@@ -5,6 +5,7 @@ import (
 	"../util"
 	"../util/pqueue"
 	"bitly/notify"
+	"bytes"
 	"errors"
 	"log"
 	"sync"
@@ -175,11 +176,12 @@ exit:
 // router handles muxing of Topic messages including
 // proxying messages to memory or backend
 func (t *Topic) router() {
+	var msgBuf bytes.Buffer
 	for msg := range t.incomingMsgChan {
 		select {
 		case t.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(msg, t)
+			err := WriteMessageToBackend(&msgBuf, msg, t)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 				// theres not really much we can do at this point, you're certainly
