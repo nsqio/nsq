@@ -5,7 +5,6 @@ import (
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"strconv"
 	"testing"
@@ -19,22 +18,15 @@ func TestStartup(t *testing.T) {
 	iterations := 300
 	doneExitChan := make(chan int)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
-	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
-
 	options := NewNsqdOptions()
 	options.memQueueSize = 100
 	options.maxBytesPerFile = 10240
-
-	nsqd := NewNSQd(1, options)
-	nsqd.tcpAddr = tcpAddr
-	nsqd.httpAddr = httpAddr
+	mustStartNSQd(options)
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
 	exitChan := make(chan int)
 	go func() {
-		nsqd.Main()
 		<-exitChan
 		nsqd.Exit()
 		doneExitChan <- 1
@@ -69,18 +61,18 @@ func TestStartup(t *testing.T) {
 
 	// start up a new nsqd w/ the same folder
 
-	nsqdd := NewNSQd(1, options)
-	nsqdd.tcpAddr = tcpAddr
-	nsqdd.httpAddr = httpAddr
+	options = NewNsqdOptions()
+	options.memQueueSize = 100
+	options.maxBytesPerFile = 10240
+	mustStartNSQd(options)
 
 	go func() {
-		nsqdd.Main()
 		<-exitChan
-		nsqdd.Exit()
+		nsqd.Exit()
 		doneExitChan <- 1
 	}()
 
-	topic = nsqdd.GetTopic(topicName)
+	topic = nsqd.GetTopic(topicName)
 	// should be empty; channel should have drained everything
 	count := topic.Depth()
 	assert.Equal(t, count, int64(0))
@@ -111,21 +103,15 @@ func TestEphemeralChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4150")
-	httpAddr, _ := net.ResolveTCPAddr("tcp", "0.0.0.0:4151")
-
 	options := NewNsqdOptions()
 	options.memQueueSize = 100
-	nsqd := NewNSQd(1, options)
-	nsqd.tcpAddr = tcpAddr
-	nsqd.httpAddr = httpAddr
+	mustStartNSQd(options)
 
 	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
 	doneExitChan := make(chan int)
 
 	exitChan := make(chan int)
 	go func() {
-		nsqd.Main()
 		<-exitChan
 		nsqd.Exit()
 		doneExitChan <- 1
