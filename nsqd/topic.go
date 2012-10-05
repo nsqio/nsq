@@ -115,10 +115,11 @@ func (t *Topic) DeleteChannel(channel *Channel) {
 // PutMessage writes to the appropriate incoming
 // message channel
 func (t *Topic) PutMessage(msg *nsq.Message) error {
+	t.RLock()
+	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("E_EXITING")
 	}
-	// TODO: theres still a race condition here when closing incomingMsgChan
 	t.incomingMsgChan <- msg
 	atomic.AddUint64(&t.messageCount, 1)
 	return nil
@@ -196,12 +197,19 @@ func (t *Topic) router() {
 func (t *Topic) Close() error {
 	var err error
 
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return errors.New("E_EXITING")
+	}
+
 	log.Printf("TOPIC(%s): closing", t.name)
 
 	// initiate exit
-	atomic.AddInt32(&t.exitFlag, 1)
+	atomic.StoreInt32(&t.exitFlag, 1)
+
 	close(t.exitChan)
+	t.Lock()
 	close(t.incomingMsgChan)
+	t.Unlock()
 
 	// synchronize the close of router() and messagePump()
 	t.waitGroup.Wait()
