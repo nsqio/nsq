@@ -134,6 +134,7 @@ func (c *Channel) Close() error {
 
 	close(c.exitChan)
 
+	// handle race condition w/ things writing into incomingMsgChan
 	c.Lock()
 	close(c.incomingMsgChan)
 	c.Unlock()
@@ -154,7 +155,7 @@ func (c *Channel) Close() error {
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
 	}
 	FlushQueue(c)
-	err := c.backend.Close()
+	err = c.backend.Close()
 	if err != nil {
 		return err
 	}

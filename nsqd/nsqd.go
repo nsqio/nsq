@@ -28,6 +28,7 @@ type NSQd struct {
 	idChan       chan []byte
 	exitChan     chan int
 	waitGroup    util.WaitGroupWrapper
+	lookupPeers  []*nsq.LookupPeer
 }
 
 type nsqdOptions struct {
@@ -65,7 +66,7 @@ func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 }
 
 func (n *NSQd) Main() {
-	n.waitGroup.Wrap(func() { lookupRouter(n.lookupAddrs, n.exitChan) })
+	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
@@ -162,16 +163,30 @@ func (n *NSQd) Exit() {
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQd) GetTopic(topicName string) *Topic {
 	n.Lock()
-	defer n.Unlock()
+	t, ok := n.topicMap[topicName]
+	if ok {
+		n.Unlock()
+		return t
+	} else {
+		t = NewTopic(topicName, n.options)
+		n.topicMap[topicName] = t
+		log.Printf("TOPIC(%s): created", t.name)
 
-	topic, ok := n.topicMap[topicName]
-	if !ok {
-		topic = NewTopic(topicName, n.options)
-		n.topicMap[topicName] = topic
-		log.Printf("TOPIC(%s): created", topic.name)
+		// release our global nsqd lock, and switch to a more granular topic lock while we init our 
+		// channels from lookupd. This blocks concurrent PutMessages to this topic.
+		t.Lock()
+		defer t.Unlock()
+		n.Unlock()
+		// if using lookupd, make a blocking call to get the topics, and immediately create them.
+		// this makes sure that any message received is buffered to the right channels
+		if len(n.lookupPeers) > 0 {
+			channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddresses())
+			for _, channelName := range channelNames {
+				t.getOrCreateChannel(channelName)
+			}
+		}
 	}
-
-	return topic
+	return t
 }
 
 // HasTopic performs a thread safe operation to check for topic existance

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +34,6 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	client := NewClientV1(conn)
 	client.State = nsq.StateInit
-
 	err = nil
 	reader := bufio.NewReader(client)
 	for {
@@ -248,7 +248,22 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		producer.HttpPort,
 		producer.Address)
 
-	return []byte("OK"), nil
+	// build a response
+	data := make(map[string]interface{})
+	data["tcp_port"] = lookupd.tcpAddr.Port
+	data["http_port"] = lookupd.httpAddr.Port
+	data["version"] = VERSION
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
+	}
+	data["address"] = hostname
+	response, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("error marshaling %v", data)
+		return []byte("OK"), nil
+	}
+	return response, nil
 }
 
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
