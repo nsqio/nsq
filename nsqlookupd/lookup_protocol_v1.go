@@ -162,8 +162,6 @@ func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, 
 		return nil, err
 	}
 
-	// TODO: move this client information into a separate message so the ANNOUNCE can return to just
-	// be about topic and channel
 	if client.Producer == nil {
 		tcpPort, err := strconv.Atoi(params[2])
 		if err != nil {
