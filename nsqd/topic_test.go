@@ -46,6 +46,29 @@ func TestGetChannel(t *testing.T) {
 	assert.Equal(t, channel2, topic.channelMap["ch2"])
 }
 
+func TestDeletes(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	nsqd := NewNSQd(1, NewNsqdOptions())
+	topic := nsqd.GetTopic("test")
+
+	channel1 := topic.GetChannel("ch1")
+	assert.NotEqual(t, nil, channel1)
+
+	err := topic.DeleteExistingChannel("ch1")
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, len(topic.channelMap))
+
+	channel2 := topic.GetChannel("ch2")
+	assert.NotEqual(t, nil, channel2)
+
+	err = nsqd.DeleteExistingTopic("test")
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, len(topic.channelMap))
+	assert.Equal(t, 0, len(nsqd.topicMap))
+}
+
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)

@@ -69,7 +69,7 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if *verbose {
-		log.Printf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c.RemoteAddr().String(),
+		log.Printf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
 			readyCount, lastReadyCount, inFlightCount)
 	}
 

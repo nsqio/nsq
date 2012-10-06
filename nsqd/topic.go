@@ -76,7 +76,7 @@ func (t *Topic) getOrCreateChannel(channelName string) *Channel {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
 		deleteCallback := func(c *Channel) {
-			t.DeleteChannel(c)
+			t.DeleteExistingChannel(c.name)
 		}
 		channel = NewChannel(t.name, channelName, t.options, deleteCallback)
 		t.channelMap[channelName] = channel
@@ -87,37 +87,32 @@ func (t *Topic) getOrCreateChannel(channelName string) *Channel {
 	return channel
 }
 
-// HasChannel performs a thread safe operation to check for channel existance
-func (t *Topic) HasChannel(channelName string) bool {
-	t.RLock()
-	defer t.RUnlock()
-	_, ok := t.channelMap[channelName]
-	return ok
-}
-
-// DeleteChannel removes a channel from the topic
-// this is generally used to cleanup ephemeral channels
-func (t *Topic) DeleteChannel(channel *Channel) {
+// DeleteExistingChannel removes a channel from the topic only if it exists
+func (t *Topic) DeleteExistingChannel(channelName string) error {
 	t.Lock()
-	_, ok := t.channelMap[channel.name]
+	channel, ok := t.channelMap[channelName]
 	if !ok {
 		t.Unlock()
-		return
+		return errors.New("channel does not exist")
 	}
-	delete(t.channelMap, channel.name)
-	// not defered so that the topic can continue while the channel async closes
+	delete(t.channelMap, channelName)
+	// not defered so that we can continue while the channel async closes
 	t.Unlock()
 
-	// since we are closing in this fashion it's ok to drop messages instead of persisting them
-	EmptyQueue(channel)
-	channel.Close()
+	log.Printf("TOPIC(%s): deleting channel %s", t.name, channel.name)
+
+	// delete empties the channel before closing
+	// (so that we dont leave any messages around)
+	channel.Delete()
+
 	// since we are explicitly deleting a channel (not just at system exit time)
 	// de-register this from the lookupd
 	go notify.Post("channel_change", channel)
+
+	return nil
 }
 
-// PutMessage writes to the appropriate incoming
-// message channel
+// PutMessage writes to the appropriate incoming message channel
 func (t *Topic) PutMessage(msg *nsq.Message) error {
 	t.RLock()
 	defer t.RUnlock()
@@ -196,6 +191,18 @@ func (t *Topic) router() {
 	}
 
 	log.Printf("TOPIC(%s): closing ... router", t.name)
+}
+
+// Delete empties the topic and all its channels and closes
+func (t *Topic) Delete() error {
+	EmptyQueue(t)
+	t.Lock()
+	for _, channel := range t.channelMap {
+		delete(t.channelMap, channel.name)
+		channel.Delete()
+	}
+	t.Unlock()
+	return t.Close()
 }
 
 func (t *Topic) Close() error {

@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -189,12 +190,36 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 	return t
 }
 
-// HasTopic performs a thread safe operation to check for topic existance
-func (n *NSQd) HasTopic(topicName string) bool {
+// GetExistingTopic gets a topic only if it exists
+func (n *NSQd) GetExistingTopic(topicName string) (*Topic, error) {
 	n.RLock()
 	defer n.RUnlock()
-	_, ok := n.topicMap[topicName]
-	return ok
+	topic, ok := n.topicMap[topicName]
+	if !ok {
+		return nil, errors.New("topic does not exist")
+	}
+	return topic, nil
+}
+
+// DeleteExistingTopic removes a topic only if it exists
+func (n *NSQd) DeleteExistingTopic(topicName string) error {
+	n.Lock()
+	topic, ok := n.topicMap[topicName]
+	if !ok {
+		n.Unlock()
+		return errors.New("topic does not exist")
+	}
+	delete(n.topicMap, topicName)
+	// not defered so that we can continue while the topic async closes
+	n.Unlock()
+
+	log.Printf("TOPIC(%s): deleting", topic.name)
+
+	// delete empties all channels and the topic itself before closing
+	// (so that we dont leave any messages around)
+	topic.Delete()
+
+	return nil
 }
 
 func (n *NSQd) idPump() {

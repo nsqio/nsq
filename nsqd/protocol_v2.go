@@ -56,7 +56,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		params := bytes.Split(line, []byte(" "))
 
 		if *verbose {
-			log.Printf("PROTOCOL(V2): [%s] %#v", client.RemoteAddr().String(), params)
+			log.Printf("PROTOCOL(V2): [%s] %#v", client, params)
 		}
 
 		response, err := p.Exec(client, params)
@@ -77,7 +77,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	log.Printf("PROTOCOL(V2): [%s] exiting ioloop", client.RemoteAddr().String())
+	log.Printf("PROTOCOL(V2): [%s] exiting ioloop", client)
 	// TODO: gracefully send clients the close signal
 	conn.Close()
 	close(client.ExitChan)
@@ -202,7 +202,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	}
 
 exit:
-	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client.RemoteAddr().String())
+	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeat.Stop()
 	client.Channel.RemoveClient(client)
 	if err != nil {

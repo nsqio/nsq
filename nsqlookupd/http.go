@@ -17,6 +17,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/lookup", lookupHandler)
 	handler.HandleFunc("/topics", topicsHandler)
 	handler.HandleFunc("/nodes", nodesHandler)
+	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/info", infoHandler)
 
@@ -72,6 +73,34 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", data)
 }
 
+func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Query("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	registrations := lookupd.DB.FindRegistrations("channel", topicName, "*")
+	for _, registration := range registrations {
+		log.Printf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
+		lookupd.DB.RemoveRegistration(*registration)
+	}
+
+	registrations = lookupd.DB.FindRegistrations("topic", topicName, "")
+	for _, registration := range registrations {
+		log.Printf("DB: removing topic(%s)", topicName)
+		lookupd.DB.RemoveRegistration(*registration)
+	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -91,7 +120,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Printf("Removing Topic:%s Channel:%s", topicName, channelName)
+	log.Printf("DB: removing channel(%s) from topic(%s)", channelName, topicName)
 	for _, registration := range registrations {
 		lookupd.DB.RemoveRegistration(*registration)
 	}
