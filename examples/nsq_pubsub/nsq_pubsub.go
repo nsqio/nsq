@@ -21,13 +21,13 @@ import (
 var (
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
 	maxInFlight      = flag.Int("max-in-flight", 100, "max number of messages to allow in flight")
-	nsqdAddresses    = util.StringArray{}
-	lookupdAddresses = util.StringArray{}
+	nsqdTCPAddrs     = util.StringArray{}
+	lookupdHTTPAddrs = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&nsqdAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
 type StreamServer struct {
@@ -165,7 +165,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.AddHandler(sr)
 
 	// TODO: handle the error cases better (ie. at all :) )
-	errors := ConnectToNSQAndLookupd(r, nsqdAddresses, lookupdAddresses)
+	errors := ConnectToNSQAndLookupd(r, nsqdTCPAddrs, lookupdHTTPAddrs)
 	log.Printf("connected to NSQ %v", errors)
 
 	// this read allows us to detect clients that disconnect
@@ -219,11 +219,11 @@ func main() {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 
-	if len(nsqdAddresses) == 0 && len(lookupdAddresses) == 0 {
+	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-tcp-address required.")
 	}
 
-	if len(nsqdAddresses) != 0 && len(lookupdAddresses) != 0 {
+	if len(nsqdTCPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-tcp-address not both")
 	}
 

@@ -22,7 +22,7 @@ func (n *NSQd) lookupLoop() {
 		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
 	}
 
-	for _, host := range n.lookupAddrs {
+	for _, host := range n.lookupdTCPAddrs {
 		log.Printf("LOOKUP: adding peer %s", host)
 		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
 			cmd := nsq.Identify(VERSION, n.tcpAddr.Port, n.httpAddr.Port, hostname)
@@ -138,14 +138,14 @@ exit:
 	}
 }
 
-func (n *NSQd) lookupHttpAddresses() []string {
-	var lookupHttpAddresses []string
+func (n *NSQd) lookupHttpAddrs() []string {
+	var lookupHttpAddrs []string
 	for _, lp := range n.lookupPeers {
 		if len(lp.PeerInfo.Address) <= 0 {
 			continue
 		}
 		addr := net.JoinHostPort(lp.PeerInfo.Address, strconv.Itoa(lp.PeerInfo.HttpPort))
-		lookupHttpAddresses = append(lookupHttpAddresses, addr)
+		lookupHttpAddrs = append(lookupHttpAddrs, addr)
 	}
-	return lookupHttpAddresses
+	return lookupHttpAddrs
 }

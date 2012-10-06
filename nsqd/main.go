@@ -28,11 +28,11 @@ var (
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
-	lookupAddresses = util.StringArray{}
+	lookupdTCPAddrs = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&lookupAddresses, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
+	flag.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
 var nsqd *NSQd
@@ -87,7 +87,7 @@ func main() {
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
-	nsqd.lookupAddrs = lookupAddresses
+	nsqd.lookupdTCPAddrs = lookupdTCPAddrs
 
 	nsqd.LoadMetadata()
 	nsqd.Main()

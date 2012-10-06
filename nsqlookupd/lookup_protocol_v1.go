@@ -175,17 +175,17 @@ func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, 
 			}
 		}
 
-		var ipAddresses []string
+		var ipAddrs []string
 		// client sends multiple source IP address as the message body
 		for _, ip := range bytes.Split(body, []byte("\n")) {
-			ipAddresses = append(ipAddresses, string(ip))
+			ipAddrs = append(ipAddrs, string(ip))
 		}
 
 		client.Producer = &Producer{
 			producerId: client.RemoteAddr().String(),
 			TcpPort:    tcpPort,
 			HttpPort:   httpPort,
-			Address:    ipAddresses[len(ipAddresses)-1],
+			Address:    ipAddrs[len(ipAddrs)-1],
 			LastUpdate: time.Now(),
 		}
 		log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s", client.RemoteAddr(), tcpPort, httpPort, client.Producer.Address)

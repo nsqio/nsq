@@ -136,7 +136,7 @@ type Reader struct {
 	stopFlag           int32
 	runningHandlers    int32
 	messagesInFlight   int64
-	lookupdAddresses   []string
+	lookupdHTTPAddrs   []string
 	stopHandler        sync.Once
 }
 
@@ -216,15 +216,15 @@ func (q *Reader) ConnectToLookupd(addr string) error {
 	// make a HTTP req to the lookupd, and ask it for endpoints that have the
 	// topic we are interested in.
 	// this is a go loop that fires every x seconds
-	for _, x := range q.lookupdAddresses {
+	for _, x := range q.lookupdHTTPAddrs {
 		if x == addr {
 			return errors.New("address already exists")
 		}
 	}
-	q.lookupdAddresses = append(q.lookupdAddresses, addr)
+	q.lookupdHTTPAddrs = append(q.lookupdHTTPAddrs, addr)
 
 	// if this is the first one, kick off the go loop
-	if len(q.lookupdAddresses) == 1 {
+	if len(q.lookupdHTTPAddrs) == 1 {
 		q.queryLookupd()
 		go q.lookupdLoop()
 	}
@@ -254,7 +254,7 @@ func (q *Reader) lookupdLoop() {
 // for any new topics, initiate a connection to those NSQ's
 func (q *Reader) queryLookupd() {
 	httpclient := &http.Client{}
-	for _, addr := range q.lookupdAddresses {
+	for _, addr := range q.lookupdHTTPAddrs {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
 
 		log.Printf("LOOKUPD: querying %s", endpoint)
@@ -345,7 +345,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 func handleError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
 	atomic.StoreInt32(&c.stopFlag, 1)
-	if len(q.nsqConnections) == 1 && len(q.lookupdAddresses) == 0 {
+	if len(q.nsqConnections) == 1 && len(q.lookupdHTTPAddrs) == 0 {
 		// This is the only remaining connection, so stop the queue
 		atomic.StoreInt32(&q.stopFlag, 1)
 	}
@@ -445,7 +445,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 
 			log.Printf("there are %d connections left alive", len(q.nsqConnections))
 
-			if len(q.nsqConnections) == 0 && len(q.lookupdAddresses) == 0 {
+			if len(q.nsqConnections) == 0 && len(q.lookupdHTTPAddrs) == 0 {
 				// no lookupd entry means no reconnection
 				if atomic.LoadInt32(&q.stopFlag) == 1 {
 					q.stopHandlers()
@@ -458,7 +458,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 				q.stopHandlers()
 			}
 
-			if len(q.lookupdAddresses) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
+			if len(q.lookupdHTTPAddrs) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
 				// trigger a poll of the lookupd
 				select {
 				case q.lookupdRecheckChan <- 1:
@@ -551,7 +551,7 @@ func (q *Reader) Stop() {
 		}()
 	}
 
-	if len(q.lookupdAddresses) != 0 {
+	if len(q.lookupdHTTPAddrs) != 0 {
 		q.lookupdExitChan <- 1
 	}
 }

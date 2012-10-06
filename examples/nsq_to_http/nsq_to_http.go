@@ -32,17 +32,17 @@ var (
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
 	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
 	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
-	getAddresses     = util.StringArray{}
-	postAddresses    = util.StringArray{}
-	nsqdAddresses    = util.StringArray{}
-	lookupdAddresses = util.StringArray{}
+	getAddrs         = util.StringArray{}
+	postAddrs        = util.StringArray{}
+	nsqdTCPAddrs     = util.StringArray{}
+	lookupdHTTPAddrs = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&postAddresses, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
-	flag.Var(&getAddresses, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
-	flag.Var(&nsqdAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
+	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
+	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
 type Publisher interface {
@@ -127,21 +127,21 @@ func main() {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 
-	if len(nsqdAddresses) == 0 && len(lookupdAddresses) == 0 {
+	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
 	}
-	if len(nsqdAddresses) > 0 && len(lookupdAddresses) > 0 {
+	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
-	if len(getAddresses) == 0 && len(postAddresses) == 0 {
+	if len(getAddrs) == 0 && len(postAddrs) == 0 {
 		log.Fatalf("--get or --post required")
 	}
-	if len(getAddresses) > 0 && len(postAddresses) > 0 {
+	if len(getAddrs) > 0 && len(postAddrs) > 0 {
 		log.Fatalf("use --get or --post not both")
 	}
-	if len(getAddresses) > 0 {
-		for _, get := range getAddresses {
+	if len(getAddrs) > 0 {
+		for _, get := range getAddrs {
 			if strings.Count(get, "%s") != 1 {
 				log.Fatal("invalid GET address - must be a printf string")
 			}
@@ -161,12 +161,12 @@ func main() {
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	if len(postAddresses) > 0 {
+	if len(postAddrs) > 0 {
 		publisher = &PostPublisher{}
-		addresses = postAddresses
+		addresses = postAddrs
 	} else {
 		publisher = &GetPublisher{}
-		addresses = getAddresses
+		addresses = getAddrs
 	}
 
 	r, err := nsq.NewReader(*topic, *channel)
@@ -185,14 +185,14 @@ func main() {
 		r.AddHandler(handler)
 	}
 
-	for _, addrString := range nsqdAddresses {
+	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQ(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
 	}
 
-	for _, addrString := range lookupdAddresses {
+	for _, addrString := range lookupdHTTPAddrs {
 		log.Printf("lookupd addr %s", addrString)
 		err := r.ConnectToLookupd(addrString)
 		if err != nil {
