@@ -26,6 +26,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/put", putHandler)
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
+	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
@@ -175,6 +176,29 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
+func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Query("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	err = nsqd.DeleteExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
 func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -215,18 +239,17 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !nsqd.HasTopic(topicName) {
+	topic, err := nsqd.GetExistingTopic(topicName)
+	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
 	}
-	topic := nsqd.GetTopic(topicName)
-	if !topic.HasChannel(channelName) {
+
+	err = topic.DeleteExistingChannel(channelName)
+	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_CHANNEL", nil)
 		return
 	}
-	channel := topic.GetChannel(channelName)
-	log.Printf("Deleting Topic:%s Channel:%s", topicName, channelName)
-	topic.DeleteChannel(channel)
 
 	util.ApiResponse(w, 200, "OK", nil)
 }

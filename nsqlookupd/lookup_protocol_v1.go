@@ -63,7 +63,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	log.Printf("CLIENT(%s): closing", client.RemoteAddr())
+	log.Printf("CLIENT(%s): closing", client)
 	if client.Producer != nil {
 		lookupd.DB.Remove(Registration{"client", "", ""}, client.Producer)
 		registrations := lookupd.DB.LookupRegistrations(client.Producer)
@@ -123,9 +123,11 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	if channel != "" {
+		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
 		lookupd.DB.Add(key, client.Producer)
 	}
+	log.Printf("DB: client(%s) added registration for topic:%s", client, topic)
 	key := Registration{"topic", topic, ""}
 	lookupd.DB.Add(key, client.Producer)
 
@@ -143,6 +145,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	}
 
 	if channel != "" {
+		log.Printf("DB: client(%s) removed registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
 		lookupd.DB.Remove(key, client.Producer)
 	}
@@ -198,23 +201,20 @@ func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, 
 			Address:    ipAddrs[len(ipAddrs)-1],
 			LastUpdate: time.Now(),
 		}
-		log.Printf("CLIENT(%s): registered TCP:%d HTTP:%d address:%s", client.RemoteAddr(), tcpPort, httpPort, client.Producer.Address)
+		log.Printf("CLIENT(%s): registered TCP:%d HTTP:%d address:%s",
+			client, tcpPort, httpPort, client.Producer.Address)
+		lookupd.DB.Add(Registration{"client", "", ""}, client.Producer)
 	}
-
-	log.Printf("CLIENT(%s): announcing Topic:%s Channel:%s", client.Producer.producerId, topic, channel)
 
 	var key Registration
 
-	if len(channel) != 0 {
-		key = Registration{"channel", topic, channel}
-		lookupd.DB.Add(key, client.Producer)
-	}
-
 	if channel != "." {
+		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
 		key = Registration{"channel", topic, channel}
 		lookupd.DB.Add(key, client.Producer)
 	}
 
+	log.Printf("DB: client(%s) added registration for topic:%s", client, topic)
 	key = Registration{"topic", topic, ""}
 	lookupd.DB.Add(key, client.Producer)
 
