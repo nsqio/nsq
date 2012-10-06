@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
@@ -44,7 +43,6 @@ func NewRegistrationDB() *RegistrationDB {
 func (r *RegistrationDB) Add(k Registration, p *Producer) {
 	r.Lock()
 	defer r.Unlock()
-	log.Printf("requested add registration for %v, %s", k, p)
 	producers := r.registrationMap[k]
 	found := false
 	for _, producer := range producers {
@@ -61,7 +59,6 @@ func (r *RegistrationDB) Add(k Registration, p *Producer) {
 func (r *RegistrationDB) Remove(k Registration, p *Producer) {
 	r.Lock()
 	defer r.Unlock()
-	log.Printf("requested remove registration for %v, %s", k, p)
 	producers, ok := r.registrationMap[k]
 	if !ok {
 		return

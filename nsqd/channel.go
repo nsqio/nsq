@@ -114,6 +114,12 @@ func (c *Channel) Exiting() bool {
 	return atomic.LoadInt32(&c.exitFlag) == 1
 }
 
+// Delete empties the channel and closes
+func (c *Channel) Delete() error {
+	EmptyQueue(c)
+	return c.Close()
+}
+
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
 	var err error

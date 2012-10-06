@@ -9,6 +9,14 @@
 <div class="row-fluid"><div class="span12">
 <h1>Topic: {{.Topic}}</h1>
 </div></div>
+
+<div class="row-fluid"><div class="span2">
+    <form action="/delete_topic" method="GET">
+        <input type="hidden" name="topic" value="{{.Topic}}">
+        <button class="btn btn-medium btn-danger" type="submit">Delete Topic</button>
+    </form>
+</div></div>
+
 <div class="row-fluid"><div class="span8">
 <h3>Topic Message Queue</h3>
 <table class="table table-bordered table-condensed">
