@@ -23,13 +23,13 @@ var (
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
-	nsqdAddresses    = util.StringArray{}
-	lookupdAddresses = util.StringArray{}
+	nsqdTCPAddrs     = util.StringArray{}
+	lookupdHTTPAddrs = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&nsqdAddresses, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
-	flag.Var(&lookupdAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
+	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
 type FileLogger struct {
@@ -154,10 +154,10 @@ func main() {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 
-	if len(nsqdAddresses) == 0 && len(lookupdAddresses) == 0 {
+	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required.")
 	}
-	if len(nsqdAddresses) != 0 && len(lookupdAddresses) != 0 {
+	if len(nsqdTCPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
@@ -180,14 +180,14 @@ func main() {
 	r.AddAsyncHandler(f)
 	go router(r, f, termChan, hupChan)
 
-	for _, addrString := range nsqdAddresses {
+	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQ(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
 	}
 
-	for _, addrString := range lookupdAddresses {
+	for _, addrString := range lookupdHTTPAddrs {
 		log.Printf("lookupd addr %s", addrString)
 		err := r.ConnectToLookupd(addrString)
 		if err != nil {

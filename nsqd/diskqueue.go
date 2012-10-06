@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 )
 
+var ErrExiting = errors.New("exiting")
+
 // DiskQueue implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type DiskQueue struct {
@@ -146,7 +148,7 @@ func (d *DiskQueue) doEmpty() error {
 	defer d.writeMutex.Unlock()
 
 	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return ErrExiting
 	}
 
 	log.Printf("DISKQUEUE(%s): emptying", d.name)
@@ -204,7 +206,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	defer d.readMutex.Unlock()
 
 	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return nil, errors.New("E_EXITING")
+		return nil, ErrExiting
 	}
 
 	readPos := d.readPos
@@ -282,7 +284,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	defer d.writeMutex.Unlock()
 
 	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return ErrExiting
 	}
 
 	persist := false
@@ -479,7 +481,7 @@ func (d *DiskQueue) readAheadPump() {
 			if nextReadPos == readPos {
 				data, err = d.readOne()
 				if err != nil {
-					if err.Error() == "E_EXITING" {
+					if err == ErrExiting {
 						goto exit
 					}
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",

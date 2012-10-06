@@ -26,6 +26,9 @@ const (
 	twepoch = int64(1288834974657)
 )
 
+var ErrTimeBackwards = errors.New("time has gone backwards")
+var ErrSequenceExpired = errors.New("sequence expired")
+
 var sequence int64
 var lastTimestamp int64
 
@@ -35,13 +38,13 @@ func NewGUID(workerId int64) (GUID, error) {
 	ts := time.Now().UnixNano() / 1e6
 
 	if ts < lastTimestamp {
-		return 0, errors.New("E_TIME_BACKWARDS")
+		return 0, ErrTimeBackwards
 	}
 
 	if lastTimestamp == ts {
 		sequence = (sequence + 1) & sequenceMask
 		if sequence == 0 {
-			return 0, errors.New("E_SEQUENCE_EXPIRED")
+			return 0, ErrSequenceExpired
 		}
 	} else {
 		sequence = 0

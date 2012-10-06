@@ -17,18 +17,18 @@ import (
 
 type NSQd struct {
 	sync.RWMutex
-	options      *nsqdOptions
-	workerId     int64
-	topicMap     map[string]*Topic
-	lookupAddrs  util.StringArray
-	tcpAddr      *net.TCPAddr
-	httpAddr     *net.TCPAddr
-	tcpListener  net.Listener
-	httpListener net.Listener
-	idChan       chan []byte
-	exitChan     chan int
-	waitGroup    util.WaitGroupWrapper
-	lookupPeers  []*nsq.LookupPeer
+	options         *nsqdOptions
+	workerId        int64
+	topicMap        map[string]*Topic
+	lookupdTCPAddrs util.StringArray
+	tcpAddr         *net.TCPAddr
+	httpAddr        *net.TCPAddr
+	tcpListener     net.Listener
+	httpListener    net.Listener
+	idChan          chan []byte
+	exitChan        chan int
+	waitGroup       util.WaitGroupWrapper
+	lookupPeers     []*nsq.LookupPeer
 }
 
 type nsqdOptions struct {
@@ -180,7 +180,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		// if using lookupd, make a blocking call to get the topics, and immediately create them.
 		// this makes sure that any message received is buffered to the right channels
 		if len(n.lookupPeers) > 0 {
-			channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddresses())
+			channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddrs())
 			for _, channelName := range channelNames {
 				t.getOrCreateChannel(channelName)
 			}

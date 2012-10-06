@@ -8,12 +8,12 @@ import (
 	"sync"
 )
 
-func GetChannelsForTopic(topic string, lookupdAddresses []string) ([]string, error) {
+func GetChannelsForTopic(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	channels := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
-	for _, addr := range lookupdAddresses {
+	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)

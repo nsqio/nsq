@@ -33,10 +33,10 @@ func Announce(topic string, channel string, port int, ips []string) *Command {
 // Identify is the first message sent to the Lookupd and provides information about the client
 func Identify(version string, tcpPort int, httpPort int, address string) *Command {
 	body, err := json.Marshal(struct {
-		Version   string `json:"version"`
-		TcpPort   int    `json:"tcp_port"`
-		HttpPort  int    `json:"http_port"`
-		Addresses string `json:"address"`
+		Version  string `json:"version"`
+		TcpPort  int    `json:"tcp_port"`
+		HttpPort int    `json:"http_port"`
+		Address  string `json:"address"`
 	}{
 		version,
 		tcpPort,

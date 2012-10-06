@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -47,6 +48,7 @@ func (p *ProtocolV1) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, reader, params)
 		if err != nil {
+			log.Printf("ERROR: CLIENT(%s) - %s", client, err.(*nsq.ClientErr).Description())
 			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
 				break
@@ -70,38 +72,38 @@ func (p *ProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params []strin
 	case "PUB":
 		return p.PUB(client, reader, params)
 	}
-	return nil, nsq.ClientErrInvalid
+	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
 func (p *ProtocolV1) PUB(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
 
 	if len(params) < 2 {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
 	}
 
 	topicName := params[1]
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, nsq.ClientErrBadTopic
+		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
 	var bodyLen int32
 	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.ClientErrBadMessage
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
 	}
 
 	messageBody := make([]byte, bodyLen)
 	_, err = io.ReadFull(client, messageBody)
 	if err != nil {
-		return nil, nsq.ClientErrBadMessage
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
 	}
 
 	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		return nil, nsq.ClientErrPutFailed
+		return nil, nsq.NewClientErr("E_PUT_FAILED", err.Error())
 	}
 
 	return []byte("OK"), nil
