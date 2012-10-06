@@ -1,5 +1,6 @@
 import socket
 import struct
+import logging
 
 import tornado.iostream
 
@@ -10,6 +11,7 @@ class AsyncConn(object):
     def __init__(self, host, port, connect_callback, data_callback, close_callback, timeout=1.0):
         assert isinstance(host, (str, unicode))
         assert isinstance(port, int)
+        assert callable(connect_callback)
         assert callable(data_callback)
         assert callable(close_callback)
         assert isinstance(timeout, float)
@@ -41,24 +43,40 @@ class AsyncConn(object):
         self.connecting = False
         self.connected = True
         self.stream.write(nsq.MAGIC_V2)
+        self._start_read()
+        try:
+            self.connect_callback(self)
+        except Exception:
+            logging.exception("uncaught exception in connect_callback")
+    
+    def _start_read(self):
         self.stream.read_bytes(4, self._read_size)
-        self.connect_callback(self)
     
     def _socket_close(self):
         self.connected = False
-        self.close_callback(self)
+        try:
+            self.close_callback(self)
+        except Exception:
+            logging.exception("uncaught exception in close_callback")
     
     def close(self):
         self.connected = False
         self.stream.close()
     
     def _read_size(self, data):
-        size = struct.unpack('>l', data)[0]
-        self.stream.read_bytes(size, self._read_body)
+        try:
+            size = struct.unpack('>l', data)[0]
+            self.stream.read_bytes(size, self._read_body)
+        except Exception:
+            self.close()
+            logging.exception("failed to unpack size")
     
     def _read_body(self, data):
-        self.stream.read_bytes(4, self._read_size)
-        self.data_callback(self, data)
+        try:
+            self.data_callback(self, data)
+        except Exception:
+            logging.exception("uncaught exception in data_callback")
+        tornado.ioloop.IOLoop.instance().add_callback(self._start_read)
     
     def send(self, data):
         self.stream.write(data)
@@ -88,4 +106,3 @@ if __name__ == '__main__':
     c.connect()
     
     tornado.ioloop.IOLoop.instance().start()
-
