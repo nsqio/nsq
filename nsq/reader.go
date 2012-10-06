@@ -20,9 +20,7 @@ import (
 	"time"
 )
 
-var ErrNoHandlers = errors.New("no handlers")
 var ErrAlreadyConnected = errors.New("already connected")
-var ErrReaderStopped = errors.New("reader stopped")
 
 // a syncronous handler that returns an error (or nil to indicate success)
 type Handler interface {
@@ -142,11 +140,11 @@ type Reader struct {
 
 func NewReader(topic string, channel string) (*Reader, error) {
 	if !IsValidTopicName(topic) {
-		return nil, errors.New("INVALID_TOPIC_NAME")
+		return nil, errors.New("invalid topic name")
 	}
 
 	if !IsValidChannelName(channel) {
-		return nil, errors.New("INVALID_CHANNEL_NAME")
+		return nil, errors.New("invalid channel name")
 	}
 
 	hostname, err := os.Hostname()
@@ -218,7 +216,7 @@ func (q *Reader) ConnectToLookupd(addr string) error {
 	// this is a go loop that fires every x seconds
 	for _, x := range q.lookupdHTTPAddrs {
 		if x == addr {
-			return errors.New("address already exists")
+			return errors.New("lookupd address already exists")
 		}
 	}
 	q.lookupdHTTPAddrs = append(q.lookupdHTTPAddrs, addr)
@@ -309,11 +307,11 @@ func (q *Reader) queryLookupd() {
 
 func (q *Reader) ConnectToNSQ(addr string) error {
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
-		return ErrReaderStopped
+		return errors.New("reader stopped")
 	}
 
 	if atomic.LoadInt32(&q.runningHandlers) == 0 {
-		return ErrNoHandlers
+		return errors.New("no handlers")
 	}
 
 	_, ok := q.nsqConnections[addr]

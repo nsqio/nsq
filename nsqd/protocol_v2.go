@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -60,6 +61,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, params)
 		if err != nil {
+			log.Printf("ERROR: CLIENT(%s) - %s", client, err.(*nsq.ClientErr).Description())
 			err = p.Send(client, nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
 				break
@@ -101,7 +103,7 @@ func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error 
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				attempts++
 				if attempts == 3 {
-					return errors.New("E_WRITE_TIMEOUT")
+					return errors.New("timed out trying to send to client")
 				}
 				continue
 			}
@@ -128,7 +130,7 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	case bytes.Equal(params[0], []byte("NOP")):
 		return p.NOP(client, params)
 	}
-	return nil, nsq.ClientErrInvalid
+	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
 func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
@@ -210,21 +212,21 @@ exit:
 
 func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", "client not initialized")
 	}
 
 	if len(params) < 3 {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, nsq.ClientErrBadTopic
+		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
 	channelName := string(params[2])
 	if !nsq.IsValidChannelName(channelName) {
-		return nil, nsq.ClientErrBadChannel
+		return nil, nsq.NewClientErr("E_BAD_CHANNEL", fmt.Sprintf("channel name '%s' is not valid", channelName))
 	}
 
 	if len(params) == 5 {
@@ -256,14 +258,14 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 	}
 
 	if state != nsq.StateSubscribed {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", "client not subscribed")
 	}
 
 	count := 1
 	if len(params) > 1 {
 		count, err = strconv.Atoi(string(params[1]))
 		if err != nil {
-			return nil, nsq.ClientErrInvalid
+			return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse RDY count %s", params[1]))
 		}
 	}
 
@@ -280,17 +282,17 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", "cannot finish in current state")
 	}
 
 	if len(params) < 2 {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
 	idStr := params[1]
 	err := client.Channel.FinishMessage(client, idStr)
 	if err != nil {
-		return nil, nsq.ClientErrFinishFailed
+		return nil, nsq.NewClientErr("E_FIN_FAILED", err.Error())
 	}
 
 	client.FinishedMessage()
@@ -301,27 +303,27 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", "cannot re-queue in current state")
 	}
 
 	if len(params) < 3 {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
 	idStr := params[1]
 	timeoutMs, err := strconv.Atoi(string(params[2]))
 	if err != nil {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse timeout %s", params[2]))
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
 	if timeoutDuration < 0 || timeoutDuration > maxTimeout {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("timeout %d out of range", timeoutDuration))
 	}
 
 	err = client.Channel.RequeueMessage(client, idStr, timeoutDuration)
 	if err != nil {
-		return nil, nsq.ClientErrRequeueFailed
+		return nil, nsq.NewClientErr("E_REQ_FAILED", err.Error())
 	}
 
 	client.RequeuedMessage()
@@ -331,11 +333,11 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 
 func (p *ProtocolV2) CLS(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateSubscribed {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_INVALID", "client not subscribed")
 	}
 
 	if len(params) > 1 {
-		return nil, nsq.ClientErrInvalid
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
 	client.StartClose()
