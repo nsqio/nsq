@@ -25,11 +25,14 @@ func (n *NSQd) lookupLoop() {
 	for _, host := range n.lookupAddrs {
 		log.Printf("LOOKUP: adding peer %s", host)
 		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
-			cmd := nsq.Identify(VERSION, nsqd.tcpAddr.Port, nsqd.httpAddr.Port, hostname)
+			cmd := nsq.Identify(VERSION, n.tcpAddr.Port, n.httpAddr.Port, hostname)
 			resp, err := lp.Command(cmd)
-			if err != nil || bytes.Equal(resp, []byte("E_INVALID")) {
-				log.Printf("LOOKUPD: Error writing to %s %s", host, err.Error())
+			if err != nil {
+				log.Printf("LOOKUPD(5s): Error writing to %s %s", lp, err.Error())
+			} else if bytes.Equal(resp, []byte("E_INVALID")) {
+				log.Printf("LOOKUPD(%s): lookupd returned %s", lp, resp)
 			} else {
+				log.Printf("got response %s", resp)
 				if bytes.Equal(resp, []byte("OK")) {
 					// this is an old host
 					log.Printf("LOOKUPD(%s) got old response from lokupd. %v", lp, resp)
