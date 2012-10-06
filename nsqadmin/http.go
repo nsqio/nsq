@@ -52,10 +52,10 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 
 func indexHandler(w http.ResponseWriter, req *http.Request) {
 	var topics []string
-	if len(lookupdAddresses) != 0 {
-		topics, _ = getLookupdTopics(lookupdAddresses)
+	if len(lookupdHTTPAddrs) != 0 {
+		topics, _ = getLookupdTopics(lookupdHTTPAddrs)
 	} else {
-		topics, _ = getNSQDTopics(nsqdAddresses)
+		topics, _ = getNSQDTopics(nsqdHTTPAddrs)
 	}
 	sort.Strings(topics)
 	p := struct {
@@ -89,10 +89,10 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var producers []string
-	if len(lookupdAddresses) != 0 {
-		producers, _ = getLookupdTopicProducers(topic, lookupdAddresses)
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNsqdTopicProducers(topic, nsqdAddresses)
+		producers, _ = getNsqdTopicProducers(topic, nsqdHTTPAddrs)
 	}
 	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
 
@@ -127,10 +127,10 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 
 func channelHandler(w http.ResponseWriter, req *http.Request, topic string, channel string) {
 	var producers []string
-	if len(lookupdAddresses) != 0 {
-		producers, _ = getLookupdTopicProducers(topic, lookupdAddresses)
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNsqdTopicProducers(topic, nsqdAddresses)
+		producers, _ = getNsqdTopicProducers(topic, nsqdHTTPAddrs)
 	}
 	topicHostStats, allChannelStats, _ := getNSQDStats(producers, topic)
 	channelStats := allChannelStats[channel]
@@ -175,7 +175,7 @@ func removeChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, addr := range lookupdAddresses {
+	for _, addr := range lookupdHTTPAddrs {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
@@ -186,7 +186,7 @@ func removeChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	producers, _ := getLookupdTopicProducers(topicName, lookupdAddresses)
+	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: calling %s", endpoint)
@@ -215,7 +215,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	producers, _ := getLookupdTopicProducers(topicName, lookupdAddresses)
+	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: calling %s", endpoint)
@@ -231,7 +231,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
-	producers, _ := getLookupdProducers(lookupdAddresses)
+	producers, _ := getLookupdProducers(lookupdHTTPAddrs)
 
 	p := struct {
 		Title     string

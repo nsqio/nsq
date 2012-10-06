@@ -122,7 +122,7 @@ func (t *Topic) PutMessage(msg *nsq.Message) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return errors.New("exiting")
 	}
 	t.incomingMsgChan <- msg
 	atomic.AddUint64(&t.messageCount, 1)
@@ -202,7 +202,7 @@ func (t *Topic) Close() error {
 	var err error
 
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return errors.New("exiting")
 	}
 
 	log.Printf("TOPIC(%s): closing", t.name)

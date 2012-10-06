@@ -20,9 +20,7 @@ import (
 	"time"
 )
 
-var ErrNoHandlers = errors.New("no handlers")
 var ErrAlreadyConnected = errors.New("already connected")
-var ErrReaderStopped = errors.New("reader stopped")
 
 // a syncronous handler that returns an error (or nil to indicate success)
 type Handler interface {
@@ -136,17 +134,17 @@ type Reader struct {
 	stopFlag           int32
 	runningHandlers    int32
 	messagesInFlight   int64
-	lookupdAddresses   []string
+	lookupdHTTPAddrs   []string
 	stopHandler        sync.Once
 }
 
 func NewReader(topic string, channel string) (*Reader, error) {
 	if !IsValidTopicName(topic) {
-		return nil, errors.New("INVALID_TOPIC_NAME")
+		return nil, errors.New("invalid topic name")
 	}
 
 	if !IsValidChannelName(channel) {
-		return nil, errors.New("INVALID_CHANNEL_NAME")
+		return nil, errors.New("invalid channel name")
 	}
 
 	hostname, err := os.Hostname()
@@ -216,15 +214,15 @@ func (q *Reader) ConnectToLookupd(addr string) error {
 	// make a HTTP req to the lookupd, and ask it for endpoints that have the
 	// topic we are interested in.
 	// this is a go loop that fires every x seconds
-	for _, x := range q.lookupdAddresses {
+	for _, x := range q.lookupdHTTPAddrs {
 		if x == addr {
-			return errors.New("address already exists")
+			return errors.New("lookupd address already exists")
 		}
 	}
-	q.lookupdAddresses = append(q.lookupdAddresses, addr)
+	q.lookupdHTTPAddrs = append(q.lookupdHTTPAddrs, addr)
 
 	// if this is the first one, kick off the go loop
-	if len(q.lookupdAddresses) == 1 {
+	if len(q.lookupdHTTPAddrs) == 1 {
 		q.queryLookupd()
 		go q.lookupdLoop()
 	}
@@ -254,7 +252,7 @@ func (q *Reader) lookupdLoop() {
 // for any new topics, initiate a connection to those NSQ's
 func (q *Reader) queryLookupd() {
 	httpclient := &http.Client{}
-	for _, addr := range q.lookupdAddresses {
+	for _, addr := range q.lookupdHTTPAddrs {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
 
 		log.Printf("LOOKUPD: querying %s", endpoint)
@@ -309,11 +307,11 @@ func (q *Reader) queryLookupd() {
 
 func (q *Reader) ConnectToNSQ(addr string) error {
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
-		return ErrReaderStopped
+		return errors.New("reader stopped")
 	}
 
 	if atomic.LoadInt32(&q.runningHandlers) == 0 {
-		return ErrNoHandlers
+		return errors.New("no handlers")
 	}
 
 	_, ok := q.nsqConnections[addr]
@@ -345,7 +343,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 func handleError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
 	atomic.StoreInt32(&c.stopFlag, 1)
-	if len(q.nsqConnections) == 1 && len(q.lookupdAddresses) == 0 {
+	if len(q.nsqConnections) == 1 && len(q.lookupdHTTPAddrs) == 0 {
 		// This is the only remaining connection, so stop the queue
 		atomic.StoreInt32(&q.stopFlag, 1)
 	}
@@ -445,7 +443,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 
 			log.Printf("there are %d connections left alive", len(q.nsqConnections))
 
-			if len(q.nsqConnections) == 0 && len(q.lookupdAddresses) == 0 {
+			if len(q.nsqConnections) == 0 && len(q.lookupdHTTPAddrs) == 0 {
 				// no lookupd entry means no reconnection
 				if atomic.LoadInt32(&q.stopFlag) == 1 {
 					q.stopHandlers()
@@ -458,7 +456,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 				q.stopHandlers()
 			}
 
-			if len(q.lookupdAddresses) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
+			if len(q.lookupdHTTPAddrs) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
 				// trigger a poll of the lookupd
 				select {
 				case q.lookupdRecheckChan <- 1:
@@ -551,7 +549,7 @@ func (q *Reader) Stop() {
 		}()
 	}
 
-	if len(q.lookupdAddresses) != 0 {
+	if len(q.lookupdHTTPAddrs) != 0 {
 		q.lookupdExitChan <- 1
 	}
 }

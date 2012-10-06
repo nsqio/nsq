@@ -120,7 +120,7 @@ func (c *Channel) Close() error {
 	var msgBuf bytes.Buffer
 
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return errors.New("exiting")
 	}
 
 	log.Printf("CHANNEL(%s): closing", c.name)
@@ -193,7 +193,7 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return errors.New("exiting")
 	}
 	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.messageCount, 1)
@@ -299,7 +299,7 @@ func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) 
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(msg *nsq.Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("E_EXITING")
+		return errors.New("exiting")
 	}
 	c.incomingMsgChan <- msg
 	atomic.AddUint64(&c.requeueCount, 1)
@@ -314,7 +314,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	id := item.Value.(*inFlightMessage).msg.Id
 	_, ok := c.inFlightMessages[string(id)]
 	if ok {
-		return errors.New("E_ID_IN_FLIGHT")
+		return errors.New("ID already in flight")
 	}
 	c.inFlightMessages[string(id)] = item
 
@@ -328,11 +328,11 @@ func (c *Channel) popInFlightMessage(client ClientStatTracker, id []byte) (*pque
 
 	item, ok := c.inFlightMessages[string(id)]
 	if !ok {
-		return nil, errors.New("E_ID_NOT_IN_FLIGHT")
+		return nil, errors.New("ID not in flight")
 	}
 
 	if item.Value.(*inFlightMessage).client != client {
-		return nil, errors.New("E_INVALID_CLIENT")
+		return nil, errors.New("client does not own ID")
 	}
 
 	delete(c.inFlightMessages, string(id))
@@ -366,7 +366,7 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	id := item.Value.(*nsq.Message).Id
 	_, ok := c.deferredMessages[string(id)]
 	if ok {
-		return errors.New("E_ID_ALREADY_DEFERRED")
+		return errors.New("ID already deferred")
 	}
 	c.deferredMessages[string(id)] = item
 
@@ -379,7 +379,7 @@ func (c *Channel) popDeferredMessage(id []byte) (*pqueue.Item, error) {
 
 	item, ok := c.deferredMessages[string(id)]
 	if !ok {
-		return nil, errors.New("E_ID_NOT_DEFERRED")
+		return nil, errors.New("ID not deferred")
 	}
 	delete(c.deferredMessages, string(id))
 

@@ -11,12 +11,12 @@ import (
 	"time"
 )
 
-func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
+func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allTopics := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
-	for _, addr := range lookupdAddresses {
+	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
@@ -44,7 +44,7 @@ func getLookupdTopics(lookupdAddresses []string) ([]string, error) {
 	return allTopics, nil
 }
 
-func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
+func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer, 0)
 	output := make([]*Producer, 0)
@@ -52,7 +52,7 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, addr := range lookupdAddresses {
+	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
@@ -113,13 +113,13 @@ func getLookupdProducers(lookupdAddresses []string) ([]*Producer, error) {
 	return output, nil
 }
 
-func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string, error) {
+func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allSources := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, addr := range lookupdAddresses {
+	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(topic))
@@ -152,12 +152,12 @@ func getLookupdTopicProducers(topic string, lookupdAddresses []string) ([]string
 	return allSources, nil
 }
 
-func getNSQDTopics(nsqdAddresses []string) ([]string, error) {
+func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	topics := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
-	for _, addr := range nsqdAddresses {
+	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)
@@ -187,12 +187,12 @@ func getNSQDTopics(nsqdAddresses []string) ([]string, error) {
 	return topics, nil
 }
 
-func getNsqdTopicProducers(topic string, nsqdAddresses []string) ([]string, error) {
+func getNsqdTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
 	addresses := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
-	for _, addr := range nsqdAddresses {
+	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)
@@ -225,13 +225,13 @@ func getNsqdTopicProducers(topic string, nsqdAddresses []string) ([]string, erro
 	return addresses, nil
 }
 
-func getNSQDStats(nsqdAddresses []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
+func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
 	topicHostStats := make([]*TopicHostStats, 0)
 	channelStats := make(map[string]*ChannelStats)
 	success := false
 	var lock sync.Mutex
 	var wg sync.WaitGroup
-	for _, addr := range nsqdAddresses {
+	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)

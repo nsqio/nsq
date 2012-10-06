@@ -3,6 +3,7 @@ package nsq
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -143,7 +144,7 @@ func UnpackResponse(response []byte) (int32, []byte, error) {
 	var frameType int32
 
 	if len(response) < 4 {
-		return -1, nil, ClientErrInvalid
+		return -1, nil, errors.New("length of response is too small")
 	}
 
 	// frame type
