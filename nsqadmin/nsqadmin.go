@@ -12,7 +12,7 @@ import (
 var (
 	showVersion      = flag.Bool("version", false, "print version string")
 	httpAddress      = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
-	templateDir      = flag.String("template-dir", "templates", "path to templates directory")
+	templateDir      = flag.String("template-dir", "", "path to templates directory")
 	lookupdHTTPAddrs = util.StringArray{}
 	nsqdHTTPAddrs    = util.StringArray{}
 )
@@ -30,6 +30,19 @@ func main() {
 	log.Printf("nsqadmin v%s", VERSION)
 	if *showVersion {
 		return
+	}
+
+	if *templateDir == "" {
+		for _, defaultPath := range []string{"templates", "/usr/local/share/nsqadmin/templates"} {
+			if info, err := os.Stat(defaultPath); err == nil && info.IsDir() {
+				*templateDir = defaultPath
+				break
+			}
+		}
+	}
+
+	if *templateDir == "" {
+		log.Fatalf("--template-dir must be specified (or install the templates to /usr/local/share/nsqadmin/templates)")
 	}
 
 	if len(nsqdHTTPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
