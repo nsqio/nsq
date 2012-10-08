@@ -80,6 +80,7 @@
 <table class="table table-bordered table-condensed">
     <tr>
         <th>Client Host</th>
+        <th>Protocol</th>
         <th>NSQd Host</th>
         <th>In-Flight</th>
         <th>Ready Count</th>
@@ -91,7 +92,8 @@
 
 {{range .ChannelStats.Clients}}
     <tr>
-        <td>{{.ClientVersion}} {{.ClientIdentifier}}</td>
+        <td>{{.ClientIdentifier}}</td>
+        <td>{{.ClientVersion}}</td>
         <td>{{.HostAddress}}</td>
         <td>{{.InFlightCount}}</td>
         <td>{{.ReadyCount}}</td>

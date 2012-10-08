@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ type ChannelStats struct {
 	Selected      bool
 	Topic         string
 	HostStats     []*ChannelStats
-	Clients       []ClientInfo
+	Clients       []*ClientInfo
 }
 
 type ClientInfo struct {
@@ -60,6 +61,38 @@ type ClientInfo struct {
 	MessageCount      int64
 }
 
+type ChannelStatsList []*ChannelStats
+type ChannelStatsByHost struct {
+	ChannelStatsList
+}
+type ClientInfos []*ClientInfo
+type ClientsByHost struct {
+	ClientInfos
+}
+type TopicHostStatsList []*TopicHostStats
+type TopicHostStatsByHost struct {
+	TopicHostStatsList
+}
+
+func (c ChannelStatsList) Len() int        { return len(c) }
+func (c ChannelStatsList) Swap(i, j int)   { c[i], c[j] = c[j], c[i] }
+func (c ClientInfos) Len() int             { return len(c) }
+func (c ClientInfos) Swap(i, j int)        { c[i], c[j] = c[j], c[i] }
+func (t TopicHostStatsList) Len() int      { return len(t) }
+func (t TopicHostStatsList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+func (c ChannelStatsByHost) Less(i, j int) bool {
+	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
+}
+func (c ClientsByHost) Less(i, j int) bool {
+	if c.ClientInfos[i].ClientIdentifier == c.ClientInfos[j].ClientIdentifier {
+		return c.ClientInfos[i].HostAddress < c.ClientInfos[j].HostAddress
+	}
+	return c.ClientInfos[i].ClientIdentifier < c.ClientInfos[j].ClientIdentifier
+}
+func (c TopicHostStatsByHost) Less(i, j int) bool {
+	return c.TopicHostStatsList[i].HostAddress < c.TopicHostStatsList[j].HostAddress
+}
+
 func (c *ChannelStats) AddHostStats(a *ChannelStats) {
 	c.Depth += a.Depth
 	c.MemoryDepth += a.MemoryDepth
@@ -71,6 +104,7 @@ func (c *ChannelStats) AddHostStats(a *ChannelStats) {
 	c.MessageCount += a.MessageCount
 	c.ClientCount += a.ClientCount
 	c.HostStats = append(c.HostStats, a)
+	sort.Sort(ChannelStatsByHost{c.HostStats})
 }
 
 func (t *TopicHostStats) AddHostStats(a *TopicHostStats) {
