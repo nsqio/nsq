@@ -1,10 +1,10 @@
 package nsq
 
 import (
-	"bitly/simplejson"
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"log"
 	"net/http"

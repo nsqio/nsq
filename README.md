@@ -10,6 +10,8 @@ line and compiled binaries have no runtime dependencies). For maximum flexibilit
 data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-protobuf], or anything else). Go and
 Python libraries are available out of the box and, if you're interested in building your own client, there's a [protocol spec][protocol].
 
+[![Build Status](https://secure.travis-ci.org/bitly/nsq.png)](http://travis-ci.org/bitly/nsq)
+
 **NSQ** was built as a successor to [simplequeue][simplequeue] (part of [simplehttp][simplehttp]) and as
 such was designed to (in no particular order):
 

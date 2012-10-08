@@ -1,9 +1,9 @@
 package util
 
 import (
-	"bitly/simplejson"
 	"errors"
 	"fmt"
+	"github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"net"
 	"net/http"
