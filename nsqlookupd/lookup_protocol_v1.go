@@ -97,7 +97,7 @@ func getTopicChan(params []string) (string, string, error) {
 
 	topicName := params[0]
 	var channelName string
-	if len(params) == 2 {
+	if len(params) >= 2 {
 		channelName = params[1]
 	}
 
@@ -157,7 +157,9 @@ func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, 
 	if len(params) < 3 {
 		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
-
+	if len(params) >= 2 && params[1] == "." {
+		params[1] = ""
+	}
 	topic, channel, err := getTopicChan(params)
 	if err != nil {
 		return nil, err
@@ -208,7 +210,7 @@ func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, 
 
 	var key Registration
 
-	if channel != "." {
+	if channel != "" {
 		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
 		key = Registration{"channel", topic, channel}
 		lookupd.DB.Add(key, client.Producer)
