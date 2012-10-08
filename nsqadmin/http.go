@@ -133,7 +133,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 	} else {
 		producers, _ = getNsqdTopicProducers(topic, nsqdHTTPAddrs)
 	}
-	topicHostStats, allChannelStats, _ := getNSQDStats(producers, topic)
+	_, allChannelStats, _ := getNSQDStats(producers, topic)
 	channelStats := allChannelStats[channel]
 
 	p := struct {
@@ -142,7 +142,6 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		Topic          string
 		Channel        string
 		TopicProducers []string
-		TopicHostStats []*TopicHostStats
 		ChannelStats   *ChannelStats
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
@@ -150,7 +149,6 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		Topic:          topic,
 		Channel:        channel,
 		TopicProducers: producers,
-		TopicHostStats: topicHostStats,
 		ChannelStats:   channelStats,
 	}
 
