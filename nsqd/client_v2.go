@@ -119,10 +119,6 @@ func (c *ClientV2) RequeuedMessage() {
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) Exit() {
-	c.StartClose()
-}
-
 func (c *ClientV2) StartClose() {
 	// Force the client into ready 0
 	c.SetReadyCount(0)

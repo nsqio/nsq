@@ -19,7 +19,7 @@ import (
 const defaultWorkerWait = 250 * time.Millisecond
 
 type ClientStatTracker interface {
-	Exit()
+	Close() error
 	TimedOutMessage()
 	Stats() ClientStats
 }
@@ -134,8 +134,9 @@ func (c *Channel) Close() error {
 	// initiate exit
 	atomic.StoreInt32(&c.exitFlag, 1)
 
+	// this forceably closes client connections
 	for _, client := range c.clients {
-		client.Exit()
+		client.Close()
 	}
 
 	close(c.exitChan)
