@@ -211,11 +211,11 @@ interfaces, and iteratively build functionality.
 
 **NSQ** is composed of the following individual components:
 
- * [nsqd](nsqd) is the daemon that receives, buffers, and delivers messages to clients.
- * [nsqlookupd](nsqlookupd) is the daemon that manages topology information
- * [nsqadmin](nsqadmin) is the web UI to view message statistics and perform administrative tasks
- * [nsq](nsq) is a go package for writing `nsqd` clients
- * [pynsq](pynsq) is a python module for writing `nsqd` clients
+ * [nsqd][nsqd] is the daemon that receives, buffers, and delivers messages to clients.
+ * [nsqlookupd][nsqlookupd] is the daemon that manages topology information
+ * [nsqadmin][nsqadmin] is the web UI to view message statistics and perform administrative tasks
+ * [nsq][nsq] is a go package for writing `nsqd` clients
+ * [pynsq][pynsq] is a python module for writing `nsqd` clients
 
 There is also a [protocol spec][protocol].
 
@@ -262,3 +262,8 @@ topic is produced, it retrieves this information from `nsqlookupd`.
 [simplequeue]: https://github.com/bitly/simplehttp/tree/master/simplequeue
 [protocol]: https://github.com/bitly/nsq/blob/master/docs/protocol.md
 [installing]: https://github.com/bitly/nsq/blob/master/INSTALLING.md
+[nsqd]: https://github.com/bitly/nsq/tree/master/nsqd
+[nsqlookupd]: https://github.com/bitly/nsq/tree/master/nsqlookupd
+[nsqadmin]: https://github.com/bitly/nsq/tree/master/nsqadmin
+[nsq]: https://github.com/bitly/nsq/tree/master/nsq
+[pynsq]: https://github.com/bitly/nsq/tree/master/pynsq
