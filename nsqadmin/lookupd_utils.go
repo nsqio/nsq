@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -309,7 +310,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 						client := client.(map[string]interface{})
 						connected := time.Unix(int64(client["connect_ts"].(float64)), 0)
 						connectedDuration := time.Now().Sub(connected).Seconds()
-						clientInfo := ClientInfo{
+						clientInfo := &ClientInfo{
 							HostAddress:       addr,
 							ClientVersion:     client["version"].(string),
 							ClientIdentifier:  fmt.Sprintf("%s:%s", client["name"].(string), strings.Split(client["remote_address"].(string), ":")[1]),
@@ -322,8 +323,10 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 						}
 						channel.Clients = append(channel.Clients, clientInfo)
 					}
+					sort.Sort(ClientsByHost{channel.Clients})
 				}
 			}
+			sort.Sort(TopicHostStatsByHost{topicHostStats})
 		}(endpoint, addr)
 	}
 	wg.Wait()
