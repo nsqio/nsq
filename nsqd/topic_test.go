@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestGetTopic(t *testing.T) {
@@ -16,6 +17,7 @@ func TestGetTopic(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
 
 	topic1 := nsqd.GetTopic("test")
 	assert.NotEqual(t, nil, topic1)
@@ -34,6 +36,8 @@ func TestGetChannel(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
+
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
@@ -51,6 +55,8 @@ func TestDeletes(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	nsqd := NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
+
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
@@ -69,6 +75,29 @@ func TestDeletes(t *testing.T) {
 	assert.Equal(t, 0, len(nsqd.topicMap))
 }
 
+func TestDeleteLast(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	nsqd := NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+
+	channel1 := topic.GetChannel("ch1")
+	assert.NotEqual(t, nil, channel1)
+
+	err := topic.DeleteExistingChannel("ch1")
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, len(topic.channelMap))
+
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	err = topic.PutMessage(msg)
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, topic.Depth(), int64(1))
+}
+
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
@@ -77,6 +106,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
 	nsqd := NewNSQd(1, options)
+	defer nsqd.Exit()
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
@@ -95,6 +125,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
 	nsqd := NewNSQd(1, options)
+	defer nsqd.Exit()
 	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
 	b.StartTimer()
 
