@@ -1,10 +1,10 @@
 from setuptools import setup
 
-version = '0.1'
+version = '0.2'
 
 setup(name='pynsq',
       version=version,
-      description="a Python reader for NSQ",
+      description="a Python module for NSQ",
       keywords='python nsq',
       author='Matt Reiferson',
       author_email='snakes@gmail.com',
