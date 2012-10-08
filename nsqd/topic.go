@@ -19,7 +19,7 @@ type Topic struct {
 	backend            BackendQueue
 	incomingMsgChan    chan *nsq.Message
 	memoryMsgChan      chan *nsq.Message
-	messagePumpStarter sync.Once
+	messagePumpStarter *sync.Once
 	exitChan           chan int
 	waitGroup          util.WaitGroupWrapper
 	exitFlag           int32
@@ -30,13 +30,14 @@ type Topic struct {
 // Topic constructor
 func NewTopic(topicName string, options *nsqdOptions) *Topic {
 	topic := &Topic{
-		name:            topicName,
-		channelMap:      make(map[string]*Channel),
-		backend:         NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
-		incomingMsgChan: make(chan *nsq.Message, 1),
-		memoryMsgChan:   make(chan *nsq.Message, options.memQueueSize),
-		options:         options,
-		exitChan:        make(chan int),
+		name:               topicName,
+		channelMap:         make(map[string]*Channel),
+		backend:            NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
+		incomingMsgChan:    make(chan *nsq.Message, 1),
+		memoryMsgChan:      make(chan *nsq.Message, options.memQueueSize),
+		options:            options,
+		exitChan:           make(chan int),
+		messagePumpStarter: new(sync.Once),
 	}
 
 	topic.waitGroup.Wrap(func() { topic.router() })
@@ -156,6 +157,21 @@ func (t *Topic) messagePump() {
 		}
 
 		t.RLock()
+		// check if all the channels have been deleted
+		if len(t.channelMap) == 0 {
+			// put this message back on the queue
+			// we need to background because we currently hold the lock
+			go func() {
+				t.PutMessage(msg)
+			}()
+
+			// reset the sync.Once
+			t.messagePumpStarter = new(sync.Once)
+
+			t.RUnlock()
+			goto exit
+		}
+
 		for _, channel := range t.channelMap {
 			// copy the message because each channel
 			// needs a unique instance
