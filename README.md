@@ -22,7 +22,7 @@ such was designed to (in no particular order):
  * provide a straightforward upgrade path
  * improve efficiency
 
-If you're interested in more of the history and evolution please read our [blog post][go_at_bitly].
+If you're interested in more of the history and evolution please read our [blog post][nsq_post].
 
 ### Simplifying Configuration and Administration
 
@@ -67,7 +67,7 @@ of topics/channels/consumers and inspect depth and other key statistics for each
 it supports a few administrative commands such as removing and emptying a channel (which is a useful
 tool when messages in a channel can be safely thrown away in order to bring depth back to 0).
 
-![nsqadmin](http://media.tumblr.com/tumblr_maz5t5Mc4j1qj3yp2.png)
+![nsqadmin](http://media.tumblr.com/tumblr_mbmsd6YMfS1qj3yp2.png)
 
 ### Straightforward Upgrade Path
 
@@ -269,3 +269,5 @@ topic is produced, it retrieves this information from `nsqlookupd`.
 [nsqadmin]: https://github.com/bitly/nsq/tree/master/nsqadmin
 [nsq]: https://github.com/bitly/nsq/tree/master/nsq
 [pynsq]: https://github.com/bitly/nsq/tree/master/pynsq
+[nsq_post]: http://word.bitly.com/post/33232969144/nsq
+
