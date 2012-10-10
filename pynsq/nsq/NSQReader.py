@@ -8,6 +8,14 @@ It handles the logic for backing off on retries and giving up on a message
 ex.
     import nsq
     
+    def task1(message):
+        print message
+        return True
+    
+    def task2(message):
+        print message
+        return True
+    
     all_tasks = {"task1": task1, "task2": task2}
     r = nsq.Reader(all_tasks, lookupd_http_addresses=['127.0.0.1:4161'],
             topic="nsq_reader", channel="asdf", lookupd_poll_interval=15)
@@ -36,7 +44,6 @@ tornado.options.define('heartbeat_file', type=str, default=None, help="path to a
 class RequeueWithoutBackoff(Exception):
     """exception for requeueing a message without incrementing backoff"""
     pass
-
 
 class Reader(object):
     def __init__(self, all_tasks, topic, channel,

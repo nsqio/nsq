@@ -37,8 +37,10 @@ func mustConnectNSQd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
 // test channel/topic names
 func TestChannelTopicNames(t *testing.T) {
 	assert.Equal(t, nsq.IsValidChannelName("test"), true)
+	assert.Equal(t, nsq.IsValidChannelName("test-with_period."), true)
 	assert.Equal(t, nsq.IsValidChannelName("test#ephemeral"), true)
 	assert.Equal(t, nsq.IsValidTopicName("test"), true)
+	assert.Equal(t, nsq.IsValidTopicName("test-with_period."), true)
 	assert.Equal(t, nsq.IsValidTopicName("test#ephemeral"), false)
 	assert.Equal(t, nsq.IsValidTopicName("test:ephemeral"), false)
 }

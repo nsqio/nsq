@@ -76,7 +76,7 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func topicHandler(w http.ResponseWriter, req *http.Request) {
-	var urlRegex = regexp.MustCompile(`^/topic/([a-zA-Z0-9_-]+)(/([-_a-zA-Z0-9]+(#ephemeral)?))?$`)
+	var urlRegex = regexp.MustCompile(`^/topic/([\.a-zA-Z0-9_-]+)(/([\.-_a-zA-Z0-9]+(#ephemeral)?))?$`)
 	matches := urlRegex.FindStringSubmatch(req.URL.Path)
 	if len(matches) == 0 {
 		http.NotFound(w, req)
