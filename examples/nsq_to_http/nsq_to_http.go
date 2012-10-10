@@ -25,6 +25,7 @@ const (
 )
 
 var (
+	showVersion      = flag.Bool("version", false, "print version string")
 	topic            = flag.String("topic", "", "nsq topic")
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
@@ -118,6 +119,11 @@ func main() {
 	var mode int
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nsq_to_http v%s\n", util.BINARY_VERSION)
+		return
+	}
 
 	if *topic == "" || *channel == "" {
 		log.Fatalf("--topic and --channel are required")

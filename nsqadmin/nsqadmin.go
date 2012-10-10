@@ -27,7 +27,7 @@ func main() {
 
 	flag.Parse()
 
-	log.Printf("nsqadmin v%s", VERSION)
+	log.Printf("nsqadmin v%s", util.BINARY_VERSION)
 	if *showVersion {
 		return
 	}
