@@ -1,5 +1,5 @@
 import struct
-
+import re
 
 MAGIC_V2 = "  V2"
 NL = "\n"
@@ -32,6 +32,8 @@ def _command(cmd, *params):
     return "%s %s%s" % (cmd, ' '.join(params), NL)
 
 def subscribe(topic, channel, short_id, long_id):
+    assert valid_topic_name(topic)
+    assert valid_channel_name(channel)
     return _command('SUB', topic, channel, short_id, long_id)
 
 def ready(count):
@@ -45,3 +47,13 @@ def requeue(id, time_ms):
 
 def nop():
     return _command('NOP')
+
+def valid_topic_name(topic):
+    if re.match(r'^[\.a-zA-Z0-9_-]+$', topic):
+        return True
+    return False
+
+def valid_channel_name(channel):
+    if re.match(r'^[\.a-zA-Z0-9_-]+(#ephemeral)?$', channel):
+        return True
+    return False
