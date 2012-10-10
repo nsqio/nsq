@@ -22,8 +22,8 @@ const (
 
 const DefaultClientTimeout = 60 * time.Second
 
-var validTopicNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-var validChannelNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+(#ephemeral)?$`)
+var validTopicNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+$`)
+var validChannelNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+(#ephemeral)?$`)
 
 func IsValidTopicName(name string) bool {
 	if len(name) > 32 || len(name) < 1 {
