@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"fmt"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
@@ -81,7 +80,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	data, err := util.ApiRequest(endpoint)
+	data, err := nsq.ApiRequest(endpoint)
 	log.Printf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -99,7 +98,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, producer.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err = util.ApiRequest(endpoint)
+	data, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
@@ -107,7 +106,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedTopics), 2)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = util.ApiRequest(endpoint)
+	data, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -138,7 +137,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	data, err = util.ApiRequest(endpoint)
+	data, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	assert.Equal(t, err, nil)

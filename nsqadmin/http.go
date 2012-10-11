@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"fmt"
 	"html/template"
@@ -181,7 +182,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", addr, url.QueryEscape(topicName))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
-		_, err := util.ApiRequest(endpoint)
+		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
@@ -192,7 +193,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", addr, url.QueryEscape(topicName))
 		log.Printf("NSQD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
+		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
 			continue
@@ -220,7 +221,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
-		_, err := util.ApiRequest(endpoint)
+		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
@@ -231,7 +232,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
+		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
 			continue
@@ -260,7 +261,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: calling %s", endpoint)
 
-		_, err := util.ApiRequest(endpoint)
+		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
 			continue
