@@ -6,49 +6,19 @@ An `nsqd` process listens on a configurable TCP port that accepts client connect
 After connecting, a client must send a 4-byte "magic" identifier indicating what version of the
 protocol they will be communicating (upgrades made easy).
 
-For `nsqd`, there are currently two distinct protocols:
+For `nsqd`, there is currently only one protocol:
 
-  * `  V1` - a request/response protocol for *producing* messages
-  * `  V2` - a push based streaming protocol for *consuming* messages
+  * `  V2` - a push based streaming protocol for consuming (and request/response for publishing)
 
 ### Important Notes
 
   * Unless stated otherwise, **all** binary sizes/integers on the wire are **network byte order**
     (ie. *big* endian)
-  * Valid *topic* and *channel* names are characters `[a-zA-Z0-9_-]` and `1 < length < 32`
+  * Valid *topic* and *channel* names are characters `[.a-zA-Z0-9_-]` and `1 < length < 32`
 
-### V1 Protocol
+### V2 Protocol
 
-The **V1** protocol is only for publishing.
-
-Commands are line oriented and structured as follows:
-
-  * `PUB` - publish a message to a specified **topic**:
-    
-        PUB <topic_name>\n
-        [ 4-byte size in bytes ][ N-byte binary data ]
-        
-        <topic_name> - a valid string
-    
-    Success Response:
-    
-        OK
-    
-    Error Responses:
-    
-        E_INVALID
-        E_BAD_TOPIC
-        E_BAD_MESSAGE
-        E_PUT_FAILED
-
-**V1** Responses are simply size prefixed:
-
-    [ 4-byte size in bytes ][ N-byte text data ]
-
-### V2 Protocol (Consuming)
-
-The **V2** protocol is only for consuming. After authenticating as **V2**, a client must `SUB` to a
-channel.
+After authenticating, in order to begin consuming messages, a client must `SUB` to a channel.
 
 Upon subscribing the client is placed in a `RDY` state of 0. This means that no messages
 will be sent to the client. When a client is ready to receive messages it should send a command that
@@ -78,6 +48,24 @@ Commands are line oriented and structured as follows:
         E_INVALID
         E_BAD_TOPIC
         E_BAD_CHANNEL
+
+  * `PUB` - publish a message to a specified **topic**:
+    
+        PUB <topic_name>\n
+        [ 4-byte size in bytes ][ N-byte binary data ]
+        
+        <topic_name> - a valid string
+    
+    Success Response:
+    
+        OK
+    
+    Error Responses:
+    
+        E_INVALID
+        E_BAD_TOPIC
+        E_BAD_MESSAGE
+        E_PUT_FAILED
 
   * `RDY` - update `RDY` state (indicate you are ready to receive messages)
     
