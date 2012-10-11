@@ -10,7 +10,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,13 +27,13 @@ func mustStartNSQd(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr) {
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
 }
 
-func mustConnectNSQd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
+func mustConnectNSQd(tcpAddr *net.TCPAddr) (net.Conn, error) {
 	conn, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second)
 	if err != nil {
-		t.Fatal("failed to connect to nsqd")
+		return nil, err
 	}
 	conn.Write(nsq.MagicV2)
-	return conn
+	return conn, nil
 }
 
 // test channel/topic names
@@ -60,9 +62,10 @@ func TestBasicV2(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
-	conn := mustConnectNSQd(t, tcpAddr)
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
 
-	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestBasicV2", "TestBasicV2"))
+	err = nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestBasicV2", "TestBasicV2"))
 	assert.Equal(t, err, nil)
 
 	err = nsq.SendCommand(conn, nsq.Ready(1))
@@ -97,9 +100,10 @@ func TestMultipleConsumerV2(t *testing.T) {
 	topic.PutMessage(msg)
 
 	for _, i := range []string{"1", "2"} {
-		conn := mustConnectNSQd(t, tcpAddr)
+		conn, err := mustConnectNSQd(tcpAddr)
+		assert.Equal(t, err, nil)
 
-		err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"+i, "TestMultipleConsumerV2", "TestMultipleConsumerV2"))
+		err = nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch"+i, "TestMultipleConsumerV2", "TestMultipleConsumerV2"))
 		assert.Equal(t, err, nil)
 
 		err = nsq.SendCommand(conn, nsq.Ready(1))
@@ -134,9 +138,10 @@ func TestClientTimeout(t *testing.T) {
 	tcpAddr, _ := mustStartNSQd(options)
 	defer nsqd.Exit()
 
-	conn := mustConnectNSQd(t, tcpAddr)
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
 
-	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientTimeoutV2", "TestClientTimeoutV2"))
+	err = nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientTimeoutV2", "TestClientTimeoutV2"))
 	assert.Equal(t, err, nil)
 
 	time.Sleep(50 * time.Millisecond)
@@ -169,9 +174,10 @@ func TestClientHeartbeat(t *testing.T) {
 	tcpAddr, _ := mustStartNSQd(options)
 	defer nsqd.Exit()
 
-	conn := mustConnectNSQd(t, tcpAddr)
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
 
-	err := nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientHeartbeatV2", "TestClientHeartbeatV2"))
+	err = nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestClientHeartbeatV2", "TestClientHeartbeatV2"))
 	assert.Equal(t, err, nil)
 
 	err = nsq.SendCommand(conn, nsq.Ready(1))
@@ -225,4 +231,57 @@ func BenchmarkProtocolV2Data(b *testing.B) {
 		msg.Encode(&buf)
 		p.Send(c, nsq.FrameTypeMessage, buf.Bytes())
 	}
+}
+
+func BenchmarkProtocolV2Pub(b *testing.B) {
+	var wg sync.WaitGroup
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	options := NewNsqdOptions()
+	options.memQueueSize = int64(b.N)
+	tcpAddr, _ := mustStartNSQd(options)
+	msg := []byte(`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`)
+	topicName := "bench_v1" + strconv.Itoa(int(time.Now().Unix()))
+	b.StartTimer()
+
+	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
+		wg.Add(1)
+		go func() {
+			conn, err := mustConnectNSQd(tcpAddr)
+			if err != nil {
+				b.Fatal(err.Error())
+			}
+			for i := 0; i < (b.N / runtime.GOMAXPROCS(0)); i += 1 {
+				err := nsq.SendCommand(conn, nsq.Publish(topicName, msg))
+				if err != nil {
+					b.Fatal(err.Error())
+				}
+				resp, err := nsq.ReadResponse(conn)
+				if err != nil {
+					b.Fatal(err.Error())
+				}
+				_, data, _ := nsq.UnpackResponse(resp)
+				if !bytes.Equal(data, []byte("OK")) {
+					b.Fatal("invalid response")
+				}
+				b.SetBytes(int64(len(msg)))
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	b.StopTimer()
+	nsqd.Exit()
 }

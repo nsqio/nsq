@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"bufio"
 	"bytes"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 	frameBuf        bytes.Buffer
+	Reader          *bufio.Reader
 	State           int32
 	ReadyCount      int64
 	LastReadyCount  int64
