@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-simplejson"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -248,44 +245,19 @@ func (q *Reader) lookupdLoop() {
 // to find what nsq's provide the topic we are consuming.
 // for any new topics, initiate a connection to those NSQ's
 func (q *Reader) queryLookupd() {
-	httpclient := &http.Client{}
 	for _, addr := range q.lookupdHTTPAddrs {
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
 
 		log.Printf("LOOKUPD: querying %s", endpoint)
-		req, err := http.NewRequest("GET", endpoint, nil)
+
+		data, err := ApiRequest(endpoint)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
-			continue
-		}
-
-		resp, err := httpclient.Do(req)
-		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
-			continue
-		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
-			continue
-		}
-
-		data, err := simplejson.NewJson(body)
-		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
-			continue
-		}
-
-		statusCode, err := data.Get("status_code").Int()
-		if err != nil || statusCode != 200 {
-			log.Printf("ERROR: lookupd %s - invalid status code", addr)
 			continue
 		}
 
 		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local", "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
-		producers, _ := data.Get("data").Get("producers").Array()
+		producers, _ := data.Get("producers").Array()
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
 			address := producerData["address"].(string)

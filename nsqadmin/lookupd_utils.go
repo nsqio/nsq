@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -58,7 +59,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -127,7 +128,7 @@ func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -164,7 +165,7 @@ func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -199,7 +200,7 @@ func getNsqdTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -238,7 +239,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string, addr string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()

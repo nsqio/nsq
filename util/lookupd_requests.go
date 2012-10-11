@@ -1,6 +1,7 @@
 package util
 
 import (
+	"../nsq"
 	"errors"
 	"fmt"
 	"log"
@@ -18,7 +19,7 @@ func GetChannelsForTopic(topic string, lookupdHTTPAddrs []string) ([]string, err
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpiont string) {
-			data, err := ApiRequest(endpoint)
+			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
