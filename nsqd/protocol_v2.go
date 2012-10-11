@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
@@ -37,12 +38,12 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	atomic.StoreInt32(&client.State, nsq.StateInit)
 
 	err = nil
-	reader := bufio.NewReader(client)
+	client.Reader = bufio.NewReader(client)
 	for {
 		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
 		// ReadSlice does not allocate new space for the data each request
 		// ie. the returned slice is only valid until the next call to it
-		line, err = reader.ReadSlice('\n')
+		line, err = client.Reader.ReadSlice('\n')
 		if err != nil {
 			break
 		}
@@ -56,7 +57,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		params := bytes.Split(line, []byte(" "))
 
 		if *verbose {
-			log.Printf("PROTOCOL(V2): [%s] %#v", client, params)
+			log.Printf("PROTOCOL(V2): [%s] %s", client, params[0])
 		}
 
 		response, err := p.Exec(client, params)
@@ -129,6 +130,8 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("NOP")):
 		return p.NOP(client, params)
+	case bytes.Equal(params[0], []byte("PUB")):
+		return p.PUB(client, params)
 	}
 	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -347,4 +350,38 @@ func (p *ProtocolV2) CLS(client *ClientV2, params [][]byte) ([]byte, error) {
 
 func (p *ProtocolV2) NOP(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
+}
+
+func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
+	var err error
+
+	if len(params) < 2 {
+		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
+	}
+
+	topicName := string(params[1])
+	if !nsq.IsValidTopicName(topicName) {
+		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
+	}
+
+	var bodyLen int32
+	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+	}
+
+	messageBody := make([]byte, bodyLen)
+	_, err = io.ReadFull(client.Reader, messageBody)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+	}
+
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, messageBody)
+	err = topic.PutMessage(msg)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_PUT_FAILED", err.Error())
+	}
+
+	return []byte("OK"), nil
 }
