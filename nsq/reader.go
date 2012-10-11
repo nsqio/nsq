@@ -62,6 +62,8 @@ type nsqConn struct {
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
 	stopper          sync.Once
+	dying            chan struct{}
+	drainReady       chan struct{}
 }
 
 func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
@@ -76,6 +78,8 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 		finishedMessages: make(chan *FinishedMessage),
 		readTimeout:      readTimeout,
 		writeTimeout:     writeTimeout,
+		dying:            make(chan struct{}, 1),
+		drainReady:       make(chan struct{}),
 	}
 
 	nc.SetWriteDeadline(time.Now().Add(nc.writeTimeout))
@@ -100,13 +104,6 @@ func (c *nsqConn) sendCommand(cmd *Command) error {
 func (c *nsqConn) readResponse() ([]byte, error) {
 	c.SetReadDeadline(time.Now().Add(c.readTimeout))
 	return ReadResponse(c)
-}
-
-func (c *nsqConn) stopFinishLoop() {
-	c.stopper.Do(func() {
-		log.Printf("[%s] closing finishedMessages channel", c)
-		close(c.finishedMessages)
-	})
 }
 
 type Reader struct {
@@ -360,7 +357,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 	err := c.sendCommand(Ready(s))
 	if err != nil {
 		handleError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
-		c.stopFinishLoop()
+		q.stopFinishLoop(c)
 		return
 	}
 
@@ -368,7 +365,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 		if atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1 {
 			// start the connection close
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 {
-				c.stopFinishLoop()
+				q.stopFinishLoop(c)
 			} else {
 				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
@@ -435,70 +432,92 @@ func (q *Reader) readLoop(c *nsqConn) {
 
 func (q *Reader) finishLoop(c *nsqConn) {
 	for {
-		msg, ok := <-c.finishedMessages
-		if !ok {
-			log.Printf("[%s] stopping finish loop ", c)
-			c.Close()
-			delete(q.nsqConnections, c.String())
+		select {
+		case <-c.dying:
+			log.Printf("[%s] breaking out of finish loop ", c)
+			// Indicate drainReady because we will not pull any more off finishedMessages
+			c.drainReady <- struct{}{}
+			return
+		case msg := <-c.finishedMessages:
 
-			log.Printf("there are %d connections left alive", len(q.nsqConnections))
+			// Decrement this here so it is correct even if we can't respond to nsqd
+			atomic.AddInt64(&q.messagesInFlight, -1)
+			atomic.AddInt64(&c.messagesInFlight, -1)
 
-			if len(q.nsqConnections) == 0 && len(q.lookupdHTTPAddrs) == 0 {
-				// no lookupd entry means no reconnection
-				if atomic.LoadInt32(&q.stopFlag) == 1 {
-					q.stopHandlers()
+			if msg.Success {
+				if q.VerboseLogging {
+					log.Printf("[%s] finishing %s", c, msg.Id)
 				}
-				return
+				err := c.sendCommand(Finish(msg.Id))
+				if err != nil {
+					log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
+					q.stopFinishLoop(c)
+					continue
+				}
+				atomic.AddUint64(&c.messagesFinished, 1)
+				atomic.AddUint64(&q.MessagesFinished, 1)
+			} else {
+				if q.VerboseLogging {
+					log.Printf("[%s] requeuing %s", c, msg.Id)
+				}
+				err := c.sendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
+				if err != nil {
+					log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
+					q.stopFinishLoop(c)
+					continue
+				}
+				atomic.AddUint64(&c.messagesRequeued, 1)
+				atomic.AddUint64(&q.MessagesRequeued, 1)
 			}
 
-			// ie: we were the last one, and stopping
-			if len(q.nsqConnections) == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
+			if atomic.LoadInt64(&c.messagesInFlight) == 0 &&
+				(atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1) {
+				q.stopFinishLoop(c)
+				continue
+			}
+		}
+	}
+}
+
+func (q *Reader) stopFinishLoop(c *nsqConn) {
+	c.stopper.Do(func() {
+		log.Printf("[%s] beginning stopFinishLoop logic", c)
+		// This doesn't block because dying has buffer of 1
+		c.dying <- struct{}{}
+
+		// Drain the finishedMessages channel
+		go func() {
+			<-c.drainReady
+			for atomic.AddInt64(&c.messagesInFlight, -1) >= 0 {
+				<-c.finishedMessages
+			}
+		}()
+		c.Close()
+		delete(q.nsqConnections, c.String())
+
+		log.Printf("there are %d connections left alive", len(q.nsqConnections))
+
+		if len(q.nsqConnections) == 0 && len(q.lookupdHTTPAddrs) == 0 {
+			// no lookupd entry means no reconnection
+			if atomic.LoadInt32(&q.stopFlag) == 1 {
 				q.stopHandlers()
-			}
-
-			if len(q.lookupdHTTPAddrs) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
-				// trigger a poll of the lookupd
-				select {
-				case q.lookupdRecheckChan <- 1:
-				default:
-				}
 			}
 			return
 		}
 
-		if msg.Success {
-			if q.VerboseLogging {
-				log.Printf("[%s] finishing %s", c, msg.Id)
-			}
-			err := c.sendCommand(Finish(msg.Id))
-			if err != nil {
-				log.Printf("[%s] error finishing %s - %s", c, msg.Id, err.Error())
-				c.stopFinishLoop()
-				continue
-			}
-			atomic.AddUint64(&c.messagesFinished, 1)
-			atomic.AddUint64(&q.MessagesFinished, 1)
-		} else {
-			if q.VerboseLogging {
-				log.Printf("[%s] requeuing %s", c, msg.Id)
-			}
-			err := c.sendCommand(Requeue(msg.Id, msg.RequeueDelayMs))
-			if err != nil {
-				log.Printf("[%s] error requeueing %s - %s", c, msg.Id, err.Error())
-				c.stopFinishLoop()
-				continue
-			}
-			atomic.AddUint64(&c.messagesRequeued, 1)
-			atomic.AddUint64(&q.MessagesRequeued, 1)
+		// ie: we were the last one, and stopping
+		if len(q.nsqConnections) == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
+			q.stopHandlers()
 		}
 
-		atomic.AddInt64(&q.messagesInFlight, -1)
-		if atomic.AddInt64(&c.messagesInFlight, -1) == 0 &&
-			(atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1) {
-			c.stopFinishLoop()
-			continue
+		if len(q.lookupdHTTPAddrs) != 0 && atomic.LoadInt32(&q.stopFlag) == 0 {
+			// trigger a poll of the lookupd
+			select {
+			case q.lookupdRecheckChan <- 1:
+			default:
+			}
 		}
-	}
+	})
 }
 
 func (q *Reader) updateReady(c *nsqConn) {
