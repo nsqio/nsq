@@ -1,3 +1,4 @@
+build
 nsqd/nsqd
 nsqlookupd/nsqlookupd
 nsqreader/nsqreader

@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -263,7 +264,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	data := make(map[string]interface{})
 	data["tcp_port"] = lookupd.tcpAddr.Port
 	data["http_port"] = lookupd.httpAddr.Port
-	data["version"] = VERSION
+	data["version"] = util.BINARY_VERSION
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())

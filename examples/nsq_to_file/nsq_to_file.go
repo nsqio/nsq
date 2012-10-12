@@ -17,6 +17,7 @@ import (
 
 var (
 	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
+	showVersion      = flag.Bool("version", false, "print version string")
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
 	topic            = flag.String("topic", "", "nsq topic")
@@ -145,6 +146,11 @@ func updateFile(f *FileLogger) bool {
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nsq_to_file v%s\n", util.BINARY_VERSION)
+		return
+	}
 
 	if *topic == "" || *channel == "" {
 		log.Fatalf("--topic and --channel are required")
