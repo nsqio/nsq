@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"bytes"
 	"encoding/json"
 	"github.com/bitly/go-notify"
@@ -25,7 +26,7 @@ func (n *NSQd) lookupLoop() {
 	for _, host := range n.lookupdTCPAddrs {
 		log.Printf("LOOKUP: adding peer %s", host)
 		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
-			cmd := nsq.Identify(VERSION, n.tcpAddr.Port, n.httpAddr.Port, hostname)
+			cmd := nsq.Identify(util.BINARY_VERSION, n.tcpAddr.Port, n.httpAddr.Port, hostname)
 			resp, err := lp.Command(cmd)
 			if err != nil {
 				log.Printf("LOOKUPD(5s): Error writing to %s %s", lp, err.Error())

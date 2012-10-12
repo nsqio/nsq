@@ -2,6 +2,7 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"flag"
 	"fmt"
 	"log"
@@ -24,7 +25,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsqlookupd v%s\n", VERSION)
+		fmt.Printf("nsqlookupd v%s\n", util.BINARY_VERSION)
 		return
 	}
 
@@ -46,7 +47,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("nsqlookupd v%s", VERSION)
+	log.Printf("nsqlookupd v%s", util.BINARY_VERSION)
 
 	lookupd = NewNSQLookupd()
 	lookupd.tcpAddr = tcpAddr

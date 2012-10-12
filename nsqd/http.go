@@ -106,7 +106,7 @@ func infoHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", struct {
 		Version string `json:"version"`
 	}{
-		Version: VERSION,
+		Version: util.BINARY_VERSION,
 	})
 }
 

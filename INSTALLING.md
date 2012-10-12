@@ -21,7 +21,8 @@ outside of $GOPATH
 
     $ git clone https://github.com/bitly/nsq.git
     $ cd $REPO
-    $ ./install.sh
+    $ make
+    $ make install
 
 Go package (for building Go readers)
 

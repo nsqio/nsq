@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	showVersion      = flag.Bool("version", false, "print version string")
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
 	maxInFlight      = flag.Int("max-in-flight", 100, "max number of messages to allow in flight")
 	nsqdTCPAddrs     = util.StringArray{}
@@ -214,6 +215,11 @@ func (sr *StreamReader) HandleMessage(message *nsq.Message) error {
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nsq_pubsub v%s\n", util.BINARY_VERSION)
+		return
+	}
 
 	if *maxInFlight < 0 {
 		log.Fatalf("--max-in-flight must be > 0")

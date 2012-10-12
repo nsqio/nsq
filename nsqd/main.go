@@ -42,7 +42,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsqd v%s\n", VERSION)
+		fmt.Printf("nsqd v%s\n", util.BINARY_VERSION)
 		return
 	}
 
@@ -66,7 +66,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("nsqd v%s", VERSION)
+	log.Printf("nsqd v%s", util.BINARY_VERSION)
 	log.Printf("worker id %d", *workerId)
 
 	exitChan := make(chan int)

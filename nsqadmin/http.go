@@ -67,7 +67,7 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:   "NSQ",
 		Topics:  topics,
-		Version: VERSION,
+		Version: util.BINARY_VERSION,
 	}
 	err := templates.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
@@ -113,7 +113,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		ChannelStats     map[string]*ChannelStats
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topic),
-		Version:          VERSION,
+		Version:          util.BINARY_VERSION,
 		Topic:            topic,
 		TopicProducers:   producers,
 		TopicHostStats:   topicHostStats,
@@ -146,7 +146,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		ChannelStats   *ChannelStats
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
-		Version:        VERSION,
+		Version:        util.BINARY_VERSION,
 		Topic:          topic,
 		Channel:        channel,
 		TopicProducers: producers,
@@ -280,7 +280,7 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 		Producers []*Producer
 	}{
 		Title:     "NSQD Hosts",
-		Version:   VERSION,
+		Version:   util.BINARY_VERSION,
 		Producers: producers,
 	}
 	err := templates.ExecuteTemplate(w, "nodes.html", p)
