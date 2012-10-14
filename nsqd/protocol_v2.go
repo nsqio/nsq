@@ -148,59 +148,50 @@ func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
 func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 	var buf bytes.Buffer
+	var c chan *nsq.Message
 
 	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)
 
 	// ReadyStateChan has a buffer of 1 to guarantee that in the event
-	// there is a race before we enter either of the select loops where 
-	// ReadyStateChan is read from that the update is not lost
+	// there is a race the state update is not lost
 	for {
-		if !client.IsReadyForMessages() {
-			// wait for a change in state
-			select {
-			case <-client.ReadyStateChan:
-			case <-heartbeat.C:
-				err = p.sendHeartbeat(client)
-				if err != nil {
-					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
-				}
-			case <-client.ExitChan:
+		if client.IsReadyForMessages() {
+			c = client.Channel.clientMsgChan
+		}
+
+		select {
+		case <-client.ReadyStateChan:
+		case <-heartbeat.C:
+			err = p.sendHeartbeat(client)
+			if err != nil {
+				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+			}
+		case msg, ok := <-c:
+			c = nil
+			if !ok {
 				goto exit
 			}
-		} else {
-			select {
-			case <-client.ReadyStateChan:
-			case <-heartbeat.C:
-				err = p.sendHeartbeat(client)
-				if err != nil {
-					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
-				}
-			case msg, ok := <-client.Channel.clientMsgChan:
-				if !ok {
-					goto exit
-				}
 
-				if *verbose {
-					log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-						msg.Id, client, msg.Body)
-				}
+			if *verbose {
+				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+					msg.Id, client, msg.Body)
+			}
 
-				buf.Reset()
-				err = msg.Encode(&buf)
-				if err != nil {
-					goto exit
-				}
-
-				client.Channel.StartInFlightTimeout(msg, client)
-				client.SendingMessage()
-
-				err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
-				if err != nil {
-					goto exit
-				}
-			case <-client.ExitChan:
+			buf.Reset()
+			err = msg.Encode(&buf)
+			if err != nil {
 				goto exit
 			}
+
+			client.Channel.StartInFlightTimeout(msg, client)
+			client.SendingMessage()
+
+			err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
+			if err != nil {
+				goto exit
+			}
+		case <-client.ExitChan:
+			goto exit
 		}
 	}
 
