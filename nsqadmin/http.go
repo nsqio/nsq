@@ -11,15 +11,35 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strings"
 )
 
 var templates *template.Template
 
+func commafy(i interface{}) string {
+	var n int64
+	switch i.(type) {
+	case int:
+		n = int64(i.(int))
+	case int64:
+		n = i.(int64)
+	case int32:
+		n = int64(i.(int32))
+	}
+	if n > 1000 {
+		r := n % 1000
+		n = n / 1000
+		return fmt.Sprintf("%s,%03d", commafy(n), r)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
 func httpServer(listener net.Listener) {
 	var err error
-	templates, err = template.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
+	t := template.New("nsqadmin").Funcs(template.FuncMap{
+		"commafy": commafy,
+	})
+	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
 	if err != nil {
 		log.Printf("ERROR: %s", err.Error())
 	}
@@ -59,7 +79,6 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	} else {
 		topics, _ = getNSQDTopics(nsqdHTTPAddrs)
 	}
-	sort.Strings(topics)
 	p := struct {
 		Title   string
 		Topics  []string

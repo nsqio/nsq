@@ -45,26 +45,26 @@
 {{range $c := .ChannelStats.HostStats}}
     <tr>
         <td>{{$c.HostAddress}}</td>
-        <td>{{$c.Depth}}</td>
-        <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
-        <td>{{$c.InFlightCount}}</td>
-        <td>{{$c.DeferredCount}}</td>
-        <td>{{$c.RequeueCount}}</td>
-        <td>{{$c.TimeoutCount}}</td>
-        <td>{{$c.MessageCount}}</td>
+        <td>{{$c.Depth | commafy}}</td>
+        <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
+        <td>{{$c.InFlightCount | commafy}}</td>
+        <td>{{$c.DeferredCount | commafy}}</td>
+        <td>{{$c.RequeueCount | commafy}}</td>
+        <td>{{$c.TimeoutCount | commafy}}</td>
+        <td>{{$c.MessageCount | commafy}}</td>
         <td>{{$c.ClientCount}}</td>
     </tr>
 {{ end }}
 {{ with $c := .ChannelStats }}
     <tr class="info">
         <td>Total:</td>
-        <td>{{$c.Depth}}</td>
-        <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
-        <td>{{$c.InFlightCount}}</td>
-        <td>{{$c.DeferredCount}}</td>
-        <td>{{$c.RequeueCount}}</td>
-        <td>{{$c.TimeoutCount}}</td>
-        <td>{{$c.MessageCount}}</td>
+        <td>{{$c.Depth | commafy}}</td>
+        <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
+        <td>{{$c.InFlightCount | commafy}}</td>
+        <td>{{$c.DeferredCount | commafy}}</td>
+        <td>{{$c.RequeueCount | commafy}}</td>
+        <td>{{$c.TimeoutCount | commafy}}</td>
+        <td>{{$c.MessageCount | commafy}}</td>
         <td>{{$c.ClientCount}}</td>
     </tr>
 {{ end }}
@@ -95,11 +95,11 @@
         <td>{{.ClientIdentifier}}</td>
         <td>{{.ClientVersion}}</td>
         <td>{{.HostAddress}}</td>
-        <td>{{.InFlightCount}}</td>
-        <td>{{.ReadyCount}}</td>
-        <td>{{.FinishCount}}</td>
-        <td>{{.RequeueCount}}</td>
-        <td>{{.MessageCount}}</td>
+        <td>{{.InFlightCount | commafy}}</td>
+        <td>{{.ReadyCount | commafy}}</td>
+        <td>{{.FinishCount | commafy}}</td>
+        <td>{{.RequeueCount | commafy}}</td>
+        <td>{{.MessageCount | commafy}}</td>
         <td>{{.ConnectedDuration}}</td>
     </tr>
 {{end}}

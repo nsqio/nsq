@@ -30,18 +30,18 @@
     {{range .TopicHostStats }}
     <tr>
         <td>{{.HostAddress}}</td>
-        <td>{{.Depth}}</td>
-        <td>{{.MemoryDepth}} + {{.BackendDepth}}</td>
-        <td>{{.MessageCount}}</td>
+        <td>{{.Depth | commafy}}</td>
+        <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
+        <td>{{.MessageCount | commafy}}</td>
         <td>{{.ChannelCount}}</td>
     </tr>
     {{ end }}
     {{ with .GlobalTopicStats }} 
     <tr class="info">
         <td>Total:</td>
-        <td>{{.Depth}}</td>
-        <td>{{.MemoryDepth}} + {{.BackendDepth}}</td>
-        <td>{{.MessageCount}}</td>
+        <td>{{.Depth | commafy}}</td>
+        <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
+        <td>{{.MessageCount | commafy}}</td>
         <td>{{.ChannelCount}}</td>
     </tr>
     {{ end }}
@@ -70,13 +70,13 @@
 {{range $c := .ChannelStats}}
     <tr >
         <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a></th>
-        <td>{{$c.Depth}}</td>
-        <td>{{$c.MemoryDepth}} + {{$c.BackendDepth}}</td>
-        <td>{{$c.InFlightCount}}</td>
-        <td>{{$c.DeferredCount}}</td>
-        <td>{{$c.RequeueCount}}</td>
-        <td>{{$c.TimeoutCount}}</td>
-        <td>{{$c.MessageCount}}</td>
+        <td>{{$c.Depth | commafy}}</td>
+        <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
+        <td>{{$c.InFlightCount | commafy}}</td>
+        <td>{{$c.DeferredCount | commafy}}</td>
+        <td>{{$c.RequeueCount | commafy}}</td>
+        <td>{{$c.TimeoutCount | commafy}}</td>
+        <td>{{$c.MessageCount | commafy}}</td>
         <td>{{$c.ClientCount}}</td>
     </tr>
 {{ end }}
