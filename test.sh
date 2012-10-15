@@ -12,7 +12,7 @@ fi
 for dir in nsqd nsqlookupd util/pqueue; do
     echo "testing $dir"
     pushd $dir >/dev/null
-    go test -test.v -timeout 5s
+    go test -test.v -timeout 15s
     popd >/dev/null
 done
 
@@ -32,7 +32,7 @@ trap cleanup INT TERM EXIT
 popd >/dev/null
 pushd nsq >/dev/null
 echo "testing nsq"
-go test -v -timeout 5s
+go test -v -timeout 15s
 popd >/dev/null
 
 # no tests, but a build is something
