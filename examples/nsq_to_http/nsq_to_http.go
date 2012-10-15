@@ -26,7 +26,7 @@ const (
 var (
 	showVersion      = flag.Bool("version", false, "print version string")
 	topic            = flag.String("topic", "", "nsq topic")
-	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
+	channel          = flag.String("channel", "nsq_to_http", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	verbose          = flag.Bool("verbose", false, "enable verbose logging")
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
