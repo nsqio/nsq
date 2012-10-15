@@ -14,6 +14,8 @@ import (
 var MagicV1 = []byte("  V1")
 var MagicV2 = []byte("  V2")
 
+const MaxReadyCount = 2500
+
 const (
 	FrameTypeResponse int32 = 0
 	FrameTypeError    int32 = 1

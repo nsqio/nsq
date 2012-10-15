@@ -4,7 +4,7 @@
 
 * 0.2.13 - 2012-10-15
     * #70 deadlined nsq_to_http outbound requests
-    * #69 improved nsq_to_file sync strategy
+    * #69/#72 improved nsq_to_file sync strategy
     * #58 diskqueue metadata bug and refactoring
 * 0.2.12 - 2012-10-10
     * #63 consolidated protocol V1 into V2 and fixed PUB bug
