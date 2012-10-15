@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -33,6 +32,7 @@ var (
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
 	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
 	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
+	httpTimeoutMs    = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
 	getAddrs         = util.StringArray{}
 	postAddrs        = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -87,7 +87,7 @@ type PostPublisher struct{}
 
 func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	reader := bytes.NewReader(msg)
-	resp, err := http.Post(addr, "application/octet-stream", reader)
+	resp, err := HttpPost(addr, reader)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ type GetPublisher struct{}
 
 func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	endpoint := fmt.Sprintf(addr, url.QueryEscape(string(msg)))
-	resp, err := http.Get(endpoint)
+	resp, err := HttpGet(endpoint)
 	if err != nil {
 		return err
 	}
