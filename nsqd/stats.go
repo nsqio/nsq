@@ -56,6 +56,10 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	nsqd.RLock()
 	defer nsqd.RUnlock()
 
+	if !jsonFormat {
+		io.WriteString(w, fmt.Sprintf("nsqd v%s\n\n", util.BINARY_VERSION))
+	}
+
 	if len(nsqd.topicMap) == 0 {
 		if jsonFormat {
 			util.ApiResponse(w, 500, "NO_TOPICS", nil)

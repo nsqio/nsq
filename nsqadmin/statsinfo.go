@@ -73,6 +73,10 @@ type TopicHostStatsList []*TopicHostStats
 type TopicHostStatsByHost struct {
 	TopicHostStatsList
 }
+type ProducerList []*Producer
+type ProducersByHost struct {
+	ProducerList
+}
 
 func (c ChannelStatsList) Len() int        { return len(c) }
 func (c ChannelStatsList) Swap(i, j int)   { c[i], c[j] = c[j], c[i] }
@@ -80,6 +84,9 @@ func (c ClientInfos) Len() int             { return len(c) }
 func (c ClientInfos) Swap(i, j int)        { c[i], c[j] = c[j], c[i] }
 func (t TopicHostStatsList) Len() int      { return len(t) }
 func (t TopicHostStatsList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+func (t ProducerList) Len() int            { return len(t) }
+func (t ProducerList) Swap(i, j int)       { t[i], t[j] = t[j], t[i] }
+
 func (c ChannelStatsByHost) Less(i, j int) bool {
 	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
 }
@@ -91,6 +98,9 @@ func (c ClientsByHost) Less(i, j int) bool {
 }
 func (c TopicHostStatsByHost) Less(i, j int) bool {
 	return c.TopicHostStatsList[i].HostAddress < c.TopicHostStatsList[j].HostAddress
+}
+func (c ProducersByHost) Less(i, j int) bool {
+	return c.ProducerList[i].Address < c.ProducerList[j].Address
 }
 
 func (c *ChannelStats) AddHostStats(a *ChannelStats) {

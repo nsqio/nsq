@@ -24,7 +24,7 @@
         {{if .Topics}}
             <span class="badge">{{.Topics | len}}</span>
             {{range .Topics}}
-            <a href="/topic/{{.}}">{{.}}</a>
+            <a href="/topic/{{.}}" class="label label-info">{{.}}</a>
             {{end}}
         {{end}}
         </td>
