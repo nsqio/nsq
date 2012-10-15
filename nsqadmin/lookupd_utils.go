@@ -40,6 +40,7 @@ func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 		}(endpoint)
 	}
 	wg.Wait()
+	sort.Strings(allTopics)
 	if success == false {
 		return nil, errors.New("unable to query any lookupd")
 	}
@@ -84,6 +85,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					for _, t := range topicList {
 						topics = append(topics, t.(string))
 					}
+					sort.Strings(topics)
 					version := producer.Get("version").MustString("unknown")
 					versionObj := NewVersion(version)
 					if !maxVersion.Less(versionObj) {
@@ -109,6 +111,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 			producer.OutOfDate = true
 		}
 	}
+	sort.Sort(ProducersByHost{output})
 	if success == false {
 		return nil, errors.New("unable to query any lookupd")
 	}
@@ -183,6 +186,7 @@ func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		}(endpoint)
 	}
 	wg.Wait()
+	sort.Strings(topics)
 	if success == false {
 		return nil, errors.New("unable to query any nsqd")
 	}
