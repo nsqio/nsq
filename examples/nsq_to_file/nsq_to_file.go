@@ -89,9 +89,12 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 			}
 			output[pos] = m
 			pos++
+			if pos == *maxInFlight {
+				sync = true
+			}
 		}
 
-		if closing || sync || pos >= r.ConnectionMaxInFlight() {
+		if closing || sync || r.IsStarved() {
 			if pos > 0 {
 				log.Printf("syncing %d records to disk", pos)
 				err := f.out.Sync()
