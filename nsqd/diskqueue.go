@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -14,16 +15,10 @@ import (
 	"sync/atomic"
 )
 
-var ErrExiting = errors.New("exiting")
-
 // DiskQueue implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type DiskQueue struct {
-	// separate mutexes are used to be able to exclusively
-	// read/write or update meta-data
-	metaMutex  sync.Mutex
-	readMutex  sync.Mutex
-	writeMutex sync.Mutex
+	sync.RWMutex
 
 	// instatiation time meta-data
 	name            string
@@ -46,30 +41,36 @@ type DiskQueue struct {
 
 	readFile  *os.File
 	writeFile *os.File
+	reader    *bufio.Reader
+	writeBuf  bytes.Buffer
 
 	// exposed via ReadChan()
 	readChan chan []byte
 
 	// internal channels
-	emptyChan     chan int
-	readStateChan chan int
-	exitChan      chan int
-	exitSyncChan  chan int
+	writeChan         chan []byte
+	writeResponseChan chan error
+	emptyChan         chan int
+	emptyResponseChan chan error
+	exitChan          chan int
+	exitSyncChan      chan int
 }
 
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving meta-data
 // from the filesystem and starting the read ahead goroutine
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) BackendQueue {
 	d := DiskQueue{
-		name:            name,
-		dataPath:        dataPath,
-		maxBytesPerFile: maxBytesPerFile,
-		readChan:        make(chan []byte),
-		emptyChan:       make(chan int),
-		exitChan:        make(chan int),
-		exitSyncChan:    make(chan int),
-		readStateChan:   make(chan int, 1),
-		syncEvery:       syncEvery,
+		name:              name,
+		dataPath:          dataPath,
+		maxBytesPerFile:   maxBytesPerFile,
+		readChan:          make(chan []byte),
+		writeChan:         make(chan []byte),
+		writeResponseChan: make(chan error),
+		emptyChan:         make(chan int),
+		emptyResponseChan: make(chan error),
+		exitChan:          make(chan int),
+		exitSyncChan:      make(chan int),
+		syncEvery:         syncEvery,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
@@ -78,16 +79,14 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 		log.Printf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
 	}
 
-	go d.readAheadPump()
+	go d.ioLoop()
 
 	return &d
 }
 
 // Depth returns the depth of the queue
 func (d *DiskQueue) Depth() int64 {
-	d.metaMutex.Lock()
-	defer d.metaMutex.Unlock()
-	return d.depth
+	return atomic.LoadInt64(&d.depth)
 }
 
 // ReadChan returns the []byte channel for reading data
@@ -95,62 +94,60 @@ func (d *DiskQueue) ReadChan() chan []byte {
 	return d.readChan
 }
 
-// Put writes a single []byte to the queue
-func (d *DiskQueue) Put(p []byte) error {
-	return d.writeOne(p)
+// Put writes a []byte to the queue
+func (d *DiskQueue) Put(data []byte) error {
+	d.RLock()
+	defer d.RUnlock()
+
+	if d.exitFlag == 1 {
+		return errors.New("exiting")
+	}
+
+	d.writeChan <- data
+	return <-d.writeResponseChan
 }
 
 // Close cleans up the queue and persists meta-data
 func (d *DiskQueue) Close() error {
+	d.Lock()
+	defer d.Unlock()
+
 	log.Printf("DISKQUEUE(%s): closing", d.name)
 
-	// this guarantees that no other goroutines can successfully read/write that may
-	// currently be waiting on either of the below mutex
-	atomic.StoreInt32(&d.exitFlag, 1)
-
-	d.readMutex.Lock()
-	d.writeMutex.Lock()
+	d.exitFlag = 1
 
 	close(d.exitChan)
+	// ensure that ioLoop has exited
+	<-d.exitSyncChan
 
 	if d.readFile != nil {
 		d.readFile.Close()
+		d.readFile = nil
 	}
 
 	if d.writeFile != nil {
 		d.writeFile.Close()
+		d.writeFile = nil
 	}
 
-	err := d.persistMetaData()
-
-	d.readMutex.Unlock()
-	d.writeMutex.Unlock()
-
-	// ensure that readAheadPump has exited
-	// this needs to be done *after* readMutex is unlocked
-	<-d.exitSyncChan
-
-	return err
+	return d.sync()
 }
 
 // Empty destructively clears out any pending data in the queue
 // by fast forwarding read positions and removing intermediate files
 func (d *DiskQueue) Empty() error {
+	d.RLock()
+	defer d.RUnlock()
+
+	if d.exitFlag == 1 {
+		return errors.New("exiting")
+	}
+
 	d.emptyChan <- 1
-	return nil
+	return <-d.emptyResponseChan
 }
 
 func (d *DiskQueue) doEmpty() error {
-	d.readMutex.Lock()
-	defer d.readMutex.Unlock()
-
-	d.writeMutex.Lock()
-	defer d.writeMutex.Unlock()
-
-	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return ErrExiting
-	}
-
 	log.Printf("DISKQUEUE(%s): emptying", d.name)
 
 	if d.readFile != nil {
@@ -158,29 +155,22 @@ func (d *DiskQueue) doEmpty() error {
 		d.readFile = nil
 	}
 
-	d.metaMutex.Lock()
-
-	readFileNum := d.readFileNum
-	writeFileNum := d.writeFileNum
-	writePos := d.writePos
-
 	// make a list of read file numbers to remove (later)
 	numsToRemove := make([]int64, 0)
-	for readFileNum < writeFileNum {
-		numsToRemove = append(numsToRemove, readFileNum)
-		readFileNum++
+	for d.readFileNum < d.writeFileNum {
+		numsToRemove = append(numsToRemove, d.readFileNum)
+		d.readFileNum++
 	}
 
-	d.readFileNum = writeFileNum
-	d.readPos = writePos
-	d.nextReadFileNum = writeFileNum
-	d.nextReadPos = writePos
-	d.depth = 0
+	d.readFileNum = d.writeFileNum
+	d.readPos = d.writePos
+	d.nextReadFileNum = d.writeFileNum
+	d.nextReadPos = d.writePos
+	atomic.StoreInt64(&d.depth, 0)
 
-	d.metaMutex.Unlock()
-
-	err := d.persistMetaData()
+	err := d.sync()
 	if err != nil {
+		log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
 		return err
 	}
 
@@ -202,18 +192,8 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	var err error
 	var msgSize int32
 
-	d.readMutex.Lock()
-	defer d.readMutex.Unlock()
-
-	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return nil, ErrExiting
-	}
-
-	readPos := d.readPos
-	readFileNum := d.readFileNum
-
 	if d.readFile == nil {
-		curFileName := d.fileName(readFileNum)
+		curFileName := d.fileName(d.readFileNum)
 		d.readFile, err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
 		if err != nil {
 			return nil, err
@@ -221,17 +201,19 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
 
-		if readPos > 0 {
-			_, err = d.readFile.Seek(readPos, 0)
+		if d.readPos > 0 {
+			_, err = d.readFile.Seek(d.readPos, 0)
 			if err != nil {
 				d.readFile.Close()
 				d.readFile = nil
 				return nil, err
 			}
 		}
+
+		d.reader = bufio.NewReader(d.readFile)
 	}
 
-	err = binary.Read(d.readFile, binary.BigEndian, &msgSize)
+	err = binary.Read(d.reader, binary.BigEndian, &msgSize)
 	if err != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -239,7 +221,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 	}
 
 	readBuf := make([]byte, msgSize)
-	_, err = io.ReadFull(d.readFile, readBuf)
+	_, err = io.ReadFull(d.reader, readBuf)
 	if err != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -248,28 +230,23 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 	totalBytes := int64(4 + msgSize)
 
-	// because readOne is only called inside readAheadPump
-	// we do not need to lock around these
-	nextReadPos := readPos + totalBytes
-	nextReadFileNum := readFileNum
+	// we only advance next* because we have not yet sent this to consumers 
+	// (where readFileNum, readPos will actually be advanced)
+	d.nextReadPos = d.readPos + totalBytes
+	d.nextReadFileNum = d.readFileNum
 
 	// TODO: each data file should embed the maxBytesPerFile
 	// as the first 8 bytes (at creation time) ensuring that
 	// the value can change without affecting runtime
-	if nextReadPos > d.maxBytesPerFile {
+	if d.nextReadPos > d.maxBytesPerFile {
 		if d.readFile != nil {
 			d.readFile.Close()
 			d.readFile = nil
 		}
 
-		nextReadFileNum++
-		nextReadPos = 0
+		d.nextReadFileNum++
+		d.nextReadPos = 0
 	}
-
-	// we only advance next* because we have not yet sent this to consumers 
-	// (where readFileNum, readPos will actually be advanced)
-	d.nextReadFileNum = nextReadFileNum
-	d.nextReadPos = nextReadPos
 
 	return readBuf, nil
 }
@@ -278,24 +255,9 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 // while advancing write positions and rolling files, if necessary
 func (d *DiskQueue) writeOne(data []byte) error {
 	var err error
-	var buf bytes.Buffer
-
-	d.writeMutex.Lock()
-	defer d.writeMutex.Unlock()
-
-	if atomic.LoadInt32(&d.exitFlag) == 1 {
-		return ErrExiting
-	}
-
-	persist := false
-
-	d.metaMutex.Lock()
-	writePos := d.writePos
-	writeFileNum := d.writeFileNum
-	d.metaMutex.Unlock()
 
 	if d.writeFile == nil {
-		curFileName := d.fileName(writeFileNum)
+		curFileName := d.fileName(d.writeFileNum)
 		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
 			return err
@@ -303,8 +265,8 @@ func (d *DiskQueue) writeOne(data []byte) error {
 
 		log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
 
-		if writePos > 0 {
-			_, err = d.writeFile.Seek(writePos, 0)
+		if d.writePos > 0 {
+			_, err = d.writeFile.Seek(d.writePos, 0)
 			if err != nil {
 				d.writeFile.Close()
 				d.writeFile = nil
@@ -315,18 +277,19 @@ func (d *DiskQueue) writeOne(data []byte) error {
 
 	dataLen := len(data)
 
-	err = binary.Write(&buf, binary.BigEndian, int32(dataLen))
+	d.writeBuf.Reset()
+	err = binary.Write(&d.writeBuf, binary.BigEndian, int32(dataLen))
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.Write(data)
+	_, err = d.writeBuf.Write(data)
 	if err != nil {
 		return err
 	}
 
 	// only write to the file once
-	_, err = d.writeFile.Write(buf.Bytes())
+	_, err = d.writeFile.Write(d.writeBuf.Bytes())
 	if err != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
@@ -334,52 +297,40 @@ func (d *DiskQueue) writeOne(data []byte) error {
 	}
 
 	totalBytes := int64(4 + dataLen)
-	writePos += totalBytes
+	d.writePos += totalBytes
+	atomic.AddInt64(&d.depth, 1)
 
-	if writePos > d.maxBytesPerFile {
-		d.writeFile.Close()
-		d.writeFile = nil
+	if d.writePos > d.maxBytesPerFile {
+		d.writeFileNum++
+		d.writePos = 0
 
-		writeFileNum++
-		writePos = 0
+		// sync every time we start writing to a new file
+		err = d.sync()
+		if err != nil {
+			log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+		}
 
-		persist = true
+		if d.writeFile != nil {
+			d.writeFile.Close()
+			d.writeFile = nil
+		}
 	}
 
-	d.metaMutex.Lock()
-	d.writeFileNum = writeFileNum
-	d.writePos = writePos
-	d.depth++
-	d.metaMutex.Unlock()
+	return err
+}
 
-	// dont sync all the time :)
-	sync := d.depth % d.syncEvery
-	if d.writeFile != nil && sync == 0 {
-		err = d.writeFile.Sync()
+// sync fsyncs the current writeFile and persists metadata
+func (d *DiskQueue) sync() error {
+	if d.writeFile != nil {
+		err := d.writeFile.Sync()
 		if err != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 			return err
 		}
-
-		persist = true
 	}
 
-	if persist {
-		err = d.persistMetaData()
-		if err != nil {
-			return err
-		}
-	}
-
-	// you can always *try* to write to readStateChan because in the cases
-	// where you cannot the message pump loop would have iterated anyway
-	select {
-	case d.readStateChan <- 1:
-	default:
-	}
-
-	return nil
+	return d.persistMetaData()
 }
 
 // retrieveMetaData initializes state from the filesystem
@@ -412,14 +363,6 @@ func (d *DiskQueue) persistMetaData() error {
 	var f *os.File
 	var err error
 
-	d.metaMutex.Lock()
-	depth := d.depth
-	readFileNum := d.readFileNum
-	readPos := d.readPos
-	writeFileNum := d.writeFileNum
-	writePos := d.writePos
-	d.metaMutex.Unlock()
-
 	fileName := d.metaDataFileName()
 	tmpFileName := fileName + ".tmp"
 
@@ -430,9 +373,9 @@ func (d *DiskQueue) persistMetaData() error {
 	}
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d\n%d,%d\n",
-		depth,
-		readFileNum, readPos,
-		writeFileNum, writePos)
+		atomic.LoadInt64(&d.depth),
+		d.readFileNum, d.readPos,
+		d.writeFileNum, d.writePos)
 	if err != nil {
 		f.Close()
 		return err
@@ -452,7 +395,7 @@ func (d *DiskQueue) fileName(fileNum int64) string {
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
 }
 
-// readAheadPump provides the backend for exposing a go channel (via ReadChan())
+// ioLoop provides the backend for exposing a go channel (via ReadChan())
 // in support of multiple concurrent queue consumers
 //
 // it works by looping and branching based on whether or not the queue has data
@@ -460,90 +403,76 @@ func (d *DiskQueue) fileName(fileNum int64) string {
 // go channels
 //
 // conveniently this also means that we're asynchronously reading from the filesystem
-func (d *DiskQueue) readAheadPump() {
+func (d *DiskQueue) ioLoop() {
 	var data []byte
 	var err error
+	var count int64
+	var r chan []byte
 
-	// readStateChan has a buffer of 1 to guarantee that in the event
-	// there is a race before we enter either of the select loops where 
-	// readStateChan is read from that the update is not lost
 	for {
-		nextReadPos := d.nextReadPos
-		readFileNum := d.readFileNum
-		readPos := d.readPos
+		count++
+		// dont sync all the time :)
+		if count == d.syncEvery {
+			err := d.sync()
+			if err != nil {
+				log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+			}
+			count = 0
+		}
 
-		d.metaMutex.Lock()
-		writeFileNum := d.writeFileNum
-		writePos := d.writePos
-		d.metaMutex.Unlock()
-
-		if (readFileNum < writeFileNum) || (readPos < writePos) {
-			if nextReadPos == readPos {
+		if (d.readFileNum < d.writeFileNum) || (d.readPos < d.writePos) {
+			if d.nextReadPos == d.readPos {
 				data, err = d.readOne()
 				if err != nil {
-					if err == ErrExiting {
-						goto exit
-					}
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
-						d.name, readPos, d.fileName(readFileNum), err.Error())
-					// we assume that all read errors are recoverable...
+						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
+					// TODO: we assume that all read errors are recoverable...
 					// it will probably turn out that this is a terrible assumption
 					// as this could certainly result in an infinite busy loop
 					runtime.Gosched()
 					continue
 				}
 			}
+			r = d.readChan
+		}
 
-			select {
-			case d.readChan <- data:
-				oldReadFileNum := d.readFileNum
+		select {
+		// the Go channel spec dictates that nil channel operations (read or write) 
+		// in a select are skipped, we set r to d.readChan only when there is data to read
+		// and reset it to nil after writing to the channel
+		case r <- data:
+			r = nil
+			oldReadFileNum := d.readFileNum
+			d.readFileNum = d.nextReadFileNum
+			d.readPos = d.nextReadPos
+			atomic.AddInt64(&d.depth, -1)
 
-				d.metaMutex.Lock()
-				d.depth--
-				d.readFileNum = d.nextReadFileNum
-				d.readPos = d.nextReadPos
-				d.metaMutex.Unlock()
-
-				// see if we need to clean up the old file
-				if oldReadFileNum != d.nextReadFileNum {
-					fn := d.fileName(readFileNum)
-
-					err := d.persistMetaData()
-					if err != nil {
-						log.Printf("ERROR: failed to persistMetaData (not removing %s) - %s", fn, err.Error())
-						continue
-					}
-
-					// only if we've successfully persisted metadata do we remove old files
-					err = os.Remove(fn)
-					if err != nil {
-						log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
-					}
-				}
-			case <-d.emptyChan:
-				err := d.doEmpty()
+			// see if we need to clean up the old file
+			if oldReadFileNum != d.nextReadFileNum {
+				// sync every time we start reading from a new file
+				err = d.sync()
 				if err != nil {
-					log.Printf("ERROR: doEmpty() - %s", err.Error())
+					log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+					continue
 				}
-			case <-d.readStateChan:
-			case <-d.exitChan:
-				goto exit
-			}
-		} else {
-			select {
-			case <-d.emptyChan:
-				err := d.doEmpty()
+
+				// only if we've successfully synced do we remove old files
+				fn := d.fileName(oldReadFileNum)
+				err = os.Remove(fn)
 				if err != nil {
-					log.Printf("ERROR: doEmpty() - %s", err.Error())
+					log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
 				}
-			case <-d.readStateChan:
-			case <-d.exitChan:
-				goto exit
 			}
+		case <-d.emptyChan:
+			d.emptyResponseChan <- d.doEmpty()
+		case data := <-d.writeChan:
+			d.writeResponseChan <- d.writeOne(data)
+		case <-d.exitChan:
+			goto exit
 		}
 	}
 
 exit:
-	log.Printf("DISKQUEUE(%s): closing ... readAheadPump", d.name)
+	log.Printf("DISKQUEUE(%s): closing ... ioLoop", d.name)
 	d.exitSyncChan <- 1
 }

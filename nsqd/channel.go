@@ -122,7 +122,6 @@ func (c *Channel) Delete() error {
 
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
-	var err error
 	var msgBuf bytes.Buffer
 
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
@@ -162,12 +161,7 @@ func (c *Channel) Close() error {
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
 	}
 	FlushQueue(c)
-	err = c.backend.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.backend.Close()
 }
 
 // MemoryChan implements the Queue interface

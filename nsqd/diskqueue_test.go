@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -79,9 +79,7 @@ func TestDiskQueueEmpty(t *testing.T) {
 	}
 	assert.Equal(t, dq.Depth(), int64(97))
 
-	// cheat and use the lower level method so that the test doesn't
-	// break due to timing
-	dq.(*DiskQueue).doEmpty()
+	dq.Empty()
 
 	assert.Equal(t, dq.Depth(), int64(0))
 	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
@@ -113,11 +111,13 @@ func TestDiskQueueEmpty(t *testing.T) {
 }
 
 func TestDiskQueueTorture(t *testing.T) {
-	// this test is disabled because it takes a long time
-	return
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	var wg sync.WaitGroup
 
 	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
-	dq := NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
+	dq := NewDiskQueue(dqName, os.TempDir(), 262144, 2500)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(0))
 
@@ -126,18 +126,17 @@ func TestDiskQueueTorture(t *testing.T) {
 	numWriters := 4
 	numReaders := 4
 	readExitChan := make(chan int)
-	readExitSyncChan := make(chan int)
 	writeExitChan := make(chan int)
-	writeExitSyncChan := make(chan int)
 
 	var depth int64
 	for i := 0; i < numWriters; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for {
-				runtime.Gosched()
+				time.Sleep(100000 * time.Nanosecond)
 				select {
 				case <-writeExitChan:
-					writeExitSyncChan <- 1
 					return
 				default:
 					err := dq.Put(msg)
@@ -149,31 +148,31 @@ func TestDiskQueueTorture(t *testing.T) {
 		}()
 	}
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	dq.Close()
 
 	log.Printf("closing writeExitChan")
 	close(writeExitChan)
-	for i := 0; i < numWriters; i++ {
-		<-writeExitSyncChan
-	}
+	wg.Wait()
 
-	dq = NewDiskQueue(dqName, os.TempDir(), 1024768, 2500)
+	log.Printf("restarting diskqueue")
+	dq = NewDiskQueue(dqName, os.TempDir(), 262144, 2500)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), depth)
 
 	var read int64
 	for i := 0; i < numReaders; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for {
-				runtime.Gosched()
+				time.Sleep(100000 * time.Nanosecond)
 				select {
 				case m := <-dq.ReadChan():
 					assert.Equal(t, msg, m)
 					atomic.AddInt64(&read, 1)
 				case <-readExitChan:
-					readExitSyncChan <- 1
 					return
 				}
 			}
@@ -190,9 +189,7 @@ func TestDiskQueueTorture(t *testing.T) {
 
 	log.Printf("closing readExitChan")
 	close(readExitChan)
-	for i := 0; i < numReaders; i++ {
-		<-readExitSyncChan
-	}
+	wg.Wait()
 
 	assert.Equal(t, read, depth)
 

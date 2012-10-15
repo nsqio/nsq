@@ -222,8 +222,6 @@ func (t *Topic) Delete() error {
 }
 
 func (t *Topic) Close() error {
-	var err error
-
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
@@ -243,7 +241,7 @@ func (t *Topic) Close() error {
 
 	// close all the channels
 	for _, channel := range t.channelMap {
-		err = channel.Close()
+		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
 			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
@@ -255,10 +253,5 @@ func (t *Topic) Close() error {
 		log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
 	}
 	FlushQueue(t)
-	err = t.backend.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return t.backend.Close()
 }
