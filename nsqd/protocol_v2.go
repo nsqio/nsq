@@ -16,7 +16,6 @@ import (
 )
 
 const maxTimeout = time.Hour
-const maxReadyCount = 2500
 
 type ProtocolV2 struct {
 	nsq.Protocol
@@ -263,9 +262,9 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 		}
 	}
 
-	if count > maxReadyCount {
-		log.Printf("ERROR: client(%s) sent ready count %d > %d", client, count, maxReadyCount)
-		count = maxReadyCount
+	if count > nsq.MaxReadyCount {
+		log.Printf("ERROR: client(%s) sent ready count %d > %d", client, count, nsq.MaxReadyCount)
+		count = nsq.MaxReadyCount
 	}
 
 	client.SetReadyCount(int64(count))

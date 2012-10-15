@@ -178,7 +178,9 @@ func (q *Reader) ConnectionMaxInFlight() int {
 // before being able to receive more messages (ie. RDY count of 0 and not exiting)
 func (q *Reader) IsStarved() bool {
 	for _, conn := range q.nsqConnections {
-		if atomic.LoadInt64(&conn.rdyCount) == 0 && atomic.LoadInt32(&conn.stopFlag) != 1 {
+		threshold := int64(float64(atomic.LoadInt64(&conn.rdyCount)) * 0.85)
+		if atomic.LoadInt64(&conn.messagesInFlight) >= threshold &&
+			atomic.LoadInt32(&conn.stopFlag) != 1 {
 			return true
 		}
 	}
@@ -187,12 +189,19 @@ func (q *Reader) IsStarved() bool {
 
 // update the reader ready state, updating each connection as appropriate
 func (q *Reader) SetMaxInFlight(maxInFlight int) {
-	if q.maxInFlight == maxInFlight {
-		return
-	}
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return
 	}
+
+	if maxInFlight > MaxReadyCount {
+		log.Printf("WARNING: tried to SetMaxInFlight() > %d, truncating...", MaxReadyCount)
+		maxInFlight = MaxReadyCount
+	}
+
+	if q.maxInFlight == maxInFlight {
+		return
+	}
+
 	q.maxInFlight = maxInFlight
 	for _, c := range q.nsqConnections {
 		if atomic.LoadInt32(&c.stopFlag) == 1 {
