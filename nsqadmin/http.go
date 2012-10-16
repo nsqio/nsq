@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var templates *template.Template
@@ -34,7 +35,7 @@ func commafy(i interface{}) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func httpServer(listener net.Listener) {
+func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
 		"commafy": commafy,
@@ -43,9 +44,12 @@ func httpServer(listener net.Listener) {
 	if err != nil {
 		log.Printf("ERROR: %s", err.Error())
 	}
+}
 
+func httpServer(listener net.Listener) {
+	loadTemplates()
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
-
+	globalCounters = make(map[string]counterData)
 	handler := http.NewServeMux()
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/", indexHandler)
@@ -56,11 +60,13 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
 	handler.HandleFunc("/pause_channel", pauseChannelHandler)
 	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
+	handler.HandleFunc("/counter/data", counterDataHandler)
+	handler.HandleFunc("/counter", counterHandler)
 
 	server := &http.Server{
 		Handler: handler,
 	}
-	err = server.Serve(listener)
+	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
@@ -338,4 +344,78 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
 	}
+}
+
+func counterHandler(w http.ResponseWriter, req *http.Request) {
+	p := struct {
+		Title   string
+		Version string
+	}{
+		Title:   fmt.Sprintf("NSQ Message Counts"),
+		Version: util.BINARY_VERSION,
+	}
+	err := templates.ExecuteTemplate(w, "counter.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
+}
+
+type counterData map[string]int64
+
+var globalCounters map[string]counterData
+
+// this endpoint works by giving out an ID that maps to a stats dictionary
+// The initial request is the number of messages processed since each nsqd started up.
+// Subsequent requsts pass that ID and get an updated delta based on each individual channel/nsqd message count
+// That ID must be re-requested or it will be expired.
+func counterDataHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	statsID, _ := reqParams.Query("id")
+	now := time.Now()
+	if statsID == "" {
+		// make a new one
+		statsID = fmt.Sprintf("%d.%d", now.Unix(), now.UnixNano())
+	}
+
+	stats, ok := globalCounters[statsID]
+	if !ok {
+		stats = make(map[string]int64)
+	}
+	newStats := make(map[string]int64)
+	newStats["time"] = now.Unix()
+
+	producers, _ := getLookupdProducers(lookupdHTTPAddrs)
+	addresses := make([]string, len(producers))
+	for i, p := range producers {
+		addresses[i] = p.HTTPAddress()
+	}
+	_, channelStats, _ := getNSQDStats(addresses, "")
+
+	var newMessages int64
+	var totalMessages int64
+	for _, channel := range channelStats {
+		for _, channelHostStats := range channel.HostStats {
+			key := fmt.Sprintf("%s:%s:%s", channel.Topic, channel.ChannelName, channelHostStats.HostAddress)
+			d, ok := stats[key]
+			if ok && d <= channelHostStats.MessageCount {
+				newMessages += (channelHostStats.MessageCount - d)
+			}
+			totalMessages += channelHostStats.MessageCount
+			newStats[key] = channelHostStats.MessageCount
+		}
+	}
+	globalCounters[statsID] = newStats
+
+	data := make(map[string]interface{})
+	data["new_messages"] = newMessages
+	data["total_messages"] = totalMessages
+	data["id"] = statsID
+	util.ApiResponse(w, 200, "OK", data)
 }

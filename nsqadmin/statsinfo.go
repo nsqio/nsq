@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type TopicHostStats struct {
 	BackendDepth int64
 	MessageCount int64
 	ChannelCount int
+	Topic        string
 }
 
 type ChannelStats struct {
@@ -129,6 +131,10 @@ func (t *TopicHostStats) AddHostStats(a *TopicHostStats) {
 	if a.ChannelCount > t.ChannelCount {
 		t.ChannelCount = a.ChannelCount
 	}
+}
+
+func (p *Producer) HTTPAddress() string {
+	return fmt.Sprintf("%s:%d", p.Address, p.HttpPort)
 }
 
 func NewVersion(v string) *Version {
