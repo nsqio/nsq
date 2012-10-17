@@ -31,7 +31,6 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
-	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
 	handler.HandleFunc("/pause_channel", pauseChannelHandler)
 	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
 
@@ -47,43 +46,6 @@ func httpServer(listener net.Listener) {
 	}
 
 	log.Printf("HTTP: closing %s", listener.Addr().String())
-}
-
-func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
-	}
-
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		util.ApiResponse(w, 500, err.Error(), nil)
-		return
-	}
-
-	log.Printf("NOTICE: dumping inflight for %s:%s", topicName, channelName)
-
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel(channelName)
-
-	fmt.Fprintf(w, "inFlightMessages:\n")
-	channel.Lock()
-	for _, item := range channel.inFlightMessages {
-		msg := item.Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "%s %s %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts)
-	}
-	channel.Unlock()
-
-	fmt.Fprintf(w, "inFlightPQ:\n")
-	channel.inFlightMutex.Lock()
-	for i := 0; i < len(channel.inFlightPQ); i++ {
-		item := channel.inFlightPQ[i]
-		msg := item.Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "id: %s created: %s attempts: %d index: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Index, item.Priority)
-	}
-	channel.inFlightMutex.Unlock()
 }
 
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {
@@ -233,8 +195,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
+	util.ApiResponse(w, 200, "OK", nil)
 }
 
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
