@@ -66,6 +66,10 @@ func (c *ClientV2) Stats() ClientStats {
 }
 
 func (c *ClientV2) IsReadyForMessages() bool {
+	if c.Channel.IsPaused() {
+		return false
+	}
+
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
@@ -127,4 +131,12 @@ func (c *ClientV2) StartClose() {
 	// mark this client as closing
 	atomic.StoreInt32(&c.State, nsq.StateClosing)
 	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
+}
+
+func (c *ClientV2) Pause() {
+	c.tryUpdateReadyState()
+}
+
+func (c *ClientV2) UnPause() {
+	c.tryUpdateReadyState()
 }

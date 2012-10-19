@@ -18,7 +18,9 @@ import (
 // the amount of time a worker will wait when idle
 const defaultWorkerWait = 250 * time.Millisecond
 
-type ClientStatTracker interface {
+type Consumer interface {
+	UnPause()
+	Pause()
 	Close() error
 	TimedOutMessage()
 	Stats() ClientStats
@@ -49,7 +51,8 @@ type Channel struct {
 	exitFlag        int32
 
 	// state tracking
-	clients          []ClientStatTracker
+	clients          []Consumer
+	paused           int32
 	ephemeralChannel bool
 	deleteCallback   func(*Channel)
 	deleter          sync.Once
@@ -71,7 +74,7 @@ type Channel struct {
 
 type inFlightMessage struct {
 	msg    *nsq.Message
-	client ClientStatTracker
+	client Consumer
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -85,7 +88,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 		memoryMsgChan:    make(chan *nsq.Message, options.memQueueSize),
 		clientMsgChan:    make(chan *nsq.Message),
 		exitChan:         make(chan int),
-		clients:          make([]ClientStatTracker, 0, 5),
+		clients:          make([]Consumer, 0, 5),
 		inFlightMessages: make(map[string]*pqueue.Item),
 		inFlightPQ:       pqueue.New(int(options.memQueueSize / 10)),
 		deferredMessages: make(map[string]*pqueue.Item),
@@ -188,6 +191,28 @@ func (c *Channel) Depth() int64 {
 	return int64(len(c.memoryMsgChan)) + c.backend.Depth() + int64(atomic.LoadInt32(&c.bufferedCount))
 }
 
+func (c *Channel) Pause() {
+	atomic.StoreInt32(&c.paused, 1)
+	c.RLock()
+	defer c.RUnlock()
+	for _, client := range c.clients {
+		client.Pause()
+	}
+}
+
+func (c *Channel) UnPause() {
+	atomic.StoreInt32(&c.paused, 0)
+	c.RLock()
+	defer c.RUnlock()
+	for _, client := range c.clients {
+		client.UnPause()
+	}
+}
+
+func (c *Channel) IsPaused() bool {
+	return atomic.LoadInt32(&c.paused) == 1
+}
+
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
 func (c *Channel) PutMessage(msg *nsq.Message) error {
@@ -202,7 +227,7 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(client ClientStatTracker, id []byte) error {
+func (c *Channel) FinishMessage(client Consumer, id []byte) error {
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
@@ -218,7 +243,7 @@ func (c *Channel) FinishMessage(client ClientStatTracker, id []byte) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(client ClientStatTracker, id []byte, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(client Consumer, id []byte, timeout time.Duration) error {
 	// remove from inflight first
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
@@ -237,7 +262,7 @@ func (c *Channel) RequeueMessage(client ClientStatTracker, id []byte, timeout ti
 }
 
 // AddClient adds a client to the Channel's client list
-func (c *Channel) AddClient(client ClientStatTracker) {
+func (c *Channel) AddClient(client Consumer) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -255,12 +280,12 @@ func (c *Channel) AddClient(client ClientStatTracker) {
 }
 
 // RemoveClient removes a client from the Channel's client list
-func (c *Channel) RemoveClient(client ClientStatTracker) {
+func (c *Channel) RemoveClient(client Consumer) {
 	c.Lock()
 	defer c.Unlock()
 
 	if len(c.clients) != 0 {
-		finalClients := make([]ClientStatTracker, 0, len(c.clients)-1)
+		finalClients := make([]Consumer, 0, len(c.clients)-1)
 		for _, cli := range c.clients {
 			if cli != client {
 				finalClients = append(finalClients, cli)
@@ -274,7 +299,7 @@ func (c *Channel) RemoveClient(client ClientStatTracker) {
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client ClientStatTracker) error {
+func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client Consumer) error {
 	value := &inFlightMessage{msg, client}
 	absTs := time.Now().Add(c.options.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
@@ -323,7 +348,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(client ClientStatTracker, id []byte) (*pqueue.Item, error) {
+func (c *Channel) popInFlightMessage(client Consumer, id []byte) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 

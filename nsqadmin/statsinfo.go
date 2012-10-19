@@ -47,6 +47,7 @@ type ChannelStats struct {
 	Topic         string
 	HostStats     []*ChannelStats
 	Clients       []*ClientInfo
+	Paused        bool
 }
 
 type ClientInfo struct {
@@ -113,6 +114,9 @@ func (c *ChannelStats) AddHostStats(a *ChannelStats) {
 	c.TimeoutCount += a.TimeoutCount
 	c.MessageCount += a.MessageCount
 	c.ClientCount += a.ClientCount
+	if a.Paused {
+		c.Paused = a.Paused
+	}
 	c.HostStats = append(c.HostStats, a)
 	sort.Sort(ChannelStatsByHost{c.HostStats})
 }
