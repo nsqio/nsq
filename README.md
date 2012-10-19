@@ -7,8 +7,10 @@ guarantee](#delivery).
 
 Operationally, **NSQ** is easy to configure and deploy (all parameters are specified on the command
 line and compiled binaries have no runtime dependencies). For maximum flexibility, it is agnostic to
-data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-protobuf], or anything else). Go and
-Python libraries are available out of the box and, if you're interested in building your own client, there's a [protocol spec][protocol].
+data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-protobuf], or anything
+else). Go and Python libraries are available out of the box and, if you're interested in building
+your own client, there's a [protocol spec][protocol]. We publish [binary releases][binary] for linux
+and darwin.
 
 [![Build Status](https://secure.travis-ci.org/bitly/nsq.png)](http://travis-ci.org/bitly/nsq)
 
@@ -270,4 +272,4 @@ topic is produced, it retrieves this information from `nsqlookupd`.
 [nsq]: https://github.com/bitly/nsq/tree/master/nsq
 [pynsq]: https://github.com/bitly/nsq/tree/master/pynsq
 [nsq_post]: http://word.bitly.com/post/33232969144/nsq
-
+[binary]: https://github.com/bitly/nsq/downloads
