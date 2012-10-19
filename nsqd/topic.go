@@ -42,7 +42,7 @@ func NewTopic(topicName string, options *nsqdOptions) *Topic {
 
 	topic.waitGroup.Wrap(func() { topic.router() })
 
-	go notify.Post("new_topic", topic)
+	go notify.Post("topic_change", topic)
 
 	return topic
 }
@@ -55,12 +55,17 @@ func (t *Topic) BackendQueue() BackendQueue {
 	return t.backend
 }
 
-func (c *Topic) InFlight() map[string]*pqueue.Item {
+func (t *Topic) InFlight() map[string]*pqueue.Item {
 	return nil
 }
 
-func (c *Topic) Deferred() map[string]*pqueue.Item {
+func (t *Topic) Deferred() map[string]*pqueue.Item {
 	return nil
+}
+
+// Exiting returns a boolean indicating if this topic is closed/exiting
+func (t *Topic) Exiting() bool {
+	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
 // GetChannel performs a thread safe operation

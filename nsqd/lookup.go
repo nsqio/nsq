@@ -29,22 +29,15 @@ func (n *NSQd) lookupLoop() {
 			cmd := nsq.Identify(util.BINARY_VERSION, n.tcpAddr.Port, n.httpAddr.Port, hostname)
 			resp, err := lp.Command(cmd)
 			if err != nil {
-				log.Printf("LOOKUPD(5s): Error writing to %s %s", lp, err.Error())
+				log.Printf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err.Error())
 			} else if bytes.Equal(resp, []byte("E_INVALID")) {
 				log.Printf("LOOKUPD(%s): lookupd returned %s", lp, resp)
 			} else {
-				log.Printf("got response %s", resp)
-				if bytes.Equal(resp, []byte("OK")) {
-					// this is an old host
-					log.Printf("LOOKUPD(%s) got old response from lokupd. %v", lp, resp)
+				err = json.Unmarshal(resp, &lp.PeerInfo)
+				if err != nil {
+					log.Printf("LOOKUPD(%s): ERROR parsing response - %v", lp, resp)
 				} else {
-					// this is a new response; parse it
-					err = json.Unmarshal(resp, &lp.PeerInfo)
-					if err != nil {
-						log.Printf("LOOKUPD(%s) Error parsing response %v", lp, resp)
-					} else {
-						log.Printf("LOOKUPD(%s) peer info %+v", lp, lp.PeerInfo)
-					}
+					log.Printf("LOOKUPD(%s): peer info %+v", lp, lp.PeerInfo)
 				}
 			}
 
@@ -58,7 +51,7 @@ func (n *NSQd) lookupLoop() {
 
 	if len(n.lookupPeers) > 0 {
 		notify.Start("channel_change", notifyChannelChan)
-		notify.Start("new_topic", notifyTopicChan)
+		notify.Start("topic_change", notifyTopicChan)
 	}
 
 	// for announcements, lookupd determines the host automatically
@@ -68,10 +61,11 @@ func (n *NSQd) lookupLoop() {
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range n.lookupPeers {
-				log.Printf("LOOKUP: [%s] sending heartbeat", lookupPeer)
-				_, err := lookupPeer.Command(nsq.Ping())
+				log.Printf("LOOKUPD(%s): sending heartbeat", lookupPeer)
+				cmd := nsq.Ping()
+				_, err := lookupPeer.Command(cmd)
 				if err != nil {
-					log.Printf("ERROR: [%s] ping failed - %s", lookupPeer, err.Error())
+					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 				}
 			}
 		case channelObj := <-notifyChannelChan:
@@ -84,21 +78,26 @@ func (n *NSQd) lookupLoop() {
 				cmd = nsq.Register(channel.topicName, channel.name)
 			}
 			for _, lookupPeer := range n.lookupPeers {
-				log.Printf("LOOKUP: [%s] channel %s", lookupPeer, cmd)
+				log.Printf("LOOKUPD(%s): channel %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
-					log.Printf("ERROR: [%s] %s failed - %s", lookupPeer, cmd, err.Error())
+					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 				}
 			}
 		case newTopic := <-notifyTopicChan:
-			// notify all nsqds that a new topic exists
+			// notify all nsqds that a new topic exists, or that it's removed
 			topic := newTopic.(*Topic)
-			cmd := nsq.Register(topic.name, "")
+			var cmd *nsq.Command
+			if topic.Exiting() == true {
+				cmd = nsq.UnRegister(topic.name, "")
+			} else {
+				cmd = nsq.Register(topic.name, "")
+			}
 			for _, lookupPeer := range n.lookupPeers {
-				log.Printf("LOOKUP: [%s] new topic %s", lookupPeer, cmd)
+				log.Printf("LOOKUPD(%s): topic %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
-					log.Printf("ERROR: [%s] announce failed - %s", lookupPeer, err.Error())
+					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 				}
 			}
 		case lookupPeer := <-syncTopicChan:
@@ -119,10 +118,10 @@ func (n *NSQd) lookupLoop() {
 			nsqd.RUnlock()
 
 			for _, cmd := range commands {
-				log.Printf("LOOKUP: [%s] %s", lookupPeer, cmd)
+				log.Printf("LOOKUPD(%s): %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
-					log.Printf("ERROR: [%s] announce %v failed - %s", lookupPeer, cmd, err.Error())
+					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 					break
 				}
 			}
@@ -135,7 +134,7 @@ exit:
 	log.Printf("LOOKUP: closing")
 	if len(n.lookupPeers) > 0 {
 		notify.Stop("channel_change", notifyChannelChan)
-		notify.Stop("new_topic", notifyTopicChan)
+		notify.Stop("topic_change", notifyTopicChan)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"../util"
 	"errors"
 	"fmt"
+	"github.com/bitly/go-notify"
 	"io/ioutil"
 	"log"
 	"net"
@@ -218,6 +219,10 @@ func (n *NSQd) DeleteExistingTopic(topicName string) error {
 	// delete empties all channels and the topic itself before closing
 	// (so that we dont leave any messages around)
 	topic.Delete()
+
+	// since we are explicitly deleting a topic (not just at system exit time)
+	// de-register this from the lookupd
+	go notify.Post("topic_change", topic)
 
 	return nil
 }
