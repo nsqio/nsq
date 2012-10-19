@@ -156,6 +156,8 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	for {
 		if client.IsReadyForMessages() {
 			c = client.Channel.clientMsgChan
+		} else {
+			c = nil
 		}
 
 		select {
@@ -166,7 +168,6 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
 			}
 		case msg, ok := <-c:
-			c = nil
 			if !ok {
 				goto exit
 			}

@@ -199,6 +199,71 @@ func TestClientHeartbeat(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
+func TestPausing(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	err = nsq.SendCommand(conn, nsq.Subscribe(topicName, "ch", "TestPausing", "TestPausing"))
+	assert.Equal(t, err, nil)
+
+	err = nsq.SendCommand(conn, nsq.Ready(1))
+	assert.Equal(t, err, nil)
+
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
+	channel := topic.GetChannel("ch")
+	topic.PutMessage(msg)
+
+	// receive the first message via the client, finish it, and send new RDY
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	msg, err = nsq.DecodeMessage(data)
+	assert.Equal(t, msg.Body, []byte("test body"))
+
+	err = nsq.SendCommand(conn, nsq.Finish(msg.Id))
+	assert.Equal(t, err, nil)
+
+	err = nsq.SendCommand(conn, nsq.Ready(1))
+	assert.Equal(t, err, nil)
+
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	// pause the channel... the client shouldn't receive any more messages
+	channel.Pause()
+
+	// sleep to allow the paused state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	msg = nsq.NewMessage(<-nsqd.idChan, []byte("test body2"))
+	topic.PutMessage(msg)
+
+	// allow the client to possibly get a message, the test would hang indefinitely
+	// if pausing was not working on the internal clientMsgChan read
+	time.Sleep(50 * time.Millisecond)
+	msg = <-channel.clientMsgChan
+	assert.Equal(t, msg.Body, []byte("test body2"))
+
+	// unpause the channel... the client should now be pushed a message
+	channel.UnPause()
+
+	msg = nsq.NewMessage(<-nsqd.idChan, []byte("test body3"))
+	topic.PutMessage(msg)
+
+	resp, _ = nsq.ReadResponse(conn)
+	_, data, _ = nsq.UnpackResponse(resp)
+	msg, err = nsq.DecodeMessage(data)
+	assert.Equal(t, msg.Body, []byte("test body3"))
+}
+
 func BenchmarkProtocolV2Command(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)

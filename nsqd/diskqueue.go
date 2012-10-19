@@ -404,7 +404,7 @@ func (d *DiskQueue) fileName(fileNum int64) string {
 //
 // conveniently this also means that we're asynchronously reading from the filesystem
 func (d *DiskQueue) ioLoop() {
-	var data []byte
+	var dataRead []byte
 	var err error
 	var count int64
 	var r chan []byte
@@ -422,7 +422,7 @@ func (d *DiskQueue) ioLoop() {
 
 		if (d.readFileNum < d.writeFileNum) || (d.readPos < d.writePos) {
 			if d.nextReadPos == d.readPos {
-				data, err = d.readOne()
+				dataRead, err = d.readOne()
 				if err != nil {
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
 						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
@@ -434,14 +434,15 @@ func (d *DiskQueue) ioLoop() {
 				}
 			}
 			r = d.readChan
+		} else {
+			r = nil
 		}
 
 		select {
 		// the Go channel spec dictates that nil channel operations (read or write) 
 		// in a select are skipped, we set r to d.readChan only when there is data to read
 		// and reset it to nil after writing to the channel
-		case r <- data:
-			r = nil
+		case r <- dataRead:
 			oldReadFileNum := d.readFileNum
 			d.readFileNum = d.nextReadFileNum
 			d.readPos = d.nextReadPos
@@ -465,8 +466,8 @@ func (d *DiskQueue) ioLoop() {
 			}
 		case <-d.emptyChan:
 			d.emptyResponseChan <- d.doEmpty()
-		case data := <-d.writeChan:
-			d.writeResponseChan <- d.writeOne(data)
+		case dataWrite := <-d.writeChan:
+			d.writeResponseChan <- d.writeOne(dataWrite)
 		case <-d.exitChan:
 			goto exit
 		}
