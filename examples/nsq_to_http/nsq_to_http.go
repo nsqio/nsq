@@ -86,8 +86,8 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 type PostPublisher struct{}
 
 func (p *PostPublisher) Publish(addr string, msg []byte) error {
-	reader := bytes.NewReader(msg)
-	resp, err := HttpPost(addr, reader)
+	buf := bytes.NewBuffer(msg)
+	resp, err := HttpPost(addr, buf)
 	if err != nil {
 		return err
 	}
