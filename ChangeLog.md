@@ -2,6 +2,10 @@
 
 ## NSQ Binaries
 
+* 0.2.14 - 2012-10-19
+    * #77 ability to pause a channel (includes bugfix for message pump/diskqueue)
+    * #74 propagate all topic changes to lookupd
+    * #65 create binary releases
 * 0.2.13 - 2012-10-15
     * #70 deadlined nsq_to_http outbound requests
     * #69/#72 improved nsq_to_file sync strategy

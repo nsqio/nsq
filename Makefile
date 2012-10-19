@@ -1,5 +1,5 @@
-PREFIX?=/usr/local
-DESTDIR?=
+PREFIX=/usr/local
+DESTDIR=
 BINDIR=${PREFIX}/bin
 DATADIR=${PREFIX}/share
 
