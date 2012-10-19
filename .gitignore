@@ -7,6 +7,7 @@ nsqadmin/nsqadmin
 examples/nsq_to_file/nsq_to_file
 examples/nsq_pubsub/nsq_pubsub
 examples/nsq_to_http/nsq_to_http
+dist
 
 *.dat
 
