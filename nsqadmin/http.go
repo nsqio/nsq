@@ -54,6 +54,8 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
+	handler.HandleFunc("/pause_channel", pauseChannelHandler)
+	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -288,6 +290,35 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+}
+
+func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	for _, addr := range producers {
+		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s", addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
+		log.Printf("NSQD: calling %s", endpoint)
+
+		_, err := nsq.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+			continue
+		}
+	}
+
+	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
 func nodesHandler(w http.ResponseWriter, req *http.Request) {

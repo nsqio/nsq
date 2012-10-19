@@ -64,12 +64,14 @@
         <th>Requeued</th>
         <th>Timed Out</th>
         <th>Messages</th>
-        <th>Clients</th>
+        <th>Connections</th>
     </tr>
 
 {{range $c := .ChannelStats}}
     <tr >
-        <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a></th>
+        <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
+            {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
+            </th>
         <td>{{$c.Depth | commafy}}</td>
         <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
         <td>{{$c.InFlightCount | commafy}}</td>

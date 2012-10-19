@@ -12,20 +12,37 @@
 <h2>Channel: {{.Channel}}</h2>
 </div></div>
 
-<div class="row-fluid"><div class="span2">
-    <form action="/empty_channel" method="GET">
-        <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
-        <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
-        <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
-    </form>
-</div><div class="span2">
-    <form action="/delete_channel" method="GET">
-        <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
-        <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
-        <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
-    </form>
-</div></div>
-
+<div class="row-fluid">
+    <div class="span2">
+        <form action="/empty_channel" method="GET">
+            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+            <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
+        </form>
+    </div>
+    <div class="span2">
+        <form action="/delete_channel" method="GET">
+            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+            <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
+        </form>
+    </div>
+    <div class="span2">
+        {{if .ChannelStats.Paused}}
+        <form action="/unpause_channel" method="GET">
+            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+            <button class="btn btn-medium btn-success" type="submit">UnPause Channel</button>
+        </form>
+        {{else}}
+        <form action="/pause_channel" method="GET">
+            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
+            <button class="btn btn-medium btn-inverse" type="submit">Pause Channel</button>
+        </form>
+        {{end}}
+    </div>
+</div>
 
 <div class="row-fluid"><div class="span12">
 <h3>Channel Message Queue</h3>
@@ -39,12 +56,12 @@
         <th>Requeued</th>
         <th>Timed Out</th>
         <th>Messages</th>
-        <th>Clients</th>
+        <th>Connections</th>
     </tr>
 
 {{range $c := .ChannelStats.HostStats}}
     <tr>
-        <td>{{$c.HostAddress}}</td>
+        <td>{{$c.HostAddress}}{{if $c.Paused}} <span class="label label-important">paused</span>{{end}}</td>
         <td>{{$c.Depth | commafy}}</td>
         <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
         <td>{{$c.InFlightCount | commafy}}</td>

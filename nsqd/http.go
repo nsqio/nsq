@@ -32,6 +32,8 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
+	handler.HandleFunc("/pause_channel", pauseChannelHandler)
+	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
 
 	// these timeouts are absolute per server connection NOT per request
 	// this means that a single persistent connection will only last N seconds
@@ -213,8 +215,18 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel(channelName)
+	topic, err := nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_CHANNEL", nil)
+		return
+	}
+
 	err = EmptyQueue(channel)
 	if err != nil {
 		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
@@ -249,6 +261,41 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_CHANNEL", nil)
 		return
+	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	if err != nil {
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
+	}
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_CHANNEL", nil)
+		return
+	}
+
+	if strings.HasPrefix(req.URL.Path, "/pause") {
+		channel.Pause()
+	} else {
+		channel.UnPause()
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)

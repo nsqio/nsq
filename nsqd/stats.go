@@ -138,6 +138,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					RequeueCount  uint64        `json:"requeue_count"`
 					TimeoutCount  uint64        `json:"timeout_count"`
 					Clients       []interface{} `json:"clients"`
+					Paused        bool          `json:"paused"`
 				}{
 					c.name,
 					c.Depth(),
@@ -148,11 +149,19 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 					c.requeueCount,
 					c.timeoutCount,
 					clients,
+					c.IsPaused(),
 				}
 				channel_index++
 			} else {
+				var pausedPrefix string
+				if c.IsPaused() {
+					pausedPrefix = " *P "
+				} else {
+					pausedPrefix = "    "
+				}
 				io.WriteString(w,
-					fmt.Sprintf("    [%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
+					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
+						pausedPrefix,
 						c.name,
 						c.Depth(),
 						c.backend.Depth(),

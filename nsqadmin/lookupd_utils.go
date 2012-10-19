@@ -277,13 +277,22 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 					channelName := c["channel_name"].(string)
 					channel, ok := channelStats[channelName]
 					if !ok {
-						channel = &ChannelStats{ChannelName: channelName, Topic: selectedTopic}
+						channel = &ChannelStats{
+							ChannelName: channelName,
+							Topic:       selectedTopic,
+						}
 						channelStats[channelName] = channel
 					}
 					h := &ChannelStats{HostAddress: addr, ChannelName: channelName, Topic: selectedTopic}
 					depth := int64(c["depth"].(float64))
 					backendDepth := int64(c["backend_depth"].(float64))
 					h.Depth = depth
+					var paused bool
+					pausedInterface, ok := c["paused"]
+					if ok {
+						paused = pausedInterface.(bool)
+					}
+					h.Paused = paused
 					h.BackendDepth = backendDepth
 					h.MemoryDepth = depth - backendDepth
 					h.InFlightCount = int64(c["in_flight_count"].(float64))
