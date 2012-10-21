@@ -298,7 +298,7 @@ func BenchmarkProtocolV2Data(b *testing.B) {
 	}
 }
 
-func BenchmarkProtocolV2Pub(b *testing.B) {
+func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
@@ -306,16 +306,7 @@ func BenchmarkProtocolV2Pub(b *testing.B) {
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
 	tcpAddr, _ := mustStartNSQd(options)
-	msg := []byte(`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-		aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`)
+	msg := make([]byte, size)
 	topicName := "bench_v1" + strconv.Itoa(int(time.Now().Unix()))
 	b.StartTimer()
 
@@ -323,15 +314,20 @@ func BenchmarkProtocolV2Pub(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			conn, err := mustConnectNSQd(tcpAddr)
+			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 			if err != nil {
 				b.Fatal(err.Error())
 			}
 			for i := 0; i < (b.N / runtime.GOMAXPROCS(0)); i += 1 {
-				err := nsq.SendCommand(conn, nsq.Publish(topicName, msg))
+				err := nsq.SendCommand(rw, nsq.Publish(topicName, msg))
 				if err != nil {
 					b.Fatal(err.Error())
 				}
-				resp, err := nsq.ReadResponse(conn)
+				err = rw.Flush()
+				if err != nil {
+					b.Fatal(err.Error())
+				}
+				resp, err := nsq.ReadResponse(rw)
 				if err != nil {
 					b.Fatal(err.Error())
 				}
@@ -349,4 +345,52 @@ func BenchmarkProtocolV2Pub(b *testing.B) {
 
 	b.StopTimer()
 	nsqd.Exit()
+}
+
+func BenchmarkProtocolV2Pub256(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 256)
+}
+
+func BenchmarkProtocolV2Pub1k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 1024)
+}
+
+func BenchmarkProtocolV2Pub2k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 2 * 1024)
+}
+
+func BenchmarkProtocolV2Pub4k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 4 * 1024)
+}
+
+func BenchmarkProtocolV2Pub8k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 8 * 1024)
+}
+
+func BenchmarkProtocolV2Pub16k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 16 * 1024)
+}
+
+func BenchmarkProtocolV2Pub32k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 32 * 1024)
+}
+
+func BenchmarkProtocolV2Pub64k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 64 * 1024)
+}
+
+func BenchmarkProtocolV2Pub128k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 128 * 1024)
+}
+
+func BenchmarkProtocolV2Pub256k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 256 * 1024)
+}
+
+func BenchmarkProtocolV2Pub512k(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 512 * 1024)
+}
+
+func BenchmarkProtocolV2Pub1m(b *testing.B) {
+	benchmarkProtocolV2Pub(b, 1024 * 1024)
 }
