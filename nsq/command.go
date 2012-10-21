@@ -2,8 +2,10 @@ package nsq
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -20,6 +22,43 @@ func (c *Command) String() string {
 		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, []byte(" "))))
 	}
 	return string(c.Name)
+}
+
+func (c *Command) Write(w io.Writer) error {
+	_, err := w.Write(c.Name)
+	if err != nil {
+		return err
+	}
+
+	for _, param := range c.Params {
+		_, err := w.Write([]byte(" "))
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(param)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = w.Write([]byte("\n"))
+	if err != nil {
+		return err
+	}
+
+	if c.Body != nil {
+		bodySize := int32(len(c.Body))
+		err := binary.Write(w, binary.BigEndian, &bodySize)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(c.Body)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Announce creates a new Command to announce the existence of

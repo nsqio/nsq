@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"regexp"
@@ -90,33 +89,13 @@ func ReadResponse(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	return buf, err
+	return buf, nil
 }
 
+// DEPRECATED in 0.2.5, use: cmd.Write(w)
+// SendCommand writes a serialized command to the supplied Writer
 func SendCommand(w io.Writer, cmd *Command) error {
-	if len(cmd.Params) > 0 {
-		_, err := fmt.Fprintf(w, "%s %s\n", cmd.Name, bytes.Join(cmd.Params, []byte(" ")))
-		if err != nil {
-			return err
-		}
-	} else {
-		_, err := fmt.Fprintf(w, "%s\n", cmd.Name)
-		if err != nil {
-			return err
-		}
-	}
-	if cmd.Body != nil {
-		bodySize := int32(len(cmd.Body))
-		err := binary.Write(w, binary.BigEndian, &bodySize)
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(cmd.Body)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return cmd.Write(w)
 }
 
 func Frame(w io.Writer, frameType int32, data []byte) error {
