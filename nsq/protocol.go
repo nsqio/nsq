@@ -61,9 +61,7 @@ func ReadMagic(r io.Reader) (int32, error) {
 }
 
 func SendResponse(w io.Writer, data []byte) (int, error) {
-	var err error
-
-	err = binary.Write(w, binary.BigEndian, int32(len(data)))
+	err := binary.Write(w, binary.BigEndian, int32(len(data)))
 	if err != nil {
 		return 0, err
 	}
@@ -77,11 +75,10 @@ func SendResponse(w io.Writer, data []byte) (int, error) {
 }
 
 func ReadResponse(r io.Reader) ([]byte, error) {
-	var err error
 	var msgSize int32
 
 	// message size
-	err = binary.Read(r, binary.BigEndian, &msgSize)
+	err := binary.Read(r, binary.BigEndian, &msgSize)
 	if err != nil {
 		return nil, err
 	}
@@ -123,9 +120,7 @@ func SendCommand(w io.Writer, cmd *Command) error {
 }
 
 func Frame(w io.Writer, frameType int32, data []byte) error {
-	var err error
-
-	err = binary.Write(w, binary.BigEndian, &frameType)
+	err := binary.Write(w, binary.BigEndian, &frameType)
 	if err != nil {
 		return err
 	}
@@ -142,7 +137,6 @@ func Frame(w io.Writer, frameType int32, data []byte) error {
 // unpacks and returns a triplicate of:
 //    frame type, data ([]byte), error
 func UnpackResponse(response []byte) (int32, []byte, error) {
-	var err error
 	var frameType int32
 
 	if len(response) < 4 {
@@ -151,7 +145,7 @@ func UnpackResponse(response []byte) (int32, []byte, error) {
 
 	// frame type
 	buf := bytes.NewBuffer(response[:4])
-	err = binary.Read(buf, binary.BigEndian, &frameType)
+	err := binary.Read(buf, binary.BigEndian, &frameType)
 	if err != nil {
 		return -1, nil, err
 	}
