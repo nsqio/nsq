@@ -1,4 +1,13 @@
-# Pre-requisites
+## Binary Releases
+
+Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
+available for [download][binary].
+
+## Building From Source
+
+### Pre-requisites
+
+**golang** http://golang.org/doc/install
 
 **simplejson** https://github.com/bitly/go-simplejson
 
@@ -12,12 +21,10 @@
 
     $ go get github.com/bmizerany/assert
 
-# Installing
+### Compiling
 
-Binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps)
-
-Note: Binaries can not be built from within $GOPATH because of relative imports. To build, checkout to a directory
-outside of $GOPATH
+NOTE: binaries can not be built from within `$GOPATH` because of relative imports. To build,
+checkout to a directory outside of your `$GOPATH`.
 
     $ git clone https://github.com/bitly/nsq.git
     $ cd $REPO
@@ -32,6 +39,8 @@ Python module (for building Python readers)
 
     $ pip install pynsq
 
-# Testing
+## Testing
 
     $ ./test.sh
+
+[binary]: https://github.com/bitly/nsq/downloads

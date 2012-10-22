@@ -125,8 +125,8 @@ Commands are line oriented and structured as follows:
     
     NOTE: there is no response
 
-Unlike **V1**, data is streamed asynchronously to the client and framed in order to support the
-various reply bodies, ie:
+Data is streamed asynchronously to the client and framed in order to support the various reply
+bodies, ie:
 
     [ 4-byte integer frame ID ][ 4-byte size in bytes ][ N-byte data ]
 
