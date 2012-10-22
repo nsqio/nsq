@@ -1,7 +1,9 @@
 package main
 
 import (
-	"io"
+	"../../util"
+	"bytes"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -9,6 +11,7 @@ import (
 
 var transport *http.Transport
 var httpclient *http.Client
+var userAgent string
 
 func init() {
 	// use custom transport for deadlines
@@ -22,6 +25,7 @@ func init() {
 		},
 	}
 	httpclient = &http.Client{Transport: transport}
+	userAgent = fmt.Sprintf("nsq_to_http v%s", util.BINARY_VERSION)
 }
 
 type deadlinedConn struct {
@@ -43,14 +47,16 @@ func HttpGet(endpoint string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", userAgent)
 	return httpclient.Do(req)
 }
 
-func HttpPost(endpoint string, body io.Reader) (*http.Response, error) {
+func HttpPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, body)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Content-Type", "application/octet-stream")
 	return httpclient.Do(req)
 }
