@@ -14,8 +14,8 @@ and darwin.
 
 [![Build Status](https://secure.travis-ci.org/bitly/nsq.png)](http://travis-ci.org/bitly/nsq)
 
-**NSQ** was built as a successor to [simplequeue][simplequeue] (part of [simplehttp][simplehttp]) and as
-such was designed to (in no particular order):
+**NSQ** was built as a successor to [simplequeue][simplequeue] (part of [simplehttp][simplehttp])
+and as such was designed to (in no particular order):
 
  * provide easy topology solutions that enable high-availability and eliminate SPOFs
  * address the need for stronger message delivery guarantees
@@ -77,10 +77,10 @@ This was one of our **highest** priorities. Our production systems handle a larg
 all built upon our existing messaging tools, so we needed a way to slowly and methodically upgrade
 specific parts of our infrastructure with little to no impact.
 
-First, on the message *producer* side we built `nsqd` to match [simplequeue][simplequeue]. Specifically, nsqd
-exposes an HTTP `/put` endpoint, just like `simplequeue`, to POST binary data (with the one caveat
-that the endpoint takes an additional query parameter specifying the "topic"). Services that wanted
-to switch to start publishing to `nsqd` only have to make minor code changes.
+First, on the message *producer* side we built `nsqd` to match [simplequeue][simplequeue].
+Specifically, nsqd exposes an HTTP `/put` endpoint, just like `simplequeue`, to POST binary data
+(with the one caveat that the endpoint takes an additional query parameter specifying the "topic").
+Services that wanted to switch to start publishing to `nsqd` only have to make minor code changes.
 
 Second, we built libraries in both Python and Go that matched the functionality and idioms we had
 been accustomed to in our existing libraries. This eased the transition on the message *consumer*
@@ -199,8 +199,8 @@ we would have traditionally maintained the older toolchain discussed above.
 ### Go
 
 We made a strategic decision early on to build the **NSQ** core in [Go][golang]. We recently blogged
-about our [use of Go at bitly][go_at_bitly] and alluded to this very project - it might be helpful to browse
-through that post to get an understanding of our thinking with respect to the language.
+about our [use of Go at bitly][go_at_bitly] and alluded to this very project - it might be helpful
+to browse through that post to get an understanding of our thinking with respect to the language.
 
 Regarding **NSQ**, Go channels (not to be confused with **NSQ** channels) and the language's built
 in concurrency features are a perfect fit for the internal workings of `nsqd`. We leverage buffered
@@ -226,9 +226,10 @@ There is also a [protocol spec][protocol].
 ### Getting Started
 
 The following steps will run **NSQ** on your local machine and walk through publishing, consuming,
-and archive messages to disk.
+and archiving messages to disk.
 
- 1. follow the instructions in the [INSTALLING][installing] doc.
+ 1. follow the instructions in the [INSTALLING][installing] doc (or [download a binary
+    release][binary]).
  2. in one shell, start `nsqlookupd`:
         
         $ nsqlookupd
@@ -252,10 +253,30 @@ and archive messages to disk.
         $ curl -d 'hello world 3' 'http://127.0.0.1:4151/put?topic=test'
 
  7. to verify things worked as expected, in a web browser open `http://127.0.0.1:4171/` to view 
-    the `nsqadmin` UI and check the log files (`test.*.log`) written to `/tmp`.
+    the `nsqadmin` UI and see statistics.  Also, check the contents of the log files (`test.*.log`) 
+    written to `/tmp`.
 
 The important lesson here is that `nsq_to_file` (the client) is not explicitly told where the `test`
 topic is produced, it retrieves this information from `nsqlookupd`.
+
+## Authors
+
+NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) and Jehiah Czebotar
+([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of
+[bitly][bitly]:
+
+ * Dan Frank ([@danielhfrank][dan_twitter])
+ * Pierce Lopez ([@ploxiln][pierce_twitter])
+ * Will McCutchen ([@mccutchen][mccutch_twitter])
+ * Micha Gorelick ([@mynameisfiber][micha_twitter])
+ * Jay Ridgeway ([@jayridge][jay_twitter])
+
+### Contributors
+
+ * Phillip Rosen ([@phillro][phil_github]) for the [Node.js Client Library][node_lib]
+ * David Gardner ([@davidgardnerisme][david_twitter]) for the [PHP Client Library][php_lib]
+ * Harley Laue ([@losinggeneration][harley_github])
+ * Justin Azoff ([@JustinAzoff][justin_github])
 
 [simplehttp]: https://github.com/bitly/simplehttp
 [idempotence]: http://en.wikipedia.org/wiki/Idempotence
@@ -273,3 +294,17 @@ topic is produced, it retrieves this information from `nsqlookupd`.
 [pynsq]: https://github.com/bitly/nsq/tree/master/pynsq
 [nsq_post]: http://word.bitly.com/post/33232969144/nsq
 [binary]: https://github.com/bitly/nsq/downloads
+[snakes_twitter]: https://twitter.com/imsnakes
+[jehiah_twitter]: https://twitter.com/jehiah
+[dan_twitter]: https://twitter.com/danielhfrank
+[pierce_twitter]: https://twitter.com/ploxiln
+[mccutch_twitter]: https://twitter.com/mccutchen
+[micha_twitter]: https://twitter.com/mynameisfiber
+[harley_github]: https://github.com/losinggeneration
+[david_twitter]: https://twitter.com/davegardnerisme
+[justin_github]: https://github.com/JustinAzoff
+[phil_github]: https://github.com/phillro
+[node_lib]: https://github.com/phillro/nodensq
+[php_lib]: https://github.com/davegardnerisme/nsqphp
+[bitly]: https://bitly.com
+[jay_twitter]: https://twitter.com/jayridge
