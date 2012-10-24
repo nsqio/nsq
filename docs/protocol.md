@@ -128,7 +128,11 @@ Commands are line oriented and structured as follows:
 Data is streamed asynchronously to the client and framed in order to support the various reply
 bodies, ie:
 
-    [ 4-byte integer frame ID ][ 4-byte size in bytes ][ N-byte data ]
+    [x][x][x][x][x][x][x][x][x][x][x][x]...
+    |  (int32) ||  (int32) || (binary)
+    |  4-byte  ||  4-byte  || N-byte
+    ------------------------------------...
+        size      frame ID     data
 
 A client should expect one of the following frame identifiers:
 
