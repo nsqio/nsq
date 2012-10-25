@@ -231,6 +231,8 @@ func getNsqdTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 	return addresses, nil
 }
 
+// if given no selectedTopic, this will return stats for all topc/channels
+// and the ChannelStats dict will be keyed by topic + ':' + channel
 func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
 	topicHostStats := make([]*TopicHostStats, 0)
 	channelStats := make(map[string]*ChannelStats)
@@ -256,7 +258,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 			for _, topicInfo := range topics {
 				topicInfo := topicInfo.(map[string]interface{})
 				topicName := topicInfo["topic_name"].(string)
-				if topicName != selectedTopic {
+				if selectedTopic != "" && topicName != selectedTopic {
 					continue
 				}
 				depth := int64(topicInfo["depth"].(float64))
@@ -268,6 +270,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 					MemoryDepth:  depth - backendDepth,
 					MessageCount: int64(topicInfo["message_count"].(float64)),
 					ChannelCount: len(topicInfo["channels"].([]interface{})),
+					Topic:        topicName,
 				}
 				topicHostStats = append(topicHostStats, h)
 
@@ -275,15 +278,19 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 				for _, c := range channels {
 					c := c.(map[string]interface{})
 					channelName := c["channel_name"].(string)
-					channel, ok := channelStats[channelName]
+					channelStatsKey := channelName
+					if selectedTopic == "" {
+						channelStatsKey = fmt.Sprintf("%s:%s", topicName, channelName)
+					}
+					channel, ok := channelStats[channelStatsKey]
 					if !ok {
 						channel = &ChannelStats{
 							ChannelName: channelName,
-							Topic:       selectedTopic,
+							Topic:       topicName,
 						}
-						channelStats[channelName] = channel
+						channelStats[channelStatsKey] = channel
 					}
-					h := &ChannelStats{HostAddress: addr, ChannelName: channelName, Topic: selectedTopic}
+					h := &ChannelStats{HostAddress: addr, ChannelName: channelName, Topic: topicName}
 					depth := int64(c["depth"].(float64))
 					backendDepth := int64(c["backend_depth"].(float64))
 					h.Depth = depth
