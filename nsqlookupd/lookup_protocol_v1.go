@@ -148,7 +148,11 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	if channel != "" {
 		log.Printf("DB: client(%s) removed registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
-		lookupd.DB.Remove(key, client.Producer)
+		producers := lookupd.DB.Remove(key, client.Producer)
+		// for ephemeral channels, remove the channel as well if it has no producers
+		if producers == 0 && strings.HasSuffix(channel, "#ephemeral") {
+			lookupd.DB.RemoveRegistration(key)
+		}
 	}
 
 	return []byte("OK"), nil

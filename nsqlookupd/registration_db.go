@@ -56,12 +56,12 @@ func (r *RegistrationDB) Add(k Registration, p *Producer) {
 }
 
 // remove a producer from a registration
-func (r *RegistrationDB) Remove(k Registration, p *Producer) {
+func (r *RegistrationDB) Remove(k Registration, p *Producer) int {
 	r.Lock()
 	defer r.Unlock()
 	producers, ok := r.registrationMap[k]
 	if !ok {
-		return
+		return 0
 	}
 	cleaned := make(Producers, 0)
 	for _, producer := range producers {
@@ -71,6 +71,7 @@ func (r *RegistrationDB) Remove(k Registration, p *Producer) {
 	}
 	// Note: this leaves keys in the DB even if they have empty lists
 	r.registrationMap[k] = cleaned
+	return len(cleaned)
 }
 
 // remove a Registration and all it's producers
