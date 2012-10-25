@@ -356,41 +356,41 @@ func BenchmarkProtocolV2Pub1k(b *testing.B) {
 }
 
 func BenchmarkProtocolV2Pub2k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 2 * 1024)
+	benchmarkProtocolV2Pub(b, 2*1024)
 }
 
 func BenchmarkProtocolV2Pub4k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 4 * 1024)
+	benchmarkProtocolV2Pub(b, 4*1024)
 }
 
 func BenchmarkProtocolV2Pub8k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 8 * 1024)
+	benchmarkProtocolV2Pub(b, 8*1024)
 }
 
 func BenchmarkProtocolV2Pub16k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 16 * 1024)
+	benchmarkProtocolV2Pub(b, 16*1024)
 }
 
 func BenchmarkProtocolV2Pub32k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 32 * 1024)
+	benchmarkProtocolV2Pub(b, 32*1024)
 }
 
 func BenchmarkProtocolV2Pub64k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 64 * 1024)
+	benchmarkProtocolV2Pub(b, 64*1024)
 }
 
 func BenchmarkProtocolV2Pub128k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 128 * 1024)
+	benchmarkProtocolV2Pub(b, 128*1024)
 }
 
 func BenchmarkProtocolV2Pub256k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 256 * 1024)
+	benchmarkProtocolV2Pub(b, 256*1024)
 }
 
 func BenchmarkProtocolV2Pub512k(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 512 * 1024)
+	benchmarkProtocolV2Pub(b, 512*1024)
 }
 
 func BenchmarkProtocolV2Pub1m(b *testing.B) {
-	benchmarkProtocolV2Pub(b, 1024 * 1024)
+	benchmarkProtocolV2Pub(b, 1024*1024)
 }
