@@ -168,7 +168,7 @@ class Reader(object):
         # trigger the first one manually
         self.query_lookupd()
         
-        tornado.ioloop.PeriodicCallback(self.check_heartbeats, 60 * 1000).start()
+        tornado.ioloop.PeriodicCallback(self.check_last_recv_timestamps, 60 * 1000).start()
         periodic = tornado.ioloop.PeriodicCallback(self.query_lookupd, self.lookupd_poll_interval * 1000)
         # randomize the time we start this poll loop so that all servers don't query at exactly the same time
         # randomize based on 10% of the interval
@@ -362,7 +362,7 @@ class Reader(object):
             for producer in lookup_data['data']['producers']:
                 self.connect_to_nsqd(producer['address'], producer['tcp_port'], task)
     
-    def check_data_(self):
+    def check_last_recv_timestamps(self):
         now = time.time()
         for conn_id, conn in dict(self.conns).iteritems():
             timestamp = self.last_recv_timestamps.get(conn_id, 0)

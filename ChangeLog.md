@@ -2,6 +2,12 @@
 
 ## NSQ Binaries
 
+* 0.2.15 - 2012-10-25
+    * #84 fix lookupd hanging on to ephemeral channels w/ no producers
+    * #82 add /counter page to nsqadmin
+    * #80 message size benchmark
+    * #78 send Content-Length for nsq_to_http requests
+    * #57/#83 documentation updates
 * 0.2.14 - 2012-10-19
     * #77 ability to pause a channel (includes bugfix for message pump/diskqueue)
     * #74 propagate all topic changes to lookupd
@@ -30,6 +36,7 @@
 
 ## pynsq Python Client Library
 
+* 0.3 - 2012-10-25
+    * #79 heartbeat checks, lookupd jitter, removal of automatic JSON, refactoring for subclassing
 * 0.2 - 2012-10-09
     * Initial public release
-

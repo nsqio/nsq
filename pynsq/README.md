@@ -48,7 +48,7 @@ def task2(message):
     return True
 
 all_tasks = {"task1": task1, "task2": task2}
-r = nsq.Reader(all_tasks, lookupd_http_addresses=['127.0.0.1:4161'], 
+r = nsq.Reader(all_tasks, lookupd_http_addresses=['http://127.0.0.1:4161'], 
         topic="nsq_reader", channel="asdf")
 nsq.run()
 ```
@@ -86,7 +86,7 @@ def process_message(message, finisher):
         print 'deferring processing'
     
 all_tasks = {"task1": process_message}
-r = nsq.Reader(all_tasks, lookupd_http_addresses=['127.0.0.1:4161'],
+r = nsq.Reader(all_tasks, lookupd_http_addresses=['http://127.0.0.1:4161'],
         topic="nsq_reader", channel="async", async=True)
 nsq.run()
 ```
