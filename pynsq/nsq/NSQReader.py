@@ -1,11 +1,14 @@
 """
-NSQ base reader class.
+high-level NSQ reader class built on top of a Tornado IOLoop supporting both sync and
+async modes of operation.
 
-This receives messages from nsqd and calls task methods to process that message
+supports various hooks to modify behavior when heartbeats are received, temporarily
+disable the reader, and pre-process/validate messages.
 
-It handles the logic for backing off on retries and giving up on a message
+when supplied a list of nsqlookupd addresses, a reader instance will periodically poll
+the specified topic in order to discover new producers and reconnect to existing ones.
 
-ex.
+sync ex.
     import nsq
     
     def task1(message):
@@ -17,20 +20,46 @@ ex.
         return True
     
     all_tasks = {"task1": task1, "task2": task2}
-    r = nsq.Reader(all_tasks, lookupd_http_addresses=['127.0.0.1:4161'],
+    r = nsq.Reader(all_tasks, lookupd_http_addresses=['http://127.0.0.1:4161'],
             topic="nsq_reader", channel="asdf", lookupd_poll_interval=15)
+    nsq.run()
+
+async ex.
+    import nsq
+    
+    buf = []
+    
+    def process_message(message, finisher):
+        global buf
+         # cache both the message and the finisher callable for later processing
+        buf.append((message, finisher))
+        if len(buf) >= 3:
+            print '****'
+            for msg, finish_fxn in buf:
+                print msg
+                finish_fxn(True) # use finish_fxn to tell NSQ of success
+            print '****'
+            buf = []
+        else:
+            print 'deferring processing'
+    
+    all_tasks = {"task1": process_message}
+    r = nsq.Reader(all_tasks, lookupd_http_addresses=['http://127.0.0.1:4161'],
+            topic="nsq_reader", channel="async", async=True)
     nsq.run()
 """
 import logging
-import os
-import ujson as json
+try:
+    import simplejson as json
+except ImportError:
+    import json
 import time
 import signal
 import socket
 import functools
 import urllib
+import random
 
-import tornado.options
 import tornado.ioloop
 import tornado.httpclient
 
@@ -39,39 +68,56 @@ import nsq
 import async
 
 
-tornado.options.define('heartbeat_file', type=str, default=None, help="path to a file to touch for heartbeats")
-
 class RequeueWithoutBackoff(Exception):
     """exception for requeueing a message without incrementing backoff"""
     pass
 
+
 class Reader(object):
     def __init__(self, all_tasks, topic, channel,
-                nsqd_tcp_addresses=None, lookupd_http_addresses=None,
-                max_tries=5, max_in_flight=1, requeue_delay=90, lookupd_poll_interval=120,
-                preprocess_method=None, validate_method=None, async=False):
+                nsqd_tcp_addresses=None, lookupd_http_addresses=None, async=False,
+                max_tries=5, max_in_flight=1, requeue_delay=90, lookupd_poll_interval=120):
         """
-        Reader provides a loop that calls each task provided by ``all_tasks`` up to ``max_tries``
-        requeueing on any failures with increasing multiples of ``requeue_delay`` between subsequent
-        tries of each message.
+        Reader receives messages over the specified ``topic/channel`` and provides an async loop
+        that calls each task method provided by ``all_tasks`` up to ``max_tries``.
         
-        ``preprocess_method`` defines an optional method that can alter the message data before
-        other task functions are called.
-        ``validate_method`` defines an optional method that returns a boolean as to weather or not
-        this message should be processed.
-        ``all_tasks``  defines the a mapping of tasks and functions that individually will be called
-        with the message data.
-        ``async`` determines whether handlers will do asynchronous processing. If set to True, handlers
-        must accept a keyword argument called "finisher" that will be a callable used to signal message
-        completion, with a boolean argument indicating success
+        It will handle sending FIN or REQ commands based on feedback from the task methods.  When
+        re-queueing, an increasing delay will be calculated automatically.  Additionally, when
+        message processing fails, it will backoff for increasing multiples of ``requeue_delay``
+        between updating of RDY count.
+        
+        ``all_tasks`` defines the a mapping of tasks and callables that will be executed for each
+            message received.
+        
+        ``topic`` specifies the desired NSQ topic
+        
+        ``channel`` specifies the desired NSQ channel
+        
+        ``nsqd_tcp_addresses`` a sequence of string addresses of the nsqd instances this reader
+            should connect to
+        
+        ``lookupd_http_addresses`` a sequence of string addresses of the nsqlookupd instances this
+            reader should query for producers of the specified topic
+        
+        ``async`` determines whether handlers will do asynchronous processing. If set to True,
+            handlers must accept a keyword argument called ``finisher`` that will be a callable used
+            to signal message completion, taking a boolean argument indicating success.
+        
+        ``max_tries`` the maximum number of attempts the reader will make to process a message after
+            which messages will be automatically discarded
+        
+        ``max_in_flight`` the maximum number of messages this reader will pipeline for processing.
+            this value will be divided evenly amongst the configured/discovered nsqd producers.
+        
+        ``requeue_delay`` the base multiple used when re-queueing (multiplied by # of attempts)
+        
+        ``lookupd_poll_interval`` the amount of time in between querying all of the supplied
+            nsqlookupd instances.  a random amount of time based on thie value will be initially
+            introduced in order to add jitter when multiple readers are running.
         """
         assert isinstance(all_tasks, dict)
         for key, method in all_tasks.items():
             assert callable(method), "key %s must have a callable value" % key
-        if preprocess_method:
-            assert callable(preprocess_method)
-        if validate_method:
-            assert callable(validate_method)
         assert isinstance(topic, (str, unicode)) and len(topic) > 0
         assert isinstance(channel, (str, unicode)) and len(channel) > 0
         assert isinstance(max_in_flight, int) and 0 < max_in_flight < 2500
@@ -100,11 +146,9 @@ class Reader(object):
         self.max_tries = max_tries
         self.max_in_flight = max_in_flight
         self.lookupd_poll_interval = lookupd_poll_interval
-        self.async=async
+        self.async = async
         
         self.task_lookup = all_tasks
-        self.preprocess_method = preprocess_method
-        self.validate_method = validate_method
         
         self.backoff_timer = dict((k, BackoffTimer.BackoffTimer(0, 120)) for k in self.task_lookup.keys())
         
@@ -112,6 +156,7 @@ class Reader(object):
         self.short_hostname = self.hostname.split('.')[0]
         self.conns = {}
         self.http_client = tornado.httpclient.AsyncHTTPClient()
+        self.last_recv_timestamps = {}
         
         logging.info("starting reader for topic '%s'..." % self.topic)
         
@@ -123,39 +168,12 @@ class Reader(object):
         # trigger the first one manually
         self.query_lookupd()
         
-        tornado.ioloop.PeriodicCallback(self.query_lookupd, self.lookupd_poll_interval * 1000).start()
-    
-    def callback(self, conn, task, message):
-        body = message.body
-        try:
-            if self.preprocess_method:
-                body = self.preprocess_method(body)
-            
-            if self.validate_method and not self.validate_method(body):
-                return self.finish(conn, message.id)
-        except Exception:
-            logging.exception('[%s] caught exception while preprocessing' % conn)
-            return self.requeue(conn, message)
-        
-        method_callback = self.task_lookup[task]
-        try:
-            if self.async:
-                # this handler accepts the finisher callable as a keyword arg
-                finisher = functools.partial(self._client_callback, message=message, task=task, conn=conn)
-                return method_callback(body, finisher=finisher)
-            else:
-                # this is an old-school sync handler, give it just the message
-                if method_callback(body):
-                    self.backoff_timer[task].success()
-                    return self.finish(conn, message.id)
-                self.backoff_timer[task].failure()
-        except RequeueWithoutBackoff:
-            logging.info('RequeueWithoutBackoff')
-        except Exception:
-            logging.exception('[%s] caught exception while handling %s' % (conn, task))
-            self.backoff_timer[task].failure()
-        
-        return self.requeue(conn, message)
+        tornado.ioloop.PeriodicCallback(self.check_heartbeats, 60 * 1000).start()
+        periodic = tornado.ioloop.PeriodicCallback(self.query_lookupd, self.lookupd_poll_interval * 1000)
+        # randomize the time we start this poll loop so that all servers don't query at exactly the same time
+        # randomize based on 10% of the interval
+        delay = random.random() * self.lookupd_poll_interval * .1
+        tornado.ioloop.IOLoop.instance().add_timeout(time.time() + delay, periodic.start)
     
     def _client_callback(self, success, message=None, task=None, conn=None):
         '''
@@ -172,7 +190,7 @@ class Reader(object):
     
     def requeue(self, conn, message, delay=True):
         if message.attempts > self.max_tries:
-            logging.warning('[%s] giving up on message after max tries %s' % (conn, str(message.body)))
+            self.giving_up(message)
             return self.finish(conn, message.id)
         
         try:
@@ -205,6 +223,8 @@ class Reader(object):
         per_conn = self.connection_max_in_flight()
         if not conn.is_sending_ready and (conn.ready <= 1 or conn.ready < int(per_conn * 0.25)):
             backoff_interval = self.backoff_timer[task].get_interval()
+            if self.disabled():
+                backoff_interval = 15
             if backoff_interval > 0:
                 conn.is_sending_ready = True
                 logging.info('[%s] backing off for %0.2f seconds' % (conn, backoff_interval))
@@ -214,15 +234,40 @@ class Reader(object):
                 self.send_ready(conn, per_conn)
         
         try:
-            message.body = json.loads(message.body)
+            processed_message = self.preprocess_message(message)
+            if not self.validate_message(processed_message):
+                return self.finish(conn, message.id)
         except Exception:
-            logging.warning('[%s] invalid JSON: %s' % (conn, str(message.body)))
-            return
+            logging.exception('[%s] caught exception while preprocessing' % conn)
+            return self.requeue(conn, message)
         
-        logging.info('[%s] handling %s for %s' % (conn, task, str(message.body)))
-        self.callback(conn, task, message)
+        method_callback = self.task_lookup[task]
+        try:
+            if self.async:
+                # this handler accepts the finisher callable as a keyword arg
+                finisher = functools.partial(self._client_callback, message=message, task=task, conn=conn)
+                return method_callback(processed_message, finisher=finisher)
+            else:
+                # this is an old-school sync handler, give it just the message
+                if method_callback(processed_message):
+                    self.backoff_timer[task].success()
+                    return self.finish(conn, message.id)
+                self.backoff_timer[task].failure()
+        except RequeueWithoutBackoff:
+            logging.info('RequeueWithoutBackoff')
+        except Exception:
+            logging.exception('[%s] caught exception while handling %s' % (conn, task))
+            self.backoff_timer[task].failure()
+        
+        return self.requeue(conn, message)
     
     def send_ready(self, conn, value):
+        if self.disabled():
+            logging.info('[%s] disabled, delaying ready state change', conn)
+            send_ready_callback = functools.partial(self.send_ready, conn, value)
+            tornado.ioloop.IOLoop.instance().add_timeout(time.time() + 15, send_ready_callback)
+            return
+        
         try:
             conn.send(nsq.ready(value))
             conn.ready = value
@@ -232,17 +277,8 @@ class Reader(object):
         
         conn.is_sending_ready = False
     
-    def update_heartbeat(self):
-        heartbeat_file = tornado.options.options.heartbeat_file
-        if not heartbeat_file:
-            return
-        try:
-            open(heartbeat_file, 'a').close()
-            os.utime(heartbeat_file, None)
-        except Exception:
-            logging.exception('failed touching heartbeat file')
-    
     def _data_callback(self, conn, raw_data, task):
+        self.last_recv_timestamps[get_conn_id(conn, task)] = time.time()
         frame, data  = nsq.unpack_response(raw_data)
         if frame == nsq.FRAME_TYPE_MESSAGE:
             message = nsq.decode_message(data)
@@ -251,7 +287,7 @@ class Reader(object):
             except Exception:
                 logging.exception('[%s] failed to handle_message() %r' % (conn, message))
         elif frame == nsq.FRAME_TYPE_RESPONSE and data == "_heartbeat_":
-            self.update_heartbeat()
+            self.heartbeat(conn)
             conn.send(nsq.nop())
     
     def connect_to_nsqd(self, address, port, task):
@@ -288,10 +324,12 @@ class Reader(object):
             logging.exception('[%s] failed to bootstrap connection' % conn)
     
     def _close_callback(self, conn, task):
-        conn_id = str(conn) + ':' + task
+        conn_id = get_conn_id(conn, task)
         
         if conn_id in self.conns:
             del self.conns[conn_id]
+        
+        logging.warning("[%s] connection closed... %d left open", conn, len(self.conns))
         
         if len(self.conns) == 0 and len(self.lookupd_http_addresses) == 0:
             logging.warning("all connections closed and no lookupds... exiting")
@@ -323,6 +361,40 @@ class Reader(object):
         for task in self.task_lookup:
             for producer in lookup_data['data']['producers']:
                 self.connect_to_nsqd(producer['address'], producer['tcp_port'], task)
+    
+    def check_data_(self):
+        now = time.time()
+        for conn_id, conn in dict(self.conns).iteritems():
+            timestamp = self.last_recv_timestamps.get(conn_id, 0)
+            if (now - timestamp) > 60:
+                # this connection hasnt received data beyond
+                # the normal heartbeat interval, close it
+                logging.warning("[%s] connection is stale, closing", conn)
+                conn = self.conns[conn_id]
+                conn.close()
+    
+    #
+    # subclass overwriteable
+    #
+    
+    def giving_up(self, message):
+        logging.warning("giving up on message '%s' after max tries %d", message.id, self.max_tries)
+    
+    def disabled(self):
+        return False
+    
+    def heartbeat(self, conn):
+        pass
+    
+    def validate_message(self, message):
+        return True
+    
+    def preprocess_message(self, message):
+        return message
+
+
+def get_conn_id(conn, task):
+    return str(conn) + ':' + task
 
 def _handle_term_signal(sig_num, frame):
     logging.info('TERM Signal handler called with signal %r' % sig_num)
