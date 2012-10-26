@@ -52,16 +52,16 @@ func (c *ClientV2) String() string {
 
 func (c *ClientV2) Stats() ClientStats {
 	return ClientStats{
-		version:       "V2",
-		address:       c.RemoteAddr().String(),
-		name:          c.ShortIdentifier,
-		state:         atomic.LoadInt32(&c.State),
-		readyCount:    atomic.LoadInt64(&c.ReadyCount),
-		inFlightCount: atomic.LoadInt64(&c.InFlightCount),
-		messageCount:  atomic.LoadUint64(&c.MessageCount),
-		finishCount:   atomic.LoadUint64(&c.FinishCount),
-		requeueCount:  atomic.LoadUint64(&c.RequeueCount),
-		connectTime:   c.ConnectTime,
+		Version:       "V2",
+		RemoteAddress: c.RemoteAddr().String(),
+		Name:          c.ShortIdentifier,
+		State:         atomic.LoadInt32(&c.State),
+		ReadyCount:    atomic.LoadInt64(&c.ReadyCount),
+		InFlightCount: atomic.LoadInt64(&c.InFlightCount),
+		MessageCount:  atomic.LoadUint64(&c.MessageCount),
+		FinishCount:   atomic.LoadUint64(&c.FinishCount),
+		RequeueCount:  atomic.LoadUint64(&c.RequeueCount),
+		ConnectTime:   c.ConnectTime.Unix(),
 	}
 }
 

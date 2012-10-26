@@ -1,17 +1,22 @@
 {{template "header.html" .}}
+{{$g := .GraphiteUrl}}
+{{$gp := .GraphiteKeyPrefix}}
 
 <div class="row-fluid"><div class="span12">
 <h1>Topics</h1>
 </div></div>
 
 
-<div class="row-fluid"><div class="span12">
+<div class="row-fluid"><div class="span3">
 {{if .Topics}}
-<ul>
+<table class="table table-condensed table-bordered">
 {{range .Topics}}
-    <li><a href="/topic/{{.}}">{{.}}</a></li>
+    <tr>
+        {{if $g}}<td><a href="/topic/{{.}}"><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=white&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{.}}.message_count)"></a></td>{{end}}
+        <td><a href="/topic/{{.}}">{{.}}</a></td>
+    </tr>
 {{end}}
-</ul>
+</table>
 {{else}}
     <p><span class="label label-warning">Warning</span> No Topics Found</p>
 {{ end }}
