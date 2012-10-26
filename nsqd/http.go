@@ -31,7 +31,6 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/mem_profile", memProfileHandler)
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
-	handler.HandleFunc("/dump_inflight", dumpInFlightHandler)
 	handler.HandleFunc("/pause_channel", pauseChannelHandler)
 	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
 
@@ -47,43 +46,6 @@ func httpServer(listener net.Listener) {
 	}
 
 	log.Printf("HTTP: closing %s", listener.Addr().String())
-}
-
-func dumpInFlightHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
-	}
-
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		util.ApiResponse(w, 500, err.Error(), nil)
-		return
-	}
-
-	log.Printf("NOTICE: dumping inflight for %s:%s", topicName, channelName)
-
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel(channelName)
-
-	fmt.Fprintf(w, "inFlightMessages:\n")
-	channel.Lock()
-	for _, item := range channel.inFlightMessages {
-		msg := item.Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "%s %s %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts)
-	}
-	channel.Unlock()
-
-	fmt.Fprintf(w, "inFlightPQ:\n")
-	channel.inFlightMutex.Lock()
-	for i := 0; i < len(channel.inFlightPQ); i++ {
-		item := channel.inFlightPQ[i]
-		msg := item.Value.(*inFlightMessage).msg
-		fmt.Fprintf(w, "id: %s created: %s attempts: %d index: %d priority: %d\n", msg.Id, time.Unix(msg.Timestamp, 0).String(), msg.Attempts, item.Index, item.Priority)
-	}
-	channel.inFlightMutex.Unlock()
 }
 
 func memProfileHandler(w http.ResponseWriter, req *http.Request) {
@@ -233,8 +195,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
+	util.ApiResponse(w, 200, "OK", nil)
 }
 
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
@@ -299,4 +260,82 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func statsHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	formatString, _ := reqParams.Query("format")
+	jsonFormat := formatString == "json"
+	now := time.Now()
+
+	if !jsonFormat {
+		io.WriteString(w, fmt.Sprintf("nsqd v%s\n", util.BINARY_VERSION))
+	}
+
+	stats := nsqd.getStats()
+
+	if len(stats) == 0 {
+		if jsonFormat {
+			util.ApiResponse(w, 500, "NO_TOPICS", nil)
+		} else {
+			io.WriteString(w, "\nNO_TOPICS\n")
+		}
+		return
+	}
+
+	if jsonFormat {
+		util.ApiResponse(w, 200, "OK", struct {
+			Topics []TopicStats `json:"topics"`
+		}{stats})
+	} else {
+		for _, t := range stats {
+			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
+				t.TopicName,
+				t.Depth,
+				t.BackendDepth,
+				t.MessageCount))
+			for _, c := range t.Channels {
+				var pausedPrefix string
+				if c.Paused {
+					pausedPrefix = " *P "
+				} else {
+					pausedPrefix = "    "
+				}
+				io.WriteString(w,
+					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
+						pausedPrefix,
+						c.ChannelName,
+						c.Depth,
+						c.BackendDepth,
+						c.InFlightCount,
+						c.DeferredCount,
+						c.RequeueCount,
+						c.TimeoutCount,
+						c.MessageCount))
+				for _, client := range c.Clients {
+					connectTime := time.Unix(client.ConnectTime, 0)
+					// truncate to the second
+					duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
+					_, port, _ := net.SplitHostPort(client.RemoteAddress)
+					io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+						client.Version,
+						fmt.Sprintf("%s:%s", client.Name, port),
+						client.State,
+						client.InFlightCount,
+						client.ReadyCount,
+						client.FinishCount,
+						client.RequeueCount,
+						client.MessageCount,
+						duration,
+					))
+				}
+			}
+		}
+	}
 }

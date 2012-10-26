@@ -35,10 +35,17 @@ func commafy(i interface{}) string {
 	return fmt.Sprintf("%d", n)
 }
 
+// formats a host + port for use in a graphite host key
+func graphiteHostKey(h string) string {
+	s := strings.Replace(h, ".", "_", -1)
+	return strings.Replace(s, ":", "_", -1)
+}
+
 func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
-		"commafy": commafy,
+		"commafy":         commafy,
+		"graphiteHostKey": graphiteHostKey,
 	})
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
 	if err != nil {
@@ -88,13 +95,17 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 		topics, _ = getNSQDTopics(nsqdHTTPAddrs)
 	}
 	p := struct {
-		Title   string
-		Topics  []string
-		Version string
+		Title             string
+		GraphiteUrl       string
+		GraphiteKeyPrefix string
+		Topics            []string
+		Version           string
 	}{
-		Title:   "NSQ",
-		Topics:  topics,
-		Version: util.BINARY_VERSION,
+		Title:             "NSQ",
+		GraphiteUrl:       *graphiteUrl,
+		GraphiteKeyPrefix: graphiteKeyPrefix,
+		Topics:            topics,
+		Version:           util.BINARY_VERSION,
 	}
 	err := templates.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
@@ -131,21 +142,25 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	p := struct {
-		Title            string
-		Version          string
-		Topic            string
-		TopicProducers   []string
-		TopicHostStats   []*TopicHostStats
-		GlobalTopicStats *TopicHostStats
-		ChannelStats     map[string]*ChannelStats
+		Title             string
+		GraphiteUrl       string
+		GraphiteKeyPrefix string
+		Version           string
+		Topic             string
+		TopicProducers    []string
+		TopicHostStats    []*TopicHostStats
+		GlobalTopicStats  *TopicHostStats
+		ChannelStats      map[string]*ChannelStats
 	}{
-		Title:            fmt.Sprintf("NSQ %s", topic),
-		Version:          util.BINARY_VERSION,
-		Topic:            topic,
-		TopicProducers:   producers,
-		TopicHostStats:   topicHostStats,
-		GlobalTopicStats: globalTopicStats,
-		ChannelStats:     channelStats,
+		Title:             fmt.Sprintf("NSQ %s", topic),
+		GraphiteUrl:       *graphiteUrl,
+		GraphiteKeyPrefix: graphiteKeyPrefix,
+		Version:           util.BINARY_VERSION,
+		Topic:             topic,
+		TopicProducers:    producers,
+		TopicHostStats:    topicHostStats,
+		GlobalTopicStats:  globalTopicStats,
+		ChannelStats:      channelStats,
 	}
 	err := templates.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
@@ -165,19 +180,23 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 	channelStats := allChannelStats[channel]
 
 	p := struct {
-		Title          string
-		Version        string
-		Topic          string
-		Channel        string
-		TopicProducers []string
-		ChannelStats   *ChannelStats
+		Title             string
+		GraphiteUrl       string
+		GraphiteKeyPrefix string
+		Version           string
+		Topic             string
+		Channel           string
+		TopicProducers    []string
+		ChannelStats      *ChannelStats
 	}{
-		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
-		Version:        util.BINARY_VERSION,
-		Topic:          topic,
-		Channel:        channel,
-		TopicProducers: producers,
-		ChannelStats:   channelStats,
+		Title:             fmt.Sprintf("NSQ %s / %s", topic, channel),
+		GraphiteUrl:       *graphiteUrl,
+		GraphiteKeyPrefix: graphiteKeyPrefix,
+		Version:           util.BINARY_VERSION,
+		Topic:             topic,
+		Channel:           channel,
+		TopicProducers:    producers,
+		ChannelStats:      channelStats,
 	}
 
 	err := templates.ExecuteTemplate(w, "channel.html", p)

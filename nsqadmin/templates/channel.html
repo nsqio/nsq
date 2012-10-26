@@ -1,5 +1,8 @@
-
 {{template "header.html" .}}
+{{$g := .GraphiteUrl}}
+{{$gp := .GraphiteKeyPrefix}}
+{{$topic := .Topic}}
+{{$channel := .Channel}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
@@ -71,6 +74,20 @@
         <td>{{$c.MessageCount | commafy}}</td>
         <td>{{$c.ClientCount}}</td>
     </tr>
+    {{if $g}}
+    <tr>
+        <td></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.depth"></td>
+        <td></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.in_flight_count"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.deferred_count"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.requeue_count"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.timeout_count"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.message_count"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{$c.HostAddress | graphiteHostKey}}.topic.{{$topic}}.channel.{{$channel}}.clients"></td>
+    </tr>
+    {{end}}
+
 {{ end }}
 {{ with $c := .ChannelStats }}
     <tr class="info">
@@ -84,6 +101,20 @@
         <td>{{$c.MessageCount | commafy}}</td>
         <td>{{$c.ClientCount}}</td>
     </tr>
+    {{if $g}}
+    <tr class="info">
+        <td></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.depth)"></td>
+        <td></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.in_flight_count)"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.deferred_count)"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.requeue_count)"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.timeout_count)"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.message_count)"></td>
+        <td><img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$channel}}.clients)"></td>
+    </tr>
+    {{end}}
+    
 {{ end }}
 </table>
 </div></div>
