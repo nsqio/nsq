@@ -10,17 +10,21 @@ import (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version string")
-	httpAddress      = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
-	templateDir      = flag.String("template-dir", "", "path to templates directory")
-	lookupdHTTPAddrs = util.StringArray{}
-	nsqdHTTPAddrs    = util.StringArray{}
+	showVersion       = flag.Bool("version", false, "print version string")
+	httpAddress       = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
+	templateDir       = flag.String("template-dir", "", "path to templates directory")
+	graphiteUrl       = flag.String("graphite-url", "", "URL to graphite HTTP address")
+	useStatsdPrefixes = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
+	lookupdHTTPAddrs  = util.StringArray{}
+	nsqdHTTPAddrs     = util.StringArray{}
 )
 
 func init() {
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 	flag.Var(&nsqdHTTPAddrs, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
 }
+
+var graphiteKeyPrefix string
 
 func main() {
 	var waitGroup util.WaitGroupWrapper
@@ -51,6 +55,10 @@ func main() {
 
 	if len(nsqdHTTPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
+	}
+
+	if *useStatsdPrefixes {
+		graphiteKeyPrefix = "stats_counts."
 	}
 
 	exitChan := make(chan int)

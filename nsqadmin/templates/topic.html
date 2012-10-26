@@ -1,5 +1,7 @@
-
 {{template "header.html" .}}
+{{$g := .GraphiteUrl}}
+{{$gp := .GraphiteKeyPrefix}}
+{{$topic := .Topic}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
@@ -30,18 +32,29 @@
     {{range .TopicHostStats }}
     <tr>
         <td>{{.HostAddress}}</td>
-        <td>{{.Depth | commafy}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{.HostAddress | graphiteHostKey}}.topic.{{$topic}}.depth">{{end}}
+            {{.Depth | commafy}}</td>
         <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
-        <td>{{.MessageCount | commafy}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{.HostAddress | graphiteHostKey}}.topic.{{$topic}}.message_count">{{end}}
+            {{.MessageCount | commafy}}
+            </td>
         <td>{{.ChannelCount}}</td>
     </tr>
     {{ end }}
     {{ with .GlobalTopicStats }} 
     <tr class="info">
         <td>Total:</td>
-        <td>{{.Depth | commafy}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.depth)">{{end}}
+            {{.Depth | commafy}}
+        </td>
         <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
-        <td>{{.MessageCount | commafy}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.message_count)">{{end}}
+            {{.MessageCount | commafy}}
+        </td>
         <td>{{.ChannelCount}}</td>
     </tr>
     {{ end }}
@@ -72,14 +85,18 @@
         <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
             {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
             </th>
-        <td>{{$c.Depth | commafy}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$c.ChannelName}}.depth)">{{end}}
+            {{$c.Depth | commafy}}</td>
         <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
         <td>{{$c.InFlightCount | commafy}}</td>
         <td>{{$c.DeferredCount | commafy}}</td>
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
-        <td>{{$c.ClientCount}}</td>
+        <td>
+            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$c.ChannelName}}.clients)">{{end}}
+            {{$c.ClientCount}}</td>
     </tr>
 {{ end }}
 </table>
