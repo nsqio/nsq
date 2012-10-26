@@ -261,3 +261,81 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	util.ApiResponse(w, 200, "OK", nil)
 }
+
+func statsHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	formatString, _ := reqParams.Query("format")
+	jsonFormat := formatString == "json"
+	now := time.Now()
+
+	if !jsonFormat {
+		io.WriteString(w, fmt.Sprintf("nsqd v%s\n", util.BINARY_VERSION))
+	}
+
+	stats := nsqd.getStats()
+
+	if len(stats) == 0 {
+		if jsonFormat {
+			util.ApiResponse(w, 500, "NO_TOPICS", nil)
+		} else {
+			io.WriteString(w, "\nNO_TOPICS\n")
+		}
+		return
+	}
+
+	if jsonFormat {
+		util.ApiResponse(w, 200, "OK", struct {
+			Topics []TopicStats `json:"topics"`
+		}{stats})
+	} else {
+		for _, t := range stats {
+			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
+				t.TopicName,
+				t.Depth,
+				t.BackendDepth,
+				t.MessageCount))
+			for _, c := range t.Channels {
+				var pausedPrefix string
+				if c.Paused {
+					pausedPrefix = " *P "
+				} else {
+					pausedPrefix = "    "
+				}
+				io.WriteString(w,
+					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
+						pausedPrefix,
+						c.ChannelName,
+						c.Depth,
+						c.BackendDepth,
+						c.InFlightCount,
+						c.DeferredCount,
+						c.RequeueCount,
+						c.TimeoutCount,
+						c.MessageCount))
+				for _, client := range c.Clients {
+					connectTime := time.Unix(client.ConnectTime, 0)
+					// truncate to the second
+					duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
+					_, port, _ := net.SplitHostPort(client.RemoteAddress)
+					io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+						client.Version,
+						fmt.Sprintf("%s:%s", client.Name, port),
+						client.State,
+						client.InFlightCount,
+						client.ReadyCount,
+						client.FinishCount,
+						client.RequeueCount,
+						client.MessageCount,
+						duration,
+					))
+				}
+			}
+		}
+	}
+}
