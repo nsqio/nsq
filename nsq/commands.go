@@ -79,6 +79,35 @@ func Publish(topic string, body []byte) *Command {
 	return &Command{[]byte("PUB"), params, body}
 }
 
+func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
+	var params = [][]byte{[]byte(topic)}
+
+	num := uint32(len(bodies))
+	bodySize := 4
+	for _, b := range bodies {
+		bodySize += len(b) + 4
+	}
+	body := make([]byte, bodySize)
+	buf := bytes.NewBuffer(body)
+
+	err := binary.Write(buf, binary.BigEndian, &num)
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range bodies {
+		err = binary.Write(buf, binary.BigEndian, int32(len(b)))
+		if err != nil {
+			return nil, err
+		}
+		_, err = buf.Write(b)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Command{[]byte("MPUB"), params, body}, nil
+}
+
 // Subscribe creates a new Command to subscribe
 // to the given topic/channel
 func Subscribe(topic string, channel string, shortIdentifier string, longIdentifier string) *Command {
