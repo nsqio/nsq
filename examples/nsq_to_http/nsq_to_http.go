@@ -87,7 +87,8 @@ type PostPublisher struct{}
 
 func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	buf := bytes.NewBuffer(msg)
-	resp, err := HttpPost(addr, buf)
+	content_length := len(msg)
+	resp, err := HttpPost(addr, buf, content_length)
 	if err != nil {
 		return err
 	}
