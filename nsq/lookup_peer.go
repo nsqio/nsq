@@ -75,7 +75,7 @@ func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
 	if cmd == nil {
 		return nil, nil
 	}
-	err := SendCommand(lp, cmd)
+	err := cmd.Write(lp)
 	if err != nil {
 		lp.Close()
 		lp.state = StateDisconnected

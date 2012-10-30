@@ -102,7 +102,7 @@ finish:
 
 func WriteMessageToBackend(buf *bytes.Buffer, msg *nsq.Message, q Queue) error {
 	buf.Reset()
-	err := msg.Encode(buf)
+	err := msg.Write(buf)
 	if err != nil {
 		return err
 	}

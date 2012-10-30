@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/bitly/go-notify"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -81,6 +82,7 @@ type inFlightMessage struct {
 func NewChannel(topicName string, channelName string, options *nsqdOptions, deleteCallback func(*Channel)) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
+	pqSize := int(math.Max(1, float64(options.memQueueSize)/10))
 	c := &Channel{
 		topicName:        topicName,
 		name:             channelName,
@@ -90,9 +92,9 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 		exitChan:         make(chan int),
 		clients:          make([]Consumer, 0, 5),
 		inFlightMessages: make(map[string]*pqueue.Item),
-		inFlightPQ:       pqueue.New(int(options.memQueueSize / 10)),
+		inFlightPQ:       pqueue.New(pqSize),
 		deferredMessages: make(map[string]*pqueue.Item),
-		deferredPQ:       pqueue.New(int(options.memQueueSize / 10)),
+		deferredPQ:       pqueue.New(pqSize),
 		deleteCallback:   deleteCallback,
 		options:          options,
 	}
