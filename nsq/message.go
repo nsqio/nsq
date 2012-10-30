@@ -32,15 +32,15 @@ func NewMessage(id []byte, body []byte) *Message {
 // EncodeBytes serializes the message into a new []byte
 func (m *Message) EncodeBytes() ([]byte, error) {
 	var buf bytes.Buffer
-	err := m.Encode(&buf)
+	err := m.Write(&buf)
 	if err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-// Encode serializes the message into the supplied writer
-func (m *Message) Encode(w io.Writer) error {
+// Write serializes the message into the supplied writer
+func (m *Message) Write(w io.Writer) error {
 	err := binary.Write(w, binary.BigEndian, &m.Timestamp)
 	if err != nil {
 		return err

@@ -48,7 +48,7 @@ func TestBasicLookupd(t *testing.T) {
 	topicName := "legacyannounce"
 	port := 1000
 	ips := []string{"ip.first", "second.hostname"}
-	err := nsq.SendCommand(conn, nsq.Announce(topicName, ".", port, ips))
+	err := nsq.Announce(topicName, ".", port, ips).Write(conn)
 	assert.Equal(t, err, nil)
 
 	time.Sleep(10 * time.Millisecond)
@@ -73,9 +73,9 @@ func TestBasicLookupd(t *testing.T) {
 	httpPort := 5555
 	cmd := nsq.Identify("fake-version", tcpPort, httpPort, "ip.address")
 	log.Printf("cmd is %s", string(cmd.Body))
-	err = nsq.SendCommand(conn, cmd)
+	err = cmd.Write(conn)
 	assert.Equal(t, err, nil)
-	err = nsq.SendCommand(conn, nsq.Register(topicName, "channel1"))
+	err = nsq.Register(topicName, "channel1").Write(conn)
 
 	time.Sleep(10 * time.Millisecond)
 
