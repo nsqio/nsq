@@ -51,12 +51,13 @@ func HttpGet(endpoint string) (*http.Response, error) {
 	return httpclient.Do(req)
 }
 
-func HttpPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
+func HttpPost(endpoint string, body *bytes.Buffer, content_length int) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
+	req.ContentLength = int64(content_length)
 	req.Header.Set("Content-Type", "application/octet-stream")
 	return httpclient.Do(req)
 }
