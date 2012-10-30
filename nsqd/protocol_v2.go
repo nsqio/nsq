@@ -178,7 +178,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			}
 
 			buf.Reset()
-			err = msg.Encode(&buf)
+			err = msg.Write(&buf)
 			if err != nil {
 				goto exit
 			}
