@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+type Topic struct {
+	TopicName string
+}
+type Topics []*Topic
+
+func TopicsForStrings(s []string) Topics {
+	t := make(Topics, 0)
+	for _, ss := range s {
+		tt := &Topic{ss}
+		t = append(t, tt)
+	}
+	return t
+}
+
 type Version struct {
 	src        string
 	components []string
@@ -31,6 +45,7 @@ type TopicHostStats struct {
 	MessageCount int64
 	ChannelCount int
 	Topic        string
+	Aggregate    bool
 }
 
 type ChannelStats struct {
@@ -124,6 +139,8 @@ func (c *ChannelStats) AddHostStats(a *ChannelStats) {
 }
 
 func (t *TopicHostStats) AddHostStats(a *TopicHostStats) {
+	t.Aggregate = true
+	t.Topic = a.Topic
 	t.Depth += a.Depth
 	t.MemoryDepth += a.MemoryDepth
 	t.BackendDepth += a.BackendDepth

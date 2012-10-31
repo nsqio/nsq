@@ -24,8 +24,6 @@ func init() {
 	flag.Var(&nsqdHTTPAddrs, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
 }
 
-var graphiteKeyPrefix string
-
 func main() {
 	var waitGroup util.WaitGroupWrapper
 
@@ -55,10 +53,6 @@ func main() {
 
 	if len(nsqdHTTPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
-	}
-
-	if *useStatsdPrefixes {
-		graphiteKeyPrefix = "stats_counts."
 	}
 
 	exitChan := make(chan int)

@@ -17,35 +17,10 @@ import (
 
 var templates *template.Template
 
-func commafy(i interface{}) string {
-	var n int64
-	switch i.(type) {
-	case int:
-		n = int64(i.(int))
-	case int64:
-		n = i.(int64)
-	case int32:
-		n = int64(i.(int32))
-	}
-	if n > 1000 {
-		r := n % 1000
-		n = n / 1000
-		return fmt.Sprintf("%s,%03d", commafy(n), r)
-	}
-	return fmt.Sprintf("%d", n)
-}
-
-// formats a host + port for use in a graphite host key
-func graphiteHostKey(h string) string {
-	s := strings.Replace(h, ".", "_", -1)
-	return strings.Replace(s, ":", "_", -1)
-}
-
 func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
-		"commafy":         commafy,
-		"graphiteHostKey": graphiteHostKey,
+		"commafy": util.Commafy,
 	})
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
 	if err != nil {
@@ -58,6 +33,7 @@ func httpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
 	globalCounters = make(map[string]counterData)
 	handler := http.NewServeMux()
+	handler.HandleFunc("/favicon.ico", faviconHandler)
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/", indexHandler)
 	handler.HandleFunc("/nodes", nodesHandler)
@@ -88,26 +64,32 @@ func pingHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func indexHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
 	var topics []string
 	if len(lookupdHTTPAddrs) != 0 {
 		topics, _ = getLookupdTopics(lookupdHTTPAddrs)
 	} else {
 		topics, _ = getNSQDTopics(nsqdHTTPAddrs)
 	}
+
 	p := struct {
-		Title             string
-		GraphiteUrl       string
-		GraphiteKeyPrefix string
-		Topics            []string
-		Version           string
+		Title        string
+		GraphOptions *GraphOptions
+		Topics       Topics
+		Version      string
 	}{
-		Title:             "NSQ",
-		GraphiteUrl:       *graphiteUrl,
-		GraphiteKeyPrefix: graphiteKeyPrefix,
-		Topics:            topics,
-		Version:           util.BINARY_VERSION,
+		Title:        "NSQ",
+		GraphOptions: NewGraphOptions(w, req, reqParams),
+		Topics:       TopicsForStrings(topics),
+		Version:      util.BINARY_VERSION,
 	}
-	err := templates.ExecuteTemplate(w, "index.html", p)
+	err = templates.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -128,6 +110,13 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
 	var producers []string
 	if len(lookupdHTTPAddrs) != 0 {
 		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
@@ -142,27 +131,25 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	p := struct {
-		Title             string
-		GraphiteUrl       string
-		GraphiteKeyPrefix string
-		Version           string
-		Topic             string
-		TopicProducers    []string
-		TopicHostStats    []*TopicHostStats
-		GlobalTopicStats  *TopicHostStats
-		ChannelStats      map[string]*ChannelStats
+		Title            string
+		GraphOptions     *GraphOptions
+		Version          string
+		Topic            string
+		TopicProducers   []string
+		TopicHostStats   []*TopicHostStats
+		GlobalTopicStats *TopicHostStats
+		ChannelStats     map[string]*ChannelStats
 	}{
-		Title:             fmt.Sprintf("NSQ %s", topic),
-		GraphiteUrl:       *graphiteUrl,
-		GraphiteKeyPrefix: graphiteKeyPrefix,
-		Version:           util.BINARY_VERSION,
-		Topic:             topic,
-		TopicProducers:    producers,
-		TopicHostStats:    topicHostStats,
-		GlobalTopicStats:  globalTopicStats,
-		ChannelStats:      channelStats,
+		Title:            fmt.Sprintf("NSQ %s", topic),
+		GraphOptions:     NewGraphOptions(w, req, reqParams),
+		Version:          util.BINARY_VERSION,
+		Topic:            topic,
+		TopicProducers:   producers,
+		TopicHostStats:   topicHostStats,
+		GlobalTopicStats: globalTopicStats,
+		ChannelStats:     channelStats,
 	}
-	err := templates.ExecuteTemplate(w, "topic.html", p)
+	err = templates.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -170,6 +157,12 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func channelHandler(w http.ResponseWriter, req *http.Request, topic string, channel string) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
 	var producers []string
 	if len(lookupdHTTPAddrs) != 0 {
 		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
@@ -180,26 +173,24 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 	channelStats := allChannelStats[channel]
 
 	p := struct {
-		Title             string
-		GraphiteUrl       string
-		GraphiteKeyPrefix string
-		Version           string
-		Topic             string
-		Channel           string
-		TopicProducers    []string
-		ChannelStats      *ChannelStats
+		Title          string
+		GraphOptions   *GraphOptions
+		Version        string
+		Topic          string
+		Channel        string
+		TopicProducers []string
+		ChannelStats   *ChannelStats
 	}{
-		Title:             fmt.Sprintf("NSQ %s / %s", topic, channel),
-		GraphiteUrl:       *graphiteUrl,
-		GraphiteKeyPrefix: graphiteKeyPrefix,
-		Version:           util.BINARY_VERSION,
-		Topic:             topic,
-		Channel:           channel,
-		TopicProducers:    producers,
-		ChannelStats:      channelStats,
+		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
+		GraphOptions:   NewGraphOptions(w, req, reqParams),
+		Version:        util.BINARY_VERSION,
+		Topic:          topic,
+		Channel:        channel,
+		TopicProducers: producers,
+		ChannelStats:   channelStats,
 	}
 
-	err := templates.ExecuteTemplate(w, "channel.html", p)
+	err = templates.ExecuteTemplate(w, "channel.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -347,18 +338,26 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
 	producers, _ := getLookupdProducers(lookupdHTTPAddrs)
 
 	p := struct {
-		Title     string
-		Version   string
-		Producers []*Producer
+		Title        string
+		Version      string
+		GraphOptions *GraphOptions
+		Producers    []*Producer
 	}{
-		Title:     "NSQD Hosts",
-		Version:   util.BINARY_VERSION,
-		Producers: producers,
+		Title:        "NSQD Hosts",
+		Version:      util.BINARY_VERSION,
+		GraphOptions: NewGraphOptions(w, req, reqParams),
+		Producers:    producers,
 	}
-	err := templates.ExecuteTemplate(w, "nodes.html", p)
+	err = templates.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -437,4 +436,8 @@ func counterDataHandler(w http.ResponseWriter, req *http.Request) {
 	data["total_messages"] = totalMessages
 	data["id"] = statsID
 	util.ApiResponse(w, 200, "OK", data)
+}
+
+func faviconHandler(w http.ResponseWriter, req *http.Request) {
+	http.NotFound(w, req)
 }
