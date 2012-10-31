@@ -35,11 +35,11 @@ doc][design] or [blog post][nsq_post].
 
 ## <a name="client"></a>Client Libraries
 
-* [Go (official)][nsq]
-* [Python (official)][pynsq]
-* [Node.js][node_lib]
-* [PHP][php_lib]
-* [Ruby][ruby_lib]
+* [nsq][nsq] Go (official)
+* [pynsq][pynsq] Python (official) [pypi][pynsq_pypi]
+* [nodensq][node_lib] Node.js [npm][nodensq_npm]
+* [nsqphp][php_lib] PHP
+* [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
 
 ## Additional Documentation
 
@@ -49,7 +49,6 @@ doc][design] or [blog post][nsq_post].
  * [nsqlookupd][nsqlookupd] is the daemon that manages topology information
  * [nsqadmin][nsqadmin] is the web UI to view message statistics and perform administrative tasks
  * [nsq][nsq] is a go package for writing `nsqd` clients
- * [pynsq][pynsq] is a python module for writing `nsqd` clients
 
 There is also a [protocol spec][protocol].
 
@@ -119,7 +118,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [nsqlookupd]: https://github.com/bitly/nsq/tree/master/nsqlookupd
 [nsqadmin]: https://github.com/bitly/nsq/tree/master/nsqadmin
 [nsq]: https://github.com/bitly/nsq/tree/master/nsq
-[pynsq]: https://github.com/bitly/nsq/tree/master/pynsq
+[pynsq]: https://github.com/bitly/pynsq
 [nsq_post]: http://word.bitly.com/post/33232969144/nsq
 [binary]: https://github.com/bitly/nsq/downloads
 [snakes_twitter]: https://twitter.com/imsnakes
@@ -142,3 +141,6 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [message_guarantee]: https://github.com/bitly/nsq/blob/master/docs/design.md#delivery
 [design]: https://github.com/bitly/nsq/blob/master/docs/design.md
 [latest_tag]: https://github.com/bitly/nsq/tree/v0.2.15
+[pynsq_pypi]: http://pypi.python.org/pypi/pynsq
+[nodensq_npm]: https://npmjs.org/package/nsq
+[ruby_nsq_rubygems]: http://rubygems.org/gems/ruby_nsq
