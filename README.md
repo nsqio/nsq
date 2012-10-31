@@ -11,7 +11,10 @@ data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-pro
 else). Official Go and Python libraries are available out of the box and, if you're interested in
 building your own client, there's a [protocol spec][protocol] (see [client libraries](#client)).
 
-We publish [binary releases][binary] for linux and darwin.
+The latest stable release is **[0.2.15][latest_tag]**. We publish [binary releases][binary] for
+linux and darwin.
+
+NOTE: master is our *development* branch and may *not* be stable at all times.
 
 [![Build Status](https://secure.travis-ci.org/bitly/nsq.png)](http://travis-ci.org/bitly/nsq)
 
@@ -138,4 +141,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [spof]: https://github.com/bitly/nsq/blob/master/docs/design.md#spof
 [message_guarantee]: https://github.com/bitly/nsq/blob/master/docs/design.md#delivery
 [design]: https://github.com/bitly/nsq/blob/master/docs/design.md
-
+[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.15
