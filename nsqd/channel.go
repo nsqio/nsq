@@ -17,7 +17,7 @@ import (
 )
 
 // the amount of time a worker will wait when idle
-const defaultWorkerWait = 250 * time.Millisecond
+const defaultWorkerWait = 100 * time.Millisecond
 
 type Consumer interface {
 	UnPause()
@@ -517,27 +517,18 @@ func (c *Channel) inFlightWorker() {
 //
 // TODO: this should be re-written to use interfaces not callbacks
 func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
-	waitTime := defaultWorkerWait
 	for {
+		time.Sleep(defaultWorkerWait)
 		select {
-		case <-time.After(waitTime):
 		case <-c.exitChan:
 			goto exit
+		default:
 		}
 		now := time.Now().UnixNano()
 		for {
 			mutex.Lock()
-			item, diff := pq.PeekAndShift(now)
+			item, _ := pq.PeekAndShift(now)
 			mutex.Unlock()
-
-			// never wait a negative amount of time
-			// or longer than a second
-			duration := time.Duration(diff)
-			if duration <= 0 || duration > time.Second {
-				waitTime = defaultWorkerWait
-			} else {
-				waitTime = duration + time.Millisecond
-			}
 
 			if item == nil {
 				break
