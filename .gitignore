@@ -4,6 +4,8 @@ nsqlookupd/nsqlookupd
 nsqreader/nsqreader
 nsqstatsd/nsqstatsd
 nsqadmin/nsqadmin
+examples/bench_reader/bench_reader
+examples/bench_writer/bench_writer
 examples/nsq_to_file/nsq_to_file
 examples/nsq_pubsub/nsq_pubsub
 examples/nsq_to_http/nsq_to_http
