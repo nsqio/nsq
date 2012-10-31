@@ -24,6 +24,10 @@ func (c *deadlinedConn) Write(b []byte) (n int, err error) {
 	return c.Conn.Write(b)
 }
 
+// ApiRequest is a helper function to perform an HTTP request
+// and parse our NSQ daemon's expected response format, with deadlines.
+//
+//     {"status_code":200, "status_txt":"OK", "data":{...}}
 func ApiRequest(endpoint string) (*simplejson.Json, error) {
 	transport := &http.Transport{
 		Dial: func(netw, addr string) (net.Conn, error) {
