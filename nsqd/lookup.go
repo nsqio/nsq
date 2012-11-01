@@ -33,11 +33,11 @@ func (n *NSQd) lookupLoop() {
 			} else if bytes.Equal(resp, []byte("E_INVALID")) {
 				log.Printf("LOOKUPD(%s): lookupd returned %s", lp, resp)
 			} else {
-				err = json.Unmarshal(resp, &lp.PeerInfo)
+				err = json.Unmarshal(resp, &lp.Info)
 				if err != nil {
 					log.Printf("LOOKUPD(%s): ERROR parsing response - %v", lp, resp)
 				} else {
-					log.Printf("LOOKUPD(%s): peer info %+v", lp, lp.PeerInfo)
+					log.Printf("LOOKUPD(%s): peer info %+v", lp, lp.Info)
 				}
 			}
 
@@ -141,10 +141,10 @@ exit:
 func (n *NSQd) lookupHttpAddrs() []string {
 	var lookupHttpAddrs []string
 	for _, lp := range n.lookupPeers {
-		if len(lp.PeerInfo.Address) <= 0 {
+		if len(lp.Info.Address) <= 0 {
 			continue
 		}
-		addr := net.JoinHostPort(lp.PeerInfo.Address, strconv.Itoa(lp.PeerInfo.HttpPort))
+		addr := net.JoinHostPort(lp.Info.Address, strconv.Itoa(lp.Info.HttpPort))
 		lookupHttpAddrs = append(lookupHttpAddrs, addr)
 	}
 	return lookupHttpAddrs

@@ -18,33 +18,52 @@ import (
 	"time"
 )
 
+// returned from ConnectToNSQ() when already connected
 var ErrAlreadyConnected = errors.New("already connected")
 
-// a syncronous handler that returns an error (or nil to indicate success)
+// Handler is the synchronous interface to Reader.
+//
+// Implement this interface for handlers that return whether or not message
+// processing completed successfully.
+//
+// When the return value is nil Reader will automatically handle FINishing.
+//
+// When the returned value is non-nil Reader will automatically handle REQueing.
 type Handler interface {
 	HandleMessage(message *Message) error
 }
 
-type FailedMessageLogger interface {
-	LogFailedMessage(message *Message)
-}
-
-// an async handler that must send a &FinishedMessage{messageID, requeueDelay, true|false} onto 
-// responseChannel to indicate that a message has been finished. This is usefull 
-// if you want to batch work together and delay response that processing is complete
+// AsyncHandler is the asynchronous interface to Reader.
+//
+// Implement this interface for handlers that wish to defer responding until later.
+// This is particularly useful if you want to batch work together.
+//
+// An AsyncHandler must send:
+//
+//     &FinishedMessage{messageID, requeueDelay, true|false}
+//
+// To the supplied responseChannel to indicate that a message is processed.
 type AsyncHandler interface {
 	HandleMessage(message *Message, responseChannel chan *FinishedMessage)
+}
+
+// FinishedMessage is the data type used over responseChannel in AsyncHandlers
+type FinishedMessage struct {
+	Id             []byte
+	RequeueDelayMs int
+	Success        bool
+}
+
+// FailedMessageLogger is an interface that can be implemented by handlers that wish
+// to receive a callback when a message is deemed "failed" (i.e. the number of attempts
+// exceeded the Reader specified MaxAttemptCount)
+type FailedMessageLogger interface {
+	LogFailedMessage(message *Message)
 }
 
 type incomingMessage struct {
 	*Message
 	responseChannel chan *FinishedMessage
-}
-
-type FinishedMessage struct {
-	Id             []byte
-	RequeueDelayMs int
-	Success        bool
 }
 
 type nsqConn struct {
@@ -116,24 +135,34 @@ func (c *nsqConn) sendCommand(buf *bytes.Buffer, cmd *Command) error {
 	return err
 }
 
+// Reader is a high-level type to consume from NSQ.
+//
+// A Reader instance is supplied handler(s) that will be executed
+// concurrently via goroutines to handle processing the stream of messages
+// consumed from the specified topic/channel.  See: AsyncHandler and Handler
+// for details on implementing those interfaces to create handlers.
+//
+// If configured, it will poll nsqlookupd instances and handle connection (and
+// reconnection) to any discovered nsqds.
 type Reader struct {
 	TopicName           string        // name of topic to subscribe to
 	ChannelName         string        // name of channel to subscribe to
-	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value)
-	MaxAttemptCount     uint16
-	DefaultRequeueDelay time.Duration
-	MaxRequeueDelay     time.Duration
-	VerboseLogging      bool
-	ShortIdentifier     string // an identifier to send to nsqd when connecting (defaults: short hostname)
-	LongIdentifier      string // an identifier to send to nsqd when connecting (defaults: long hostname)
-	ReadTimeout         time.Duration
-	WriteTimeout        time.Duration
-	MessagesReceived    uint64
-	MessagesFinished    uint64
-	MessagesRequeued    uint64
-	ExitChan            chan int
+	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value for jitter)
+	MaxAttemptCount     uint16        // maximum number of times this reader will attempt to process a message
+	DefaultRequeueDelay time.Duration // the default duration when REQueueing
+	MaxRequeueDelay     time.Duration // the maximum duration when REQueueing (for doubling backoff)
+	VerboseLogging      bool          // enable verbose logging
+	ShortIdentifier     string        // an identifier to send to nsqd when connecting (defaults: short hostname)
+	LongIdentifier      string        // an identifier to send to nsqd when connecting (defaults: long hostname)
+	ReadTimeout         time.Duration // the deadline set for network reads
+	WriteTimeout        time.Duration // the deadline set for network writes
+	MessagesReceived    uint64        // an atomic counter - # of messages received
+	MessagesFinished    uint64        // an atomic counter - # of messages FINished
+	MessagesRequeued    uint64        // an atomic counter - # of messages REQueued
+	ExitChan            chan int      // read from this channel to block your main loop
 
-	maxInFlight        int // max number of messages to allow in-flight at a time
+	// internal variables
+	maxInFlight        int
 	incomingMessages   chan *incomingMessage
 	nsqConnections     map[string]*nsqConn
 	lookupdExitChan    chan int
@@ -145,6 +174,10 @@ type Reader struct {
 	stopHandler        sync.Once
 }
 
+// NewReader creates a new instance of Reader for the specified topic/channel
+//
+// The returned Reader instance is setup with sane default values.  To modify
+// configuration, update the values on the returned instance before connecting.
 func NewReader(topic string, channel string) (*Reader, error) {
 	if !IsValidTopicName(topic) {
 		return nil, errors.New("invalid topic name")
@@ -179,8 +212,10 @@ func NewReader(topic string, channel string) (*Reader, error) {
 	return q, nil
 }
 
-// calculate the max in flight count per connection
-// this may change dynamically based on the number of connections
+// ConnectionMaxInFlight calculates the per-connection max-in-flight count.
+//
+// This may change dynamically based on the number of connections to nsqd the Reader
+// is responsible for.
 func (q *Reader) ConnectionMaxInFlight() int {
 	b := float64(q.maxInFlight)
 	s := b / float64(len(q.nsqConnections))
@@ -200,7 +235,10 @@ func (q *Reader) IsStarved() bool {
 	return false
 }
 
-// update the reader ready state, updating each connection as appropriate
+// SetMaxInFlight sets the maximum number of messages this reader instance
+// will allow in-flight.
+//
+// If already connected, it updates the reader RDY state for each connection.
 func (q *Reader) SetMaxInFlight(maxInFlight int) {
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return
@@ -221,11 +259,17 @@ func (q *Reader) SetMaxInFlight(maxInFlight int) {
 	}
 }
 
-// max number of messages to allow in-flight at a time
+// MaxInFlight returns the configured maximum number of messages to allow in-flight.
 func (q *Reader) MaxInFlight() int {
 	return q.maxInFlight
 }
 
+// ConnectToLookupd adds a nsqlookupd address to the list for this Reader instance.
+//
+// If it is the first to be added, it initiates an HTTP request to discover nsqd
+// producers for the configured topic.
+//
+// A goroutine is spawned to handle continual polling.
 func (q *Reader) ConnectToLookupd(addr string) error {
 	// make a HTTP req to the lookupd, and ask it for endpoints that have the
 	// topic we are interested in.
@@ -248,6 +292,8 @@ func (q *Reader) ConnectToLookupd(addr string) error {
 
 // poll all known lookup servers every LookupdPollInterval
 func (q *Reader) lookupdLoop() {
+	// add some jitter so that multiple consumers discovering the same topic,
+	// when restarted at the same time, dont all connect at once.
 	rand.Seed(time.Now().UnixNano())
 	time.Sleep(time.Duration(rand.Int63n(int64(q.LookupdPollInterval / 10))))
 	ticker := time.Tick(q.LookupdPollInterval)
@@ -296,6 +342,11 @@ func (q *Reader) queryLookupd() {
 	}
 }
 
+// ConnectToNSQ takes a nsqd address to connect directly to.
+//
+// It is recommended to use ConnectToLookupd so that topics are discovered
+// automatically.  This method is useful when you want to connect to a single, local,
+// instance.
 func (q *Reader) ConnectToNSQ(addr string) error {
 	var buf bytes.Buffer
 
@@ -542,7 +593,7 @@ func (q *Reader) updateReady(c *nsqConn) error {
 	return nil
 }
 
-// stops a Reader gracefully
+// Stop will gracefully stop the Reader
 func (q *Reader) Stop() {
 	var buf bytes.Buffer
 
@@ -579,8 +630,12 @@ func (q *Reader) stopHandlers() {
 	})
 }
 
-// this starts a handler on the Reader
-// it's ok to start more than one handler simultaneously
+// AddHandler adds a Handler for messages received by this Reader.
+//
+// See Handler for details on implementing this interface.
+//
+// It's ok to start more than one handler simultaneously, they
+// are concurrently executed in goroutines.
 func (q *Reader) AddHandler(handler Handler) {
 	atomic.AddInt32(&q.runningHandlers, 1)
 	log.Println("starting Handler go-routine")
@@ -623,8 +678,12 @@ func (q *Reader) AddHandler(handler Handler) {
 	}()
 }
 
-// this starts an async handler on the Reader
-// it's ok to start more than one handler simultaneously
+// AddAsyncHandler adds an AsyncHandler for messages received by this Reader.
+//
+// See AsyncHandler for details on implementing this interface.
+//
+// It's ok to start more than one handler simultaneously, they
+// are concurrently executed in goroutines.
 func (q *Reader) AddAsyncHandler(handler AsyncHandler) {
 	atomic.AddInt32(&q.runningHandlers, 1)
 	log.Println("starting AsyncHandler go-routine")

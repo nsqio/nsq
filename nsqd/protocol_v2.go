@@ -285,8 +285,8 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
-	idStr := params[1]
-	err := client.Channel.FinishMessage(client, idStr)
+	id := params[1]
+	err := client.Channel.FinishMessage(client, id)
 	if err != nil {
 		return nil, nsq.NewClientErr("E_FIN_FAILED", err.Error())
 	}
@@ -306,7 +306,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
-	idStr := params[1]
+	id := params[1]
 	timeoutMs, err := strconv.Atoi(string(params[2]))
 	if err != nil {
 		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse timeout %s", params[2]))
@@ -317,7 +317,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("timeout %d out of range", timeoutDuration))
 	}
 
-	err = client.Channel.RequeueMessage(client, idStr, timeoutDuration)
+	err = client.Channel.RequeueMessage(client, id, timeoutDuration)
 	if err != nil {
 		return nil, nsq.NewClientErr("E_REQ_FAILED", err.Error())
 	}
