@@ -134,7 +134,7 @@ func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 	for _, b := range bodies {
 		bodySize += len(b) + 4
 	}
-	body := make([]byte, bodySize)
+	body := make([]byte, 0, bodySize)
 	buf := bytes.NewBuffer(body)
 
 	err := binary.Write(buf, binary.BigEndian, &num)
@@ -152,7 +152,7 @@ func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 		}
 	}
 
-	return &Command{[]byte("MPUB"), params, body}, nil
+	return &Command{[]byte("MPUB"), params, buf.Bytes()}, nil
 }
 
 // Subscribe creates a new Command to subscribe to the given topic/channel
