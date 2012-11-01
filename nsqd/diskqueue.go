@@ -20,7 +20,7 @@ import (
 type DiskQueue struct {
 	sync.RWMutex
 
-	// instatiation time meta-data
+	// instatiation time metadata
 	name            string
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
@@ -56,7 +56,7 @@ type DiskQueue struct {
 	exitSyncChan      chan int
 }
 
-// NewDiskQueue instantiates a new instance of DiskQueue, retrieving meta-data
+// NewDiskQueue instantiates a new instance of DiskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) BackendQueue {
 	d := DiskQueue{
@@ -107,7 +107,7 @@ func (d *DiskQueue) Put(data []byte) error {
 	return <-d.writeResponseChan
 }
 
-// Close cleans up the queue and persists meta-data
+// Close cleans up the queue and persists metadata
 func (d *DiskQueue) Close() error {
 	d.Lock()
 	defer d.Unlock()

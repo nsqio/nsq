@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
+// The number of bytes for a Message.Id
 const MsgIdLength = 16
 
 // Message is the fundamental data type containing
-// the id, body, and meta-data
+// the id, body, and metadata
 type Message struct {
 	Id        []byte
 	Body      []byte
@@ -19,7 +20,7 @@ type Message struct {
 	Attempts  uint16
 }
 
-// NewMessage creates a Message, initializes some meta-data, 
+// NewMessage creates a Message, initializes some metadata, 
 // and returns a pointer
 func NewMessage(id []byte, body []byte) *Message {
 	return &Message{
@@ -29,7 +30,7 @@ func NewMessage(id []byte, body []byte) *Message {
 	}
 }
 
-// EncodeBytes serializes the message into a new []byte
+// EncodeBytes serializes the message into a new, returned, []byte
 func (m *Message) EncodeBytes() ([]byte, error) {
 	var buf bytes.Buffer
 	err := m.Write(&buf)
@@ -39,7 +40,9 @@ func (m *Message) EncodeBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Write serializes the message into the supplied writer
+// Write serializes the message into the supplied writer.
+//
+// It is suggested that the target Writer is buffered to avoid performing many system calls.
 func (m *Message) Write(w io.Writer) error {
 	err := binary.Write(w, binary.BigEndian, &m.Timestamp)
 	if err != nil {
@@ -64,8 +67,7 @@ func (m *Message) Write(w io.Writer) error {
 	return nil
 }
 
-// DecodeMessage deseralizes data (as []byte) and creates/returns
-// a pointer to a new Message
+// DecodeMessage deseralizes data (as []byte) and creates a new Message
 func DecodeMessage(byteBuf []byte) (*Message, error) {
 	var timestamp int64
 	var attempts uint16

@@ -11,12 +11,14 @@ import (
 	"strings"
 )
 
+// Command represents a command from a client to an NSQ daemon
 type Command struct {
 	Name   []byte
 	Params [][]byte
 	Body   []byte
 }
 
+// String returns the name and parameters of the Command
 func (c *Command) String() string {
 	if len(c.Params) > 0 {
 		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, []byte(" "))))
@@ -24,6 +26,9 @@ func (c *Command) String() string {
 	return string(c.Name)
 }
 
+// Write serializes the Command to the supplied Writer.
+//
+// It is suggested that the target Writer is buffered to avoid performing many system calls.
 func (c *Command) Write(w io.Writer) error {
 	_, err := w.Write(c.Name)
 	if err != nil {
@@ -69,7 +74,8 @@ func Announce(topic string, channel string, port int, ips []string) *Command {
 	return &Command{[]byte("ANNOUNCE"), params, []byte(strings.Join(ips, "\n"))}
 }
 
-// Identify is the first message sent to the Lookupd and provides information about the client
+// Identify creates a new Command to provide information about the client to nsqlookupd.
+// After connecting, it is the first message sent to nsqlookupd.
 func Identify(version string, tcpPort int, httpPort int, address string) *Command {
 	body, err := json.Marshal(struct {
 		Version  string `json:"version"`
@@ -88,7 +94,7 @@ func Identify(version string, tcpPort int, httpPort int, address string) *Comman
 	return &Command{[]byte("IDENTIFY"), [][]byte{}, body}
 }
 
-// REGISTER a topic/channel for this nsqd
+// Register creates a new Command to add a topic/channel for the connected nsqd
 func Register(topic string, channel string) *Command {
 	params := [][]byte{[]byte(topic)}
 	if len(channel) > 0 {
@@ -97,7 +103,7 @@ func Register(topic string, channel string) *Command {
 	return &Command{[]byte("REGISTER"), params, nil}
 }
 
-// UNREGISTER removes a topic/channel from this nsqd
+// Unregister creates a new Command to remove a topic/channel for the connected nsqd
 func UnRegister(topic string, channel string) *Command {
 	params := [][]byte{[]byte(topic)}
 	if len(channel) > 0 {
@@ -118,6 +124,8 @@ func Publish(topic string, body []byte) *Command {
 	return &Command{[]byte("PUB"), params, body}
 }
 
+// MultiPublish creates a new Command to write more than one message to a given topic.
+// This is useful for high-throughput situations to avoid roundtrips and saturate the pipe.
 func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 	var params = [][]byte{[]byte(topic)}
 
@@ -147,8 +155,7 @@ func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 	return &Command{[]byte("MPUB"), params, body}, nil
 }
 
-// Subscribe creates a new Command to subscribe
-// to the given topic/channel
+// Subscribe creates a new Command to subscribe to the given topic/channel
 func Subscribe(topic string, channel string, shortIdentifier string, longIdentifier string) *Command {
 	var params = [][]byte{[]byte(topic), []byte(channel), []byte(shortIdentifier), []byte(longIdentifier)}
 	return &Command{[]byte("SUB"), params, nil}
@@ -179,11 +186,13 @@ func Requeue(id []byte, timeoutMs int) *Command {
 // StartClose creates a new Command to indicate that the
 // client would like to start a close cycle.  nsqd will no longer
 // send messages to a client in this state and the client is expected
-// to ACK after which it can finish pending messages and close the connection
+// finish pending messages and close the connection
 func StartClose() *Command {
 	return &Command{[]byte("CLS"), nil, nil}
 }
 
+// Nop creates a new Command that has no effect server side.
+// Commonly used to respond to heartbeats
 func Nop() *Command {
 	return &Command{[]byte("NOP"), nil, nil}
 }
