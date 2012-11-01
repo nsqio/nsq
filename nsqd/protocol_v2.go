@@ -419,7 +419,7 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		}
 
 		msgBody := make([]byte, messageSize)
-		_, err = io.ReadFull(client.Reader, msgBody)
+		_, err = io.ReadFull(buf, msgBody)
 		if err != nil {
 			return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
 		}
