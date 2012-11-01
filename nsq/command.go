@@ -8,8 +8,10 @@ import (
 	"io"
 	"log"
 	"strconv"
-	"strings"
 )
+
+var byteSpace = []byte(" ")
+var byteNewLine = []byte("\n")
 
 // Command represents a command from a client to an NSQ daemon
 type Command struct {
@@ -36,7 +38,7 @@ func (c *Command) Write(w io.Writer) error {
 	}
 
 	for _, param := range c.Params {
-		_, err := w.Write([]byte(" "))
+		_, err := w.Write(byteSpace)
 		if err != nil {
 			return err
 		}
@@ -46,7 +48,7 @@ func (c *Command) Write(w io.Writer) error {
 		}
 	}
 
-	_, err = w.Write([]byte("\n"))
+	_, err = w.Write(byteNewLine)
 	if err != nil {
 		return err
 	}
@@ -91,7 +93,7 @@ func Identify(version string, tcpPort int, httpPort int, address string) *Comman
 	if err != nil {
 		log.Fatal("failed to create json %s", err.Error())
 	}
-	return &Command{[]byte("IDENTIFY"), [][]byte{}, body}
+	return &Command{[]byte("IDENTIFY"), nil, body}
 }
 
 // Register creates a new Command to add a topic/channel for the connected nsqd
@@ -170,16 +172,16 @@ func Ready(count int) *Command {
 
 // Finish creates a new Command to indiciate that 
 // a given message (by id) has been processed successfully
-func Finish(id []byte) *Command {
-	var params = [][]byte{id}
+func Finish(id MessageID) *Command {
+	var params = [][]byte{id[:]}
 	return &Command{[]byte("FIN"), params, nil}
 }
 
 // Requeue creats a new Command to indicate that 
 // a given message (by id) should be requeued after the given timeout (in ms)
 // NOTE: a timeout of 0 indicates immediate requeue
-func Requeue(id []byte, timeoutMs int) *Command {
-	var params = [][]byte{id, []byte(strconv.Itoa(timeoutMs))}
+func Requeue(id MessageID, timeoutMs int) *Command {
+	var params = [][]byte{id[:], []byte(strconv.Itoa(timeoutMs))}
 	return &Command{[]byte("REQ"), params, nil}
 }
 

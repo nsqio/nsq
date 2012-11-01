@@ -20,8 +20,8 @@ type BackendQueue interface {
 type Queue interface {
 	MemoryChan() chan *nsq.Message
 	BackendQueue() BackendQueue
-	InFlight() map[string]*pqueue.Item
-	Deferred() map[string]*pqueue.Item
+	InFlight() map[nsq.MessageID]*pqueue.Item
+	Deferred() map[nsq.MessageID]*pqueue.Item
 }
 
 type DummyBackendQueue struct {

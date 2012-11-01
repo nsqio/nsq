@@ -290,7 +290,8 @@ func BenchmarkProtocolV2Data(b *testing.B) {
 	c := NewClientV2(conn)
 	var buf bytes.Buffer
 	body := make([]byte, 256)
-	msg := nsq.NewMessage([]byte("0123456789abcdef"), body)
+	var id nsq.MessageID
+	msg := nsq.NewMessage(id, body)
 	b.SetBytes(int64(len(body)))
 	b.StartTimer()
 

@@ -2,15 +2,14 @@ package main
 
 import (
 	"../nsq"
+	"../util"
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -38,6 +37,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 	err = nil
 	client.Reader = bufio.NewReader(client)
+	client.Writer = bufio.NewWriter(client)
 	for {
 		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
 		// ReadSlice does not allocate new space for the data each request
@@ -85,31 +85,53 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
-	client.Lock()
-	defer client.Unlock()
+func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.Buffer) error {
+	if *verbose {
+		log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+			msg.Id, client, msg.Body)
+	}
 
-	client.frameBuf.Reset()
-	err := nsq.Frame(&client.frameBuf, frameType, data)
+	buf.Reset()
+	err := msg.Write(buf)
 	if err != nil {
 		return err
 	}
 
-	attempts := 0
-	for {
+	client.Channel.StartInFlightTimeout(msg, client)
+	client.SendingMessage()
+
+	err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
+	client.Lock()
+	defer client.Unlock()
+
+	client.SetWriteDeadline(time.Now().Add(time.Second))
+	_, err := nsq.SendFramedResponse(client.Writer, frameType, data)
+	if err != nil {
+		return err
+	}
+
+	if frameType != nsq.FrameTypeMessage {
+		err = client.Writer.Flush()
+	}
+
+	return err
+}
+
+func (p *ProtocolV2) Flush(client *ClientV2) error {
+	client.Lock()
+	defer client.Unlock()
+
+	if client.Writer.Buffered() > 0 {
 		client.SetWriteDeadline(time.Now().Add(time.Second))
-		_, err := nsq.SendResponse(client, client.frameBuf.Bytes())
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				attempts++
-				if attempts == 3 {
-					return errors.New("timed out trying to send to client")
-				}
-				continue
-			}
-			return err
-		}
-		break
+		return client.Writer.Flush()
 	}
 
 	return nil
@@ -137,69 +159,105 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func (p *ProtocolV2) sendHeartbeat(client *ClientV2) error {
-	err := p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 	var buf bytes.Buffer
-	var c chan *nsq.Message
 
+	// v2 opportunistically buffers data to clients to reduce write system calls
+	// we force flush in two cases:
+	//    1. when the client is not ready to receive messages
+	//    2. we're buffered and the channel has nothing left to send us 
+	//       (ie. we would block in this loop anyway)
+	//
+	// NOTE: `flusher` is used to bound message latency for 
+	// the pathological case of a channel on a low volume topic 
+	// with >1 clients having >1 RDY counts
+	flusher := time.NewTicker(5 * time.Millisecond)
 	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)
+	flushed := true
 
-	// ReadyStateChan has a buffer of 1 to guarantee that in the event
-	// there is a race the state update is not lost
 	for {
-		if client.IsReadyForMessages() {
-			c = client.Channel.clientMsgChan
+		if !client.IsReadyForMessages() {
+			// the client is not ready to receive messages...
+			// force flush
+			err = p.Flush(client)
+			if err != nil {
+				goto exit
+			}
+			flushed = true
+
+			select {
+			case <-client.ReadyStateChan:
+			case <-heartbeat.C:
+				err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
+				if err != nil {
+					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				}
+			case <-client.ExitChan:
+				goto exit
+			}
+		} else if flushed {
+			// last iteration we flushed...
+			// do not select on the flusher ticker channel
+			select {
+			case <-client.ReadyStateChan:
+			case <-heartbeat.C:
+				err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
+				if err != nil {
+					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				}
+			case msg, ok := <-client.Channel.clientMsgChan:
+				if !ok {
+					goto exit
+				}
+
+				err = p.SendMessage(client, msg, &buf)
+				if err != nil {
+					goto exit
+				}
+				flushed = false
+			case <-client.ExitChan:
+				goto exit
+			}
 		} else {
-			c = nil
-		}
+			// if there isn't any more data we should flush...
+			// select on the flusher ticker channel, too
+			select {
+			case <-flusher.C:
+				// if this case wins, we're either starved
+				// or we won the race between other channels...
+				// in either case, force flush
+				err := p.Flush(client)
+				if err != nil {
+					goto exit
+				}
+				flushed = true
+			case <-client.ReadyStateChan:
+			case <-heartbeat.C:
+				err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
+				if err != nil {
+					log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				}
+			case msg, ok := <-client.Channel.clientMsgChan:
+				if !ok {
+					goto exit
+				}
 
-		select {
-		case <-client.ReadyStateChan:
-		case <-heartbeat.C:
-			err = p.sendHeartbeat(client)
-			if err != nil {
-				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
-			}
-		case msg, ok := <-c:
-			if !ok {
+				err = p.SendMessage(client, msg, &buf)
+				if err != nil {
+					goto exit
+				}
+				flushed = false
+			case <-client.ExitChan:
 				goto exit
 			}
-
-			if *verbose {
-				log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-					msg.Id, client, msg.Body)
-			}
-
-			buf.Reset()
-			err = msg.Write(&buf)
-			if err != nil {
-				goto exit
-			}
-
-			client.Channel.StartInFlightTimeout(msg, client)
-			client.SendingMessage()
-
-			err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
-			if err != nil {
-				goto exit
-			}
-		case <-client.ExitChan:
-			goto exit
 		}
 	}
 
 exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeat.Stop()
+	flusher.Stop()
 	client.Channel.RemoveClient(client)
 	if err != nil {
 		log.Printf("PROTOCOL(V2): messagePump error - %s", err.Error())
@@ -243,8 +301,6 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 }
 
 func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
-	var err error
-
 	state := atomic.LoadInt32(&client.State)
 
 	if state == nsq.StateClosing {
@@ -257,25 +313,31 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_INVALID", "client not subscribed")
 	}
 
-	count := 1
+	count := int64(1)
 	if len(params) > 1 {
-		count, err = strconv.Atoi(string(params[1]))
+		b10, err := util.ByteToBase10(params[1])
 		if err != nil {
 			return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse RDY count %s", params[1]))
 		}
+		count = int64(b10)
 	}
 
-	if count > nsq.MaxReadyCount {
-		log.Printf("ERROR: client(%s) sent ready count %d > %d", client, count, nsq.MaxReadyCount)
+	if count < 0 {
+		log.Printf("ERROR: client(%s) sent invalid ready count %d < 0", client, count)
+		count = 0
+	} else if count > nsq.MaxReadyCount {
+		log.Printf("ERROR: client(%s) sent invalid ready count %d > %d", client, count, nsq.MaxReadyCount)
 		count = nsq.MaxReadyCount
 	}
 
-	client.SetReadyCount(int64(count))
+	client.SetReadyCount(count)
 
 	return nil, nil
 }
 
 func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
+	var id nsq.MessageID
+
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.NewClientErr("E_INVALID", "cannot finish in current state")
@@ -285,7 +347,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
-	id := params[1]
+	copy(id[:], params[1])
 	err := client.Channel.FinishMessage(client, id)
 	if err != nil {
 		return nil, nsq.NewClientErr("E_FIN_FAILED", err.Error())
@@ -297,6 +359,8 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 }
 
 func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
+	var id nsq.MessageID
+
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.NewClientErr("E_INVALID", "cannot re-queue in current state")
@@ -306,8 +370,8 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
 	}
 
-	id := params[1]
-	timeoutMs, err := strconv.Atoi(string(params[2]))
+	copy(id[:], params[1])
+	timeoutMs, err := util.ByteToBase10(params[2])
 	if err != nil {
 		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse timeout %s", params[2]))
 	}

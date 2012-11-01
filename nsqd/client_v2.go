@@ -3,7 +3,6 @@ package main
 import (
 	"../nsq"
 	"bufio"
-	"bytes"
 	"log"
 	"net"
 	"sync"
@@ -14,8 +13,8 @@ import (
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
-	frameBuf        bytes.Buffer
 	Reader          *bufio.Reader
+	Writer          *bufio.Writer
 	State           int32
 	ReadyCount      int64
 	LastReadyCount  int64
@@ -38,6 +37,8 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 	}
 	return &ClientV2{
 		Conn:            conn,
+		// ReadyStateChan has a buffer of 1 to guarantee that in the event
+		// there is a race the state update is not lost
 		ReadyStateChan:  make(chan int, 1),
 		ExitChan:        make(chan int),
 		ConnectTime:     time.Now(),

@@ -49,7 +49,7 @@ type AsyncHandler interface {
 
 // FinishedMessage is the data type used over responseChannel in AsyncHandlers
 type FinishedMessage struct {
-	Id             []byte
+	Id             MessageID
 	RequeueDelayMs int
 	Success        bool
 }

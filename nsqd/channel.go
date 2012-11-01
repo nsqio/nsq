@@ -59,10 +59,10 @@ type Channel struct {
 	deleter          sync.Once
 
 	// TODO: these can be DRYd up
-	deferredMessages map[string]*pqueue.Item
+	deferredMessages map[nsq.MessageID]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
-	inFlightMessages map[string]*pqueue.Item
+	inFlightMessages map[nsq.MessageID]*pqueue.Item
 	inFlightPQ       pqueue.PriorityQueue
 	inFlightMutex    sync.Mutex
 
@@ -91,9 +91,9 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 		clientMsgChan:    make(chan *nsq.Message),
 		exitChan:         make(chan int),
 		clients:          make([]Consumer, 0, 5),
-		inFlightMessages: make(map[string]*pqueue.Item),
+		inFlightMessages: make(map[nsq.MessageID]*pqueue.Item),
 		inFlightPQ:       pqueue.New(pqSize),
-		deferredMessages: make(map[string]*pqueue.Item),
+		deferredMessages: make(map[nsq.MessageID]*pqueue.Item),
 		deferredPQ:       pqueue.New(pqSize),
 		deleteCallback:   deleteCallback,
 		options:          options,
@@ -180,12 +180,12 @@ func (c *Channel) BackendQueue() BackendQueue {
 }
 
 // InFlight implements the Queue interface
-func (c *Channel) InFlight() map[string]*pqueue.Item {
+func (c *Channel) InFlight() map[nsq.MessageID]*pqueue.Item {
 	return c.inFlightMessages
 }
 
 // Deferred implements the Queue interface
-func (c *Channel) Deferred() map[string]*pqueue.Item {
+func (c *Channel) Deferred() map[nsq.MessageID]*pqueue.Item {
 	return c.deferredMessages
 }
 
@@ -229,7 +229,7 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(client Consumer, id []byte) error {
+func (c *Channel) FinishMessage(client Consumer, id nsq.MessageID) error {
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
@@ -245,7 +245,7 @@ func (c *Channel) FinishMessage(client Consumer, id []byte) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(client Consumer, id []byte, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(client Consumer, id nsq.MessageID, timeout time.Duration) error {
 	// remove from inflight first
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
@@ -340,21 +340,21 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	defer c.Unlock()
 
 	id := item.Value.(*inFlightMessage).msg.Id
-	_, ok := c.inFlightMessages[string(id)]
+	_, ok := c.inFlightMessages[id]
 	if ok {
 		return errors.New("ID already in flight")
 	}
-	c.inFlightMessages[string(id)] = item
+	c.inFlightMessages[id] = item
 
 	return nil
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(client Consumer, id []byte) (*pqueue.Item, error) {
+func (c *Channel) popInFlightMessage(client Consumer, id nsq.MessageID) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	item, ok := c.inFlightMessages[string(id)]
+	item, ok := c.inFlightMessages[id]
 	if !ok {
 		return nil, errors.New("ID not in flight")
 	}
@@ -363,7 +363,7 @@ func (c *Channel) popInFlightMessage(client Consumer, id []byte) (*pqueue.Item, 
 		return nil, errors.New("client does not own ID")
 	}
 
-	delete(c.inFlightMessages, string(id))
+	delete(c.inFlightMessages, id)
 
 	return item, nil
 }
@@ -391,25 +391,27 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	c.Lock()
 	defer c.Unlock()
 
+	// TODO: these map lookups are costly
 	id := item.Value.(*nsq.Message).Id
-	_, ok := c.deferredMessages[string(id)]
+	_, ok := c.deferredMessages[id]
 	if ok {
 		return errors.New("ID already deferred")
 	}
-	c.deferredMessages[string(id)] = item
+	c.deferredMessages[id] = item
 
 	return nil
 }
 
-func (c *Channel) popDeferredMessage(id []byte) (*pqueue.Item, error) {
+func (c *Channel) popDeferredMessage(id nsq.MessageID) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	item, ok := c.deferredMessages[string(id)]
+	// TODO: these map lookups are costly
+	item, ok := c.deferredMessages[id]
 	if !ok {
 		return nil, errors.New("ID not deferred")
 	}
-	delete(c.deferredMessages, string(id))
+	delete(c.deferredMessages, id)
 
 	return item, nil
 }
@@ -514,8 +516,6 @@ func (c *Channel) inFlightWorker() {
 //
 // if the first element on the queue is not ready (not enough time has elapsed)
 // the amount of time to wait before the next iteration is adjusted to optimize
-//
-// TODO: this should be re-written to use interfaces not callbacks
 func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
 	for {
 		time.Sleep(defaultWorkerWait)
