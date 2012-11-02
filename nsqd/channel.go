@@ -517,12 +517,12 @@ func (c *Channel) inFlightWorker() {
 // if the first element on the queue is not ready (not enough time has elapsed)
 // the amount of time to wait before the next iteration is adjusted to optimize
 func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback func(item *pqueue.Item)) {
+	ticker := time.NewTicker(defaultWorkerWait)
 	for {
-		time.Sleep(defaultWorkerWait)
 		select {
+		case <-ticker.C:
 		case <-c.exitChan:
 			goto exit
-		default:
 		}
 		now := time.Now().UnixNano()
 		for {
@@ -540,4 +540,5 @@ func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback
 
 exit:
 	log.Printf("CHANNEL(%s): closing ... pqueue worker", c.name)
+	ticker.Stop()
 }
