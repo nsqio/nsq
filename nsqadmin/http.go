@@ -97,17 +97,26 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func topicHandler(w http.ResponseWriter, req *http.Request) {
-	var urlRegex = regexp.MustCompile(`^/topic/([\.a-zA-Z0-9_-]+)(/([\.-_a-zA-Z0-9]+(#ephemeral)?))?$`)
+	var urlRegex = regexp.MustCompile(`^/topic/(.*)$`)
 	matches := urlRegex.FindStringSubmatch(req.URL.Path)
 	if len(matches) == 0 {
-		http.NotFound(w, req)
-		return
+	    http.Error(w, "INVALID_TOPIC", 500)
+	    return
 	}
-	topic := matches[1]
-	if len(matches) >= 4 && len(matches[3]) > 0 {
-		channel := matches[3]
-		channelHandler(w, req, topic, channel)
-		return
+	parts := strings.Split(matches[1], "/")
+	topic := parts[0]
+	if !nsq.IsValidTopicName(topic) {
+	    http.Error(w, "INVALID_TOPIC", 500)
+	    return
+	}
+	if len(parts) == 2 {
+	    channel := parts[1]
+	    if !nsq.IsValidChannelName(channel) {
+	        http.Error(w, "INVALID_CHANNEL", 500)
+	    } else {
+	    	channelHandler(w, req, topic, channel)
+	    }
+	    return
 	}
 
 	reqParams, err := util.NewReqParams(req)
