@@ -280,20 +280,15 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 
 	stats := nsqd.getStats()
 
-	if len(stats) == 0 {
-		if jsonFormat {
-			util.ApiResponse(w, 500, "NO_TOPICS", nil)
-		} else {
-			io.WriteString(w, "\nNO_TOPICS\n")
-		}
-		return
-	}
-
 	if jsonFormat {
 		util.ApiResponse(w, 200, "OK", struct {
 			Topics []TopicStats `json:"topics"`
 		}{stats})
 	} else {
+		if len(stats) == 0 {
+			io.WriteString(w, "\nNO_TOPICS\n")
+			return
+		}
 		for _, t := range stats {
 			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
 				t.TopicName,
