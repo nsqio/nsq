@@ -2,6 +2,13 @@
 
 ## NSQ Binaries
 
+* 0.2.16 - Alpha
+    * #92 graph rendering options
+    * #87 fix MPUB
+    * #89 gopkg doc updates
+    * #88 move pynsq to it's own repo
+    * #81 reader improvements / introduced MPUB. Fix bug for mem-queue-size < 10
+    * #76 statsd/graphite support
 * 0.2.15 - 2012-10-25
     * #84 fix lookupd hanging on to ephemeral channels w/ no producers
     * #82 add /counter page to nsqadmin
@@ -26,6 +33,8 @@
 
 ## NSQ Go Client Library
 
+* 0.2.5 - Alpha
+    * #81 reader performance improvements / MPUB support
 * 0.2.4 - 2012-10-15
     * #69 added IsStarved() to reader API
 * 0.2.3 - 2012-10-11
