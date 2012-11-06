@@ -1,12 +1,11 @@
 {{template "header.html" .}}
-{{$g := .GraphiteUrl}}
-{{$gp := .GraphiteKeyPrefix}}
-{{$topic := .Topic}}
+{{$g := .GraphOptions}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
   <li class="active">{{.Topic}}</li>
 </ul>
+
 
 <div class="row-fluid"><div class="span12">
 <h1>Topic: {{.Topic}}</h1>
@@ -33,11 +32,11 @@
     <tr>
         <td>{{.HostAddress}}</td>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{.HostAddress | graphiteHostKey}}.topic.{{$topic}}.depth">{{end}}
+            {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" src="{{.Sparkline $g "depth"}}"></a>{{end}}
             {{.Depth | commafy}}</td>
         <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target={{$gp}}nsq.{{.HostAddress | graphiteHostKey}}.topic.{{$topic}}.message_count">{{end}}
+            {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
             {{.MessageCount | commafy}}
             </td>
         <td>{{.ChannelCount}}</td>
@@ -47,12 +46,12 @@
     <tr class="info">
         <td>Total:</td>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.depth)">{{end}}
+            {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" height="20" src="{{.Sparkline $g "depth"}}"></a>{{end}}
             {{.Depth | commafy}}
         </td>
         <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.message_count)">{{end}}
+            {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" height="20" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
             {{.MessageCount | commafy}}
         </td>
         <td>{{.ChannelCount}}</td>
@@ -86,7 +85,7 @@
             {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
             </th>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$c.ChannelName}}.depth)">{{end}}
+            {{if $g.Enabled}}<a href="{{$c.LargeGraph $g "depth"}}"><img width="120" height="20" src="{{$c.Sparkline $g "depth"}}"></a>{{end}}
             {{$c.Depth | commafy}}</td>
         <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
         <td>{{$c.InFlightCount | commafy}}</td>
@@ -95,7 +94,7 @@
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
         <td>
-            {{if $g}}<img src="{{$g}}/render?from=-120min&height=20&until=-1min&width=120&hideGrid=true&hideLegend=true&hideAxes=true&bgcolor=ff000000&fgcolor=black&margin=0&colorList=blue&drawNullAsZero=true&target=sumSeries({{$gp}}nsq.*.topic.{{$topic}}.channel.{{$c.ChannelName}}.clients)">{{end}}
+            {{if $g.Enabled}}<a href="{{$c.LargeGraph $g "clients"}}"><img width="120" height="20" src="{{$c.Sparkline $g "clients"}}"></a>{{end}}
             {{$c.ClientCount}}</td>
     </tr>
 {{ end }}
