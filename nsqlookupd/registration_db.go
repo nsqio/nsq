@@ -39,6 +39,16 @@ func NewRegistrationDB() *RegistrationDB {
 	}
 }
 
+// add a registration key
+func (r *RegistrationDB) AddRegistration(k Registration) {
+	r.Lock()
+	defer r.Unlock()
+	_, ok := r.registrationMap[k]
+	if !ok {
+		r.registrationMap[k] = make(Producers, 0)
+	}
+}
+
 // add a producer to a registration
 func (r *RegistrationDB) Add(k Registration, p *Producer) {
 	r.Lock()
