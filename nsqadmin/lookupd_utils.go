@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"../util/semver"
 	"errors"
 	"fmt"
 	"log"
@@ -85,7 +86,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer, 0)
 	output := make([]*Producer, 0)
-	maxVersion := NewVersion("0.0.0")
+	maxVersion, _ := semver.Parse("0.0.0")
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
@@ -121,8 +122,11 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					}
 					sort.Strings(topics)
 					version := producer.Get("version").MustString("unknown")
-					versionObj := NewVersion(version)
-					if !maxVersion.Less(versionObj) {
+					versionObj, err := semver.Parse(version)
+					if err != nil {
+						versionObj = maxVersion
+					}
+					if maxVersion.Less(versionObj) {
 						maxVersion = versionObj
 					}
 					p := &Producer{
@@ -141,7 +145,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	}
 	wg.Wait()
 	for _, producer := range allProducers {
-		if maxVersion.Less(producer.VersionObj) {
+		if producer.VersionObj.Less(maxVersion) {
 			producer.OutOfDate = true
 		}
 	}
