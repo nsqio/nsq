@@ -8,8 +8,8 @@ import (
 )
 
 type ReqParams struct {
-	params url.Values
-	Body   []byte
+	url.Values
+	Body []byte
 }
 
 func NewReqParams(req *http.Request) (*ReqParams, error) {
@@ -26,10 +26,18 @@ func NewReqParams(req *http.Request) (*ReqParams, error) {
 	return &ReqParams{reqParams, data}, nil
 }
 
-func (r *ReqParams) Query(key string) (string, error) {
-	keyData := r.params[key]
-	if len(keyData) == 0 {
+func (r *ReqParams) Get(key string) (string, error) {
+	v, ok := r.Values[key]
+	if !ok {
 		return "", errors.New("key not in query params")
 	}
-	return keyData[0], nil
+	return v[0], nil
+}
+
+func (r *ReqParams) GetAll(key string) ([]string, error) {
+	v, ok := r.Values[key]
+	if !ok {
+		return nil, errors.New("key not in query params")
+	}
+	return v, nil
 }

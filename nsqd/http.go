@@ -82,7 +82,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -113,7 +113,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -148,7 +148,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -270,7 +270,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formatString, _ := reqParams.Query("format")
+	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
 	now := time.Now()
 

@@ -193,7 +193,7 @@ func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	return topics, nil
 }
 
-func getNsqdTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
+func getNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
 	addresses := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -355,5 +355,4 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 		return nil, nil, errors.New("unable to query any lookupd")
 	}
 	return topicHostStats, channelStats, nil
-
 }

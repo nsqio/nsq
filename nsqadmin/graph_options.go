@@ -32,7 +32,7 @@ type GraphOptions struct {
 
 func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParams) *GraphOptions {
 
-	selectedTimeString, err := r.Query("t")
+	selectedTimeString, err := r.Get("t")
 	if err != nil && selectedTimeString == "" {
 		// get from cookie
 		cookie, err := req.Cookie("t")

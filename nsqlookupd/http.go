@@ -52,7 +52,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -80,7 +80,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
