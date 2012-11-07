@@ -47,6 +47,40 @@ func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	return allTopics, nil
 }
 
+func getLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
+	success := false
+	allChannels := make([]string, 0)
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	for _, addr := range lookupdHTTPAddrs {
+		wg.Add(1)
+		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
+		log.Printf("LOOKUPD: querying %s", endpoint)
+
+		go func(endpoint string) {
+			data, err := nsq.ApiRequest(endpoint)
+			lock.Lock()
+			defer lock.Unlock()
+			defer wg.Done()
+			if err != nil {
+				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				return
+			}
+			success = true
+			// {"data":{"channels":["test"]}}
+			// TODO: convert this to a StringArray() function in simplejson
+			channels, _ := data.Get("channels").Array()
+			allChannels = util.StringUnion(allChannels, channels)
+		}(endpoint)
+	}
+	wg.Wait()
+	sort.Strings(allChannels)
+	if success == false {
+		return nil, errors.New("unable to query any lookupd")
+	}
+	return allChannels, nil
+}
+
 func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer, 0)

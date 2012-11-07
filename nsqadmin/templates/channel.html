@@ -7,11 +7,25 @@
   <li class="active">{{.Channel}}</li>
 </ul>
 
-<div class="row-fluid"><div class="span12">
-<h1>Topic: {{.Topic}}</h1>
-<h2>Channel: {{.Channel}}</h2>
-</div></div>
+<div class="row-fluid">
+    <div class="span6">
+        <blockquote>
+            <p>Topic: <strong>{{.Topic}}</strong>
+            <p>Channel: <strong>{{.Channel}}</strong>
+        </blockquote>
+    </div>
+</div>
 
+{{if not .ChannelStats}}
+<div class="row-fluid">
+    <div class="span6">
+        <div class="alert">
+            <h4>Notice</h4> No producers exist for this topic/channel.
+            <p>See <a href="/lookup">Lookup</a> for more information.
+        </div>
+    </div>
+</div>
+{{else}}
 <div class="row-fluid">
     <div class="span2">
         <form action="/empty_channel" method="GET">
@@ -45,7 +59,7 @@
 </div>
 
 <div class="row-fluid"><div class="span12">
-<h3>Channel Message Queue</h3>
+<h4>Channel Message Queue</h4>
 <table class="table table-bordered table-condensed">
     <tr>
         <th>Host</th>
@@ -116,11 +130,11 @@
 </table>
 </div></div>
 
-<h3>Client Connections</h3>
+<h4>Client Connections</h4>
 
 <div class="row-fluid"><div class="span12">
 {{if not .ChannelStats.Clients}}
-<p>No Clients connected to this channel.</p>
+<div class="alert"><h4>Notice</h4>No clients connected to this channel</div>
 {{else}}
 <table class="table table-bordered table-condensed">
     <tr>
@@ -151,8 +165,7 @@
 </table>
 {{end}}
 </div></div>
+{{end}}
 
-
+{{template "js.html" .}}
 {{template "footer.html" .}}
-
-

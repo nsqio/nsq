@@ -31,7 +31,6 @@ type GraphOptions struct {
 }
 
 func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParams) *GraphOptions {
-
 	selectedTimeString, err := r.Get("t")
 	if err != nil && selectedTimeString == "" {
 		// get from cookie
@@ -130,17 +129,17 @@ func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
 	if key == "depth" {
 		color = "red"
 	}
-	target := fmt.Sprintf("sumSeries(%snsq.*.topic.%s.%s)", g.Prefix(), t.TopicName, key)
+	target := g.Funcs(fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(), t.TopicName, key))
 	return target, color
 }
 func (t *Topic) Sparkline(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return Sparkline(g, target, color)
+	return g.Sparkline(target, color)
 }
 
 func (t *Topic) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return LargeGraph(g, target, color)
+	return g.LargeGraph(target, color)
 }
 
 func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
@@ -154,17 +153,17 @@ func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(), h, t.Topic, key)
 	if h == "*" {
-		target = fmt.Sprintf("sumSeries(%s)", target)
+		target = g.Funcs(target)
 	}
 	return target, color
 }
 func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return Sparkline(g, target, color)
+	return g.Sparkline(target, color)
 }
 func (t *TopicHostStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return LargeGraph(g, target, color)
+	return g.LargeGraph(target, color)
 }
 
 func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
@@ -178,20 +177,20 @@ func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(), h, c.Topic, c.ChannelName, key)
 	if h == "*" {
-		target = fmt.Sprintf("sumSeries(%s)", target)
+		target = g.Funcs(target)
 	}
 	return target, color
 }
 func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
 	target, color := c.Target(g, key)
-	return Sparkline(g, target, color)
+	return g.Sparkline(target, color)
 }
 func (c *ChannelStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := c.Target(g, key)
-	return LargeGraph(g, target, color)
+	return g.LargeGraph(target, color)
 }
 
-func Sparkline(g *GraphOptions, target string, color string) template.URL {
+func (g *GraphOptions) Sparkline(target string, color string) template.URL {
 	params := url.Values{}
 	params.Set("height", "20")
 	params.Set("width", "120")
@@ -209,18 +208,22 @@ func Sparkline(g *GraphOptions, target string, color string) template.URL {
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
 }
 
-func LargeGraph(g *GraphOptions, target string, color string) template.URL {
+func (g *GraphOptions) LargeGraph(target string, color string) template.URL {
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
 	params.Set("bgcolor", "ff000000") // transparent
-	params.Set("fgcolor", "black")
+	params.Set("fgcolor", "999999")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
 	params.Set("target", fmt.Sprintf("scaleToSeconds(%s,1)", target))
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
+}
+
+func (g *GraphOptions) Funcs(target string) string {
+	return fmt.Sprintf(`scaleToSeconds(summarize(%s, "1min"),1)`, target)
 }
 
 func graphiteHostKey(h string) string {

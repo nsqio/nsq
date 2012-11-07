@@ -2,11 +2,11 @@
 {{$g := .GraphOptions}}
 
 <div class="row-fluid"><div class="span12">
-<h1>Topics</h1>
+<h2>Topics</h2>
 </div></div>
 
 
-<div class="row-fluid"><div class="span8">
+<div class="row-fluid"><div class="span6">
 {{if .Topics}}
 <table class="table table-condensed table-bordered">
     <tr>
@@ -23,9 +23,10 @@
 {{end}}
 </table>
 {{else}}
-    <p><span class="label label-warning">Warning</span> No Topics Found</p>
-{{ end }}
+<div class="alert"><h4>Notice</h4>No Topics Found</div>
+{{end}}
 
 </div></div>
 
+{{template "js.html" .}}
 {{template "footer.html" .}}
