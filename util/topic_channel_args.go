@@ -6,7 +6,7 @@ import (
 )
 
 func GetTopicChannelArgs(rp *ReqParams) (string, string, error) {
-	topicName, err := rp.Query("topic")
+	topicName, err := rp.Get("topic")
 	if err != nil {
 		return "", "", errors.New("MISSING_ARG_TOPIC")
 	}
@@ -15,7 +15,7 @@ func GetTopicChannelArgs(rp *ReqParams) (string, string, error) {
 		return "", "", errors.New("INVALID_ARG_TOPIC")
 	}
 
-	channelName, err := rp.Query("channel")
+	channelName, err := rp.Get("channel")
 	if err != nil {
 		return "", "", errors.New("MISSING_ARG_CHANNEL")
 	}

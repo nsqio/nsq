@@ -1,10 +1,9 @@
 package main
 
 import (
+	"../util/semver"
 	"fmt"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -22,18 +21,13 @@ func TopicsForStrings(s []string) Topics {
 	return t
 }
 
-type Version struct {
-	src        string
-	components []string
-}
-
 type Producer struct {
-	Address    string   `json:"address"`
-	TcpPort    int      `json:"tcp_port"`
-	HttpPort   int      `json:"http_port"`
-	Version    string   `json:"version"`
-	VersionObj *Version `json:-`
-	Topics     []string `json:"topics"`
+	Address    string          `json:"address"`
+	TcpPort    int             `json:"tcp_port"`
+	HttpPort   int             `json:"http_port"`
+	Version    string          `json:"version"`
+	VersionObj *semver.Version `json:-`
+	Topics     []string        `json:"topics"`
 	OutOfDate  bool
 }
 
@@ -152,27 +146,4 @@ func (t *TopicHostStats) AddHostStats(a *TopicHostStats) {
 
 func (p *Producer) HTTPAddress() string {
 	return fmt.Sprintf("%s:%d", p.Address, p.HttpPort)
-}
-
-func NewVersion(v string) *Version {
-	version := &Version{
-		src:        v,
-		components: strings.Split(v, "."),
-	}
-	return version
-}
-
-func (v *Version) Less(vv *Version) bool {
-	for i, x := range v.components {
-		if i >= len(vv.components) || i >= 3 {
-			break
-		}
-		y := vv.components[i]
-		xx, _ := strconv.Atoi(x)
-		yy, _ := strconv.Atoi(y)
-		if xx > yy {
-			return true
-		}
-	}
-	return false
 }

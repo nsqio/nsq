@@ -45,6 +45,8 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
 	handler.HandleFunc("/counter/data", counterDataHandler)
 	handler.HandleFunc("/counter", counterHandler)
+	handler.HandleFunc("/lookup", lookupHandler)
+	handler.HandleFunc("/create_topic_channel", createTopicChannelHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -100,23 +102,23 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	var urlRegex = regexp.MustCompile(`^/topic/(.*)$`)
 	matches := urlRegex.FindStringSubmatch(req.URL.Path)
 	if len(matches) == 0 {
-	    http.Error(w, "INVALID_TOPIC", 500)
-	    return
+		http.Error(w, "INVALID_TOPIC", 500)
+		return
 	}
 	parts := strings.Split(matches[1], "/")
 	topic := parts[0]
 	if !nsq.IsValidTopicName(topic) {
-	    http.Error(w, "INVALID_TOPIC", 500)
-	    return
+		http.Error(w, "INVALID_TOPIC", 500)
+		return
 	}
 	if len(parts) == 2 {
-	    channel := parts[1]
-	    if !nsq.IsValidChannelName(channel) {
-	        http.Error(w, "INVALID_CHANNEL", 500)
-	    } else {
-	    	channelHandler(w, req, topic, channel)
-	    }
-	    return
+		channel := parts[1]
+		if !nsq.IsValidChannelName(channel) {
+			http.Error(w, "INVALID_CHANNEL", 500)
+		} else {
+			channelHandler(w, req, topic, channel)
+		}
+		return
 	}
 
 	reqParams, err := util.NewReqParams(req)
@@ -130,7 +132,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	if len(lookupdHTTPAddrs) != 0 {
 		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNsqdTopicProducers(topic, nsqdHTTPAddrs)
+		producers, _ = getNSQDTopicProducers(topic, nsqdHTTPAddrs)
 	}
 	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
 
@@ -172,11 +174,12 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+
 	var producers []string
 	if len(lookupdHTTPAddrs) != 0 {
 		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNsqdTopicProducers(topic, nsqdHTTPAddrs)
+		producers, _ = getNSQDTopicProducers(topic, nsqdHTTPAddrs)
 	}
 	_, allChannelStats, _ := getNSQDStats(producers, topic)
 	channelStats := allChannelStats[channel]
@@ -206,6 +209,104 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 	}
 }
 
+func lookupHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	channels := make(map[string][]string)
+	allTopics, _ := getLookupdTopics(lookupdHTTPAddrs)
+	for _, topic := range allTopics {
+		var producers []string
+		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
+		if len(producers) == 0 {
+			topicChannels, _ := getLookupdTopicChannels(topic, lookupdHTTPAddrs)
+			channels[topic] = topicChannels
+		}
+	}
+
+	p := struct {
+		Title        string
+		GraphOptions *GraphOptions
+		TopicMap     map[string][]string
+		Lookupd      []string
+		Version      string
+	}{
+		Title:        "NSQ Lookup",
+		GraphOptions: NewGraphOptions(w, req, reqParams),
+		TopicMap:     channels,
+		Lookupd:      lookupdHTTPAddrs,
+		Version:      util.BINARY_VERSION,
+	}
+	err = templates.ExecuteTemplate(w, "lookup.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
+}
+
+func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil || !nsq.IsValidTopicName(topicName) {
+		http.Error(w, "INVALID_TOPIC", 500)
+		return
+	}
+
+	channelName, err := reqParams.Get("channel")
+	if err != nil || (len(channelName) > 0 && !nsq.IsValidChannelName(channelName)) {
+		http.Error(w, "INVALID_CHANNEL", 500)
+		return
+	}
+
+	for _, addr := range lookupdHTTPAddrs {
+		endpoint := fmt.Sprintf("http://%s/create_topic?topic=%s", addr, url.QueryEscape(topicName))
+		log.Printf("LOOKUPD: querying %s", endpoint)
+		_, err := nsq.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			continue
+		}
+	}
+
+	if len(channelName) > 0 {
+		for _, addr := range lookupdHTTPAddrs {
+			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
+				addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
+			log.Printf("LOOKUPD: querying %s", endpoint)
+			_, err := nsq.ApiRequest(endpoint)
+			if err != nil {
+				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				continue
+			}
+		}
+
+		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
+		producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		for _, addr := range producers {
+			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
+				addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
+			log.Printf("NSQD: querying %s", endpoint)
+			_, err := nsq.ApiRequest(endpoint)
+			if err != nil {
+				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+				continue
+			}
+		}
+	}
+
+	http.Redirect(w, req, "/lookup", 302)
+}
+
 func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -214,10 +315,16 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		http.Error(w, "MISSING_ARG_TOPIC", 500)
 		return
+	}
+
+	var rd string
+	rd, err = reqParams.Get("rd")
+	if err != nil {
+		rd = "/"
 	}
 
 	// for topic removal, you need to get all the producers *first*
@@ -246,7 +353,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	http.Redirect(w, req, "/", 302)
+	http.Redirect(w, req, rd, 302)
 }
 
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
@@ -263,8 +370,15 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	var rd string
+	rd, err = reqParams.Get("rd")
+	if err != nil {
+		rd = fmt.Sprintf("/topic/%s", url.QueryEscape(topicName))
+	}
+
 	for _, addr := range lookupdHTTPAddrs {
-		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
+		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
+			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		_, err := nsq.ApiRequest(endpoint)
@@ -276,7 +390,8 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
+		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
+			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: querying %s", endpoint)
 		_, err := nsq.ApiRequest(endpoint)
 		if err != nil {
@@ -285,7 +400,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+	http.Redirect(w, req, rd, 302)
 }
 
 func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
@@ -304,7 +419,8 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s", addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
+		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s",
+			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: calling %s", endpoint)
 
 		_, err := nsq.ApiRequest(endpoint)
@@ -333,7 +449,8 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s", addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
+		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s",
+			addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
 		log.Printf("NSQD: calling %s", endpoint)
 
 		_, err := nsq.ApiRequest(endpoint)
@@ -361,7 +478,7 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 		GraphOptions *GraphOptions
 		Producers    []*Producer
 	}{
-		Title:        "NSQD Hosts",
+		Title:        "NSQ Nodes",
 		Version:      util.BINARY_VERSION,
 		GraphOptions: NewGraphOptions(w, req, reqParams),
 		Producers:    producers,
@@ -374,14 +491,22 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func counterHandler(w http.ResponseWriter, req *http.Request) {
-	p := struct {
-		Title   string
-		Version string
-	}{
-		Title:   fmt.Sprintf("NSQ Message Counts"),
-		Version: util.BINARY_VERSION,
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
 	}
-	err := templates.ExecuteTemplate(w, "counter.html", p)
+	p := struct {
+		Title        string
+		Version      string
+		GraphOptions *GraphOptions
+	}{
+		Title:        "NSQ Message Counts",
+		Version:      util.BINARY_VERSION,
+		GraphOptions: NewGraphOptions(w, req, reqParams),
+	}
+	err = templates.ExecuteTemplate(w, "counter.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -404,7 +529,7 @@ func counterDataHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	statsID, _ := reqParams.Query("id")
+	statsID, _ := reqParams.Get("id")
 	now := time.Now()
 	if statsID == "" {
 		// make a new one
