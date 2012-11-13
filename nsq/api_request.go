@@ -11,17 +11,32 @@ import (
 )
 
 type deadlinedConn struct {
+	Timeout time.Duration
 	net.Conn
 }
 
 func (c *deadlinedConn) Read(b []byte) (n int, err error) {
-	c.Conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	c.Conn.SetReadDeadline(time.Now().Add(c.Timeout))
 	return c.Conn.Read(b)
 }
 
 func (c *deadlinedConn) Write(b []byte) (n int, err error) {
-	c.Conn.SetWriteDeadline(time.Now().Add(time.Second * 2))
+	c.Conn.SetWriteDeadline(time.Now().Add(c.Timeout))
 	return c.Conn.Write(b)
+}
+
+// A custom http.Transport with support for deadline timeouts
+func NewDeadlineTransport(timeout time.Duration) *http.Transport {
+	transport := &http.Transport{
+		Dial: func(netw, addr string) (net.Conn, error) {
+			c, err := net.DialTimeout(netw, addr, timeout)
+			if err != nil {
+				return nil, err
+			}
+			return &deadlinedConn{timeout, c}, nil
+		},
+	}
+	return transport
 }
 
 // ApiRequest is a helper function to perform an HTTP request
@@ -29,17 +44,7 @@ func (c *deadlinedConn) Write(b []byte) (n int, err error) {
 //
 //     {"status_code":200, "status_txt":"OK", "data":{...}}
 func ApiRequest(endpoint string) (*simplejson.Json, error) {
-	transport := &http.Transport{
-		Dial: func(netw, addr string) (net.Conn, error) {
-			c, err := net.DialTimeout(netw, addr, time.Second*2)
-			if err != nil {
-				return nil, err
-			}
-			return &deadlinedConn{c}, nil
-		},
-	}
-	// use custom transport for deadline timeouts
-	httpclient := &http.Client{Transport: transport}
+	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err

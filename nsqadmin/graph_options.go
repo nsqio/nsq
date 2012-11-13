@@ -22,6 +22,7 @@ type GraphInterval struct {
 type GraphIntervals []*GraphInterval
 
 type GraphOptions struct {
+	Configured        bool
 	Enabled           bool
 	GraphiteUrl       string
 	UseStatsdPrefix   bool
@@ -57,11 +58,16 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParam
 		g, _ = GraphIntervalForTimeframe("2h", true)
 	}
 	base := *graphiteUrl
-	enabled := base != ""
+	configured := base != ""
+	enabled := configured
+	if *proxyGraphite {
+		base = ""
+	}
 	if g.Timeframe == "off" {
 		enabled = false
 	}
 	o := &GraphOptions{
+		Configured:        configured,
 		Enabled:           enabled,
 		UseStatsdPrefix:   *useStatsdPrefixes,
 		GraphiteUrl:       base,
