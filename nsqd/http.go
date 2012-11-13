@@ -33,6 +33,8 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/cpu_profile", httpprof.Profile)
 	handler.HandleFunc("/pause_channel", pauseChannelHandler)
 	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
+	handler.HandleFunc("/create_topic", createTopicHandler)
+	handler.HandleFunc("/create_channel", createChannelHandler)
 
 	// these timeouts are absolute per server connection NOT per request
 	// this means that a single persistent connection will only last N seconds
@@ -82,7 +84,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -113,7 +115,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -140,6 +142,29 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
+func createTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	if !nsq.IsValidTopicName(topicName) {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	nsqd.GetTopic(topicName)
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
 func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -148,7 +173,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -160,6 +185,30 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func createChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	if err != nil {
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
+	}
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	topic.GetChannel(channelName)
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
@@ -270,7 +319,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formatString, _ := reqParams.Query("format")
+	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
 	now := time.Now()
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"../nsq"
 	"../util"
 	"io"
 	"log"
@@ -16,10 +17,13 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
 	handler.HandleFunc("/topics", topicsHandler)
+	handler.HandleFunc("/channels", channelsHandler)
 	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/info", infoHandler)
+	handler.HandleFunc("/create_topic", createTopicHandler)
+	handler.HandleFunc("/create_channel", createChannelHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -45,6 +49,25 @@ func topicsHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", data)
 }
 
+func channelsHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	channels := lookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
+	data := make(map[string]interface{})
+	data["channels"] = channels
+	util.ApiResponse(w, 200, "OK", data)
+}
+
 func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -52,7 +75,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -73,6 +96,31 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", data)
 }
 
+func createTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	if !nsq.IsValidTopicName(topicName) {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	log.Printf("DB: adding topic(%s)", topicName)
+	key := Registration{"topic", topicName, ""}
+	lookupd.DB.AddRegistration(key)
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
 func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -80,7 +128,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topicName, err := reqParams.Query("topic")
+	topicName, err := reqParams.Get("topic")
 	if err != nil {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
@@ -97,6 +145,30 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		log.Printf("DB: removing topic(%s)", topicName)
 		lookupd.DB.RemoveRegistration(*registration)
 	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func createChannelHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	if err != nil {
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
+	}
+
+	log.Printf("DB: adding channel(%s) in topic(%s)", channelName, topicName)
+	key := Registration{"channel", topicName, channelName}
+	lookupd.DB.AddRegistration(key)
+
+	log.Printf("DB: adding topic(%s)", topicName)
+	key = Registration{"topic", topicName, ""}
+	lookupd.DB.AddRegistration(key)
 
 	util.ApiResponse(w, 200, "OK", nil)
 }

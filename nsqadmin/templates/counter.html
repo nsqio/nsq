@@ -1,18 +1,7 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta http-equiv="Content-type" content="text/html; charset=utf-8">
-        <title>{{.Title}}</title>
-        <!-- from http://www.bootstrapcdn.com/ -->
-        <link rel="stylesheet" href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.1.1/css/bootstrap-combined.min.css" type="text/css" charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        
-<!-- This Flip Counter CSS is borrowed from the awesome work of Etienne
-* http://cssdesk.com/8jGnY
-* http://isbullsh.it/2012/08/Flip-Counter-css/
- -->
-        <style>
-        
+{{template "header.html" .}}
+{{$g := .GraphOptions}}
+
+<style>
 body {
     background-color:#000;
 }
@@ -206,26 +195,7 @@ body {
     font-size:20pt;
     font-family:Helvetica;
 }
-
-​        </style>
-    </head>
-    <body>
-        
-<div class="navbar navbar-inverse">
-  <div class="navbar-inner">
-    <div class="container">
-      <a class="brand" href="/">NSQ</a>
-        <ul class="nav">
-          <li><a href="/">Streams</a></li>
-          <li><a href="/nodes">Nodes</a></li>
-          <li class="active"><a href="/counter">Counter</a></li>
-          <li class="divider-vertical"></li>
-          <li><a href="https://github.com/bitly/nsq">NSQ on github</a></li>
-        </ul>
-        <div class="pull-right navbar-text"><span class="label label-info">v{{.Version}}</span></div>
-    </div>
-  </div>
-</div>
+</style>
 
 <div class="alert alert-error" id="fetcherror" style="display:none;">
 </div>
@@ -235,9 +205,15 @@ body {
 </div>
 <p class="processed">Messages Processed</p>
 <p class="messagerate"></p>
+<script type="text/javascript">
+{{$target := $g.Funcs "sumSeries(nsq.*.topic.*.channel.*.message_count)"}}
+var large_graph_url = "{{$g.LargeGraph $target "green"}}";
+</script>
+{{if $g.Enabled}}<img id="big_graph" height="500" src=""/>{{end}}
 </div>
 
-<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+{{template "js.html" .}}
+
 <script>
 var current_number = 0;
 var statsID = '';
@@ -333,6 +309,7 @@ function updateStats() {
             }
         }
     });
+    $('#big_graph').attr('src', large_graph_url + "&_uniq=" + Math.random() * 1000000);
 }
 var data_poll;
 var interval;
@@ -350,5 +327,4 @@ startLoop(1000);
 
 </script>
 
-</body>
-</html>
+{{template "footer.html" .}}
