@@ -135,7 +135,7 @@ func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
 	if key == "depth" {
 		color = "red"
 	}
-	target := g.Funcs(fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(), t.TopicName, key))
+	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(), t.TopicName, key)
 	return target, color
 }
 func (t *Topic) Sparkline(g *GraphOptions, key string) template.URL {
@@ -158,9 +158,6 @@ func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(), h, t.Topic, key)
-	if h == "*" {
-		target = g.Funcs(target)
-	}
 	return target, color
 }
 func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
@@ -182,9 +179,6 @@ func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(), h, c.Topic, c.ChannelName, key)
-	if h == "*" {
-		target = g.Funcs(target)
-	}
 	return target, color
 }
 func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
@@ -208,7 +202,7 @@ func (g *GraphOptions) Sparkline(target string, color string) template.URL {
 	params.Set("margin", "0")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
-	params.Set("target", target)
+	params.Set("target", fmt.Sprintf("sumSeries(%s)", target))
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
@@ -222,14 +216,10 @@ func (g *GraphOptions) LargeGraph(target string, color string) template.URL {
 	params.Set("fgcolor", "999999")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
-	params.Set("target", fmt.Sprintf("scaleToSeconds(%s,1)", target))
+	params.Set("target", fmt.Sprintf("scaleToSeconds(summarize(sumSeries(%s),\"1min\"),1)", target))
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
-}
-
-func (g *GraphOptions) Funcs(target string) string {
-	return fmt.Sprintf(`scaleToSeconds(summarize(%s, "1min"),1)`, target)
 }
 
 func graphiteHostKey(h string) string {
