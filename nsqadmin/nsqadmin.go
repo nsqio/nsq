@@ -14,6 +14,7 @@ var (
 	httpAddress       = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
 	templateDir       = flag.String("template-dir", "", "path to templates directory")
 	graphiteUrl       = flag.String("graphite-url", "", "URL to graphite HTTP address")
+	proxyGraphite     = flag.Bool("proxy-graphite", true, "Proxy HTTP requests to graphite")
 	useStatsdPrefixes = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
 	lookupdHTTPAddrs  = util.StringArray{}
 	nsqdHTTPAddrs     = util.StringArray{}
