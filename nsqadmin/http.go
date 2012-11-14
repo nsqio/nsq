@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"strings"
@@ -25,6 +26,22 @@ func loadTemplates() {
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
 	if err != nil {
 		log.Printf("ERROR: %s", err.Error())
+	}
+}
+
+// this is similar to httputil.NewSingleHostReverseProxy except it passes along basic auth
+func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil.ReverseProxy {
+	director := func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		if target.User != nil {
+			passwd, _ := target.User.Password()
+			req.SetBasicAuth(target.User.Username(), passwd)
+		}
+	}
+	return &httputil.ReverseProxy{
+		Director:  director,
+		Transport: nsq.NewDeadlineTransport(timeout),
 	}
 }
 
@@ -47,6 +64,15 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/counter", counterHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
 	handler.HandleFunc("/create_topic_channel", createTopicChannelHandler)
+	if *proxyGraphite {
+		url, err := url.Parse(*graphiteUrl)
+		if err != nil {
+			log.Printf("%s - %v", err.Error(), *graphiteUrl)
+		} else {
+			proxy := NewSingleHostReverseProxy(url, 20*time.Second)
+			handler.Handle("/render", proxy)
+		}
+	}
 
 	server := &http.Server{
 		Handler: handler,

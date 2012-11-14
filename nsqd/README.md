@@ -23,6 +23,10 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
 
 * `/empty_channel?topic=...&channel=...`
 * `/delete_channel?topic=...&channel=...`
+* `/pause_channel?topic=...&channel=...`
+* `/unpause_channel?topic=...&channel=...`
+* `/create_topic?topic=...`
+* `/create_channel?topic=...&channel=...`
 * `/stats`
 
     supports both text and JSON via `?format=json`
@@ -44,9 +48,9 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
     -max-bytes-per-file=104857600: number of bytes per diskqueue file before rolling
     -mem-queue-size=10000: number of messages to keep in memory (per topic)
     -msg-timeout=60000: time (ms) to wait before auto-requeing a message
-    -sync-every=2500: number of messages between diskqueue syncs
     -statsd-address="": UDP <addr>:<port> of a statsd daemon for writing stats
     -statsd-interval=30: seconds between pushing to statsd
+    -sync-every=2500: number of messages between diskqueue syncs
     -tcp-address="0.0.0.0:4150": <addr>:<port> to listen on for TCP clients
     -verbose=false: enable verbose logging
     -version=false: print version string
