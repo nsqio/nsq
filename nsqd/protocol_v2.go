@@ -3,9 +3,9 @@ package main
 import (
 	"../nsq"
 	"../util"
-	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -35,9 +35,6 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	client := NewClientV2(conn)
 	atomic.StoreInt32(&client.State, nsq.StateInit)
 
-	err = nil
-	client.Reader = bufio.NewReader(client)
-	client.Writer = bufio.NewWriter(client)
 	for {
 		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
 		// ReadSlice does not allocate new space for the data each request
@@ -139,6 +136,8 @@ func (p *ProtocolV2) Flush(client *ClientV2) error {
 
 func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	switch {
+	case bytes.Equal(params[0], []byte("IDENTIFY")):
+		return p.IDENTIFY(client, params)
 	case bytes.Equal(params[0], []byte("SUB")):
 		return p.SUB(client, params)
 	case bytes.Equal(params[0], []byte("RDY")):
@@ -264,6 +263,41 @@ exit:
 	}
 }
 
+func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error) {
+	var err error
+
+	if atomic.LoadInt32(&client.State) != nsq.StateInit {
+		return nil, nsq.NewClientErr("E_INVALID", "client not initialized")
+	}
+
+	var bodyLen int32
+	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+	}
+
+	body := make([]byte, bodyLen)
+	_, err = io.ReadFull(client.Reader, body)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+	}
+
+	// body is a json structure with producer information
+	clientInfo := struct {
+		ShortId string `json:"short_id"`
+		LongId  string `json:"long_id"`
+	}{}
+	err = json.Unmarshal(body, &clientInfo)
+	if err != nil {
+		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+	}
+
+	client.ShortIdentifier = clientInfo.ShortId
+	client.LongIdentifier = clientInfo.LongId
+
+	return nil, nil
+}
+
 func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
 		return nil, nsq.NewClientErr("E_INVALID", "client not initialized")
@@ -283,6 +317,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewClientErr("E_BAD_CHANNEL", fmt.Sprintf("channel name '%s' is not valid", channelName))
 	}
 
+	// TODO: this can be removed once all clients are updated to use IDENTIFY
 	if len(params) == 5 {
 		client.ShortIdentifier = string(params[3])
 		client.LongIdentifier = string(params[4])

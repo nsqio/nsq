@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strconv"
 )
 
@@ -23,7 +22,7 @@ type Command struct {
 // String returns the name and parameters of the Command
 func (c *Command) String() string {
 	if len(c.Params) > 0 {
-		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, []byte(" "))))
+		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, byteSpace)))
 	}
 	return string(c.Name)
 }
@@ -68,24 +67,30 @@ func (c *Command) Write(w io.Writer) error {
 	return nil
 }
 
-// Identify creates a new Command to provide information about the client to nsqlookupd.
-// After connecting, it is the first message sent to nsqlookupd.
-func Identify(version string, tcpPort int, httpPort int, address string) *Command {
-	body, err := json.Marshal(struct {
-		Version  string `json:"version"`
-		TcpPort  int    `json:"tcp_port"`
-		HttpPort int    `json:"http_port"`
-		Address  string `json:"address"`
-	}{
-		version,
-		tcpPort,
-		httpPort,
-		address,
-	})
+// Identify creates a new Command to provide information about the client.  After connecting, 
+// it is generally the first message sent.
+//
+// The supplied map is marshaled into JSON to provide some flexibility
+// for this command to evolve over time.
+//
+// nsqd currently supports the following keys:
+//
+//     short_id - short identifier, typically client's short hosname
+//     long_id - long identifier, typically client's long hostname
+//     buffer_size - size in bytes for nsqd to buffer before writing to the wire for this client
+//
+// nsqlookupd currently supports the following keys:
+//
+//     version - the version of the nsqd peer
+//     tcp_port - the nsqd port where TCP clients can connect
+//     http_port - the nsqd port where HTTP clients can connect
+//     address - the address where clients can connect (generally DNS resolvable hostname)
+func Identify(js map[string]interface{}) (*Command, error) {
+	body, err := json.Marshal(js)
 	if err != nil {
-		log.Fatal("failed to create json %s", err.Error())
+		return nil, err
 	}
-	return &Command{[]byte("IDENTIFY"), nil, body}
+	return &Command{[]byte("IDENTIFY"), nil, body}, nil
 }
 
 // Register creates a new Command to add a topic/channel for the connected nsqd
@@ -150,8 +155,8 @@ func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 }
 
 // Subscribe creates a new Command to subscribe to the given topic/channel
-func Subscribe(topic string, channel string, shortIdentifier string, longIdentifier string) *Command {
-	var params = [][]byte{[]byte(topic), []byte(channel), []byte(shortIdentifier), []byte(longIdentifier)}
+func Subscribe(topic string, channel string) *Command {
+	var params = [][]byte{[]byte(topic), []byte(channel)}
 	return &Command{[]byte("SUB"), params, nil}
 }
 

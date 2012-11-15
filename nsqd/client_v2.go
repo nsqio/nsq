@@ -44,6 +44,8 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		ConnectTime:     time.Now(),
 		ShortIdentifier: identifier,
 		LongIdentifier:  identifier,
+		Reader:          bufio.NewReaderSize(conn, 16*1024),
+		Writer:          bufio.NewWriterSize(conn, 16*1024),
 	}
 }
 

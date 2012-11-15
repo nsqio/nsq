@@ -49,7 +49,12 @@ func TestBasicLookupd(t *testing.T) {
 	topicName := "connectmsg"
 	tcpPort := 5000
 	httpPort := 5555
-	cmd := nsq.Identify("fake-version", tcpPort, httpPort, "ip.address")
+	ci := make(map[string]interface{})
+	ci["version"] = "fake-version"
+	ci["tcp_port"] = tcpPort
+	ci["http_port"] = httpPort
+	ci["address"] = "ip.address"
+	cmd, _ := nsq.Identify(ci)
 	log.Printf("cmd is %s", string(cmd.Body))
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)

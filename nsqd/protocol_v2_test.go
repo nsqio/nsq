@@ -65,7 +65,7 @@ func TestBasicV2(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestBasicV2", "TestBasicV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
@@ -103,7 +103,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 		conn, err := mustConnectNSQd(tcpAddr)
 		assert.Equal(t, err, nil)
 
-		err = nsq.Subscribe(topicName, "ch"+i, "TestMultipleConsumerV2", "TestMultipleConsumerV2").Write(conn)
+		err = nsq.Subscribe(topicName, "ch"+i).Write(conn)
 		assert.Equal(t, err, nil)
 
 		err = nsq.Ready(1).Write(conn)
@@ -141,7 +141,7 @@ func TestClientTimeout(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestClientTimeoutV2", "TestClientTimeoutV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	time.Sleep(50 * time.Millisecond)
@@ -177,7 +177,7 @@ func TestClientHeartbeat(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestClientHeartbeatV2", "TestClientHeartbeatV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
@@ -211,7 +211,7 @@ func TestPausing(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestPausing", "TestPausing").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
