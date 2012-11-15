@@ -44,36 +44,14 @@ func TestBasicLookupd(t *testing.T) {
 	topics := lookupd.DB.FindRegistrations("topic", "*", "*")
 	assert.Equal(t, len(topics), 0)
 
-	conn := mustConnectLookupd(t, tcpAddr)
-	topicName := "legacyannounce"
-	port := 1000
-	ips := []string{"ip.first", "second.hostname"}
-	err := nsq.Announce(topicName, ".", port, ips).Write(conn)
-	assert.Equal(t, err, nil)
-
-	time.Sleep(10 * time.Millisecond)
-
-	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
-	assert.Equal(t, len(topics), 1)
-
-	producers := lookupd.DB.FindProducers("topic", topicName, "")
-	assert.Equal(t, len(producers), 1)
-	producer := producers[0]
-
-	assert.Equal(t, producer.Address, "second.hostname")
-	assert.Equal(t, producer.TcpPort, 1000)
-	// old announce message was +=1 for http port
-	assert.Equal(t, producer.HttpPort, 1001)
-	conn.Close()
-
 	// send a connect message
-	conn = mustConnectLookupd(t, tcpAddr)
-	topicName = "connectmsg"
+	conn := mustConnectLookupd(t, tcpAddr)
+	topicName := "connectmsg"
 	tcpPort := 5000
 	httpPort := 5555
 	cmd := nsq.Identify("fake-version", tcpPort, httpPort, "ip.address")
 	log.Printf("cmd is %s", string(cmd.Body))
-	err = cmd.Write(conn)
+	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
 	err = nsq.Register(topicName, "channel1").Write(conn)
 
@@ -89,9 +67,9 @@ func TestBasicLookupd(t *testing.T) {
 	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
 	assert.Equal(t, len(topics), 1)
 
-	producers = lookupd.DB.FindProducers("topic", topicName, "")
+	producers := lookupd.DB.FindProducers("topic", topicName, "")
 	assert.Equal(t, len(producers), 1)
-	producer = producers[0]
+	producer := producers[0]
 
 	assert.Equal(t, producer.Address, "ip.address")
 	assert.Equal(t, producer.TcpPort, tcpPort)
@@ -103,7 +81,7 @@ func TestBasicLookupd(t *testing.T) {
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedTopics), 2)
+	assert.Equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = nsq.ApiRequest(endpoint)

@@ -68,14 +68,6 @@ func (c *Command) Write(w io.Writer) error {
 	return nil
 }
 
-// Announce creates a new Command to announce the existence of
-// a given topic and/or channel.
-// NOTE: if channel == "." then it is considered n/a
-func Announce(topic string, channel string, port int, ips []string) *Command {
-	var params = [][]byte{[]byte(topic), []byte(channel), []byte(strconv.Itoa(port))}
-	return &Command{[]byte("ANNOUNCE"), params, []byte(strings.Join(ips, "\n"))}
-}
-
 // Identify creates a new Command to provide information about the client to nsqlookupd.
 // After connecting, it is the first message sent to nsqlookupd.
 func Identify(version string, tcpPort int, httpPort int, address string) *Command {

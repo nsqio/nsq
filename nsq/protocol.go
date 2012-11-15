@@ -133,31 +133,6 @@ func ReadResponse(r io.Reader) ([]byte, error) {
 	return buf, nil
 }
 
-// DEPRECATED in 0.2.5, use: cmd.Write(w).
-//
-// SendCommand is a client-side utility function to serialize a command to the supplied Writer
-func SendCommand(w io.Writer, cmd *Command) error {
-	return cmd.Write(w)
-}
-
-// DEPRECATED in 0.2.5, use: nsq.SendFramedResponse()
-//
-// Frame is a server-side utility function to write the specified frameType 
-// and data to the supplied Writer
-func Frame(w io.Writer, frameType int32, data []byte) error {
-	err := binary.Write(w, binary.BigEndian, &frameType)
-	if err != nil {
-		return err
-	}
-
-	_, err = w.Write(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // UnpackResponse is a client-side utility function that unpacks serialized data 
 // according to NSQ protocol spec:
 //

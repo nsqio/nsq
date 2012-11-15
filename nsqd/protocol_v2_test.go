@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"bufio"
 	"bytes"
 	"github.com/bmizerany/assert"
@@ -279,29 +278,6 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	}
 }
 
-func BenchmarkProtocolV2Data(b *testing.B) {
-	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	p := &ProtocolV2{}
-	var cb bytes.Buffer
-	rw := bufio.NewReadWriter(bufio.NewReader(&cb), bufio.NewWriter(ioutil.Discard))
-	conn := util.MockConn{rw}
-	c := NewClientV2(conn)
-	var buf bytes.Buffer
-	body := make([]byte, 256)
-	var id nsq.MessageID
-	msg := nsq.NewMessage(id, body)
-	b.SetBytes(int64(len(body)))
-	b.StartTimer()
-
-	for i := 0; i < b.N; i += 1 {
-		buf.Reset()
-		msg.Write(&buf)
-		p.Send(c, nsq.FrameTypeMessage, buf.Bytes())
-	}
-}
-
 func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
@@ -416,7 +392,12 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		panic(err.Error())
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	nsq.Subscribe(topicName, "ch", "test", "test").Write(rw)
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	cmd, _ := nsq.Identify(ci)
+	cmd.Write(rw)
+	nsq.Subscribe(topicName, "ch").Write(rw)
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan

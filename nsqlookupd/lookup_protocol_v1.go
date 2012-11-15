@@ -12,7 +12,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -85,8 +84,6 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 		return p.REGISTER(client, reader, params[1:])
 	case "UNREGISTER":
 		return p.UNREGISTER(client, reader, params[1:])
-	case "ANNOUNCE":
-		return p.ANNOUNCE_OLD(client, reader, params[1:])
 	}
 	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -158,76 +155,6 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	return []byte("OK"), nil
 }
 
-func (p *LookupProtocolV1) ANNOUNCE_OLD(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
-	if len(params) < 3 {
-		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
-	}
-	if len(params) >= 2 && params[1] == "." {
-		params[1] = ""
-	}
-	topic, channel, err := getTopicChan(params)
-	if err != nil {
-		return nil, err
-	}
-
-	var bodyLen int32
-	err = binary.Read(reader, binary.BigEndian, &bodyLen)
-	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
-	}
-
-	body := make([]byte, bodyLen)
-	_, err = io.ReadFull(reader, body)
-	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
-	}
-
-	if client.Producer == nil {
-		tcpPort, err := strconv.Atoi(params[2])
-		if err != nil {
-			return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse TCP port %s", params[2]))
-		}
-		httpPort := tcpPort + 1
-		if len(params) > 3 {
-			httpPort, err = strconv.Atoi(params[4])
-			if err != nil {
-				return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse HTTP port %s", params[4]))
-			}
-		}
-
-		var ipAddrs []string
-		// client sends multiple source IP address as the message body
-		for _, ip := range bytes.Split(body, []byte("\n")) {
-			ipAddrs = append(ipAddrs, string(ip))
-		}
-
-		client.Producer = &Producer{
-			producerId: client.RemoteAddr().String(),
-			TcpPort:    tcpPort,
-			HttpPort:   httpPort,
-			Address:    ipAddrs[len(ipAddrs)-1],
-			LastUpdate: time.Now(),
-		}
-		log.Printf("CLIENT(%s): registered TCP:%d HTTP:%d address:%s",
-			client, tcpPort, httpPort, client.Producer.Address)
-		lookupd.DB.Add(Registration{"client", "", ""}, client.Producer)
-	}
-
-	var key Registration
-
-	if channel != "" {
-		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
-		key = Registration{"channel", topic, channel}
-		lookupd.DB.Add(key, client.Producer)
-	}
-
-	log.Printf("DB: client(%s) added registration for topic:%s", client, topic)
-	key = Registration{"topic", topic, ""}
-	lookupd.DB.Add(key, client.Producer)
-
-	return []byte("OK"), nil
-}
-
 func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
 
@@ -284,7 +211,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
 	if client.Producer != nil {
-		// we could get a PING before an ANNOUNCE on the same client connection
+		// we could get a PING before other commands on the same client connection
 		now := time.Now()
 		log.Printf("CLIENT(%s): pinged (last ping %s)", client.Producer.producerId, now.Sub(client.Producer.LastUpdate))
 		client.Producer.LastUpdate = now
