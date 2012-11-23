@@ -91,7 +91,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 	}
 
 	nc := &nsqConn{
-		net.Conn:         conn,
+		Conn:             conn,
 		r:                bufio.NewReader(conn),
 		addr:             addr,
 		finishedMessages: make(chan *FinishedMessage),

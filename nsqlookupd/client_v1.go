@@ -19,7 +19,7 @@ type ClientV1 struct {
 
 func NewClientV1(conn net.Conn) *ClientV1 {
 	return &ClientV1{
-		net.Conn: conn,
+		Conn: conn,
 	}
 }
 
