@@ -37,6 +37,8 @@ doc][design] or [blog post][nsq_post].
 
 * [nsq][nsq] Go (official)
 * [pynsq][pynsq] Python (official) [pypi][pynsq_pypi]
+* [libnsq][libnsq] C
+* [nsq-java][nsq-java] Java
 * [nodensq][node_lib] Node.js [npm][nodensq_npm]
 * [nsqphp][php_lib] PHP
 * [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
@@ -144,3 +146,5 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [pynsq_pypi]: http://pypi.python.org/pypi/pynsq
 [nodensq_npm]: https://npmjs.org/package/nsq
 [ruby_nsq_rubygems]: http://rubygems.org/gems/ruby_nsq
+[libnsq]: https://github.com/mreiferson/libnsq
+[nsq-java]: https://github.com/bitly/nsq-java
