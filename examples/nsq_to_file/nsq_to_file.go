@@ -5,24 +5,27 @@ package main
 import (
 	"../../nsq"
 	"../../util"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"syscall"
 	"time"
 )
 
 var (
-	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log" // topic.host.YYY-MM-DD_HH.log
+	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log%s" // topic.host.YYY-MM-DD_HH.log[.gz]
 	showVersion      = flag.Bool("version", false, "print version string")
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
 	topic            = flag.String("topic", "", "nsq topic")
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
+	gzipFlag         = flag.Bool("gzip", false, "gzip output files.")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
@@ -34,9 +37,10 @@ func init() {
 }
 
 type FileLogger struct {
-	out      *os.File
-	filename string
-	logChan  chan *Message
+	out        *os.File
+	gzipWriter *gzip.Writer
+	filename   string
+	logChan    chan *Message
 }
 
 type Message struct {
@@ -68,22 +72,21 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 			// ensures that we keep flushing whatever is left in the channels
 			closing = true
 		case <-hupChan:
-			f.out.Close()
-			f.out = nil
-			updateFile(f)
+			f.Close()
+			f.updateFile()
 			sync = true
 		case <-ticker.C:
-			updateFile(f)
+			f.updateFile()
 			sync = true
 		case m := <-f.logChan:
-			if updateFile(f) {
+			if f.updateFile() {
 				sync = true
 			}
-			_, err := f.out.Write(m.Body)
+			_, err := f.Write(m.Body)
 			if err != nil {
 				log.Fatalf("ERROR: writing message to disk - %s", err.Error())
 			}
-			_, err = f.out.WriteString("\n")
+			_, err = f.Write([]byte("\n"))
 			if err != nil {
 				log.Fatalf("ERROR: writing newline to disk - %s", err.Error())
 			}
@@ -97,7 +100,7 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 		if closing || sync || r.IsStarved() {
 			if pos > 0 {
 				log.Printf("syncing %d records to disk", pos)
-				err := f.out.Sync()
+				err := f.Sync()
 				if err != nil {
 					log.Fatalf("ERROR: failed syncing messages - %s", err.Error())
 				}
@@ -113,7 +116,34 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 	}
 }
 
-func updateFile(f *FileLogger) bool {
+func (f *FileLogger) Close() {
+	if f.out != nil {
+		if f.gzipWriter != nil {
+			f.gzipWriter.Close()
+		}
+		f.out.Close()
+		f.out = nil
+	}
+}
+func (f *FileLogger) Write(p []byte) (n int, err error) {
+	if f.gzipWriter != nil {
+		return f.gzipWriter.Write(p)
+	}
+	return f.out.Write(p)
+}
+func (f *FileLogger) Sync() error {
+	var err error
+	if f.gzipWriter != nil {
+		f.gzipWriter.Close()
+		err = f.out.Sync()
+		f.gzipWriter, _ = gzip.NewWriterLevel(f.out, gzip.BestSpeed)
+	} else {
+		err = f.out.Sync()
+	}
+	return err
+}
+
+func (f *FileLogger) updateFile() bool {
 	t := time.Now()
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -125,22 +155,26 @@ func updateFile(f *FileLogger) bool {
 		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
 		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
 	}
-	filename := fmt.Sprintf(filenamePattern, *topic, identifier, t.Year(), t.Month(), t.Day(), t.Hour())
+	suffix := ""
+	if *gzipFlag {
+		suffix = ".gz"
+	}
+	filename := fmt.Sprintf(filenamePattern, *topic, identifier, t.Year(), t.Month(), t.Day(), t.Hour(), suffix)
 
 	if filename != f.filename || f.out == nil {
 		log.Printf("old %s new %s", f.filename, filename)
-		// roll it
-		if f.out != nil {
-			f.out.Close()
-		}
+		f.Close()
 		os.MkdirAll(*outputDir, 777)
 		log.Printf("opening %s/%s", *outputDir, filename)
-		newfile, err := os.OpenFile(fmt.Sprintf("%s/%s", *outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+		newfile, err := os.OpenFile(path.Join(*outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 		f.out = newfile
 		if err != nil {
 			log.Fatal(err)
 		}
 		f.filename = filename
+		if *gzipFlag {
+			f.gzipWriter, _ = gzip.NewWriterLevel(newfile, gzip.BestSpeed)
+		}
 		return true
 	}
 
