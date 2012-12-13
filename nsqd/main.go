@@ -21,7 +21,6 @@ var (
 	showVersion     = flag.Bool("version", false, "print version string")
 	httpAddress     = flag.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	tcpAddress      = flag.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
-	debugMode       = flag.Bool("debug", false, "enable debug mode")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic)")
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
 	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
