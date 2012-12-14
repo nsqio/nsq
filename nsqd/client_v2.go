@@ -37,7 +37,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 	return &ClientV2{
-		net.Conn:        conn,
+		Conn:            conn,
 		ReadyStateChan:  make(chan int, 1),
 		ExitChan:        make(chan int),
 		ConnectTime:     time.Now(),
