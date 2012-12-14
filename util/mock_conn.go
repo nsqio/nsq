@@ -15,11 +15,11 @@ func (c MockConn) Close() error {
 }
 
 func (c MockConn) LocalAddr() net.Addr {
-	return &net.TCPAddr{net.IPv4zero, 0}
+	return &net.TCPAddr{IP: net.IPv4zero}
 }
 
 func (c MockConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{net.IPv4zero, 0}
+	return &net.TCPAddr{IP: net.IPv4zero}
 }
 
 func (c MockConn) SetDeadline(t time.Time) error {
