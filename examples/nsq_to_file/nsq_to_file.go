@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	filenamePattern  = "%s.%s.%d-%02d-%02d_%02d.log%s" // topic.host.YYY-MM-DD_HH.log[.gz]
+	filenameFormat   = flag.String("filename-format", "#topic#.#host#.%Y-%m-%d_%H.log", "strftime compatible format for output filenames (#topic# and #host# are replaced)")
 	showVersion      = flag.Bool("version", false, "print version string")
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
@@ -145,6 +145,7 @@ func (f *FileLogger) Sync() error {
 
 func (f *FileLogger) updateFile() bool {
 	t := time.Now()
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
@@ -155,11 +156,13 @@ func (f *FileLogger) updateFile() bool {
 		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
 		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
 	}
-	suffix := ""
+
+	filename := strings.Replace(*filenameFormat, "#topic#", *topic, -1)
+	filename = strings.Replace(filename, "#host#", identifier, -1)
+	filename = strftime(filename, t)
 	if *gzipFlag {
-		suffix = ".gz"
+		filename = filename + ".gz"
 	}
-	filename := fmt.Sprintf(filenamePattern, *topic, identifier, t.Year(), t.Month(), t.Day(), t.Hour(), suffix)
 
 	if filename != f.filename || f.out == nil {
 		log.Printf("old %s new %s", f.filename, filename)
