@@ -11,10 +11,12 @@ import (
 // The number of bytes for a Message.Id
 const MsgIdLength = 16
 
+type MessageID [MsgIdLength]byte
+
 // Message is the fundamental data type containing
 // the id, body, and metadata
 type Message struct {
-	Id        []byte
+	Id        MessageID
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
@@ -22,7 +24,7 @@ type Message struct {
 
 // NewMessage creates a Message, initializes some metadata, 
 // and returns a pointer
-func NewMessage(id []byte, body []byte) *Message {
+func NewMessage(id MessageID, body []byte) *Message {
 	return &Message{
 		Id:        id,
 		Body:      body,
@@ -54,7 +56,7 @@ func (m *Message) Write(w io.Writer) error {
 		return err
 	}
 
-	_, err = w.Write(m.Id)
+	_, err = w.Write(m.Id[:])
 	if err != nil {
 		return err
 	}
@@ -71,6 +73,7 @@ func (m *Message) Write(w io.Writer) error {
 func DecodeMessage(byteBuf []byte) (*Message, error) {
 	var timestamp int64
 	var attempts uint16
+	var msg Message
 
 	buf := bytes.NewBuffer(byteBuf)
 
@@ -84,8 +87,7 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 		return nil, err
 	}
 
-	id := make([]byte, MsgIdLength)
-	_, err = io.ReadFull(buf, id)
+	_, err = io.ReadFull(buf, msg.Id[:])
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +97,9 @@ func DecodeMessage(byteBuf []byte) (*Message, error) {
 		return nil, err
 	}
 
-	msg := NewMessage(id, body)
+	msg.Body = body
 	msg.Timestamp = timestamp
 	msg.Attempts = attempts
 
-	return msg, nil
+	return &msg, nil
 }

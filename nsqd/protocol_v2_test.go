@@ -2,7 +2,6 @@ package main
 
 import (
 	"../nsq"
-	"../util"
 	"bufio"
 	"bytes"
 	"github.com/bmizerany/assert"
@@ -66,7 +65,7 @@ func TestBasicV2(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestBasicV2", "TestBasicV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
@@ -104,7 +103,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 		conn, err := mustConnectNSQd(tcpAddr)
 		assert.Equal(t, err, nil)
 
-		err = nsq.Subscribe(topicName, "ch"+i, "TestMultipleConsumerV2", "TestMultipleConsumerV2").Write(conn)
+		err = nsq.Subscribe(topicName, "ch"+i).Write(conn)
 		assert.Equal(t, err, nil)
 
 		err = nsq.Ready(1).Write(conn)
@@ -142,7 +141,7 @@ func TestClientTimeout(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestClientTimeoutV2", "TestClientTimeoutV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	time.Sleep(50 * time.Millisecond)
@@ -178,7 +177,7 @@ func TestClientHeartbeat(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestClientHeartbeatV2", "TestClientHeartbeatV2").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
@@ -212,7 +211,7 @@ func TestPausing(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch", "TestPausing", "TestPausing").Write(conn)
+	err = nsq.Subscribe(topicName, "ch").Write(conn)
 	assert.Equal(t, err, nil)
 
 	err = nsq.Ready(1).Write(conn)
@@ -276,28 +275,6 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		p.Exec(c, params)
-	}
-}
-
-func BenchmarkProtocolV2Data(b *testing.B) {
-	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	p := &ProtocolV2{}
-	var cb bytes.Buffer
-	rw := bufio.NewReadWriter(bufio.NewReader(&cb), bufio.NewWriter(ioutil.Discard))
-	conn := util.MockConn{rw}
-	c := NewClientV2(conn)
-	var buf bytes.Buffer
-	body := make([]byte, 256)
-	msg := nsq.NewMessage([]byte("0123456789abcdef"), body)
-	b.SetBytes(int64(len(body)))
-	b.StartTimer()
-
-	for i := 0; i < b.N; i += 1 {
-		buf.Reset()
-		msg.Write(&buf)
-		p.Send(c, nsq.FrameTypeMessage, buf.Bytes())
 	}
 }
 
@@ -415,7 +392,12 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		panic(err.Error())
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	nsq.Subscribe(topicName, "ch", "test", "test").Write(rw)
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	cmd, _ := nsq.Identify(ci)
+	cmd.Write(rw)
+	nsq.Subscribe(topicName, "ch").Write(rw)
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan

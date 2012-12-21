@@ -27,7 +27,7 @@ type NSQd struct {
 	httpAddr        *net.TCPAddr
 	tcpListener     net.Listener
 	httpListener    net.Listener
-	idChan          chan []byte
+	idChan          chan nsq.MessageID
 	exitChan        chan int
 	waitGroup       util.WaitGroupWrapper
 	lookupPeers     []*nsq.LookupPeer
@@ -58,7 +58,7 @@ func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 		workerId: workerId,
 		options:  options,
 		topicMap: make(map[string]*Topic),
-		idChan:   make(chan []byte, 4096),
+		idChan:   make(chan nsq.MessageID, 4096),
 		exitChan: make(chan int),
 	}
 

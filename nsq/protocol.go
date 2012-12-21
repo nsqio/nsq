@@ -1,7 +1,6 @@
 package nsq
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -85,6 +84,28 @@ func SendResponse(w io.Writer, data []byte) (int, error) {
 	return (n + 4), nil
 }
 
+// SendFramedResponse is a server side utility function to prefix data with a length header
+// and frame header and write to the supplied Writer
+func SendFramedResponse(w io.Writer, frameType int32, data []byte) (int, error) {
+	beBuf := make([]byte, 4)
+	size := uint32(len(data)) + 4
+
+	binary.BigEndian.PutUint32(beBuf, size)
+	n, err := w.Write(beBuf)
+	if err != nil {
+		return n, err
+	}
+
+	binary.BigEndian.PutUint32(beBuf, uint32(frameType))
+	n, err = w.Write(beBuf)
+	if err != nil {
+		return n + 4, err
+	}
+
+	n, err = w.Write(data)
+	return n + 8, err
+}
+
 // ReadResponse is a client-side utility function to read from the supplied Reader
 // according to the NSQ protocol spec:
 //
@@ -112,29 +133,6 @@ func ReadResponse(r io.Reader) ([]byte, error) {
 	return buf, nil
 }
 
-// DEPRECATED in 0.2.5, use: cmd.Write(w).
-//
-// SendCommand is a client-side utility function to serialize a command to the supplied Writer
-func SendCommand(w io.Writer, cmd *Command) error {
-	return cmd.Write(w)
-}
-
-// Frame is a server-side utility function to write the specified frameType 
-// and data to the supplied Writer
-func Frame(w io.Writer, frameType int32, data []byte) error {
-	err := binary.Write(w, binary.BigEndian, &frameType)
-	if err != nil {
-		return err
-	}
-
-	_, err = w.Write(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // UnpackResponse is a client-side utility function that unpacks serialized data 
 // according to NSQ protocol spec:
 //
@@ -146,18 +144,9 @@ func Frame(w io.Writer, frameType int32, data []byte) error {
 //
 // Returns a triplicate of: frame type, data ([]byte), error
 func UnpackResponse(response []byte) (int32, []byte, error) {
-	var frameType int32
-
 	if len(response) < 4 {
 		return -1, nil, errors.New("length of response is too small")
 	}
 
-	// frame type
-	buf := bytes.NewBuffer(response[:4])
-	err := binary.Read(buf, binary.BigEndian, &frameType)
-	if err != nil {
-		return -1, nil, err
-	}
-
-	return frameType, response[4:], nil
+	return int32(binary.BigEndian.Uint32(response)), response[4:], nil
 }

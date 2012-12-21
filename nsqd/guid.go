@@ -10,6 +10,7 @@ package main
 // behavior when sequences rollover for our specific implementation needs
 
 import (
+	"../nsq"
 	"encoding/hex"
 	"errors"
 	"time"
@@ -59,7 +60,9 @@ func NewGUID(workerId int64) (GUID, error) {
 	return GUID(id), nil
 }
 
-func (g GUID) Hex() []byte {
+func (g GUID) Hex() nsq.MessageID {
+	var h nsq.MessageID
+
 	b := make([]byte, 8)
 	b[0] = byte(g >> 56)
 	b[1] = byte(g >> 48)
@@ -70,8 +73,6 @@ func (g GUID) Hex() []byte {
 	b[6] = byte(g >> 8)
 	b[7] = byte(g)
 
-	h := make([]byte, 16)
-	hex.Encode(h, b)
-
+	hex.Encode(h[:], b)
 	return h
 }

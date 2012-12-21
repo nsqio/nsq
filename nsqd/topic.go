@@ -55,11 +55,11 @@ func (t *Topic) BackendQueue() BackendQueue {
 	return t.backend
 }
 
-func (t *Topic) InFlight() map[string]*pqueue.Item {
+func (t *Topic) InFlight() map[nsq.MessageID]*pqueue.Item {
 	return nil
 }
 
-func (t *Topic) Deferred() map[string]*pqueue.Item {
+func (t *Topic) Deferred() map[nsq.MessageID]*pqueue.Item {
 	return nil
 }
 
