@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strconv"
-	"strings"
 )
+
+var byteSpace = []byte(" ")
+var byteNewLine = []byte("\n")
 
 // Command represents a command from a client to an NSQ daemon
 type Command struct {
@@ -21,7 +22,7 @@ type Command struct {
 // String returns the name and parameters of the Command
 func (c *Command) String() string {
 	if len(c.Params) > 0 {
-		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, []byte(" "))))
+		return fmt.Sprintf("%s %s", c.Name, string(bytes.Join(c.Params, byteSpace)))
 	}
 	return string(c.Name)
 }
@@ -36,7 +37,7 @@ func (c *Command) Write(w io.Writer) error {
 	}
 
 	for _, param := range c.Params {
-		_, err := w.Write([]byte(" "))
+		_, err := w.Write(byteSpace)
 		if err != nil {
 			return err
 		}
@@ -46,7 +47,7 @@ func (c *Command) Write(w io.Writer) error {
 		}
 	}
 
-	_, err = w.Write([]byte("\n"))
+	_, err = w.Write(byteNewLine)
 	if err != nil {
 		return err
 	}
@@ -66,32 +67,30 @@ func (c *Command) Write(w io.Writer) error {
 	return nil
 }
 
-// Announce creates a new Command to announce the existence of
-// a given topic and/or channel.
-// NOTE: if channel == "." then it is considered n/a
-func Announce(topic string, channel string, port int, ips []string) *Command {
-	var params = [][]byte{[]byte(topic), []byte(channel), []byte(strconv.Itoa(port))}
-	return &Command{[]byte("ANNOUNCE"), params, []byte(strings.Join(ips, "\n"))}
-}
-
-// Identify creates a new Command to provide information about the client to nsqlookupd.
-// After connecting, it is the first message sent to nsqlookupd.
-func Identify(version string, tcpPort int, httpPort int, address string) *Command {
-	body, err := json.Marshal(struct {
-		Version  string `json:"version"`
-		TcpPort  int    `json:"tcp_port"`
-		HttpPort int    `json:"http_port"`
-		Address  string `json:"address"`
-	}{
-		version,
-		tcpPort,
-		httpPort,
-		address,
-	})
+// Identify creates a new Command to provide information about the client.  After connecting, 
+// it is generally the first message sent.
+//
+// The supplied map is marshaled into JSON to provide some flexibility
+// for this command to evolve over time.
+//
+// nsqd currently supports the following keys:
+//
+//     short_id - short identifier, typically client's short hosname
+//     long_id - long identifier, typically client's long hostname
+//     buffer_size - size in bytes for nsqd to buffer before writing to the wire for this client
+//
+// nsqlookupd currently supports the following keys:
+//
+//     version - the version of the nsqd peer
+//     tcp_port - the nsqd port where TCP clients can connect
+//     http_port - the nsqd port where HTTP clients can connect
+//     address - the address where clients can connect (generally DNS resolvable hostname)
+func Identify(js map[string]interface{}) (*Command, error) {
+	body, err := json.Marshal(js)
 	if err != nil {
-		log.Fatal("failed to create json %s", err.Error())
+		return nil, err
 	}
-	return &Command{[]byte("IDENTIFY"), [][]byte{}, body}
+	return &Command{[]byte("IDENTIFY"), nil, body}, nil
 }
 
 // Register creates a new Command to add a topic/channel for the connected nsqd
@@ -156,8 +155,8 @@ func MultiPublish(topic string, bodies [][]byte) (*Command, error) {
 }
 
 // Subscribe creates a new Command to subscribe to the given topic/channel
-func Subscribe(topic string, channel string, shortIdentifier string, longIdentifier string) *Command {
-	var params = [][]byte{[]byte(topic), []byte(channel), []byte(shortIdentifier), []byte(longIdentifier)}
+func Subscribe(topic string, channel string) *Command {
+	var params = [][]byte{[]byte(topic), []byte(channel)}
 	return &Command{[]byte("SUB"), params, nil}
 }
 
@@ -170,16 +169,16 @@ func Ready(count int) *Command {
 
 // Finish creates a new Command to indiciate that 
 // a given message (by id) has been processed successfully
-func Finish(id []byte) *Command {
-	var params = [][]byte{id}
+func Finish(id MessageID) *Command {
+	var params = [][]byte{id[:]}
 	return &Command{[]byte("FIN"), params, nil}
 }
 
 // Requeue creats a new Command to indicate that 
 // a given message (by id) should be requeued after the given timeout (in ms)
 // NOTE: a timeout of 0 indicates immediate requeue
-func Requeue(id []byte, timeoutMs int) *Command {
-	var params = [][]byte{id, []byte(strconv.Itoa(timeoutMs))}
+func Requeue(id MessageID, timeoutMs int) *Command {
+	var params = [][]byte{id[:], []byte(strconv.Itoa(timeoutMs))}
 	return &Command{[]byte("REQ"), params, nil}
 }
 

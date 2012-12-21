@@ -68,6 +68,7 @@ func (lp *LookupPeer) Write(data []byte) (int, error) {
 
 // Close implements the io.Closer interface
 func (lp *LookupPeer) Close() error {
+	lp.state = StateDisconnected
 	return lp.conn.Close()
 }
 
@@ -96,13 +97,11 @@ func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
 	err := cmd.Write(lp)
 	if err != nil {
 		lp.Close()
-		lp.state = StateDisconnected
 		return nil, err
 	}
 	resp, err := ReadResponse(lp)
 	if err != nil {
 		lp.Close()
-		lp.state = StateDisconnected
 		return nil, err
 	}
 	return resp, nil

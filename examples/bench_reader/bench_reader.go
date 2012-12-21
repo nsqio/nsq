@@ -54,7 +54,12 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 	}
 	conn.Write(nsq.MagicV2)
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	nsq.Subscribe(topic, channel, "test", "test").Write(rw)
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	cmd, _ := nsq.Idenfity(ci)
+	cmd.Write(rw)
+	nsq.Subscribe(topic, channel).Write(rw)
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan

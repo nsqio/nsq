@@ -49,7 +49,7 @@ type AsyncHandler interface {
 
 // FinishedMessage is the data type used over responseChannel in AsyncHandlers
 type FinishedMessage struct {
-	Id             []byte
+	Id             MessageID
 	RequeueDelayMs int
 	Success        bool
 }
@@ -370,7 +370,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return err
 	}
 
-	cmd := Subscribe(q.TopicName, q.ChannelName, q.ShortIdentifier, q.LongIdentifier)
+	cmd := Subscribe(q.TopicName, q.ChannelName)
 	err = connection.sendCommand(&buf, cmd)
 	if err != nil {
 		connection.Close()
