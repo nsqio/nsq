@@ -2,14 +2,19 @@
 
 ## NSQ Binaries
 
-* 0.2.16 - Alpha
+* 0.2.16 - rc.1
+    * #90/#108 performance optimizations / IDENTIFY protocol support in nsqd
+    * #105 nsq_to_file --filename-format parameter
+    * #103 nsq_to_http handler logging
+    * #102 compatibility with Go tip
+    * #99 nsq_to_file --gzip flag
     * #95 proxy graphite requests through nsqadmin
     * #93 fix nqd API response for no topics
     * #92 graph rendering options
-    * #87 fix MPUB
+    * #86 nsq_to_http Content-Length headers
     * #89 gopkg doc updates
     * #88 move pynsq to it's own repo
-    * #81 reader improvements / introduced MPUB. Fix bug for mem-queue-size < 10
+    * #81/#87 reader improvements / introduced MPUB. Fix bug for mem-queue-size < 10
     * #76 statsd/graphite support
     * #75 administrative ability to create topics and channels
 * 0.2.15 - 2012-10-25
@@ -36,7 +41,8 @@
 
 ## NSQ Go Client Library
 
-* 0.2.5 - Alpha
+* 0.2.5 - rc.1
+    * #90 performance optimizations
     * #81 reader performance improvements / MPUB support
 * 0.2.4 - 2012-10-15
     * #69 added IsStarved() to reader API
