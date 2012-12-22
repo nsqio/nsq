@@ -18,7 +18,9 @@ For `nsqd`, there is currently only one protocol:
 
 ### V2 Protocol
 
-After authenticating, in order to begin consuming messages, a client must `SUB` to a channel.
+After authenticating, the client can optionally send an `IDENTIFY` command to provide custom
+metadata (like, for example, more descriptive identifiers). In order to begin consuming messages, a
+client must `SUB` to a channel.
 
 Upon subscribing the client is placed in a `RDY` state of 0. This means that no messages
 will be sent to the client. When a client is ready to receive messages it should send a command that
@@ -32,14 +34,29 @@ seconds, `nsqd` will timeout and forcefully close a client connection that it ha
 
 Commands are line oriented and structured as follows:
 
+  * `IDENTIFY` - update client metadata on the server
+    
+        IDENTIFY\n
+        [ 4-byte size in bytes ][ N-byte JSON data ]
+    
+    NOTE: this command takes a size prefixed JSON body, relevant fields:
+    
+        <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
+        <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
+    
+    NOTE: there is no success response
+    
+    Error Responses:
+    
+        E_INVALID
+        E_BAD_BODY
+
   * `SUB` - subscribe to a specified topic/channel
     
-        SUB <topic_name> <channel_name> <short_id> <long_id>\n
+        SUB <topic_name> <channel_name>\n
         
         <topic_name> - a valid string
         <channel_name> - a valid string (optionally having #ephemeral suffix)
-        <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
-        <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
     
     NOTE: there is no success response
     
@@ -65,6 +82,25 @@ Commands are line oriented and structured as follows:
         E_INVALID
         E_BAD_TOPIC
         E_BAD_MESSAGE
+        E_PUT_FAILED
+
+  * `MPUB` - publish multiple messages to a specified **topic**:
+    
+        MPUB <topic_name> <num_messages>\n
+        [ 4-byte size in bytes ][ N-byte binary data ]... (repeated <num_messages> times)
+        
+        <topic_name> - a valid string
+        <num_messages> - a string representation of integer N
+    
+    Success Response:
+    
+        OK
+    
+    Error Responses:
+    
+        E_MISSING_PARAMS
+        E_BAD_TOPIC
+        E_BAD_BODY
         E_PUT_FAILED
 
   * `RDY` - update `RDY` state (indicate you are ready to receive messages)

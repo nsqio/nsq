@@ -1,5 +1,7 @@
 ## NSQ Design
 
+NOTE: for accompanying visual illustration see this [slide deck][slides].
+
 ### Simplifying Configuration and Administration
 
 A single `nsqd` instance is designed to handle multiple streams of data at once. Streams are called
@@ -14,6 +16,10 @@ are in a state where they are ready to receive messages, each message will be de
 client.  For example:
 
 ![nsqd clients](http://media.tumblr.com/tumblr_marmk2NL0k1qj3yp2.png)
+
+To summarize, messages are multicast from topic -> channel (every channel receives a copy of all
+messages for that topic) but evenly distributed from channel -> consumers (each consumer receives a
+portion of the messages for that channel).
 
 **NSQ** also includes a helper application, `nsqlookupd`, which provides a directory service where
 consumers can lookup the addresses of `nsqd` instances that provide the topics they are interested
@@ -189,3 +195,4 @@ interfaces, and iteratively build functionality.
 [golang]: http://golang.org
 [go_at_bitly]: http://word.bitly.com/post/29550171827/go-go-gadget
 [simplequeue]: https://github.com/bitly/simplehttp/tree/master/simplequeue
+[slides]: https://speakerdeck.com/snakes/nsq-nyc-golang-meetup

@@ -3,7 +3,16 @@
 ## NSQ Binaries
 
 * 0.2.16 - rc.1
-    * #90/#108 performance optimizations / IDENTIFY protocol support in nsqd
+
+    **Upgrading from 0.2.15**: there are no backward incompatible changes in this release.
+    
+    However, this release introduces the `IDENTIFY` command (which supersedes sending 
+    metadata along with `SUB`) for clients of `nsqd`.  The old functionality will be 
+    removed in a future release.
+    
+    * #90/#108 performance optimizations / IDENTIFY protocol support in nsqd. For 
+      a single consumer of small messages (< 4k) increases throughput ~400% and 
+      reduces # of allocations ~30%.
     * #105 nsq_to_file --filename-format parameter
     * #103 nsq_to_http handler logging
     * #102 compatibility with Go tip
@@ -42,6 +51,22 @@
 ## NSQ Go Client Library
 
 * 0.2.5 - rc.1
+    
+    **Upgrading from 0.2.4**: There are no backward incompatible changes to applications
+    written against the public `nsq.Reader` API.
+    
+    However, there *are* a few backward incompatible changes to the API for applications that 
+    directly use other public methods, or properties of a few NSQ data types:
+    
+    `nsq.Message` IDs are now a type `nsq.MessageID` (a `[16]byte` array).  The signatures of
+    `nsq.Finish()` and `nsq.Requeue()` reflect this change.
+    
+    `nsq.SendCommand()` and `nsq.Frame()` were removed in favor of `nsq.SendFramedResponse()`.
+    
+    `nsq.Subscribe()` no longer accepts `shortId` and `longId`.  If upgrading your consumers
+    before upgrading your `nsqd` binaries to `0.2.16-rc.1` they will not be able to send the 
+    optional custom identifiers.
+    
     * #90 performance optimizations
     * #81 reader performance improvements / MPUB support
 * 0.2.4 - 2012-10-15
