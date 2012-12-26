@@ -30,7 +30,7 @@ type Consumer interface {
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
-// There can be multiple channels per topic, each with there own unique set 
+// There can be multiple channels per topic, each with there own unique set
 // of subscribers (clients).
 //
 // Channels maintain all client and message metadata, orchestrating in-flight
@@ -121,12 +121,15 @@ func (c *Channel) Exiting() bool {
 
 // Delete empties the channel and closes
 func (c *Channel) Delete() error {
-	EmptyQueue(c)
-	return c.Close()
+	return c.exit(true)
 }
 
 // Close cleanly closes the Channel
 func (c *Channel) Close() error {
+	return c.exit(false)
+}
+
+func (c *Channel) exit(deleted bool) error {
 	var msgBuf bytes.Buffer
 
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
@@ -153,19 +156,25 @@ func (c *Channel) Close() error {
 	// synchronize the close of router() and pqWorkers (2)
 	c.waitGroup.Wait()
 
-	// messagePump is responsible for closing the channel it writes to
-	// this will read until its closed (exited)
-	for msg := range c.clientMsgChan {
-		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		WriteMessageToBackend(&msgBuf, msg, c)
+	if deleted {
+		// empty the queue (deletes the backend files, too)
+		EmptyQueue(c)
+	} else {
+		// messagePump is responsible for closing the channel it writes to
+		// this will read until its closed (exited)
+		for msg := range c.clientMsgChan {
+			log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
+			WriteMessageToBackend(&msgBuf, msg, c)
+		}
+
+		// write anything leftover to disk
+		if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
+			log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
+				c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
+		}
+		FlushQueue(c)
 	}
 
-	// write anything leftover to disk
-	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
-			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
-	}
-	FlushQueue(c)
 	return c.backend.Close()
 }
 

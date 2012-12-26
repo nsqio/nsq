@@ -167,11 +167,11 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	// v2 opportunistically buffers data to clients to reduce write system calls
 	// we force flush in two cases:
 	//    1. when the client is not ready to receive messages
-	//    2. we're buffered and the channel has nothing left to send us 
+	//    2. we're buffered and the channel has nothing left to send us
 	//       (ie. we would block in this loop anyway)
 	//
-	// NOTE: `flusher` is used to bound message latency for 
-	// the pathological case of a channel on a low volume topic 
+	// NOTE: `flusher` is used to bound message latency for
+	// the pathological case of a channel on a low volume topic
 	// with >1 clients having >1 RDY counts
 	flusher := time.NewTicker(5 * time.Millisecond)
 	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)

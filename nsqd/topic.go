@@ -144,7 +144,7 @@ func (t *Topic) Depth() int64 {
 	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
 }
 
-// messagePump selects over the in-memory and backend queue and 
+// messagePump selects over the in-memory and backend queue and
 // writes messages to every channel for this topic
 func (t *Topic) messagePump() {
 	var msg *nsq.Message
@@ -226,17 +226,14 @@ func (t *Topic) router() {
 
 // Delete empties the topic and all its channels and closes
 func (t *Topic) Delete() error {
-	EmptyQueue(t)
-	t.Lock()
-	for _, channel := range t.channelMap {
-		delete(t.channelMap, channel.name)
-		channel.Delete()
-	}
-	t.Unlock()
-	return t.Close()
+	return t.exit(true)
 }
 
 func (t *Topic) Close() error {
+	return t.exit(false)
+}
+
+func (t *Topic) exit(deleted bool) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
@@ -254,19 +251,32 @@ func (t *Topic) Close() error {
 	// synchronize the close of router() and messagePump()
 	t.waitGroup.Wait()
 
-	// close all the channels
-	for _, channel := range t.channelMap {
-		err := channel.Close()
-		if err != nil {
-			// we need to continue regardless of error to close all the channels
-			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
+	if deleted {
+		// empty the queue (deletes the backend files, too)
+		EmptyQueue(t)
+
+		t.Lock()
+		for _, channel := range t.channelMap {
+			delete(t.channelMap, channel.name)
+			channel.Delete()
 		}
+		t.Unlock()
+	} else {
+		// close all the channels
+		for _, channel := range t.channelMap {
+			err := channel.Close()
+			if err != nil {
+				// we need to continue regardless of error to close all the channels
+				log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
+			}
+		}
+
+		// write anything leftover to disk
+		if len(t.memoryMsgChan) > 0 {
+			log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
+		}
+		FlushQueue(t)
 	}
 
-	// write anything leftover to disk
-	if len(t.memoryMsgChan) > 0 {
-		log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
-	}
-	FlushQueue(t)
 	return t.backend.Close()
 }

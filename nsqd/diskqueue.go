@@ -230,7 +230,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 
 	totalBytes := int64(4 + msgSize)
 
-	// we only advance next* because we have not yet sent this to consumers 
+	// we only advance next* because we have not yet sent this to consumers
 	// (where readFileNum, readPos will actually be advanced)
 	d.nextReadPos = d.readPos + totalBytes
 	d.nextReadFileNum = d.readFileNum
@@ -439,7 +439,7 @@ func (d *DiskQueue) ioLoop() {
 		}
 
 		select {
-		// the Go channel spec dictates that nil channel operations (read or write) 
+		// the Go channel spec dictates that nil channel operations (read or write)
 		// in a select are skipped, we set r to d.readChan only when there is data to read
 		// and reset it to nil after writing to the channel
 		case r <- dataRead:
