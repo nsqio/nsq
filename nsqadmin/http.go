@@ -132,17 +132,17 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	parts := strings.Split(matches[1], "/")
-	topic := parts[0]
-	if !nsq.IsValidTopicName(topic) {
+	topicName := parts[0]
+	if !nsq.IsValidTopicName(topicName) {
 		http.Error(w, "INVALID_TOPIC", 500)
 		return
 	}
 	if len(parts) == 2 {
-		channel := parts[1]
-		if !nsq.IsValidChannelName(channel) {
+		channelName := parts[1]
+		if !nsq.IsValidChannelName(channelName) {
 			http.Error(w, "INVALID_CHANNEL", 500)
 		} else {
-			channelHandler(w, req, topic, channel)
+			channelHandler(w, req, topicName, channelName)
 		}
 		return
 	}
@@ -156,11 +156,11 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 
 	var producers []string
 	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNSQDTopicProducers(topic, nsqdHTTPAddrs)
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
 	}
-	topicHostStats, channelStats, _ := getNSQDStats(producers, topic)
+	topicHostStats, channelStats, _ := getNSQDStats(producers, topicName)
 
 	globalTopicStats := &TopicHostStats{HostAddress: "Total"}
 	for _, t := range topicHostStats {
@@ -177,10 +177,10 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		GlobalTopicStats *TopicHostStats
 		ChannelStats     map[string]*ChannelStats
 	}{
-		Title:            fmt.Sprintf("NSQ %s", topic),
+		Title:            fmt.Sprintf("NSQ %s", topicName),
 		GraphOptions:     NewGraphOptions(w, req, reqParams),
 		Version:          util.BINARY_VERSION,
-		Topic:            topic,
+		Topic:            topicName,
 		TopicProducers:   producers,
 		TopicHostStats:   topicHostStats,
 		GlobalTopicStats: globalTopicStats,
@@ -193,7 +193,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func channelHandler(w http.ResponseWriter, req *http.Request, topic string, channel string) {
+func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, channelName string) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -203,12 +203,12 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 
 	var producers []string
 	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 	} else {
-		producers, _ = getNSQDTopicProducers(topic, nsqdHTTPAddrs)
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
 	}
-	_, allChannelStats, _ := getNSQDStats(producers, topic)
-	channelStats := allChannelStats[channel]
+	_, allChannelStats, _ := getNSQDStats(producers, topicName)
+	channelStats := allChannelStats[channelName]
 
 	p := struct {
 		Title          string
@@ -219,11 +219,11 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topic string, chan
 		TopicProducers []string
 		ChannelStats   *ChannelStats
 	}{
-		Title:          fmt.Sprintf("NSQ %s / %s", topic, channel),
+		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
 		GraphOptions:   NewGraphOptions(w, req, reqParams),
 		Version:        util.BINARY_VERSION,
-		Topic:          topic,
-		Channel:        channel,
+		Topic:          topicName,
+		Channel:        channelName,
 		TopicProducers: producers,
 		ChannelStats:   channelStats,
 	}
@@ -245,12 +245,12 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 
 	channels := make(map[string][]string)
 	allTopics, _ := getLookupdTopics(lookupdHTTPAddrs)
-	for _, topic := range allTopics {
+	for _, topicName := range allTopics {
 		var producers []string
-		producers, _ = getLookupdTopicProducers(topic, lookupdHTTPAddrs)
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 		if len(producers) == 0 {
-			topicChannels, _ := getLookupdTopicChannels(topic, lookupdHTTPAddrs)
-			channels[topic] = topicChannels
+			topicChannels, _ := getLookupdTopicChannels(topicName, lookupdHTTPAddrs)
+			channels[topicName] = topicChannels
 		}
 	}
 
@@ -354,7 +354,12 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// for topic removal, you need to get all the producers *first*
-	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	var producers []string
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	} else {
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	}
 
 	// remove the topic from all the lookupds
 	for _, addr := range lookupdHTTPAddrs {
@@ -414,7 +419,13 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	var producers []string
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	} else {
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	}
+
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
 			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -443,7 +454,13 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	var producers []string
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	} else {
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	}
+
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s",
 			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -473,7 +490,13 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	var producers []string
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	} else {
+		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	}
+
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s",
 			addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
