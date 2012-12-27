@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	filenameFormat   = flag.String("filename-format", "#topic#.#host#.%Y-%m-%d_%H.log", "strftime compatible format for output filenames (#topic# and #host# are replaced)")
+	datetimeFormat   = flag.String("datetime-format", "%Y-%m-%d_%H", "strftime compatible format for <DATETIME> in filename format")
+	filenameFormat   = flag.String("filename-format", "<TOPIC>.<HOST>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <DATETIME> are replaced)")
 	showVersion      = flag.Bool("version", false, "print version string")
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
@@ -157,9 +158,10 @@ func (f *FileLogger) updateFile() bool {
 		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
 	}
 
-	filename := strings.Replace(*filenameFormat, "#topic#", *topic, -1)
-	filename = strings.Replace(filename, "#host#", identifier, -1)
-	filename = strftime(filename, t)
+	filename := strings.Replace(*filenameFormat, "<TOPIC>", *topic, -1)
+	filename = strings.Replace(filename, "<HOST>", identifier, -1)
+	datetime := strftime(*datetimeFormat, t)
+	filename = strings.Replace(filename, "<DATETIME>", datetime, -1)
 	if *gzipFlag {
 		filename = filename + ".gz"
 	}
