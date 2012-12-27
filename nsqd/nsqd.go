@@ -174,7 +174,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		n.topicMap[topicName] = t
 		log.Printf("TOPIC(%s): created", t.name)
 
-		// release our global nsqd lock, and switch to a more granular topic lock while we init our 
+		// release our global nsqd lock, and switch to a more granular topic lock while we init our
 		// channels from lookupd. This blocks concurrent PutMessages to this topic.
 		t.Lock()
 		defer t.Unlock()
