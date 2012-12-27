@@ -36,7 +36,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 	return &ClientV2{
-		Conn:            conn,
+		Conn: conn,
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
 		ReadyStateChan:  make(chan int, 1),

@@ -5,8 +5,8 @@ package main
 // and indirectly:
 // Twitter's `snowflake` https://github.com/twitter/snowflake
 
-// only minor cleanup and changes to introduce a type, combine the concept 
-// of workerId + datacenterId into a single identifier, and modify the 
+// only minor cleanup and changes to introduce a type, combine the concept
+// of workerId + datacenterId into a single identifier, and modify the
 // behavior when sequences rollover for our specific implementation needs
 
 import (
