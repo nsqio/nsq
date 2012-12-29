@@ -1,3 +1,13 @@
+```
+ooooo      ooo  .oooooo..o   .oooooo.
+`888b.     `8' d8P'    `Y8  d8P'  `Y8b
+ 8 `88b.    8  Y88bo.      888      888
+ 8   `88b.  8   `"Y8888o.  888      888
+ 8     `88b.8       `"Y88b 888      888
+ 8       `888  oo     .d8P `88b    d88b
+o8o        `8  8""88888P'   `Y8bood8P'Ybd'
+```
+
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
 
@@ -11,7 +21,7 @@ data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-pro
 else). Official Go and Python libraries are available out of the box and, if you're interested in
 building your own client, there's a [protocol spec][protocol] (see [client libraries](#client)).
 
-The latest stable release is **[0.2.15][latest_tag]**. We publish [binary releases][binary] for
+The latest stable release is **[0.2.16][latest_tag]**. We publish [binary releases][binary] for
 linux and darwin.
 
 NOTE: master is our *development* branch and may *not* be stable at all times.
@@ -45,14 +55,36 @@ doc][design] or [blog post][nsq_post].
 
 ## Additional Documentation
 
-**NSQ** is composed of the following individual components:
+**NSQ** is composed of the following individual components, each with their own README:
 
  * [nsqd][nsqd] is the daemon that receives, buffers, and delivers messages to clients.
  * [nsqlookupd][nsqlookupd] is the daemon that manages topology information
  * [nsqadmin][nsqadmin] is the web UI to view message statistics and perform administrative tasks
  * [nsq][nsq] is a go package for writing `nsqd` clients
 
-There is also a [protocol spec][protocol].
+As well as the following documents in the [docs][docs] directory:
+
+ * [Design][design] - in-depth overview of how and why
+ * [Patterns][patterns] - implementation solutions for various use cases
+ * [Protocol Spec][protocol] - technical details for the `nsqd` protocol
+
+### Performance
+
+DISCLAIMER: Please keep in mind that NSQ is designed to be used in a distributed fashion. Single
+node performance is important, but not the end-all-be-all of what we're looking to achieve. Also,
+benchmarks are stupid, but here's a few anyway to ignite the flame:
+
+On a 2012 MacBook Air i7 2ghz (`GOMAXPROCS=1`, `go tip 8bbc0bdf832e`) single publisher, single consumer:
+
+```
+$ ./nsqd --mem-queue-size=100000
+
+$ ./bench_writer --num=100000
+2013/01/06 17:24:38 duration: 310.575793ms - 61.413mb/s - 321982.596ops/s - 3.106us/op
+
+$ ./bench_reader --num=100000
+2013/01/06 17:25:47 duration: 672.059087ms - 28.381mb/s - 148796.441ops/s - 6.721us/op
+```
 
 ### Getting Started
 
@@ -73,22 +105,26 @@ and archiving messages to disk.
 
         $ nsqadmin --lookupd-http-address=127.0.0.1:4161
 
- 5. finally, in another shell, start `nsq_to_file`:
+ 5. publish an initial message (creates the topic in the cluster, too):
+ 
+        $ curl -d 'hello world 1' 'http://127.0.0.1:4151/put?topic=test'
+
+ 6. finally, in another shell, start `nsq_to_file`:
 
         $ nsq_to_file --topic=test --output-dir=/tmp --lookupd-http-address=127.0.0.1:4161
 
- 6. publish some messages to `nsqd`:
+ 7. publish more messages to `nsqd`:
 
-        $ curl -d 'hello world 1' 'http://127.0.0.1:4151/put?topic=test'
         $ curl -d 'hello world 2' 'http://127.0.0.1:4151/put?topic=test'
         $ curl -d 'hello world 3' 'http://127.0.0.1:4151/put?topic=test'
 
- 7. to verify things worked as expected, in a web browser open `http://127.0.0.1:4171/` to view 
+ 8. to verify things worked as expected, in a web browser open `http://127.0.0.1:4171/` to view 
     the `nsqadmin` UI and see statistics.  Also, check the contents of the log files (`test.*.log`) 
     written to `/tmp`.
 
 The important lesson here is that `nsq_to_file` (the client) is not explicitly told where the `test`
-topic is produced, it retrieves this information from `nsqlookupd`.
+topic is produced, it retrieves this information from `nsqlookupd` and, despite the timing of the
+connection, no messages are lost.
 
 ## Authors
 
@@ -109,7 +145,9 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Clarity Services ([@ClarityServices][clarity_github]) for the [Ruby Client Library][ruby_lib]
  * Harley Laue ([@losinggeneration][harley_github])
  * Justin Azoff ([@JustinAzoff][justin_github])
-
+ * Michael Hood ([@michaelhood][michael_github])
+ * Xianjie ([@datastream][datastream_github])
+ 
 [simplehttp]: https://github.com/bitly/simplehttp
 [msgpack]: http://msgpack.org/
 [go-protobuf]: http://code.google.com/p/protobuf/
@@ -142,9 +180,13 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [spof]: https://github.com/bitly/nsq/blob/master/docs/design.md#spof
 [message_guarantee]: https://github.com/bitly/nsq/blob/master/docs/design.md#delivery
 [design]: https://github.com/bitly/nsq/blob/master/docs/design.md
-[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.15
+[docs]: https://github.com/bitly/nsq/tree/master/docs/
+[patterns]: https://github.com/bitly/nsq/blob/master/docs/patterns.md
+[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.16
 [pynsq_pypi]: http://pypi.python.org/pypi/pynsq
 [nodensq_npm]: https://npmjs.org/package/nsq
 [ruby_nsq_rubygems]: http://rubygems.org/gems/ruby_nsq
 [libnsq]: https://github.com/mreiferson/libnsq
 [nsq-java]: https://github.com/bitly/nsq-java
+[michael_github]: https://github.com/michaelhood
+[datastream_github]: https://github.com/datastream

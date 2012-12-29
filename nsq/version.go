@@ -6,4 +6,4 @@
 // as a high-level Reader library to implement robust consumers.
 package nsq
 
-const VERSION = "0.2.5-rc.1"
+const VERSION = "0.3.0"
