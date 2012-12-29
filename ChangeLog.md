@@ -79,6 +79,8 @@
 
 ## pynsq Python Client Library
 
+* 0.3 - 2012-10-31
+    * #88 moved **pynsq** to its own [repository](https://github.com/bitly/pynsq).
 * 0.3 - 2012-10-25
     * #79 heartbeat checks, lookupd jitter, removal of automatic JSON, refactoring for subclassing
 * 0.2 - 2012-10-09
