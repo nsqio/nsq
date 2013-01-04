@@ -174,12 +174,19 @@ func Finish(id MessageID) *Command {
 	return &Command{[]byte("FIN"), params, nil}
 }
 
-// Requeue creats a new Command to indicate that
+// Requeue creates a new Command to indicate that
 // a given message (by id) should be requeued after the given timeout (in ms)
 // NOTE: a timeout of 0 indicates immediate requeue
 func Requeue(id MessageID, timeoutMs int) *Command {
 	var params = [][]byte{id[:], []byte(strconv.Itoa(timeoutMs))}
 	return &Command{[]byte("REQ"), params, nil}
+}
+
+// Touch creates a new Command to reset the timeout for
+// a given message (by id)
+func Touch(id MessageID) *Command {
+	var params = [][]byte{id[:]}
+	return &Command{[]byte("TOUCH"), params, nil}
 }
 
 // StartClose creates a new Command to indicate that the

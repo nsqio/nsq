@@ -322,6 +322,9 @@ func TestSizeLimits(t *testing.T) {
 
 	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
 
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
+
 	nsq.Publish(topicName, make([]byte, 95)).Write(conn)
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
@@ -382,6 +385,52 @@ func TestSizeLimits(t *testing.T) {
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
+}
+
+func TestTouch(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.msgTimeout = 50 * time.Millisecond
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
+
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("ch")
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
+	topic.PutMessage(msg)
+
+	err = nsq.Ready(1).Write(conn)
+	assert.Equal(t, err, nil)
+
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := nsq.DecodeMessage(data)
+	assert.Equal(t, frameType, nsq.FrameTypeMessage)
+	assert.Equal(t, msgOut.Id, msg.Id)
+
+	time.Sleep(25 * time.Millisecond)
+
+	err = nsq.Touch(msg.Id).Write(conn)
+	assert.Equal(t, err, nil)
+
+	time.Sleep(30 * time.Millisecond)
+
+	err = nsq.Finish(msg.Id).Write(conn)
+	assert.Equal(t, err, nil)
+
+	assert.Equal(t, channel.timeoutCount, uint64(0))
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {

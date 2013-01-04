@@ -12,6 +12,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,9 +26,10 @@ var (
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic/channel)")
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
 	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
-	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
+	msgTimeout      = flag.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
 	maxMessageSize  = flag.Int64("max-message-size", 1024768, "maximum size of a single message in bytes")
 	maxBodySize     = flag.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
+	maxMsgTimeout   = flag.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
@@ -88,6 +91,22 @@ func main() {
 		go statsdLoop(*statsdAddress, prefix, *statsdInterval)
 	}
 
+	// for backwards compatibility if --msg-timeout only
+	// contains numbers then default to ms
+	var msgTimeoutDuration time.Duration
+	if regexp.MustCompile(`^[0-9]+$`).MatchString(*msgTimeout) {
+		intMsgTimeout, err := strconv.Atoi(*msgTimeout)
+		if err != nil {
+			log.Fatalf("ERROR: failed to Atoi --msg-timeout %s - %s", *msgTimeout, err.Error())
+		}
+		msgTimeoutDuration = time.Duration(intMsgTimeout) * time.Millisecond
+	} else {
+		msgTimeoutDuration, err = time.ParseDuration(*msgTimeout)
+		if err != nil {
+			log.Fatalf("ERROR: failed to ParseDuration --msg-timeout %s - %s", *msgTimeout, err.Error())
+		}
+	}
+
 	options := NewNsqdOptions()
 	options.maxMessageSize = *maxMessageSize
 	options.maxBodySize = *maxBodySize
@@ -95,7 +114,8 @@ func main() {
 	options.dataPath = *dataPath
 	options.maxBytesPerFile = *maxBytesPerFile
 	options.syncEvery = *syncEvery
-	options.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+	options.msgTimeout = msgTimeoutDuration
+	options.maxMsgTimeout = *maxMsgTimeout
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr
