@@ -304,6 +304,8 @@ func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	NotifyAdminAction("create_topic", topicName, "", req)
+
 	if len(channelName) > 0 {
 		for _, addr := range lookupdHTTPAddrs {
 			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
@@ -328,6 +330,7 @@ func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 				continue
 			}
 		}
+		NotifyAdminAction("create_channel", topicName, channelName, req)
 	}
 
 	http.Redirect(w, req, "/lookup", 302)
@@ -384,6 +387,8 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	NotifyAdminAction("delete_topic", topicName, "", req)
+
 	http.Redirect(w, req, rd, 302)
 }
 
@@ -437,6 +442,8 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	NotifyAdminAction("delete_channel", topicName, channelName, req)
+
 	http.Redirect(w, req, rd, 302)
 }
 
@@ -473,6 +480,8 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	NotifyAdminAction("empty_channel", topicName, channelName, req)
+
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
 }
 
@@ -508,6 +517,8 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 	}
+
+	NotifyAdminAction(strings.TrimLeft(req.URL.Path, "/"), topicName, channelName, req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
