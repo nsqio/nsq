@@ -47,7 +47,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		// trim the '\n'
 		line = line[:len(line)-1]
 		// optionally trim the '\r'
-		if line[len(line)-1] == '\r' {
+		if len(line) > 0 && line[len(line)-1] == '\r' {
 			line = line[:len(line)-1]
 		}
 		params := bytes.Split(line, []byte(" "))
