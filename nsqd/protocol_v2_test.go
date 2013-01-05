@@ -264,6 +264,22 @@ func TestPausing(t *testing.T) {
 	assert.Equal(t, msg.Body, []byte("test body3"))
 }
 
+func TestEmptyCommand(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+	
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+	
+	_, err = conn.Write([]byte("\n\n"))
+	assert.Equal(t, err, nil)
+	
+	// if we didn't panic here we're good, see issue #120
+}
+
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
