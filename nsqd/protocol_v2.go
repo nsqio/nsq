@@ -53,14 +53,18 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		params := bytes.Split(line, []byte(" "))
 
 		if *verbose {
-			log.Printf("PROTOCOL(V2): [%s] %s", client, params[0])
+			log.Printf("PROTOCOL(V2): [%s] %s", client, params)
 		}
 
 		response, err := p.Exec(client, params)
 		if err != nil {
-			log.Printf("ERROR: CLIENT(%s) - %s", client, err.(*nsq.ClientErr).Description())
+			log.Printf("ERROR: CLIENT(%s) - %s", client, err.(nsq.DescriptiveError).Description())
 			err = p.Send(client, nsq.FrameTypeError, []byte(err.Error()))
 			if err != nil {
+				break
+			}
+			// errors of type FatalClientErr should forceably close the connection
+			if _, ok := err.(*nsq.FatalClientErr); ok {
 				break
 			}
 			continue
@@ -245,19 +249,24 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	var err error
 
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
-		return nil, nsq.NewClientErr("E_INVALID", "client not initialized")
+		return nil, nsq.NewFatalClientErr("E_INVALID", "client not initialized")
 	}
 
 	var bodyLen int32
 	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
+	}
+
+	if int64(bodyLen) > nsqd.options.maxBodySize {
+		return nil, nsq.NewFatalClientErr("E_BODY_TOO_BIG",
+			fmt.Sprintf("body too big %d > %d", bodyLen, nsqd.options.maxBodySize))
 	}
 
 	body := make([]byte, bodyLen)
 	_, err = io.ReadFull(client.Reader, body)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
 	// body is a json structure with producer information
@@ -267,7 +276,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	}{}
 	err = json.Unmarshal(body, &clientInfo)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
 	client.ShortIdentifier = clientInfo.ShortId
@@ -287,12 +296,14 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 
 	topicName := string(params[1])
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
+		return nil, nsq.NewClientErr("E_BAD_TOPIC",
+			fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
 	channelName := string(params[2])
 	if !nsq.IsValidChannelName(channelName) {
-		return nil, nsq.NewClientErr("E_BAD_CHANNEL", fmt.Sprintf("channel name '%s' is not valid", channelName))
+		return nil, nsq.NewClientErr("E_BAD_CHANNEL",
+			fmt.Sprintf("channel name '%s' is not valid", channelName))
 	}
 
 	// TODO: this can be removed once all clients are updated to use IDENTIFY
@@ -330,7 +341,8 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 	if len(params) > 1 {
 		b10, err := util.ByteToBase10(params[1])
 		if err != nil {
-			return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse RDY count %s", params[1]))
+			return nil, nsq.NewClientErr("E_INVALID",
+				fmt.Sprintf("could not parse RDY count %s", params[1]))
 		}
 		count = int64(b10)
 	}
@@ -386,12 +398,14 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 	copy(id[:], params[1])
 	timeoutMs, err := util.ByteToBase10(params[2])
 	if err != nil {
-		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("could not parse timeout %s", params[2]))
+		return nil, nsq.NewClientErr("E_INVALID",
+			fmt.Sprintf("could not parse timeout %s", params[2]))
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
 	if timeoutDuration < 0 || timeoutDuration > maxTimeout {
-		return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("timeout %d out of range", timeoutDuration))
+		return nil, nsq.NewClientErr("E_INVALID",
+			fmt.Sprintf("timeout %d out of range", timeoutDuration))
 	}
 
 	err = client.Channel.RequeueMessage(client, id, timeoutDuration)
@@ -427,30 +441,36 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	var bodyLen int32
 
 	if len(params) < 2 {
-		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
+		return nil, nsq.NewFatalClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
+		return nil, nsq.NewFatalClientErr("E_BAD_TOPIC",
+			fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
 	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
+	}
+
+	if int64(bodyLen) > nsqd.options.maxMessageSize {
+		return nil, nsq.NewFatalClientErr("E_MSG_TOO_BIG",
+			fmt.Sprintf("message too big %d > %d", bodyLen, nsqd.options.maxMessageSize))
 	}
 
 	messageBody := make([]byte, bodyLen)
 	_, err = io.ReadFull(client.Reader, messageBody)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
 	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_PUT_FAILED", err.Error())
+		return nil, nsq.NewFatalClientErr("E_PUT_FAILED", err.Error())
 	}
 
 	return []byte("OK"), nil
@@ -463,48 +483,59 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	var messageSize int32
 
 	if len(params) < 2 {
-		return nil, nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
+		return nil, nsq.NewFatalClientErr("E_MISSING_PARAMS", "insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
+		return nil, nsq.NewFatalClientErr("E_BAD_TOPIC",
+			fmt.Sprintf("topic name '%s' is not valid", topicName))
 	}
 
 	err = binary.Read(client.Reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
+	}
+
+	if int64(bodyLen) > nsqd.options.maxBodySize {
+		return nil, nsq.NewFatalClientErr("E_BODY_TOO_BIG",
+			fmt.Sprintf("body too big %d > %d", bodyLen, nsqd.options.maxBodySize))
 	}
 
 	body := make([]byte, bodyLen)
 	_, err = io.ReadFull(client.Reader, body)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
 	buf := bytes.NewBuffer(body)
 	err = binary.Read(buf, binary.BigEndian, &numMessages)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
 	topic := nsqd.GetTopic(topicName)
 	for i := int32(0); i < numMessages; i++ {
 		err = binary.Read(buf, binary.BigEndian, &messageSize)
 		if err != nil {
-			return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+			return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
+		}
+
+		if int64(messageSize) > nsqd.options.maxMessageSize {
+			return nil, nsq.NewFatalClientErr("E_MSG_TOO_BIG",
+				fmt.Sprintf("message too big %d > %d", messageSize, nsqd.options.maxMessageSize))
 		}
 
 		msgBody := make([]byte, messageSize)
 		_, err = io.ReadFull(buf, msgBody)
 		if err != nil {
-			return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+			return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 		}
 
 		msg := nsq.NewMessage(<-nsqd.idChan, msgBody)
 		err := topic.PutMessage(msg)
 		if err != nil {
-			return nil, nsq.NewClientErr("E_PUT_FAILED", err.Error())
+			return nil, nsq.NewFatalClientErr("E_PUT_FAILED", err.Error())
 		}
 	}
 
