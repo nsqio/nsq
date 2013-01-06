@@ -57,7 +57,7 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
-	cmd, _ := nsq.Idenfity(ci)
+	cmd, _ := nsq.Identify(ci)
 	cmd.Write(rw)
 	nsq.Subscribe(topic, channel).Write(rw)
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
