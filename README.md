@@ -160,7 +160,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [nsq]: https://github.com/bitly/nsq/tree/master/nsq
 [pynsq]: https://github.com/bitly/pynsq
 [nsq_post]: http://word.bitly.com/post/33232969144/nsq
-[binary]: https://github.com/bitly/nsq/downloads
+[binary]: https://github.com/bitly/nsq/blob/master/INSTALLING.md
 [snakes_twitter]: https://twitter.com/imsnakes
 [jehiah_twitter]: https://twitter.com/jehiah
 [dan_twitter]: https://twitter.com/danielhfrank
