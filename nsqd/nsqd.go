@@ -3,9 +3,11 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/bitly/go-notify"
+	"github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"log"
 	"net"
@@ -95,24 +97,143 @@ func (n *NSQd) LoadMetadata() {
 		return
 	}
 
-	for _, line := range strings.Split(string(data), "\n") {
-		if line != "" {
-			parts := strings.SplitN(line, ":", 2)
-
-			if !nsq.IsValidTopicName(parts[0]) {
-				log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
-				continue
-			}
-			topic := n.GetTopic(parts[0])
-
-			if len(parts) < 2 {
-				continue
-			}
-			if !nsq.IsValidChannelName(parts[1]) {
-				log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
-			}
-			topic.GetChannel(parts[1])
+	// channels cannot start with '{' so we use that to introduce a way to pivot
+	// and be backwards compatible.  The new format is JSON so that adding fields
+	// is easy going forward.
+	if data[0] == '{' {
+		js, err := simplejson.NewJson(data)
+		if err != nil {
+			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+			return
 		}
+
+		topics, err := js.Get("topics").Array()
+		if err != nil {
+			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+			return
+		}
+
+		for ti, _ := range topics {
+			topicJs := js.Get("topics").GetIndex(ti)
+
+			topicName, err := topicJs.Get("name").String()
+			if err != nil {
+				log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+				return
+			}
+			if !nsq.IsValidTopicName(topicName) {
+				log.Printf("WARNING: skipping creation of invalid topic %s", topicName)
+				continue
+			}
+			topic := n.GetTopic(topicName)
+
+			channels, err := topicJs.Get("channels").Array()
+			if err != nil {
+				log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+				return
+			}
+
+			for ci, _ := range channels {
+				channelJs := topicJs.Get("channels").GetIndex(ci)
+
+				channelName, err := channelJs.Get("name").String()
+				if err != nil {
+					log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+					return
+				}
+				if !nsq.IsValidChannelName(channelName) {
+					log.Printf("WARNING: skipping creation of invalid channel %s", channelName)
+					continue
+				}
+				channel := topic.GetChannel(channelName)
+
+				paused, _ := channelJs.Get("paused").Bool()
+				if paused {
+					channel.Pause()
+				}
+			}
+		}
+	} else {
+		// TODO: remove this in the next release
+		// old line oriented, : separated, format
+		for _, line := range strings.Split(string(data), "\n") {
+			if line != "" {
+				parts := strings.SplitN(line, ":", 2)
+
+				if !nsq.IsValidTopicName(parts[0]) {
+					log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
+					continue
+				}
+				topic := n.GetTopic(parts[0])
+
+				if len(parts) < 2 {
+					continue
+				}
+				if !nsq.IsValidChannelName(parts[1]) {
+					log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
+					continue
+				}
+				topic.GetChannel(parts[1])
+			}
+		}
+	}
+}
+
+func (n *NSQd) PersistMetadata() {
+	// persist metadata about what topics/channels we have
+	// so that upon restart we can get back to the same state
+	fileName := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+	log.Printf("NSQ: persisting topic/channel metadata to %s", fileName)
+
+	js := make(map[string]interface{})
+	topics := make([]interface{}, 0)
+	for _, topic := range n.topicMap {
+		topicData := make(map[string]interface{})
+		topicData["name"] = topic.name
+		channels := make([]interface{}, 0)
+		topic.Lock()
+		for _, channel := range topic.channelMap {
+			channel.Lock()
+			if !channel.ephemeralChannel {
+				channelData := make(map[string]interface{})
+				channelData["name"] = channel.name
+				channelData["paused"] = channel.IsPaused()
+				channels = append(channels, channelData)
+			}
+			channel.Unlock()
+		}
+		topic.Unlock()
+		topicData["channels"] = channels
+		topics = append(topics, topicData)
+	}
+	js["version"] = util.BINARY_VERSION
+	js["topics"] = topics
+
+	data, err := json.Marshal(&js)
+	if err != nil {
+		log.Printf("ERROR: failed to marshal JSON metadata - %s", err.Error())
+		return
+	}
+
+	tmpFileName := fileName + ".tmp"
+	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		log.Printf("ERROR: failed to open temporary metadata file %s - %s", tmpFileName, err.Error())
+		return
+	}
+
+	_, err = f.Write(data)
+	if err != nil {
+		log.Printf("ERROR: failed to write to temporary metadata file %s - %s", tmpFileName, err.Error())
+		f.Close()
+		return
+	}
+	f.Sync()
+	f.Close()
+
+	err = os.Rename(tmpFileName, fileName)
+	if err != nil {
+		log.Printf("ERROR: failed to rename temporary metadata file %s to %s - %s", tmpFileName, fileName, err.Error())
 	}
 }
 
@@ -125,35 +246,13 @@ func (n *NSQd) Exit() {
 		n.httpListener.Close()
 	}
 
-	// persist metadata about what topics/channels we have
-	// so that upon restart we can get back to the same state
-	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
-	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Printf("ERROR: failed to open channel metadata file %s - %s", fn, err.Error())
-	}
-
-	log.Printf("NSQ: closing topics")
 	n.Lock()
+	n.PersistMetadata()
+	log.Printf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
-		if f != nil {
-			topic.Lock()
-			fmt.Fprintf(f, "%s\n", topic.name)
-			for _, channel := range topic.channelMap {
-				if !channel.ephemeralChannel {
-					fmt.Fprintf(f, "%s:%s\n", topic.name, channel.name)
-				}
-			}
-			topic.Unlock()
-		}
 		topic.Close()
 	}
 	n.Unlock()
-
-	if f != nil {
-		f.Sync()
-		f.Close()
-	}
 
 	// we want to do this last as it closes the idPump (if closed first it
 	// could potentially starve items in process and deadlock)
