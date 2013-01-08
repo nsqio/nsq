@@ -42,11 +42,12 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
 ### Command Line Options
 
     -data-path="": path to store disk-backed messages
-    -debug=false: enable debug mode
     -http-address="0.0.0.0:4151": <addr>:<port> to listen on for HTTP clients
     -lookupd-tcp-address=[]: lookupd TCP address (may be given multiple times)
+    -max-body-size=5123840: maximum size of a single command body
     -max-bytes-per-file=104857600: number of bytes per diskqueue file before rolling
-    -mem-queue-size=10000: number of messages to keep in memory (per topic)
+    -max-message-size=1024768: maximum size of a single message in bytes
+    -mem-queue-size=10000: number of messages to keep in memory (per topic/channel)
     -msg-timeout=60000: time (ms) to wait before auto-requeing a message
     -statsd-address="": UDP <addr>:<port> of a statsd daemon for writing stats
     -statsd-interval=30: seconds between pushing to statsd
@@ -58,10 +59,11 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
 
 ### Statsd / Graphite Integration
 
-When using `--statsd-address` specify the UDP `<addr>:<port>` for [statsd](https://github.com/etsy/statsd) (or a port 
-of statsd like [gographite](https://github.com/bitly/gographite)), nsqd will push metrics to statsd periodically based 
-on the interval specified in `--statsd-interval`. With this enabled nsqadmin can be configured to display charts 
-directly from graphite.
+When using `--statsd-address` specify the UDP `<addr>:<port>` for
+[statsd](https://github.com/etsy/statsd) (or a port of statsd like
+[gographite](https://github.com/bitly/gographite)), `nsqd` will push metrics to statsd
+periodically based on the interval specified in `--statsd-interval`. With this enabled `nsqadmin`
+can be configured to display charts directly from graphite.
 
 We recommend the following configuration for graphite `storage-schemas.conf`
 
