@@ -38,6 +38,8 @@ type NSQd struct {
 type nsqdOptions struct {
 	memQueueSize    int64
 	dataPath        string
+	maxMessageSize  int64
+	maxBodySize     int64
 	maxBytesPerFile int64
 	syncEvery       int64
 	msgTimeout      time.Duration
@@ -48,6 +50,8 @@ func NewNsqdOptions() *nsqdOptions {
 	return &nsqdOptions{
 		memQueueSize:    10000,
 		dataPath:        os.TempDir(),
+		maxMessageSize:  1024768,
+		maxBodySize:     5 * 1024768,
 		maxBytesPerFile: 104857600,
 		syncEvery:       2500,
 		msgTimeout:      60 * time.Second,

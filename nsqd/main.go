@@ -25,6 +25,8 @@ var (
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
 	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
 	msgTimeoutMs    = flag.Int64("msg-timeout", 60000, "time (ms) to wait before auto-requeing a message")
+	maxMessageSize  = flag.Int64("max-message-size", 1024768, "maximum size of a single message in bytes")
+	maxBodySize     = flag.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId        = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
@@ -87,6 +89,8 @@ func main() {
 	}
 
 	options := NewNsqdOptions()
+	options.maxMessageSize = *maxMessageSize
+	options.maxBodySize = *maxBodySize
 	options.memQueueSize = *memQueueSize
 	options.dataPath = *dataPath
 	options.maxBytesPerFile = *maxBytesPerFile

@@ -1,5 +1,9 @@
 package nsq
 
+type DescriptiveError interface {
+	Description() string
+}
+
 // ClientErr provides a way for NSQ daemons to log a human reabable
 // error string and return a machine readable string to the client.
 //
@@ -30,4 +34,24 @@ func (e *ClientErr) Description() string {
 // NewClientErr creates a ClientErr with the supplied human and machine readable strings
 func NewClientErr(err string, description string) *ClientErr {
 	return &ClientErr{err, description}
+}
+
+type FatalClientErr struct {
+	Err  string
+	Desc string
+}
+
+// Error returns the machine readable form
+func (e *FatalClientErr) Error() string {
+	return e.Err
+}
+
+// Description return the human readable form
+func (e *FatalClientErr) Description() string {
+	return e.Desc
+}
+
+// NewClientErr creates a ClientErr with the supplied human and machine readable strings
+func NewFatalClientErr(err string, description string) *FatalClientErr {
+	return &FatalClientErr{err, description}
 }

@@ -95,6 +95,11 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if int64(len(reqParams.Body)) > nsqd.options.maxMessageSize {
+		util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
+		return
+	}
+
 	topic := nsqd.GetTopic(topicName)
 	msg := nsq.NewMessage(<-nsqd.idChan, reqParams.Body)
 	err = topic.PutMessage(msg)
@@ -129,6 +134,11 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	topic := nsqd.GetTopic(topicName)
 	for _, block := range bytes.Split(reqParams.Body, []byte("\n")) {
 		if len(block) != 0 {
+			if int64(len(reqParams.Body)) > nsqd.options.maxMessageSize {
+				util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
+				return
+			}
+
 			msg := nsq.NewMessage(<-nsqd.idChan, block)
 			err := topic.PutMessage(msg)
 			if err != nil {
