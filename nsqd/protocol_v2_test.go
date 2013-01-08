@@ -270,14 +270,92 @@ func TestEmptyCommand(t *testing.T) {
 
 	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
-	
+
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
-	
+
 	_, err = conn.Write([]byte("\n\n"))
 	assert.Equal(t, err, nil)
-	
+
 	// if we didn't panic here we're good, see issue #120
+}
+
+func TestSizeLimits(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	options := NewNsqdOptions()
+	*verbose = true
+	options.maxMessageSize = 100
+	options.maxBodySize = 1000
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	nsq.Publish(topicName, make([]byte, 95)).Write(conn)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	nsq.Publish(topicName, make([]byte, 105)).Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, data, []byte("E_MSG_TOO_BIG"))
+
+	// need to reconnect
+	conn, err = mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	// MPUB body that's valid
+	mpub := make([][]byte, 0)
+	for i := 0; i < 5; i++ {
+		mpub = append(mpub, make([]byte, 100))
+	}
+	cmd, _ := nsq.MultiPublish(topicName, mpub)
+	cmd.Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	// MPUB body that's invalid (body too big)
+	mpub = make([][]byte, 0)
+	for i := 0; i < 11; i++ {
+		mpub = append(mpub, make([]byte, 100))
+	}
+	cmd, _ = nsq.MultiPublish(topicName, mpub)
+	cmd.Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, data, []byte("E_BODY_TOO_BIG"))
+
+	// need to reconnect
+	conn, err = mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	// MPUB body that's invalid (one of the messages is too big)
+	mpub = make([][]byte, 0)
+	for i := 0; i < 5; i++ {
+		mpub = append(mpub, make([]byte, 101))
+	}
+	cmd, _ = nsq.MultiPublish(topicName, mpub)
+	cmd.Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, data, []byte("E_MSG_TOO_BIG"))
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {
@@ -466,7 +544,7 @@ func BenchmarkProtocolV2Sub1m(b *testing.B)   { benchmarkProtocolV2Sub(b, 1024*1
 func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
-	
+
 	log.SetOutput(ioutil.Discard)
 	log.SetOutput(os.Stdout)
 
@@ -506,8 +584,8 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	nsqd.Exit()
 }
 
-func BenchmarkProtocolV2MultiSub1(b *testing.B) { benchmarkProtocolV2MultiSub(b, 1) }
-func BenchmarkProtocolV2MultiSub2(b *testing.B) { benchmarkProtocolV2MultiSub(b, 2) }
-func BenchmarkProtocolV2MultiSub4(b *testing.B) { benchmarkProtocolV2MultiSub(b, 4) }
-func BenchmarkProtocolV2MultiSub8(b *testing.B) { benchmarkProtocolV2MultiSub(b, 8) }
+func BenchmarkProtocolV2MultiSub1(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 1) }
+func BenchmarkProtocolV2MultiSub2(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 2) }
+func BenchmarkProtocolV2MultiSub4(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 4) }
+func BenchmarkProtocolV2MultiSub8(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 8) }
 func BenchmarkProtocolV2MultiSub16(b *testing.B) { benchmarkProtocolV2MultiSub(b, 16) }
