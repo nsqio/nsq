@@ -10,15 +10,18 @@ import (
 )
 
 var (
-	showVersion       = flag.Bool("version", false, "print version string")
-	httpAddress       = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
-	templateDir       = flag.String("template-dir", "", "path to templates directory")
-	graphiteUrl       = flag.String("graphite-url", "", "URL to graphite HTTP address")
-	proxyGraphite     = flag.Bool("proxy-graphite", true, "Proxy HTTP requests to graphite")
-	useStatsdPrefixes = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
-	lookupdHTTPAddrs  = util.StringArray{}
-	nsqdHTTPAddrs     = util.StringArray{}
+	showVersion              = flag.Bool("version", false, "print version string")
+	httpAddress              = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
+	templateDir              = flag.String("template-dir", "", "path to templates directory")
+	graphiteUrl              = flag.String("graphite-url", "", "URL to graphite HTTP address")
+	proxyGraphite            = flag.Bool("proxy-graphite", true, "Proxy HTTP requests to graphite")
+	useStatsdPrefixes        = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
+	lookupdHTTPAddrs         = util.StringArray{}
+	nsqdHTTPAddrs            = util.StringArray{}
+	notificationHTTPEndpoint = flag.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
 )
+
+var notifications chan *AdminAction
 
 func init() {
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -76,9 +79,13 @@ func main() {
 	}
 	waitGroup.Wrap(func() { httpServer(httpListener) })
 
+	notifications = make(chan *AdminAction)
+	waitGroup.Wrap(func() { HandleAdminActions() })
+
 	<-exitChan
 
 	httpListener.Close()
+	close(notifications)
 
 	waitGroup.Wait()
 }
