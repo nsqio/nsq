@@ -5,7 +5,6 @@ import (
 	"../util"
 	"bytes"
 	"encoding/json"
-	"github.com/bitly/go-notify"
 	"log"
 	"net"
 	"os"
@@ -14,8 +13,6 @@ import (
 )
 
 func (n *NSQd) lookupLoop() {
-	notifyChannelChan := make(chan interface{})
-	notifyTopicChan := make(chan interface{})
 	syncTopicChan := make(chan *nsq.LookupPeer)
 
 	hostname, err := os.Hostname()
@@ -58,11 +55,6 @@ func (n *NSQd) lookupLoop() {
 		n.lookupPeers = append(n.lookupPeers, lookupPeer)
 	}
 
-	if len(n.lookupPeers) > 0 {
-		notify.Start("channel_change", notifyChannelChan)
-		notify.Start("topic_change", notifyTopicChan)
-	}
-
 	// for announcements, lookupd determines the host automatically
 	ticker := time.Tick(15 * time.Second)
 	for {
@@ -77,33 +69,34 @@ func (n *NSQd) lookupLoop() {
 					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 				}
 			}
-		case channelObj := <-notifyChannelChan:
-			// notify all nsqds that a new channel exists, or that it's removed
-			channel := channelObj.(*Channel)
+		case val := <-n.notifyChan:
 			var cmd *nsq.Command
-			if channel.Exiting() == true {
-				cmd = nsq.UnRegister(channel.topicName, channel.name)
-			} else {
-				cmd = nsq.Register(channel.topicName, channel.name)
-			}
-			for _, lookupPeer := range n.lookupPeers {
-				log.Printf("LOOKUPD(%s): channel %s", lookupPeer, cmd)
-				_, err := lookupPeer.Command(cmd)
-				if err != nil {
-					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
+			var branch string
+
+			switch val.(type) {
+			case *Channel:
+				// notify all nsqlookupds that a new channel exists, or that it's removed
+				branch = "channel"
+				channel := val.(*Channel)
+				if channel.Exiting() == true {
+					cmd = nsq.UnRegister(channel.topicName, channel.name)
+				} else {
+					cmd = nsq.Register(channel.topicName, channel.name)
+				}
+				continue
+			case *Topic:
+				// notify all nsqlookupds that a new topic exists, or that it's removed
+				branch = "topic"
+				topic := val.(*Topic)
+				if topic.Exiting() == true {
+					cmd = nsq.UnRegister(topic.name, "")
+				} else {
+					cmd = nsq.Register(topic.name, "")
 				}
 			}
-		case newTopic := <-notifyTopicChan:
-			// notify all nsqds that a new topic exists, or that it's removed
-			topic := newTopic.(*Topic)
-			var cmd *nsq.Command
-			if topic.Exiting() == true {
-				cmd = nsq.UnRegister(topic.name, "")
-			} else {
-				cmd = nsq.Register(topic.name, "")
-			}
+
 			for _, lookupPeer := range n.lookupPeers {
-				log.Printf("LOOKUPD(%s): topic %s", lookupPeer, cmd)
+				log.Printf("LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
@@ -141,10 +134,6 @@ func (n *NSQd) lookupLoop() {
 
 exit:
 	log.Printf("LOOKUP: closing")
-	if len(n.lookupPeers) > 0 {
-		notify.Stop("channel_change", notifyChannelChan)
-		notify.Stop("topic_change", notifyTopicChan)
-	}
 }
 
 func (n *NSQd) lookupHttpAddrs() []string {
