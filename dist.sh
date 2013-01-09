@@ -16,7 +16,6 @@ export GOPATH="$TMPGOPATH:$GOROOT"
 
 echo "... getting dependencies"
 go get -v github.com/bitly/go-simplejson
-go get -v github.com/bitly/go-notify
 go get -v github.com/bmizerany/assert
 
 echo "... running tests"

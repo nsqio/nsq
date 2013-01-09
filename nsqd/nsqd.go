@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-notify"
 	"github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"log"
@@ -18,6 +17,10 @@ import (
 	"sync"
 	"time"
 )
+
+type Notifier interface {
+	Notify(v interface{})
+}
 
 type NSQd struct {
 	sync.RWMutex
@@ -33,6 +36,7 @@ type NSQd struct {
 	exitChan        chan int
 	waitGroup       util.WaitGroupWrapper
 	lookupPeers     []*nsq.LookupPeer
+	notifyChan      chan interface{}
 }
 
 type nsqdOptions struct {
@@ -61,11 +65,12 @@ func NewNsqdOptions() *nsqdOptions {
 
 func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 	n := &NSQd{
-		workerId: workerId,
-		options:  options,
-		topicMap: make(map[string]*Topic),
-		idChan:   make(chan nsq.MessageID, 4096),
-		exitChan: make(chan int),
+		workerId:   workerId,
+		options:    options,
+		topicMap:   make(map[string]*Topic),
+		idChan:     make(chan nsq.MessageID, 4096),
+		exitChan:   make(chan int),
+		notifyChan: make(chan interface{}),
 	}
 
 	n.waitGroup.Wrap(func() { n.idPump() })
@@ -273,7 +278,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, n.options)
+		t = NewTopic(topicName, n.options, n)
 		n.topicMap[topicName] = t
 		log.Printf("TOPIC(%s): created", t.name)
 
@@ -325,7 +330,7 @@ func (n *NSQd) DeleteExistingTopic(topicName string) error {
 
 	// since we are explicitly deleting a topic (not just at system exit time)
 	// de-register this from the lookupd
-	go notify.Post("topic_change", topic)
+	go n.Notify(topic)
 
 	return nil
 }
@@ -353,4 +358,13 @@ func (n *NSQd) idPump() {
 
 exit:
 	log.Printf("ID: closing")
+}
+
+func (n *NSQd) Notify(v interface{}) {
+	// by selecting on exitChan we guarantee that
+	// we do not block exit, see issue #123
+	select {
+	case <-n.exitChan:
+	case n.notifyChan <- v:
+	}
 }

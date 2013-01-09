@@ -18,10 +18,6 @@ available for download:
 
     $ go get github.com/bitly/go-simplejson
 
-**notify** https://github.com/bitly/go-notify
-
-    $ go get github.com/bitly/go-notify
-
 **assert** https://github.com/bmizerany/assert
 
     $ go get github.com/bmizerany/assert
