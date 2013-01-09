@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
-	"github.com/bitly/go-notify"
 	"log"
 	"math"
 	"strings"
@@ -40,7 +39,9 @@ type Channel struct {
 
 	topicName string
 	name      string
-	options   *nsqdOptions
+
+	notifier Notifier
+	options  *nsqdOptions
 
 	backend BackendQueue
 
@@ -79,7 +80,8 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, options *nsqdOptions, deleteCallback func(*Channel)) *Channel {
+func NewChannel(topicName string, channelName string, options *nsqdOptions,
+	notifier Notifier, deleteCallback func(*Channel)) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
 	pqSize := int(math.Max(1, float64(options.memQueueSize)/10))
@@ -96,6 +98,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 		deferredMessages: make(map[nsq.MessageID]*pqueue.Item),
 		deferredPQ:       pqueue.New(pqSize),
 		deleteCallback:   deleteCallback,
+		notifier:         notifier,
 		options:          options,
 	}
 	if strings.HasSuffix(channelName, "#ephemeral") {
@@ -109,7 +112,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions, dele
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
-	go notify.Post("channel_change", c)
+	go notifier.Notify(c)
 
 	return c
 }

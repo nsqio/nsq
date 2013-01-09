@@ -6,7 +6,6 @@ import (
 	"../util/pqueue"
 	"bytes"
 	"errors"
-	"github.com/bitly/go-notify"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -24,17 +23,19 @@ type Topic struct {
 	waitGroup          util.WaitGroupWrapper
 	exitFlag           int32
 	messageCount       uint64
+	notifier           Notifier
 	options            *nsqdOptions
 }
 
 // Topic constructor
-func NewTopic(topicName string, options *nsqdOptions) *Topic {
+func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic {
 	topic := &Topic{
 		name:               topicName,
 		channelMap:         make(map[string]*Channel),
 		backend:            NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
 		incomingMsgChan:    make(chan *nsq.Message, 1),
 		memoryMsgChan:      make(chan *nsq.Message, options.memQueueSize),
+		notifier:           notifier,
 		options:            options,
 		exitChan:           make(chan int),
 		messagePumpStarter: new(sync.Once),
@@ -42,7 +43,7 @@ func NewTopic(topicName string, options *nsqdOptions) *Topic {
 
 	topic.waitGroup.Wrap(func() { topic.router() })
 
-	go notify.Post("topic_change", topic)
+	go notifier.Notify(topic)
 
 	return topic
 }
@@ -84,7 +85,7 @@ func (t *Topic) getOrCreateChannel(channelName string) *Channel {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.name, channelName, t.options, deleteCallback)
+		channel = NewChannel(t.name, channelName, t.options, t.notifier, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		// start the topic message pump lazily using a `once` on the first channel creation
@@ -123,7 +124,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 	// since we are explicitly deleting a channel (not just at system exit time)
 	// de-register this from the lookupd
-	go notify.Post("channel_change", channel)
+	go t.notifier.Notify(channel)
 
 	return nil
 }
