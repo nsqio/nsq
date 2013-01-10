@@ -16,27 +16,35 @@ for dir in nsqd nsqlookupd util/pqueue; do
     popd >/dev/null
 done
 
+# build and run nsqlookupd
+pushd nsqlookupd >/dev/null
+go build
+echo "starting nsqlookupd"
+./nsqlookupd >/dev/null 2>&1 &
+LOOKUPD_PID=$!
+popd >/dev/null
+
+# build and run nsqd configured to use our lookupd above
 pushd nsqd >/dev/null
 go build
 rm -f *.dat
-echo "starting nsqd --data-path=/tmp"
-./nsqd --data-path=/tmp >/dev/null 2>&1 &
-PID=$!
+echo "starting nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160"
+./nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 >/dev/null 2>&1 &
+NSQD_PID=$!
+popd >/dev/null
 
 cleanup() {
-    kill -s TERM $PID
+    kill -s TERM $NSQD_PID
+    kill -s TERM $LOOKUPD_PID
 }
-
 trap cleanup INT TERM EXIT
 
-popd >/dev/null
 pushd nsq >/dev/null
 echo "testing nsq"
 go test -v -timeout 15s
 popd >/dev/null
 
 # no tests, but a build is something
-
 for dir in nsqadmin nsqlookupd examples/*; do
     pushd $dir >/dev/null
     echo "building $dir"

@@ -83,7 +83,6 @@ func (n *NSQd) lookupLoop() {
 				} else {
 					cmd = nsq.Register(channel.topicName, channel.name)
 				}
-				continue
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
