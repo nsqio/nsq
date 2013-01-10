@@ -1,0 +1,65 @@
+package nsq
+
+import (
+	"github.com/bmizerany/assert"
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
+	"testing"
+	"time"
+)
+
+type MyOtherTestHandler struct {}
+
+func (h *MyOtherTestHandler) HandleMessage(message *Message) error {
+	return nil
+}
+
+func TestNsqdToLookupd(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	topicName := "cluster_test" + strconv.Itoa(int(time.Now().Unix()))
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("ERROR: failed to get hostname - %s", err.Error())
+	}
+
+	q, _ := NewReader(topicName, "ch")
+	q.VerboseLogging = true
+	q.AddHandler(&MyOtherTestHandler{})
+
+	err = q.ConnectToNSQ("127.0.0.1:4150")
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	// allow some time for nsqd to push info to nsqlookupd
+	time.Sleep(100 * time.Millisecond)
+
+	data, err := ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	producers, _ := data.Get("producers").Array()
+	assert.Equal(t, len(producers), 1)
+	
+	producer := producers[0]
+	producerData, _ := producer.(map[string]interface{})
+	address := producerData["address"].(string)
+	port := int(producerData["tcp_port"].(float64))
+	assert.Equal(t, address, hostname)
+	assert.Equal(t, port, 4150)
+
+	channels, _ := data.Get("channels").Array()
+	assert.Equal(t, len(channels), 1)
+
+	channel := channels[0].(string)
+	assert.Equal(t, channel, "ch")
+
+	q.Stop()
+	<-q.ExitChan
+}
