@@ -66,7 +66,10 @@ func TestQueuereader(t *testing.T) {
 	topicName := "reader_test" + strconv.Itoa(int(time.Now().Unix()))
 	q, _ := NewReader(topicName, "ch")
 	q.VerboseLogging = true
-	q.DefaultRequeueDelay = 0 // so that the test can simulate reaching max requeues and a call to LogFailedMessage
+	// so that the test can simulate reaching max requeues and a call to LogFailedMessage
+	q.DefaultRequeueDelay = 0
+	// so that the test wont timeout from backing off
+	q.SetMaxBackoffDuration(time.Millisecond * 50)
 
 	h := &MyTestHandler{
 		t: t,
