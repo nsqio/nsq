@@ -65,10 +65,10 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	log.Printf("CLIENT(%s): closing", client)
 	if client.Producer != nil {
-		lookupd.DB.Remove(Registration{"client", "", ""}, client.Producer)
+		lookupd.DB.RemoveProducer(Registration{"client", "", ""}, client.Producer)
 		registrations := lookupd.DB.LookupRegistrations(client.Producer)
 		for _, r := range registrations {
-			lookupd.DB.Remove(*r, client.Producer)
+			lookupd.DB.RemoveProducer(*r, client.Producer)
 		}
 	}
 	return err
@@ -123,11 +123,11 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	if channel != "" {
 		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
-		lookupd.DB.Add(key, client.Producer)
+		lookupd.DB.AddProducer(key, client.Producer)
 	}
 	log.Printf("DB: client(%s) added registration for topic:%s", client, topic)
 	key := Registration{"topic", topic, ""}
-	lookupd.DB.Add(key, client.Producer)
+	lookupd.DB.AddProducer(key, client.Producer)
 
 	return []byte("OK"), nil
 }
@@ -145,7 +145,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	if channel != "" {
 		log.Printf("DB: client(%s) removed registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
-		producers := lookupd.DB.Remove(key, client.Producer)
+		producers := lookupd.DB.RemoveProducer(key, client.Producer)
 		// for ephemeral channels, remove the channel as well if it has no producers
 		if producers == 0 && strings.HasSuffix(channel, "#ephemeral") {
 			lookupd.DB.RemoveRegistration(key)
@@ -184,7 +184,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	producer.LastUpdate = time.Now()
 
 	client.Producer = &producer
-	lookupd.DB.Add(Registration{"client", "", ""}, client.Producer)
+	lookupd.DB.AddProducer(Registration{"client", "", ""}, client.Producer)
 	log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s",
 		client.RemoteAddr(),
 		producer.TcpPort,

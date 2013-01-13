@@ -50,7 +50,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 }
 
 // add a producer to a registration
-func (r *RegistrationDB) Add(k Registration, p *Producer) {
+func (r *RegistrationDB) AddProducer(k Registration, p *Producer) {
 	r.Lock()
 	defer r.Unlock()
 	producers := r.registrationMap[k]
@@ -66,7 +66,7 @@ func (r *RegistrationDB) Add(k Registration, p *Producer) {
 }
 
 // remove a producer from a registration
-func (r *RegistrationDB) Remove(k Registration, p *Producer) int {
+func (r *RegistrationDB) RemoveProducer(k Registration, p *Producer) int {
 	r.Lock()
 	defer r.Unlock()
 	producers, ok := r.registrationMap[k]
@@ -183,7 +183,7 @@ func (rr Registrations) SubKeys() []string {
 	return subkeys
 }
 
-func (pp Producers) CurrentProducers() Producers {
+func (pp Producers) FilterByActive() Producers {
 	now := time.Now()
 	results := make(Producers, 0)
 	// TODO: make this a command line parameter

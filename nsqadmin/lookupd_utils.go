@@ -269,7 +269,7 @@ func getNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 	return addresses, nil
 }
 
-// if given no selectedTopic, this will return stats for all topc/channels
+// if given no selectedTopic, this will return stats for all topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
 func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
 	topicHostStats := make([]*TopicHostStats, 0)

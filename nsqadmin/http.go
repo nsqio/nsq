@@ -67,7 +67,7 @@ func httpServer(listener net.Listener) {
 	if *proxyGraphite {
 		url, err := url.Parse(*graphiteUrl)
 		if err != nil {
-			log.Printf("%s - %v", err.Error(), *graphiteUrl)
+			log.Printf("ERROR: failed to parse --graphite-url='%s' - %s", *graphiteUrl, err.Error())
 		} else {
 			proxy := NewSingleHostReverseProxy(url, 20*time.Second)
 			handler.Handle("/render", proxy)

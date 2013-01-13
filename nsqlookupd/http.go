@@ -89,10 +89,11 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	channels := lookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
-	producers := lookupd.DB.FindProducers("topic", topicName, "").CurrentProducers()
+	producers := lookupd.DB.FindProducers("topic", topicName, "").FilterByActive()
 	data := make(map[string]interface{})
 	data["channels"] = channels
 	data["producers"] = producers
+
 	util.ApiResponse(w, 200, "OK", data)
 }
 
