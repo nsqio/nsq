@@ -57,6 +57,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/", indexHandler)
 	handler.HandleFunc("/nodes", nodesHandler)
+	handler.HandleFunc("/node/", nodeHandler)
 	handler.HandleFunc("/topic/", topicHandler)
 	handler.HandleFunc("/tombstone_topic_producer", tombstoneTopicProducerHandler)
 	handler.HandleFunc("/empty_topic", emptyTopicHandler)
@@ -165,7 +166,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 
 	globalTopicStats := &lookupd.TopicStats{HostAddress: "Total"}
 	for _, t := range topicStats {
-		globalTopicStats.AddHostStats(t)
+		globalTopicStats.Add(t)
 	}
 
 	p := struct {
@@ -581,6 +582,79 @@ func getNodeConsistencyClass(node *lookupd.Producer) string {
 	return ""
 }
 
+func nodeHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	var urlRegex = regexp.MustCompile(`^/node/(.*)$`)
+	matches := urlRegex.FindStringSubmatch(req.URL.Path)
+	if len(matches) == 0 {
+		http.Error(w, "INVALID_NODE", 500)
+		return
+	}
+	parts := strings.Split(matches[1], "/")
+	node := parts[0]
+
+	found := false
+	for _, n := range nsqdHTTPAddrs {
+		if node == n {
+			found = true
+			break
+		}
+	}
+	producers, _ := lookupd.GetLookupdProducers(lookupdHTTPAddrs)
+	for _, p := range producers {
+		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "INVALID_NODE", 500)
+		return
+	}
+
+	topicStats, channelStats, _ := lookupd.GetNSQDStats([]string{node}, "")
+
+	numClients := int64(0)
+	numMessages := int64(0)
+	for _, ts := range topicStats {
+		for _, cs := range ts.Channels {
+			numClients += int64(len(cs.Clients))
+		}
+		numMessages += ts.MessageCount
+	}
+
+	p := struct {
+		Title        string
+		Version      string
+		GraphOptions *GraphOptions
+		Node         Node
+		TopicStats   []*lookupd.TopicStats
+		ChannelStats map[string]*lookupd.ChannelStats
+		NumMessages  int64
+		NumClients   int64
+	}{
+		Title:        "NSQ Node - " + node,
+		Version:      util.BINARY_VERSION,
+		GraphOptions: NewGraphOptions(w, req, reqParams),
+		Node:         Node(node),
+		TopicStats:   topicStats,
+		ChannelStats: channelStats,
+		NumMessages:  numMessages,
+		NumClients:   numClients,
+	}
+	err = templates.ExecuteTemplate(w, "node.html", p)
+	if err != nil {
+		log.Printf("Template Error %s", err.Error())
+		http.Error(w, "Template Error", 500)
+	}
+}
+
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -613,7 +687,7 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 type counterTarget struct{}
 
 func (c counterTarget) Target(key string) (string, string) {
-	return fmt.Sprintf("nsq.*.topic.*.channel.*.%s", key), "green"
+	return fmt.Sprintf("sumSeries(%%snsq.*.topic.*.channel.*.%s)", key), "green"
 }
 
 func counterHandler(w http.ResponseWriter, req *http.Request) {
@@ -680,15 +754,15 @@ func counterDataHandler(w http.ResponseWriter, req *http.Request) {
 
 	var newMessages int64
 	var totalMessages int64
-	for _, channel := range channelStats {
-		for _, channelHostStats := range channel.HostStats {
-			key := fmt.Sprintf("%s:%s:%s", channel.Topic, channel.ChannelName, channelHostStats.HostAddress)
+	for _, channelStats := range channelStats {
+		for _, hostChannelStats := range channelStats.HostStats {
+			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.HostAddress)
 			d, ok := stats[key]
-			if ok && d <= channelHostStats.MessageCount {
-				newMessages += (channelHostStats.MessageCount - d)
+			if ok && d <= hostChannelStats.MessageCount {
+				newMessages += (hostChannelStats.MessageCount - d)
 			}
-			totalMessages += channelHostStats.MessageCount
-			newStats[key] = channelHostStats.MessageCount
+			totalMessages += hostChannelStats.MessageCount
+			newStats[key] = hostChannelStats.MessageCount
 		}
 	}
 	globalCounters[statsID] = newStats
