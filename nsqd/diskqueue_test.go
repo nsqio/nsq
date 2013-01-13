@@ -112,7 +112,7 @@ func TestDiskQueueEmpty(t *testing.T) {
 
 func TestDiskQueueCorruption(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	log.SetOutput(os.Stdout)
+	defer log.SetOutput(os.Stdout)
 
 	dqName := "test_disk_queue_corruption" + strconv.Itoa(int(time.Now().Unix()))
 	dq := NewDiskQueue(dqName, os.TempDir(), 1000, 5)
