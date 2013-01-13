@@ -19,18 +19,29 @@ type Registration struct {
 type Registrations []*Registration
 
 type Producer struct {
-	producerId string
-	Address    string    `json:"address"`
-	TcpPort    int       `json:"tcp_port"`
-	HttpPort   int       `json:"http_port"`
-	Version    string    `json:"version"`
-	LastUpdate time.Time `json:"-"`
+	producerId   string
+	Address      string    `json:"address"`
+	TcpPort      int       `json:"tcp_port"`
+	HttpPort     int       `json:"http_port"`
+	Version      string    `json:"version"`
+	LastUpdate   time.Time `json:"-"`
+	tombstoned   bool
+	tombstonedAt time.Time
 }
 
 type Producers []*Producer
 
 func (p *Producer) String() string {
 	return fmt.Sprintf("%s [%d, %d]", p.Address, p.TcpPort, p.HttpPort)
+}
+
+func (p *Producer) Tombstone() {
+	p.tombstoned = true
+	p.tombstonedAt = time.Now()
+}
+
+func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
+	return p.tombstoned && time.Now().Sub(p.tombstonedAt) < lifetime
 }
 
 func NewRegistrationDB() *RegistrationDB {
@@ -183,13 +194,11 @@ func (rr Registrations) SubKeys() []string {
 	return subkeys
 }
 
-func (pp Producers) FilterByActive() Producers {
+func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLifetime time.Duration) Producers {
 	now := time.Now()
 	results := make(Producers, 0)
-	// TODO: make this a command line parameter
-	maxAge := time.Duration(300) * time.Second
 	for _, p := range pp {
-		if now.Sub(p.LastUpdate) > maxAge {
+		if now.Sub(p.LastUpdate) > inactivityTimeout || p.IsTombstoned(tombstoneLifetime) {
 			continue
 		}
 		results = append(results, p)
