@@ -387,11 +387,26 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return err
 	}
 
-	cmd := Subscribe(q.TopicName, q.ChannelName)
+	ci := make(map[string]interface{})
+	ci["short_id"] = q.ShortIdentifier
+	ci["long_id"] = q.LongIdentifier
+	cmd, err := Identify(ci)
+	if err != nil {
+		connection.Close()
+		return fmt.Errorf("[%s] failed to create identify command - %s", connection, err.Error())
+	}
+
 	err = connection.sendCommand(&buf, cmd)
 	if err != nil {
 		connection.Close()
-		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", q.TopicName, q.ChannelName, err.Error())
+		return fmt.Errorf("[%s] failed to identify - %s", connection, err.Error())
+	}
+
+	cmd = Subscribe(q.TopicName, q.ChannelName)
+	err = connection.sendCommand(&buf, cmd)
+	if err != nil {
+		connection.Close()
+		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", connection, q.TopicName, q.ChannelName, err.Error())
 	}
 
 	q.nsqConnections[connection.String()] = connection

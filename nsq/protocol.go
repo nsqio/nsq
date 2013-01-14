@@ -55,7 +55,7 @@ type Protocol interface {
 // from the supplied Reader.
 //
 // The client should initialize itself by sending a 4 byte sequence indicating
-// the version of the protocol that it intends to communicate, this will allow us 
+// the version of the protocol that it intends to communicate, this will allow us
 // to gracefully upgrade the protocol away from text/line oriented to whatever...
 func ReadMagic(r io.Reader) (int32, error) {
 	var protocolMagic int32
@@ -133,7 +133,7 @@ func ReadResponse(r io.Reader) ([]byte, error) {
 	return buf, nil
 }
 
-// UnpackResponse is a client-side utility function that unpacks serialized data 
+// UnpackResponse is a client-side utility function that unpacks serialized data
 // according to NSQ protocol spec:
 //
 //    [x][x][x][x][x][x][x][x]...
