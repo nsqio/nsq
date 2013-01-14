@@ -67,7 +67,7 @@ func (c *Command) Write(w io.Writer) error {
 	return nil
 }
 
-// Identify creates a new Command to provide information about the client.  After connecting, 
+// Identify creates a new Command to provide information about the client.  After connecting,
 // it is generally the first message sent.
 //
 // The supplied map is marshaled into JSON to provide some flexibility
@@ -111,7 +111,7 @@ func UnRegister(topic string, channel string) *Command {
 	return &Command{[]byte("UNREGISTER"), params, nil}
 }
 
-// Ping creates a new Command to keep-alive the state of all the 
+// Ping creates a new Command to keep-alive the state of all the
 // announced topic/channels for a given client
 func Ping() *Command {
 	return &Command{[]byte("PING"), nil, nil}
@@ -167,14 +167,14 @@ func Ready(count int) *Command {
 	return &Command{[]byte("RDY"), params, nil}
 }
 
-// Finish creates a new Command to indiciate that 
+// Finish creates a new Command to indiciate that
 // a given message (by id) has been processed successfully
 func Finish(id MessageID) *Command {
 	var params = [][]byte{id[:]}
 	return &Command{[]byte("FIN"), params, nil}
 }
 
-// Requeue creats a new Command to indicate that 
+// Requeue creats a new Command to indicate that
 // a given message (by id) should be requeued after the given timeout (in ms)
 // NOTE: a timeout of 0 indicates immediate requeue
 func Requeue(id MessageID, timeoutMs int) *Command {

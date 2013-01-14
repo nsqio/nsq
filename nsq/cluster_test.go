@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type MyOtherTestHandler struct {}
+type MyOtherTestHandler struct{}
 
 func (h *MyOtherTestHandler) HandleMessage(message *Message) error {
 	return nil
@@ -46,7 +46,7 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
-	
+
 	producer := producers[0]
 	producerData, _ := producer.(map[string]interface{})
 	address := producerData["address"].(string)

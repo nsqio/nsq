@@ -22,7 +22,7 @@ type Message struct {
 	Attempts  uint16
 }
 
-// NewMessage creates a Message, initializes some metadata, 
+// NewMessage creates a Message, initializes some metadata,
 // and returns a pointer
 func NewMessage(id MessageID, body []byte) *Message {
 	return &Message{
