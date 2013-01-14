@@ -110,6 +110,37 @@ func TestDiskQueueEmpty(t *testing.T) {
 	assert.Equal(t, dq.(*DiskQueue).nextReadPos, dq.(*DiskQueue).readPos)
 }
 
+func TestDiskQueueCorruption(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	log.SetOutput(os.Stdout)
+
+	dqName := "test_disk_queue_corruption" + strconv.Itoa(int(time.Now().Unix()))
+	dq := NewDiskQueue(dqName, os.TempDir(), 1000, 5)
+
+	msg := make([]byte, 123)
+	for i := 0; i < 25; i++ {
+		dq.Put(msg)
+	}
+
+	assert.Equal(t, dq.Depth(), int64(25))
+
+	// corrupt the 2nd file
+	dqFn := dq.(*DiskQueue).fileName(1)
+	os.Truncate(dqFn, 500)
+
+	for i := 0; i < 19; i++ {
+		assert.Equal(t, <-dq.ReadChan(), msg)
+	}
+
+	// corrupt the 4th (current) file
+	dqFn = dq.(*DiskQueue).fileName(3)
+	os.Truncate(dqFn, 100)
+
+	dq.Put(msg)
+
+	assert.Equal(t, <-dq.ReadChan(), msg)
+}
+
 func TestDiskQueueTorture(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
