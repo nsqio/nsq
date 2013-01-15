@@ -69,7 +69,7 @@ func ApiRequest(endpoint string) (*simplejson.Json, error) {
 	statusCode := data.Get("status_code").MustInt()
 	statusTxt := data.Get("status_txt").MustString()
 	if statusCode != 200 {
-		return nil, errors.New(fmt.Sprintf("response status_code = %d, status_txt = %s", 
+		return nil, errors.New(fmt.Sprintf("response status_code = %d, status_txt = %s",
 			statusCode, statusTxt))
 	}
 	return data.Get("data"), nil

@@ -28,14 +28,14 @@
 {{else}}
 <div class="row-fluid">
     <div class="span2">
-        <form action="/empty_channel" method="GET">
+        <form action="/empty_channel" method="POST">
             <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
         </form>
     </div>
     <div class="span2">
-        <form action="/delete_channel" method="GET">
+        <form action="/delete_channel" method="POST">
             <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
@@ -43,13 +43,13 @@
     </div>
     <div class="span2">
         {{if .ChannelStats.Paused}}
-        <form action="/unpause_channel" method="GET">
+        <form action="/unpause_channel" method="POST">
             <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-success" type="submit">UnPause Channel</button>
         </form>
         {{else}}
-        <form action="/pause_channel" method="GET">
+        <form action="/pause_channel" method="POST">
             <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-inverse" type="submit">Pause Channel</button>

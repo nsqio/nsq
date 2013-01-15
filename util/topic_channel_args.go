@@ -5,7 +5,11 @@ import (
 	"errors"
 )
 
-func GetTopicChannelArgs(rp *ReqParams) (string, string, error) {
+type Getter interface {
+	Get(key string) (string, error)
+}
+
+func GetTopicChannelArgs(rp Getter) (string, string, error) {
 	topicName, err := rp.Get("topic")
 	if err != nil {
 		return "", "", errors.New("MISSING_ARG_TOPIC")

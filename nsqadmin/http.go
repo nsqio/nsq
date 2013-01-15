@@ -276,12 +276,12 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil || !nsq.IsValidTopicName(topicName) {
@@ -338,12 +338,12 @@ func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -388,12 +388,12 @@ func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -444,12 +444,12 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
@@ -499,12 +499,12 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
@@ -537,12 +537,12 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
+	reqParams := &util.PostParams{req}
 
 	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {

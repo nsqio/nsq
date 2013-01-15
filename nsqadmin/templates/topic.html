@@ -15,7 +15,7 @@
 </div>
 
 <div class="row-fluid"><div class="span2">
-    <form action="/delete_topic" method="GET">
+    <form action="/delete_topic" method="POST">
         <input type="hidden" name="topic" value="{{.Topic}}">
         <button class="btn btn-medium btn-danger" type="submit">Delete Topic</button>
     </form>
@@ -42,7 +42,14 @@
     </tr>
     {{range .TopicHostStats}}
     <tr>
-        <td><a href="/tombstone_topic_producer?topic={{.Topic}}&node={{.HostAddress}}&rd=/topic/{{.Topic}}" class="red">✘</a> {{.HostAddress}}</td>
+        <td>
+            <form class="form-inline" style="margin:0" action="/tombstone_topic_producer" method="POST">
+                <input type="hidden" name="rd" value="/topic/{{.Topic}}">
+                <input type="hidden" name="topic" value="{{.Topic}}">
+                <input type="hidden" name="node" value="{{.HostAddress}}">
+                <button class="btn btn-mini btn-link red" type="submit">✘</button>{{.HostAddress}}
+            </form>
+        </td>
         <td>
             {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" src="{{.Sparkline $g "depth"}}"></a>{{end}}
             {{.Depth | commafy}}</td>
