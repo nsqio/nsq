@@ -41,3 +41,11 @@ func (r *ReqParams) GetAll(key string) ([]string, error) {
 	}
 	return v, nil
 }
+
+type PostParams struct {
+	*http.Request
+}
+
+func (p *PostParams) Get(key string) (string, error) {
+	return p.Request.FormValue(key), nil
+}

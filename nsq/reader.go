@@ -572,8 +572,8 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			}
 
 			atomic.StoreInt32(&c.backoffCounter, backoffCounter)
-			// prevent many async failures/successes from immediately resulting in 
-			// max backoff/normal rate (by ensuring that we dont continually incr/decr 
+			// prevent many async failures/successes from immediately resulting in
+			// max backoff/normal rate (by ensuring that we dont continually incr/decr
 			// the counter during a backoff period)
 			if backoffCounter > 0 && backoffUpdated {
 				backoffDuration := q.backoffDuration(backoffCounter)

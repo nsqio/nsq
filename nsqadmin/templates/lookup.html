@@ -34,10 +34,19 @@
         </div>
         <ul>
             {{range $t, $channels := .TopicMap}}
-            <li><a href="/topic/{{$t}}">{{$t}}</a> <a href="/delete_topic?topic={{$t}}&rd=/lookup" class="red">✘</a>
+            <li><form class="form-inline" style="margin:0" action="/delete_topic" method="POST">
+                    <input type="hidden" name="rd" value="/lookup">
+                    <input type="hidden" name="topic" value="{{$t}}">
+                    <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t}}">{{$t}}</a>
+                </form>
                 <ul>
                     {{range $channels}}
-                    <li><a href="/topic/{{$t}}/{{.}}">{{.}}</a> <a href="/delete_channel?topic={{$t}}&channel={{.}}&rd=/lookup" class="red">✘</a></li>
+                    <li><form class="form-inline" style="margin:0" action="/delete_channel" method="POST">
+                        <input type="hidden" name="rd" value="/lookup">
+                        <input type="hidden" name="topic" value="{{$t}}">
+                        <input type="hidden" name="channel" value="{{.}}">
+                        <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t}}/{{.}}">{{.}}</a>
+                    </form></li>
                     {{end}}
                 </ul>
             </li>
@@ -51,7 +60,7 @@
 
 <div class="row-fluid">
     <div class="span4">
-        <form class="form" action="/create_topic_channel" method="GET">
+        <form class="form" action="/create_topic_channel" method="POST">
             <fieldset>
                 <legend>Create Topic/Channel</legend>
                 <div class="alert alert-info">
