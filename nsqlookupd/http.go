@@ -3,6 +3,7 @@ package main
 import (
 	"../nsq"
 	"../util"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -21,6 +22,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
+	handler.HandleFunc("/tombstone_topic_producer", tombstoneTopicProducerHandler)
 	handler.HandleFunc("/info", infoHandler)
 	handler.HandleFunc("/create_topic", createTopicHandler)
 	handler.HandleFunc("/create_channel", createChannelHandler)
@@ -89,10 +91,12 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	channels := lookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
-	producers := lookupd.DB.FindProducers("topic", topicName, "").CurrentProducers()
+	producers := lookupd.DB.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(lookupd.inactiveProducerTimeout, lookupd.tombstoneLifetime)
 	data := make(map[string]interface{})
 	data["channels"] = channels
 	data["producers"] = producers
+
 	util.ApiResponse(w, 200, "OK", data)
 }
 
@@ -144,6 +148,37 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	for _, registration := range registrations {
 		log.Printf("DB: removing topic(%s)", topicName)
 		lookupd.DB.RemoveRegistration(*registration)
+	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	node, err := reqParams.Get("node")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_NODE", nil)
+		return
+	}
+
+	log.Printf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
+	producers := lookupd.DB.FindProducers("topic", topicName, "")
+	for _, p := range producers {
+		thisNode := fmt.Sprintf("%s:%d", p.Address, p.HttpPort)
+		if thisNode == node {
+			p.Tombstone()
+		}
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)

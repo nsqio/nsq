@@ -55,6 +55,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/", indexHandler)
 	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/topic/", topicHandler)
+	handler.HandleFunc("/tombstone_topic_producer", tombstoneTopicProducerHandler)
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
@@ -67,7 +68,7 @@ func httpServer(listener net.Listener) {
 	if *proxyGraphite {
 		url, err := url.Parse(*graphiteUrl)
 		if err != nil {
-			log.Printf("%s - %v", err.Error(), *graphiteUrl)
+			log.Printf("ERROR: failed to parse --graphite-url='%s' - %s", *graphiteUrl, err.Error())
 		} else {
 			proxy := NewSingleHostReverseProxy(url, 20*time.Second)
 			handler.Handle("/render", proxy)
@@ -334,6 +335,56 @@ func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(w, req, "/lookup", 302)
+}
+
+func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		http.Error(w, "MISSING_ARG_TOPIC", 500)
+		return
+	}
+
+	node, err := reqParams.Get("node")
+	if err != nil {
+		http.Error(w, "MISSING_ARG_NODE", 500)
+		return
+	}
+
+	var rd string
+	rd, err = reqParams.Get("rd")
+	if err != nil {
+		rd = "/"
+	}
+
+	// tombstone the topic on all the lookupds
+	for _, addr := range lookupdHTTPAddrs {
+		endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s",
+			addr, url.QueryEscape(topicName), url.QueryEscape(node))
+		log.Printf("LOOKUPD: querying %s", endpoint)
+		_, err := nsq.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+		}
+	}
+
+	// delete the topic on the producer
+	endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", node, url.QueryEscape(topicName))
+	log.Printf("NSQD: querying %s", endpoint)
+	_, err = nsq.ApiRequest(endpoint)
+	if err != nil {
+		log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+	}
+
+	NotifyAdminAction("tombstone_topic_producer", topicName, "", req)
+
+	http.Redirect(w, req, rd, 302)
 }
 
 func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {

@@ -42,7 +42,7 @@
     </tr>
     {{range .TopicHostStats}}
     <tr>
-        <td>{{.HostAddress}}</td>
+        <td><a href="/tombstone_topic_producer?topic={{.Topic}}&node={{.HostAddress}}&rd=/topic/{{.Topic}}" class="red">✘</a> {{.HostAddress}}</td>
         <td>
             {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" src="{{.Sparkline $g "depth"}}"></a>{{end}}
             {{.Depth | commafy}}</td>

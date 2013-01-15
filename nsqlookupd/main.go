@@ -9,13 +9,16 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"time"
 )
 
 var (
-	showVersion = flag.Bool("version", false, "print version string")
-	tcpAddress  = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
-	httpAddress = flag.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
-	debugMode   = flag.Bool("debug", false, "enable debug mode")
+	showVersion             = flag.Bool("version", false, "print version string")
+	tcpAddress              = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
+	httpAddress             = flag.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
+	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
+	inactiveProducerTimeout = flag.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
+	tombstoneLifetime       = flag.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 )
 
 var protocols = map[int32]nsq.Protocol{}
@@ -52,6 +55,8 @@ func main() {
 	lookupd = NewNSQLookupd()
 	lookupd.tcpAddr = tcpAddr
 	lookupd.httpAddr = httpAddr
+	lookupd.inactiveProducerTimeout = *inactiveProducerTimeout
+	lookupd.tombstoneLifetime = *tombstoneLifetime
 	lookupd.Main()
 	<-exitChan
 	lookupd.Exit()
