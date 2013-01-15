@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -426,10 +425,37 @@ func (d *DiskQueue) ioLoop() {
 				if err != nil {
 					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
 						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
-					// TODO: we assume that all read errors are recoverable...
-					// it will probably turn out that this is a terrible assumption
-					// as this could certainly result in an infinite busy loop
-					runtime.Gosched()
+
+					// jump to the next read file and rename the current (bad) file
+					if d.readFileNum == d.writeFileNum {
+						// if you can't properly read from the current write file it's safe to
+						// assume that something is fucked and we should skip the current file too
+						d.writeFile.Close()
+						d.writeFile = nil
+						d.writeFileNum++
+						d.writePos = 0
+					}
+
+					badFn := d.fileName(d.readFileNum)
+					badRenameFn := badFn + ".bad"
+
+					log.Printf("NOTICE: diskqueue(%s) jump to next file and saving bad file as %s", d.name, badRenameFn)
+
+					err := os.Rename(badFn, badRenameFn)
+					if err != nil {
+						log.Printf("ERROR: diskqueue(%s) failed to rename bad diskqueue file %s to %s", d.name, badFn, badRenameFn)
+					}
+
+					d.readFileNum++
+					d.readPos = 0
+					d.nextReadPos = 0
+
+					// significant state change, make sure we persist
+					err = d.sync()
+					if err != nil {
+						log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+						// TODO: should we panic here?
+					}
 					continue
 				}
 			}
@@ -441,7 +467,6 @@ func (d *DiskQueue) ioLoop() {
 		select {
 		// the Go channel spec dictates that nil channel operations (read or write)
 		// in a select are skipped, we set r to d.readChan only when there is data to read
-		// and reset it to nil after writing to the channel
 		case r <- dataRead:
 			oldReadFileNum := d.readFileNum
 			d.readFileNum = d.nextReadFileNum
