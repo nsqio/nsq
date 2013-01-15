@@ -4,20 +4,25 @@ import (
 	"../util"
 	"log"
 	"net"
+	"time"
 )
 
 type NSQLookupd struct {
-	tcpAddr      *net.TCPAddr
-	httpAddr     *net.TCPAddr
-	tcpListener  net.Listener
-	httpListener net.Listener
-	waitGroup    util.WaitGroupWrapper
-	DB           *RegistrationDB
+	tcpAddr                 *net.TCPAddr
+	httpAddr                *net.TCPAddr
+	tcpListener             net.Listener
+	httpListener            net.Listener
+	waitGroup               util.WaitGroupWrapper
+	inactiveProducerTimeout time.Duration
+	tombstoneLifetime       time.Duration
+	DB                      *RegistrationDB
 }
 
 func NewNSQLookupd() *NSQLookupd {
 	return &NSQLookupd{
-		DB: NewRegistrationDB(),
+		inactiveProducerTimeout: 300 * time.Second,
+		tombstoneLifetime:       45 * time.Second,
+		DB:                      NewRegistrationDB(),
 	}
 }
 
@@ -35,11 +40,9 @@ func (l *NSQLookupd) Main() {
 	}
 	l.httpListener = httpListener
 	l.waitGroup.Wrap(func() { httpServer(httpListener) })
-
 }
 
 func (l *NSQLookupd) Exit() {
-
 	if l.tcpListener != nil {
 		l.tcpListener.Close()
 	}
@@ -48,5 +51,4 @@ func (l *NSQLookupd) Exit() {
 		l.httpListener.Close()
 	}
 	l.waitGroup.Wait()
-
 }

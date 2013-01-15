@@ -13,17 +13,21 @@ func TestRegistrationDB(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
+	sec30 := 30 * time.Second
 	beginningOfTime := time.Unix(1348797047, 0)
-	p1 := &Producer{"1", "addr", 1, 2, "v1", beginningOfTime}
-	p2 := &Producer{"2", "addr", 2, 3, "v1", beginningOfTime}
-	p3 := &Producer{"3", "addr", 3, 4, "v1", beginningOfTime}
+	p1 := &Producer{"1", "addr", 1, 2, "v1", beginningOfTime, false, beginningOfTime}
+	p2 := &Producer{"2", "addr", 2, 3, "v1", beginningOfTime, false, beginningOfTime}
+	p3 := &Producer{"3", "addr", 3, 4, "v1", beginningOfTime, false, beginningOfTime}
 
 	db := NewRegistrationDB()
-	db.Add(Registration{"c", "a", ""}, p1)
-	db.Add(Registration{"c", "a", ""}, p2)
-	db.Add(Registration{"c", "a", "b"}, p2)
-	db.Add(Registration{"d", "a", ""}, p3)
 
+	// add producers
+	db.AddProducer(Registration{"c", "a", ""}, p1)
+	db.AddProducer(Registration{"c", "a", ""}, p2)
+	db.AddProducer(Registration{"c", "a", "b"}, p2)
+	db.AddProducer(Registration{"d", "a", ""}, p3)
+
+	// find producers
 	r := db.FindRegistrations("c", "*", "").Keys()
 	assert.Equal(t, len(r), 1)
 	assert.Equal(t, r[0], "a")
@@ -35,12 +39,25 @@ func TestRegistrationDB(t *testing.T) {
 	p = db.FindProducers("c", "*", "b")
 	assert.Equal(t, len(p), 1)
 	assert.Equal(t, p[0].producerId, p2.producerId)
-	assert.Equal(t, len(p.CurrentProducers()), 0)
-	p2.LastUpdate = time.Now()
-	assert.Equal(t, len(p.CurrentProducers()), 1)
-	p = db.FindProducers("c", "*", "")
-	assert.Equal(t, len(p.CurrentProducers()), 1)
 
+	// filter by active
+	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 0)
+	p2.LastUpdate = time.Now()
+	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+	p = db.FindProducers("c", "*", "")
+	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+
+	// tombstoning
+	fewSecAgo := time.Now().Add(-5 * time.Second)
+	p1.LastUpdate = fewSecAgo
+	p2.LastUpdate = fewSecAgo
+	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 2)
+	p1.Tombstone()
+	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+	time.Sleep(10 * time.Millisecond)
+	assert.Equal(t, len(p.FilterByActive(sec30, 5*time.Millisecond)), 2)
+
+	// keys and subkeys
 	k := db.FindRegistrations("c", "b", "").Keys()
 	assert.Equal(t, len(k), 0)
 	k = db.FindRegistrations("c", "a", "").Keys()
@@ -50,11 +67,13 @@ func TestRegistrationDB(t *testing.T) {
 	assert.Equal(t, len(k), 1)
 	assert.Equal(t, k[0], "b")
 
-	db.Remove(Registration{"c", "a", ""}, p1)
+	// removing producers
+	db.RemoveProducer(Registration{"c", "a", ""}, p1)
 	p = db.FindProducers("c", "*", "*")
 	assert.Equal(t, len(p), 1)
-	db.Remove(Registration{"c", "a", ""}, p2)
-	db.Remove(Registration{"c", "a", "b"}, p2)
+
+	db.RemoveProducer(Registration{"c", "a", ""}, p2)
+	db.RemoveProducer(Registration{"c", "a", "b"}, p2)
 	p = db.FindProducers("c", "*", "*")
 	assert.Equal(t, len(p), 0)
 
@@ -65,5 +84,4 @@ func TestRegistrationDB(t *testing.T) {
 	db.RemoveRegistration(Registration{"c", "a", "b"})
 	k = db.FindRegistrations("c", "*", "*").Keys()
 	assert.Equal(t, len(k), 0)
-
 }
