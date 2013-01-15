@@ -26,6 +26,7 @@ var (
 	topic            = flag.String("topic", "", "nsq topic")
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
+	gzipCompression  = flag.Int("gzip-compression", 3, "gzip compression level. 1 BestSpeed, 2 BestCompression, 3 DefaultCompression")
 	gzipFlag         = flag.Bool("gzip", false, "gzip output files.")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
 	nsqdTCPAddrs     = util.StringArray{}
@@ -38,10 +39,11 @@ func init() {
 }
 
 type FileLogger struct {
-	out        *os.File
-	gzipWriter *gzip.Writer
-	filename   string
-	logChan    chan *Message
+	out              *os.File
+	gzipWriter       *gzip.Writer
+	filename         string
+	logChan          chan *Message
+	compressionLevel int
 }
 
 type Message struct {
@@ -137,7 +139,7 @@ func (f *FileLogger) Sync() error {
 	if f.gzipWriter != nil {
 		f.gzipWriter.Close()
 		err = f.out.Sync()
-		f.gzipWriter, _ = gzip.NewWriterLevel(f.out, gzip.BestSpeed)
+		f.gzipWriter, _ = gzip.NewWriterLevel(f.out, f.compressionLevel)
 	} else {
 		err = f.out.Sync()
 	}
@@ -178,12 +180,28 @@ func (f *FileLogger) updateFile() bool {
 		}
 		f.filename = filename
 		if *gzipFlag {
-			f.gzipWriter, _ = gzip.NewWriterLevel(newfile, gzip.BestSpeed)
+			f.gzipWriter, _ = gzip.NewWriterLevel(newfile, f.compressionLevel)
 		}
 		return true
 	}
 
 	return false
+}
+
+func NewFileLogger(compressionLevel int) *FileLogger {
+	var speed int
+	switch compressionLevel {
+	case 1:
+		speed = gzip.BestSpeed
+	case 2:
+		speed = gzip.BestCompression
+	case 3:
+		speed = gzip.DefaultCompression
+	}
+	return &FileLogger{
+		logChan:          make(chan *Message, 1),
+		compressionLevel: speed,
+	}
 }
 
 func main() {
@@ -209,14 +227,16 @@ func main() {
 		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
+	if *gzipCompression < 1 || *gzipCompression > 3 {
+		log.Fatalf("invalid --gzip-compresion value (%v). should be 1,2 or 3", *gzipCompression)
+	}
+
 	hupChan := make(chan os.Signal, 1)
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	f := &FileLogger{
-		logChan: make(chan *Message, 1),
-	}
+	f := NewFileLogger(*gzipCompression)
 
 	r, err := nsq.NewReader(*topic, *channel)
 	if err != nil {
