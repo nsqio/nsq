@@ -2,6 +2,15 @@
 
 ## Binaries
 
+### 0.2.17-alpha
+
+ * #118 - nsqadmin POST actions/confirmations
+ * #106 - nsqlookupd topic producer tombstones
+ * #100 - sane handling of diskqueue read errors
+ * #117 - nsqadmin admin action POST notifications
+ * #122 - configurable msg size limits
+ * #123/#125 - fix notify related exit deadlock
+
 ### 0.2.16 - 2013-01-07
 
 **Upgrading from 0.2.15**: there are no backward incompatible changes in this release.
@@ -65,6 +74,11 @@ removed in a future release.
  * Initial public release.
 
 ## Go Client Library
+
+### 0.3.1-alpha
+
+ * #127 - send IDENTIFY (missed in #90)
+ * #16 - add backoff to Reader
 
 ### 0.3.0 - 2013-01-07
 
