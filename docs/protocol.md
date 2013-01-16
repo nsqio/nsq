@@ -122,7 +122,8 @@ Commands are line oriented and structured as follows:
         <message_id> - the hex id of the message
     
     NOTE: there is no success response
-    
+    NOTE: the message_id is already a hex encoded string, do not reencode    
+
     Error Responses:
     
         E_INVALID
@@ -137,7 +138,8 @@ Commands are line oriented and structured as follows:
             0 is a special case that will not defer re-queueing
     
     NOTE: there is no success response
-    
+    NOTE: the message_id is already a hex encoded string, do not reencode
+
     Error Responses:
     
         E_INVALID
