@@ -119,10 +119,10 @@ Commands are line oriented and structured as follows:
     
         FIN <message_id>\n
         
-        <message_id> - the hex id of the message
+        <message_id> - message id as 16-byte hex string
     
     NOTE: there is no success response
-    
+
     Error Responses:
     
         E_INVALID
@@ -132,12 +132,12 @@ Commands are line oriented and structured as follows:
     
         REQ <message_id> <timeout>\n
         
-        <message_id> - the hex id of the message
+        <message_id> - message id as 16-byte hex string
         <timeout> - a string representation of integer N where N < configured max timeout
             0 is a special case that will not defer re-queueing
     
     NOTE: there is no success response
-    
+
     Error Responses:
     
         E_INVALID
@@ -179,7 +179,7 @@ A client should expect one of the following frame identifiers:
 And finally, the message format:
     
     [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
-    |       (int64)        ||    ||                 (binary)                     || (binary)
+    |       (int64)        ||    ||                  (hex)                       || (binary)
     |       8-byte         ||    ||                 16-byte                      || N-byte
     ------------------------------------------------------------------------------------------...
       nanosecond timestamp    ^^                   message ID                       message body
