@@ -306,12 +306,6 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("channel name '%s' is not valid", channelName))
 	}
 
-	// TODO: this can be removed once all clients are updated to use IDENTIFY
-	if len(params) == 5 {
-		client.ShortIdentifier = string(params[3])
-		client.LongIdentifier = string(params[4])
-	}
-
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client)
