@@ -42,9 +42,19 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, reader, params)
 		if err != nil {
-			log.Printf("ERROR: CLIENT(%s) - %s", client, err.(*nsq.ClientErr).Description())
+			context := ""
+			if parentErr := err.(nsq.ChildError).Parent(); parentErr != nil {
+				context = " - " + parentErr.Error()
+			}
+			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), context)
+
 			_, err = nsq.SendResponse(client, []byte(err.Error()))
 			if err != nil {
+				break
+			}
+
+			// errors of type FatalClientErr should forceably close the connection
+			if _, ok := err.(*nsq.FatalClientErr); ok {
 				break
 			}
 			continue
@@ -82,12 +92,12 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 	case "UNREGISTER":
 		return p.UNREGISTER(client, reader, params[1:])
 	}
-	return nil, nsq.NewClientErr("E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
+	return nil, nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func getTopicChan(params []string) (string, string, error) {
+func getTopicChan(command string, params []string) (string, string, error) {
 	if len(params) == 0 {
-		return "", "", nsq.NewClientErr("E_MISSING_PARAMS", "insufficient number of params")
+		return "", "", nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
 	}
 
 	topicName := params[0]
@@ -97,11 +107,11 @@ func getTopicChan(params []string) (string, string, error) {
 	}
 
 	if !nsq.IsValidTopicName(topicName) {
-		return "", "", nsq.NewClientErr("E_BAD_TOPIC", fmt.Sprintf("topic name '%s' is not valid", topicName))
+		return "", "", nsq.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
 	}
 
 	if channelName != "" && !nsq.IsValidChannelName(channelName) {
-		return "", "", nsq.NewClientErr("E_BAD_CHANNEL", fmt.Sprintf("channel name '%s' is not valid", channelName))
+		return "", "", nsq.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
 
 	return topicName, channelName, nil
@@ -109,10 +119,10 @@ func getTopicChan(params []string) (string, string, error) {
 
 func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	if client.Producer == nil {
-		return nil, nsq.NewClientErr("E_INVALID", "client must IDENTIFY")
+		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
-	topic, channel, err := getTopicChan(params)
+	topic, channel, err := getTopicChan("REGISTER", params)
 	if err != nil {
 		return nil, err
 	}
@@ -135,10 +145,10 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	if client.Producer == nil {
-		return nil, nsq.NewClientErr("E_INVALID", "client must IDENTIFY")
+		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
-	topic, channel, err := getTopicChan(params)
+	topic, channel, err := getTopicChan("UNREGISTER", params)
 	if err != nil {
 		return nil, err
 	}
@@ -182,25 +192,25 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	var bodyLen int32
 	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
 	}
 
 	body := make([]byte, bodyLen)
 	_, err = io.ReadFull(reader, body)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body")
 	}
 
 	// body is a json structure with producer information
 	producer := Producer{producerId: client.RemoteAddr().String()}
 	err = json.Unmarshal(body, &producer)
 	if err != nil {
-		return nil, nsq.NewClientErr("E_BAD_BODY", err.Error())
+		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
 	// require all fields
 	if producer.Address == "" || producer.TcpPort == 0 || producer.HttpPort == 0 || producer.Version == "" {
-		return nil, nsq.NewClientErr("E_BAD_BODY", "missing fields in IDENTIFY")
+		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 	producer.LastUpdate = time.Now()
 

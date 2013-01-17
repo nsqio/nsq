@@ -4,6 +4,7 @@ import (
 	"../nsq"
 	"bufio"
 	"bytes"
+	"fmt"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -36,6 +37,31 @@ func mustConnectNSQd(tcpAddr *net.TCPAddr) (net.Conn, error) {
 	return conn, nil
 }
 
+func identify(t *testing.T, conn net.Conn) {
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	cmd, _ := nsq.Identify(ci)
+	err := cmd.Write(conn)
+	assert.Equal(t, err, nil)
+	readValidateOK(t, conn)
+}
+
+func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
+	err := nsq.Subscribe(topicName, channelName).Write(conn)
+	assert.Equal(t, err, nil)
+	readValidateOK(t, conn)
+}
+
+func readValidateOK(t *testing.T, conn net.Conn) {
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
 // test channel/topic names
 func TestChannelTopicNames(t *testing.T) {
 	assert.Equal(t, nsq.IsValidChannelName("test"), true)
@@ -65,8 +91,8 @@ func TestBasicV2(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch").Write(conn)
-	assert.Equal(t, err, nil)
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
 	assert.Equal(t, err, nil)
@@ -103,8 +129,8 @@ func TestMultipleConsumerV2(t *testing.T) {
 		conn, err := mustConnectNSQd(tcpAddr)
 		assert.Equal(t, err, nil)
 
-		err = nsq.Subscribe(topicName, "ch"+i).Write(conn)
-		assert.Equal(t, err, nil)
+		identify(t, conn)
+		sub(t, conn, topicName, "ch"+i)
 
 		err = nsq.Ready(1).Write(conn)
 		assert.Equal(t, err, nil)
@@ -141,8 +167,8 @@ func TestClientTimeout(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch").Write(conn)
-	assert.Equal(t, err, nil)
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -177,8 +203,8 @@ func TestClientHeartbeat(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch").Write(conn)
-	assert.Equal(t, err, nil)
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
 	assert.Equal(t, err, nil)
@@ -211,8 +237,8 @@ func TestPausing(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	err = nsq.Subscribe(topicName, "ch").Write(conn)
-	assert.Equal(t, err, nil)
+	identify(t, conn)
+	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
 	assert.Equal(t, err, nil)
@@ -308,7 +334,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
-	assert.Equal(t, data, []byte("E_MSG_TOO_BIG"))
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQd(tcpAddr)
@@ -338,7 +364,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
-	assert.Equal(t, data, []byte("E_BODY_TOO_BIG"))
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQd(tcpAddr)
@@ -355,7 +381,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
-	assert.Equal(t, data, []byte("E_MSG_TOO_BIG"))
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {
@@ -486,12 +512,10 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		panic(err.Error())
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
-	cmd, _ := nsq.Identify(ci)
-	cmd.Write(rw)
-	nsq.Subscribe(topicName, "ch").Write(rw)
+
+	identify(nil, conn)
+	sub(nil, conn, topicName, "ch")
+
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan
