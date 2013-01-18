@@ -147,6 +147,8 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Justin Azoff ([@JustinAzoff][justin_github])
  * Michael Hood ([@michaelhood][michael_github])
  * Xianjie ([@datastream][datastream_github])
+ * Dustin Norlander ([@dustismo][dustismo_github])
+ * Funky Gao ([@funkygao][funkygao_github])
  
 [simplehttp]: https://github.com/bitly/simplehttp
 [msgpack]: http://msgpack.org/
@@ -190,3 +192,5 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [nsq-java]: https://github.com/bitly/nsq-java
 [michael_github]: https://github.com/michaelhood
 [datastream_github]: https://github.com/datastream
+[dustismo_github]: https://github.com/dustismo
+[funkygao_github]: https://github.com/funkygao
