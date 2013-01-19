@@ -21,11 +21,7 @@ type ProtocolV2 struct {
 }
 
 func init() {
-	// BigEndian client byte sequence "  V2"
-	var magicInt int32
-	buf := bytes.NewBuffer([]byte(nsq.MagicV2))
-	binary.Read(buf, binary.BigEndian, &magicInt)
-	protocols[magicInt] = &ProtocolV2{}
+	protocols[string(nsq.MagicV2)] = &ProtocolV2{}
 }
 
 func (p *ProtocolV2) IOLoop(conn net.Conn) error {

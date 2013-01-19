@@ -4,7 +4,6 @@ import (
 	"../nsq"
 	"../util"
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -21,11 +20,7 @@ type LookupProtocolV1 struct {
 }
 
 func init() {
-	// BigEndian client byte sequence "  V1"
-	var magicInt int32
-	buf := bytes.NewBuffer([]byte(nsq.MagicV1))
-	binary.Read(buf, binary.BigEndian, &magicInt)
-	protocols[magicInt] = &LookupProtocolV1{}
+	protocols[string(nsq.MagicV1)] = &LookupProtocolV1{}
 }
 
 func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {

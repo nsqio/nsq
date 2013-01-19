@@ -51,23 +51,6 @@ type Protocol interface {
 	IOLoop(conn net.Conn) error
 }
 
-// ReadMagic is a server-side utility function to read the 4-byte magic id
-// from the supplied Reader.
-//
-// The client should initialize itself by sending a 4 byte sequence indicating
-// the version of the protocol that it intends to communicate, this will allow us
-// to gracefully upgrade the protocol away from text/line oriented to whatever...
-func ReadMagic(r io.Reader) (int32, error) {
-	var protocolMagic int32
-
-	err := binary.Read(r, binary.BigEndian, &protocolMagic)
-	if err != nil {
-		return 0, err
-	}
-
-	return protocolMagic, nil
-}
-
 // SendResponse is a server side utility function to prefix data with a length header
 // and write to the supplied Writer
 func SendResponse(w io.Writer, data []byte) (int, error) {
