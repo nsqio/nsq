@@ -122,10 +122,6 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// (so that we dont leave any messages around)
 	channel.Delete()
 
-	// since we are explicitly deleting a channel (not just at system exit time)
-	// de-register this from the lookupd
-	go t.notifier.Notify(channel)
-
 	return nil
 }
 
@@ -227,7 +223,11 @@ func (t *Topic) router() {
 
 // Delete empties the topic and all its channels and closes
 func (t *Topic) Delete() error {
-	return t.exit(true)
+	err := t.exit(true)
+	// since we are explicitly deleting a topic (not just at system exit time)
+	// de-register this from the lookupd
+	go t.notifier.Notify(t)
+	return err
 }
 
 func (t *Topic) Close() error {
