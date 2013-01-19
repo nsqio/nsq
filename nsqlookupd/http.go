@@ -15,6 +15,7 @@ func httpServer(listener net.Listener) {
 	log.Printf("HTTP: listening on %s", listener.Addr().String())
 
 	handler := http.NewServeMux()
+	handler.HandleFunc("/info", infoHandler)
 	handler.HandleFunc("/ping", pingHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
 	handler.HandleFunc("/topics", topicsHandler)
@@ -23,9 +24,9 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/tombstone_topic_producer", tombstoneTopicProducerHandler)
-	handler.HandleFunc("/info", infoHandler)
 	handler.HandleFunc("/create_topic", createTopicHandler)
 	handler.HandleFunc("/create_channel", createChannelHandler)
+	handler.HandleFunc("/debug", debugHandler)
 
 	server := &http.Server{
 		Handler: handler,
@@ -268,4 +269,29 @@ func infoHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Version: util.BINARY_VERSION,
 	})
+}
+
+func debugHandler(w http.ResponseWriter, req *http.Request) {
+	lookupd.DB.RLock()
+	defer lookupd.DB.RUnlock()
+
+	data := make(map[string][]map[string]interface{})
+	for r, producers := range lookupd.DB.registrationMap {
+		key := r.Category + ":" + r.Key + ":" + r.SubKey
+		data[key] = make([]map[string]interface{}, 0)
+		for _, p := range producers {
+			m := make(map[string]interface{})
+			m["producer_id"] = p.producerId
+			m["address"] = p.Address
+			m["tcp_port"] = p.TcpPort
+			m["http_port"] = p.HttpPort
+			m["version"] = p.Version
+			m["last_update"] = p.LastUpdate.UnixNano()
+			m["tombstoned"] = p.tombstoned
+			m["tombstoned_at"] = p.tombstonedAt.UnixNano()
+			data[key] = append(data[key], m)
+		}
+	}
+
+	util.ApiResponse(w, 200, "OK", data)
 }
