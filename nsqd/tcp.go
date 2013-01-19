@@ -32,6 +32,7 @@ func (p *TcpProtocol) Handle(clientConn net.Conn) {
 	prot, ok := p.protocols[protocolMagic]
 	if !ok {
 		nsq.SendFramedResponse(clientConn, nsq.FrameTypeError, []byte("E_BAD_PROTOCOL"))
+		clientConn.Close()
 		log.Printf("ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return
 	}
