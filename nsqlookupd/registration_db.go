@@ -61,7 +61,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 }
 
 // add a producer to a registration
-func (r *RegistrationDB) AddProducer(k Registration, p *Producer) {
+func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	r.Lock()
 	defer r.Unlock()
 	producers := r.registrationMap[k]
@@ -74,25 +74,29 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) {
 	if found == false {
 		r.registrationMap[k] = append(producers, p)
 	}
+	return !found
 }
 
 // remove a producer from a registration
-func (r *RegistrationDB) RemoveProducer(k Registration, p *Producer) int {
+func (r *RegistrationDB) RemoveProducer(k Registration, p *Producer) (bool, int) {
 	r.Lock()
 	defer r.Unlock()
 	producers, ok := r.registrationMap[k]
 	if !ok {
-		return 0
+		return false, 0
 	}
+	removed := false
 	cleaned := make(Producers, 0)
 	for _, producer := range producers {
 		if producer != p { // this is a pointer comparison
 			cleaned = append(cleaned, producer)
+		} else {
+			removed = true
 		}
 	}
 	// Note: this leaves keys in the DB even if they have empty lists
 	r.registrationMap[k] = cleaned
-	return len(cleaned)
+	return removed, len(cleaned)
 }
 
 // remove a Registration and all it's producers

@@ -133,7 +133,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedProducers), 0)
 }
 
-func TestTombstone(t *testing.T) {
+func TestTombstoneRecover(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
@@ -141,7 +141,7 @@ func TestTombstone(t *testing.T) {
 	defer lookupd.Exit()
 	lookupd.tombstoneLifetime = 50 * time.Millisecond
 
-	topicName := "connectmsg"
+	topicName := "tombstone_recover"
 
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
@@ -158,11 +158,47 @@ func TestTombstone(t *testing.T) {
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
+}
+
+func TestTombstoneUnregister(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr := mustStartLookupd()
+	defer lookupd.Exit()
+	lookupd.tombstoneLifetime = 50 * time.Millisecond
+
+	topicName := "tombstone_unregister"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	nsq.Register(topicName, "channel1").Write(conn)
+
+	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
+	_, err := nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	data, err := nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+	producers, _ := data.Get("producers").Array()
+	assert.Equal(t, len(producers), 0)
+
+	nsq.UnRegister(topicName, "").Write(conn)
+
+	time.Sleep(55 * time.Millisecond)
+
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	data, err = nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+	producers, _ = data.Get("producers").Array()
+	assert.Equal(t, len(producers), 0)
 }

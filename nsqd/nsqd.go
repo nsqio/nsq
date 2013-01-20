@@ -328,10 +328,6 @@ func (n *NSQd) DeleteExistingTopic(topicName string) error {
 	// (so that we dont leave any messages around)
 	topic.Delete()
 
-	// since we are explicitly deleting a topic (not just at system exit time)
-	// de-register this from the lookupd
-	go n.Notify(topic)
-
 	return nil
 }
 

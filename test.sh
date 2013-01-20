@@ -33,6 +33,8 @@ echo "starting nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160"
 NSQD_PID=$!
 popd >/dev/null
 
+sleep 0.3
+
 cleanup() {
     kill -s TERM $NSQD_PID
     kill -s TERM $LOOKUPD_PID
