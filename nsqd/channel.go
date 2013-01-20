@@ -124,7 +124,11 @@ func (c *Channel) Exiting() bool {
 
 // Delete empties the channel and closes
 func (c *Channel) Delete() error {
-	return c.exit(true)
+	err := c.exit(true)
+	// since we are explicitly deleting a channel (not just at system exit time)
+	// de-register this from the lookupd
+	go c.notifier.Notify(c)
+	return err
 }
 
 // Close cleanly closes the Channel

@@ -65,10 +65,12 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	log.Printf("CLIENT(%s): closing", client)
 	if client.Producer != nil {
-		lookupd.DB.RemoveProducer(Registration{"client", "", ""}, client.Producer)
 		registrations := lookupd.DB.LookupRegistrations(client.Producer)
 		for _, r := range registrations {
-			lookupd.DB.RemoveProducer(*r, client.Producer)
+			if removed, _ := lookupd.DB.RemoveProducer(*r, client.Producer); removed {
+				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+					client, r.Category, r.Key, r.SubKey)
+			}
 		}
 	}
 	return err
@@ -121,13 +123,17 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	if channel != "" {
-		log.Printf("DB: client(%s) added registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
-		lookupd.DB.AddProducer(key, client.Producer)
+		if lookupd.DB.AddProducer(key, client.Producer) {
+			log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
+				client, "channel", topic, channel)
+		}
 	}
-	log.Printf("DB: client(%s) added registration for topic:%s", client, topic)
 	key := Registration{"topic", topic, ""}
-	lookupd.DB.AddProducer(key, client.Producer)
+	if lookupd.DB.AddProducer(key, client.Producer) {
+		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
+			client, "topic", topic, "")
+	}
 
 	return []byte("OK"), nil
 }
@@ -143,13 +149,33 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	}
 
 	if channel != "" {
-		log.Printf("DB: client(%s) removed registration for channel:%s in topic:%s", client, channel, topic)
 		key := Registration{"channel", topic, channel}
-		producers := lookupd.DB.RemoveProducer(key, client.Producer)
+		removed, left := lookupd.DB.RemoveProducer(key, client.Producer)
+		if removed {
+			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+				client, "channel", topic, channel)
+		}
 		// for ephemeral channels, remove the channel as well if it has no producers
-		if producers == 0 && strings.HasSuffix(channel, "#ephemeral") {
+		if left == 0 && strings.HasSuffix(channel, "#ephemeral") {
 			lookupd.DB.RemoveRegistration(key)
 		}
+	} else {
+		// no channel was specified so this is a topic unregistration
+		// remove all of the channel registrations...
+		// normally this shouldn't happen which is why we print a warning message
+		// if anything is actually removed
+		registrations := lookupd.DB.FindRegistrations("channel", topic, "*")
+		for _, r := range registrations {
+			if removed, _ := lookupd.DB.RemoveProducer(*r, client.Producer); removed {
+				log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
+					client, "channel", topic, r.SubKey)
+			}
+		}
+	}
+	key := Registration{"topic", topic, ""}
+	if removed, _ := lookupd.DB.RemoveProducer(key, client.Producer); removed {
+		log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+			client, "topic", topic, "")
 	}
 
 	return []byte("OK"), nil
@@ -183,13 +209,13 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 	producer.LastUpdate = time.Now()
 
+	log.Printf("CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
+		client, producer.Address, producer.TcpPort, producer.HttpPort, producer.Version)
+
 	client.Producer = &producer
-	lookupd.DB.AddProducer(Registration{"client", "", ""}, client.Producer)
-	log.Printf("CLIENT(%s) registered TCP:%d HTTP:%d address:%s",
-		client.RemoteAddr(),
-		producer.TcpPort,
-		producer.HttpPort,
-		producer.Address)
+	if lookupd.DB.AddProducer(Registration{"client", "", ""}, client.Producer) {
+		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
+	}
 
 	// build a response
 	data := make(map[string]interface{})
