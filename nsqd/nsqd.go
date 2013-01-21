@@ -13,7 +13,6 @@ import (
 	"os"
 	"path"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -106,83 +105,55 @@ func (n *NSQd) LoadMetadata() {
 		return
 	}
 
-	// channels cannot start with '{' so we use that to introduce a way to pivot
-	// and be backwards compatible.  The new format is JSON so that adding fields
-	// is easy going forward.
-	if data[0] == '{' {
-		js, err := simplejson.NewJson(data)
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+		return
+	}
+
+	topics, err := js.Get("topics").Array()
+	if err != nil {
+		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+		return
+	}
+
+	for ti, _ := range topics {
+		topicJs := js.Get("topics").GetIndex(ti)
+
+		topicName, err := topicJs.Get("name").String()
+		if err != nil {
+			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+			return
+		}
+		if !nsq.IsValidTopicName(topicName) {
+			log.Printf("WARNING: skipping creation of invalid topic %s", topicName)
+			continue
+		}
+		topic := n.GetTopic(topicName)
+
+		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
 			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 			return
 		}
 
-		topics, err := js.Get("topics").Array()
-		if err != nil {
-			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
-			return
-		}
+		for ci, _ := range channels {
+			channelJs := topicJs.Get("channels").GetIndex(ci)
 
-		for ti, _ := range topics {
-			topicJs := js.Get("topics").GetIndex(ti)
-
-			topicName, err := topicJs.Get("name").String()
+			channelName, err := channelJs.Get("name").String()
 			if err != nil {
 				log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 				return
 			}
-			if !nsq.IsValidTopicName(topicName) {
-				log.Printf("WARNING: skipping creation of invalid topic %s", topicName)
+			if !nsq.IsValidChannelName(channelName) {
+				log.Printf("WARNING: skipping creation of invalid channel %s", channelName)
 				continue
 			}
-			topic := n.GetTopic(topicName)
+			channel := topic.GetChannel(channelName)
 
-			channels, err := topicJs.Get("channels").Array()
-			if err != nil {
-				log.Printf("ERROR: failed to parse metadata - %s", err.Error())
-				return
-			}
-
-			for ci, _ := range channels {
-				channelJs := topicJs.Get("channels").GetIndex(ci)
-
-				channelName, err := channelJs.Get("name").String()
-				if err != nil {
-					log.Printf("ERROR: failed to parse metadata - %s", err.Error())
-					return
-				}
-				if !nsq.IsValidChannelName(channelName) {
-					log.Printf("WARNING: skipping creation of invalid channel %s", channelName)
-					continue
-				}
-				channel := topic.GetChannel(channelName)
-
-				paused, _ := channelJs.Get("paused").Bool()
-				if paused {
-					channel.Pause()
-				}
-			}
-		}
-	} else {
-		// TODO: remove this in the next release
-		// old line oriented, : separated, format
-		for _, line := range strings.Split(string(data), "\n") {
-			if line != "" {
-				parts := strings.SplitN(line, ":", 2)
-
-				if !nsq.IsValidTopicName(parts[0]) {
-					log.Printf("WARNING: skipping creation of invalid topic %s", parts[0])
-					continue
-				}
-				topic := n.GetTopic(parts[0])
-
-				if len(parts) < 2 {
-					continue
-				}
-				if !nsq.IsValidChannelName(parts[1]) {
-					log.Printf("WARNING: skipping creation of invalid channel %s", parts[1])
-					continue
-				}
-				topic.GetChannel(parts[1])
+			paused, _ := channelJs.Get("paused").Bool()
+			if paused {
+				channel.Pause()
 			}
 		}
 	}
