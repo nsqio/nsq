@@ -137,6 +137,19 @@ func (t *Topic) PutMessage(msg *nsq.Message) error {
 	return nil
 }
 
+func (t *Topic) PutMessages(messages []*nsq.Message) error {
+	t.RLock()
+	defer t.RUnlock()
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return errors.New("exiting")
+	}
+	for _, m := range messages {
+		t.incomingMsgChan <- m
+		atomic.AddUint64(&t.messageCount, 1)
+	}
+	return nil
+}
+
 func (t *Topic) Depth() int64 {
 	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
 }
