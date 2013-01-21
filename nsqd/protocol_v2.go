@@ -502,21 +502,14 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("body too big %d > %d", bodyLen, nsqd.options.maxBodySize))
 	}
 
-	body := make([]byte, bodyLen)
-	_, err = io.ReadFull(client.Reader, body)
+	err = binary.Read(client.Reader, binary.BigEndian, &numMessages)
 	if err != nil {
 		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 	}
 
-	buf := bytes.NewBuffer(body)
-	err = binary.Read(buf, binary.BigEndian, &numMessages)
-	if err != nil {
-		return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
-	}
-
-	topic := nsqd.GetTopic(topicName)
+	messages := make([]*nsq.Message, 0, numMessages)
 	for i := int32(0); i < numMessages; i++ {
-		err = binary.Read(buf, binary.BigEndian, &messageSize)
+		err = binary.Read(client.Reader, binary.BigEndian, &messageSize)
 		if err != nil {
 			return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 		}
@@ -527,16 +520,22 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		}
 
 		msgBody := make([]byte, messageSize)
-		_, err = io.ReadFull(buf, msgBody)
+		_, err = io.ReadFull(client.Reader, msgBody)
 		if err != nil {
 			return nil, nsq.NewFatalClientErr("E_BAD_BODY", err.Error())
 		}
 
-		msg := nsq.NewMessage(<-nsqd.idChan, msgBody)
-		err := topic.PutMessage(msg)
-		if err != nil {
-			return nil, nsq.NewFatalClientErr("E_PUT_FAILED", err.Error())
-		}
+		messages = append(messages, nsq.NewMessage(<-nsqd.idChan, msgBody))
+	}
+
+	topic := nsqd.GetTopic(topicName)
+
+	// if we've made it this far we've validated all the input,
+	// the only possible error is that the topic is exiting during
+	// this next call (and no messages will be queued in that case)
+	err = topic.PutMessages(messages)
+	if err != nil {
+		return nil, nsq.NewFatalClientErr("E_MPUB_FAILED", err.Error())
 	}
 
 	return []byte("OK"), nil
