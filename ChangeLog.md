@@ -4,6 +4,14 @@
 
 ### 0.2.17-alpha
 
+**Upgrading from 0.2.16**: there are no backward incompatible changes in this release.
+
+**Upgrading from 0.2.15**: in #132 deprecations in SUB were removed as well as support for the old,
+line oriented, `nsqd` metadata file format. For these reasons you should upgrade to `0.2.16` first.
+
+ * #132 - deprecate identify in SUB and old nsqd metadata file format
+ * #135 - atomic MPUB
+ * #134 - nsqd to nsqlookupd registration fixes
  * #118 - nsqadmin POST actions/confirmations
  * #106 - nsqlookupd topic producer tombstones
  * #100 - sane handling of diskqueue read errors
