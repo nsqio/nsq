@@ -32,6 +32,7 @@ var (
 	verbose         = flag.Bool("verbose", false, "enable verbose logging")
 	statsdAddress   = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for writing stats")
 	statsdInterval  = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
+	hostAddr = flag.String("hostname", "", "address that will be registered with lookupd, (default to the OS hostname)")
 	lookupdTCPAddrs = util.StringArray{}
 )
 
@@ -45,10 +46,14 @@ var protocols = map[int32]nsq.Protocol{}
 func main() {
 	flag.Parse()
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatal(err)
+	if *hostAddr == "" {
+		hst, err := os.Hostname()
+		if err != nil {
+			log.Fatal(err)
+		}
+		*hostAddr = hst	
 	}
+	
 
 	if *showVersion {
 		fmt.Printf("nsqd v%s\n", util.BINARY_VERSION)
@@ -57,7 +62,7 @@ func main() {
 
 	if *workerId == 0 {
 		h := md5.New()
-		io.WriteString(h, hostname)
+		io.WriteString(h, *hostAddr)
 		*workerId = int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 	}
 
@@ -83,7 +88,7 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if *statsdAddress != "" {
-		underHostname := fmt.Sprintf("%s_%d", strings.Replace(hostname, ".", "_", -1), httpAddr.Port)
+		underHostname := fmt.Sprintf("%s_%d", strings.Replace(*hostAddr, ".", "_", -1), httpAddr.Port)
 		prefix := fmt.Sprintf("nsq.%s.", underHostname)
 		go statsdLoop(*statsdAddress, prefix, *statsdInterval)
 	}
@@ -96,6 +101,7 @@ func main() {
 	options.maxBytesPerFile = *maxBytesPerFile
 	options.syncEvery = *syncEvery
 	options.msgTimeout = time.Duration(*msgTimeoutMs) * time.Millisecond
+	options.hostname = *hostAddr
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr
