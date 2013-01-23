@@ -28,4 +28,17 @@ $("form").submit(function(ev) {
     });
     return false;
 });
+
+$('.rate').each(function()  {
+    var self = this;
+    $.getJSON("/graphite_data", {
+      metric: "rate",
+      target: $(this).attr("target")
+    },
+      function(rate) {
+        $(self).html(rate.datapoint);
+    });
+});
+
+
 </script>

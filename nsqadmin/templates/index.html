@@ -10,15 +10,17 @@
 {{if .Topics}}
 <table class="table table-condensed table-bordered">
     <tr>
+        <th>Topic</th>
         {{if $g.Enabled}}<th width="120">Depth</th>{{end}}
         {{if $g.Enabled}}<th width="120">Messages</th>{{end}}
-        <th>Topic</th>
+        {{if $g.Enabled}}<th width="120">Rate</th>{{end}}
     </tr>
 {{range .Topics}}
     <tr>
+        <td><a href="/topic/{{.TopicName}}">{{.TopicName}}</a></td>
         {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{.Sparkline $g "depth"}}"></a></td>{{end}}
         {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{.Sparkline $g "message_count"}}"></a></td>{{end}}
-        <td><a href="/topic/{{.TopicName}}">{{.TopicName}}</a></td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
     </tr>
 {{end}}
 </table>

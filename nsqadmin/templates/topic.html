@@ -38,6 +38,7 @@
         <th>Depth</th>
         <th>Memory + Disk</th>
         <th>Messages</th>
+        {{if $g.Enabled}}<th>Rate</th>{{end}}
         <th>Channels</th>
     </tr>
     {{range .TopicHostStats}}
@@ -58,10 +59,11 @@
             {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
             {{.MessageCount | commafy}}
             </td>
+            {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
         <td>{{.ChannelCount}}</td>
     </tr>
     {{end}}
-    {{with .GlobalTopicStats}} 
+    {{with .GlobalTopicStats}}
     <tr class="info">
         <td>Total:</td>
         <td>
@@ -73,6 +75,7 @@
             {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" height="20" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
             {{.MessageCount | commafy}}
         </td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
         <td>{{.ChannelCount}}</td>
     </tr>
     {{end}}
@@ -101,6 +104,7 @@
         <th>Requeued</th>
         <th>Timed Out</th>
         <th>Messages</th>
+        {{if $g.Enabled}}<th>Rate</th>{{end}}
         <th>Connections</th>
     </tr>
 
@@ -118,6 +122,7 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
         <td>
             {{if $g.Enabled}}<a href="{{$c.LargeGraph $g "clients"}}"><img width="120" height="20" src="{{$c.Sparkline $g "clients"}}"></a>{{end}}
             {{$c.ClientCount}}</td>
