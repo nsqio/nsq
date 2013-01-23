@@ -6,6 +6,7 @@ import (
 	"../../nsq"
 	"../../util"
 	"compress/gzip"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -19,7 +20,7 @@ import (
 
 var (
 	datetimeFormat   = flag.String("datetime-format", "%Y-%m-%d_%H", "strftime compatible format for <DATETIME> in filename format")
-	filenameFormat   = flag.String("filename-format", "<TOPIC>.<HOST>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <DATETIME> are replaced)")
+	filenameFormat   = flag.String("filename-format", "<TOPIC>.<HOST><GZIPREV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <DATETIME>, <GZIPREV> are replaced. <GZIPREV> is a suffix when an existing gzip file already exists)")
 	showVersion      = flag.Bool("version", false, "print version string")
 	hostIdentifier   = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
@@ -27,7 +28,7 @@ var (
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
 	gzipCompression  = flag.Int("gzip-compression", 3, "gzip compression level. 1 BestSpeed, 2 BestCompression, 3 DefaultCompression")
-	gzipFlag         = flag.Bool("gzip", false, "gzip output files.")
+	gzipEnabled      = flag.Bool("gzip", false, "gzip output files.")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
@@ -41,9 +42,11 @@ func init() {
 type FileLogger struct {
 	out              *os.File
 	gzipWriter       *gzip.Writer
-	filename         string
+	lastFilename     string
 	logChan          chan *Message
 	compressionLevel int
+	gzipEnabled      bool
+	filenameFormat   string
 }
 
 type Message struct {
@@ -146,41 +149,62 @@ func (f *FileLogger) Sync() error {
 	return err
 }
 
-func (f *FileLogger) updateFile() bool {
+func (f *FileLogger) calculateCurrentFilename() string {
 	t := time.Now()
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
-	}
-	shortHostname := strings.Split(hostname, ".")[0]
-	identifier := shortHostname
-	if len(*hostIdentifier) != 0 {
-		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
-		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
-	}
-
-	filename := strings.Replace(*filenameFormat, "<TOPIC>", *topic, -1)
-	filename = strings.Replace(filename, "<HOST>", identifier, -1)
 	datetime := strftime(*datetimeFormat, t)
-	filename = strings.Replace(filename, "<DATETIME>", datetime, -1)
-	if *gzipFlag {
-		filename = filename + ".gz"
+	filename := strings.Replace(f.filenameFormat, "<DATETIME>", datetime, -1)
+	if !f.gzipEnabled {
+		filename = strings.Replace(filename, "<GZIPREV>", "", -1)
 	}
+	return filename
 
-	if filename != f.filename || f.out == nil {
-		log.Printf("old %s new %s", f.filename, filename)
+}
+
+func (f *FileLogger) updateFile() bool {
+	filename := f.calculateCurrentFilename()
+	maxGzipRevisions := 1000
+	if filename != f.lastFilename || f.out == nil {
 		f.Close()
 		os.MkdirAll(*outputDir, 777)
-		log.Printf("opening %s/%s", *outputDir, filename)
-		newfile, err := os.OpenFile(path.Join(*outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-		f.out = newfile
-		if err != nil {
-			log.Fatal(err)
+		var newFile *os.File
+		var err error
+		if f.gzipEnabled {
+			// for gzip files, we never append to an existing file
+			// we try to create different revisions, replacing <GZIPREV> in the filename
+			for gzipRevision := 0; gzipRevision < maxGzipRevisions; gzipRevision += 1 {
+				var revisionSuffix string
+				if gzipRevision > 0 {
+					revisionSuffix = fmt.Sprintf("-%d", gzipRevision)
+				}
+				tempFilename := strings.Replace(filename, "<GZIPREV>", revisionSuffix, -1)
+				fullPath := path.Join(*outputDir, tempFilename)
+				newFile, err = os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+				if err != nil && os.IsExist(err) {
+					log.Printf("INFO: file already exists: %s", fullPath)
+					continue
+				}
+				if err != nil {
+					log.Fatalf("ERROR: %s Unable to open %s", err, fullPath)
+				}
+				log.Printf("opening %s", fullPath)
+				break
+			}
+			if newFile == nil {
+				log.Fatalf("ERROR: Unable to open a new gzip file after %d tries", maxGzipRevisions)
+			}
+		} else {
+			log.Printf("opening %s/%s", *outputDir, filename)
+			newFile, err = os.OpenFile(path.Join(*outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-		f.filename = filename
-		if *gzipFlag {
-			f.gzipWriter, _ = gzip.NewWriterLevel(newfile, f.compressionLevel)
+
+		f.out = newFile
+		f.lastFilename = filename
+		if f.gzipEnabled {
+			f.gzipWriter, _ = gzip.NewWriterLevel(newFile, f.compressionLevel)
 		}
 		return true
 	}
@@ -188,7 +212,7 @@ func (f *FileLogger) updateFile() bool {
 	return false
 }
 
-func NewFileLogger(compressionLevel int) *FileLogger {
+func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat string) (*FileLogger, error) {
 	var speed int
 	switch compressionLevel {
 	case 1:
@@ -198,10 +222,34 @@ func NewFileLogger(compressionLevel int) *FileLogger {
 	case 3:
 		speed = gzip.DefaultCompression
 	}
-	return &FileLogger{
+
+	if gzipEnabled && strings.Index(filenameFormat, "<GZIPREV>") == -1 {
+		return nil, errors.New("missing <GZIPREV> in filenameFormat")
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	shortHostname := strings.Split(hostname, ".")[0]
+	identifier := shortHostname
+	if len(*hostIdentifier) != 0 {
+		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
+		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
+	}
+	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", *topic, -1)
+	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
+	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
+		filenameFormat = filenameFormat + ".gz"
+	}
+
+	f := &FileLogger{
 		logChan:          make(chan *Message, 1),
 		compressionLevel: speed,
+		filenameFormat:   filenameFormat,
+		gzipEnabled:      gzipEnabled,
 	}
+	return f, nil
 }
 
 func main() {
@@ -236,7 +284,10 @@ func main() {
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	f := NewFileLogger(*gzipCompression)
+	f, err := NewFileLogger(*gzipEnabled, *gzipCompression, *filenameFormat)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
 	r, err := nsq.NewReader(*topic, *channel)
 	if err != nil {
