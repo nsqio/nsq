@@ -357,9 +357,8 @@ func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var rd string
-	rd, err = reqParams.Get("rd")
-	if err != nil {
+	rd, _ := reqParams.Get("rd")
+	if !strings.HasPrefix(rd, "/") {
 		rd = "/"
 	}
 
@@ -401,9 +400,8 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var rd string
-	rd, err = reqParams.Get("rd")
-	if err != nil {
+	rd, _ := reqParams.Get("rd")
+	if !strings.HasPrefix(rd, "/") {
 		rd = "/"
 	}
 
@@ -457,9 +455,8 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var rd string
-	rd, err = reqParams.Get("rd")
-	if err != nil {
+	rd, _ := reqParams.Get("rd")
+	if !strings.HasPrefix(rd, "/") {
 		rd = fmt.Sprintf("/topic/%s", url.QueryEscape(topicName))
 	}
 
