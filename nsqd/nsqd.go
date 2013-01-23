@@ -47,7 +47,7 @@ type nsqdOptions struct {
 	syncEvery       int64
 	msgTimeout      time.Duration
 	clientTimeout   time.Duration
-	hostname string
+	hostname        string
 }
 
 func NewNsqdOptions() *nsqdOptions {
@@ -60,7 +60,7 @@ func NewNsqdOptions() *nsqdOptions {
 		syncEvery:       2500,
 		msgTimeout:      60 * time.Second,
 		clientTimeout:   nsq.DefaultClientTimeout,
-		hostname: "",
+		hostname:        "",
 	}
 }
 
