@@ -86,11 +86,13 @@ Commands are line oriented and structured as follows:
 
   * `MPUB` - publish multiple messages to a specified **topic**:
     
-        MPUB <topic_name> <num_messages>\n
-        [ 4-byte size in bytes ][ N-byte binary data ]... (repeated <num_messages> times)
+        MPUB <topic_name>\n
+        [ 4-byte body size ]
+        [ 4-byte num messages ]
+        [ 4-byte message #1 size ][ N-byte binary data ]
+              ... (repeated <num_messages> times)
         
         <topic_name> - a valid string
-        <num_messages> - a string representation of integer N
     
     Success Response:
     
