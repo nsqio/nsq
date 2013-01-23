@@ -7,18 +7,12 @@ import (
 	"encoding/json"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"time"
 )
 
 func (n *NSQd) lookupLoop() {
 	syncTopicChan := make(chan *nsq.LookupPeer)
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
-	}
 
 	for _, host := range n.lookupdTCPAddrs {
 		log.Printf("LOOKUP: adding peer %s", host)
@@ -27,7 +21,7 @@ func (n *NSQd) lookupLoop() {
 			ci["version"] = util.BINARY_VERSION
 			ci["tcp_port"] = n.tcpAddr.Port
 			ci["http_port"] = n.httpAddr.Port
-			ci["address"] = hostname
+			ci["address"] = n.options.hostname
 			cmd, err := nsq.Identify(ci)
 			if err != nil {
 				lp.Close()

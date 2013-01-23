@@ -56,6 +56,7 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
     -verbose=false: enable verbose logging
     -version=false: print version string
     -worker-id=0: unique identifier (int) for this worker (will default to a hash of hostname)
+    -hostname="": hostname for this worker.  this is registered with nsqlookd (default is OS hostname)
 
 ### Statsd / Graphite Integration
 
