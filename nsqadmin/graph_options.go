@@ -118,9 +118,11 @@ func GraphIntervalForTimeframe(t string, selected bool) (*GraphInterval, error) 
 	}, nil
 }
 
-func (g *GraphOptions) Prefix() string {
-	if g.UseStatsdPrefix {
+func (g *GraphOptions) Prefix(metricType string) string {
+	if g.UseStatsdPrefix && metricType == "counter" {
 		return "stats_counts."
+	} else if g.UseStatsdPrefix && metricType == "gauge" {
+		return "stats.gauges."
 	}
 	return ""
 }
@@ -135,7 +137,7 @@ func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
 	if key == "depth" {
 		color = "red"
 	}
-	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(), t.TopicName, key)
+	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(metricType(key)), t.TopicName, key)
 	return target, color
 }
 func (t *Topic) Sparkline(g *GraphOptions, key string) template.URL {
@@ -157,7 +159,7 @@ func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
 	if key == "depth" {
 		color = "red"
 	}
-	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(), h, t.Topic, key)
+	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(metricType(key)), h, t.Topic, key)
 	return target, color
 }
 func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
@@ -169,6 +171,15 @@ func (t *TopicHostStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	return g.LargeGraph(target, color)
 }
 
+func metricType(key string) string {
+	metricType := "counter"
+	switch key {
+	case "backend_depth", "depth", "clients":
+		metricType = "gauge"
+	}
+	return metricType
+}
+
 func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 	h := "*"
 	if len(c.HostStats) == 0 {
@@ -178,7 +189,7 @@ func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 	if key == "depth" {
 		color = "red"
 	}
-	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(), h, c.Topic, c.ChannelName, key)
+	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(metricType(key)), h, c.Topic, c.ChannelName, key)
 	return target, color
 }
 func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
