@@ -47,5 +47,11 @@ type PostParams struct {
 }
 
 func (p *PostParams) Get(key string) (string, error) {
-	return p.Request.FormValue(key), nil
+	if p.Request.Form == nil {
+		p.Request.ParseMultipartForm(1 << 20)
+	}
+	if vs, ok := p.Request.Form[key]; ok {
+		return vs[0], nil
+	}
+	return "", errors.New("key not in post params")
 }
