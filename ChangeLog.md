@@ -4,14 +4,21 @@
 
 ### 0.2.17-alpha
 
-**Upgrading from 0.2.16**: there are no backward incompatible changes in this release.
+**Upgrading from 0.2.16**: IDENTIFY and SUB now return success responses (they previously only
+responded to errors). The official Go and Python libraries are forwards/backwards compatible with
+this change however 3rd party client libraries may not be.
 
 **Upgrading from 0.2.15**: in #132 deprecations in SUB were removed as well as support for the old,
 line oriented, `nsqd` metadata file format. For these reasons you should upgrade to `0.2.16` first.
 
+ * #140 - fix MPUB protocol documentation
+ * #139 - fix nsqadmin handling of legacy statsd prefixes for graphs
+ * #138 - fix nsqadmin action redirect handling
+ * #133 - improved protocol fatal error handling and responses; IDENTIFY/SUB success responses
  * #132 - deprecate identify in SUB and old nsqd metadata file format
  * #135 - atomic MPUB
  * #134 - nsqd to nsqlookupd registration fixes
+ * #129 - nsq_to_file gzip file versioning
  * #118 - nsqadmin POST actions/confirmations
  * #106 - nsqlookupd topic producer tombstones
  * #100 - sane handling of diskqueue read errors
