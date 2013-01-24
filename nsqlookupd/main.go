@@ -19,6 +19,7 @@ var (
 	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
 	inactiveProducerTimeout = flag.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
 	tombstoneLifetime       = flag.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
+	broadcastAddress        = flag.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 )
 
 var protocols = map[string]nsq.Protocol{}
@@ -26,6 +27,14 @@ var lookupd *NSQLookupd
 
 func main() {
 	flag.Parse()
+
+	if *broadcastAddress == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatal(err)
+		}
+		*broadcastAddress = hostname
+	}
 
 	if *showVersion {
 		fmt.Printf("nsqlookupd v%s\n", util.BINARY_VERSION)
@@ -55,6 +64,7 @@ func main() {
 	lookupd = NewNSQLookupd()
 	lookupd.tcpAddr = tcpAddr
 	lookupd.httpAddr = httpAddr
+	lookupd.broadcastAddress = *broadcastAddress
 	lookupd.inactiveProducerTimeout = *inactiveProducerTimeout
 	lookupd.tombstoneLifetime = *tombstoneLifetime
 	lookupd.Main()

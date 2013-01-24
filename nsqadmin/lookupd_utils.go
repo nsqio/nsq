@@ -109,10 +109,13 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 			producersArray, _ := producers.Array()
 			for i, _ := range producersArray {
 				producer := producers.GetIndex(i)
-				address := producer.Get("address").MustString()
+				address := producer.Get("address").MustString() //TODO: remove for 1.0
+				hostname := producer.Get("hostname").MustString()
+				broadcastAddress := producer.Get("broadcast_address").MustString()
+
 				httpPort := producer.Get("http_port").MustInt()
 				tcpPort := producer.Get("tcp_port").MustInt()
-				key := fmt.Sprintf("%s:%d:%d", address, httpPort, tcpPort)
+				key := fmt.Sprintf("%s:%d:%d", broadcastAddress, httpPort, tcpPort)
 				_, ok := allProducers[key]
 				if !ok {
 					topicList, _ := producer.Get("topics").Array()
@@ -130,12 +133,14 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 						maxVersion = versionObj
 					}
 					p := &Producer{
-						Address:    address,
-						TcpPort:    tcpPort,
-						HttpPort:   httpPort,
-						Version:    version,
-						VersionObj: versionObj,
-						Topics:     topics,
+						Address:          address, //TODO: remove for 1.0
+						Hostname:         hostname,
+						BroadcastAddress: broadcastAddress,
+						TcpPort:          tcpPort,
+						HttpPort:         httpPort,
+						Version:          version,
+						VersionObj:       versionObj,
+						Topics:           topics,
 					}
 					allProducers[key] = p
 					output = append(output, p)
@@ -181,9 +186,9 @@ func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 			producers, _ := data.Get("producers").Array()
 			for _, producer := range producers {
 				producer := producer.(map[string]interface{})
-				address := producer["address"].(string)
+				broadcastAddress := producer["broadcast_address"].(string)
 				port := int(producer["http_port"].(float64))
-				key := fmt.Sprintf("%s:%d", address, port)
+				key := fmt.Sprintf("%s:%d", broadcastAddress, port)
 				allSources = util.StringAdd(allSources, key)
 			}
 		}(endpoint)
