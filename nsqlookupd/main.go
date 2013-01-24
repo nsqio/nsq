@@ -21,7 +21,7 @@ var (
 	tombstoneLifetime       = flag.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 )
 
-var protocols = map[int32]nsq.Protocol{}
+var protocols = map[string]nsq.Protocol{}
 var lookupd *NSQLookupd
 
 func main() {
