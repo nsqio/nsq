@@ -77,6 +77,7 @@ type Channel struct {
 type inFlightMessage struct {
 	msg    *nsq.Message
 	client Consumer
+	ts     time.Time
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -244,15 +245,41 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 	return nil
 }
 
+// TouchMessage resets the timeout for an in-flight message
+func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
+	item, err := c.popInFlightMessage(client, id)
+	if err != nil {
+		log.Printf("ERROR: failed to touch message(%s) - %s", id, err.Error())
+		return err
+	}
+	c.removeFromInFlightPQ(item)
+
+	ifMsg := item.Value.(*inFlightMessage)
+	currentTimeout := time.Unix(0, item.Priority)
+	newTimeout := currentTimeout.Add(c.options.msgTimeout)
+	if newTimeout.Add(c.options.msgTimeout).Sub(ifMsg.ts) >= c.options.maxMsgTimeout {
+		// we would have gone over, set to the max
+		newTimeout = ifMsg.ts.Add(c.options.maxMsgTimeout)
+	}
+
+	item.Priority = newTimeout.UnixNano()
+	err = c.pushInFlightMessage(item)
+	if err != nil {
+		return err
+	}
+	c.addToInFlightPQ(item)
+	return nil
+}
+
 // FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(client Consumer, id nsq.MessageID) error {
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
 		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
-	} else {
-		c.removeFromInFlightPQ(item)
+		return err
 	}
-	return err
+	c.removeFromInFlightPQ(item)
+	return nil
 }
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:
@@ -265,6 +292,7 @@ func (c *Channel) RequeueMessage(client Consumer, id nsq.MessageID, timeout time
 	// remove from inflight first
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
+		log.Printf("ERROR: failed to re-queue message(%s) - %s", id, err.Error())
 		return err
 	}
 	c.removeFromInFlightPQ(item)
@@ -318,8 +346,9 @@ func (c *Channel) RemoveClient(client Consumer) {
 }
 
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client Consumer) error {
-	value := &inFlightMessage{msg, client}
-	absTs := time.Now().Add(c.options.msgTimeout).UnixNano()
+	now := time.Now()
+	value := &inFlightMessage{msg, client, now}
+	absTs := now.Add(c.options.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {

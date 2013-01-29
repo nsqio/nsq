@@ -46,6 +46,7 @@ type nsqdOptions struct {
 	maxBytesPerFile int64
 	syncEvery       int64
 	msgTimeout      time.Duration
+	maxMsgTimeout   time.Duration
 	clientTimeout   time.Duration
 }
 
@@ -58,6 +59,7 @@ func NewNsqdOptions() *nsqdOptions {
 		maxBytesPerFile: 104857600,
 		syncEvery:       2500,
 		msgTimeout:      60 * time.Second,
+		maxMsgTimeout:   15 * time.Minute,
 		clientTimeout:   nsq.DefaultClientTimeout,
 	}
 }
