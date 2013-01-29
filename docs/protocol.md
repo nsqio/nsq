@@ -8,7 +8,8 @@ protocol they will be communicating (upgrades made easy).
 
 For `nsqd`, there is currently only one protocol:
 
-  * `  V2` - a push based streaming protocol for consuming (and request/response for publishing)
+  * `V2` (4-byte `[ ][ ][V][2]`) - a push based streaming protocol for consuming (and 
+    request/response for publishing)
 
 ### Important Notes
 
@@ -44,7 +45,9 @@ Commands are line oriented and structured as follows:
         <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
         <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
     
-    NOTE: there is no success response
+    Success Response:
+    
+        OK
     
     Error Responses:
     
@@ -58,7 +61,9 @@ Commands are line oriented and structured as follows:
         <topic_name> - a valid string
         <channel_name> - a valid string (optionally having #ephemeral suffix)
     
-    NOTE: there is no success response
+    Success response:
+    
+        OK
     
     Error Responses:
     
@@ -82,7 +87,7 @@ Commands are line oriented and structured as follows:
         E_INVALID
         E_BAD_TOPIC
         E_BAD_MESSAGE
-        E_PUT_FAILED
+        E_PUB_FAILED
 
   * `MPUB` - publish multiple messages to a specified **topic**:
     
@@ -100,10 +105,11 @@ Commands are line oriented and structured as follows:
     
     Error Responses:
     
-        E_MISSING_PARAMS
+        E_INVALID
         E_BAD_TOPIC
         E_BAD_BODY
-        E_PUT_FAILED
+        E_BAD_MESSAGE
+        E_MPUB_FAILED
 
   * `RDY` - update `RDY` state (indicate you are ready to receive messages)
     
@@ -128,7 +134,7 @@ Commands are line oriented and structured as follows:
     Error Responses:
     
         E_INVALID
-        E_FINISH_FAILED
+        E_FIN_FAILED
 
   * `REQ` - re-queue a message (indicate *failure* to procees)
     
@@ -143,7 +149,7 @@ Commands are line oriented and structured as follows:
     Error Responses:
     
         E_INVALID
-        E_REQUEUE_FAILED
+        E_REQ_FAILED
 
   * `CLS` - cleanly close your connection (no more messages are sent)
     

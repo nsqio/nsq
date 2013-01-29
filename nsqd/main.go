@@ -40,7 +40,7 @@ func init() {
 }
 
 var nsqd *NSQd
-var protocols = map[int32]nsq.Protocol{}
+var protocols = map[string]nsq.Protocol{}
 
 func main() {
 	flag.Parse()

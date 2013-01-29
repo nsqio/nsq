@@ -62,6 +62,8 @@ func TestBasicLookupd(t *testing.T) {
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
 	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
 
 	time.Sleep(10 * time.Millisecond)
 
@@ -147,9 +149,11 @@ func TestTombstoneRecover(t *testing.T) {
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err := nsq.ApiRequest(endpoint)
+	_, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
@@ -181,9 +185,11 @@ func TestTombstoneUnregister(t *testing.T) {
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err := nsq.ApiRequest(endpoint)
+	_, err = nsq.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
@@ -193,6 +199,8 @@ func TestTombstoneUnregister(t *testing.T) {
 	assert.Equal(t, len(producers), 0)
 
 	nsq.UnRegister(topicName, "").Write(conn)
+	_, err = nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
 
 	time.Sleep(55 * time.Millisecond)
 
