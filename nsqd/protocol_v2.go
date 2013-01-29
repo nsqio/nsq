@@ -160,6 +160,8 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
+	case bytes.Equal(params[0], []byte("TOUCH")):
+		return p.TOUCH(client, params)
 	}
 	return nil, nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -533,4 +535,26 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	}
 
 	return []byte("OK"), nil
+}
+
+func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
+	var id nsq.MessageID
+
+	state := atomic.LoadInt32(&client.State)
+	if state != nsq.StateSubscribed && state != nsq.StateClosing {
+		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot TOUCH in current state")
+	}
+
+	if len(params) < 2 {
+		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
+	}
+
+	copy(id[:], params[1])
+	err := client.Channel.TouchMessage(client, id)
+	if err != nil {
+		return nil, nsq.NewClientErr(err, "E_TOUCH_FAILED",
+			fmt.Sprintf("TOUCH %s failed %s", id, err.Error()))
+	}
+
+	return nil, nil
 }

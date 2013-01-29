@@ -91,6 +91,8 @@ Commands are line oriented and structured as follows:
 
   * `MPUB` - publish multiple messages to a specified **topic**:
     
+    NOTE: available in 0.2.16+
+    
         MPUB <topic_name>\n
         [ 4-byte body size ]
         [ 4-byte num messages ]
@@ -150,6 +152,21 @@ Commands are line oriented and structured as follows:
     
         E_INVALID
         E_REQ_FAILED
+
+  * `TOUCH` - reset the timeout for an in-flight message
+    
+    NOTE: available in 0.2.17+
+    
+        TOUCH <message_id>\n
+        
+        <message_id> - the hex id of the message
+    
+    NOTE: there is no success response
+    
+    Error Responses:
+    
+        E_INVALID
+        E_TOUCH_FAILED
 
   * `CLS` - cleanly close your connection (no more messages are sent)
     
