@@ -65,6 +65,8 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 	<-goChan
 	nsq.Ready(rdyCount).Write(rw)
 	rw.Flush()
+	nsq.ReadResponse(rw)
+	nsq.ReadResponse(rw)
 	num := n / workers
 	numRdy := num/rdyCount - 1
 	rdy := rdyCount

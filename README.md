@@ -43,6 +43,20 @@ and as such was designed to (in no particular order):
 If you're interested in more of the design, history, and evolution please read our [design
 doc][design] or [blog post][nsq_post].
 
+## Features
+
+ * no SPOF, designed for distributed environments
+ * messages are guaranteed to be delivered *at least once*
+ * low-latency push based message delivery (<a href="#performance">performance</a>)
+ * combination load-balanced *and* multicast style message routing
+ * configurable high-water mark after which messages are transparently kept on disk
+ * few dependencies, easy to deploy, and sane, bounded, default configuration
+ * runtime discovery service for consumers to find producers ([nsqlookupd][nsqlookupd])
+ * HTTP interface for stats, administrative actions, and producers (no client libraries needed!)
+ * memcached-like TCP protocol for producers/consumers
+ * integrates with [statsd][statsd] for realtime metrics instrumentation
+ * robust cluster administration interface with [graphite][graphite] charts ([nsqadmin][nsqadmin])
+
 ## <a name="client"></a>Client Libraries
 
 * [nsq][nsq] Go (official)
@@ -68,7 +82,7 @@ As well as the following documents in the [docs][docs] directory:
  * [Patterns][patterns] - implementation solutions for various use cases
  * [Protocol Spec][protocol] - technical details for the `nsqd` protocol
 
-### Performance
+### <a name="performance"></a>Performance
 
 DISCLAIMER: Please keep in mind that NSQ is designed to be used in a distributed fashion. Single
 node performance is important, but not the end-all-be-all of what we're looking to achieve. Also,
@@ -77,13 +91,13 @@ benchmarks are stupid, but here's a few anyway to ignite the flame:
 On a 2012 MacBook Air i7 2ghz (`GOMAXPROCS=1`, `go tip 8bbc0bdf832e`) single publisher, single consumer:
 
 ```
-$ ./nsqd --mem-queue-size=100000
+$ ./nsqd --mem-queue-size=1000000
 
-$ ./bench_writer --num=100000
-2013/01/06 17:24:38 duration: 310.575793ms - 61.413mb/s - 321982.596ops/s - 3.106us/op
+$ ./bench_writer
+2013/01/29 10:24:24 duration: 2.60766631s - 73.144mb/s - 383484.649ops/s - 2.608us/op
 
-$ ./bench_reader --num=100000
-2013/01/06 17:25:47 duration: 672.059087ms - 28.381mb/s - 148796.441ops/s - 6.721us/op
+$ ./bench_reader
+2013/01/29 10:25:43 duration: 6.665561082s - 28.615mb/s - 150024.880ops/s - 6.666us/op
 ```
 
 ### Getting Started
@@ -194,3 +208,5 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [datastream_github]: https://github.com/datastream
 [dustismo_github]: https://github.com/dustismo
 [funkygao_github]: https://github.com/funkygao
+[statsd]: https://github.com/etsy/statsd/
+[graphite]: http://graphite.wikidot.com/

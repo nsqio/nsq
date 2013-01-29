@@ -11,6 +11,7 @@ this change however 3rd party client libraries may not be.
 **Upgrading from 0.2.15**: in #132 deprecations in SUB were removed as well as support for the old,
 line oriented, `nsqd` metadata file format. For these reasons you should upgrade to `0.2.16` first.
 
+ * #119 - add TOUCH command to nsqd
  * #140 - fix MPUB protocol documentation
  * #139 - fix nsqadmin handling of legacy statsd prefixes for graphs
  * #138 - fix nsqadmin action redirect handling
@@ -92,6 +93,10 @@ removed in a future release.
 
 ### 0.3.1-alpha
 
+**Upgrading from 0.3.0**: This release requires NSQ binary version `0.2.17+` for `TOUCH` support.
+
+ * #119 - add TOUCH command
+ * #133 - improved handling of errors/magic
  * #127 - send IDENTIFY (missed in #90)
  * #16 - add backoff to Reader
 
