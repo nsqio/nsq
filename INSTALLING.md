@@ -1,4 +1,4 @@
-## Binary Releases
+## <a name="binary"></a>Binary Releases
 
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:

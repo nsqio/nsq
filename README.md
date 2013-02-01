@@ -76,11 +76,7 @@ doc][design] or [blog post][nsq_post].
  * [nsqadmin][nsqadmin] is the web UI to view message statistics and perform administrative tasks
  * [nsq][nsq] is a go package for writing `nsqd` clients
 
-As well as the following documents in the [docs][docs] directory:
-
- * [Design][design] - in-depth overview of how and why
- * [Patterns][patterns] - implementation solutions for various use cases
- * [Protocol Spec][protocol] - technical details for the `nsqd` protocol
+For more information see the [docs][docs] directory.
 
 ### <a name="performance"></a>Performance
 
@@ -168,15 +164,15 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [msgpack]: http://msgpack.org/
 [go-protobuf]: http://code.google.com/p/protobuf/
 [simplequeue]: https://github.com/bitly/simplehttp/tree/master/simplequeue
-[protocol]: https://github.com/bitly/nsq/blob/master/docs/protocol.md
-[installing]: https://github.com/bitly/nsq/blob/master/INSTALLING.md
-[nsqd]: https://github.com/bitly/nsq/tree/master/nsqd
-[nsqlookupd]: https://github.com/bitly/nsq/tree/master/nsqlookupd
-[nsqadmin]: https://github.com/bitly/nsq/tree/master/nsqadmin
-[nsq]: https://github.com/bitly/nsq/tree/master/nsq
+[protocol]: docs/protocol.md
+[installing]: INSTALLING.md
+[nsqd]: nsqd/README.md
+[nsqlookupd]: nsqlookupd/README.md
+[nsqadmin]: nsqadmin/README.md
+[nsq]: nsq/README.md
 [pynsq]: https://github.com/bitly/pynsq
 [nsq_post]: http://word.bitly.com/post/33232969144/nsq
-[binary]: https://github.com/bitly/nsq/blob/master/INSTALLING.md
+[binary]: INSTALLING.md#binary
 [snakes_twitter]: https://twitter.com/imsnakes
 [jehiah_twitter]: https://twitter.com/jehiah
 [dan_twitter]: https://twitter.com/danielhfrank
@@ -193,11 +189,11 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [jay_twitter]: https://twitter.com/jayridge
 [ruby_lib]: https://github.com/ClarityServices/ruby_nsq
 [clarity_github]: https://github.com/ClarityServices
-[spof]: https://github.com/bitly/nsq/blob/master/docs/design.md#spof
-[message_guarantee]: https://github.com/bitly/nsq/blob/master/docs/design.md#delivery
-[design]: https://github.com/bitly/nsq/blob/master/docs/design.md
-[docs]: https://github.com/bitly/nsq/tree/master/docs/
-[patterns]: https://github.com/bitly/nsq/blob/master/docs/patterns.md
+[spof]: docs/design.md#spof
+[message_guarantee]: docs/design.md#delivery
+[design]: docs/design.md
+[docs]: docs
+[patterns]: docs/patterns.md
 [latest_tag]: https://github.com/bitly/nsq/tree/v0.2.16
 [pynsq_pypi]: http://pypi.python.org/pypi/pynsq
 [nodensq_npm]: https://npmjs.org/package/nsq
