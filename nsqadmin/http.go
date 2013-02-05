@@ -530,7 +530,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	NotifyAdminAction("empty_channel", topicName, channelName, req)
 
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
 func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
