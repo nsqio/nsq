@@ -3,7 +3,6 @@ package main
 import (
 	"../nsq"
 	"../util"
-	"../util/pqueue"
 	"bytes"
 	"errors"
 	"log"
@@ -46,22 +45,6 @@ func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic 
 	go notifier.Notify(topic)
 
 	return topic
-}
-
-func (t *Topic) MemoryChan() chan *nsq.Message {
-	return t.memoryMsgChan
-}
-
-func (t *Topic) BackendQueue() BackendQueue {
-	return t.backend
-}
-
-func (t *Topic) InFlight() map[nsq.MessageID]*pqueue.Item {
-	return nil
-}
-
-func (t *Topic) Deferred() map[nsq.MessageID]*pqueue.Item {
-	return nil
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting
@@ -222,7 +205,7 @@ func (t *Topic) router() {
 		select {
 		case t.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(&msgBuf, msg, t)
+			err := WriteMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 				// theres not really much we can do at this point, you're certainly
@@ -267,7 +250,7 @@ func (t *Topic) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		EmptyQueue(t)
+		t.Empty()
 
 		t.Lock()
 		for _, channel := range t.channelMap {
@@ -286,11 +269,44 @@ func (t *Topic) exit(deleted bool) error {
 		}
 
 		// write anything leftover to disk
-		if len(t.memoryMsgChan) > 0 {
-			log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
-		}
-		FlushQueue(t)
+		t.flush()
 	}
 
 	return t.backend.Close()
+}
+
+func (t *Topic) Empty() error {
+	for {
+		select {
+		case <-t.memoryMsgChan:
+		default:
+			goto finish
+		}
+	}
+
+finish:
+	return t.backend.Empty()
+}
+
+func (t *Topic) flush() error {
+	var msgBuf bytes.Buffer
+
+	if len(t.memoryMsgChan) > 0 {
+		log.Printf("TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
+	}
+
+	for {
+		select {
+		case msg := <-t.memoryMsgChan:
+			err := WriteMessageToBackend(&msgBuf, msg, t.backend)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+			}
+		default:
+			goto finish
+		}
+	}
+
+finish:
+	return nil
 }
