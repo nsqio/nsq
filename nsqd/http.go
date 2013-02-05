@@ -248,7 +248,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = EmptyQueue(channel)
+	err = channel.Empty()
 	if err != nil {
 		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
 		return

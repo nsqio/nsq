@@ -85,30 +85,30 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	notifier Notifier, deleteCallback func(*Channel)) *Channel {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 	backendName := topicName + ":" + channelName
-	pqSize := int(math.Max(1, float64(options.memQueueSize)/10))
 	c := &Channel{
-		topicName:        topicName,
-		name:             channelName,
-		incomingMsgChan:  make(chan *nsq.Message, 1),
-		memoryMsgChan:    make(chan *nsq.Message, options.memQueueSize),
-		clientMsgChan:    make(chan *nsq.Message),
-		exitChan:         make(chan int),
-		clients:          make([]Consumer, 0, 5),
-		inFlightMessages: make(map[nsq.MessageID]*pqueue.Item),
-		inFlightPQ:       pqueue.New(pqSize),
-		deferredMessages: make(map[nsq.MessageID]*pqueue.Item),
-		deferredPQ:       pqueue.New(pqSize),
-		deleteCallback:   deleteCallback,
-		notifier:         notifier,
-		options:          options,
+		topicName:       topicName,
+		name:            channelName,
+		incomingMsgChan: make(chan *nsq.Message, 1),
+		memoryMsgChan:   make(chan *nsq.Message, options.memQueueSize),
+		clientMsgChan:   make(chan *nsq.Message),
+		exitChan:        make(chan int),
+		clients:         make([]Consumer, 0, 5),
+		deleteCallback:  deleteCallback,
+		notifier:        notifier,
+		options:         options,
 	}
+
+	c.initPQ()
+
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeralChannel = true
 		c.backend = NewDummyBackendQueue()
 	} else {
 		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile, options.syncEvery)
 	}
+
 	go c.messagePump()
+
 	c.waitGroup.Wrap(func() { c.router() })
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
@@ -116,6 +116,21 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	go notifier.Notify(c)
 
 	return c
+}
+
+func (c *Channel) initPQ() {
+	pqSize := int(math.Max(1, float64(c.options.memQueueSize)/10))
+
+	c.inFlightMessages = make(map[nsq.MessageID]*pqueue.Item)
+	c.deferredMessages = make(map[nsq.MessageID]*pqueue.Item)
+
+	c.inFlightMutex.Lock()
+	c.inFlightPQ = pqueue.New(pqSize)
+	c.inFlightMutex.Unlock()
+
+	c.deferredMutex.Lock()
+	c.deferredPQ = pqueue.New(pqSize)
+	c.deferredMutex.Unlock()
 }
 
 // Exiting returns a boolean indicating if this channel is closed/exiting
@@ -166,44 +181,80 @@ func (c *Channel) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		EmptyQueue(c)
+		c.Empty()
 	} else {
 		// messagePump is responsible for closing the channel it writes to
 		// this will read until its closed (exited)
 		for msg := range c.clientMsgChan {
 			log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-			WriteMessageToBackend(&msgBuf, msg, c)
+			WriteMessageToBackend(&msgBuf, msg, c.backend)
 		}
 
 		// write anything leftover to disk
-		if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-			log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
-				c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
-		}
-		FlushQueue(c)
+		c.flush()
 	}
 
 	return c.backend.Close()
 }
 
-// MemoryChan implements the Queue interface
-func (c *Channel) MemoryChan() chan *nsq.Message {
-	return c.memoryMsgChan
+func (c *Channel) Empty() error {
+	c.Lock()
+	defer c.Unlock()
+
+	c.initPQ()
+
+	for {
+		select {
+		case <-c.memoryMsgChan:
+		default:
+			goto finish
+		}
+	}
+
+finish:
+	return c.backend.Empty()
 }
 
-// BackendQueue implements the Queue interface
-func (c *Channel) BackendQueue() BackendQueue {
-	return c.backend
-}
+// flush persists all the messages in internal memory buffers to the backend
+// it does not drain inflight/deferred because it is only called in Close()
+func (c *Channel) flush() error {
+	var msgBuf bytes.Buffer
 
-// InFlight implements the Queue interface
-func (c *Channel) InFlight() map[nsq.MessageID]*pqueue.Item {
-	return c.inFlightMessages
-}
+	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
+		log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
+			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
+	}
 
-// Deferred implements the Queue interface
-func (c *Channel) Deferred() map[nsq.MessageID]*pqueue.Item {
-	return c.deferredMessages
+	for {
+		select {
+		case msg := <-c.memoryMsgChan:
+			err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+			if err != nil {
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+			}
+		default:
+			goto finish
+		}
+	}
+
+finish:
+	for _, item := range c.inFlightMessages {
+		msg := item.Value.(*inFlightMessage).msg
+		err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+		if err != nil {
+			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+		}
+	}
+
+	for _, item := range c.deferredMessages {
+		msg := item.Value.(*nsq.Message)
+		err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+		if err != nil {
+			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+		}
+	}
+
+	return nil
 }
 
 func (c *Channel) Depth() int64 {
@@ -476,7 +527,7 @@ func (c *Channel) router() {
 		select {
 		case c.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(&msgBuf, msg, c)
+			err := WriteMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
 				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s", c.name, err.Error())
 				// theres not really much we can do at this point, you're certainly
