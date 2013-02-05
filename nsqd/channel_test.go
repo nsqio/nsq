@@ -67,7 +67,8 @@ func TestInFlightWorker(t *testing.T) {
 	nsqd := NewNSQd(1, options)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("topic")
+	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < 1000; i++ {
@@ -82,4 +83,38 @@ func TestInFlightWorker(t *testing.T) {
 
 	assert.Equal(t, len(channel.inFlightMessages), 0)
 	assert.Equal(t, len(channel.inFlightPQ), 0)
+}
+
+func TestChannelEmpty(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	nsqd := NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("channel")
+	client := NewClientV2(nil)
+
+	msgs := make([]*nsq.Message, 0, 25)
+	for i := 0; i < 25; i++ {
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		channel.StartInFlightTimeout(msg, client)
+		msgs = append(msgs, msg)
+	}
+
+	channel.RequeueMessage(client, msgs[len(msgs)-1].Id, 100*time.Millisecond)
+	assert.Equal(t, len(channel.inFlightMessages), 24)
+	assert.Equal(t, len(channel.inFlightPQ), 24)
+	assert.Equal(t, len(channel.deferredMessages), 1)
+	assert.Equal(t, len(channel.deferredPQ), 1)
+
+	channel.Empty()
+
+	assert.Equal(t, len(channel.inFlightMessages), 0)
+	assert.Equal(t, len(channel.inFlightPQ), 0)
+	assert.Equal(t, len(channel.deferredMessages), 0)
+	assert.Equal(t, len(channel.deferredPQ), 0)
+	assert.Equal(t, channel.Depth(), int64(0))
 }
