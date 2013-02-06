@@ -22,13 +22,15 @@ func TopicsForStrings(s []string) Topics {
 }
 
 type Producer struct {
-	Address    string          `json:"address"`
-	TcpPort    int             `json:"tcp_port"`
-	HttpPort   int             `json:"http_port"`
-	Version    string          `json:"version"`
-	VersionObj *semver.Version `json:-`
-	Topics     []string        `json:"topics"`
-	OutOfDate  bool
+	Address          string          `json:"address"` //TODO: remove for 1.0
+	Hostname         string          `json:"hostname"`
+	BroadcastAddress string          `json:"broadcast_address"`
+	TcpPort          int             `json:"tcp_port"`
+	HttpPort         int             `json:"http_port"`
+	Version          string          `json:"version"`
+	VersionObj       *semver.Version `json:-`
+	Topics           []string        `json:"topics"`
+	OutOfDate        bool
 }
 
 type TopicHostStats struct {
@@ -112,7 +114,7 @@ func (c TopicHostStatsByHost) Less(i, j int) bool {
 	return c.TopicHostStatsList[i].HostAddress < c.TopicHostStatsList[j].HostAddress
 }
 func (c ProducersByHost) Less(i, j int) bool {
-	return c.ProducerList[i].Address < c.ProducerList[j].Address
+	return c.ProducerList[i].BroadcastAddress < c.ProducerList[j].BroadcastAddress
 }
 
 func (c *ChannelStats) AddHostStats(a *ChannelStats) {
@@ -145,5 +147,5 @@ func (t *TopicHostStats) AddHostStats(a *TopicHostStats) {
 }
 
 func (p *Producer) HTTPAddress() string {
-	return fmt.Sprintf("%s:%d", p.Address, p.HttpPort)
+	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort)
 }

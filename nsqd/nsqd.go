@@ -39,28 +39,30 @@ type NSQd struct {
 }
 
 type nsqdOptions struct {
-	memQueueSize    int64
-	dataPath        string
-	maxMessageSize  int64
-	maxBodySize     int64
-	maxBytesPerFile int64
-	syncEvery       int64
-	msgTimeout      time.Duration
-	maxMsgTimeout   time.Duration
-	clientTimeout   time.Duration
+	memQueueSize     int64
+	dataPath         string
+	maxMessageSize   int64
+	maxBodySize      int64
+	maxBytesPerFile  int64
+	syncEvery        int64
+	msgTimeout       time.Duration
+	maxMsgTimeout    time.Duration
+	clientTimeout    time.Duration
+	broadcastAddress string
 }
 
 func NewNsqdOptions() *nsqdOptions {
 	return &nsqdOptions{
-		memQueueSize:    10000,
-		dataPath:        os.TempDir(),
-		maxMessageSize:  1024768,
-		maxBodySize:     5 * 1024768,
-		maxBytesPerFile: 104857600,
-		syncEvery:       2500,
-		msgTimeout:      60 * time.Second,
-		maxMsgTimeout:   15 * time.Minute,
-		clientTimeout:   nsq.DefaultClientTimeout,
+		memQueueSize:     10000,
+		dataPath:         os.TempDir(),
+		maxMessageSize:   1024768,
+		maxBodySize:      5 * 1024768,
+		maxBytesPerFile:  104857600,
+		syncEvery:        2500,
+		msgTimeout:       60 * time.Second,
+		maxMsgTimeout:    15 * time.Minute,
+		clientTimeout:    nsq.DefaultClientTimeout,
+		broadcastAddress: "",
 	}
 }
 

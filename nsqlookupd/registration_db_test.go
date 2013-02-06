@@ -15,9 +15,9 @@ func TestRegistrationDB(t *testing.T) {
 
 	sec30 := 30 * time.Second
 	beginningOfTime := time.Unix(1348797047, 0)
-	p1 := &Producer{"1", "addr", 1, 2, "v1", beginningOfTime, false, beginningOfTime}
-	p2 := &Producer{"2", "addr", 2, 3, "v1", beginningOfTime, false, beginningOfTime}
-	p3 := &Producer{"3", "addr", 3, 4, "v1", beginningOfTime, false, beginningOfTime}
+	p1 := &Producer{"1", "addr", "host", "b_addr", 1, 2, "v1", beginningOfTime, false, beginningOfTime}
+	p2 := &Producer{"2", "addr", "host", "b_addr", 2, 3, "v1", beginningOfTime, false, beginningOfTime}
+	p3 := &Producer{"3", "addr", "host", "b_addr", 3, 4, "v1", beginningOfTime, false, beginningOfTime}
 
 	db := NewRegistrationDB()
 

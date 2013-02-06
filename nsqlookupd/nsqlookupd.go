@@ -12,6 +12,7 @@ type NSQLookupd struct {
 	httpAddr                *net.TCPAddr
 	tcpListener             net.Listener
 	httpListener            net.Listener
+	broadcastAddress        string
 	waitGroup               util.WaitGroupWrapper
 	inactiveProducerTimeout time.Duration
 	tombstoneLifetime       time.Duration

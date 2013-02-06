@@ -7,7 +7,8 @@
 <div class="row-fluid"><div class="span12">
 <table class="table table-bordered">
     <tr>
-        <th>Host</th>
+        <th>Hostname</th>
+        <th>Broadcast Address</th>
         <th>TCP Port</th>
         <th>HTTP Port</th>
         <th>Version</th>
@@ -15,7 +16,8 @@
     </tr>
     {{range .Producers }}
     <tr {{if .OutOfDate}} class="warning"{{end}} >
-        <td>{{.Address}}</td>
+        <td>{{.Hostname}}</td>
+        <td>{{.BroadcastAddress}}
         <td>{{.TcpPort}}</td>
         <td>{{.HttpPort}}</td>
         <td>{{.Version}}</td>
