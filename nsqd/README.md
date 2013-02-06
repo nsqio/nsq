@@ -2,42 +2,24 @@
 
 `nsqd` is the daemon that receives, buffers, and delivers messages to clients.
 
-It is normally run alongside `nsqlookupd` instances to announce topic and channels but can be run
-standalone.
+It can be run and used standalone but is normally configured to talk to with `nsqlookupd` 
+instance(s) in which case it will announce topic and channels for discovery.
 
 It listens on two TCP ports, one for clients and another for the HTTP API.
 
 ### HTTP API
 
-* `/put?topic=...`
-
-    POST message body
-    
-    `$ curl -d "<message>" http://127.0.0.1:4151/put?topic=message_topic`
-
-* `/mput?topic=...`
-
-    POST message body (`\n` separated)
-    
-    `$ curl -d "<message>\n<message>" http://127.0.0.1:4151/put?topic=message_topic`
-
+* `/put?topic=...` - **POST** message body, ie `$ curl -d "<message>" http://127.0.0.1:4151/put?topic=message_topic`
+* `/mput?topic=...` - **POST** message body (`\n` separated, which makes it incompatible with binary message formats)
 * `/empty_channel?topic=...&channel=...`
 * `/delete_channel?topic=...&channel=...`
 * `/pause_channel?topic=...&channel=...`
 * `/unpause_channel?topic=...&channel=...`
 * `/create_topic?topic=...`
 * `/create_channel?topic=...&channel=...`
-* `/stats`
-
-    supports both text and JSON via `?format=json`
-
-* `/ping`
-
-    returns `OK`, helpful when monitoring
-
-* `/info`
-
-    returns version information
+* `/stats` - supports both text (default) and JSON via `?format=json`
+* `/ping` - returns `OK` (useful for monitoring)
+* `/info` - returns version information
 
 ### Command Line Options
 
@@ -82,4 +64,3 @@ pattern = ^nsq\..*
 xFilesFactor = 0.2 
 aggregationMethod = average
 ```
-
