@@ -11,6 +11,7 @@ interface for clients to perform discovery and administrative actions.
     -http-address="0.0.0.0:4161": <addr>:<port> to listen on for HTTP clients
     -inactive-producer-timeout=5m0s: duration of time a producer will remain in the active list since its last ping
     -tcp-address="0.0.0.0:4160": <addr>:<port> to listen on for TCP clients
+    -broadcast-address: external address of this lookupd node, (default to the OS hostname)
     -tombstone-lifetime=45s: duration of time a producer will remain tombstoned if registration remains
     -verbose=false: enable verbose logging
     -version=false: print version string

@@ -208,14 +208,20 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
+	//TODO: remove this check for 1.0
+	if producer.BroadcastAddress == "" {
+		producer.BroadcastAddress = producer.Address
+	}
+
 	// require all fields
-	if producer.Address == "" || producer.TcpPort == 0 || producer.HttpPort == 0 || producer.Version == "" {
+	if producer.BroadcastAddress == "" || producer.TcpPort == 0 || producer.HttpPort == 0 || producer.Version == "" {
 		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
+
 	producer.LastUpdate = time.Now()
 
 	log.Printf("CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
-		client, producer.Address, producer.TcpPort, producer.HttpPort, producer.Version)
+		client, producer.BroadcastAddress, producer.TcpPort, producer.HttpPort, producer.Version)
 
 	client.Producer = &producer
 	if lookupd.DB.AddProducer(Registration{"client", "", ""}, client.Producer) {
@@ -231,7 +237,10 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
-	data["address"] = hostname
+	data["address"] = hostname //TODO: remove for 1.0
+	data["broadcast_address"] = lookupd.broadcastAddress
+	data["hostname"] = hostname
+
 	response, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("ERROR: marshaling %v", data)

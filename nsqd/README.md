@@ -56,7 +56,8 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
     -verbose=false: enable verbose logging
     -version=false: print version string
     -worker-id=0: unique identifier (int) for this worker (will default to a hash of hostname)
-
+    -broadcast-address: the address for this worker.  this is registered with nsqlookupd (defaults to OS hostname)
+    
 ### Statsd / Graphite Integration
 
 When using `--statsd-address` specify the UDP `<addr>:<port>` for

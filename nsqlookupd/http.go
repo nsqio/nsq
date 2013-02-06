@@ -176,7 +176,7 @@ func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := lookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
-		thisNode := fmt.Sprintf("%s:%d", p.Address, p.HttpPort)
+		thisNode := fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort)
 		if thisNode == node {
 			p.Tombstone()
 		}
@@ -238,11 +238,13 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 // note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
 type producerTopic struct {
-	Address  string   `json:"address"`
-	TcpPort  int      `json:"tcp_port"`
-	HttpPort int      `json:"http_port"`
-	Version  string   `json:"version"`
-	Topics   []string `json:"topics"`
+	Address          string   `json:"address"` //TODO: drop for 1.0
+	Hostname         string   `json:"hostname"`
+	BroadcastAddress string   `json:"broadcast_address"`
+	TcpPort          int      `json:"tcp_port"`
+	HttpPort         int      `json:"http_port"`
+	Version          string   `json:"version"`
+	Topics           []string `json:"topics"`
 }
 
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
@@ -250,11 +252,13 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	producerTopics := make([]*producerTopic, len(producers))
 	for i, p := range producers {
 		producerTopics[i] = &producerTopic{
-			Address:  p.Address,
-			TcpPort:  p.TcpPort,
-			HttpPort: p.HttpPort,
-			Version:  p.Version,
-			Topics:   lookupd.DB.LookupRegistrations(p).Filter("topic", "*", "").Keys(),
+			Address:          p.Address, //TODO: drop for 1.0
+			Hostname:         p.Hostname,
+			BroadcastAddress: p.BroadcastAddress,
+			TcpPort:          p.TcpPort,
+			HttpPort:         p.HttpPort,
+			Version:          p.Version,
+			Topics:           lookupd.DB.LookupRegistrations(p).Filter("topic", "*", "").Keys(),
 		}
 	}
 
@@ -282,7 +286,9 @@ func debugHandler(w http.ResponseWriter, req *http.Request) {
 		for _, p := range producers {
 			m := make(map[string]interface{})
 			m["producer_id"] = p.producerId
-			m["address"] = p.Address
+			m["address"] = p.Address //TODO: remove for 1.0
+			m["hostname"] = p.Hostname
+			m["broadcast_address"] = p.BroadcastAddress
 			m["tcp_port"] = p.TcpPort
 			m["http_port"] = p.HttpPort
 			m["version"] = p.Version

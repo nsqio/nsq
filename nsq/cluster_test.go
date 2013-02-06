@@ -49,10 +49,14 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer := producers[0]
 	producerData, _ := producer.(map[string]interface{})
-	address := producerData["address"].(string)
+	address := producerData["address"].(string) //TODO: remove for 1.0
+	producerHostname := producerData["hostname"].(string)
+	broadcastAddress := producerData["broadcast_address"].(string)
 	port := int(producerData["tcp_port"].(float64))
 	tombstoned := producerData["tombstoned"].(bool)
 	assert.Equal(t, address, hostname)
+	assert.Equal(t, producerHostname, hostname)
+	assert.Equal(t, broadcastAddress, hostname)
 	assert.Equal(t, port, 4150)
 	assert.Equal(t, tombstoned, false)
 
@@ -61,10 +65,15 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer = producers[0]
 	producerData, _ = producer.(map[string]interface{})
-	address = producerData["address"].(string)
+	address = producerData["address"].(string) //TODO: remove for 1.0
+	producerHostname = producerData["hostname"].(string)
+	broadcastAddress = producerData["broadcast_address"].(string)
+
 	port = int(producerData["tcp_port"].(float64))
 	tombstoned = producerData["tombstoned"].(bool)
 	assert.Equal(t, address, hostname)
+	assert.Equal(t, producerHostname, hostname)
+	assert.Equal(t, broadcastAddress, hostname)
 	assert.Equal(t, port, 4150)
 	assert.Equal(t, tombstoned, false)
 
@@ -78,9 +87,13 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer = producers[0]
 	producerData, _ = producer.(map[string]interface{})
-	address = producerData["address"].(string)
+	address = producerData["address"].(string) //TODO: remove for 1.0
+	producerHostname = producerData["hostname"].(string)
+	broadcastAddress = producerData["broadcast_address"].(string)
 	port = int(producerData["tcp_port"].(float64))
 	assert.Equal(t, address, hostname)
+	assert.Equal(t, producerHostname, hostname)
+	assert.Equal(t, broadcastAddress, hostname)
 	assert.Equal(t, port, 4150)
 
 	channels, _ := data.Get("channels").Array()

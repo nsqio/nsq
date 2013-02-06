@@ -19,20 +19,22 @@ type Registration struct {
 type Registrations []*Registration
 
 type Producer struct {
-	producerId   string
-	Address      string    `json:"address"`
-	TcpPort      int       `json:"tcp_port"`
-	HttpPort     int       `json:"http_port"`
-	Version      string    `json:"version"`
-	LastUpdate   time.Time `json:"-"`
-	tombstoned   bool
-	tombstonedAt time.Time
+	producerId       string
+	Address          string    `json:"address"` //TODO: drop for 1.0
+	Hostname         string    `json:"hostname"`
+	BroadcastAddress string    `json:"broadcast_address"`
+	TcpPort          int       `json:"tcp_port"`
+	HttpPort         int       `json:"http_port"`
+	Version          string    `json:"version"`
+	LastUpdate       time.Time `json:"-"`
+	tombstoned       bool
+	tombstonedAt     time.Time
 }
 
 type Producers []*Producer
 
 func (p *Producer) String() string {
-	return fmt.Sprintf("%s [%d, %d]", p.Address, p.TcpPort, p.HttpPort)
+	return fmt.Sprintf("%s [%d, %d]", p.BroadcastAddress, p.TcpPort, p.HttpPort)
 }
 
 func (p *Producer) Tombstone() {
