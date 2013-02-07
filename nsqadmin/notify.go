@@ -3,9 +3,11 @@ package main
 import (
 	"../nsq"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -34,20 +36,32 @@ func HandleAdminActions() {
 	}
 }
 
+func basicAuthUser(req *http.Request) string {
+	s := strings.SplitN(req.Header.Get("Authorization"), " ", 2)
+	if len(s) != 2 || s[0] != "Basic" {
+		return ""
+	}
+	b, err := base64.StdEncoding.DecodeString(s[1])
+	if err != nil {
+		return ""
+	}
+	pair := strings.SplitN(string(b), ":", 2)
+	if len(pair) != 2 {
+		return ""
+	}
+	return pair[0]
+}
+
 func NotifyAdminAction(actionType string, topicName string, channelName string, req *http.Request) {
 	if *notificationHTTPEndpoint == "" {
 		return
-	}
-	var username string
-	if req.URL.User != nil {
-		username = req.URL.User.Username()
 	}
 	action := &AdminAction{
 		actionType,
 		topicName,
 		channelName,
 		time.Now().Unix(),
-		username,
+		basicAuthUser(req),
 		req.RemoteAddr,
 		req.UserAgent(),
 	}
