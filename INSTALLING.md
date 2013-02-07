@@ -12,7 +12,7 @@ available for download:
 
 ### Pre-requisites
 
-**golang** http://golang.org/doc/install
+**golang** http://golang.org/doc/install - **version `1.0.3+` is required**
 
 **simplejson** https://github.com/bitly/go-simplejson
 
