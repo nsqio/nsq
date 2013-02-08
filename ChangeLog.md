@@ -11,20 +11,27 @@ this change however 3rd party client libraries may not be.
 **Upgrading from 0.2.15**: in #132 deprecations in SUB were removed as well as support for the old,
 line oriented, `nsqd` metadata file format. For these reasons you should upgrade to `0.2.16` first.
 
+New Features / Enhancements:
+
  * #119 - add TOUCH command to nsqd
+ * #142 - add --broadcast-address flag to nsqd/nsqadmin (thanks @dustismo)
+ * #135 - atomic MPUB
+ * #133 - improved protocol fatal error handling and responses; IDENTIFY/SUB success responses
+ * #118 - switch nsqadmin actions to POST and require confirmation
+ * #117/#147 - nsqadmin action POST notifications
+ * #122 - configurable msg size limits
+ * #132 - deprecate identify in SUB and old nsqd metadata file format
+
+Bug Fixes:
+
+ * #144 - empty channel should clear inflight/deferred messages
  * #140 - fix MPUB protocol documentation
  * #139 - fix nsqadmin handling of legacy statsd prefixes for graphs
- * #138 - fix nsqadmin action redirect handling
- * #133 - improved protocol fatal error handling and responses; IDENTIFY/SUB success responses
- * #132 - deprecate identify in SUB and old nsqd metadata file format
- * #135 - atomic MPUB
+ * #138/#145 - fix nsqadmin action redirect handling
  * #134 - nsqd to nsqlookupd registration fixes
  * #129 - nsq_to_file gzip file versioning
- * #118 - nsqadmin POST actions/confirmations
  * #106 - nsqlookupd topic producer tombstones
  * #100 - sane handling of diskqueue read errors
- * #117 - nsqadmin admin action POST notifications
- * #122 - configurable msg size limits
  * #123/#125 - fix notify related exit deadlock
 
 ### 0.2.16 - 2013-01-07
