@@ -1,3 +1,3 @@
 package util
 
-const BINARY_VERSION = "0.2.17-alpha"
+const BINARY_VERSION = "0.2.17"

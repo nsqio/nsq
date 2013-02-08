@@ -3,6 +3,8 @@
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:
 
+ * [nsq-0.2.17.darwin-amd64.tar.gz][0.2.17_darwin]
+ * [nsq-0.2.17.linux-amd64.tar.gz][0.2.17_linux]
  * [nsq-0.2.16.darwin-amd64.tar.gz][0.2.16_darwin]
  * [nsq-0.2.16.linux-amd64.tar.gz][0.2.16_linux]
  * [nsq-0.2.15.darwin-amd64.tar.gz][0.2.15_darwin]
@@ -44,6 +46,8 @@ Python module (for building Python readers)
 
     $ ./test.sh
 
+[0.2.17_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.17.darwin-amd64.tar.gz
+[0.2.17_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.17.linux-amd64.tar.gz
 [0.2.16_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.16.darwin-amd64.tar.gz
 [0.2.16_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.16.linux-amd64.tar.gz
 [0.2.15_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.15.darwin-amd64.tar.gz

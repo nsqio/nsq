@@ -2,7 +2,7 @@
 
 ## Binaries
 
-### 0.2.17-alpha
+### 0.2.17 - 2013-02-07
 
 **Upgrading from 0.2.16**: IDENTIFY and SUB now return success responses (they previously only
 responded to errors). The official Go and Python libraries are forwards/backwards compatible with
@@ -98,7 +98,7 @@ removed in a future release.
 
 ## Go Client Library
 
-### 0.3.1-alpha
+### 0.3.1 - 2013-02-07
 
 **Upgrading from 0.3.0**: This release requires NSQ binary version `0.2.17+` for `TOUCH` support.
 
