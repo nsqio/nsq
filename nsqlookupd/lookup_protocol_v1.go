@@ -28,7 +28,6 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	var line string
 
 	client := NewClientV1(conn)
-	client.State = nsq.StateInit
 	err = nil
 	reader := bufio.NewReader(client)
 	for {
@@ -69,10 +68,10 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	}
 
 	log.Printf("CLIENT(%s): closing", client)
-	if client.Producer != nil {
-		registrations := lookupd.DB.LookupRegistrations(client.Producer)
+	if client.peerInfo != nil {
+		registrations := lookupd.DB.LookupRegistrations(client.peerInfo.id)
 		for _, r := range registrations {
-			if removed, _ := lookupd.DB.RemoveProducer(*r, client.Producer); removed {
+			if removed, _ := lookupd.DB.RemoveProducer(*r, client.peerInfo.id); removed {
 				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -118,7 +117,7 @@ func getTopicChan(command string, params []string) (string, string, error) {
 }
 
 func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
-	if client.Producer == nil {
+	if client.peerInfo == nil {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
@@ -129,13 +128,13 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel}
-		if lookupd.DB.AddProducer(key, client.Producer) {
+		if lookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 			log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
 		}
 	}
 	key := Registration{"topic", topic, ""}
-	if lookupd.DB.AddProducer(key, client.Producer) {
+	if lookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 			client, "topic", topic, "")
 	}
@@ -144,7 +143,7 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 }
 
 func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
-	if client.Producer == nil {
+	if client.peerInfo == nil {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
@@ -155,7 +154,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel}
-		removed, left := lookupd.DB.RemoveProducer(key, client.Producer)
+		removed, left := lookupd.DB.RemoveProducer(key, client.peerInfo.id)
 		if removed {
 			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
@@ -171,14 +170,14 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := lookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			if removed, _ := lookupd.DB.RemoveProducer(*r, client.Producer); removed {
+			if removed, _ := lookupd.DB.RemoveProducer(*r, client.peerInfo.id); removed {
 				log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
 		key := Registration{"topic", topic, ""}
-		if removed, _ := lookupd.DB.RemoveProducer(key, client.Producer); removed {
+		if removed, _ := lookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
 			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
 		}
@@ -189,6 +188,10 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
+
+	if client.peerInfo != nil {
+		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "cannot IDENTIFY again")
+	}
 
 	var bodyLen int32
 	err = binary.Read(reader, binary.BigEndian, &bodyLen)
@@ -203,29 +206,29 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	// body is a json structure with producer information
-	producer := Producer{producerId: client.RemoteAddr().String()}
-	err = json.Unmarshal(body, &producer)
+	peerInfo := PeerInfo{id: client.RemoteAddr().String()}
+	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
 	//TODO: remove this check for 1.0
-	if producer.BroadcastAddress == "" {
-		producer.BroadcastAddress = producer.Address
+	if peerInfo.BroadcastAddress == "" {
+		peerInfo.BroadcastAddress = peerInfo.Address
 	}
 
 	// require all fields
-	if producer.BroadcastAddress == "" || producer.TcpPort == 0 || producer.HttpPort == 0 || producer.Version == "" {
+	if peerInfo.BroadcastAddress == "" || peerInfo.TcpPort == 0 || peerInfo.HttpPort == 0 || peerInfo.Version == "" {
 		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
-	producer.LastUpdate = time.Now()
+	peerInfo.lastUpdate = time.Now()
 
 	log.Printf("CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
-		client, producer.BroadcastAddress, producer.TcpPort, producer.HttpPort, producer.Version)
+		client, peerInfo.BroadcastAddress, peerInfo.TcpPort, peerInfo.HttpPort, peerInfo.Version)
 
-	client.Producer = &producer
-	if lookupd.DB.AddProducer(Registration{"client", "", ""}, client.Producer) {
+	client.peerInfo = &peerInfo
+	if lookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
 		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
 	}
 
@@ -251,11 +254,11 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 }
 
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
-	if client.Producer != nil {
+	if client.peerInfo != nil {
 		// we could get a PING before other commands on the same client connection
 		now := time.Now()
-		log.Printf("CLIENT(%s): pinged (last ping %s)", client.Producer.producerId, now.Sub(client.Producer.LastUpdate))
-		client.Producer.LastUpdate = now
+		log.Printf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.id, now.Sub(client.peerInfo.lastUpdate))
+		client.peerInfo.lastUpdate = now
 	}
 	return []byte("OK"), nil
 }
