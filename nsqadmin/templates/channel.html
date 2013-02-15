@@ -70,6 +70,7 @@
         <th>Requeued</th>
         <th>Timed Out</th>
         <th>Messages</th>
+        {{if $g.Enabled}}<th>Rate</th>{{end}}
         <th>Connections</th>
     </tr>
 
@@ -83,6 +84,7 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
         <td>{{$c.ClientCount}}</td>
     </tr>
     {{if $g.Enabled}}
@@ -110,6 +112,7 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{$c.Rate $g}}"></td> {{end}}
         <td>{{$c.ClientCount}}</td>
     </tr>
     {{if $g.Enabled}}
