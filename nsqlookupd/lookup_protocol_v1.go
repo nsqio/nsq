@@ -176,11 +176,12 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 					client, "channel", topic, r.SubKey)
 			}
 		}
-	}
-	key := Registration{"topic", topic, ""}
-	if removed, _ := lookupd.DB.RemoveProducer(key, client.Producer); removed {
-		log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
-			client, "topic", topic, "")
+
+		key := Registration{"topic", topic, ""}
+		if removed, _ := lookupd.DB.RemoveProducer(key, client.Producer); removed {
+			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+				client, "topic", topic, "")
+		}
 	}
 
 	return []byte("OK"), nil
