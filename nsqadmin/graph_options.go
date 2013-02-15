@@ -2,7 +2,10 @@ package main
 
 import (
 	"../util"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/bitly/go-simplejson"
 	"html/template"
 	"log"
 	"net/http"
@@ -134,7 +137,7 @@ func startEndForTimeframe(t time.Duration) (string, string) {
 
 func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
 	color := "blue"
-	if key == "depth" {
+	if key == "depth" || key == "requeue_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(metricType(key)), t.TopicName, key)
@@ -150,13 +153,18 @@ func (t *Topic) LargeGraph(g *GraphOptions, key string) template.URL {
 	return g.LargeGraph(target, color)
 }
 
+func (t *Topic) Rate(g *GraphOptions) string {
+	target, _ := t.Target(g, "message_count")
+	return target
+}
+
 func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
 	h := graphiteHostKey(t.HostAddress)
 	if t.Aggregate {
 		h = "*"
 	}
 	color := "blue"
-	if key == "depth" {
+	if key == "depth" || key == "requeue_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(metricType(key)), h, t.Topic, key)
@@ -169,6 +177,10 @@ func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
 func (t *TopicHostStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
 	return g.LargeGraph(target, color)
+}
+func (t *TopicHostStats) Rate(g *GraphOptions) string {
+	target, _ := t.Target(g, "message_count")
+	return target
 }
 
 func metricType(key string) string {
@@ -186,7 +198,7 @@ func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 		h = graphiteHostKey(c.HostAddress)
 	}
 	color := "blue"
-	if key == "depth" {
+	if key == "depth" || key == "requeue_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(metricType(key)), h, c.Topic, c.ChannelName, key)
@@ -199,6 +211,10 @@ func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
 func (c *ChannelStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := c.Target(g, key)
 	return g.LargeGraph(target, color)
+}
+func (t *ChannelStats) Rate(g *GraphOptions) string {
+	target, _ := t.Target(g, "message_count")
+	return target
 }
 
 func (g *GraphOptions) Sparkline(target string, color string) template.URL {
@@ -231,6 +247,38 @@ func (g *GraphOptions) LargeGraph(target string, color string) template.URL {
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
+}
+
+func rateQuery(target string) string {
+	params := url.Values{}
+	params.Set("from", "-2min")
+	params.Set("until", "-1min")
+	params.Set("format", "json")
+	params.Set("target", fmt.Sprintf("sumSeries(%s)", target))
+	return fmt.Sprintf("/render?%s", params.Encode())
+}
+
+func parseRateResponse(body []byte) (string, error) {
+	js, err := simplejson.NewJson([]byte(body))
+	if err != nil {
+		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+		return "", err
+	}
+
+	js, ok := js.GetIndex(0).CheckGet("datapoints")
+	if !ok {
+		return "", errors.New("datapoints not found")
+	}
+
+	rate, err := js.GetIndex(0).GetIndex(0).Float64()
+	rate_str := fmt.Sprintf("%.2f", rate/60)
+	response := map[string]string{"datapoint": rate_str}
+	byte_response, err := json.Marshal(response)
+	if err != nil {
+		return "", errors.New("marshal failed")
+	}
+
+	return string(byte_response), nil
 }
 
 func graphiteHostKey(h string) string {

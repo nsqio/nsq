@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -72,6 +73,7 @@ func httpServer(listener net.Listener) {
 		} else {
 			proxy := NewSingleHostReverseProxy(url, 20*time.Second)
 			handler.Handle("/render", proxy)
+			handler.HandleFunc("/graphite_data", graphiteDataHandler)
 		}
 	}
 
@@ -682,4 +684,78 @@ func counterDataHandler(w http.ResponseWriter, req *http.Request) {
 
 func faviconHandler(w http.ResponseWriter, req *http.Request) {
 	http.NotFound(w, req)
+}
+
+func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+
+	metric, err := reqParams.Get("metric")
+	if err != nil {
+		log.Printf("ERROR: missing metric param - %s", err.Error())
+		http.Error(w, "MISSING_METRIC_PARAM", 500)
+		return
+	}
+
+	target, err := reqParams.Get("target")
+	if err != nil {
+		log.Printf("ERROR: missing target param - %s", err.Error())
+		http.Error(w, "MISSING_TARGET_PARAM", 500)
+		return
+	}
+
+	var queryFunc func(string) string
+	var formatJsonResponseFunc func([]byte) (string, error)
+
+	switch metric {
+	case "rate":
+		queryFunc = rateQuery
+		formatJsonResponseFunc = parseRateResponse
+	default:
+		log.Printf("ERROR: unknown metric value %s", metric)
+		http.Error(w, "INVALID_METRIC_PARAM", 500)
+		return
+	}
+
+	query := queryFunc(target)
+	response, err := GraphiteGet(*graphiteUrl + query)
+	if err != nil {
+		log.Printf("ERROR: graphite request failed %s", err.Error())
+		http.Error(w, "GRAPHITE_FAILED", 500)
+		return
+	}
+
+	formated_response, err := formatJsonResponseFunc(response)
+	if err != nil {
+		log.Printf("ERROR: response formating failed - %s", err.Error())
+		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, formated_response)
+	return
+}
+
+func GraphiteGet(request_url string) ([]byte, error) {
+	response, err := http.Get(request_url)
+
+	var contents []byte
+
+	if err != nil {
+		log.Printf("ERROR: GET request to graphite failed %s", err)
+		return nil, err
+	}
+
+	defer response.Body.Close()
+	contents, err = ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Printf("ERROR: reading GET body failed %s", err)
+		return nil, err
+	}
+	return contents, nil
 }
