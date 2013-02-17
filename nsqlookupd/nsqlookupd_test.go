@@ -44,6 +44,8 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	cmd, _ := nsq.Identify(ci)
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
+	_, err = nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
 }
 
 func TestBasicLookupd(t *testing.T) {
@@ -64,10 +66,9 @@ func TestBasicLookupd(t *testing.T) {
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
 	nsq.Register(topicName, "channel1").Write(conn)
-	_, err := nsq.ReadResponse(conn)
+	v, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
-
-	time.Sleep(10 * time.Millisecond)
+	assert.Equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
 	data, err := nsq.ApiRequest(endpoint)
@@ -140,6 +141,55 @@ func TestBasicLookupd(t *testing.T) {
 	returnedProducers, err = data.Get("producers").Array()
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 0)
+}
+
+func TestChannelUnregister(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr := mustStartLookupd()
+	defer lookupd.Exit()
+
+	topics := lookupd.DB.FindRegistrations("topic", "*", "*")
+	assert.Equal(t, len(topics), 0)
+
+	topicName := "channel_unregister"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	tcpPort := 5000
+	httpPort := 5555
+	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
+
+	nsq.Register(topicName, "ch1").Write(conn)
+	v, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, v, []byte("OK"))
+
+	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
+	assert.Equal(t, len(topics), 1)
+
+	channels := lookupd.DB.FindRegistrations("channel", topicName, "*")
+	assert.Equal(t, len(channels), 1)
+
+	nsq.UnRegister(topicName, "ch1").Write(conn)
+	v, err = nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, v, []byte("OK"))
+
+	topics = lookupd.DB.FindRegistrations("topic", topicName, "")
+	assert.Equal(t, len(topics), 1)
+
+	// we should still have mention of the topic even though there is no producer
+	// (ie. we haven't *deleted* the channel, just unregistered as a producer)
+	channels = lookupd.DB.FindRegistrations("channel", topicName, "*")
+	assert.Equal(t, len(channels), 1)
+
+	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	data, err := nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+	returnedProducers, err := data.Get("producers").Array()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, len(returnedProducers), 1)
 }
 
 func TestTombstoneRecover(t *testing.T) {
