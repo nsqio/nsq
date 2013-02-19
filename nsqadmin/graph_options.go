@@ -137,7 +137,7 @@ func startEndForTimeframe(t time.Duration) (string, string) {
 
 func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
 	color := "blue"
-	if key == "depth" || key == "requeue_count" {
+	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(metricType(key)), t.TopicName, key)
@@ -150,7 +150,7 @@ func (t *Topic) Sparkline(g *GraphOptions, key string) template.URL {
 
 func (t *Topic) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return g.LargeGraph(target, color)
+	return g.LargeGraph(key, target, color)
 }
 
 func (t *Topic) Rate(g *GraphOptions) string {
@@ -164,7 +164,7 @@ func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
 		h = "*"
 	}
 	color := "blue"
-	if key == "depth" || key == "requeue_count" {
+	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(metricType(key)), h, t.Topic, key)
@@ -176,7 +176,7 @@ func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
 }
 func (t *TopicHostStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := t.Target(g, key)
-	return g.LargeGraph(target, color)
+	return g.LargeGraph(key, target, color)
 }
 func (t *TopicHostStats) Rate(g *GraphOptions) string {
 	target, _ := t.Target(g, "message_count")
@@ -186,7 +186,7 @@ func (t *TopicHostStats) Rate(g *GraphOptions) string {
 func metricType(key string) string {
 	metricType := "counter"
 	switch key {
-	case "backend_depth", "depth", "clients":
+	case "backend_depth", "depth", "clients", "in_flight_count":
 		metricType = "gauge"
 	}
 	return metricType
@@ -198,7 +198,7 @@ func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
 		h = graphiteHostKey(c.HostAddress)
 	}
 	color := "blue"
-	if key == "depth" || key == "requeue_count" {
+	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(metricType(key)), h, c.Topic, c.ChannelName, key)
@@ -210,7 +210,7 @@ func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
 }
 func (c *ChannelStats) LargeGraph(g *GraphOptions, key string) template.URL {
 	target, color := c.Target(g, key)
-	return g.LargeGraph(target, color)
+	return g.LargeGraph(key, target, color)
 }
 func (t *ChannelStats) Rate(g *GraphOptions) string {
 	target, _ := t.Target(g, "message_count")
@@ -235,7 +235,7 @@ func (g *GraphOptions) Sparkline(target string, color string) template.URL {
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
 }
 
-func (g *GraphOptions) LargeGraph(target string, color string) template.URL {
+func (g *GraphOptions) LargeGraph(key string, target string, color string) template.URL {
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
@@ -243,7 +243,11 @@ func (g *GraphOptions) LargeGraph(target string, color string) template.URL {
 	params.Set("fgcolor", "999999")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
-	params.Set("target", fmt.Sprintf("scaleToSeconds(summarize(sumSeries(%s),\"1min\"),1)", target))
+	target = fmt.Sprintf(`summarize(sumSeries(%s),"1min","avg")`, target)
+	if metricType(key) != "gauge" {
+		target = fmt.Sprintf(`scaleToSeconds(%s,1)`, target)
+	}
+	params.Set("target", target)
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
