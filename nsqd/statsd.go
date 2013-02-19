@@ -61,9 +61,8 @@ func statsdLoop(addr string, prefix string, interval int) {
 					stat = fmt.Sprintf("topic.%s.channel.%s.backend_depth", topic.TopicName, channel.ChannelName)
 					statsd.Gauge(stat, int(channel.BackendDepth))
 
-					diff = uint64(channel.InFlightCount - lastChannel.InFlightCount)
 					stat = fmt.Sprintf("topic.%s.channel.%s.in_flight_count", topic.TopicName, channel.ChannelName)
-					statsd.Incr(stat, int(diff))
+					statsd.Gauge(stat, int(channel.InFlightCount))
 
 					diff = uint64(channel.DeferredCount - lastChannel.DeferredCount)
 					stat = fmt.Sprintf("topic.%s.channel.%s.deferred_count", topic.TopicName, channel.ChannelName)
