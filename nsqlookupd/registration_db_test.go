@@ -15,9 +15,13 @@ func TestRegistrationDB(t *testing.T) {
 
 	sec30 := 30 * time.Second
 	beginningOfTime := time.Unix(1348797047, 0)
-	p1 := &Producer{"1", "addr", "host", "b_addr", 1, 2, "v1", beginningOfTime, false, beginningOfTime}
-	p2 := &Producer{"2", "addr", "host", "b_addr", 2, 3, "v1", beginningOfTime, false, beginningOfTime}
-	p3 := &Producer{"3", "addr", "host", "b_addr", 3, 4, "v1", beginningOfTime, false, beginningOfTime}
+	pi1 := &PeerInfo{"1", "addr", "host", "b_addr", 1, 2, "v1", beginningOfTime}
+	pi2 := &PeerInfo{"2", "addr", "host", "b_addr", 2, 3, "v1", beginningOfTime}
+	pi3 := &PeerInfo{"3", "addr", "host", "b_addr", 3, 4, "v1", beginningOfTime}
+	p1 := &Producer{pi1, false, beginningOfTime}
+	p2 := &Producer{pi2, false, beginningOfTime}
+	p3 := &Producer{pi3, false, beginningOfTime}
+	p4 := &Producer{pi1, false, beginningOfTime}
 
 	db := NewRegistrationDB()
 
@@ -26,36 +30,41 @@ func TestRegistrationDB(t *testing.T) {
 	db.AddProducer(Registration{"c", "a", ""}, p2)
 	db.AddProducer(Registration{"c", "a", "b"}, p2)
 	db.AddProducer(Registration{"d", "a", ""}, p3)
+	db.AddProducer(Registration{"t", "a", ""}, p4)
 
 	// find producers
 	r := db.FindRegistrations("c", "*", "").Keys()
 	assert.Equal(t, len(r), 1)
 	assert.Equal(t, r[0], "a")
 
-	p := db.FindProducers("c", "*", "")
+	p := db.FindProducers("t", "*", "")
+	assert.Equal(t, len(p), 1)
+	p = db.FindProducers("c", "*", "")
 	assert.Equal(t, len(p), 2)
 	p = db.FindProducers("c", "a", "")
 	assert.Equal(t, len(p), 2)
 	p = db.FindProducers("c", "*", "b")
 	assert.Equal(t, len(p), 1)
-	assert.Equal(t, p[0].producerId, p2.producerId)
+	assert.Equal(t, p[0].peerInfo.id, p2.peerInfo.id)
 
 	// filter by active
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 0)
-	p2.LastUpdate = time.Now()
+	p2.peerInfo.lastUpdate = time.Now()
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 	p = db.FindProducers("c", "*", "")
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 
 	// tombstoning
 	fewSecAgo := time.Now().Add(-5 * time.Second)
-	p1.LastUpdate = fewSecAgo
-	p2.LastUpdate = fewSecAgo
+	p1.peerInfo.lastUpdate = fewSecAgo
+	p2.peerInfo.lastUpdate = fewSecAgo
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 2)
 	p1.Tombstone()
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 	time.Sleep(10 * time.Millisecond)
 	assert.Equal(t, len(p.FilterByActive(sec30, 5*time.Millisecond)), 2)
+	// make sure we can still retrieve p1 from another registration see #148
+	assert.Equal(t, len(db.FindProducers("t", "*", "").FilterByActive(sec30, sec30)), 1)
 
 	// keys and subkeys
 	k := db.FindRegistrations("c", "b", "").Keys()
@@ -68,12 +77,12 @@ func TestRegistrationDB(t *testing.T) {
 	assert.Equal(t, k[0], "b")
 
 	// removing producers
-	db.RemoveProducer(Registration{"c", "a", ""}, p1)
+	db.RemoveProducer(Registration{"c", "a", ""}, p1.peerInfo.id)
 	p = db.FindProducers("c", "*", "*")
 	assert.Equal(t, len(p), 1)
 
-	db.RemoveProducer(Registration{"c", "a", ""}, p2)
-	db.RemoveProducer(Registration{"c", "a", "b"}, p2)
+	db.RemoveProducer(Registration{"c", "a", ""}, p2.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", "b"}, p2.peerInfo.id)
 	p = db.FindProducers("c", "*", "*")
 	assert.Equal(t, len(p), 0)
 
