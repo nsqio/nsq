@@ -9,6 +9,7 @@ examples/bench_writer/bench_writer
 examples/nsq_to_file/nsq_to_file
 examples/nsq_pubsub/nsq_pubsub
 examples/nsq_to_http/nsq_to_http
+examples/nsq_tail/nsq_tail
 dist
 
 *.dat
