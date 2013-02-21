@@ -2,6 +2,25 @@
 
 ## Binaries
 
+### 0.2.18-alpha
+
+**Upgrading from 0.2.17**: all V2 clients of nsqd now receive heartbeats (previously only clients
+that subscribed would receive heartbeats, excluding TCP producers).
+
+**Upgrading from 0.2.16**: follow the notes in the 0.2.17 changelog for upgrading from 0.2.16.
+
+New Features / Enhancements:
+
+ * #131 - all V2 nsqd clients get heartbeats
+ * #154 - nsq_tail example reader
+ * #143 - display message rates in nsqadmin
+
+Bug Fixes:
+
+ * #148 - store tombstone data per registration in nsqlookupd
+ * #153 - fix large graph formulas in nsqadmin
+ * #150/#151 - fix topics disappearing from nsqlookupd when channels are deleted
+
 ### 0.2.17 - 2013-02-07
 
 **Upgrading from 0.2.16**: IDENTIFY and SUB now return success responses (they previously only
