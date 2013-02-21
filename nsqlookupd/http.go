@@ -96,7 +96,7 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	producers = producers.FilterByActive(lookupd.inactiveProducerTimeout, lookupd.tombstoneLifetime)
 	data := make(map[string]interface{})
 	data["channels"] = channels
-	data["producers"] = producers
+	data["producers"] = producers.PeerInfo()
 
 	util.ApiResponse(w, 200, "OK", data)
 }
@@ -176,7 +176,7 @@ func tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := lookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
-		thisNode := fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort)
+		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HttpPort)
 		if thisNode == node {
 			p.Tombstone()
 		}
@@ -252,13 +252,13 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	producerTopics := make([]*producerTopic, len(producers))
 	for i, p := range producers {
 		producerTopics[i] = &producerTopic{
-			Address:          p.Address, //TODO: drop for 1.0
-			Hostname:         p.Hostname,
-			BroadcastAddress: p.BroadcastAddress,
-			TcpPort:          p.TcpPort,
-			HttpPort:         p.HttpPort,
-			Version:          p.Version,
-			Topics:           lookupd.DB.LookupRegistrations(p).Filter("topic", "*", "").Keys(),
+			Address:          p.peerInfo.Address, //TODO: drop for 1.0
+			Hostname:         p.peerInfo.Hostname,
+			BroadcastAddress: p.peerInfo.BroadcastAddress,
+			TcpPort:          p.peerInfo.TcpPort,
+			HttpPort:         p.peerInfo.HttpPort,
+			Version:          p.peerInfo.Version,
+			Topics:           lookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys(),
 		}
 	}
 
@@ -285,14 +285,14 @@ func debugHandler(w http.ResponseWriter, req *http.Request) {
 		data[key] = make([]map[string]interface{}, 0)
 		for _, p := range producers {
 			m := make(map[string]interface{})
-			m["producer_id"] = p.producerId
-			m["address"] = p.Address //TODO: remove for 1.0
-			m["hostname"] = p.Hostname
-			m["broadcast_address"] = p.BroadcastAddress
-			m["tcp_port"] = p.TcpPort
-			m["http_port"] = p.HttpPort
-			m["version"] = p.Version
-			m["last_update"] = p.LastUpdate.UnixNano()
+			m["id"] = p.peerInfo.id
+			m["address"] = p.peerInfo.Address //TODO: remove for 1.0
+			m["hostname"] = p.peerInfo.Hostname
+			m["broadcast_address"] = p.peerInfo.BroadcastAddress
+			m["tcp_port"] = p.peerInfo.TcpPort
+			m["http_port"] = p.peerInfo.HttpPort
+			m["version"] = p.peerInfo.Version
+			m["last_update"] = p.peerInfo.lastUpdate.UnixNano()
 			m["tombstoned"] = p.tombstoned
 			m["tombstoned_at"] = p.tombstonedAt.UnixNano()
 			data[key] = append(data[key], m)

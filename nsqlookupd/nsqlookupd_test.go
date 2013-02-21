@@ -84,11 +84,11 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(producers), 1)
 	producer := producers[0]
 
-	assert.Equal(t, producer.Address, "ip.address") //TODO: remove for 1.0
-	assert.Equal(t, producer.BroadcastAddress, "ip.address")
-	assert.Equal(t, producer.Hostname, "ip.address")
-	assert.Equal(t, producer.TcpPort, tcpPort)
-	assert.Equal(t, producer.HttpPort, httpPort)
+	assert.Equal(t, producer.peerInfo.Address, "ip.address") //TODO: remove for 1.0
+	assert.Equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
+	assert.Equal(t, producer.peerInfo.Hostname, "ip.address")
+	assert.Equal(t, producer.peerInfo.TcpPort, tcpPort)
+	assert.Equal(t, producer.peerInfo.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
 	data, err = nsq.ApiRequest(endpoint)
@@ -106,6 +106,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedChannels), 1)
 
 	returnedProducers, err = data.Get("producers").Array()
+	log.Printf("got returnedProducers %v", returnedProducers)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
 	for i, _ := range returnedProducers {
@@ -201,12 +202,17 @@ func TestTombstoneRecover(t *testing.T) {
 	lookupd.tombstoneLifetime = 50 * time.Millisecond
 
 	topicName := "tombstone_recover"
+	topicName2 := topicName + "2"
 
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").Write(conn)
 	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
+	nsq.Register(topicName2, "channel2").Write(conn)
+	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
@@ -218,6 +224,12 @@ func TestTombstoneRecover(t *testing.T) {
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
+
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
+	data, err = nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+	producers, _ = data.Get("producers").Array()
+	assert.Equal(t, len(producers), 1)
 
 	time.Sleep(55 * time.Millisecond)
 
