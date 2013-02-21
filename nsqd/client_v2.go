@@ -28,6 +28,7 @@ type ClientV2 struct {
 	ExitChan        chan int
 	ShortIdentifier string
 	LongIdentifier  string
+	SubEventChan    chan *Channel
 }
 
 func NewClientV2(conn net.Conn) *ClientV2 {
@@ -46,6 +47,8 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		LongIdentifier:  identifier,
 		Reader:          bufio.NewReaderSize(conn, 16*1024),
 		Writer:          bufio.NewWriterSize(conn, 16*1024),
+		State:           nsq.StateInit,
+		SubEventChan:    make(chan *Channel, 1),
 	}
 }
 
