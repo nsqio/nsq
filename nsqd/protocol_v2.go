@@ -29,8 +29,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var line []byte
 
 	client := NewClientV2(conn)
-	atomic.StoreInt32(&client.State, nsq.StateInit)
-
+	go p.messagePump(client)
 	for {
 		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
 		// ReadSlice does not allocate new space for the data each request
@@ -170,6 +169,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var err error
 	var buf bytes.Buffer
 	var clientMsgChan chan *nsq.Message
+	var subChannel *Channel
 	var flusherChan <-chan time.Time
 
 	// v2 opportunistically buffers data to clients to reduce write system calls
@@ -184,9 +184,10 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	flusher := time.NewTicker(5 * time.Millisecond)
 	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)
 	flushed := true
+	subEventChan := client.SubEventChan
 
 	for {
-		if !client.IsReadyForMessages() {
+		if subChannel == nil || !client.IsReadyForMessages() {
 			// the client is not ready to receive messages...
 			clientMsgChan = nil
 			flusherChan = nil
@@ -199,12 +200,12 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 		} else if flushed {
 			// last iteration we flushed...
 			// do not select on the flusher ticker channel
-			clientMsgChan = client.Channel.clientMsgChan
+			clientMsgChan = subChannel.clientMsgChan
 			flusherChan = nil
 		} else {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
-			clientMsgChan = client.Channel.clientMsgChan
+			clientMsgChan = subChannel.clientMsgChan
 			flusherChan = flusher.C
 		}
 
@@ -218,6 +219,9 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 				goto exit
 			}
 			flushed = true
+		case subChannel = <-subEventChan:
+			// you can't subscribe anymore
+			subEventChan = nil
 		case <-client.ReadyStateChan:
 		case <-heartbeat.C:
 			err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
@@ -243,9 +247,11 @@ exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeat.Stop()
 	flusher.Stop()
-	client.Channel.RemoveClient(client)
+	if subChannel != nil {
+		subChannel.RemoveClient(client)
+	}
 	if err != nil {
-		log.Printf("PROTOCOL(V2): messagePump error - %s", err.Error())
+		log.Printf("PROTOCOL(V2): [%s] messagePump error - %s", client, err.Error())
 	}
 }
 
@@ -314,10 +320,10 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client)
 
-	client.Channel = channel
 	atomic.StoreInt32(&client.State, nsq.StateSubscribed)
-
-	go p.messagePump(client)
+	client.Channel = channel
+	// update message pump
+	client.SubEventChan <- channel
 
 	return []byte("OK"), nil
 }
