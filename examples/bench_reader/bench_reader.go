@@ -40,11 +40,11 @@ func main() {
 	wg.Wait()
 	end := time.Now()
 	duration := end.Sub(start)
-	log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op", 
-		duration, 
-		float64(*num * 200) / duration.Seconds() / 1024 / 1024,
-		float64(*num) / duration.Seconds(),
-		float64(duration / time.Microsecond) / float64(*num))
+	log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op",
+		duration,
+		float64(*num*200)/duration.Seconds()/1024/1024,
+		float64(*num)/duration.Seconds(),
+		float64(duration/time.Microsecond)/float64(*num))
 }
 
 func subWorker(n int, workers int, tcpAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
