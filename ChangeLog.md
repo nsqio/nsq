@@ -2,10 +2,10 @@
 
 ## Binaries
 
-### 0.2.18-alpha
+### 0.2.18 - 2013-02-28
 
 **Upgrading from 0.2.17**: all V2 clients of nsqd now receive heartbeats (previously only clients
-that subscribed would receive heartbeats, excluding TCP producers).
+that subscribed would receive heartbeats, excluding TCP *producers*).
 
 **Upgrading from 0.2.16**: follow the notes in the 0.2.17 changelog for upgrading from 0.2.16.
 
