@@ -63,6 +63,7 @@ doc][design] or [blog post][nsq_post].
 * [pynsq][pynsq] Python (official) [pypi][pynsq_pypi]
 * [libnsq][libnsq] C
 * [nsq-java][nsq-java] Java
+* [TrendrrNSQClient][TrendrrNSQClient] Java
 * [nodensq][node_lib] Node.js [npm][nodensq_npm]
 * [nsqphp][php_lib] PHP
 * [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
@@ -206,3 +207,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [funkygao_github]: https://github.com/funkygao
 [statsd]: https://github.com/etsy/statsd/
 [graphite]: http://graphite.wikidot.com/
+[TrendrrNSQClient]: https://github.com/dustismo/TrendrrNSQClient
