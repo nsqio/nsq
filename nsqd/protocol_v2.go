@@ -27,11 +27,17 @@ func init() {
 func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var err error
 	var line []byte
+	var zeroTime time.Time
 
 	client := NewClientV2(conn)
 	go p.messagePump(client)
 	for {
-		client.SetReadDeadline(time.Now().Add(nsqd.options.clientTimeout))
+		if client.HeartbeatInterval > 0 {
+			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 2))
+		} else {
+			client.SetReadDeadline(zeroTime)
+		}
+
 		// ReadSlice does not allocate new space for the data each request
 		// ie. the returned slice is only valid until the next call to it
 		line, err = client.Reader.ReadSlice('\n')
@@ -182,9 +188,10 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	// the pathological case of a channel on a low volume topic
 	// with >1 clients having >1 RDY counts
 	flusher := time.NewTicker(5 * time.Millisecond)
-	heartbeat := time.NewTicker(nsqd.options.clientTimeout / 2)
 	flushed := true
 	subEventChan := client.SubEventChan
+	heartbeat := time.NewTicker(client.HeartbeatInterval)
+	heartbeatUpdateChan := client.HeartbeatUpdateChan
 
 	for {
 		if subChannel == nil || !client.IsReadyForMessages() {
@@ -223,6 +230,14 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// you can't subscribe anymore
 			subEventChan = nil
 		case <-client.ReadyStateChan:
+		case interval := <-heartbeatUpdateChan:
+			heartbeat.Stop()
+			if interval > 0 {
+				heartbeat = time.NewTicker(interval)
+			}
+
+			// you can't update heartbeat anymore
+			heartbeatUpdateChan = nil
 		case <-heartbeat.C:
 			err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
 			if err != nil {
@@ -281,8 +296,9 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 
 	// body is a json structure with producer information
 	clientInfo := struct {
-		ShortId string `json:"short_id"`
-		LongId  string `json:"long_id"`
+		ShortId           string `json:"short_id"`
+		LongId            string `json:"long_id"`
+		HeartbeatInterval int    `json:"heartbeat_interval"`
 	}{}
 	err = json.Unmarshal(body, &clientInfo)
 	if err != nil {
@@ -292,12 +308,36 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	client.ShortIdentifier = clientInfo.ShortId
 	client.LongIdentifier = clientInfo.LongId
 
+	var interval time.Duration
+	switch {
+	case clientInfo.HeartbeatInterval == -1:
+		interval = -1
+	case clientInfo.HeartbeatInterval == 0:
+	case clientInfo.HeartbeatInterval >= 1000 && clientInfo.HeartbeatInterval <= 60000:
+		interval = (time.Duration(clientInfo.HeartbeatInterval) * time.Millisecond)
+	default:
+		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "IDENTIFY Invalid heartbeat_interval")
+	}
+
+	// leave the default heartbeat in place
+	if clientInfo.HeartbeatInterval != 0 {
+		select {
+		case client.HeartbeatUpdateChan <- interval:
+		default:
+		}
+		client.HeartbeatInterval = interval
+	}
+
 	return []byte("OK"), nil
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot SUB in current state")
+	}
+
+	if client.HeartbeatInterval < 0 {
+		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot SUB with heartbeats disabled")
 	}
 
 	if len(params) < 3 {
