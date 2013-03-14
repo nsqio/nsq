@@ -29,6 +29,10 @@ type ClientV2 struct {
 	ShortIdentifier string
 	LongIdentifier  string
 	SubEventChan    chan *Channel
+
+	// heartbeats are client configurable via IDENTIFY
+	HeartbeatInterval   time.Duration
+	HeartbeatUpdateChan chan time.Duration
 }
 
 func NewClientV2(conn net.Conn) *ClientV2 {
@@ -36,6 +40,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
+
 	return &ClientV2{
 		Conn: conn,
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
@@ -49,6 +54,10 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		Writer:          bufio.NewWriterSize(conn, 16*1024),
 		State:           nsq.StateInit,
 		SubEventChan:    make(chan *Channel, 1),
+
+		// heartbeats are client configurable but default to 30s
+		HeartbeatInterval:   nsqd.options.clientTimeout / 2,
+		HeartbeatUpdateChan: make(chan time.Duration, 1),
 	}
 }
 

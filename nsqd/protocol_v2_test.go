@@ -47,10 +47,29 @@ func identify(t *testing.T, conn net.Conn) {
 	readValidateOK(t, conn)
 }
 
+func identifyDisabledHearbeat(t *testing.T, conn net.Conn) {
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	ci["heartbeat_interval"] = -1
+	cmd, _ := nsq.Identify(ci)
+	err := cmd.Write(conn)
+	assert.Equal(t, err, nil)
+	readValidateOK(t, conn)
+}
+
 func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
 	err := nsq.Subscribe(topicName, channelName).Write(conn)
 	assert.Equal(t, err, nil)
 	readValidateOK(t, conn)
+}
+
+func subFail(t *testing.T, conn net.Conn, topicName string, channelName string) {
+	err := nsq.Subscribe(topicName, channelName).Write(conn)
+	assert.Equal(t, err, nil)
+	resp, err := nsq.ReadResponse(conn)
+	frameType, _, err := nsq.UnpackResponse(resp)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
 }
 
 func readValidateOK(t *testing.T, conn net.Conn) {
@@ -223,6 +242,45 @@ func TestClientHeartbeat(t *testing.T) {
 
 	err = nsq.Nop().Write(conn)
 	assert.Equal(t, err, nil)
+}
+
+func TestClientHeartbeatDisableSUB(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	options := NewNsqdOptions()
+	options.clientTimeout = 200 * time.Millisecond
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identifyDisabledHearbeat(t, conn)
+	subFail(t, conn, topicName, "ch")
+}
+
+func TestClientHeartbeatDisable(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	options := NewNsqdOptions()
+	options.clientTimeout = 100 * time.Millisecond
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identifyDisabledHearbeat(t, conn)
+
+	time.Sleep(150 * time.Millisecond)
+
+	err = nsq.Nop().Write(conn)
+	assert.Equal(t, err, nil)
+
 }
 
 func TestPausing(t *testing.T) {

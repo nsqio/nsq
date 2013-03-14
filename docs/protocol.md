@@ -29,9 +29,10 @@ updates its `RDY` state to some # it is prepared to handle, say 100. Without any
 commands, 100 messages will be pushed to the client as they are available (each time decrementing
 the server-side `RDY` count for that client).
 
-The **V2** protocol also features client heartbeats. Every 30 seconds, `nsqd` will send a
-`_heartbeat_` response and expect a command in return. If the client is idle, send `NOP`. After 60
-seconds, `nsqd` will timeout and forcefully close a client connection that it has not heard from.
+The **V2** protocol also features client heartbeats. Every 30 seconds by default, `nsqd` will send a
+`_heartbeat_` response and expect a command in return. If the client is idle, send `NOP`. After 2 
+unanswered `_heartbeat_` responses, `nsqd` will timeout and forcefully close a client connection that
+it has not heard from. The `IDENTIFY` command may be used to change/disable this behavior.
 
 Commands are line oriented and structured as follows:
 
@@ -44,6 +45,8 @@ Commands are line oriented and structured as follows:
     
         <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
         <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
+        <heartbeat_interval> - milliseconds between heartbeats where 1000 < heartbeat_interval < 60000 
+        <heartbeat_interval> may also be set to -1 to disable heartbeats.
     
     Success Response:
     
