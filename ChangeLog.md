@@ -2,6 +2,12 @@
 
 ## Binaries
 
+### 0.2.19-alpha
+
+New Features / Enhancements:
+
+ * #158 - allow nsqd clients to configure (or disable) heartbeats
+
 ### 0.2.18 - 2013-02-28
 
 **Upgrading from 0.2.17**: all V2 clients of nsqd now receive heartbeats (previously only clients
