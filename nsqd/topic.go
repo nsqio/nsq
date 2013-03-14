@@ -196,11 +196,16 @@ func (t *Topic) messagePump() {
 			goto exit
 		}
 
-		for _, channel := range chans {
+		for i, channel := range chans {
+			chanMsg := msg
 			// copy the message because each channel
-			// needs a unique instance
-			chanMsg := nsq.NewMessage(msg.Id, msg.Body)
-			chanMsg.Timestamp = msg.Timestamp
+			// needs a unique instance but...
+			// fastpath to avoid copy if its the first channel
+			// (the topic already created the first copy)
+			if i > 0 {
+				chanMsg = nsq.NewMessage(msg.Id, msg.Body)
+				chanMsg.Timestamp = msg.Timestamp
+			}
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
 				log.Printf("TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.Id, channel.name, err.Error())
