@@ -118,3 +118,38 @@ func TestChannelEmpty(t *testing.T) {
 	assert.Equal(t, len(channel.deferredPQ), 0)
 	assert.Equal(t, channel.Depth(), int64(0))
 }
+
+func TestChannelEmptyConsumer(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+	conn, _ := mustConnectNSQd(tcpAddr)
+
+	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("channel")
+	client := NewClientV2(conn)
+	client.SetReadyCount(25)
+	channel.AddClient(client)
+
+	for i := 0; i < 25; i++ {
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		channel.StartInFlightTimeout(msg, client)
+		client.SendingMessage()
+	}
+
+	for _, cl := range channel.clients {
+		stats := cl.Stats()
+		assert.Equal(t, stats.InFlightCount, int64(25))
+	}
+
+	channel.Empty()
+
+	for _, cl := range channel.clients {
+		stats := cl.Stats()
+		assert.Equal(t, stats.InFlightCount, int64(0))
+	}
+
+}

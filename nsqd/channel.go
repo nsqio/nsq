@@ -24,6 +24,7 @@ type Consumer interface {
 	Close() error
 	TimedOutMessage()
 	Stats() ClientStats
+	Empty()
 }
 
 // Channel represents the concrete type for a NSQ channel (and also
@@ -202,6 +203,9 @@ func (c *Channel) Empty() error {
 	defer c.Unlock()
 
 	c.initPQ()
+	for _, client := range c.clients {
+		client.Empty()
+	}
 
 	for {
 		select {
