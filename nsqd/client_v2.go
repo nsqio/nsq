@@ -123,6 +123,11 @@ func (c *ClientV2) FinishedMessage() {
 	c.tryUpdateReadyState()
 }
 
+func (c *ClientV2) Empty() {
+	atomic.StoreInt64(&c.InFlightCount, 0)
+	c.tryUpdateReadyState()
+}
+
 func (c *ClientV2) SendingMessage() {
 	atomic.AddInt64(&c.ReadyCount, -1)
 	atomic.AddInt64(&c.InFlightCount, 1)
