@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../nsq"
 	"bufio"
+	"github.com/bitly/nsq/nsq"
 	"log"
 	"net"
 	"sync"

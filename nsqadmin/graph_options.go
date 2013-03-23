@@ -1,11 +1,11 @@
 package main
 
 import (
-	"../util"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/util"
 	"html/template"
 	"log"
 	"net/http"

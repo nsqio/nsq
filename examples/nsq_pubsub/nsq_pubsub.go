@@ -3,11 +3,11 @@
 package main
 
 import (
-	"../../nsq"
-	"../../util"
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"

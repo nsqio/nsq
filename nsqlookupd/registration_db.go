@@ -116,7 +116,7 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 	r.RLock()
 	defer r.RUnlock()
 	results := make(Registrations, 0)
-	for k, _ := range r.registrationMap {
+	for k := range r.registrationMap {
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}

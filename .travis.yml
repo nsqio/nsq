@@ -1,7 +1,12 @@
 language: go
 install:
+  - mkdir -p $GOPATH/src/github.com/bitly/nsq
+  - mv * $GOPATH/src/github.com/bitly/nsq
   - go get github.com/bmizerany/assert
   - go get github.com/bitly/go-simplejson
-script: ./test.sh
+script:
+  - pushd $GOPATH/src/github.com/bitly/nsq
+  - ./test.sh
+  - popd
 notifications:
   email: false

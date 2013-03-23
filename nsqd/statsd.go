@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../util"
 	"fmt"
+	"github.com/bitly/nsq/util"
 	"log"
 	"time"
 )

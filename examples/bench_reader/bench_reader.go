@@ -1,9 +1,9 @@
 package main
 
 import (
-	"../../nsq"
 	"bufio"
 	"flag"
+	"github.com/bitly/nsq/nsq"
 	"log"
 	"math"
 	"net"

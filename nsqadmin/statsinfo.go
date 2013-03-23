@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../util/semver"
 	"fmt"
+	"github.com/bitly/nsq/util/semver"
 	"sort"
 	"time"
 )
