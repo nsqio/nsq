@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../../nsq"
-	"../../util"
 	"flag"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"log"
 	"os"
 	"os/signal"

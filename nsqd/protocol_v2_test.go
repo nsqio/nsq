@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../nsq"
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"

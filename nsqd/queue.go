@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../nsq"
 	"bytes"
+	"github.com/bitly/nsq/nsq"
 )
 
 // BackendQueue represents the behavior for the secondary message

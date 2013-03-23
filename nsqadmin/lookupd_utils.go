@@ -1,11 +1,11 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
-	"../util/semver"
 	"errors"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/semver"
 	"log"
 	"net/url"
 	"sort"
@@ -107,7 +107,7 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 
 			producers := data.Get("producers")
 			producersArray, _ := producers.Array()
-			for i, _ := range producersArray {
+			for i := range producersArray {
 				producer := producers.GetIndex(i)
 				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				hostname := producer.Get("hostname").MustString()
@@ -187,7 +187,7 @@ func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 			success = true
 			producers := data.Get("producers")
 			producersArray, _ := producers.Array()
-			for i, _ := range producersArray {
+			for i := range producersArray {
 				producer := producers.GetIndex(i)
 				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				broadcastAddress := producer.Get("broadcast_address").MustString()

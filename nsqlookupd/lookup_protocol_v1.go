@@ -1,12 +1,12 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"

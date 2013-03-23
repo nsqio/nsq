@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"bytes"
 	"errors"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"log"
 	"sync"
 	"sync/atomic"

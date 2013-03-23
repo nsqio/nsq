@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../../nsq"
 	"bufio"
 	"bytes"
 	"flag"
+	"github.com/bitly/nsq/nsq"
 	"log"
 	"net"
 	"runtime"

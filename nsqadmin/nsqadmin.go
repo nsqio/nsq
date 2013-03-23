@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../util"
 	"flag"
+	"github.com/bitly/nsq/util"
 	"log"
 	"net"
 	"os"

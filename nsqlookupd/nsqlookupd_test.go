@@ -1,8 +1,8 @@
 package main
 
 import (
-	"../nsq"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -109,7 +109,7 @@ func TestBasicLookupd(t *testing.T) {
 	log.Printf("got returnedProducers %v", returnedProducers)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
-	for i, _ := range returnedProducers {
+	for i := range returnedProducers {
 		producer := data.Get("producers").GetIndex(i)
 		log.Printf("producer %v", producer)
 		assert.Equal(t, err, nil)

@@ -1,12 +1,12 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"io/ioutil"
 	"log"
 	"net"
@@ -121,7 +121,7 @@ func (n *NSQd) LoadMetadata() {
 		return
 	}
 
-	for ti, _ := range topics {
+	for ti := range topics {
 		topicJs := js.Get("topics").GetIndex(ti)
 
 		topicName, err := topicJs.Get("name").String()
@@ -141,7 +141,7 @@ func (n *NSQd) LoadMetadata() {
 			return
 		}
 
-		for ci, _ := range channels {
+		for ci := range channels {
 			channelJs := topicJs.Get("channels").GetIndex(ci)
 
 			channelName, err := channelJs.Get("name").String()
