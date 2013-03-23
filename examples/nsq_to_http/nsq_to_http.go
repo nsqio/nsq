@@ -4,12 +4,12 @@
 package main
 
 import (
-	"../../nsq"
-	"../../util"
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"log"
 	"math"
 	"math/rand"

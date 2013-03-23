@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../../nsq"
-	"../../util"
 	"bytes"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"net/http"
 	"time"
 )

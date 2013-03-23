@@ -1,12 +1,12 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
-	"../util/pqueue"
 	"bytes"
 	"container/heap"
 	"errors"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/pqueue"
 	"log"
 	"math"
 	"strings"

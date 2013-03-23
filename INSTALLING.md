@@ -18,27 +18,21 @@ available for download:
 
 **golang** http://golang.org/doc/install - **version `1.0.3+` is required**
 
-**simplejson** https://github.com/bitly/go-simplejson
+**simplejson** https://github.com/bitly/go-simplejson. Running ``go get`` as
+described in the _Compiling_ section will automatically download and install
+simplejson.
 
-    $ go get github.com/bitly/go-simplejson
-
-**assert** https://github.com/bmizerany/assert
+**assert** https://github.com/bmizerany/assert. Required for running tests.
 
     $ go get github.com/bmizerany/assert
 
 ### Compiling
 
-NOTE: binaries can not be built from within `$GOPATH` because of relative imports. To build,
-checkout to a directory outside of your `$GOPATH`.
+Use ``go get`` do download and compile the packages and binaries:
 
-    $ git clone https://github.com/bitly/nsq.git
-    $ cd $REPO
-    $ make
-    $ make install
+    $ go get github.com/bitly/nsq/...
 
-Go package (for building Go readers)
-
-    $ go get github.com/bitly/nsq/nsq
+Go package for building Go readers is ``github.com/bitly/nsq/nsq``.
 
 Python module (for building Python readers)
 

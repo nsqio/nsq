@@ -161,6 +161,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Dustin Norlander ([@dustismo][dustismo_github])
  * Funky Gao ([@funkygao][funkygao_github])
  * Dan Markham ([@dmarkham][dmarkham_github])
+ * Francisco Souza ([@fsouza][fsouza_github])
  
 [simplehttp]: https://github.com/bitly/simplehttp
 [msgpack]: http://msgpack.org/
@@ -210,3 +211,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [graphite]: http://graphite.wikidot.com/
 [TrendrrNSQClient]: https://github.com/dustismo/TrendrrNSQClient
 [dmarkham_github]: https://github.com/dmarkham
+[fsouza_github]: https://github.com/fsouza

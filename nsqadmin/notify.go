@@ -1,10 +1,10 @@
 package main
 
 import (
-	"../nsq"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/bitly/nsq/nsq"
 	"log"
 	"net/http"
 	"strings"

@@ -1,9 +1,9 @@
 package util
 
 import (
-	"../nsq"
 	"errors"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
 	"log"
 	"net/url"
 	"sync"

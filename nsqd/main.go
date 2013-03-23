@@ -1,11 +1,11 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"crypto/md5"
 	"flag"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"hash/crc32"
 	"io"
 	"log"

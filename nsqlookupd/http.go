@@ -1,9 +1,9 @@
 package main
 
 import (
-	"../nsq"
-	"../util"
 	"fmt"
+	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"
