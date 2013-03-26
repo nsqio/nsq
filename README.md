@@ -1,12 +1,6 @@
-```
-ooooo      ooo  .oooooo..o   .oooooo.
-`888b.     `8' d8P'    `Y8  d8P'  `Y8b
- 8 `88b.    8  Y88bo.      888      888
- 8   `88b.  8   `"Y8888o.  888      888
- 8     `88b.8       `"Y88b 888      888
- 8       `888  oo     .d8P `88b    d88b
-o8o        `8  8""88888P'   `Y8bood8P'Ybd'
-```
+<p align="center"><img src="nsq.png"/></p>
+
+Source: https://github.com/bitly/nsq
 
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
