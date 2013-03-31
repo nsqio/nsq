@@ -12,6 +12,7 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 const maxTimeout = time.Hour
@@ -405,8 +406,6 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 }
 
 func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
-	var id nsq.MessageID
-
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot FIN in current state")
@@ -416,7 +415,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
 	}
 
-	copy(id[:], params[1])
+	id := *(*nsq.MessageID)(unsafe.Pointer(&params[1][0]))
 	err := client.Channel.FinishMessage(client, id)
 	if err != nil {
 		return nil, nsq.NewClientErr(err, "E_FIN_FAILED",
@@ -429,8 +428,6 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 }
 
 func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
-	var id nsq.MessageID
-
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot REQ in current state")
@@ -440,7 +437,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "REQ insufficient number of params")
 	}
 
-	copy(id[:], params[1])
+	id := *(*nsq.MessageID)(unsafe.Pointer(&params[1][0]))
 	timeoutMs, err := util.ByteToBase10(params[2])
 	if err != nil {
 		return nil, nsq.NewFatalClientErr(err, "E_INVALID",
@@ -581,8 +578,6 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 }
 
 func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
-	var id nsq.MessageID
-
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "cannot TOUCH in current state")
@@ -592,7 +587,7 @@ func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
 	}
 
-	copy(id[:], params[1])
+	id := *(*nsq.MessageID)(unsafe.Pointer(&params[1][0]))
 	err := client.Channel.TouchMessage(client, id)
 	if err != nil {
 		return nil, nsq.NewClientErr(err, "E_TOUCH_FAILED",
