@@ -77,6 +77,11 @@ func infoHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func putHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -113,6 +118,11 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func mputHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
