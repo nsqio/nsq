@@ -31,6 +31,7 @@ type ClientV2 struct {
 	SubEventChan    chan *Channel
 
 	// heartbeats are client configurable via IDENTIFY
+	Heartbeat           *time.Ticker
 	HeartbeatInterval   time.Duration
 	HeartbeatUpdateChan chan time.Duration
 }
@@ -56,6 +57,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		SubEventChan:    make(chan *Channel, 1),
 
 		// heartbeats are client configurable but default to 30s
+		Heartbeat:           time.NewTicker(nsqd.options.clientTimeout / 2),
 		HeartbeatInterval:   nsqd.options.clientTimeout / 2,
 		HeartbeatUpdateChan: make(chan time.Duration, 1),
 	}

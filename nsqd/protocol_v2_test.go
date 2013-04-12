@@ -677,7 +677,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	b.StopTimer()
 
 	log.SetOutput(ioutil.Discard)
-	log.SetOutput(os.Stdout)
+	defer log.SetOutput(os.Stdout)
 
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)

@@ -63,7 +63,7 @@ func TestInFlightWorker(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	options := NewNsqdOptions()
-	options.msgTimeout = 300 * time.Millisecond
+	options.msgTimeout = 200 * time.Millisecond
 	nsqd = NewNSQd(1, options)
 	defer nsqd.Exit()
 
@@ -79,7 +79,9 @@ func TestInFlightWorker(t *testing.T) {
 	assert.Equal(t, len(channel.inFlightMessages), 1000)
 	assert.Equal(t, len(channel.inFlightPQ), 1000)
 
-	time.Sleep(350 * time.Millisecond)
+	// the in flight worker has a resolution of 100ms so we need to wait
+	// at least that much longer than our msgTimeout (in worst case)
+	time.Sleep(options.msgTimeout + 100*time.Millisecond)
 
 	assert.Equal(t, len(channel.inFlightMessages), 0)
 	assert.Equal(t, len(channel.inFlightPQ), 0)

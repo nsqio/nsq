@@ -231,16 +231,14 @@ func (t *Topic) Close() error {
 }
 
 func (t *Topic) exit(deleted bool) error {
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
+	if !atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
 
 	log.Printf("TOPIC(%s): closing", t.name)
 
-	// initiate exit
-	atomic.StoreInt32(&t.exitFlag, 1)
-
 	close(t.exitChan)
+
 	t.Lock()
 	close(t.incomingMsgChan)
 	t.Unlock()
