@@ -190,7 +190,6 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	flusher := time.NewTicker(5 * time.Millisecond)
 	flushed := true
 	subEventChan := client.SubEventChan
-	heartbeat := time.NewTicker(client.HeartbeatInterval)
 	heartbeatUpdateChan := client.HeartbeatUpdateChan
 
 	for {
@@ -231,14 +230,14 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			subEventChan = nil
 		case <-client.ReadyStateChan:
 		case interval := <-heartbeatUpdateChan:
-			heartbeat.Stop()
+			client.Heartbeat.Stop()
 			if interval > 0 {
-				heartbeat = time.NewTicker(interval)
+				client.Heartbeat = time.NewTicker(interval)
 			}
 
 			// you can't update heartbeat anymore
 			heartbeatUpdateChan = nil
-		case <-heartbeat.C:
+		case <-client.Heartbeat.C:
 			err = p.Send(client, nsq.FrameTypeResponse, []byte("_heartbeat_"))
 			if err != nil {
 				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
@@ -260,7 +259,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 
 exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
-	heartbeat.Stop()
+	client.Heartbeat.Stop()
 	flusher.Stop()
 	if subChannel != nil {
 		subChannel.RemoveClient(client)

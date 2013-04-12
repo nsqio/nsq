@@ -156,14 +156,11 @@ func (c *Channel) Close() error {
 func (c *Channel) exit(deleted bool) error {
 	var msgBuf bytes.Buffer
 
-	if atomic.LoadInt32(&c.exitFlag) == 1 {
+	if !atomic.CompareAndSwapInt32(&c.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
 
 	log.Printf("CHANNEL(%s): closing", c.name)
-
-	// initiate exit
-	atomic.StoreInt32(&c.exitFlag, 1)
 
 	// this forceably closes client connections
 	for _, client := range c.clients {
