@@ -2,11 +2,19 @@
 
 ## Binaries
 
-### 0.2.19-alpha
+### 0.2.19 - 2013-04-11
+
+**Upgrading from 0.2.18**: there are no backward incompatible changes in this release.
 
 New Features / Enhancements:
 
+ * #167 - 'go get' compatibility
  * #158 - allow nsqd clients to configure (or disable) heartbeats
+
+Bug Fixes:
+
+ * #171 - fix race conditions identified testing against go 1.1 (scheduler improvements)
+ * #160 - empty channel left in-flight count inconsistent
 
 ### 0.2.18 - 2013-02-28
 
