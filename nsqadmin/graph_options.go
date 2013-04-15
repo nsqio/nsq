@@ -219,27 +219,26 @@ func rateQuery(target string) string {
 	return fmt.Sprintf("/render?%s", params.Encode())
 }
 
-func parseRateResponse(body []byte) (string, error) {
+func parseRateResponse(body []byte) ([]byte, error) {
 	js, err := simplejson.NewJson([]byte(body))
 	if err != nil {
 		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
-		return "", err
+		return nil, err
 	}
 
 	js, ok := js.GetIndex(0).CheckGet("datapoints")
 	if !ok {
-		return "", errors.New("datapoints not found")
+		return nil, errors.New("datapoints not found")
 	}
 
-	rate, err := js.GetIndex(0).GetIndex(0).Float64()
-	rate_str := fmt.Sprintf("%.2f", rate/60)
-	response := map[string]string{"datapoint": rate_str}
-	byte_response, err := json.Marshal(response)
-	if err != nil {
-		return "", errors.New("marshal failed")
+	var rateStr string
+	rate, _ := js.GetIndex(0).GetIndex(0).Float64()
+	if rate < 0 {
+		rateStr = "N/A"
+	} else {
+		rateStr = fmt.Sprintf("%.2f", rate/60)
 	}
-
-	return string(byte_response), nil
+	return json.Marshal(map[string]string{"datapoint": rateStr})
 }
 
 func startEndForTimeframe(t time.Duration) (string, string) {

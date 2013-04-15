@@ -677,7 +677,7 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var queryFunc func(string) string
-	var formatJsonResponseFunc func([]byte) (string, error)
+	var formatJsonResponseFunc func([]byte) ([]byte, error)
 
 	switch metric {
 	case "rate":
@@ -699,7 +699,7 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formated_response, err := formatJsonResponseFunc(response)
+	resp, err := formatJsonResponseFunc(response)
 	if err != nil {
 		log.Printf("ERROR: response formating failed - %s", err.Error())
 		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
@@ -707,7 +707,7 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	io.WriteString(w, formated_response)
+	w.Write(resp)
 	return
 }
 
