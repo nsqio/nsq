@@ -150,6 +150,8 @@ func (c *nsqConn) sendCommand(buf *bytes.Buffer, cmd *Command) error {
 // If configured, it will poll nsqlookupd instances and handle connection (and
 // reconnection) to any discovered nsqds.
 type Reader struct {
+	sync.RWMutex
+
 	TopicName           string        // name of topic to subscribe to
 	ChannelName         string        // name of channel to subscribe to
 	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value for jitter)
@@ -225,6 +227,9 @@ func NewReader(topic string, channel string) (*Reader, error) {
 // This may change dynamically based on the number of connections to nsqd the Reader
 // is responsible for.
 func (q *Reader) ConnectionMaxInFlight() int {
+	q.RLock()
+	defer q.RUnlock()
+
 	b := float64(q.maxInFlight)
 	s := b / float64(len(q.nsqConnections))
 	return int(math.Min(math.Max(1, s), b))
@@ -233,6 +238,9 @@ func (q *Reader) ConnectionMaxInFlight() int {
 // IsStarved indicates whether any connections for this reader are blocked on processing
 // before being able to receive more messages (ie. RDY count of 0 and not exiting)
 func (q *Reader) IsStarved() bool {
+	q.RLock()
+	defer q.RUnlock()
+
 	for _, conn := range q.nsqConnections {
 		threshold := int64(float64(atomic.LoadInt64(&conn.rdyCount)) * 0.85)
 		if atomic.LoadInt64(&conn.messagesInFlight) >= threshold &&
@@ -261,6 +269,9 @@ func (q *Reader) SetMaxInFlight(maxInFlight int) {
 		return
 	}
 	q.maxInFlight = maxInFlight
+
+	q.RLock()
+	defer q.RUnlock()
 
 	for _, c := range q.nsqConnections {
 		select {
@@ -375,10 +386,13 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return errors.New("no handlers")
 	}
 
+	q.RLock()
 	_, ok := q.nsqConnections[addr]
 	if ok {
+		q.RUnlock()
 		return ErrAlreadyConnected
 	}
+	q.RUnlock()
 
 	log.Printf("[%s] connecting to nsqd", addr)
 
@@ -409,7 +423,9 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", connection, q.TopicName, q.ChannelName, err.Error())
 	}
 
+	q.Lock()
 	q.nsqConnections[connection.String()] = connection
+	q.Unlock()
 
 	go q.readLoop(connection)
 	go q.finishLoop(connection)
@@ -421,6 +437,10 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 func handleError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
 	atomic.StoreInt32(&c.stopFlag, 1)
+
+	q.RLock()
+	defer q.RUnlock()
+
 	if len(q.nsqConnections) == 1 && len(q.lookupdHTTPAddrs) == 0 {
 		// This is the only remaining connection, so stop the queue
 		atomic.StoreInt32(&q.stopFlag, 1)
@@ -607,11 +627,15 @@ func (q *Reader) stopFinishLoop(c *nsqConn) {
 		}()
 		close(c.exitChan)
 		c.Close()
+
+		q.Lock()
 		delete(q.nsqConnections, c.String())
+		left := len(q.nsqConnections)
+		q.Unlock()
 
-		log.Printf("there are %d connections left alive", len(q.nsqConnections))
+		log.Printf("there are %d connections left alive", left)
 
-		if len(q.nsqConnections) == 0 && len(q.lookupdHTTPAddrs) == 0 {
+		if left == 0 && len(q.lookupdHTTPAddrs) == 0 {
 			// no lookupd entry means no reconnection
 			if atomic.LoadInt32(&q.stopFlag) == 1 {
 				q.stopHandlers()
@@ -620,7 +644,7 @@ func (q *Reader) stopFinishLoop(c *nsqConn) {
 		}
 
 		// ie: we were the last one, and stopping
-		if len(q.nsqConnections) == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
+		if left == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
 			q.stopHandlers()
 		}
 
@@ -724,15 +748,22 @@ func (q *Reader) Stop() {
 
 	log.Printf("Stopping reader")
 
-	if len(q.nsqConnections) == 0 {
+	q.RLock()
+	l := len(q.nsqConnections)
+	q.RUnlock()
+
+	if l == 0 {
 		q.stopHandlers()
 	} else {
+		q.RLock()
 		for _, c := range q.nsqConnections {
 			err := c.sendCommand(&buf, StartClose())
 			if err != nil {
 				log.Printf("[%s] failed to start close - %s", c, err.Error())
 			}
 		}
+		q.RUnlock()
+
 		go func() {
 			<-time.After(time.Duration(30) * time.Second)
 			q.stopHandlers()
