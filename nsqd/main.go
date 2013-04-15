@@ -20,23 +20,24 @@ import (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version string")
-	httpAddress      = flag.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
-	tcpAddress       = flag.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
-	memQueueSize     = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic/channel)")
-	maxBytesPerFile  = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
-	syncEvery        = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
-	msgTimeout       = flag.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
-	maxMessageSize   = flag.Int64("max-message-size", 1024768, "maximum size of a single message in bytes")
-	maxBodySize      = flag.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
-	maxMsgTimeout    = flag.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
-	dataPath         = flag.String("data-path", "", "path to store disk-backed messages")
-	workerId         = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
-	verbose          = flag.Bool("verbose", false, "enable verbose logging")
-	statsdAddress    = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for writing stats")
-	statsdInterval   = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
-	broadcastAddress = flag.String("broadcast-address", "", "address that will be registered with lookupd, (default to the OS hostname)")
-	lookupdTCPAddrs  = util.StringArray{}
+	showVersion          = flag.Bool("version", false, "print version string")
+	httpAddress          = flag.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
+	tcpAddress           = flag.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
+	memQueueSize         = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic/channel)")
+	maxBytesPerFile      = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
+	syncEvery            = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
+	msgTimeout           = flag.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
+	maxMessageSize       = flag.Int64("max-message-size", 1024768, "maximum size of a single message in bytes")
+	maxBodySize          = flag.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
+	maxMsgTimeout        = flag.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
+	maxHeartbeatInterval = flag.Duration("max-heartbeat-interval", 60*time.Second, "maximum duration of time between heartbeats that a client can configure")
+	dataPath             = flag.String("data-path", "", "path to store disk-backed messages")
+	workerId             = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
+	verbose              = flag.Bool("verbose", false, "enable verbose logging")
+	statsdAddress        = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for writing stats")
+	statsdInterval       = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
+	broadcastAddress     = flag.String("broadcast-address", "", "address that will be registered with lookupd, (default to the OS hostname)")
+	lookupdTCPAddrs      = util.StringArray{}
 )
 
 func init() {
@@ -122,6 +123,7 @@ func main() {
 	options.msgTimeout = msgTimeoutDuration
 	options.maxMsgTimeout = *maxMsgTimeout
 	options.broadcastAddress = *broadcastAddress
+	options.maxHeartbeatInterval = *maxHeartbeatInterval
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr

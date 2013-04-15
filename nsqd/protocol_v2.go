@@ -312,10 +312,11 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	case clientInfo.HeartbeatInterval == -1:
 		interval = -1
 	case clientInfo.HeartbeatInterval == 0:
-	case clientInfo.HeartbeatInterval >= 1000 && clientInfo.HeartbeatInterval <= 60000:
+	case clientInfo.HeartbeatInterval >= 1000 &&
+		clientInfo.HeartbeatInterval <= int(nsqd.options.maxHeartbeatInterval/time.Millisecond):
 		interval = (time.Duration(clientInfo.HeartbeatInterval) * time.Millisecond)
 	default:
-		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "IDENTIFY Invalid heartbeat_interval")
+		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "IDENTIFY invalid heartbeat_interval")
 	}
 
 	// leave the default heartbeat in place
