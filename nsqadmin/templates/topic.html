@@ -1,5 +1,6 @@
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
+{{$gts := .GlobalTopicStats}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
@@ -22,7 +23,7 @@
 </div></div>
 
 <div class="row-fluid">
-{{if not .TopicHostStats}}
+{{if not .TopicStats}}
 <div class="span6">
 <h4>Topic Message Queue</h4>
 <div class="alert">
@@ -41,7 +42,7 @@
         {{if $g.Enabled}}<th>Rate</th>{{end}}
         <th>Channels</th>
     </tr>
-    {{range .TopicHostStats}}
+    {{range $t := .TopicStats}}
     <tr>
         <td>
             <form class="form-inline" style="margin:0" action="/tombstone_topic_producer" method="POST">
@@ -52,33 +53,31 @@
             </form>
         </td>
         <td>
-            {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" src="{{.Sparkline $g "depth"}}"></a>{{end}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $t "depth"}}"><img width="120" src="{{$g.Sparkline $t "depth"}}"></a>{{end}}
             {{.Depth | commafy}}</td>
         <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
         <td>
-            {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $t "message_count"}}"><img width="120" src="{{$g.Sparkline $t "message_count"}}"></a>{{end}}
             {{.MessageCount | commafy}}
             </td>
-            {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
+            {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $t}}"></td> {{end}}
         <td>{{.ChannelCount}}</td>
     </tr>
     {{end}}
-    {{with .GlobalTopicStats}}
     <tr class="info">
         <td>Total:</td>
         <td>
-            {{if $g.Enabled}}<a href="{{.LargeGraph $g "depth"}}"><img width="120" height="20" src="{{.Sparkline $g "depth"}}"></a>{{end}}
-            {{.Depth | commafy}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $gts "depth"}}"><img width="120" height="20" src="{{$g.Sparkline $gts "depth"}}"></a>{{end}}
+            {{$gts.Depth | commafy}}
         </td>
-        <td>{{.MemoryDepth | commafy}} + {{.BackendDepth | commafy}}</td>
+        <td>{{$gts.MemoryDepth | commafy}} + {{$gts.BackendDepth | commafy}}</td>
         <td>
-            {{if $g.Enabled}}<a href="{{.LargeGraph $g "message_count"}}"><img width="120" height="20" src="{{.Sparkline $g "message_count"}}"></a>{{end}}
-            {{.MessageCount | commafy}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $gts "message_count"}}"><img width="120" height="20" src="{{$g.Sparkline $gts "message_count"}}"></a>{{end}}
+            {{$gts.MessageCount | commafy}}
         </td>
-        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
-        <td>{{.ChannelCount}}</td>
+        {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $gts}}"></td> {{end}}
+        <td>{{$gts.ChannelCount}}</td>
     </tr>
-    {{end}}
 </table>
 {{end}}
 </div></div>
@@ -114,7 +113,7 @@
             {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
             </th>
         <td>
-            {{if $g.Enabled}}<a href="{{$c.LargeGraph $g "depth"}}"><img width="120" height="20" src="{{$c.Sparkline $g "depth"}}"></a>{{end}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $c "depth"}}"><img width="120" height="20" src="{{$g.Sparkline $c "depth"}}"></a>{{end}}
             {{$c.Depth | commafy}}</td>
         <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
         <td>{{$c.InFlightCount | commafy}}</td>
@@ -122,9 +121,9 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
-        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
+        {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $c}}"></td> {{end}}
         <td>
-            {{if $g.Enabled}}<a href="{{$c.LargeGraph $g "clients"}}"><img width="120" height="20" src="{{$c.Sparkline $g "clients"}}"></a>{{end}}
+            {{if $g.Enabled}}<a href="{{$g.LargeGraph $c "clients"}}"><img width="120" height="20" src="{{$g.Sparkline $c "clients"}}"></a>{{end}}
             {{$c.ClientCount}}</td>
     </tr>
 {{end}}

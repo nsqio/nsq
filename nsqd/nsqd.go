@@ -7,6 +7,7 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 	"io/ioutil"
 	"log"
 	"net"
@@ -269,7 +270,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		// if using lookupd, make a blocking call to get the topics, and immediately create them.
 		// this makes sure that any message received is buffered to the right channels
 		if len(n.lookupPeers) > 0 {
-			channelNames, _ := util.GetChannelsForTopic(t.name, n.lookupHttpAddrs())
+			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHttpAddrs())
 			for _, channelName := range channelNames {
 				t.getOrCreateChannel(channelName)
 			}
