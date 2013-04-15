@@ -356,7 +356,14 @@ func (q *Reader) queryLookupd() {
 		producers, _ := data.Get("producers").Array()
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
+
 			address := producerData["address"].(string)
+			broadcast_address, ok := producerData["broadcast_address"];
+
+			if ok {
+				address = broadcast_address.(string)
+			}
+
 			port := int(producerData["tcp_port"].(float64))
 
 			// make an address, start a connection
