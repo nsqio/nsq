@@ -15,8 +15,8 @@ data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-pro
 else). Official Go and Python libraries are available out of the box and, if you're interested in
 building your own client, there's a [protocol spec][protocol] (see [client libraries](#client)).
 
-The latest stable release is **[0.2.19][latest_tag]**. We publish [binary releases][binary] for
-linux and darwin.
+The latest stable release is **[0.2.19][latest_tag]** ([ChangeLog][changelog]). We publish [binary
+releases][binary] for linux and darwin.
 
 NOTE: master is our *development* branch and may *not* be stable at all times.
 
@@ -58,6 +58,7 @@ doc][design] or [blog post][nsq_post].
 * [libnsq][libnsq] C
 * [nsq-java][nsq-java] Java
 * [TrendrrNSQClient][TrendrrNSQClient] Java
+* [nsq-client][node2_lib] Node.js [npm][nsq-client_npm]
 * [nodensq][node_lib] Node.js [npm][nodensq_npm]
 * [nsqphp][php_lib] PHP
 * [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
@@ -161,6 +162,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [msgpack]: http://msgpack.org/
 [go-protobuf]: http://code.google.com/p/protobuf/
 [simplequeue]: https://github.com/bitly/simplehttp/tree/master/simplequeue
+[changelog]: ChangeLog.md
 [protocol]: docs/protocol.md
 [installing]: INSTALLING.md
 [nsqd]: nsqd/README.md
@@ -206,3 +208,5 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [TrendrrNSQClient]: https://github.com/dustismo/TrendrrNSQClient
 [dmarkham_github]: https://github.com/dmarkham
 [fsouza_github]: https://github.com/fsouza
+[node2_lib]: https://github.com/jmanero/nsq-client
+[nsq-client_npm]: https://npmjs.org/package/nsq-client
