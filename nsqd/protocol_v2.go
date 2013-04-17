@@ -295,9 +295,10 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 
 	// body is a json structure with producer information
 	clientInfo := struct {
-		ShortId           string `json:"short_id"`
-		LongId            string `json:"long_id"`
-		HeartbeatInterval int    `json:"heartbeat_interval"`
+		ShortId            string `json:"short_id"`
+		LongId             string `json:"long_id"`
+		HeartbeatInterval  int    `json:"heartbeat_interval"`
+		FeatureNegotiation bool   `json:"feature_negotiation"`
 	}{}
 	err = json.Unmarshal(body, &clientInfo)
 	if err != nil {
@@ -306,29 +307,26 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 
 	client.ShortIdentifier = clientInfo.ShortId
 	client.LongIdentifier = clientInfo.LongId
-
-	var interval time.Duration
-	switch {
-	case clientInfo.HeartbeatInterval == -1:
-		interval = -1
-	case clientInfo.HeartbeatInterval == 0:
-	case clientInfo.HeartbeatInterval >= 1000 &&
-		clientInfo.HeartbeatInterval <= int(nsqd.options.maxHeartbeatInterval/time.Millisecond):
-		interval = (time.Duration(clientInfo.HeartbeatInterval) * time.Millisecond)
-	default:
-		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "IDENTIFY invalid heartbeat_interval")
+	err = client.SetHeartbeatInterval(clientInfo.HeartbeatInterval)
+	if err != nil {
+		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY "+err.Error())
 	}
 
-	// leave the default heartbeat in place
-	if clientInfo.HeartbeatInterval != 0 {
-		select {
-		case client.HeartbeatUpdateChan <- interval:
-		default:
+	resp := []byte("OK")
+	if clientInfo.FeatureNegotiation {
+		resp, err = json.Marshal(struct {
+			MaxRdyCount int64  `json:"max_rdy_count"`
+			Version     string `json:"version"`
+		}{
+			MaxRdyCount: nsqd.options.maxRdyCount,
+			Version:     util.BINARY_VERSION,
+		})
+		if err != nil {
+			panic("should never happen")
 		}
-		client.HeartbeatInterval = interval
 	}
 
-	return []byte("OK"), nil
+	return resp, nil
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
@@ -391,11 +389,11 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 		count = int64(b10)
 	}
 
-	if count < 0 || count > nsq.MaxReadyCount {
+	if count < 0 || count > nsqd.options.maxRdyCount {
 		// this needs to be a fatal error otherwise clients would have
 		// inconsistent state
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID",
-			fmt.Sprintf("RDY count %d out of range 0-%d", count, nsq.MaxReadyCount))
+			fmt.Sprintf("RDY count %d out of range 0-%d", count, nsqd.options.maxRdyCount))
 	}
 
 	client.SetReadyCount(count)
