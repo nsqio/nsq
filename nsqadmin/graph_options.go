@@ -10,9 +10,36 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
+
+type GraphTarget interface {
+	Target(key string) (string, string)
+}
+
+type Topic struct {
+	TopicName string
+}
+
+type Topics []*Topic
+
+func TopicsFromStrings(s []string) Topics {
+	t := make(Topics, 0, len(s))
+	for _, ss := range s {
+		tt := &Topic{ss}
+		t = append(t, tt)
+	}
+	return t
+}
+
+func (t *Topic) Target(key string) (string, string) {
+	color := "blue"
+	if key == "depth" || key == "deferred_count" {
+		color = "red"
+	}
+	target := fmt.Sprintf("nsq.*.topic.%s.%s", t.TopicName, key)
+	return target, color
+}
 
 type GraphInterval struct {
 	Selected   bool
@@ -23,6 +50,46 @@ type GraphInterval struct {
 }
 
 type GraphIntervals []*GraphInterval
+
+func (g *GraphInterval) UrlOption() template.URL {
+	return template.URL(fmt.Sprintf("t=%s", g.Timeframe))
+}
+
+func DefaultGraphTimeframes(selected string) GraphIntervals {
+	var d GraphIntervals
+	for _, t := range []string{"1h", "2h", "12h", "24h", "48h", "168h", "off"} {
+		g, err := GraphIntervalForTimeframe(t, t == selected)
+		if err != nil {
+			log.Fatalf("error parsing duration %s", err.Error())
+		}
+		d = append(d, g)
+	}
+	return d
+}
+
+func GraphIntervalForTimeframe(t string, selected bool) (*GraphInterval, error) {
+	if t == "off" {
+		return &GraphInterval{
+			Selected:   selected,
+			Timeframe:  t,
+			GraphFrom:  "",
+			GraphUntil: "",
+			Duration:   0,
+		}, nil
+	}
+	duration, err := time.ParseDuration(t)
+	if err != nil {
+		return nil, err
+	}
+	start, end := startEndForTimeframe(duration)
+	return &GraphInterval{
+		Selected:   selected,
+		Timeframe:  t,
+		GraphFrom:  start,
+		GraphUntil: end,
+		Duration:   duration,
+	}, nil
+}
 
 type GraphOptions struct {
 	Configured        bool
@@ -80,47 +147,6 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParam
 	return o
 }
 
-func (g *GraphInterval) UrlOption() template.URL {
-	return template.URL(fmt.Sprintf("t=%s", g.Timeframe))
-}
-
-func DefaultGraphTimeframes(selected string) GraphIntervals {
-	var d GraphIntervals
-
-	for _, t := range []string{"1h", "2h", "12h", "24h", "48h", "168h", "off"} {
-		g, err := GraphIntervalForTimeframe(t, t == selected)
-		if err != nil {
-			log.Fatalf("error parsing duration %s", err.Error())
-		}
-		d = append(d, g)
-	}
-	return d
-}
-
-func GraphIntervalForTimeframe(t string, selected bool) (*GraphInterval, error) {
-	if t == "off" {
-		return &GraphInterval{
-			Selected:   selected,
-			Timeframe:  t,
-			GraphFrom:  "",
-			GraphUntil: "",
-			Duration:   0,
-		}, nil
-	}
-	duration, err := time.ParseDuration(t)
-	if err != nil {
-		return nil, err
-	}
-	start, end := startEndForTimeframe(duration)
-	return &GraphInterval{
-		Selected:   selected,
-		Timeframe:  t,
-		GraphFrom:  start,
-		GraphUntil: end,
-		Duration:   duration,
-	}, nil
-}
-
 func (g *GraphOptions) Prefix(metricType string) string {
 	if g.UseStatsdPrefix && metricType == "counter" {
 		return "stats_counts."
@@ -130,94 +156,9 @@ func (g *GraphOptions) Prefix(metricType string) string {
 	return ""
 }
 
-func startEndForTimeframe(t time.Duration) (string, string) {
-	start := fmt.Sprintf("-%dmin", int(t.Minutes()))
-	return start, "-1min"
-}
-
-func (t *Topic) Target(g *GraphOptions, key string) (string, string) {
-	color := "blue"
-	if key == "depth" || key == "deferred_count" {
-		color = "red"
-	}
-	target := fmt.Sprintf("%snsq.*.topic.%s.%s", g.Prefix(metricType(key)), t.TopicName, key)
-	return target, color
-}
-func (t *Topic) Sparkline(g *GraphOptions, key string) template.URL {
-	target, color := t.Target(g, key)
-	return g.Sparkline(target, color)
-}
-
-func (t *Topic) LargeGraph(g *GraphOptions, key string) template.URL {
-	target, color := t.Target(g, key)
-	return g.LargeGraph(key, target, color)
-}
-
-func (t *Topic) Rate(g *GraphOptions) string {
-	target, _ := t.Target(g, "message_count")
-	return target
-}
-
-func (t *TopicHostStats) Target(g *GraphOptions, key string) (string, string) {
-	h := graphiteHostKey(t.HostAddress)
-	if t.Aggregate {
-		h = "*"
-	}
-	color := "blue"
-	if key == "depth" || key == "deferred_count" {
-		color = "red"
-	}
-	target := fmt.Sprintf("%snsq.%s.topic.%s.%s", g.Prefix(metricType(key)), h, t.Topic, key)
-	return target, color
-}
-func (t *TopicHostStats) Sparkline(g *GraphOptions, key string) template.URL {
-	target, color := t.Target(g, key)
-	return g.Sparkline(target, color)
-}
-func (t *TopicHostStats) LargeGraph(g *GraphOptions, key string) template.URL {
-	target, color := t.Target(g, key)
-	return g.LargeGraph(key, target, color)
-}
-func (t *TopicHostStats) Rate(g *GraphOptions) string {
-	target, _ := t.Target(g, "message_count")
-	return target
-}
-
-func metricType(key string) string {
-	metricType := "counter"
-	switch key {
-	case "backend_depth", "depth", "clients", "in_flight_count":
-		metricType = "gauge"
-	}
-	return metricType
-}
-
-func (c *ChannelStats) Target(g *GraphOptions, key string) (string, string) {
-	h := "*"
-	if len(c.HostStats) == 0 {
-		h = graphiteHostKey(c.HostAddress)
-	}
-	color := "blue"
-	if key == "depth" || key == "deferred_count" {
-		color = "red"
-	}
-	target := fmt.Sprintf("%snsq.%s.topic.%s.channel.%s.%s", g.Prefix(metricType(key)), h, c.Topic, c.ChannelName, key)
-	return target, color
-}
-func (c *ChannelStats) Sparkline(g *GraphOptions, key string) template.URL {
-	target, color := c.Target(g, key)
-	return g.Sparkline(target, color)
-}
-func (c *ChannelStats) LargeGraph(g *GraphOptions, key string) template.URL {
-	target, color := c.Target(g, key)
-	return g.LargeGraph(key, target, color)
-}
-func (t *ChannelStats) Rate(g *GraphOptions) string {
-	target, _ := t.Target(g, "message_count")
-	return target
-}
-
-func (g *GraphOptions) Sparkline(target string, color string) template.URL {
+func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
+	target, color := gr.Target(key)
+	target = g.Prefix(metricType(key)) + target
 	params := url.Values{}
 	params.Set("height", "20")
 	params.Set("width", "120")
@@ -235,7 +176,9 @@ func (g *GraphOptions) Sparkline(target string, color string) template.URL {
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
 }
 
-func (g *GraphOptions) LargeGraph(key string, target string, color string) template.URL {
+func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
+	target, color := gr.Target(key)
+	target = g.Prefix(metricType(key)) + target
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
@@ -253,6 +196,20 @@ func (g *GraphOptions) LargeGraph(key string, target string, color string) templ
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
 }
 
+func (g *GraphOptions) Rate(gr GraphTarget) string {
+	target, _ := gr.Target("message_count")
+	return g.Prefix(metricType("message_count")) + target
+}
+
+func metricType(key string) string {
+	metricType := "counter"
+	switch key {
+	case "backend_depth", "depth", "clients", "in_flight_count":
+		metricType = "gauge"
+	}
+	return metricType
+}
+
 func rateQuery(target string) string {
 	params := url.Values{}
 	params.Set("from", "-2min")
@@ -262,30 +219,29 @@ func rateQuery(target string) string {
 	return fmt.Sprintf("/render?%s", params.Encode())
 }
 
-func parseRateResponse(body []byte) (string, error) {
+func parseRateResponse(body []byte) ([]byte, error) {
 	js, err := simplejson.NewJson([]byte(body))
 	if err != nil {
 		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
-		return "", err
+		return nil, err
 	}
 
 	js, ok := js.GetIndex(0).CheckGet("datapoints")
 	if !ok {
-		return "", errors.New("datapoints not found")
+		return nil, errors.New("datapoints not found")
 	}
 
-	rate, err := js.GetIndex(0).GetIndex(0).Float64()
-	rate_str := fmt.Sprintf("%.2f", rate/60)
-	response := map[string]string{"datapoint": rate_str}
-	byte_response, err := json.Marshal(response)
-	if err != nil {
-		return "", errors.New("marshal failed")
+	var rateStr string
+	rate, _ := js.GetIndex(0).GetIndex(0).Float64()
+	if rate < 0 {
+		rateStr = "N/A"
+	} else {
+		rateStr = fmt.Sprintf("%.2f", rate/60)
 	}
-
-	return string(byte_response), nil
+	return json.Marshal(map[string]string{"datapoint": rateStr})
 }
 
-func graphiteHostKey(h string) string {
-	s := strings.Replace(h, ".", "_", -1)
-	return strings.Replace(s, ":", "_", -1)
+func startEndForTimeframe(t time.Duration) (string, string) {
+	start := fmt.Sprintf("-%dmin", int(t.Minutes()))
+	return start, "-1min"
 }

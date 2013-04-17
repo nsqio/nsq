@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -66,6 +67,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/counter", counterHandler)
 	handler.HandleFunc("/lookup", lookupHandler)
 	handler.HandleFunc("/create_topic_channel", createTopicChannelHandler)
+	handler.HandleFunc("/graphite_data", graphiteDataHandler)
 	if *proxyGraphite {
 		url, err := url.Parse(*graphiteUrl)
 		if err != nil {
@@ -73,7 +75,6 @@ func httpServer(listener net.Listener) {
 		} else {
 			proxy := NewSingleHostReverseProxy(url, 20*time.Second)
 			handler.Handle("/render", proxy)
-			handler.HandleFunc("/graphite_data", graphiteDataHandler)
 		}
 	}
 
@@ -104,9 +105,9 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 
 	var topics []string
 	if len(lookupdHTTPAddrs) != 0 {
-		topics, _ = getLookupdTopics(lookupdHTTPAddrs)
+		topics, _ = lookupd.GetLookupdTopics(lookupdHTTPAddrs)
 	} else {
-		topics, _ = getNSQDTopics(nsqdHTTPAddrs)
+		topics, _ = lookupd.GetNSQDTopics(nsqdHTTPAddrs)
 	}
 
 	p := struct {
@@ -117,7 +118,7 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:        "NSQ",
 		GraphOptions: NewGraphOptions(w, req, reqParams),
-		Topics:       TopicsForStrings(topics),
+		Topics:       TopicsFromStrings(topics),
 		Version:      util.BINARY_VERSION,
 	}
 	err = templates.ExecuteTemplate(w, "index.html", p)
@@ -157,16 +158,11 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
-	topicHostStats, channelStats, _ := getNSQDStats(producers, topicName)
+	producers := getProducers(topicName)
+	topicStats, channelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 
-	globalTopicStats := &TopicHostStats{HostAddress: "Total"}
-	for _, t := range topicHostStats {
+	globalTopicStats := &lookupd.TopicStats{HostAddress: "Total"}
+	for _, t := range topicStats {
 		globalTopicStats.AddHostStats(t)
 	}
 
@@ -176,16 +172,16 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		Version          string
 		Topic            string
 		TopicProducers   []string
-		TopicHostStats   []*TopicHostStats
-		GlobalTopicStats *TopicHostStats
-		ChannelStats     map[string]*ChannelStats
+		TopicStats       []*lookupd.TopicStats
+		GlobalTopicStats *lookupd.TopicStats
+		ChannelStats     map[string]*lookupd.ChannelStats
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topicName),
 		GraphOptions:     NewGraphOptions(w, req, reqParams),
 		Version:          util.BINARY_VERSION,
 		Topic:            topicName,
 		TopicProducers:   producers,
-		TopicHostStats:   topicHostStats,
+		TopicStats:       topicStats,
 		GlobalTopicStats: globalTopicStats,
 		ChannelStats:     channelStats,
 	}
@@ -204,13 +200,8 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, 
 		return
 	}
 
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
-	_, allChannelStats, _ := getNSQDStats(producers, topicName)
+	producers := getProducers(topicName)
+	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 	channelStats := allChannelStats[channelName]
 
 	p := struct {
@@ -220,7 +211,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, 
 		Topic          string
 		Channel        string
 		TopicProducers []string
-		ChannelStats   *ChannelStats
+		ChannelStats   *lookupd.ChannelStats
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
 		GraphOptions:   NewGraphOptions(w, req, reqParams),
@@ -247,12 +238,12 @@ func lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	channels := make(map[string][]string)
-	allTopics, _ := getLookupdTopics(lookupdHTTPAddrs)
+	allTopics, _ := lookupd.GetLookupdTopics(lookupdHTTPAddrs)
 	for _, topicName := range allTopics {
 		var producers []string
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		producers, _ = lookupd.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 		if len(producers) == 0 {
-			topicChannels, _ := getLookupdTopicChannels(topicName, lookupdHTTPAddrs)
+			topicChannels, _ := lookupd.GetLookupdTopicChannels(topicName, lookupdHTTPAddrs)
 			channels[topicName] = topicChannels
 		}
 	}
@@ -322,7 +313,7 @@ func createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
-		producers, _ := getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		producers, _ := lookupd.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 		for _, addr := range producers {
 			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
 				addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -408,12 +399,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// for topic removal, you need to get all the producers *first*
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
+	producers := getProducers(topicName)
 
 	// remove the topic from all the lookupds
 	for _, addr := range lookupdHTTPAddrs {
@@ -474,13 +460,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
-
+	producers := getProducers(topicName)
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
 			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -511,13 +491,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
-
+	producers := getProducers(topicName)
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s",
 			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -549,13 +523,7 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var producers []string
-	if len(lookupdHTTPAddrs) != 0 {
-		producers, _ = getLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-	} else {
-		producers, _ = getNSQDTopicProducers(topicName, nsqdHTTPAddrs)
-	}
-
+	producers := getProducers(topicName)
 	for _, addr := range producers {
 		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s",
 			addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
@@ -580,13 +548,13 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	producers, _ := getLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := lookupd.GetLookupdProducers(lookupdHTTPAddrs)
 
 	p := struct {
 		Title        string
 		Version      string
 		GraphOptions *GraphOptions
-		Producers    []*Producer
+		Producers    []*lookupd.Producer
 	}{
 		Title:        "NSQ Nodes",
 		Version:      util.BINARY_VERSION,
@@ -653,12 +621,12 @@ func counterDataHandler(w http.ResponseWriter, req *http.Request) {
 	newStats := make(map[string]int64)
 	newStats["time"] = now.Unix()
 
-	producers, _ := getLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := lookupd.GetLookupdProducers(lookupdHTTPAddrs)
 	addresses := make([]string, len(producers))
 	for i, p := range producers {
 		addresses[i] = p.HTTPAddress()
 	}
-	_, channelStats, _ := getNSQDStats(addresses, "")
+	_, channelStats, _ := lookupd.GetNSQDStats(addresses, "")
 
 	var newMessages int64
 	var totalMessages int64
@@ -709,7 +677,7 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var queryFunc func(string) string
-	var formatJsonResponseFunc func([]byte) (string, error)
+	var formatJsonResponseFunc func([]byte) ([]byte, error)
 
 	switch metric {
 	case "rate":
@@ -722,14 +690,16 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	query := queryFunc(target)
-	response, err := GraphiteGet(*graphiteUrl + query)
+	url := *graphiteUrl + query
+	log.Printf("GRAPHITE: %s", url)
+	response, err := GraphiteGet(url)
 	if err != nil {
 		log.Printf("ERROR: graphite request failed %s", err.Error())
 		http.Error(w, "GRAPHITE_FAILED", 500)
 		return
 	}
 
-	formated_response, err := formatJsonResponseFunc(response)
+	resp, err := formatJsonResponseFunc(response)
 	if err != nil {
 		log.Printf("ERROR: response formating failed - %s", err.Error())
 		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
@@ -737,7 +707,7 @@ func graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	io.WriteString(w, formated_response)
+	w.Write(resp)
 	return
 }
 
@@ -758,4 +728,14 @@ func GraphiteGet(request_url string) ([]byte, error) {
 		return nil, err
 	}
 	return contents, nil
+}
+
+func getProducers(topicName string) []string {
+	var producers []string
+	if len(lookupdHTTPAddrs) != 0 {
+		producers, _ = lookupd.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+	} else {
+		producers, _ = lookupd.GetNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	}
+	return producers
 }
