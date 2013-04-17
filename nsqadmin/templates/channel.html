@@ -84,21 +84,21 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
-        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
+        {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $c}}"></td> {{end}}
         <td>{{$c.ClientCount}}</td>
     </tr>
     {{if $g.Enabled}}
     <tr>
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "depth"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "depth"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "depth"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "depth"}}"></a></td>
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "in_flight_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "in_flight_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "deferred_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "deferred_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "requeue_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "requeue_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "timeout_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "timeout_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "message_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "message_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "in_flight_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "in_flight_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "deferred_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "deferred_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "requeue_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "requeue_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "timeout_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "timeout_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "message_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "message_count"}}"></a></td>
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "clients"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "clients"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "clients"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "clients"}}"></a></td>
     </tr>
     {{end}}
 
@@ -113,21 +113,21 @@
         <td>{{$c.RequeueCount | commafy}}</td>
         <td>{{$c.TimeoutCount | commafy}}</td>
         <td>{{$c.MessageCount | commafy}}</td>
-        {{if $g.Enabled}}<td class="bold rate" target="{{$c.Rate $g}}"></td> {{end}}
+        {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $c}}"></td> {{end}}
         <td>{{$c.ClientCount}}</td>
     </tr>
     {{if $g.Enabled}}
     <tr class="info">
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "depth"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "depth"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "depth"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "depth"}}"></a></td>
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "in_flight_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "in_flight_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "deferred_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "deferred_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "requeue_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "requeue_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "timeout_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "timeout_count"}}"></a></td>
-        <td><a href="{{$c.LargeGraph $g "message_count"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "message_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "in_flight_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "in_flight_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "deferred_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "deferred_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "requeue_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "requeue_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "timeout_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "timeout_count"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "message_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "message_count"}}"></a></td>
         <td></td>
-        <td><a href="{{$c.LargeGraph $g "clients"}}"><img width="120" height="20"  src="{{$c.Sparkline $g "clients"}}"></a></td>
+        <td><a href="{{$g.LargeGraph $c "clients"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "clients"}}"></a></td>
     </tr>
     {{end}}
     

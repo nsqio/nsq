@@ -1,4 +1,4 @@
-package main
+package lookupd
 
 import (
 	"errors"
@@ -14,7 +14,9 @@ import (
 	"time"
 )
 
-func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
+// GetLookupdTopics returns a []string containing a union of all the topics
+// from all the given lookupd
+func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allTopics := make([]string, 0)
 	var lock sync.Mutex
@@ -35,7 +37,6 @@ func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 			}
 			success = true
 			// {"data":{"topics":["test"]}}
-			// TODO: convert this to a StringArray() function in simplejson
 			topics, _ := data.Get("topics").Array()
 			allTopics = util.StringUnion(allTopics, topics)
 		}(endpoint)
@@ -48,7 +49,9 @@ func getLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	return allTopics, nil
 }
 
-func getLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
+// GetLookupdTopicChannels returns a []string containing a union of the channels
+// from all the given lookupd for the given topic
+func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allChannels := make([]string, 0)
 	var lock sync.Mutex
@@ -57,7 +60,6 @@ func getLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
-
 		go func(endpoint string) {
 			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
@@ -69,7 +71,6 @@ func getLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 			}
 			success = true
 			// {"data":{"channels":["test"]}}
-			// TODO: convert this to a StringArray() function in simplejson
 			channels, _ := data.Get("channels").Array()
 			allChannels = util.StringUnion(allChannels, channels)
 		}(endpoint)
@@ -82,7 +83,9 @@ func getLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 	return allChannels, nil
 }
 
-func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
+// GetLookupdProducers returns a slice of pointers to Producer structs
+// containing metadata for each node connected to given lookupds
+func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer, 0)
 	output := make([]*Producer, 0)
@@ -163,7 +166,9 @@ func getLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	return output, nil
 }
 
-func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
+// GetLookupdTopicProducers returns a []string of the addresses of all the producers
+// for a given topic by unioning the results returned from the given lookupd
+func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allSources := make([]string, 0)
 	var lock sync.Mutex
@@ -207,7 +212,9 @@ func getLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 	return allSources, nil
 }
 
-func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
+// GetNSQDTopics returns a []string containing all the topics
+// produced by the given nsqd
+func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	topics := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -243,7 +250,9 @@ func getNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	return topics, nil
 }
 
-func getNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
+// GetNSQDTopicProducers returns a []string containing the addresses of all the nsqd
+// that produce the given topic out of the given nsqd
+func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
 	addresses := make([]string, 0)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -281,10 +290,12 @@ func getNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 	return addresses, nil
 }
 
-// if given no selectedTopic, this will return stats for all topic/channels
+// GetNSQDStats returns aggregate topic and channel stats from the given NSQD instances
+//
+// if selectedTopic is empty, this will return stats for *all* topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
-func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostStats, map[string]*ChannelStats, error) {
-	topicHostStats := make([]*TopicHostStats, 0)
+func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, map[string]*ChannelStats, error) {
+	topicStats := make([]*TopicStats, 0)
 	channelStats := make(map[string]*ChannelStats)
 	success := false
 	var lock sync.Mutex
@@ -313,7 +324,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 				}
 				depth := int64(topicInfo["depth"].(float64))
 				backendDepth := int64(topicInfo["backend_depth"].(float64))
-				h := &TopicHostStats{
+				h := &TopicStats{
 					HostAddress:  addr,
 					Depth:        depth,
 					BackendDepth: backendDepth,
@@ -322,7 +333,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 					ChannelCount: len(topicInfo["channels"].([]interface{})),
 					Topic:        topicName,
 				}
-				topicHostStats = append(topicHostStats, h)
+				topicStats = append(topicStats, h)
 
 				channels := topicInfo["channels"].([]interface{})
 				for _, c := range channels {
@@ -358,7 +369,7 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 					h.RequeueCount = int64(c["requeue_count"].(float64))
 					h.TimeoutCount = int64(c["timeout_count"].(float64))
 					clients := c["clients"].([]interface{})
-					// TODO: this is sort of wrong; client's should be de-duped
+					// TODO: this is sort of wrong; clients should be de-duped
 					// client A that connects to NSQD-a and NSQD-b should only be counted once. right?
 					h.ClientCount = len(clients)
 					channel.AddHostStats(h)
@@ -397,12 +408,12 @@ func getNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicHostSta
 					sort.Sort(ClientsByHost{channel.Clients})
 				}
 			}
-			sort.Sort(TopicHostStatsByHost{topicHostStats})
+			sort.Sort(TopicStatsByHost{topicStats})
 		}(endpoint, addr)
 	}
 	wg.Wait()
 	if success == false {
 		return nil, nil, errors.New("unable to query any lookupd")
 	}
-	return topicHostStats, channelStats, nil
+	return topicStats, channelStats, nil
 }

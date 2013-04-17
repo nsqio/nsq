@@ -15,12 +15,12 @@
         {{if $g.Enabled}}<th width="120">Messages</th>{{end}}
         {{if $g.Enabled}}<th width="120">Rate</th>{{end}}
     </tr>
-{{range .Topics}}
+{{range $t := .Topics}}
     <tr>
         <td><a href="/topic/{{.TopicName}}">{{.TopicName}}</a></td>
-        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{.Sparkline $g "depth"}}"></a></td>{{end}}
-        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{.Sparkline $g "message_count"}}"></a></td>{{end}}
-        {{if $g.Enabled}}<td class="bold rate" target="{{.Rate $g}}"></td> {{end}}
+        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{$g.Sparkline $t "depth"}}"></a></td>{{end}}
+        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{$g.Sparkline $t "message_count"}}"></a></td>{{end}}
+        {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $t}}"></td> {{end}}
     </tr>
 {{end}}
 </table>
