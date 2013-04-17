@@ -50,6 +50,9 @@ Commands are line oriented and structured as follows:
         <heartbeat_interval> - milliseconds between heartbeats where:
                                1000 <= heartbeat_interval <= configured_max
                                (may also be set to -1 to disable heartbeats)
+        <feature_negotiation> - boolean used to indicate that the client supports feature
+                                negotiation.  if the server is capable, it will send back 
+                                a JSON payload of features and metadata.
     
     Success Response:
     
