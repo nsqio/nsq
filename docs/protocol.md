@@ -38,6 +38,8 @@ Commands are line oriented and structured as follows:
 
   * `IDENTIFY` - update client metadata on the server
     
+    NOTE: as of 0.2.19+ nsqd has an option to configure its max heartbeat interval
+    
         IDENTIFY\n
         [ 4-byte size in bytes ][ N-byte JSON data ]
     
@@ -45,8 +47,9 @@ Commands are line oriented and structured as follows:
     
         <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
         <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
-        <heartbeat_interval> - milliseconds between heartbeats where 1000 < heartbeat_interval < 60000 
-        <heartbeat_interval> may also be set to -1 to disable heartbeats.
+        <heartbeat_interval> - milliseconds between heartbeats where:
+                               1000 <= heartbeat_interval <= configured_max
+                               (may also be set to -1 to disable heartbeats)
     
     Success Response:
     
