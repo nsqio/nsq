@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"github.com/bitly/nsq/nsq"
 	"log"
 	"net"
@@ -161,4 +163,32 @@ func (c *ClientV2) Pause() {
 
 func (c *ClientV2) UnPause() {
 	c.tryUpdateReadyState()
+}
+
+func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
+	// clients can modify the rate of heartbeats (or disable)
+	var interval time.Duration
+
+	switch {
+	case desiredInterval == -1:
+		interval = -1
+	case desiredInterval == 0:
+		// do nothing (use default)
+	case desiredInterval >= 1000 &&
+		desiredInterval <= int(nsqd.options.maxHeartbeatInterval/time.Millisecond):
+		interval = (time.Duration(desiredInterval) * time.Millisecond)
+	default:
+		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
+	}
+
+	// leave the default heartbeat in place
+	if desiredInterval != 0 {
+		select {
+		case c.HeartbeatUpdateChan <- interval:
+		default:
+		}
+		c.HeartbeatInterval = interval
+	}
+
+	return nil
 }
