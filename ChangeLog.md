@@ -2,6 +2,13 @@
 
 ## Binaries
 
+### 0.2.20-alpha
+
+New Features / Enhancements:
+
+ * #175 - add --max-rdy-count configuration option
+ * #178 - add --max-heartbeat-interval configuration option
+
 ### 0.2.19 - 2013-04-11
 
 **Upgrading from 0.2.18**: there are no backward incompatible changes in this release.
@@ -130,6 +137,12 @@ removed in a future release.
  * Initial public release.
 
 ## Go Client Library
+
+### 0.3.2-alpha
+
+ * #175 - support server side configurable max RDY count
+ * #177 - support broadcast_address
+ * #161 - connection pool goroutine safety
 
 ### 0.3.1 - 2013-02-07
 
