@@ -20,13 +20,14 @@ available for download:
 
 **golang** http://golang.org/doc/install - **version `1.0.3+` is required**
 
-**simplejson** https://github.com/bitly/go-simplejson. Running ``go get`` as
-described in the _Compiling_ section will automatically download and install
-simplejson.
+**hostpool** https://github.com/bitly/go-hostpool
 
-**assert** https://github.com/bmizerany/assert. Required for running tests.
+**simplejson** https://github.com/bitly/go-simplejson
 
-    $ go get github.com/bmizerany/assert
+**assert** https://github.com/bmizerany/assert - required for running tests
+
+Running ``go get`` as described in the _Compiling_ section will automatically download and install
+simplejson and hostpool.
 
 ### Compiling
 

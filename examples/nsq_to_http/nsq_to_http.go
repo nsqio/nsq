@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bitly/go-hostpool"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"log"
@@ -25,6 +26,7 @@ import (
 const (
 	ModeAll = iota
 	ModeRoundRobin
+	ModeHostPool
 )
 
 var (
@@ -35,6 +37,7 @@ var (
 	verbose          = flag.Bool("verbose", false, "enable verbose logging")
 	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
 	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
+	mode             = flag.String("mode", "", "the upstream request mode options: multicast, round-robin, hostpool")
 	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
 	httpTimeoutMs    = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
 	statusEvery      = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
@@ -74,6 +77,7 @@ type PublishHandler struct {
 	addresses util.StringArray
 	counter   uint64
 	mode      int
+	hostPool  hostpool.HostPool
 	reqs      Durations
 	id        int
 }
@@ -104,6 +108,13 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 			return err
 		}
 		ph.counter++
+	case ModeHostPool:
+		hostPoolResponse := ph.hostPool.Get()
+		err := ph.Publish(hostPoolResponse.Host(), m.Body)
+		hostPoolResponse.Mark(err)
+		if err != nil {
+			return err
+		}
 	}
 
 	if *statusEvery > 0 {
@@ -172,7 +183,7 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 func main() {
 	var publisher Publisher
 	var addresses util.StringArray
-	var mode int
+	var selectedMode int
 
 	flag.Parse()
 
@@ -211,17 +222,30 @@ func main() {
 	}
 
 	if *roundRobin {
-		mode = ModeRoundRobin
+		log.Printf("WARNING: the use of the --round-robin flag is deprecated in favor of --mode=round-robin (and will be dropped in a future release)")
+		selectedMode = ModeRoundRobin
+	}
+
+	if *roundRobin && *mode != "" {
+		log.Fatalf("ERROR: cannot use both --round-robin and --mode flags")
+	}
+
+	switch *mode {
+	case "multicast":
+		log.Printf("WARNING: multicast mode is deprecated in favor of using separate nsq_to_http on different channels (and will be dropped in a future release)")
+		selectedMode = ModeAll
+	case "round-robin":
+		selectedMode = ModeRoundRobin
+	case "hostpool":
+		selectedMode = ModeHostPool
 	}
 
 	if *throttleFraction > 1.0 || *throttleFraction < 0.0 {
-		log.Fatalf("Throttle fraction must be between 0.0 and 1.0")
+		log.Fatalf("ERROR: --throttle-fraction must be between 0.0 and 1.0")
 	}
 
-	hupChan := make(chan os.Signal, 1)
 	termChan := make(chan os.Signal, 1)
-	signal.Notify(hupChan, syscall.SIGHUP)
-	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	if len(postAddrs) > 0 {
 		publisher = &PostPublisher{}
@@ -242,9 +266,10 @@ func main() {
 		handler := &PublishHandler{
 			Publisher: publisher,
 			addresses: addresses,
-			mode:      mode,
+			mode:      selectedMode,
 			reqs:      make(Durations, 0, *statusEvery),
 			id:        i,
+			hostPool:  hostpool.New(addresses),
 		}
 		r.AddHandler(handler)
 	}
@@ -266,9 +291,7 @@ func main() {
 
 	select {
 	case <-r.ExitChan:
-	case <-hupChan:
-		r.Stop()
 	case <-termChan:
-		r.Stop()
 	}
+	r.Stop()
 }
