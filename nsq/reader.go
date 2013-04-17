@@ -3,6 +3,7 @@ package nsq
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -76,6 +77,7 @@ type nsqConn struct {
 	messagesReceived uint64
 	messagesFinished uint64
 	messagesRequeued uint64
+	maxRdyCount      int64
 	rdyCount         int64
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
@@ -104,6 +106,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 		drainReady:       make(chan int),
 		readyChan:        make(chan int, 1),
 		exitChan:         make(chan int),
+		maxRdyCount:      2500,
 	}
 
 	nc.SetWriteDeadline(time.Now().Add(nc.writeTimeout))
@@ -226,13 +229,13 @@ func NewReader(topic string, channel string) (*Reader, error) {
 //
 // This may change dynamically based on the number of connections to nsqd the Reader
 // is responsible for.
-func (q *Reader) ConnectionMaxInFlight() int {
+func (q *Reader) ConnectionMaxInFlight() int64 {
 	q.RLock()
 	defer q.RUnlock()
 
 	b := float64(q.maxInFlight)
 	s := b / float64(len(q.nsqConnections))
-	return int(math.Min(math.Max(1, s), b))
+	return int64(math.Min(math.Max(1, s), b))
 }
 
 // IsStarved indicates whether any connections for this reader are blocked on processing
@@ -258,11 +261,6 @@ func (q *Reader) IsStarved() bool {
 func (q *Reader) SetMaxInFlight(maxInFlight int) {
 	if atomic.LoadInt32(&q.stopFlag) == 1 {
 		return
-	}
-
-	if maxInFlight > MaxReadyCount {
-		log.Printf("WARNING: tried to SetMaxInFlight() > %d, truncating...", MaxReadyCount)
-		maxInFlight = MaxReadyCount
 	}
 
 	if q.maxInFlight == maxInFlight {
@@ -356,14 +354,11 @@ func (q *Reader) queryLookupd() {
 		producers, _ := data.Get("producers").Array()
 		for _, producer := range producers {
 			producerData, _ := producer.(map[string]interface{})
-
 			address := producerData["address"].(string)
-			broadcast_address, ok := producerData["broadcast_address"];
-
+			broadcastAddress, ok := producerData["broadcast_address"]
 			if ok {
-				address = broadcast_address.(string)
+				address = broadcastAddress.(string)
 			}
-
 			port := int(producerData["tcp_port"].(float64))
 
 			// make an address, start a connection
@@ -411,6 +406,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	ci := make(map[string]interface{})
 	ci["short_id"] = q.ShortIdentifier
 	ci["long_id"] = q.LongIdentifier
+	ci["feature_negotiation"] = true
 	cmd, err := Identify(ci)
 	if err != nil {
 		connection.Close()
@@ -421,6 +417,33 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	if err != nil {
 		connection.Close()
 		return fmt.Errorf("[%s] failed to identify - %s", connection, err.Error())
+	}
+
+	resp, err := ReadResponse(connection)
+	if err != nil {
+		connection.Close()
+		return fmt.Errorf("[%s] error reading response %s", connection, err.Error())
+	}
+
+	frameType, data, err := UnpackResponse(resp)
+	if err != nil {
+		return fmt.Errorf("[%s] error (%s) unpacking response %d %s", connection, err.Error(), frameType, data)
+	}
+
+	// check to see if the server was able to respond w/ capabilities
+	if data[0] == '{' {
+		resp := struct {
+			MaxRdyCount int64 `json:"max_rdy_count"`
+		}{}
+		err := json.Unmarshal(data, &resp)
+		if err != nil {
+			return fmt.Errorf("[%s] error (%s) unmarshaling IDENTIFY response %s", connection, err.Error(), data)
+		}
+		connection.maxRdyCount = resp.MaxRdyCount
+		if resp.MaxRdyCount < int64(q.maxInFlight) {
+			log.Printf("[%s] max RDY count %d < reader max in flight %d, truncation possible",
+				connection, resp.MaxRdyCount, q.maxInFlight)
+		}
 	}
 
 	cmd = Subscribe(q.TopicName, q.ChannelName)
@@ -456,7 +479,7 @@ func handleError(q *Reader, c *nsqConn, errMsg string) {
 
 func (q *Reader) readLoop(c *nsqConn) {
 	// prime our ready state
-	err := q.updateRDY(c)
+	err := q.updateRDY(c, 1)
 	if err != nil {
 		handleError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
 		q.stopFinishLoop(c)
@@ -690,7 +713,7 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 
 			// send ready immediately
 			if backoffCounter == 0 {
-				q.updateRDY(c)
+				q.updateRDY(c, q.ConnectionMaxInFlight())
 				continue
 			}
 
@@ -712,32 +735,35 @@ exit:
 	log.Printf("[%s] rdyLoop exiting", c)
 }
 
-func (q *Reader) updateRDY(c *nsqConn) error {
+func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 	if atomic.LoadInt32(&c.stopFlag) != 0 {
 		return nil
 	}
 
+	if count > c.maxRdyCount {
+		count = c.maxRdyCount
+	}
+
 	remain := atomic.LoadInt64(&c.rdyCount)
-	mif := q.ConnectionMaxInFlight()
 	// refill when at 1, or at 25% whichever comes first
-	if remain <= 1 || remain < (int64(mif)/int64(4)) {
+	if remain <= 1 || remain < (count/4) {
 		if q.VerboseLogging {
-			log.Printf("[%s] sending RDY %d (%d remain)", c, mif, remain)
+			log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
 		}
-		q.sendRDY(c, mif)
+		q.sendRDY(c, count)
 	} else {
 		if q.VerboseLogging {
-			log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, mif)
+			log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, count)
 		}
 	}
 
 	return nil
 }
 
-func (q *Reader) sendRDY(c *nsqConn, count int) error {
+func (q *Reader) sendRDY(c *nsqConn, count int64) error {
 	var buf bytes.Buffer
-	atomic.StoreInt64(&c.rdyCount, int64(count))
-	err := c.sendCommand(&buf, Ready(count))
+	atomic.StoreInt64(&c.rdyCount, count)
+	err := c.sendCommand(&buf, Ready(int(count)))
 	if err != nil {
 		handleError(q, c, fmt.Sprintf("[%s] error sending RDY %d - %s", c, count, err.Error()))
 		return err
