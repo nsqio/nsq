@@ -44,6 +44,7 @@ type nsqdOptions struct {
 	maxMessageSize       int64
 	maxBodySize          int64
 	maxBytesPerFile      int64
+	maxRdyCount          int64
 	syncEvery            int64
 	msgTimeout           time.Duration
 	maxMsgTimeout        time.Duration
@@ -59,6 +60,7 @@ func NewNsqdOptions() *nsqdOptions {
 		maxMessageSize:       1024768,
 		maxBodySize:          5 * 1024768,
 		maxBytesPerFile:      104857600,
+		maxRdyCount:          2500,
 		syncEvery:            2500,
 		msgTimeout:           60 * time.Second,
 		maxMsgTimeout:        15 * time.Minute,

@@ -31,6 +31,7 @@ var (
 	maxBodySize          = flag.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
 	maxMsgTimeout        = flag.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
 	maxHeartbeatInterval = flag.Duration("max-heartbeat-interval", 60*time.Second, "maximum duration of time between heartbeats that a client can configure")
+	maxRdyCount          = flag.Int64("max-rdy-count", 2500, "maximum RDY count for a single client")
 	dataPath             = flag.String("data-path", "", "path to store disk-backed messages")
 	workerId             = flag.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
 	verbose              = flag.Bool("verbose", false, "enable verbose logging")
@@ -114,6 +115,7 @@ func main() {
 	}
 
 	options := NewNsqdOptions()
+	options.maxRdyCount = *maxRdyCount
 	options.maxMessageSize = *maxMessageSize
 	options.maxBodySize = *maxBodySize
 	options.memQueueSize = *memQueueSize

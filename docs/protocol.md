@@ -15,7 +15,7 @@ For `nsqd`, there is currently only one protocol:
 
   * Unless stated otherwise, **all** binary sizes/integers on the wire are **network byte order**
     (ie. *big* endian)
-  * Valid *topic* and *channel* names are characters `[.a-zA-Z0-9_-]` and `1 < length < 32`
+  * Valid *topic* and *channel* names are characters `[.a-zA-Z0-9_-]` and `1 < length <= 32`
 
 ### V2 Protocol
 
@@ -38,6 +38,8 @@ Commands are line oriented and structured as follows:
 
   * `IDENTIFY` - update client metadata on the server
     
+    NOTE: as of 0.2.19+ nsqd has an option to configure its max heartbeat interval
+    
         IDENTIFY\n
         [ 4-byte size in bytes ][ N-byte JSON data ]
     
@@ -45,8 +47,9 @@ Commands are line oriented and structured as follows:
     
         <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
         <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
-        <heartbeat_interval> - milliseconds between heartbeats where 1000 < heartbeat_interval < 60000 
-        <heartbeat_interval> may also be set to -1 to disable heartbeats.
+        <heartbeat_interval> - milliseconds between heartbeats where:
+                               1000 <= heartbeat_interval <= configured_max
+                               (may also be set to -1 to disable heartbeats)
     
     Success Response:
     
@@ -118,9 +121,11 @@ Commands are line oriented and structured as follows:
 
   * `RDY` - update `RDY` state (indicate you are ready to receive messages)
     
+    NOTE: as of 0.2.20+ nsqd has an option to configure its max RDY count
+    
         RDY <count>\n
         
-        <count> - a string representation of integer N where 0 < N < 2500
+        <count> - a string representation of integer N where 0 < N <= configured_max
     
     NOTE: there is no success response
     
@@ -146,7 +151,7 @@ Commands are line oriented and structured as follows:
         REQ <message_id> <timeout>\n
         
         <message_id> - message id as 16-byte hex string
-        <timeout> - a string representation of integer N where N < configured max timeout
+        <timeout> - a string representation of integer N where N <= configured max timeout
             0 is a special case that will not defer re-queueing
     
     NOTE: there is no success response

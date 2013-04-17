@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bmizerany/assert"
@@ -56,6 +57,22 @@ func identifyHeartbeatInterval(t *testing.T, conn net.Conn, interval int, f int3
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
 	readValidate(t, conn, f, d)
+}
+
+func identifyFeatureNegotiation(t *testing.T, conn net.Conn) []byte {
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	ci["feature_negotiation"] = true
+	cmd, _ := nsq.Identify(ci)
+	err := cmd.Write(conn)
+	assert.Equal(t, err, nil)
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	return data
 }
 
 func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
@@ -310,8 +327,8 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	hbi := int(options.maxHeartbeatInterval / time.Millisecond + 1)
-	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeError, "E_INVALID IDENTIFY invalid heartbeat_interval")
+	hbi := int(options.maxHeartbeatInterval/time.Millisecond + 1)
+	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeError, "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
 }
 
 func TestPausing(t *testing.T) {
@@ -520,6 +537,54 @@ func TestTouch(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	assert.Equal(t, channel.timeoutCount, uint64(0))
+}
+
+func TestMaxRdyCount(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.maxRdyCount = 50
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	topicName := "test_max_rdy_count" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
+	topic.PutMessage(msg)
+
+	data := identifyFeatureNegotiation(t, conn)
+	r := struct {
+		MaxRdyCount int64 `json:"max_rdy_count"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.MaxRdyCount, int64(50))
+	sub(t, conn, topicName, "ch")
+
+	err = nsq.Ready(int(options.maxRdyCount)).Write(conn)
+	assert.Equal(t, err, nil)
+
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := nsq.DecodeMessage(data)
+	assert.Equal(t, frameType, nsq.FrameTypeMessage)
+	assert.Equal(t, msgOut.Id, msg.Id)
+
+	err = nsq.Ready(int(options.maxRdyCount) + 1).Write(conn)
+	assert.Equal(t, err, nil)
+
+	resp, err = nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	assert.Equal(t, frameType, int32(1))
+	assert.Equal(t, string(data), "E_INVALID RDY count 51 out of range 0-50")
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {

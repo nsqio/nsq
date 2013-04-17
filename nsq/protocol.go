@@ -12,9 +12,6 @@ import (
 var MagicV1 = []byte("  V1")
 var MagicV2 = []byte("  V2")
 
-// The maximum value a client can specify via RDY
-const MaxReadyCount = 2500
-
 const (
 	// when successful
 	FrameTypeResponse int32 = 0
