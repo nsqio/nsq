@@ -44,24 +44,24 @@ func identify(t *testing.T, conn net.Conn) {
 	cmd, _ := nsq.Identify(ci)
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
-	readValidateOK(t, conn)
+	readValidate(t, conn, nsq.FrameTypeResponse, "OK")
 }
 
-func identifyDisabledHearbeat(t *testing.T, conn net.Conn) {
+func identifyHeartbeatInterval(t *testing.T, conn net.Conn, interval int, f int32, d string) {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
-	ci["heartbeat_interval"] = -1
+	ci["heartbeat_interval"] = interval
 	cmd, _ := nsq.Identify(ci)
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
-	readValidateOK(t, conn)
+	readValidate(t, conn, f, d)
 }
 
 func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
 	err := nsq.Subscribe(topicName, channelName).Write(conn)
 	assert.Equal(t, err, nil)
-	readValidateOK(t, conn)
+	readValidate(t, conn, nsq.FrameTypeResponse, "OK")
 }
 
 func subFail(t *testing.T, conn net.Conn, topicName string, channelName string) {
@@ -72,13 +72,13 @@ func subFail(t *testing.T, conn net.Conn, topicName string, channelName string) 
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 }
 
-func readValidateOK(t *testing.T, conn net.Conn) {
+func readValidate(t *testing.T, conn net.Conn, f int32, d string) {
 	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, frameType, nsq.FrameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	assert.Equal(t, frameType, f)
+	assert.Equal(t, string(data), d)
 }
 
 // test channel/topic names
@@ -258,7 +258,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyDisabledHearbeat(t, conn)
+	identifyHeartbeatInterval(t, conn, -1, nsq.FrameTypeResponse, "OK")
 	subFail(t, conn, topicName, "ch")
 }
 
@@ -274,13 +274,44 @@ func TestClientHeartbeatDisable(t *testing.T) {
 	conn, err := mustConnectNSQd(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyDisabledHearbeat(t, conn)
+	identifyHeartbeatInterval(t, conn, -1, nsq.FrameTypeResponse, "OK")
 
 	time.Sleep(150 * time.Millisecond)
 
 	err = nsq.Nop().Write(conn)
 	assert.Equal(t, err, nil)
+}
 
+func TestMaxHeartbeatIntervalValid(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	options := NewNsqdOptions()
+	options.maxHeartbeatInterval = 300 * time.Second
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	hbi := int(options.maxHeartbeatInterval / time.Millisecond)
+	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeResponse, "OK")
+}
+
+func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	options := NewNsqdOptions()
+	options.maxHeartbeatInterval = 300 * time.Second
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	hbi := int(options.maxHeartbeatInterval / time.Millisecond + 1)
+	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeError, "E_INVALID IDENTIFY invalid heartbeat_interval")
 }
 
 func TestPausing(t *testing.T) {
