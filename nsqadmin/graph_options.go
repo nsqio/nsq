@@ -204,7 +204,7 @@ func (g *GraphOptions) Rate(gr GraphTarget) string {
 func metricType(key string) string {
 	metricType := "counter"
 	switch key {
-	case "backend_depth", "depth", "clients", "in_flight_count":
+	case "backend_depth", "depth", "clients", "in_flight_count", "deferred_count":
 		metricType = "gauge"
 	}
 	return metricType
