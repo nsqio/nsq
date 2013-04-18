@@ -45,7 +45,7 @@ func statLoop(interval time.Duration, topic string, channel string,
 		c := allChannelStats[channel]
 		log.SetOutput(os.Stdout)
 
-		if i % 25 == 0 {
+		if i%25 == 0 {
 			fmt.Printf("-----------depth------------+--------------metadata---------------\n")
 			fmt.Printf("%7s %7s %5s %5s | %7s %7s %12s %7s\n", "mem", "disk", "inflt", "def", "req", "t-o", "msgs", "clients")
 		}
