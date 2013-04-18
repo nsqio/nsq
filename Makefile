@@ -54,7 +54,7 @@ install: $(BINARIES) $(EXAMPLES)
 	install -m 755 $(BLDDIR)/examples/nsq_to_file ${DESTDIR}${BINDIR}/nsq_to_file
 	install -m 755 $(BLDDIR)/examples/nsq_to_http ${DESTDIR}${BINDIR}/nsq_to_http
 	install -m 755 $(BLDDIR)/examples/nsq_tail ${DESTDIR}${BINDIR}/nsq_tail
-	install -m 755 $(BLDDIR)/examples/nsq_tail ${DESTDIR}${BINDIR}/nsq_stat
+	install -m 755 $(BLDDIR)/examples/nsq_stat ${DESTDIR}${BINDIR}/nsq_stat
 	install -m 755 -d ${DESTDIR}${DATADIR}
 	install -d ${DESTDIR}${DATADIR}/nsqadmin
 	cp -r nsqadmin/templates ${DESTDIR}${DATADIR}/nsqadmin
