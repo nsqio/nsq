@@ -6,8 +6,16 @@
 
 New Features / Enhancements:
 
- * #175 - add --max-rdy-count configuration option
- * #178 - add --max-heartbeat-interval configuration option
+ * #174 - nsq_to_http hostpool mode
+ * #173 - nsq_stat utility for command line introspection
+ * #175 - add nsqd --max-rdy-count configuration option
+ * #178 - add nsqd --max-heartbeat-interval configuration option
+
+Bug Fixes:
+
+ * #179 - deferred_count as gauge for statsd
+ * #173 - fix nsqadmin counter template error
+          fix nsqadmin displaying negative rates
 
 ### 0.2.19 - 2013-04-11
 
