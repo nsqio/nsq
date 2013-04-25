@@ -219,13 +219,10 @@ func (t *Topic) router() {
 
 // Delete empties the topic and all its channels and closes
 func (t *Topic) Delete() error {
-	err := t.exit(true)
-	// since we are explicitly deleting a topic (not just at system exit time)
-	// de-register this from the lookupd
-	go t.notifier.Notify(t)
-	return err
+	return t.exit(true)
 }
 
+// Close persists all outstanding topic data and closes all its channels
 func (t *Topic) Close() error {
 	return t.exit(false)
 }
@@ -235,7 +232,15 @@ func (t *Topic) exit(deleted bool) error {
 		return errors.New("exiting")
 	}
 
-	log.Printf("TOPIC(%s): closing", t.name)
+	if deleted {
+		log.Printf("TOPIC(%s): deleting", t.name)
+
+		// since we are explicitly deleting a topic (not just at system exit time)
+		// de-register this from the lookupd
+		go t.notifier.Notify(t)
+	} else {
+		log.Printf("TOPIC(%s): closing", t.name)
+	}
 
 	close(t.exitChan)
 
