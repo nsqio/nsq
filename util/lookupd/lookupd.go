@@ -413,7 +413,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 	}
 	wg.Wait()
 	if success == false {
-		return nil, nil, errors.New("unable to query any lookupd")
+		return nil, nil, errors.New("unable to query any nsqd")
 	}
 	return topicStats, channelStats, nil
 }
