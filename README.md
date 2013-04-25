@@ -143,6 +143,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Will McCutchen ([@mccutchen][mccutch_twitter])
  * Micha Gorelick ([@mynameisfiber][micha_twitter])
  * Jay Ridgeway ([@jayridge][jay_twitter])
+ * Justin Hines ([@jphines][jphines_twitter])
 
 ### Contributors
 
@@ -157,6 +158,8 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Funky Gao ([@funkygao][funkygao_github])
  * Dan Markham ([@dmarkham][dmarkham_github])
  * Francisco Souza ([@fsouza][fsouza_github])
+ * galvinhsiu ([@galvinhsiu][galvinhsiu_github])
+ * Eric Lubow ([@elubow][elubow_github])
  
 [simplehttp]: https://github.com/bitly/simplehttp
 [msgpack]: http://msgpack.org/
@@ -210,3 +213,6 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [fsouza_github]: https://github.com/fsouza
 [node2_lib]: https://github.com/jmanero/nsq-client
 [nsq-client_npm]: https://npmjs.org/package/nsq-client
+[galvinhsiu_github]: https://github.com/galvinhsiu
+[elubow_github]: https://github.com/elubow
+[jhines_twitter]: https://twitter.com/jphines
