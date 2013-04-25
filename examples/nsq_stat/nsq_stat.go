@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/bitly/nsq/util"
@@ -12,6 +13,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -34,16 +36,31 @@ func statLoop(interval time.Duration, topic string, channel string,
 	nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
 	i := 0
 	for {
-		log.SetOutput(ioutil.Discard)
 		var producers []string
+		var err error
+
+		log.SetOutput(ioutil.Discard)
 		if len(lookupdHTTPAddrs) != 0 {
-			producers, _ = lookupd.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
+			producers, err = lookupd.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
 		} else {
-			producers, _ = lookupd.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
+			producers, err = lookupd.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
 		}
-		_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topic)
-		c := allChannelStats[channel]
 		log.SetOutput(os.Stdout)
+		if err != nil {
+			log.Fatalf("ERROR: failed to get topic producers - %s", err.Error())
+		}
+
+		log.SetOutput(ioutil.Discard)
+		_, allChannelStats, err := lookupd.GetNSQDStats(producers, topic)
+		log.SetOutput(os.Stdout)
+		if err != nil {
+			log.Fatalf("ERROR: failed to get nsqd stats - %s", err.Error())
+		}
+
+		c, ok := allChannelStats[channel]
+		if !ok {
+			log.Fatalf("ERROR: failed to find channel(%s) in stats metadata for topic(%s)", channel, topic)
+		}
 
 		if i%25 == 0 {
 			fmt.Printf("-----------depth------------+--------------metadata---------------\n")
@@ -67,6 +84,15 @@ func statLoop(interval time.Duration, topic string, channel string,
 	}
 }
 
+func checkAddrs(addrs []string) error {
+	for _, a := range addrs {
+		if strings.HasPrefix(a, "http") {
+			return errors.New("address should not contain scheme")
+		}
+	}
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -76,14 +102,22 @@ func main() {
 	}
 
 	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic and --channel are required")
+		log.Fatalf("ERROR: --topic and --channel are required")
 	}
 
 	if len(nsqdHTTPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
-		log.Fatalf("--nsqd-http-address or --lookupd-http-address required")
+		log.Fatalf("ERROR: --nsqd-http-address or --lookupd-http-address required")
 	}
 	if len(nsqdHTTPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
+		log.Fatalf("ERROR: use --nsqd-http-address or --lookupd-http-address not both")
+	}
+
+	if err := checkAddrs(nsqdHTTPAddrs); err != nil {
+		log.Fatalf("ERROR: --nsqd-http-address error - %s", err.Error())
+	}
+
+	if err := checkAddrs(lookupdHTTPAddrs); err != nil {
+		log.Fatalf("ERROR: --lookupd-http-address error - %s", err.Error())
 	}
 
 	termChan := make(chan os.Signal, 1)
