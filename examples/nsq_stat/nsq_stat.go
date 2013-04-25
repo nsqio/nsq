@@ -1,4 +1,4 @@
-// This is an NSQ client that polls /stats for all the producers
+// This is a utility application that polls /stats for all the producers
 // of the specified topic/channel and displays aggregate stats
 
 package main
