@@ -215,4 +215,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [nsq-client_npm]: https://npmjs.org/package/nsq-client
 [galvinhsiu_github]: https://github.com/galvinhsiu
 [elubow_github]: https://github.com/elubow
-[jhines_twitter]: https://twitter.com/jphines
+[jphines_twitter]: https://twitter.com/jphines
