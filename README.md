@@ -1,4 +1,4 @@
-<p align="center"><img src="nsq.png"/></p>
+<p align="center"><img src="docs/images/nsq.png"/></p>
 
 Source: https://github.com/bitly/nsq
 
@@ -21,6 +21,18 @@ releases][binary] for linux and darwin.
 NOTE: master is our *development* branch and may *not* be stable at all times.
 
 [![Build Status](https://secure.travis-ci.org/bitly/nsq.png)](http://travis-ci.org/bitly/nsq)
+
+## In Production
+
+<center><table><tr>
+<td><a href="http://bitly.com"><img src="docs/images/bitly_logo.png" width="84"/></a></td>
+<td><a href="http://life360.com"><img src="docs/images/life360_logo.png" width="100"/></a></td>
+<td><a href="http://hailocab.com"><img src="docs/images/hailo_logo.png" width="62"/></a></td>
+<td><a href="http://path.com"><img src="docs/images/path_logo.png" width="84"/></a></td>
+<td><a href="http://trendrr.com"><img src="docs/images/trendrr_logo.png" width="97"/></a></td>
+<td><a href="http://simplereach.com"><img src="docs/images/simplereach_logo.png" width="136"/></a></td>
+<td><a href="http://energyhub.com"><img src="docs/images/energyhub_logo.png" width="99"/></a></td>
+</table></tr><center>
 
 ## Why?
 
