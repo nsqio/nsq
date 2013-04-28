@@ -1,5 +1,6 @@
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
+{{$targ := .Target}}
 
 <style>
 body {
@@ -206,7 +207,7 @@ body {
 <p class="processed">Messages Processed</p>
 <p class="messagerate"></p>
 <script type="text/javascript">
-var large_graph_url = "{{$g.LargeGraph "counter" "nsq.*.topic.*.channel.*.message_count" "green"}}";
+var large_graph_url = "{{$g.LargeGraph $target "counter"}}";
 </script>
 {{if $g.Enabled}}<img id="big_graph" height="500" src=""/>{{end}}
 </div>
