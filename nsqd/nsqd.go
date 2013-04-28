@@ -292,21 +292,25 @@ func (n *NSQd) GetExistingTopic(topicName string) (*Topic, error) {
 
 // DeleteExistingTopic removes a topic only if it exists
 func (n *NSQd) DeleteExistingTopic(topicName string) error {
-	n.Lock()
+	n.RLock()
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		n.Unlock()
+		n.RUnlock()
 		return errors.New("topic does not exist")
 	}
-	delete(n.topicMap, topicName)
-	// not defered so that we can continue while the topic async closes
-	n.Unlock()
-
-	log.Printf("TOPIC(%s): deleting", topic.name)
+	n.RUnlock()
 
 	// delete empties all channels and the topic itself before closing
 	// (so that we dont leave any messages around)
+	//
+	// we do this before removing the topic from map below (with no lock)
+	// so that any incoming writes will error and not create a new topic
+	// to enforce ordering
 	topic.Delete()
+
+	n.Lock()
+	delete(n.topicMap, topicName)
+	n.Unlock()
 
 	return nil
 }
