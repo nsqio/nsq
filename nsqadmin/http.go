@@ -568,6 +568,12 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+type counterTarget struct{}
+
+func (c counterTarget) Target() (string, string) {
+	return "nsq.*.topic.*.channel.*.message_count", "green"
+}
+
 func counterHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -579,10 +585,12 @@ func counterHandler(w http.ResponseWriter, req *http.Request) {
 		Title        string
 		Version      string
 		GraphOptions *GraphOptions
+		Target       counterTarget
 	}{
 		Title:        "NSQ Message Counts",
 		Version:      util.BINARY_VERSION,
 		GraphOptions: NewGraphOptions(w, req, reqParams),
+		Target:       counterTarget{},
 	}
 	err = templates.ExecuteTemplate(w, "counter.html", p)
 	if err != nil {
