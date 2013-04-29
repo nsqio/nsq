@@ -30,21 +30,22 @@ const (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version string")
-	topic            = flag.String("topic", "", "nsq topic")
-	channel          = flag.String("channel", "nsq_to_http", "nsq channel")
-	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
-	verbose          = flag.Bool("verbose", false, "enable verbose logging")
-	numPublishers    = flag.Int("n", 100, "number of concurrent publishers")
-	roundRobin       = flag.Bool("round-robin", false, "enable round robin mode")
-	mode             = flag.String("mode", "", "the upstream request mode options: multicast, round-robin, hostpool")
-	throttleFraction = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
-	httpTimeoutMs    = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
-	statusEvery      = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
-	getAddrs         = util.StringArray{}
-	postAddrs        = util.StringArray{}
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
+	showVersion        = flag.Bool("version", false, "print version string")
+	topic              = flag.String("topic", "", "nsq topic")
+	channel            = flag.String("channel", "nsq_to_http", "nsq channel")
+	maxInFlight        = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+	verbose            = flag.Bool("verbose", false, "enable verbose logging")
+	numPublishers      = flag.Int("n", 100, "number of concurrent publishers")
+	roundRobin         = flag.Bool("round-robin", false, "enable round robin mode")
+	mode               = flag.String("mode", "", "the upstream request mode options: multicast, round-robin, hostpool")
+	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
+	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
+	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
+	maxBackoffDuration = flag.Duration("max-backoff-duration", 120 * time.Second, "the maximum backoff duration")
+	getAddrs           = util.StringArray{}
+	postAddrs          = util.StringArray{}
+	nsqdTCPAddrs       = util.StringArray{}
+	lookupdHTTPAddrs   = util.StringArray{}
 )
 
 func init() {
@@ -260,6 +261,7 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 	r.SetMaxInFlight(*maxInFlight)
+	r.SetMaxBackoffDuration(*maxBackoffDuration)
 	r.VerboseLogging = *verbose
 
 	for i := 0; i < *numPublishers; i++ {
