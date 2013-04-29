@@ -6,16 +6,18 @@
 
 New Features / Enhancements:
 
+ * #176 - optimizations to reduce garbage, copying, locking
+ * #184 - add table headers to nsqadmin channel view (thanks @elubow)
  * #174 - nsq_to_http hostpool mode
- * #173 - nsq_stat utility for command line introspection
+ * #173/#187 - nsq_stat utility for command line introspection
  * #175 - add nsqd --max-rdy-count configuration option
  * #178 - add nsqd --max-heartbeat-interval configuration option
 
 Bug Fixes:
 
+ * #182 - fix topic deletion ordering to prevent race conditions with lookupd/diskqueue
  * #179 - deferred_count as gauge for statsd
- * #173 - fix nsqadmin counter template error
-          fix nsqadmin displaying negative rates
+ * #173/#188 - fix nsqadmin counter template error; fix nsqadmin displaying negative rates
 
 ### 0.2.19 - 2013-04-11
 
@@ -148,6 +150,7 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
+ * #164 - add Writer
  * #175 - support server side configurable max RDY count
  * #177 - support broadcast_address
  * #161 - connection pool goroutine safety
