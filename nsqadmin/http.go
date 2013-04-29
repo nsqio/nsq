@@ -570,8 +570,8 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 
 type counterTarget struct{}
 
-func (c counterTarget) Target() (string, string) {
-	return "nsq.*.topic.*.channel.*.message_count", "green"
+func (c counterTarget) Target(key string) (string, string) {
+	return fmt.Sprintf("nsq.*.topic.*.channel.*.%s", key), "green"
 }
 
 func counterHandler(w http.ResponseWriter, req *http.Request) {
