@@ -15,8 +15,11 @@ import (
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
-	Reader          *bufio.Reader
-	Writer          *bufio.Writer
+
+	// buffered IO
+	Reader *bufio.Reader
+	Writer *bufio.Writer
+
 	State           int32
 	ReadyCount      int64
 	LastReadyCount  int64
@@ -32,6 +35,10 @@ type ClientV2 struct {
 	LongIdentifier  string
 	SubEventChan    chan *Channel
 
+	// re-usable buffer for reading the 4-byte lengths off the wire
+	lenBuf   [4]byte
+	lenSlice []byte
+
 	// heartbeats are client configurable via IDENTIFY
 	Heartbeat           *time.Ticker
 	HeartbeatInterval   time.Duration
@@ -44,7 +51,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
-	return &ClientV2{
+	c := &ClientV2{
 		Conn: conn,
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -63,6 +70,8 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		HeartbeatInterval:   nsqd.options.clientTimeout / 2,
 		HeartbeatUpdateChan: make(chan time.Duration, 1),
 	}
+	c.lenSlice = c.lenBuf[:]
+	return c
 }
 
 func (c *ClientV2) String() string {
