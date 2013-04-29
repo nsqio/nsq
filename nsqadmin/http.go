@@ -58,6 +58,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/nodes", nodesHandler)
 	handler.HandleFunc("/topic/", topicHandler)
 	handler.HandleFunc("/tombstone_topic_producer", tombstoneTopicProducerHandler)
+	handler.HandleFunc("/empty_topic", emptyTopicHandler)
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
@@ -475,6 +476,37 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	NotifyAdminAction("delete_channel", topicName, channelName, req)
 
 	http.Redirect(w, req, rd, 302)
+}
+
+func emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
+	reqParams := &util.PostParams{req}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		http.Error(w, "MISSING_ARG_TOPIC", 500)
+		return
+	}
+
+	producers := getProducers(topicName)
+	for _, addr := range producers {
+		endpoint := fmt.Sprintf("http://%s/empty_topic?topic=%s", addr, url.QueryEscape(topicName))
+		log.Printf("NSQD: calling %s", endpoint)
+
+		_, err := nsq.ApiRequest(endpoint)
+		if err != nil {
+			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+			continue
+		}
+	}
+
+	NotifyAdminAction("empty_topic", topicName, "", req)
+
+	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
 }
 
 func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
