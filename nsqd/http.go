@@ -26,6 +26,7 @@ func httpServer(listener net.Listener) {
 	handler.HandleFunc("/put", putHandler)
 	handler.HandleFunc("/mput", mputHandler)
 	handler.HandleFunc("/stats", statsHandler)
+	handler.HandleFunc("/empty_topic", emptyTopicHandler)
 	handler.HandleFunc("/delete_topic", deleteTopicHandler)
 	handler.HandleFunc("/empty_channel", emptyChannelHandler)
 	handler.HandleFunc("/delete_channel", deleteChannelHandler)
@@ -182,6 +183,40 @@ func createTopicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	nsqd.GetTopic(topicName)
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
+func emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	if !nsq.IsValidTopicName(topicName) {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	err = topic.Empty()
+	if err != nil {
+		util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
+		return
+	}
+
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
