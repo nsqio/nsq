@@ -712,7 +712,7 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 			backoffCounter := atomic.LoadInt32(&c.backoffCounter)
 
 			// send ready immediately
-			if backoffCounter == 0 {
+			if backoffCounter == 0 || q.maxBackoffDuration == 0 {
 				q.updateRDY(c, q.ConnectionMaxInFlight())
 				continue
 			}
