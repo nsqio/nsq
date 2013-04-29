@@ -168,7 +168,7 @@ func (n *NSQd) LoadMetadata() {
 	}
 }
 
-func (n *NSQd) PersistMetadata() {
+func (n *NSQd) PersistMetadata() error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
@@ -200,30 +200,29 @@ func (n *NSQd) PersistMetadata() {
 
 	data, err := json.Marshal(&js)
 	if err != nil {
-		log.Printf("ERROR: failed to marshal JSON metadata - %s", err.Error())
-		return
+		return err
 	}
 
 	tmpFileName := fileName + ".tmp"
 	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Printf("ERROR: failed to open temporary metadata file %s - %s", tmpFileName, err.Error())
-		return
+		return err
 	}
 
 	_, err = f.Write(data)
 	if err != nil {
-		log.Printf("ERROR: failed to write to temporary metadata file %s - %s", tmpFileName, err.Error())
 		f.Close()
-		return
+		return err
 	}
 	f.Sync()
 	f.Close()
 
 	err = os.Rename(tmpFileName, fileName)
 	if err != nil {
-		log.Printf("ERROR: failed to rename temporary metadata file %s to %s - %s", tmpFileName, fileName, err.Error())
+		return err
 	}
+
+	return nil
 }
 
 func (n *NSQd) Exit() {
@@ -236,7 +235,10 @@ func (n *NSQd) Exit() {
 	}
 
 	n.Lock()
-	n.PersistMetadata()
+	err := n.PersistMetadata()
+	if err != nil {
+		log.Printf("ERROR: failed to persist metadata - %s", err.Error())
+	}
 	log.Printf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
 		topic.Close()

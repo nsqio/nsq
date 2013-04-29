@@ -133,6 +133,10 @@ func main() {
 	nsqd.lookupdTCPAddrs = lookupdTCPAddrs
 
 	nsqd.LoadMetadata()
+	err = nsqd.PersistMetadata()
+	if err != nil {
+		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
+	}
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()
