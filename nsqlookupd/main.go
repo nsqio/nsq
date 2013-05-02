@@ -37,7 +37,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("nsqlookupd v%s\n", util.BINARY_VERSION)
+		fmt.Println(util.Version("nsqlookupd"))
 		return
 	}
 
@@ -59,7 +59,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("nsqlookupd v%s", util.BINARY_VERSION)
+	log.Println(util.Version("nsqlookupd"))
 
 	lookupd = NewNSQLookupd()
 	lookupd.tcpAddr = tcpAddr

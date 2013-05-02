@@ -379,7 +379,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 	now := time.Now()
 
 	if !jsonFormat {
-		io.WriteString(w, fmt.Sprintf("nsqd v%s\n", util.BINARY_VERSION))
+		io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
 	}
 
 	stats := nsqd.getStats()
