@@ -1,5 +1,6 @@
 PREFIX=/usr/local
 DESTDIR=
+GOFLAGS=
 BINDIR=${PREFIX}/bin
 DATADIR=${PREFIX}/share
 
@@ -20,7 +21,7 @@ all: $(BINARIES) $(EXAMPLES)
 
 $(BLDDIR)/%:
 	mkdir -p $(dir $@)
-	cd $* && go build -o $(abspath $@)
+	cd $* && go build ${GOFLAGS} -o $(abspath $@)
 
 $(BINARIES): %: $(BLDDIR)/%
 $(EXAMPLES): %: $(BLDDIR)/examples/%

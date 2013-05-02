@@ -41,7 +41,7 @@ var (
 	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
 	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
 	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120 * time.Second, "the maximum backoff duration")
+	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "the maximum backoff duration")
 	getAddrs           = util.StringArray{}
 	postAddrs          = util.StringArray{}
 	nsqdTCPAddrs       = util.StringArray{}

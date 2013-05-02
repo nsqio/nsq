@@ -57,7 +57,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("nsqd v%s\n", util.BINARY_VERSION)
+		fmt.Println(util.Version("nsqd"))
 		return
 	}
 
@@ -81,7 +81,7 @@ func main() {
 		*broadcastAddress = hostname
 	}
 
-	log.Printf("nsqd v%s", util.BINARY_VERSION)
+	log.Println(util.Version("nsqd"))
 	log.Printf("worker id %d", *workerId)
 
 	exitChan := make(chan int)

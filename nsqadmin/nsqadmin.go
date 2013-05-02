@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/bitly/nsq/util"
 	"log"
 	"net"
@@ -33,8 +34,8 @@ func main() {
 
 	flag.Parse()
 
-	log.Printf("nsqadmin v%s", util.BINARY_VERSION)
 	if *showVersion {
+		fmt.Println(util.Version("nsqadmin"))
 		return
 	}
 
@@ -58,6 +59,8 @@ func main() {
 	if len(nsqdHTTPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
 		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
 	}
+
+	log.Println(util.Version("nsqadmin"))
 
 	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
