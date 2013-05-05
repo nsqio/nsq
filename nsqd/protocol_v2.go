@@ -181,6 +181,9 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var buf bytes.Buffer
 	var clientMsgChan chan *nsq.Message
 	var subChannel *Channel
+	// NOTE: `flusherChan` is used to bound message latency for
+	// the pathological case of a channel on a low volume topic
+	// with >1 clients having >1 RDY counts
 	var flusherChan <-chan time.Time
 
 	// v2 opportunistically buffers data to clients to reduce write system calls
@@ -189,13 +192,10 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	//    2. we're buffered and the channel has nothing left to send us
 	//       (ie. we would block in this loop anyway)
 	//
-	// NOTE: `flusher` is used to bound message latency for
-	// the pathological case of a channel on a low volume topic
-	// with >1 clients having >1 RDY counts
-	flusher := time.NewTicker(5 * time.Millisecond)
-	flushed := true
 	subEventChan := client.SubEventChan
 	heartbeatUpdateChan := client.HeartbeatUpdateChan
+	outputBufferTimeoutUpdateChan := client.OutputBufferTimeoutUpdateChan
+	flushed := true
 
 	for {
 		if subChannel == nil || !client.IsReadyForMessages() {
@@ -217,7 +217,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
 			clientMsgChan = subChannel.clientMsgChan
-			flusherChan = flusher.C
+			flusherChan = client.OutputBufferTimeout.C
 		}
 
 		select {
@@ -234,12 +234,18 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// you can't subscribe anymore
 			subEventChan = nil
 		case <-client.ReadyStateChan:
+		case timeout := <-outputBufferTimeoutUpdateChan:
+			client.OutputBufferTimeout.Stop()
+			if timeout > 0 {
+				client.OutputBufferTimeout = time.NewTicker(timeout)
+			}
+			// you can't update output buffer timeout anymore
+			outputBufferTimeoutUpdateChan = nil
 		case interval := <-heartbeatUpdateChan:
 			client.Heartbeat.Stop()
 			if interval > 0 {
 				client.Heartbeat = time.NewTicker(interval)
 			}
-
 			// you can't update heartbeat anymore
 			heartbeatUpdateChan = nil
 		case <-client.Heartbeat.C:
@@ -251,7 +257,6 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			if !ok {
 				goto exit
 			}
-
 			err = p.SendMessage(client, msg, &buf)
 			if err != nil {
 				goto exit
@@ -265,7 +270,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	client.Heartbeat.Stop()
-	flusher.Stop()
+	client.OutputBufferTimeout.Stop()
 	if subChannel != nil {
 		subChannel.RemoveClient(client)
 	}
@@ -298,31 +303,24 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	// body is a json structure with producer information
-	clientInfo := struct {
-		ShortId            string `json:"short_id"`
-		LongId             string `json:"long_id"`
-		HeartbeatInterval  int    `json:"heartbeat_interval"`
-		FeatureNegotiation bool   `json:"feature_negotiation"`
-	}{}
-	err = json.Unmarshal(body, &clientInfo)
+	var identifyData IdentifyDataV2
+	err = json.Unmarshal(body, &identifyData)
 	if err != nil {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
-	client.ShortIdentifier = clientInfo.ShortId
-	client.LongIdentifier = clientInfo.LongId
-	err = client.SetHeartbeatInterval(clientInfo.HeartbeatInterval)
+	err = client.Identify(identifyData)
 	if err != nil {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY "+err.Error())
 	}
 
 	resp := okBytes
-	if clientInfo.FeatureNegotiation {
+	if identifyData.FeatureNegotiation {
 		resp, err = json.Marshal(struct {
 			MaxRdyCount   int64  `json:"max_rdy_count"`
 			Version       string `json:"version"`
 			MaxMsgTimeout int64  `json:"max_msg_timeout"`
-			MsgTimeout    int64 `json:"msg_timeout"`
+			MsgTimeout    int64  `json:"msg_timeout"`
 		}{
 			MaxRdyCount:   nsqd.options.maxRdyCount,
 			Version:       util.BINARY_VERSION,

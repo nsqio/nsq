@@ -39,6 +39,9 @@ var (
 	statsdInterval       = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
 	broadcastAddress     = flag.String("broadcast-address", "", "address that will be registered with lookupd, (default to the OS hostname)")
 	lookupdTCPAddrs      = util.StringArray{}
+
+	maxOutputBufferSize    = flag.Int64("max-output-buffer-size", 64*1024, "maximum client configurable size (in bytes) for a client output buffer")
+	maxOutputBufferTimeout = flag.Duration("max-output-buffer-timeout", 1*time.Second, "maximum duration of time between flushing to clients that a client can configure")
 )
 
 func init() {
@@ -126,6 +129,8 @@ func main() {
 	options.maxMsgTimeout = *maxMsgTimeout
 	options.broadcastAddress = *broadcastAddress
 	options.maxHeartbeatInterval = *maxHeartbeatInterval
+	options.maxOutputBufferSize = *maxOutputBufferSize
+	options.maxOutputBufferTimeout = *maxOutputBufferTimeout
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr

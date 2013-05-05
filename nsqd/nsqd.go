@@ -52,6 +52,9 @@ type nsqdOptions struct {
 	clientTimeout        time.Duration
 	maxHeartbeatInterval time.Duration
 	broadcastAddress     string
+
+	maxOutputBufferSize    int64
+	maxOutputBufferTimeout time.Duration
 }
 
 func NewNsqdOptions() *nsqdOptions {
@@ -68,6 +71,9 @@ func NewNsqdOptions() *nsqdOptions {
 		clientTimeout:        nsq.DefaultClientTimeout,
 		maxHeartbeatInterval: 60 * time.Second,
 		broadcastAddress:     "",
+
+		maxOutputBufferSize:    64 * 1024,
+		maxOutputBufferTimeout: 1 * time.Second,
 	}
 }
 
