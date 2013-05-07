@@ -423,6 +423,8 @@ func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) 
 
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(msg *nsq.Message) error {
+	c.RLock()
+	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
