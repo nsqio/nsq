@@ -1,6 +1,9 @@
 <p align="center"><img src="docs/images/nsq.png"/></p>
 
-Source: https://github.com/bitly/nsq
+ * **Source**: [https://github.com/bitly/nsq][github]
+ * **Issues**: [https://github.com/bitly/nsq/issues][issues]
+ * **Mailing List**: [nsq-users@googlegroups.com](https://groups.google.com/d/forum/nsq-users)
+ * **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
 
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
@@ -173,7 +176,9 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Francisco Souza ([@fsouza][fsouza_github])
  * galvinhsiu ([@galvinhsiu][galvinhsiu_github])
  * Eric Lubow ([@elubow][elubow_github])
- 
+
+[github]: https://github.com/bitly/nsq
+[issues]: https://github.com/bitly/nsq/issues
 [simplehttp]: https://github.com/bitly/simplehttp
 [msgpack]: http://msgpack.org/
 [go-protobuf]: http://code.google.com/p/protobuf/
