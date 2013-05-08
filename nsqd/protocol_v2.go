@@ -319,11 +319,15 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	resp := okBytes
 	if clientInfo.FeatureNegotiation {
 		resp, err = json.Marshal(struct {
-			MaxRdyCount int64  `json:"max_rdy_count"`
-			Version     string `json:"version"`
+			MaxRdyCount   int64  `json:"max_rdy_count"`
+			Version       string `json:"version"`
+			MaxMsgTimeout int64  `json:"max_msg_timeout"`
+			MsgTimeout    int64 `json:"msg_timeout"`
 		}{
-			MaxRdyCount: nsqd.options.maxRdyCount,
-			Version:     util.BINARY_VERSION,
+			MaxRdyCount:   nsqd.options.maxRdyCount,
+			Version:       util.BINARY_VERSION,
+			MaxMsgTimeout: int64(nsqd.options.maxMsgTimeout / time.Millisecond),
+			MsgTimeout:    int64(nsqd.options.msgTimeout / time.Millisecond),
 		})
 		if err != nil {
 			panic("should never happen")
