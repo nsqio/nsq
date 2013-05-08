@@ -7,7 +7,7 @@ mkdir -p $DIR/dist
 
 os=$(go env GOOS)
 arch=$(go env GOARCH)
-version=$(cat $DIR/util/binary_version.go | tail -n1 | awk '{print $NF}' | sed 's/"//g')
+version=$(cat $DIR/util/binary_version.go | grep "const BINARY_VERSION" | awk '{print $NF}' | sed 's/"//g')
 
 TMPGOPATH=$(mktemp -d -t nsqgopath)
 mkdir -p $TMPGOPATH/src
@@ -21,6 +21,7 @@ export GOPATH="$TMPGOPATH:$GOROOT"
 echo "... getting dependencies"
 go get -v github.com/bitly/go-simplejson
 go get -v github.com/bmizerany/assert
+go get -v github.com/bitly/go-hostpool
 
 pushd $TMPGOPATH/src/github.com/bitly/nsq
 
