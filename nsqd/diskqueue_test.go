@@ -50,6 +50,12 @@ func TestDiskQueueRoll(t *testing.T) {
 	assert.Equal(t, dq.(*DiskQueue).writePos, int64(28))
 }
 
+func assertFileNotExist(t *testing.T, fn string) {
+	f, err := os.OpenFile(fn, os.O_RDONLY, 0600)
+	assert.Equal(t, f, (*os.File)(nil))
+	assert.Equal(t, os.IsNotExist(err), true)
+}
+
 func TestDiskQueueEmpty(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
@@ -79,8 +85,13 @@ func TestDiskQueueEmpty(t *testing.T) {
 	}
 	assert.Equal(t, dq.Depth(), int64(97))
 
+	numFiles := dq.(*DiskQueue).writeFileNum
 	dq.Empty()
 
+	assertFileNotExist(t, dq.(*DiskQueue).metaDataFileName())
+	for i := int64(0); i <= numFiles; i++ {
+		assertFileNotExist(t, dq.(*DiskQueue).fileName(i))
+	}
 	assert.Equal(t, dq.Depth(), int64(0))
 	assert.Equal(t, dq.(*DiskQueue).readFileNum, dq.(*DiskQueue).writeFileNum)
 	assert.Equal(t, dq.(*DiskQueue).readPos, dq.(*DiskQueue).writePos)

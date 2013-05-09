@@ -154,35 +154,39 @@ func (d *DiskQueue) doEmpty() error {
 		d.readFile = nil
 	}
 
-	// make a list of read file numbers to remove (later)
-	numsToRemove := make([]int64, 0)
-	for d.readFileNum < d.writeFileNum {
-		numsToRemove = append(numsToRemove, d.readFileNum)
-		d.readFileNum++
+	if d.writeFile != nil {
+		d.writeFile.Close()
+		d.writeFile = nil
 	}
 
+	// make a list of read file numbers to remove (later)
+	numsToRemove := make([]int64, 0)
+	for i := d.readFileNum; i <= d.writeFileNum; i++ {
+		numsToRemove = append(numsToRemove, i)
+	}
+
+	d.writeFileNum++
+	d.writePos = 0
 	d.readFileNum = d.writeFileNum
 	d.readPos = d.writePos
 	d.nextReadFileNum = d.writeFileNum
 	d.nextReadPos = d.writePos
 	atomic.StoreInt64(&d.depth, 0)
 
-	err := d.sync()
-	if err != nil {
-		log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
-		return err
+	err := os.Remove(d.metaDataFileName())
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, err.Error())
 	}
 
-	// only if we've successfully persisted metadata do we remove old files
 	for _, num := range numsToRemove {
 		fn := d.fileName(num)
-		err := os.Remove(fn)
-		if err != nil {
-			return err
+		err = os.Remove(fn)
+		if err != nil && !os.IsNotExist(err) {
+			log.Printf("ERROR: diskqueue(%s) failed to remove data file - %s", d.name, err.Error())
 		}
 	}
 
-	return nil
+	return err
 }
 
 // readOne performs a low level filesystem read for a single []byte
