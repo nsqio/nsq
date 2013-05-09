@@ -8,8 +8,8 @@ protocol they will be communicating (upgrades made easy).
 
 For `nsqd`, there is currently only one protocol:
 
-  * `V2` (4-byte `[ ][ ][V][2]`) - a push based streaming protocol for consuming (and 
-    request/response for publishing)
+  * `V2` (4-byte ASCII `[space][space][V][2]`)
+     a push based streaming protocol for consuming (and request/response for publishing)
 
 ### Important Notes
 
@@ -215,7 +215,7 @@ A client should expect one of the following frame identifiers:
 And finally, the message format:
     
     [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
-    |       (int64)        ||    ||                  (hex)                       || (binary)
+    |       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)
     |       8-byte         ||    ||                 16-byte                      || N-byte
     ------------------------------------------------------------------------------------------...
       nanosecond timestamp    ^^                   message ID                       message body
