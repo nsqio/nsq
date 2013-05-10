@@ -212,6 +212,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
+	peerInfo.RemoteAddress = client.RemoteAddr().String()
 	//TODO: remove this check for 1.0
 	if peerInfo.BroadcastAddress == "" {
 		peerInfo.BroadcastAddress = peerInfo.Address

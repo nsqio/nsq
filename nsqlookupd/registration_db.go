@@ -20,6 +20,7 @@ type Registrations []*Registration
 
 type PeerInfo struct {
 	id               string
+	RemoteAddress    string `json:"remote_address"`
 	Address          string `json:"address"` //TODO: drop for 1.0
 	Hostname         string `json:"hostname"`
 	BroadcastAddress string `json:"broadcast_address"`
