@@ -35,8 +35,14 @@ $('.rate').each(function()  {
       metric: "rate",
       target: $(this).attr("target")
     },
-      function(rate) {
+    function(rate) {
         $(self).html(rate.datapoint);
+    });
+});
+
+$('.conn-counts').each(function() {
+    $(this).on('click', function() {
+        $(this).next().toggle();
     });
 });
 </script>

@@ -1,4 +1,5 @@
 {{template "header.html" .}}
+{{$ld := .Lookupd}}
 
 <div class="row-fluid"><div class="span12">
 <h2>NSQD Hosts ({{.Producers | len}})</h2>
@@ -12,15 +13,26 @@
         <th>TCP Port</th>
         <th>HTTP Port</th>
         <th>Version</th>
+        {{if $ld}}
+        <th>Lookupd Conns.</th>
+        {{end}}
         <th>Topics</th>
     </tr>
-    {{range .Producers }}
-    <tr {{if .OutOfDate}} class="warning"{{end}} >
+    {{range $p := .Producers }}
+    <tr {{if .OutOfDate}}class="warning"{{end}}>
         <td>{{.Hostname}}</td>
-        <td>{{.BroadcastAddress}}
+        <td>{{.BroadcastAddress}}</td>
         <td>{{.TcpPort}}</td>
         <td>{{.HttpPort}}</td>
         <td>{{.Version}}</td>
+        {{if $ld}}
+        <td>
+            <a href="#" class="conn-counts btn btn-small {{$p | getNodeConsistencyClass}}">{{.RemoteAddresses | len}}</a>
+            <div style="display: none;">
+                {{range .RemoteAddresses}}{{.}}<br/>{{end}}
+            </div>
+        </td>
+        {{end}}
         <td>
         {{if .Topics}}
             <span class="badge">{{.Topics | len}}</span>
