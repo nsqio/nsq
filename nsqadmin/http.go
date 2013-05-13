@@ -24,6 +24,7 @@ func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
 		"commafy": util.Commafy,
+		"getNodeConsistencyClass": getNodeConsistencyClass,
 	})
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
 	if err != nil {
@@ -573,6 +574,13 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
+func getNodeConsistencyClass(node *lookupd.Producer) string {
+	if node.IsInconsistent(len(lookupdHTTPAddrs)) {
+		return "btn-warning"
+	}
+	return ""
+}
+
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -587,11 +595,13 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 		Version      string
 		GraphOptions *GraphOptions
 		Producers    []*lookupd.Producer
+		Lookupd      []string
 	}{
 		Title:        "NSQ Nodes",
 		Version:      util.BINARY_VERSION,
 		GraphOptions: NewGraphOptions(w, req, reqParams),
 		Producers:    producers,
+		Lookupd:      lookupdHTTPAddrs,
 	}
 	err = templates.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {

@@ -238,6 +238,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 // note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
 type producerTopic struct {
+	RemoteAddress    string   `json:"remote_address"`
 	Address          string   `json:"address"` //TODO: drop for 1.0
 	Hostname         string   `json:"hostname"`
 	BroadcastAddress string   `json:"broadcast_address"`
@@ -252,6 +253,7 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 	producerTopics := make([]*producerTopic, len(producers))
 	for i, p := range producers {
 		producerTopics[i] = &producerTopic{
+			RemoteAddress:    p.peerInfo.RemoteAddress,
 			Address:          p.peerInfo.Address, //TODO: drop for 1.0
 			Hostname:         p.peerInfo.Hostname,
 			BroadcastAddress: p.peerInfo.BroadcastAddress,

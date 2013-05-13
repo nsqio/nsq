@@ -9,6 +9,7 @@ import (
 )
 
 type Producer struct {
+	RemoteAddresses  []string        `json:"remote_addresses"`
 	Address          string          `json:"address"` //TODO: remove for 1.0
 	Hostname         string          `json:"hostname"`
 	BroadcastAddress string          `json:"broadcast_address"`
@@ -22,6 +23,17 @@ type Producer struct {
 
 func (p *Producer) HTTPAddress() string {
 	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort)
+}
+
+func (p *Producer) TCPAddress() string {
+	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TcpPort)
+}
+
+// IsInconsistent checks for cases where an unexpected number of nsqd connections are 
+// reporting the same information to nsqlookupd (ie: multiple instances are using the 
+// same broadcast address), or cases where some nsqd are not reporting to all nsqlookupd.
+func (p *Producer) IsInconsistent(numLookupd int) bool {
+	return len(p.RemoteAddresses) != numLookupd
 }
 
 type TopicStats struct {

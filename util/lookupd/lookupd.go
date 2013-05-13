@@ -112,6 +112,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 			producersArray, _ := producers.Array()
 			for i := range producersArray {
 				producer := producers.GetIndex(i)
+				remoteAddress := producer.Get("remote_address").MustString()
 				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				hostname := producer.Get("hostname").MustString()
 				broadcastAddress := producer.Get("broadcast_address").MustString()
@@ -121,7 +122,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 				httpPort := producer.Get("http_port").MustInt()
 				tcpPort := producer.Get("tcp_port").MustInt()
 				key := fmt.Sprintf("%s:%d:%d", broadcastAddress, httpPort, tcpPort)
-				_, ok := allProducers[key]
+				p, ok := allProducers[key]
 				if !ok {
 					topicList, _ := producer.Get("topics").Array()
 					var topics []string
@@ -137,7 +138,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					if maxVersion.Less(versionObj) {
 						maxVersion = versionObj
 					}
-					p := &Producer{
+					p = &Producer{
 						Address:          address, //TODO: remove for 1.0
 						Hostname:         hostname,
 						BroadcastAddress: broadcastAddress,
@@ -150,6 +151,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					allProducers[key] = p
 					output = append(output, p)
 				}
+				p.RemoteAddresses = append(p.RemoteAddresses, fmt.Sprintf("%s/%s", addr, remoteAddress))
 			}
 		}(endpoint)
 	}
@@ -166,8 +168,8 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	return output, nil
 }
 
-// GetLookupdTopicProducers returns a []string of the addresses of all the producers
-// for a given topic by unioning the results returned from the given lookupd
+// GetLookupdTopicProducers returns a []string of the broadcast_address:http_port of all the
+// producers for a given topic by unioning the results returned from the given lookupd
 func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	allSources := make([]string, 0)
