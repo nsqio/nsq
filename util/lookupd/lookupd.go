@@ -97,7 +97,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
-		go func(endpoint string) {
+		go func(addr string, endpoint string) {
 			data, err := nsq.ApiRequest(endpoint)
 			lock.Lock()
 			defer lock.Unlock()
@@ -113,6 +113,9 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 			for i := range producersArray {
 				producer := producers.GetIndex(i)
 				remoteAddress := producer.Get("remote_address").MustString()
+				if remoteAddress == "" {
+					remoteAddress = "NA"
+				}
 				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				hostname := producer.Get("hostname").MustString()
 				broadcastAddress := producer.Get("broadcast_address").MustString()
@@ -153,7 +156,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 				}
 				p.RemoteAddresses = append(p.RemoteAddresses, fmt.Sprintf("%s/%s", addr, remoteAddress))
 			}
-		}(endpoint)
+		}(addr, endpoint)
 	}
 	wg.Wait()
 	for _, producer := range allProducers {
