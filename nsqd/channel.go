@@ -141,11 +141,7 @@ func (c *Channel) Exiting() bool {
 
 // Delete empties the channel and closes
 func (c *Channel) Delete() error {
-	err := c.exit(true)
-	// since we are explicitly deleting a channel (not just at system exit time)
-	// de-register this from the lookupd
-	go c.notifier.Notify(c)
-	return err
+	return c.exit(true)
 }
 
 // Close cleanly closes the Channel
@@ -160,7 +156,15 @@ func (c *Channel) exit(deleted bool) error {
 		return errors.New("exiting")
 	}
 
-	log.Printf("CHANNEL(%s): closing", c.name)
+	if deleted {
+		log.Printf("CHANNEL(%s): deleting", c.name)
+
+		// since we are explicitly deleting a channel (not just at system exit time)
+		// de-register this from the lookupd
+		go c.notifier.Notify(c)
+	} else {
+		log.Printf("CHANNEL(%s): closing", c.name)
+	}
 
 	// this forceably closes client connections
 	for _, client := range c.clients {
@@ -180,18 +184,18 @@ func (c *Channel) exit(deleted bool) error {
 	if deleted {
 		// empty the queue (deletes the backend files, too)
 		c.Empty()
-	} else {
-		// messagePump is responsible for closing the channel it writes to
-		// this will read until its closed (exited)
-		for msg := range c.clientMsgChan {
-			log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-			WriteMessageToBackend(&msgBuf, msg, c.backend)
-		}
-
-		// write anything leftover to disk
-		c.flush()
+		return c.backend.Delete()
 	}
 
+	// messagePump is responsible for closing the channel it writes to
+	// this will read until its closed (exited)
+	for msg := range c.clientMsgChan {
+		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
+		WriteMessageToBackend(&msgBuf, msg, c.backend)
+	}
+
+	// write anything leftover to disk
+	c.flush()
 	return c.backend.Close()
 }
 
