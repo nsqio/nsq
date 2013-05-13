@@ -587,6 +587,29 @@ func TestMaxRdyCount(t *testing.T) {
 	assert.Equal(t, string(data), "E_INVALID RDY count 51 out of range 0-50")
 }
 
+func TestFatalError(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	_, err = conn.Write([]byte("ASDF\n"))
+	assert.Equal(t, err, nil)
+
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	assert.Equal(t, frameType, int32(1))
+	assert.Equal(t, string(data), "E_INVALID invalid command ASDF")
+
+	_, err = nsq.ReadResponse(conn)
+	assert.NotEqual(t, err, nil)
+}
+
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
