@@ -2,10 +2,12 @@
 
 ## Binaries
 
-### 0.2.20-alpha
+### 0.2.20 - 2013-05-13
 
 New Features / Enhancements:
 
+ * #197 - nsqadmin nodes list improvements (show nsqd -> lookupd conns)
+ * #192 - add golang runtime version to daemon version output
  * #183 - ability to empty a topic
  * #176 - optimizations to reduce garbage, copying, locking
  * #184 - add table headers to nsqadmin channel view (thanks @elubow)
@@ -16,6 +18,9 @@ New Features / Enhancements:
 
 Bug Fixes:
 
+ * #198 - fix fatal errors not actually being fatal
+ * #195 - fix delete topic does not delete all diskqueue files
+ * #193 - fix data race in channel requeue
  * #185 - ensure that --data-path is writable on startup
  * #182 - fix topic deletion ordering to prevent race conditions with lookupd/diskqueue
  * #179 - deferred_count as gauge for statsd
