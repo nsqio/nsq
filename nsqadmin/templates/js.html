@@ -41,7 +41,8 @@ $('.rate').each(function()  {
 });
 
 $('.conn-counts').each(function() {
-    $(this).on('click', function() {
+    $(this).on('click', function(ev) {
+        ev.preventDefault();
         $(this).next().toggle();
     });
 });
