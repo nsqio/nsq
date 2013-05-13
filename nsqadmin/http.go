@@ -23,7 +23,7 @@ var templates *template.Template
 func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
-		"commafy": util.Commafy,
+		"commafy":                 util.Commafy,
 		"getNodeConsistencyClass": getNodeConsistencyClass,
 	})
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))

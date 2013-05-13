@@ -70,7 +70,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 			}
 			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), context)
 
-			sendErr := p.Send(client, nsq.FrameTypeError, []byte(err.Error())); 
+			sendErr := p.Send(client, nsq.FrameTypeError, []byte(err.Error()))
 			if sendErr != nil {
 				break
 			}
