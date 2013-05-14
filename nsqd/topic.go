@@ -272,29 +272,29 @@ func (t *Topic) exit(deleted bool) error {
 	t.waitGroup.Wait()
 
 	if deleted {
-		// empty the queue (deletes the backend files, too)
-		t.Empty()
-
 		t.Lock()
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
 			channel.Delete()
 		}
 		t.Unlock()
-	} else {
-		// close all the channels
-		for _, channel := range t.channelMap {
-			err := channel.Close()
-			if err != nil {
-				// we need to continue regardless of error to close all the channels
-				log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
-			}
-		}
 
-		// write anything leftover to disk
-		t.flush()
+		// empty the queue (deletes the backend files, too)
+		t.Empty()
+		return t.backend.Delete()
 	}
 
+	// close all the channels
+	for _, channel := range t.channelMap {
+		err := channel.Close()
+		if err != nil {
+			// we need to continue regardless of error to close all the channels
+			log.Printf("ERROR: channel(%s) close - %s", channel.name, err.Error())
+		}
+	}
+
+	// write anything leftover to disk
+	t.flush()
 	return t.backend.Close()
 }
 

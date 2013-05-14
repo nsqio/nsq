@@ -29,8 +29,8 @@ func (p *Producer) TCPAddress() string {
 	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TcpPort)
 }
 
-// IsInconsistent checks for cases where an unexpected number of nsqd connections are 
-// reporting the same information to nsqlookupd (ie: multiple instances are using the 
+// IsInconsistent checks for cases where an unexpected number of nsqd connections are
+// reporting the same information to nsqlookupd (ie: multiple instances are using the
 // same broadcast address), or cases where some nsqd are not reporting to all nsqlookupd.
 func (p *Producer) IsInconsistent(numLookupd int) bool {
 	return len(p.RemoteAddresses) != numLookupd
