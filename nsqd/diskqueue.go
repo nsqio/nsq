@@ -108,12 +108,28 @@ func (d *DiskQueue) Put(data []byte) error {
 
 // Close cleans up the queue and persists metadata
 func (d *DiskQueue) Close() error {
+	err := d.exit(false)
+	if err != nil {
+		return err
+	}
+	return d.sync()
+}
+
+func (d *DiskQueue) Delete() error {
+	return d.exit(true)
+}
+
+func (d *DiskQueue) exit(deleted bool) error {
 	d.Lock()
 	defer d.Unlock()
 
-	log.Printf("DISKQUEUE(%s): closing", d.name)
-
 	d.exitFlag = 1
+
+	if deleted {
+		log.Printf("DISKQUEUE(%s): deleting", d.name)
+	} else {
+		log.Printf("DISKQUEUE(%s): closing", d.name)
+	}
 
 	close(d.exitChan)
 	// ensure that ioLoop has exited
@@ -129,7 +145,7 @@ func (d *DiskQueue) Close() error {
 		d.writeFile = nil
 	}
 
-	return d.sync()
+	return nil
 }
 
 // Empty destructively clears out any pending data in the queue
