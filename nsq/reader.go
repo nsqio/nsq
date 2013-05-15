@@ -321,18 +321,29 @@ func (q *Reader) lookupdLoop() {
 	// add some jitter so that multiple consumers discovering the same topic,
 	// when restarted at the same time, dont all connect at once.
 	rand.Seed(time.Now().UnixNano())
-	time.Sleep(time.Duration(rand.Int63n(int64(q.LookupdPollInterval / 10))))
-	ticker := time.Tick(q.LookupdPollInterval)
+	jitter := time.Duration(rand.Int63n(int64(q.LookupdPollInterval / 10)))
+	ticker := time.NewTicker(q.LookupdPollInterval)
+
+	select {
+	case <-time.After(jitter):
+	case <-q.lookupdExitChan:
+		goto exit
+	}
+
 	for {
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			q.queryLookupd()
 		case <-q.lookupdRecheckChan:
 			q.queryLookupd()
 		case <-q.lookupdExitChan:
-			return
+			goto exit
 		}
 	}
+
+exit:
+	ticker.Stop()
+	log.Printf("exiting lookupdLoop")
 }
 
 // make a HTTP req to the /lookup endpoint on each lookup server
