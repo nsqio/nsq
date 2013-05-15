@@ -87,9 +87,12 @@ func main() {
 		}
 	}
 
-	select {
-	case <-r.ExitChan:
-	case <-sigChan:
-		r.Stop()
+	for {
+		select {
+		case <-r.ExitChan:
+			return
+		case <-sigChan:
+			r.Stop()
+		}
 	}
 }
