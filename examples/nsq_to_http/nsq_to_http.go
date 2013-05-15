@@ -291,9 +291,12 @@ func main() {
 		}
 	}
 
-	select {
-	case <-r.ExitChan:
-	case <-termChan:
+	for {
+		select {
+		case <-r.ExitChan:
+			return
+		case <-termChan:
+			r.Stop()
+		}
 	}
-	r.Stop()
 }
