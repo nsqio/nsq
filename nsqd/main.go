@@ -93,8 +93,8 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if *statsdAddress != "" {
-		underHostname := fmt.Sprintf("%s_%d", strings.Replace(hostname, ".", "_", -1), httpAddr.Port)
-		prefix := fmt.Sprintf("nsq.%s.", underHostname)
+		undered := fmt.Sprintf("%s_%d", strings.Replace(*broadcastAddress, ".", "_", -1), httpAddr.Port)
+		prefix := fmt.Sprintf("nsq.%s.", undered)
 		go statsdLoop(*statsdAddress, prefix, *statsdInterval)
 	}
 
