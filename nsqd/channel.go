@@ -150,8 +150,6 @@ func (c *Channel) Close() error {
 }
 
 func (c *Channel) exit(deleted bool) error {
-	var msgBuf bytes.Buffer
-
 	if !atomic.CompareAndSwapInt32(&c.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
@@ -187,13 +185,6 @@ func (c *Channel) exit(deleted bool) error {
 		return c.backend.Delete()
 	}
 
-	// messagePump is responsible for closing the channel it writes to
-	// this will read until its closed (exited)
-	for msg := range c.clientMsgChan {
-		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		WriteMessageToBackend(&msgBuf, msg, c.backend)
-	}
-
 	// write anything leftover to disk
 	c.flush()
 	return c.backend.Close()
@@ -224,6 +215,13 @@ finish:
 // it does not drain inflight/deferred because it is only called in Close()
 func (c *Channel) flush() error {
 	var msgBuf bytes.Buffer
+
+	// messagePump is responsible for closing the channel it writes to
+	// this will read until its closed (exited)
+	for msg := range c.clientMsgChan {
+		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
+		WriteMessageToBackend(&msgBuf, msg, c.backend)
+	}
 
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
 		log.Printf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
