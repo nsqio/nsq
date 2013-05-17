@@ -19,7 +19,7 @@ import (
 type DiskQueue struct {
 	sync.RWMutex
 
-	// instatiation time metadata
+	// instantiation time metadata
 	name            string
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
@@ -364,13 +364,15 @@ func (d *DiskQueue) retrieveMetaData() error {
 	}
 	defer f.Close()
 
+	var depth int64
 	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
-		&d.depth,
+		&depth,
 		&d.readFileNum, &d.readPos,
 		&d.writeFileNum, &d.writePos)
 	if err != nil {
 		return err
 	}
+	atomic.StoreInt64(&d.depth, depth)
 	d.nextReadFileNum = d.readFileNum
 	d.nextReadPos = d.readPos
 
