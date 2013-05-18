@@ -79,6 +79,7 @@ type nsqConn struct {
 	messagesRequeued uint64
 	maxRdyCount      int64
 	rdyCount         int64
+	lastRdyCount     int64
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
 	stopper          sync.Once
@@ -245,7 +246,7 @@ func (q *Reader) IsStarved() bool {
 	defer q.RUnlock()
 
 	for _, conn := range q.nsqConnections {
-		threshold := int64(float64(atomic.LoadInt64(&conn.rdyCount)) * 0.85)
+		threshold := int64(float64(atomic.LoadInt64(&conn.lastRdyCount)) * 0.85)
 		if atomic.LoadInt64(&conn.messagesInFlight) >= threshold &&
 			atomic.LoadInt32(&conn.stopFlag) != 1 {
 			return true
@@ -774,6 +775,7 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 func (q *Reader) sendRDY(c *nsqConn, count int64) error {
 	var buf bytes.Buffer
 	atomic.StoreInt64(&c.rdyCount, count)
+	atomic.StoreInt64(&c.lastRdyCount, count)
 	err := c.sendCommand(&buf, Ready(int(count)))
 	if err != nil {
 		handleError(q, c, fmt.Sprintf("[%s] error sending RDY %d - %s", c, count, err.Error()))
