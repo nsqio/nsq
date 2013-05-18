@@ -540,6 +540,11 @@ func (q *Reader) readLoop(c *nsqConn) {
 			}
 
 			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
+
+			select {
+			case c.readyChan <- 1:
+			default:
+			}
 		case FrameTypeResponse:
 			switch {
 			case bytes.Equal(data, []byte("CLOSE_WAIT")):
@@ -561,11 +566,6 @@ func (q *Reader) readLoop(c *nsqConn) {
 			log.Printf("[%s] error from nsqd %s", c, data)
 		default:
 			log.Printf("[%s] unknown message type %d", c, frameType)
-		}
-
-		select {
-		case c.readyChan <- 1:
-		default:
 		}
 	}
 
