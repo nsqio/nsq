@@ -245,7 +245,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 		case <-client.Heartbeat.C:
 			err = p.Send(client, nsq.FrameTypeResponse, heartbeatBytes)
 			if err != nil {
-				log.Printf("PROTOCOL(V2): error sending heartbeat - %s", err.Error())
+				goto exit
 			}
 		case msg, ok := <-clientMsgChan:
 			if !ok {
