@@ -80,6 +80,7 @@ type nsqConn struct {
 	maxRdyCount      int64
 	rdyCount         int64
 	lastRdyCount     int64
+	lastMsgTimestamp int64
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
 	stopper          sync.Once
@@ -108,6 +109,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 		readyChan:        make(chan int, 1),
 		exitChan:         make(chan int),
 		maxRdyCount:      2500,
+		lastMsgTimestamp: time.Now().UnixNano(),
 	}
 
 	nc.SetWriteDeadline(time.Now().Add(nc.writeTimeout))
@@ -162,6 +164,7 @@ type Reader struct {
 	MaxAttemptCount     uint16        // maximum number of times this reader will attempt to process a message
 	DefaultRequeueDelay time.Duration // the default duration when REQueueing
 	MaxRequeueDelay     time.Duration // the maximum duration when REQueueing (for doubling backoff)
+	LowRdyIdleTimeout   time.Duration // the amount of time in seconds to wait for a message from a producer when in a state where RDY counts are re-distributed (ie. max_in_flight < num_producers)
 	VerboseLogging      bool          // enable verbose logging
 	ShortIdentifier     string        // an identifier to send to nsqd when connecting (defaults: short hostname)
 	LongIdentifier      string        // an identifier to send to nsqd when connecting (defaults: long hostname)
@@ -173,6 +176,8 @@ type Reader struct {
 	ExitChan            chan int      // read from this channel to block your main loop
 
 	// internal variables
+	totalRdyCount      int64
+	redistributeOnce   sync.Once
 	maxBackoffDuration time.Duration
 	maxBackoffCount    int32
 	maxInFlight        int
@@ -212,6 +217,7 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		nsqConnections:      make(map[string]*nsqConn),
 		MaxAttemptCount:     5,
 		LookupdPollInterval: 120 * time.Second,
+		LowRdyIdleTimeout:   10 * time.Second,
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int, 1), // used at connection close to force a possible reconnect
 		DefaultRequeueDelay: 90 * time.Second,
@@ -408,6 +414,8 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	}
 	q.RUnlock()
 
+	q.redistributeOnce.Do(func() { go q.redistributeRdyState() })
+
 	log.Printf("[%s] connecting to nsqd", addr)
 
 	connection, err := newNSQConn(addr, q.ReadTimeout, q.WriteTimeout)
@@ -439,6 +447,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 
 	frameType, data, err := UnpackResponse(resp)
 	if err != nil {
+		connection.Close()
 		return fmt.Errorf("[%s] error (%s) unpacking response %d %s", connection, err.Error(), frameType, data)
 	}
 
@@ -516,7 +525,6 @@ func (q *Reader) readLoop(c *nsqConn) {
 			} else {
 				log.Printf("[%s] delaying close of FinishedMesages channel; %d outstanding messages", c, c.messagesInFlight)
 			}
-			log.Printf("[%s] stopped read loop ", c)
 			goto exit
 		}
 
@@ -541,10 +549,12 @@ func (q *Reader) readLoop(c *nsqConn) {
 			}
 
 			remain := atomic.AddInt64(&c.rdyCount, -1)
+			atomic.AddInt64(&q.totalRdyCount, -1)
 			atomic.AddUint64(&c.messagesReceived, 1)
 			atomic.AddUint64(&q.MessagesReceived, 1)
 			atomic.AddInt64(&c.messagesInFlight, 1)
 			atomic.AddInt64(&q.messagesInFlight, 1)
+			atomic.StoreInt64(&c.lastMsgTimestamp, time.Now().UnixNano())
 
 			if q.VerboseLogging {
 				log.Printf("[%s] (remain %d) FrameTypeMessage: %s - %s", c, remain, msg.Id, msg.Body)
@@ -680,20 +690,14 @@ func (q *Reader) stopFinishLoop(c *nsqConn) {
 		close(c.exitChan)
 		c.Close()
 
+		atomic.AddInt64(&q.totalRdyCount, atomic.LoadInt64(&c.rdyCount)*-1)
+
 		q.Lock()
 		delete(q.nsqConnections, c.String())
 		left := len(q.nsqConnections)
 		q.Unlock()
 
 		log.Printf("there are %d connections left alive", left)
-
-		if left == 0 && len(q.lookupdHTTPAddrs) == 0 {
-			// no lookupd entry means no reconnection
-			if atomic.LoadInt32(&q.stopFlag) == 1 {
-				q.stopHandlers()
-			}
-			return
-		}
 
 		// ie: we were the last one, and stopping
 		if left == 0 && atomic.LoadInt32(&q.stopFlag) == 1 {
@@ -728,14 +732,27 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 		case <-backoffTimerChan:
 			log.Printf("[%s] backoff time expired, continuing with RDY 1...", c)
 			// while in backoff only ever let 1 message at a time through
-			q.sendRDY(c, 1)
+			q.updateRDY(c, 1)
 			readyChan = c.readyChan
 		case <-readyChan:
 			backoffCounter := atomic.LoadInt32(&c.backoffCounter)
 
 			// send ready immediately
 			if backoffCounter == 0 || q.maxBackoffDuration == 0 {
-				q.updateRDY(c, q.ConnectionMaxInFlight())
+				remain := atomic.LoadInt64(&c.rdyCount)
+				lastRdyCount := atomic.LoadInt64(&c.lastRdyCount)
+				count := q.ConnectionMaxInFlight()
+				// refill when at 1, or at 25% whichever comes first
+				if remain <= 1 || remain < (lastRdyCount/4) {
+					if q.VerboseLogging {
+						log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
+					}
+					q.updateRDY(c, count)
+				} else {
+					if q.VerboseLogging {
+						log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, lastRdyCount)
+					}
+				}
 				continue
 			}
 
@@ -762,28 +779,22 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 		return nil
 	}
 
+	// never exceed the nsqd's configured max RDY count
 	if count > c.maxRdyCount {
 		count = c.maxRdyCount
 	}
 
-	remain := atomic.LoadInt64(&c.rdyCount)
-	// refill when at 1, or at 25% whichever comes first
-	if remain <= 1 || remain < (count/4) {
-		if q.VerboseLogging {
-			log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
-		}
-		q.sendRDY(c, count)
-	} else {
-		if q.VerboseLogging {
-			log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, count)
-		}
+	// never exceed our configured max in flight
+	if atomic.LoadInt64(&q.totalRdyCount)+count > int64(q.maxInFlight) {
+		return nil
 	}
 
-	return nil
+	return q.sendRDY(c, count)
 }
 
 func (q *Reader) sendRDY(c *nsqConn, count int64) error {
 	var buf bytes.Buffer
+	atomic.AddInt64(&q.totalRdyCount, atomic.LoadInt64(&c.rdyCount)*-1+count)
 	atomic.StoreInt64(&c.rdyCount, count)
 	atomic.StoreInt64(&c.lastRdyCount, count)
 	err := c.sendCommand(&buf, Ready(int(count)))
@@ -794,6 +805,47 @@ func (q *Reader) sendRDY(c *nsqConn, count int64) error {
 	return nil
 }
 
+func (q *Reader) redistributeRdyState() {
+	for {
+		time.Sleep(5 * time.Second)
+
+		q.RLock()
+		l := len(q.nsqConnections)
+		q.RUnlock()
+		if l <= q.maxInFlight {
+			continue
+		}
+
+		log.Printf("redistributing ready state (%d conns > %d max_in_flight)", l, q.maxInFlight)
+		q.RLock()
+		possibleConns := make([]*nsqConn, 0, len(q.nsqConnections))
+		for _, c := range q.nsqConnections {
+			lastMsgTimestamp := atomic.LoadInt64(&c.lastMsgTimestamp)
+			lastMsgDuration := time.Now().Sub(time.Unix(0, lastMsgTimestamp))
+			rdyCount := atomic.LoadInt64(&c.rdyCount)
+			if q.VerboseLogging {
+				log.Printf("[%s] rdy: %d (last message received %s)", c, rdyCount, lastMsgDuration)
+			}
+			if rdyCount > 0 && lastMsgDuration > q.LowRdyIdleTimeout {
+				log.Printf("[%s] idle connection, giving up RDY count", c)
+				q.updateRDY(c, 0)
+			}
+			possibleConns = append(possibleConns, c)
+		}
+		availableMaxInFlight := int64(q.maxInFlight) - atomic.LoadInt64(&q.totalRdyCount)
+		for len(possibleConns) > 0 && availableMaxInFlight > 0 {
+			availableMaxInFlight--
+			i := rand.Int() % len(possibleConns)
+			c := possibleConns[i]
+			// delete
+			possibleConns = append(possibleConns[:i], possibleConns[i+1:]...)
+			log.Printf("[%s] redistributing RDY", c)
+			q.updateRDY(c, 1)
+		}
+		q.RUnlock()
+	}
+}
+
 // Stop will gracefully stop the Reader
 func (q *Reader) Stop() {
 	var buf bytes.Buffer
@@ -802,7 +854,7 @@ func (q *Reader) Stop() {
 		return
 	}
 
-	log.Printf("Stopping reader")
+	log.Printf("stopping reader")
 
 	q.RLock()
 	l := len(q.nsqConnections)
@@ -860,7 +912,7 @@ func (q *Reader) AddHandler(handler Handler) {
 
 			err := handler.HandleMessage(message.Message)
 			if err != nil {
-				log.Printf("ERR: handler returned %s for msg %s %s", err.Error(), message.Id, message.Body)
+				log.Printf("ERROR: handler returned %s for msg %s %s", err.Error(), message.Id, message.Body)
 			}
 
 			// message passed the max number of attempts
