@@ -480,12 +480,22 @@ func handleError(q *Reader, c *nsqConn, errMsg string) {
 	log.Printf(errMsg)
 	atomic.StoreInt32(&c.stopFlag, 1)
 
-	q.RLock()
-	defer q.RUnlock()
-
-	if len(q.nsqConnections) == 1 && len(q.lookupdHTTPAddrs) == 0 {
-		// This is the only remaining connection, so stop the queue
-		atomic.StoreInt32(&q.stopFlag, 1)
+	if len(q.lookupdHTTPAddrs) == 0 {
+		go func(addr string) {
+			for {
+				log.Printf("[%s] re-connecting in 15 seconds...", addr)
+				time.Sleep(15 * time.Second)
+				if atomic.LoadInt32(&q.stopFlag) == 1 {
+					break
+				}
+				err := q.ConnectToNSQ(addr)
+				if err != nil {
+					log.Printf("ERROR: failed to connect to %s - %s", addr, err.Error())
+					continue
+				}
+				break
+			}
+		}(c.RemoteAddr().String())
 	}
 }
 
