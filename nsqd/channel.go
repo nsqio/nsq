@@ -305,7 +305,6 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
-		log.Printf("ERROR: failed to touch message(%s) - %s", id, err.Error())
 		return err
 	}
 	c.removeFromInFlightPQ(item)
@@ -331,7 +330,6 @@ func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
 func (c *Channel) FinishMessage(client Consumer, id nsq.MessageID) error {
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
-		log.Printf("ERROR: failed to finish message(%s) - %s", id, err.Error())
 		return err
 	}
 	c.removeFromInFlightPQ(item)
@@ -348,7 +346,6 @@ func (c *Channel) RequeueMessage(client Consumer, id nsq.MessageID, timeout time
 	// remove from inflight first
 	item, err := c.popInFlightMessage(client, id)
 	if err != nil {
-		log.Printf("ERROR: failed to re-queue message(%s) - %s", id, err.Error())
 		return err
 	}
 	c.removeFromInFlightPQ(item)
