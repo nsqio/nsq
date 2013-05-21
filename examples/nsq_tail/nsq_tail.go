@@ -6,15 +6,18 @@ import (
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 )
 
 var (
 	showVersion      = flag.Bool("version", false, "print version string")
 	topic            = flag.String("topic", "", "nsq topic")
-	channel          = flag.String("channel", "nsq_tail#ephemeral", "nsq channel")
+	channel          = flag.String("channel", "", "nsq channel")
 	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
@@ -47,8 +50,13 @@ func main() {
 		return
 	}
 
-	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic and --channel are required")
+	if *channel == "" {
+		rand.Seed(time.Now().UnixNano())
+		*channel = fmt.Sprintf("tail%06d#ephemeral", rand.Int()%999999)
+	}
+
+	if *topic == "" {
+		log.Fatalf("--topic is required")
 	}
 
 	if *maxInFlight < 0 {
