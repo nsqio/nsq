@@ -12,37 +12,36 @@ import (
 
 type Topic struct {
 	sync.RWMutex
-	name               string
-	channelMap         map[string]*Channel
-	backend            BackendQueue
-	incomingMsgChan    chan *nsq.Message
-	memoryMsgChan      chan *nsq.Message
-	messagePumpStarter *sync.Once
-	exitChan           chan int
-	channelUpdateChan  chan int
-	waitGroup          util.WaitGroupWrapper
-	exitFlag           int32
-	messageCount       uint64
-	notifier           Notifier
-	options            *nsqdOptions
+	name              string
+	channelMap        map[string]*Channel
+	backend           BackendQueue
+	incomingMsgChan   chan *nsq.Message
+	memoryMsgChan     chan *nsq.Message
+	exitChan          chan int
+	channelUpdateChan chan int
+	waitGroup         util.WaitGroupWrapper
+	exitFlag          int32
+	messageCount      uint64
+	notifier          Notifier
+	options           *nsqdOptions
 }
 
 // Topic constructor
 func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic {
 	topic := &Topic{
-		name:               topicName,
-		channelMap:         make(map[string]*Channel),
-		backend:            NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
-		incomingMsgChan:    make(chan *nsq.Message, 1),
-		memoryMsgChan:      make(chan *nsq.Message, options.memQueueSize),
-		notifier:           notifier,
-		options:            options,
-		exitChan:           make(chan int),
-		channelUpdateChan:  make(chan int),
-		messagePumpStarter: new(sync.Once),
+		name:              topicName,
+		channelMap:        make(map[string]*Channel),
+		backend:           NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
+		incomingMsgChan:   make(chan *nsq.Message, 1),
+		memoryMsgChan:     make(chan *nsq.Message, options.memQueueSize),
+		notifier:          notifier,
+		options:           options,
+		exitChan:          make(chan int),
+		channelUpdateChan: make(chan int),
 	}
 
 	topic.waitGroup.Wrap(func() { topic.router() })
+	topic.waitGroup.Wrap(func() { topic.messagePump() })
 
 	go notifier.Notify(topic)
 
@@ -80,8 +79,6 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		channel = NewChannel(t.name, channelName, t.options, t.notifier, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
-		// start the topic message pump lazily using a `once` on the first channel creation
-		t.messagePumpStarter.Do(func() { t.waitGroup.Wrap(func() { t.messagePump() }) })
 		return channel, true
 	}
 	return channel, false
@@ -159,6 +156,8 @@ func (t *Topic) messagePump() {
 	var buf []byte
 	var err error
 	var chans []*Channel
+	var memoryMsgChan chan *nsq.Message
+	var backendChan chan []byte
 
 	t.RLock()
 	for _, c := range t.channelMap {
@@ -166,10 +165,15 @@ func (t *Topic) messagePump() {
 	}
 	t.RUnlock()
 
+	if len(chans) > 0 {
+		memoryMsgChan = t.memoryMsgChan
+		backendChan = t.backend.ReadChan()
+	}
+
 	for {
 		select {
-		case msg = <-t.memoryMsgChan:
-		case buf = <-t.backend.ReadChan():
+		case msg = <-memoryMsgChan:
+		case buf = <-backendChan:
 			msg, err = nsq.DecodeMessage(buf)
 			if err != nil {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
@@ -182,17 +186,15 @@ func (t *Topic) messagePump() {
 				chans = append(chans, c)
 			}
 			t.RUnlock()
+			if len(chans) == 0 {
+				memoryMsgChan = nil
+				backendChan = nil
+			} else {
+				memoryMsgChan = t.memoryMsgChan
+				backendChan = t.backend.ReadChan()
+			}
 			continue
 		case <-t.exitChan:
-			goto exit
-		}
-
-		// check if all the channels have been deleted
-		if len(chans) == 0 {
-			// put this message back on the queue
-			t.PutMessage(msg)
-			// reset the sync.Once
-			t.messagePumpStarter = new(sync.Once)
 			goto exit
 		}
 

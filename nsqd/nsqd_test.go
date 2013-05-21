@@ -79,8 +79,12 @@ func TestStartup(t *testing.T) {
 
 	channel1 = topic.GetChannel("ch1")
 
-	chan_count := channel1.Depth()
-	assert.Equal(t, chan_count, int64(iterations/2))
+	for {
+		if channel1.Depth() == int64(iterations/2) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
