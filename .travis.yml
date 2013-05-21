@@ -1,12 +1,10 @@
 language: go
 install:
-  - mkdir -p $GOPATH/src/github.com/bitly/nsq
-  - mv * $GOPATH/src/github.com/bitly/nsq
   - go get github.com/bmizerany/assert
   - go get github.com/bitly/go-hostpool
   - go get github.com/bitly/go-simplejson
 script:
-  - pushd $GOPATH/src/github.com/bitly/nsq
+  - pushd $TRAVIS_BUILD_DIR
   - ./test.sh
   - popd
 notifications:
