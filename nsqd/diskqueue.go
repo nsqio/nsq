@@ -19,7 +19,7 @@ import (
 type DiskQueue struct {
 	sync.RWMutex
 
-	// instatiation time metadata
+	// instantiation time metadata
 	name            string
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
@@ -364,13 +364,15 @@ func (d *DiskQueue) retrieveMetaData() error {
 	}
 	defer f.Close()
 
+	var depth int64
 	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
-		&d.depth,
+		&depth,
 		&d.readFileNum, &d.readPos,
 		&d.writeFileNum, &d.writePos)
 	if err != nil {
 		return err
 	}
+	atomic.StoreInt64(&d.depth, depth)
 	d.nextReadFileNum = d.readFileNum
 	d.nextReadPos = d.readPos
 
@@ -491,7 +493,18 @@ func (d *DiskQueue) ioLoop() {
 			oldReadFileNum := d.readFileNum
 			d.readFileNum = d.nextReadFileNum
 			d.readPos = d.nextReadPos
-			atomic.AddInt64(&d.depth, -1)
+			depth := atomic.AddInt64(&d.depth, -1)
+
+			if d.readFileNum == d.writeFileNum && d.readPos == d.writePos {
+				// we've reached the end of the diskqueue
+				// if depth isn't 0 something went wrong
+				if depth < 0 {
+					log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", depth)
+				} else if depth > 0 {
+					log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", depth)
+				}
+				atomic.StoreInt64(&d.depth, 0)
+			}
 
 			// see if we need to clean up the old file
 			if oldReadFileNum != d.nextReadFileNum {
