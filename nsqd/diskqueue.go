@@ -499,9 +499,9 @@ func (d *DiskQueue) ioLoop() {
 				// we've reached the end of the diskqueue
 				// if depth isn't 0 something went wrong
 				if depth < 0 {
-					log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", depth)
+					log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", d.name, depth)
 				} else if depth > 0 {
-					log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", depth)
+					log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", d.name, depth)
 				}
 				atomic.StoreInt64(&d.depth, 0)
 			}
