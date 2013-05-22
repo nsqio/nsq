@@ -2,6 +2,20 @@
 
 ## Binaries
 
+### 0.2.21-alpha
+
+New Features / Enhancements:
+
+ * #190 - nsq_tail generates a random #ephemeral channel
+
+Bug Fixes:
+
+ * #203 - diskqueue depth accounting consistency
+ * #207 - failure to write a heartbeat is fatal / reduce error log noise
+ * #208 - fix travis build script
+ * #206 - use broadcast address for statsd prefix
+ * #205 - cleanup example utils exit
+
 ### 0.2.20 - 2013-05-13
 
 New Features / Enhancements:
@@ -157,8 +171,9 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
+ * #204 - fix early termination block
  * #186 - max backoff duration of 0 disables backoff
- * #164 - add Writer
+ * #164/#202 - add Writer
  * #175 - support server side configurable max RDY count
  * #177 - support broadcast_address
  * #161 - connection pool goroutine safety
