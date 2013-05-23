@@ -165,28 +165,13 @@ func (d *DiskQueue) Empty() error {
 func (d *DiskQueue) doEmpty() error {
 	log.Printf("DISKQUEUE(%s): emptying", d.name)
 
-	if d.readFile != nil {
-		d.readFile.Close()
-		d.readFile = nil
-	}
-
-	if d.writeFile != nil {
-		d.writeFile.Close()
-		d.writeFile = nil
-	}
-
 	// make a list of read file numbers to remove (later)
 	numsToRemove := make([]int64, 0)
 	for i := d.readFileNum; i <= d.writeFileNum; i++ {
 		numsToRemove = append(numsToRemove, i)
 	}
 
-	d.writeFileNum++
-	d.writePos = 0
-	d.readFileNum = d.writeFileNum
-	d.readPos = d.writePos
-	d.nextReadFileNum = d.writeFileNum
-	d.nextReadPos = d.writePos
+	d.skipToNextRWFile()
 	atomic.StoreInt64(&d.depth, 0)
 
 	err := os.Remove(d.metaDataFileName())
@@ -203,6 +188,25 @@ func (d *DiskQueue) doEmpty() error {
 	}
 
 	return err
+}
+
+func (d *DiskQueue) skipToNextRWFile() {
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+
+	if d.writeFile != nil {
+		d.writeFile.Close()
+		d.writeFile = nil
+	}
+
+	d.writeFileNum++
+	d.writePos = 0
+	d.readFileNum = d.writeFileNum
+	d.readPos = 0
+	d.nextReadFileNum = d.writeFileNum
+	d.nextReadPos = 0
 }
 
 // readOne performs a low level filesystem read for a single []byte
@@ -452,8 +456,10 @@ func (d *DiskQueue) ioLoop() {
 					if d.readFileNum == d.writeFileNum {
 						// if you can't properly read from the current write file it's safe to
 						// assume that something is fucked and we should skip the current file too
-						d.writeFile.Close()
-						d.writeFile = nil
+						if d.writeFile != nil {
+							d.writeFile.Close()
+							d.writeFile = nil
+						}
 						d.writeFileNum++
 						d.writePos = 0
 					}
@@ -470,6 +476,7 @@ func (d *DiskQueue) ioLoop() {
 
 					d.readFileNum++
 					d.readPos = 0
+					d.nextReadFileNum = d.readFileNum
 					d.nextReadPos = 0
 
 					// significant state change, make sure we persist
@@ -495,7 +502,7 @@ func (d *DiskQueue) ioLoop() {
 			d.readPos = d.nextReadPos
 			depth := atomic.AddInt64(&d.depth, -1)
 
-			if d.readFileNum == d.writeFileNum && d.readPos == d.writePos {
+			if d.readFileNum >= d.writeFileNum && d.readPos >= d.writePos {
 				// we've reached the end of the diskqueue
 				// if depth isn't 0 something went wrong
 				if depth < 0 {
@@ -504,6 +511,16 @@ func (d *DiskQueue) ioLoop() {
 					log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", d.name, depth)
 				}
 				atomic.StoreInt64(&d.depth, 0)
+
+				if d.readFileNum > d.writeFileNum {
+					log.Printf("ERROR: diskqueue(%s) readFileNum > writeFileNum (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readFileNum, d.writeFileNum)
+					d.skipToNextRWFile()
+				}
+
+				if d.readPos > d.writePos {
+					log.Printf("ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0..", d.name, d.readPos, d.writePos)
+					d.skipToNextRWFile()
+				}
 			}
 
 			// see if we need to clean up the old file
