@@ -231,24 +231,31 @@ func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
 	return nil
 }
 
-func (c *ClientV2) SetOutputBufferSize(size int) error {
+func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 	c.Lock()
 	defer c.Unlock()
 
-	err := c.Writer.Flush()
-	if err != nil {
-		return err
-	}
+	var size int
 
-	if size < 0 || int64(size) > nsqd.options.maxOutputBufferSize {
-		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", size))
-	}
-
-	if size == 0 {
+	switch {
+	case desiredSize == -1:
 		// effectively no buffer (every write will go directly to the wrapped net.Conn)
 		size = 1
+	case desiredSize == 0:
+		// do nothing (use default)
+	case desiredSize >= 64 && desiredSize <= int(nsqd.options.maxOutputBufferSize):
+		size = desiredSize
+	default:
+		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
 	}
-	c.Writer = bufio.NewWriterSize(c.Conn, size)
+
+	if size > 0 {
+		err := c.Writer.Flush()
+		if err != nil {
+			return err
+		}
+		c.Writer = bufio.NewWriterSize(c.Conn, size)
+	}
 
 	return nil
 }
@@ -261,7 +268,7 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		timeout = -1
 	case desiredTimeout == 0:
 		// do nothing (use default)
-	case desiredTimeout >= 1000 &&
+	case desiredTimeout >= 5 &&
 		desiredTimeout <= int(nsqd.options.maxOutputBufferTimeout/time.Millisecond):
 		timeout = (time.Duration(desiredTimeout) * time.Millisecond)
 	default:
