@@ -8,6 +8,7 @@ import (
 	"github.com/bitly/nsq/util"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -113,11 +114,12 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParam
 		}
 	} else {
 		// set cookie
+		host, _, _ := net.SplitHostPort(req.Host)
 		cookie := &http.Cookie{
 			Name:     "t",
 			Value:    selectedTimeString,
 			Path:     "/",
-			Domain:   req.Host,
+			Domain:   host,
 			Expires:  time.Now().Add(time.Duration(720) * time.Hour),
 			HttpOnly: true,
 		}
