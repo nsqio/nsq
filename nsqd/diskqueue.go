@@ -12,6 +12,7 @@ import (
 	"path"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // DiskQueue implements the BackendQueue interface
@@ -22,8 +23,9 @@ type DiskQueue struct {
 	// instantiation time metadata
 	name            string
 	dataPath        string
-	maxBytesPerFile int64 // currently this cannot change once created
-	syncEvery       int64 // number of writes per sync
+	maxBytesPerFile int64         // currently this cannot change once created
+	syncEvery       int64         // number of writes per fsync
+	syncTimeout     time.Duration // duration of time per fsync
 	exitFlag        int32
 	needSync        bool
 
@@ -58,7 +60,7 @@ type DiskQueue struct {
 
 // NewDiskQueue instantiates a new instance of DiskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
-func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64) BackendQueue {
+func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64, syncTimeout time.Duration) BackendQueue {
 	d := DiskQueue{
 		name:              name,
 		dataPath:          dataPath,
@@ -71,6 +73,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 		exitChan:          make(chan int),
 		exitSyncChan:      make(chan int),
 		syncEvery:         syncEvery,
+		syncTimeout:       syncTimeout,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
@@ -524,6 +527,8 @@ func (d *DiskQueue) ioLoop() {
 	var count int64
 	var r chan []byte
 
+	syncTicker := time.NewTicker(d.syncTimeout)
+
 	for {
 		count++
 		// dont sync all the time :)
@@ -563,6 +568,8 @@ func (d *DiskQueue) ioLoop() {
 			d.emptyResponseChan <- d.doEmpty()
 		case dataWrite := <-d.writeChan:
 			d.writeResponseChan <- d.writeOne(dataWrite)
+		case <-syncTicker.C:
+			d.needSync = true
 		case <-d.exitChan:
 			goto exit
 		}
@@ -570,5 +577,6 @@ func (d *DiskQueue) ioLoop() {
 
 exit:
 	log.Printf("DISKQUEUE(%s): closing ... ioLoop", d.name)
+	syncTicker.Stop()
 	d.exitSyncChan <- 1
 }
