@@ -285,7 +285,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(d.writeFileNum)
-		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
 			return err
 		}
