@@ -433,16 +433,22 @@ func (d *DiskQueue) ioLoop() {
 	var err error
 	var count int64
 	var r chan []byte
+	var sync bool
 
 	for {
 		count++
 		// dont sync all the time :)
 		if count == d.syncEvery {
+			count = 0
+			sync = true
+		}
+
+		if sync {
 			err := d.sync()
 			if err != nil {
 				log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
 			}
-			count = 0
+			sync = false
 		}
 
 		if (d.readFileNum < d.writeFileNum) || (d.readPos < d.writePos) {
@@ -479,12 +485,8 @@ func (d *DiskQueue) ioLoop() {
 					d.nextReadFileNum = d.readFileNum
 					d.nextReadPos = 0
 
-					// significant state change, make sure we persist
-					err = d.sync()
-					if err != nil {
-						log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
-						// TODO: should we panic here?
-					}
+					// significant state change, schedule a sync on the next iteration
+					sync = true
 					continue
 				}
 			}
@@ -521,18 +523,16 @@ func (d *DiskQueue) ioLoop() {
 					log.Printf("ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0..", d.name, d.readPos, d.writePos)
 					d.skipToNextRWFile()
 				}
+
+				// significant state change, schedule a sync on the next iteration
+				sync = true
 			}
 
 			// see if we need to clean up the old file
 			if oldReadFileNum != d.nextReadFileNum {
 				// sync every time we start reading from a new file
-				err = d.sync()
-				if err != nil {
-					log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
-					continue
-				}
+				sync = true
 
-				// only if we've successfully synced do we remove old files
 				fn := d.fileName(oldReadFileNum)
 				err = os.Remove(fn)
 				if err != nil {
