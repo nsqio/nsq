@@ -162,39 +162,27 @@ func (d *DiskQueue) Empty() error {
 		return errors.New("exiting")
 	}
 
+	log.Printf("DISKQUEUE(%s): emptying", d.name)
+
 	d.emptyChan <- 1
 	return <-d.emptyResponseChan
 }
 
-func (d *DiskQueue) doEmpty() error {
-	log.Printf("DISKQUEUE(%s): emptying", d.name)
+func (d *DiskQueue) deleteAllFiles() error {
+	err := d.skipToNextRWFile()
 
-	// make a list of read file numbers to remove (later)
-	numsToRemove := make([]int64, 0)
-	for i := d.readFileNum; i <= d.writeFileNum; i++ {
-		numsToRemove = append(numsToRemove, i)
-	}
-
-	d.skipToNextRWFile()
-	atomic.StoreInt64(&d.depth, 0)
-
-	err := os.Remove(d.metaDataFileName())
-	if err != nil && !os.IsNotExist(err) {
-		log.Printf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, err.Error())
-	}
-
-	for _, num := range numsToRemove {
-		fn := d.fileName(num)
-		err = os.Remove(fn)
-		if err != nil && !os.IsNotExist(err) {
-			log.Printf("ERROR: diskqueue(%s) failed to remove data file - %s", d.name, err.Error())
-		}
+	innerErr := os.Remove(d.metaDataFileName())
+	if innerErr != nil && !os.IsNotExist(innerErr) {
+		log.Printf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr.Error())
+		return innerErr
 	}
 
 	return err
 }
 
-func (d *DiskQueue) skipToNextRWFile() {
+func (d *DiskQueue) skipToNextRWFile() error {
+	var err error
+
 	if d.readFile != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -205,12 +193,24 @@ func (d *DiskQueue) skipToNextRWFile() {
 		d.writeFile = nil
 	}
 
+	for i := d.readFileNum; i <= d.writeFileNum; i++ {
+		fn := d.fileName(i)
+		innerErr := os.Remove(fn)
+		if innerErr != nil && !os.IsNotExist(innerErr) {
+			log.Printf("ERROR: diskqueue(%s) failed to remove data file - %s", d.name, innerErr.Error())
+			err = innerErr
+		}
+	}
+
 	d.writeFileNum++
 	d.writePos = 0
 	d.readFileNum = d.writeFileNum
 	d.readPos = 0
 	d.nextReadFileNum = d.writeFileNum
 	d.nextReadPos = 0
+	atomic.StoreInt64(&d.depth, 0)
+
+	return err
 }
 
 // readOne performs a low level filesystem read for a single []byte
@@ -437,27 +437,29 @@ func (d *DiskQueue) checkTailCorruption(depth int64) {
 
 	// we've reached the end of the diskqueue
 	// if depth isn't 0 something went wrong
-	if depth < 0 {
-		log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", d.name, depth)
-	} else if depth > 0 {
-		log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", d.name, depth)
+	if depth != 0 {
+		if depth < 0 {
+			log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", d.name, depth)
+		} else if depth > 0 {
+			log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", d.name, depth)
+		}
+		// force set depth 0
+		atomic.StoreInt64(&d.depth, 0)
+		d.needSync = true
 	}
 
-	// force set depth 0
-	atomic.StoreInt64(&d.depth, 0)
+	if d.readFileNum != d.writeFileNum || d.readPos != d.writePos {
+		if d.readFileNum > d.writeFileNum {
+			log.Printf("ERROR: diskqueue(%s) readFileNum > writeFileNum (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readFileNum, d.writeFileNum)
+		}
 
-	if d.readFileNum > d.writeFileNum {
-		log.Printf("ERROR: diskqueue(%s) readFileNum > writeFileNum (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readFileNum, d.writeFileNum)
+		if d.readPos > d.writePos {
+			log.Printf("ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readPos, d.writePos)
+		}
+
 		d.skipToNextRWFile()
+		d.needSync = true
 	}
-
-	if d.readPos > d.writePos {
-		log.Printf("ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0..", d.name, d.readPos, d.writePos)
-		d.skipToNextRWFile()
-	}
-
-	// significant state change, schedule a sync on the next iteration
-	d.needSync = true
 }
 
 func (d *DiskQueue) moveForward() {
@@ -565,7 +567,7 @@ func (d *DiskQueue) ioLoop() {
 		case r <- dataRead:
 			d.moveForward()
 		case <-d.emptyChan:
-			d.emptyResponseChan <- d.doEmpty()
+			d.emptyResponseChan <- d.deleteAllFiles()
 		case dataWrite := <-d.writeChan:
 			d.writeResponseChan <- d.writeOne(dataWrite)
 		case <-syncTicker.C:
