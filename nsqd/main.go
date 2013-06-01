@@ -33,7 +33,8 @@ var (
 	dataPath        = flag.String("data-path", "", "path to store disk-backed messages")
 	memQueueSize    = flag.Int64("mem-queue-size", 10000, "number of messages to keep in memory (per topic/channel)")
 	maxBytesPerFile = flag.Int64("max-bytes-per-file", 104857600, "number of bytes per diskqueue file before rolling")
-	syncEvery       = flag.Int64("sync-every", 2500, "number of messages between diskqueue syncs")
+	syncEvery       = flag.Int64("sync-every", 2500, "number of messages per diskqueue fsync")
+	syncTimeout     = flag.Duration("sync-timeout", 2*time.Second, "duration of time per diskqueue fsync")
 
 	// msg and command options
 	msgTimeout     = flag.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
@@ -133,6 +134,7 @@ func main() {
 	options.dataPath = *dataPath
 	options.maxBytesPerFile = *maxBytesPerFile
 	options.syncEvery = *syncEvery
+	options.syncTimeout = *syncTimeout
 	options.msgTimeout = msgTimeoutDuration
 	options.maxMsgTimeout = *maxMsgTimeout
 	options.broadcastAddress = *broadcastAddress

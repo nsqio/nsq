@@ -105,7 +105,8 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 		c.ephemeralChannel = true
 		c.backend = NewDummyBackendQueue()
 	} else {
-		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile, options.syncEvery)
+		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile,
+			options.syncEvery, options.syncTimeout)
 	}
 
 	go c.messagePump()

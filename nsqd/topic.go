@@ -31,7 +31,7 @@ func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic 
 	topic := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
-		backend:           NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery),
+		backend:           NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery, options.syncTimeout),
 		incomingMsgChan:   make(chan *nsq.Message, 1),
 		memoryMsgChan:     make(chan *nsq.Message, options.memQueueSize),
 		notifier:          notifier,
