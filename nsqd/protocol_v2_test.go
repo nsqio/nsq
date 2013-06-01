@@ -75,6 +75,18 @@ func identifyFeatureNegotiation(t *testing.T, conn net.Conn) []byte {
 	return data
 }
 
+func identifyOutputBuffering(t *testing.T, conn net.Conn, size int, timeout int, f int32, d string) {
+	ci := make(map[string]interface{})
+	ci["short_id"] = "test"
+	ci["long_id"] = "test"
+	ci["output_buffer_size"] = size
+	ci["output_buffer_timeout"] = timeout
+	cmd, _ := nsq.Identify(ci)
+	err := cmd.Write(conn)
+	assert.Equal(t, err, nil)
+	readValidate(t, conn, f, d)
+}
+
 func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
 	err := nsq.Subscribe(topicName, channelName).Write(conn)
 	assert.Equal(t, err, nil)
@@ -608,6 +620,73 @@ func TestFatalError(t *testing.T) {
 
 	_, err = nsq.ReadResponse(conn)
 	assert.NotEqual(t, err, nil)
+}
+
+func TestOutputBuffering(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.maxOutputBufferSize = 512 * 1024
+	options.maxOutputBufferTimeout = time.Second
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	topicName := "test_output_buffering" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	outputBufferSize := 256 * 1024
+	outputBufferTimeout := 500
+
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, make([]byte, outputBufferSize-1024))
+	topic.PutMessage(msg)
+
+	identifyOutputBuffering(t, conn, outputBufferSize, outputBufferTimeout, nsq.FrameTypeResponse, "OK")
+	sub(t, conn, topicName, "ch")
+
+	err = nsq.Ready(10).Write(conn)
+	assert.Equal(t, err, nil)
+	start := time.Now()
+
+	resp, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+	end := time.Now()
+
+	assert.Equal(t, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout, true)
+
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := nsq.DecodeMessage(data)
+	assert.Equal(t, frameType, nsq.FrameTypeMessage)
+	assert.Equal(t, msgOut.Id, msg.Id)
+}
+
+func TestOutputBufferingValidity(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.maxOutputBufferSize = 512 * 1024
+	options.maxOutputBufferTimeout = time.Second
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identifyOutputBuffering(t, conn, 512*1024, 1000, nsq.FrameTypeResponse, "OK")
+	identifyOutputBuffering(t, conn, -1, -1, nsq.FrameTypeResponse, "OK")
+	identifyOutputBuffering(t, conn, 0, 0, nsq.FrameTypeResponse, "OK")
+	identifyOutputBuffering(t, conn, 512*1024+1, 0, nsq.FrameTypeError, fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1))
+
+	conn, err = mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identifyOutputBuffering(t, conn, 0, 1001, nsq.FrameTypeError, "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {

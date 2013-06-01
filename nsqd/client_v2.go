@@ -12,13 +12,24 @@ import (
 	"time"
 )
 
+type IdentifyDataV2 struct {
+	ShortId             string `json:"short_id"`
+	LongId              string `json:"long_id"`
+	HeartbeatInterval   int    `json:"heartbeat_interval"`
+	OutputBufferSize    int    `json:"output_buffer_size"`
+	OutputBufferTimeout int    `json:"output_buffer_timeout"`
+	FeatureNegotiation  bool   `json:"feature_negotiation"`
+}
+
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
 	// buffered IO
-	Reader *bufio.Reader
-	Writer *bufio.Writer
+	Reader                        *bufio.Reader
+	Writer                        *bufio.Writer
+	OutputBufferTimeout           *time.Ticker
+	OutputBufferTimeoutUpdateChan chan time.Duration
 
 	State           int32
 	ReadyCount      int64
@@ -53,6 +64,12 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 
 	c := &ClientV2{
 		Conn: conn,
+
+		Reader:                        bufio.NewReaderSize(conn, 16*1024),
+		Writer:                        bufio.NewWriterSize(conn, 16*1024),
+		OutputBufferTimeout:           time.NewTicker(5 * time.Millisecond),
+		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
+
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
 		ReadyStateChan:  make(chan int, 1),
@@ -60,8 +77,6 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		ConnectTime:     time.Now(),
 		ShortIdentifier: identifier,
 		LongIdentifier:  identifier,
-		Reader:          bufio.NewReaderSize(conn, 16*1024),
-		Writer:          bufio.NewWriterSize(conn, 16*1024),
 		State:           nsq.StateInit,
 		SubEventChan:    make(chan *Channel, 1),
 
@@ -76,6 +91,20 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 
 func (c *ClientV2) String() string {
 	return c.RemoteAddr().String()
+}
+
+func (c *ClientV2) Identify(data IdentifyDataV2) error {
+	c.ShortIdentifier = data.ShortId
+	c.LongIdentifier = data.LongId
+	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
+	if err != nil {
+		return err
+	}
+	err = c.SetOutputBufferSize(data.OutputBufferSize)
+	if err != nil {
+		return err
+	}
+	return c.SetOutputBufferTimeout(data.OutputBufferTimeout)
 }
 
 func (c *ClientV2) Stats() ClientStats {
@@ -197,6 +226,60 @@ func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
 		default:
 		}
 		c.HeartbeatInterval = interval
+	}
+
+	return nil
+}
+
+func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
+	c.Lock()
+	defer c.Unlock()
+
+	var size int
+
+	switch {
+	case desiredSize == -1:
+		// effectively no buffer (every write will go directly to the wrapped net.Conn)
+		size = 1
+	case desiredSize == 0:
+		// do nothing (use default)
+	case desiredSize >= 64 && desiredSize <= int(nsqd.options.maxOutputBufferSize):
+		size = desiredSize
+	default:
+		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
+	}
+
+	if size > 0 {
+		err := c.Writer.Flush()
+		if err != nil {
+			return err
+		}
+		c.Writer = bufio.NewWriterSize(c.Conn, size)
+	}
+
+	return nil
+}
+
+func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
+	var timeout time.Duration
+
+	switch {
+	case desiredTimeout == -1:
+		timeout = -1
+	case desiredTimeout == 0:
+		// do nothing (use default)
+	case desiredTimeout >= 5 &&
+		desiredTimeout <= int(nsqd.options.maxOutputBufferTimeout/time.Millisecond):
+		timeout = (time.Duration(desiredTimeout) * time.Millisecond)
+	default:
+		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
+	}
+
+	if desiredTimeout != 0 {
+		select {
+		case c.OutputBufferTimeoutUpdateChan <- timeout:
+		default:
+		}
 	}
 
 	return nil
