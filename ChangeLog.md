@@ -6,11 +6,16 @@
 
 New Features / Enhancements:
 
+ * #214 - add --sync-timeout for time based fsync, improve when diskqueue syncs
+ * #196 - client configurable output buffering
  * #190 - nsq_tail generates a random #ephemeral channel
 
 Bug Fixes:
 
- * #203 - diskqueue depth accounting consistency
+ * #217 - fix new topic channel creation regression from #176
+ * #212 - dont use port in nsqadmin cookies
+ * #214 - dont open diskqueue writeFile with O_APPEND
+ * #203/#211 - diskqueue depth accounting consistency
  * #207 - failure to write a heartbeat is fatal / reduce error log noise
  * #208 - fix travis build script
  * #206 - use broadcast address for statsd prefix
@@ -171,7 +176,7 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
- * #204 - fix early termination block
+ * #204 - fix early termination blocking
  * #186 - max backoff duration of 0 disables backoff
  * #164/#202 - add Writer
  * #175 - support server side configurable max RDY count
