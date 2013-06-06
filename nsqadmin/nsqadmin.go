@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"time"
 )
 
 var (
@@ -17,6 +18,7 @@ var (
 	graphiteUrl              = flag.String("graphite-url", "", "URL to graphite HTTP address")
 	proxyGraphite            = flag.Bool("proxy-graphite", false, "Proxy HTTP requests to graphite")
 	useStatsdPrefixes        = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
+	statsdInterval           = flag.Duration("statsd-interval", 60*time.Second, "duration of time nsqd is configured to push to statsd (must match)")
 	lookupdHTTPAddrs         = util.StringArray{}
 	nsqdHTTPAddrs            = util.StringArray{}
 	notificationHTTPEndpoint = flag.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
