@@ -49,8 +49,8 @@ var (
 	maxOutputBufferTimeout = flag.Duration("max-output-buffer-timeout", 1*time.Second, "maximum client configurable duration of time between flushing to a client")
 
 	// statsd integration options
-	statsdAddress  = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for writing stats")
-	statsdInterval = flag.Int("statsd-interval", 30, "seconds between pushing to statsd")
+	statsdAddress  = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for pushing stats")
+	statsdInterval = flag.String("statsd-interval", "60s", "duration between pushing to statsd")
 )
 
 func init() {
@@ -105,26 +105,15 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if *statsdAddress != "" {
+		// flagToDuration will fatally error if it is invalid
+		statsdInterval := flagToDuration(*statsdInterval, time.Second, "--statsd-interval")
 		undered := fmt.Sprintf("%s_%d", strings.Replace(*broadcastAddress, ".", "_", -1), httpAddr.Port)
 		prefix := fmt.Sprintf("nsq.%s.", undered)
-		go statsdLoop(*statsdAddress, prefix, *statsdInterval)
+		go statsdLoop(*statsdAddress, prefix, statsdInterval)
 	}
 
-	// for backwards compatibility if --msg-timeout only
-	// contains numbers then default to ms
-	var msgTimeoutDuration time.Duration
-	if regexp.MustCompile(`^[0-9]+$`).MatchString(*msgTimeout) {
-		intMsgTimeout, err := strconv.Atoi(*msgTimeout)
-		if err != nil {
-			log.Fatalf("ERROR: failed to Atoi --msg-timeout %s - %s", *msgTimeout, err.Error())
-		}
-		msgTimeoutDuration = time.Duration(intMsgTimeout) * time.Millisecond
-	} else {
-		msgTimeoutDuration, err = time.ParseDuration(*msgTimeout)
-		if err != nil {
-			log.Fatalf("ERROR: failed to ParseDuration --msg-timeout %s - %s", *msgTimeout, err.Error())
-		}
-	}
+	// flagToDuration will fatally error if it is invalid
+	msgTimeoutDuration := flagToDuration(*msgTimeout, time.Millisecond, "--msg-timeout")
 
 	options := NewNsqdOptions()
 	options.maxRdyCount = *maxRdyCount
@@ -155,4 +144,22 @@ func main() {
 	nsqd.Main()
 	<-exitChan
 	nsqd.Exit()
+}
+
+// this is a helper to maintain backwards compatibility for flags which
+// were originally Int before we realized there was a Duration flag :)
+func flagToDuration(val string, mult time.Duration, flag string) time.Duration {
+	if regexp.MustCompile(`^[0-9]+$`).MatchString(val) {
+		intVal, err := strconv.Atoi(val)
+		if err != nil {
+			log.Fatalf("ERROR: failed to Atoi %s=%s - %s", flag, val, err.Error())
+		}
+		return time.Duration(intVal) * mult
+	}
+
+	duration, err := time.ParseDuration(val)
+	if err != nil {
+		log.Fatalf("ERROR: failed to ParseDuration %s=%s - %s", flag, val, err.Error())
+	}
+	return duration
 }

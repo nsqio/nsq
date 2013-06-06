@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func statsdLoop(addr string, prefix string, interval int) {
+func statsdLoop(addr string, prefix string, interval time.Duration) {
 	lastStats := make([]TopicStats, 0)
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	ticker := time.NewTicker(interval)
 	for {
 		select {
 		case <-ticker.C:
