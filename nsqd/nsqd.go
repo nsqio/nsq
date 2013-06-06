@@ -275,7 +275,6 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		// release our global nsqd lock, and switch to a more granular topic lock while we init our
 		// channels from lookupd. This blocks concurrent PutMessages to this topic.
 		t.Lock()
-		defer t.Unlock()
 		n.Unlock()
 		// if using lookupd, make a blocking call to get the topics, and immediately create them.
 		// this makes sure that any message received is buffered to the right channels
@@ -284,6 +283,18 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 			for _, channelName := range channelNames {
 				t.getOrCreateChannel(channelName)
 			}
+		}
+		t.Unlock()
+
+		// NOTE: I would prefer for this to only happen in topic.GetChannel() but we're special
+		// casing the code above so that we can control the locks such that it is impossible
+		// for a message to be written to a (new) topic while we're looking up channels
+		// from lookupd...
+		//
+		// update messagePump state
+		select {
+		case t.channelUpdateChan <- 1:
+		case <-t.exitChan:
 		}
 	}
 	return t
