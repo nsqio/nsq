@@ -172,7 +172,8 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	params.Set("margin", "0")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
-	params.Set("target", fmt.Sprintf("sumSeries(%s)", target))
+	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
+	params.Set("target", fmt.Sprintf(`summarize(sumSeries(%s),"%s","avg")`, target, interval))
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
@@ -188,9 +189,11 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	params.Set("fgcolor", "999999")
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
-	target = fmt.Sprintf(`summarize(sumSeries(%s),"1min","avg")`, target)
+	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
+	target = fmt.Sprintf(`summarize(sumSeries(%s),"%s","avg")`, target, interval)
 	if metricType(key) != "gauge" {
-		target = fmt.Sprintf(`scaleToSeconds(%s,1)`, target)
+		scale := fmt.Sprintf("%.04f", 1/(*statsdInterval/time.Second))
+		target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
 	}
 	params.Set("target", target)
 	params.Set("from", g.GraphInterval.GraphFrom)
@@ -214,8 +217,10 @@ func metricType(key string) string {
 
 func rateQuery(target string) string {
 	params := url.Values{}
-	params.Set("from", "-2min")
-	params.Set("until", "-1min")
+	fromInterval := fmt.Sprintf("-%dsec", *statsdInterval*2/time.Second)
+	params.Set("from", fromInterval)
+	untilInterval := fmt.Sprintf("-%dsec", *statsdInterval/time.Second)
+	params.Set("until", untilInterval)
 	params.Set("format", "json")
 	params.Set("target", fmt.Sprintf("sumSeries(%s)", target))
 	return fmt.Sprintf("/render?%s", params.Encode())
@@ -238,7 +243,8 @@ func parseRateResponse(body []byte) ([]byte, error) {
 	if rate < 0 {
 		rateStr = "N/A"
 	} else {
-		rateStr = fmt.Sprintf("%.2f", rate/60)
+		rateDivisor := *statsdInterval / time.Second
+		rateStr = fmt.Sprintf("%.2f", rate/float64(rateDivisor))
 	}
 	return json.Marshal(map[string]string{"datapoint": rateStr})
 }
