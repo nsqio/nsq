@@ -3,6 +3,8 @@
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:
 
+ * [nsq-0.2.20.darwin-amd64.tar.gz][0.2.20_darwin]
+ * [nsq-0.2.20.linux-amd64.tar.gz][0.2.20_linux]
  * [nsq-0.2.19.darwin-amd64.tar.gz][0.2.19_darwin]
  * [nsq-0.2.19.linux-amd64.tar.gz][0.2.19_linux]
  * [nsq-0.2.18.darwin-amd64.tar.gz][0.2.18_darwin]
