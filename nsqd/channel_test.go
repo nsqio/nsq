@@ -155,3 +155,48 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	}
 
 }
+
+// ensure that we can push $n messages through a topic and get the sampled
+// percentage of those messages out the channel
+func TestPutMessageOnSampledChannel(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	nsqd = NewNSQd(1, NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("sampled_channel#sampleRate=0.25")
+	assert.Equal(t, channel.params.sampleRate, int32(25))
+	log.Println("Channel Sample Rate: ", channel.params.sampleRate)
+
+	var inFlightMessageCount int32
+
+	for i := 0; i < 100; i++ {
+		var id nsq.MessageID
+		msg := nsq.NewMessage(id, []byte("test"))
+		topic.PutMessage(msg)
+	}
+
+	// Churn messages until the queue is empty and see how many messages are inFlight
+	for channel.Depth() > int64(0) {
+		select {
+		case outputMsg := <-channel.clientMsgChan:
+			// Just to use outputMsg
+			assert.Equal(t, outputMsg.Id, outputMsg.Id)
+			inFlightMessageCount++
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	// Check to see if inFlightMessageCount is roughly between 20-30
+	// Statisical anomalies of randomness can allow for slight deviations
+	if (inFlightMessageCount > 20) && (inFlightMessageCount < 30) {
+		assert.Equal(t, inFlightMessageCount, inFlightMessageCount)
+	} else {
+		assert.NotEqual(t, inFlightMessageCount, inFlightMessageCount)
+	}
+
+	assert.NotEqual(t, inFlightMessageCount, int32(100))
+}

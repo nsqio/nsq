@@ -9,6 +9,8 @@ import (
 	"github.com/bitly/nsq/util/pqueue"
 	"log"
 	"math"
+	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,6 +47,7 @@ type Channel struct {
 	options  *nsqdOptions
 
 	backend BackendQueue
+	params  channelParams
 
 	incomingMsgChan chan *nsq.Message
 	memoryMsgChan   chan *nsq.Message
@@ -54,11 +57,10 @@ type Channel struct {
 	exitFlag        int32
 
 	// state tracking
-	clients          []Consumer
-	paused           int32
-	ephemeralChannel bool
-	deleteCallback   func(*Channel)
-	deleter          sync.Once
+	clients        []Consumer
+	paused         int32
+	deleteCallback func(*Channel)
+	deleter        sync.Once
 
 	// TODO: these can be DRYd up
 	deferredMessages map[nsq.MessageID]*pqueue.Item
@@ -81,6 +83,12 @@ type inFlightMessage struct {
 	ts     time.Time
 }
 
+// Parameter struct
+type channelParams struct {
+	ephemeralChannel bool
+	sampleRate       int32
+}
+
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	notifier Notifier, deleteCallback func(*Channel)) *Channel {
@@ -101,8 +109,40 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 
 	c.initPQ()
 
-	if strings.HasSuffix(channelName, "#ephemeral") {
-		c.ephemeralChannel = true
+	// Split the channel name into parameters
+	cParams := strings.SplitN(channelName, "#", 2)
+	if len(cParams) > 1 {
+		channelParamsString := strings.Split(cParams[1], ";")
+		for _, param := range channelParamsString {
+			var paramField = ""
+			var paramValue = ""
+			if strings.Contains(param, "=") {
+				p := strings.Split(param, "=")
+				paramField = p[0]
+				paramValue = p[1]
+			} else {
+				paramField = param
+				paramValue = "true"
+			}
+			switch strings.ToLower(paramField) {
+			case "ephemeral":
+				if paramValue == "true" {
+					c.params.ephemeralChannel = true
+				} else {
+					c.params.ephemeralChannel = false
+				}
+			case "samplerate":
+				sampleRate, err := strconv.ParseFloat(paramValue, 64)
+				if err != nil {
+					log.Printf("Float conversion error on %s: Channel creation failed", paramValue)
+				}
+				c.params.sampleRate = int32(sampleRate * float64(100))
+			}
+		}
+	}
+
+	// Create the channels
+	if c.params.ephemeralChannel == true {
 		c.backend = NewDummyBackendQueue()
 	} else {
 		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile,
@@ -392,7 +432,7 @@ func (c *Channel) RemoveClient(client Consumer) {
 		c.clients = finalClients
 	}
 
-	if len(c.clients) == 0 && c.ephemeralChannel == true {
+	if len(c.clients) == 0 && c.params.ephemeralChannel == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
 }
@@ -570,6 +610,13 @@ func (c *Channel) messagePump() {
 			}
 		case <-c.exitChan:
 			goto exit
+		}
+
+		// If we are sampling, discard the sampled messages here
+		if c.params.sampleRate > 0 {
+			if rand.Int31n(100) > c.params.sampleRate {
+				continue
+			}
 		}
 
 		msg.Attempts++
