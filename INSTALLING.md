@@ -51,6 +51,8 @@ Python module (for building Python readers)
 
 See [production notes](docs/production.md).
 
+[0.2.20_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.20.darwin-amd64.tar.gz
+[0.2.20_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.20.linux-amd64.tar.gz
 [0.2.19_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.19.darwin-amd64.tar.gz
 [0.2.19_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.19.linux-amd64.tar.gz
 [0.2.18_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.18.darwin-amd64.tar.gz
