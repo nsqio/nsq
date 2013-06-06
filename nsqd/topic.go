@@ -60,12 +60,15 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 	t.Lock()
 	channel, isNew := t.getOrCreateChannel(channelName)
 	t.Unlock()
+
 	if isNew {
+		// update messagePump state
 		select {
 		case t.channelUpdateChan <- 1:
 		case <-t.exitChan:
 		}
 	}
+
 	return channel
 }
 
@@ -112,6 +115,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// (so that we dont leave any messages around)
 	channel.Delete()
 
+	// update messagePump state
 	select {
 	case t.channelUpdateChan <- 1:
 	case <-t.exitChan:
