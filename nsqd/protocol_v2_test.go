@@ -648,9 +648,9 @@ func TestOutputBuffering(t *testing.T) {
 	identifyOutputBuffering(t, conn, outputBufferSize, outputBufferTimeout, nsq.FrameTypeResponse, "OK")
 	sub(t, conn, topicName, "ch")
 
+	start := time.Now()
 	err = nsq.Ready(10).Write(conn)
 	assert.Equal(t, err, nil)
-	start := time.Now()
 
 	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
