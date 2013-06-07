@@ -2,7 +2,26 @@
 
 ## Binaries
 
-### 0.2.21-alpha
+### 0.2.21 - 2013-06-07
+
+**Upgrading from 0.2.20**: there are no backward incompatible changes in this release.
+
+This release introduces a significant new client feature as well as a slew of consistency and
+recovery improvements to diskqueue.
+
+First, we expanded the feature negotiation options for clients. There are many cases where you want
+different output buffering semantics from `nsqd` to your client. You can now control both
+output buffer size and the output buffer timeout via new fields in the `IDENTIFY` command. You can
+even disable output buffering if low latency is a priority.
+
+You can now specify a duration between fsyncs via `--sync-timeout`. This is a far better way to
+manage when the process fsyncs messages to disk (vs the existing `--sync-every` which is based on #
+of messages). `--sync-every` is now considered a deprecated option and will be removed in a future
+release.
+
+Finally, `0.2.20` introduced a significant regression in #176 where a topic would not write messages
+to its channels. It is recommended that all users running `0.2.20` upgrade to this release. For
+additional information see #217.
 
 New Features / Enhancements:
 
@@ -12,16 +31,18 @@ New Features / Enhancements:
 
 Bug Fixes:
 
+ * #218/#220 - expose --statsd-interval for nsqadmin to handle non 60s statsd intervals
  * #217 - fix new topic channel creation regression from #176
  * #212 - dont use port in nsqadmin cookies
  * #214 - dont open diskqueue writeFile with O_APPEND
  * #203/#211 - diskqueue depth accounting consistency
  * #207 - failure to write a heartbeat is fatal / reduce error log noise
- * #208 - fix travis build script
  * #206 - use broadcast address for statsd prefix
  * #205 - cleanup example utils exit
 
 ### 0.2.20 - 2013-05-13
+
+**Upgrading from 0.2.19**: there are no backward incompatible changes in this release.
 
 New Features / Enhancements:
 

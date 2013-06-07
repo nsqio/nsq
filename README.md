@@ -18,7 +18,7 @@ data format (messages can be JSON, [MsgPack][msgpack], [Protocol Buffers][go-pro
 else). Official Go and Python libraries are available out of the box and, if you're interested in
 building your own client, there's a [protocol spec][protocol] (see [client libraries](#client)).
 
-The latest stable release is **[0.2.20][latest_tag]** ([ChangeLog][changelog]). We publish [binary
+The latest stable release is **[0.2.21][latest_tag]** ([ChangeLog][changelog]). We publish [binary
 releases][binary] for linux and darwin.
 
 NOTE: master is our *development* branch and may *not* be stable at all times.
@@ -214,7 +214,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [design]: docs/design.md
 [docs]: docs
 [patterns]: docs/patterns.md
-[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.20
+[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.21
 [pynsq_pypi]: http://pypi.python.org/pypi/pynsq
 [nodensq_npm]: https://npmjs.org/package/nsq
 [ruby_nsq_rubygems]: http://rubygems.org/gems/ruby_nsq

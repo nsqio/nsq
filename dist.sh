@@ -8,6 +8,7 @@ mkdir -p $DIR/dist
 os=$(go env GOOS)
 arch=$(go env GOARCH)
 version=$(cat $DIR/util/binary_version.go | grep "const BINARY_VERSION" | awk '{print $NF}' | sed 's/"//g')
+goversion=$(go version | awk '{print $3}')
 
 TMPGOPATH=$(mktemp -d -t nsqgopath)
 mkdir -p $TMPGOPATH/src
@@ -31,7 +32,7 @@ echo "... running tests"
 for os in linux darwin; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsq)
-    TARGET="nsq-$version.$os-$arch"
+    TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 make || exit 1
     make DESTDIR=$BUILD/$TARGET PREFIX= install
     pushd $BUILD

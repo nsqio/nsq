@@ -38,21 +38,44 @@ Commands are line oriented and structured as follows:
 
   * `IDENTIFY` - update client metadata on the server
     
-    NOTE: as of 0.2.19+ nsqd has an option to configure its max heartbeat interval
-    
         IDENTIFY\n
         [ 4-byte size in bytes ][ N-byte JSON data ]
     
     NOTE: this command takes a size prefixed JSON body, relevant fields:
     
-        <short_id> - an identifier used as a short-form descriptor (ie. short hostname)
-        <long_id> - an identifier used as a long-form descriptor (ie. fully-qualified hostname)
-        <heartbeat_interval> - milliseconds between heartbeats where:
-                               1000 <= heartbeat_interval <= configured_max
-                               (may also be set to -1 to disable heartbeats)
-        <feature_negotiation> - boolean used to indicate that the client supports feature
-                                negotiation.  if the server is capable, it will send back 
-                                a JSON payload of features and metadata.
+    **`short_id`** an identifier used as a short-form descriptor (ie. short hostname)
+    
+    **`long_id`** an identifier used as a long-form descriptor (ie. fully-qualified hostname)
+    
+    **`heartbeat_interval`** (nsqd 0.2.19+) milliseconds between heartbeats where:
+    
+        1000 <= heartbeat_interval <= configured_max
+        (may also be set to -1 to disable heartbeats)
+        
+        defaults to --client-timeout / 2
+        --max-heartbeat-interval (nsqd flag) controls the max
+    
+    **`output_buffer_size`** (nsqd 0.2.21+) the size in bytes of the buffer nsqd will use when
+                             writing to this client.
+        
+        64 <= output_buffer_size <= configured_max
+        (may also be set to -1 to disable output buffering)
+        
+        defaults to 16kb
+        --max-output-buffer-size (nsqd flag) controls the max
+    
+    **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
+                                buffered will be flushed to this client.
+        
+        5ms <= output_buffer_timeout <= configured_max
+        (may also be set to -1 to disable timeouts on output buffering)
+        
+        defaults to 5ms
+        --max-output-buffer-timeout (nsqd flag) controls the max
+    
+    **`feature_negotiation`** bool used to indicate that the client supports feature negotiation. 
+                              If the server is capable, it will send back a JSON payload of 
+                              features and metadata.
     
     Success Response:
     
@@ -124,7 +147,7 @@ Commands are line oriented and structured as follows:
 
   * `RDY` - update `RDY` state (indicate you are ready to receive messages)
     
-    NOTE: as of 0.2.20+ nsqd has an option to configure its max RDY count
+    NOTE: as of 0.2.20+ nsqd has --max-rdy-count to configure its max RDY count
     
         RDY <count>\n
         
