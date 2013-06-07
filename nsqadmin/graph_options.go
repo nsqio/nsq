@@ -192,7 +192,7 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
 	target = fmt.Sprintf(`summarize(sumSeries(%s),"%s","avg")`, target, interval)
 	if metricType(key) != "gauge" {
-		scale := fmt.Sprintf("%.04f", 1/(*statsdInterval/time.Second))
+		scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
 		target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
 	}
 	params.Set("target", target)
