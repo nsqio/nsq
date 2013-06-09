@@ -32,7 +32,7 @@ New Features / Enhancements:
 Bug Fixes:
 
  * #218/#220 - expose --statsd-interval for nsqadmin to handle non 60s statsd intervals
- * #217 - fix new topic channel creation regression from #176
+ * #217 - fix new topic channel creation regression from #176 (thanks @elubow)
  * #212 - dont use port in nsqadmin cookies
  * #214 - dont open diskqueue writeFile with O_APPEND
  * #203/#211 - diskqueue depth accounting consistency
@@ -43,6 +43,27 @@ Bug Fixes:
 ### 0.2.20 - 2013-05-13
 
 **Upgrading from 0.2.19**: there are no backward incompatible changes in this release.
+
+This release adds a couple of convenient features (such as adding the ability to empty a *topic*)
+and continues our work to reduce garbage produced at runtime to relieve GC pressure in the Go
+runtime.
+
+`nsqd` now has two new flags to control the max value clients can use to set their heartbeat
+interval as well as adjust a clients maximum RDY count. This is all set/communicated via `IDENTIFY`.
+
+`nsqadmin` now displays `nsqd` -> `nsqlookupd` connections in the "nodes" view. This is useful for
+visualizing how the topology is connected as well as situations where `--broadcast-address` is being
+used incorrectly.
+
+`nsq_to_http` now has a "host pool" mode where upstream state will be adjusted based on
+successful/failed requests and for failures, upstreams will be exponentially backed off. This is an
+incredibly useful routing mode.
+
+As for bugs, we fixed an issue where "fatal" client errors were not actually being treated as fatal.
+Under certain conditions deleting a topic would not clean up all of its files on disk. There was a
+reported issue where the `--data-path` was not writable by the process and this was only discovered
+after message flow began. We added a writability check at startup to improve feedback. Finally.
+`deferred_count` was being sent as a counter value to statsd, it should be a gauge.
 
 New Features / Enhancements:
 
@@ -70,6 +91,18 @@ Bug Fixes:
 
 **Upgrading from 0.2.18**: there are no backward incompatible changes in this release.
 
+This release is a small release that introduces one major client side feature and resolves one
+critical bug.
+
+`nsqd` clients can now configure their own heartbeat interval. This is important because as of
+`0.2.18` *all* clients (including producers) received heartbeats by default. In certain cases
+receiving a heartbeat complicated "simple" clients that just wanted to produce messages and not
+handle asynchronous responses. This gives flexibility for the client to decide how it would like
+behave.
+
+A critical bug was discovered where emptying a channel would leave client in-flight state
+inconsistent (it would not zero) which limited deliverability of messages to those clients.
+
 New Features / Enhancements:
 
  * #167 - 'go get' compatibility
@@ -78,7 +111,7 @@ New Features / Enhancements:
 Bug Fixes:
 
  * #171 - fix race conditions identified testing against go 1.1 (scheduler improvements)
- * #160 - empty channel left in-flight count inconsistent
+ * #160 - empty channel left in-flight count inconsistent (thanks @dmarkham)
 
 ### 0.2.18 - 2013-02-28
 
@@ -86,6 +119,16 @@ Bug Fixes:
 that subscribed would receive heartbeats, excluding TCP *producers*).
 
 **Upgrading from 0.2.16**: follow the notes in the 0.2.17 changelog for upgrading from 0.2.16.
+
+Beyond the important note above regarding heartbeats this release includes `nsq_tail`, an extremely
+useful utility application that can be used to introspect a topic on the command line. If statsd is
+enabled (and graphite in `nsqadmin`) we added the ability to retrieve rates for display in
+`nsqadmin`.
+
+We resolved a few critical issues with data consistency in `nsqlookupd` when channels and topics are
+deleted. First, deleting a topic would cause that producer to disappear from `nsqlookupd` for all
+topics. Second, deleting a channel would cause that producer to disappear from the topic list in
+`nsqlookupd`.
 
 New Features / Enhancements:
 
