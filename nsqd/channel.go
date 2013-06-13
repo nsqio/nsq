@@ -132,11 +132,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 					c.params.ephemeralChannel = false
 				}
 			case "samplerate":
-				sampleRate, err := strconv.ParseFloat(paramValue, 64)
-				if err != nil {
-					log.Printf("Float conversion error on %s: Channel creation failed", paramValue)
-				}
-				c.params.sampleRate = int32(sampleRate * float64(100))
+				c.params.sampleRate = c.validateSampleRate(paramValue)
 			}
 		}
 	}
@@ -158,6 +154,28 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	go notifier.Notify(c)
 
 	return c
+}
+
+// Need to validate the sampleRate passed in on channel instantiation
+func (c *Channel) validateSampleRate(dirtySampleRate string) int32 {
+	sampleRateFloat, err := strconv.ParseFloat(dirtySampleRate, 64)
+	// If we get an error when trying to ParseFloat, we don't want the channel
+	// creation to fail, so we create a normal, unsampled channel
+	if err != nil {
+		log.Printf("Float conversion error on %s: Setting sample rate to 0", dirtySampleRate)
+		return int32(0)
+	}
+
+	// If it's between 0.0 and 1.0, consider it a percentage and multiply by 100
+	if (float64(sampleRateFloat) > float64(0)) && (float64(sampleRateFloat) <= float64(1)) {
+		return int32(sampleRateFloat * float64(100))
+		// If 1<rate<100, consider it a number and use that (100 means no sampling)
+	} else if (float64(sampleRateFloat) > float64(1)) && (float64(sampleRateFloat) < float64(100)) {
+		return int32(sampleRateFloat)
+		// Fallback is not to sample so we set it to 0
+	} else {
+		return int32(0)
+	}
 }
 
 func (c *Channel) initPQ() {
