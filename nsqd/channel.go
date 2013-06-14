@@ -176,6 +176,8 @@ func (c *Channel) validateSampleRate(dirtySampleRate string) int32 {
 	} else {
 		return int32(0)
 	}
+
+	return int32(0)
 }
 
 func (c *Channel) initPQ() {
