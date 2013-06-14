@@ -109,32 +109,10 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 
 	c.initPQ()
 
-	// Split the channel name into parameters
-	cParams := strings.SplitN(channelName, "#", 2)
-	if len(cParams) > 1 {
-		channelParamsString := strings.Split(cParams[1], ";")
-		for _, param := range channelParamsString {
-			var paramField = ""
-			var paramValue = ""
-			if strings.Contains(param, "=") {
-				p := strings.Split(param, "=")
-				paramField = p[0]
-				paramValue = p[1]
-			} else {
-				paramField = param
-				paramValue = "true"
-			}
-			switch strings.ToLower(paramField) {
-			case "ephemeral":
-				if paramValue == "true" {
-					c.params.ephemeralChannel = true
-				} else {
-					c.params.ephemeralChannel = false
-				}
-			case "samplerate":
-				c.params.sampleRate = c.validateSampleRate(paramValue)
-			}
-		}
+	// Split the channel name into parameters if any are passed
+	channelParamsString := strings.SplitN(channelName, "#", 2)
+	if len(channelParamsString) > 1 {
+		c.setChannelParameters(channelParamsString)
 	}
 
 	// Create the channels
@@ -154,6 +132,34 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	go notifier.Notify(c)
 
 	return c
+}
+
+// Set the channel parameters for the channel by parsing the channel name string
+func (c *Channel) setChannelParameters(paramString []string) {
+	channelParams := strings.Split(paramString[1], ";")
+	// Iterate over all parameters and set the valid ones on the channel
+	for _, param := range channelParams {
+		var paramField = ""
+		var paramValue = ""
+		if strings.Contains(param, "=") {
+			p := strings.Split(param, "=")
+			paramField = p[0]
+			paramValue = p[1]
+		} else {
+			paramField = param
+			paramValue = "true"
+		}
+		switch strings.ToLower(paramField) {
+		case "ephemeral":
+			if paramValue == "true" {
+				c.params.ephemeralChannel = true
+			} else {
+				c.params.ephemeralChannel = false
+			}
+		case "samplerate":
+			c.params.sampleRate = c.validateSampleRate(paramValue)
+		}
+	}
 }
 
 // Need to validate the sampleRate passed in on channel instantiation
