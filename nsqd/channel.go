@@ -46,8 +46,8 @@ type Channel struct {
 	notifier Notifier
 	options  *nsqdOptions
 
-	backend BackendQueue
-	params  channelParams
+	backend    BackendQueue
+	properties channelProperties
 
 	incomingMsgChan chan *nsq.Message
 	memoryMsgChan   chan *nsq.Message
@@ -83,8 +83,8 @@ type inFlightMessage struct {
 	ts     time.Time
 }
 
-// Parameter struct
-type channelParams struct {
+// Channel property struct
+type channelProperties struct {
 	ephemeralChannel bool
 	sampleRate       int32
 }
@@ -109,14 +109,14 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 
 	c.initPQ()
 
-	// Split the channel name into parameters if any are passed
-	channelParamsString := strings.SplitN(channelName, "#", 2)
-	if len(channelParamsString) > 1 {
-		c.setChannelParameters(channelParamsString)
+	// Split the channel name into properties if any are passed
+	channelPropertiesSlice := strings.SplitN(channelName, "#", 2)
+	if len(channelPropertiesSlice) > 1 {
+		c.setChannelProperties(channelPropertiesSlice)
 	}
 
 	// Create the channels
-	if c.params.ephemeralChannel == true {
+	if c.properties.ephemeralChannel == true {
 		c.backend = NewDummyBackendQueue()
 	} else {
 		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile,
@@ -134,30 +134,30 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	return c
 }
 
-// Set the channel parameters for the channel by parsing the channel name string
-func (c *Channel) setChannelParameters(paramString []string) {
-	channelParams := strings.Split(paramString[1], ";")
-	// Iterate over all parameters and set the valid ones on the channel
-	for _, param := range channelParams {
-		var paramField = ""
-		var paramValue = ""
-		if strings.Contains(param, "=") {
-			p := strings.Split(param, "=")
-			paramField = p[0]
-			paramValue = p[1]
+// Set the channel properties for the channel by parsing the channel name string properties
+func (c *Channel) setChannelProperties(propertySlice []string) {
+	channelProperties := strings.Split(propertySlice[1], ";")
+	// Iterate over all properties and set the valid ones on the channel
+	for _, property := range channelProperties {
+		var propertyField = ""
+		var propertyValue = ""
+		if strings.Contains(property, "=") {
+			p := strings.Split(property, "=")
+			propertyField = p[0]
+			propertyValue = p[1]
 		} else {
-			paramField = param
-			paramValue = "true"
+			propertyField = property
+			propertyValue = "true"
 		}
-		switch strings.ToLower(paramField) {
+		switch strings.ToLower(propertyField) {
 		case "ephemeral":
-			if paramValue == "true" {
-				c.params.ephemeralChannel = true
+			if propertyValue == "true" {
+				c.properties.ephemeralChannel = true
 			} else {
-				c.params.ephemeralChannel = false
+				c.properties.ephemeralChannel = false
 			}
 		case "samplerate":
-			c.params.sampleRate = c.validateSampleRate(paramValue)
+			c.properties.sampleRate = c.validateSampleRate(propertyValue)
 		}
 	}
 }
@@ -455,7 +455,7 @@ func (c *Channel) RemoveClient(client Consumer) {
 		c.clients = finalClients
 	}
 
-	if len(c.clients) == 0 && c.params.ephemeralChannel == true {
+	if len(c.clients) == 0 && c.properties.ephemeralChannel == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
 }
@@ -636,8 +636,8 @@ func (c *Channel) messagePump() {
 		}
 
 		// If we are sampling, discard the sampled messages here
-		if c.params.sampleRate > 0 {
-			if rand.Int31n(100) > c.params.sampleRate {
+		if c.properties.sampleRate > 0 {
+			if rand.Int31n(100) > c.properties.sampleRate {
 				continue
 			}
 		}
