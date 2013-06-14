@@ -20,10 +20,10 @@ Built w/ Go 1.0.3:
  * [nsq-0.2.15.darwin-amd64.tar.gz][0.2.15_darwin]
  * [nsq-0.2.15.linux-amd64.tar.gz][0.2.15_linux]
 
-Built w/ Go 1.1:
+Built w/ Go 1.1.1:
 
- * [nsq-0.2.21.darwin-amd64.go1.1.tar.gz][0.2.21_darwin_go11]
- * [nsq-0.2.21.linux-amd64.go1.1.tar.gz][0.2.21_linux_go11]
+ * [nsq-0.2.21.darwin-amd64.go1.1.1.tar.gz][0.2.21_darwin_go111]
+ * [nsq-0.2.21.linux-amd64.go1.1.1.tar.gz][0.2.21_linux_go111]
 
 ## Building From Source
 
@@ -60,8 +60,8 @@ Python module (for building Python readers)
 
 See [production notes](docs/production.md).
 
-[0.2.21_darwin_go11]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.darwin-amd64.go1.1.tar.gz
-[0.2.21_linux_go11]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.linux-amd64.go1.1.tar.gz
+[0.2.21_darwin_go111]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.darwin-amd64.go1.1.1.tar.gz
+[0.2.21_linux_go111]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.linux-amd64.go1.1.1.tar.gz
 [0.2.21_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.darwin-amd64.go1.0.3.tar.gz
 [0.2.21_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.21.linux-amd64.go1.0.3.tar.gz
 [0.2.20_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.20.darwin-amd64.tar.gz
