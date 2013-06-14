@@ -172,9 +172,6 @@ func (c *Channel) validateSampleRate(dirtySampleRate string) int32 {
 		// If 1<rate<100, consider it a number and use that (100 means no sampling)
 	} else if (float64(sampleRateFloat) > float64(1)) && (float64(sampleRateFloat) < float64(100)) {
 		return int32(sampleRateFloat)
-		// Fallback is not to sample so we set it to 0
-	} else {
-		return int32(0)
 	}
 
 	return int32(0)
