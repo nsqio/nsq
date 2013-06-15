@@ -112,7 +112,7 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	// Split the channel name into properties if any are passed
 	channelProperties := strings.SplitN(channelName, "#", 2)
 	if len(channelProperties) > 1 {
-		c.setChannelProperties(channelProperties)
+		c.setChannelProperties(channelProperties[1])
 	}
 
 	// Create the channels
@@ -164,20 +164,17 @@ func (c *Channel) setChannelProperties(properties string) {
 
 // Need to validate the sampleRate passed in on channel instantiation
 func (c *Channel) validateSampleRate(dirtySampleRate string) int32 {
-	sampleRateFloat, err := strconv.ParseFloat(dirtySampleRate, 64)
-	// If we get an error when trying to ParseFloat, we don't want the channel
-	// creation to fail, so we create a normal, unsampled channel
+	sampleRate, err := strconv.ParseInt(dirtySampleRate, 10, 0)
+	// If we get an error when trying to ParseInt, fail on channel creation
 	if err != nil {
 		log.Printf("Float conversion error on %s: Setting sample rate to 0", dirtySampleRate)
-		return int32(0)
 	}
 
-	// If it's between 0.0 and 1.0, consider it a percentage and multiply by 100
-	if (float64(sampleRateFloat) > float64(0)) && (float64(sampleRateFloat) <= float64(1)) {
-		return int32(sampleRateFloat * float64(100))
-		// If 1<rate<100, consider it a number and use that (100 means no sampling)
-	} else if (float64(sampleRateFloat) > float64(1)) && (float64(sampleRateFloat) < float64(100)) {
-		return int32(sampleRateFloat)
+	// If 1<rate<100, consider it a number and use that (100 means no sampling)
+	if (int32(sampleRate) >= int32(1)) && (int32(sampleRate) <= int32(100)) {
+		return int32(sampleRate)
+	} else {
+		// Here we fail on channel creation because the sampleRate makes no sense
 	}
 
 	return int32(0)

@@ -167,7 +167,7 @@ func TestPutMessageOnSampledChannel(t *testing.T) {
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel("sampled_channel#sampleRate=0.25")
+	channel := topic.GetChannel("sampled_channel#sampleRate=25")
 	assert.Equal(t, channel.properties.sampleRate, int32(25))
 	log.Println("Channel Sample Rate: ", channel.properties.sampleRate)
 
