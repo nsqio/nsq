@@ -645,10 +645,10 @@ func TestOutputBuffering(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, make([]byte, outputBufferSize-1024))
 	topic.PutMessage(msg)
 
+	start := time.Now()
 	identifyOutputBuffering(t, conn, outputBufferSize, outputBufferTimeout, nsq.FrameTypeResponse, "OK")
 	sub(t, conn, topicName, "ch")
 
-	start := time.Now()
 	err = nsq.Ready(10).Write(conn)
 	assert.Equal(t, err, nil)
 
