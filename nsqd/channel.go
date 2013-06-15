@@ -110,9 +110,9 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	c.initPQ()
 
 	// Split the channel name into properties if any are passed
-	channelPropertiesSlice := strings.SplitN(channelName, "#", 2)
-	if len(channelPropertiesSlice) > 1 {
-		c.setChannelProperties(channelPropertiesSlice)
+	channelProperties := strings.SplitN(channelName, "#", 2)
+	if len(channelProperties) > 1 {
+		c.setChannelProperties(channelProperties)
 	}
 
 	// Create the channels
@@ -135,8 +135,8 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 }
 
 // Set the channel properties for the channel by parsing the channel name string properties
-func (c *Channel) setChannelProperties(propertySlice []string) {
-	channelProperties := strings.Split(propertySlice[1], ";")
+func (c *Channel) setChannelProperties(properties string) {
+	channelProperties := strings.Split(properties, ";")
 	// Iterate over all properties and set the valid ones on the channel
 	for _, property := range channelProperties {
 		var propertyField = ""
