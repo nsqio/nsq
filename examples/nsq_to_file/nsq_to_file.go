@@ -30,6 +30,7 @@ var (
 	gzipCompression  = flag.Int("gzip-compression", 3, "gzip compression level. 1 BestSpeed, 2 BestCompression, 3 DefaultCompression")
 	gzipEnabled      = flag.Bool("gzip", false, "gzip output files.")
 	verbose          = flag.Bool("verbose", false, "verbose logging")
+	skipEmptyFiles   = flag.Bool("skip-empty-files", false, "Skip writting empty files")
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
 )
@@ -47,6 +48,8 @@ type FileLogger struct {
 	compressionLevel int
 	gzipEnabled      bool
 	filenameFormat   string
+
+	ExitChan chan int
 }
 
 type Message struct {
@@ -63,26 +66,37 @@ func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.Fin
 	l.logChan <- &Message{m, responseChannel}
 }
 
-func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan os.Signal) {
+func (f *FileLogger) router(r *nsq.Reader, termChan chan os.Signal, hupChan chan os.Signal) {
 	pos := 0
 	output := make([]*Message, *maxInFlight)
 	sync := false
 	ticker := time.NewTicker(time.Duration(30) * time.Second)
 	closing := false
+	closeFile := false
+	exit := false
 
 	for {
 		select {
+		case <-r.ExitChan:
+			sync = true
+			closeFile = true
+			exit = true
 		case <-termChan:
 			ticker.Stop()
 			r.Stop()
-			// ensures that we keep flushing whatever is left in the channels
+			sync = true
 			closing = true
 		case <-hupChan:
-			f.Close()
-			f.updateFile()
 			sync = true
+			closeFile = true
 		case <-ticker.C:
-			f.updateFile()
+			if f.needsFileRotate() {
+				if *skipEmptyFiles {
+					closeFile = true
+				} else {
+					f.updateFile()
+				}
+			}
 			sync = true
 		case m := <-f.logChan:
 			if f.updateFile() {
@@ -118,6 +132,15 @@ func router(r *nsq.Reader, f *FileLogger, termChan chan os.Signal, hupChan chan 
 				}
 			}
 			sync = false
+		}
+
+		if closeFile {
+			f.Close()
+			closeFile = false
+		}
+		if exit {
+			close(f.ExitChan)
+			break
 		}
 	}
 }
@@ -159,6 +182,11 @@ func (f *FileLogger) calculateCurrentFilename() string {
 	}
 	return filename
 
+}
+
+func (f *FileLogger) needsFileRotate() bool {
+	filename := f.calculateCurrentFilename()
+	return filename != f.lastFilename
 }
 
 func (f *FileLogger) updateFile() bool {
@@ -248,6 +276,7 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat string
 		compressionLevel: speed,
 		filenameFormat:   filenameFormat,
 		gzipEnabled:      gzipEnabled,
+		ExitChan:         make(chan int),
 	}
 	return f, nil
 }
@@ -297,7 +326,7 @@ func main() {
 	r.VerboseLogging = *verbose
 
 	r.AddAsyncHandler(f)
-	go router(r, f, termChan, hupChan)
+	go f.router(r, termChan, hupChan)
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQ(addrString)
@@ -314,5 +343,5 @@ func main() {
 		}
 	}
 
-	<-r.ExitChan
+	<-f.ExitChan
 }
