@@ -51,6 +51,10 @@ var (
 	// statsd integration options
 	statsdAddress  = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for pushing stats")
 	statsdInterval = flag.String("statsd-interval", "60s", "duration between pushing to statsd")
+
+	// TLS config
+	tlsCert = flag.String("tls-cert", "", "path to certificate file")
+	tlsKey  = flag.String("tls-key", "", "path to private key file")
 )
 
 func init() {
@@ -130,6 +134,8 @@ func main() {
 	options.maxHeartbeatInterval = *maxHeartbeatInterval
 	options.maxOutputBufferSize = *maxOutputBufferSize
 	options.maxOutputBufferTimeout = *maxOutputBufferTimeout
+	options.tlsCert = *tlsCert
+	options.tlsKey = *tlsKey
 
 	nsqd = NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr

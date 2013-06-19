@@ -4,6 +4,7 @@ package main
 
 import (
 	"compress/gzip"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -33,6 +34,9 @@ var (
 	skipEmptyFiles   = flag.Bool("skip-empty-files", false, "Skip writting empty files")
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
+
+	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
+	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
 )
 
 func init() {
@@ -324,6 +328,13 @@ func main() {
 	}
 	r.SetMaxInFlight(*maxInFlight)
 	r.VerboseLogging = *verbose
+
+	if *tlsEnabled {
+		r.TLSv1 = true
+		r.TLSConfig = &tls.Config{
+			InsecureSkipVerify: *tlsInsecureSkipVerify,
+		}
+	}
 
 	r.AddAsyncHandler(f)
 	go f.router(r, termChan, hupChan)

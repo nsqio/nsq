@@ -132,7 +132,7 @@ func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error 
 	}
 
 	if frameType != nsq.FrameTypeMessage {
-		err = client.Writer.Flush()
+		err = client.Flush()
 	}
 
 	return err
@@ -142,36 +142,32 @@ func (p *ProtocolV2) Flush(client *ClientV2) error {
 	client.Lock()
 	defer client.Unlock()
 
-	if client.Writer.Buffered() > 0 {
-		client.SetWriteDeadline(time.Now().Add(time.Second))
-		return client.Writer.Flush()
-	}
-
-	return nil
+	client.SetWriteDeadline(time.Now().Add(time.Second))
+	return client.Flush()
 }
 
 func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	switch {
-	case bytes.Equal(params[0], []byte("IDENTIFY")):
-		return p.IDENTIFY(client, params)
-	case bytes.Equal(params[0], []byte("SUB")):
-		return p.SUB(client, params)
-	case bytes.Equal(params[0], []byte("RDY")):
-		return p.RDY(client, params)
 	case bytes.Equal(params[0], []byte("FIN")):
 		return p.FIN(client, params)
+	case bytes.Equal(params[0], []byte("RDY")):
+		return p.RDY(client, params)
 	case bytes.Equal(params[0], []byte("REQ")):
 		return p.REQ(client, params)
-	case bytes.Equal(params[0], []byte("CLS")):
-		return p.CLS(client, params)
-	case bytes.Equal(params[0], []byte("NOP")):
-		return p.NOP(client, params)
 	case bytes.Equal(params[0], []byte("PUB")):
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
+	case bytes.Equal(params[0], []byte("NOP")):
+		return p.NOP(client, params)
 	case bytes.Equal(params[0], []byte("TOUCH")):
 		return p.TOUCH(client, params)
+	case bytes.Equal(params[0], []byte("IDENTIFY")):
+		return p.IDENTIFY(client, params)
+	case bytes.Equal(params[0], []byte("SUB")):
+		return p.SUB(client, params)
+	case bytes.Equal(params[0], []byte("CLS")):
+		return p.CLS(client, params)
 	}
 	return nil, nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -314,25 +310,49 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY "+err.Error())
 	}
 
-	resp := okBytes
-	if identifyData.FeatureNegotiation {
-		resp, err = json.Marshal(struct {
-			MaxRdyCount   int64  `json:"max_rdy_count"`
-			Version       string `json:"version"`
-			MaxMsgTimeout int64  `json:"max_msg_timeout"`
-			MsgTimeout    int64  `json:"msg_timeout"`
-		}{
-			MaxRdyCount:   nsqd.options.maxRdyCount,
-			Version:       util.BINARY_VERSION,
-			MaxMsgTimeout: int64(nsqd.options.maxMsgTimeout / time.Millisecond),
-			MsgTimeout:    int64(nsqd.options.msgTimeout / time.Millisecond),
-		})
+	// bail out early if we're not negotiating features
+	if !identifyData.FeatureNegotiation {
+		return okBytes, nil
+	}
+
+	tlsv1 := nsqd.tlsConfig != nil && identifyData.TLSv1
+
+	resp, err := json.Marshal(struct {
+		MaxRdyCount   int64  `json:"max_rdy_count"`
+		Version       string `json:"version"`
+		MaxMsgTimeout int64  `json:"max_msg_timeout"`
+		MsgTimeout    int64  `json:"msg_timeout"`
+		TLSv1         bool   `json:"tls_v1"`
+	}{
+		MaxRdyCount:   nsqd.options.maxRdyCount,
+		Version:       util.BINARY_VERSION,
+		MaxMsgTimeout: int64(nsqd.options.maxMsgTimeout / time.Millisecond),
+		MsgTimeout:    int64(nsqd.options.msgTimeout / time.Millisecond),
+		TLSv1:         tlsv1,
+	})
+	if err != nil {
+		panic("should never happen")
+	}
+
+	err = p.Send(client, nsq.FrameTypeResponse, resp)
+	if err != nil {
+		return nil, nsq.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
+	}
+
+	if tlsv1 {
+		log.Printf("PROTOCOL(V2): [%s] upgrading connection to TLS", client)
+		err = client.UpgradeTLS()
 		if err != nil {
-			panic("should never happen")
+			return nil, nsq.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
+		}
+
+		err = p.Send(client, nsq.FrameTypeResponse, okBytes)
+		if err != nil {
+			return nil, nsq.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
 	}
 
-	return resp, nil
+	return nil, nil
 }
 
 func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
