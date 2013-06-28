@@ -16,7 +16,7 @@ type Registration struct {
 	Key      string
 	SubKey   string
 }
-type Registrations []*Registration
+type Registrations []Registration
 
 type PeerInfo struct {
 	id               string
@@ -121,8 +121,7 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}
-		// strangely, we can't just return &k because k here is a copy and a local variable
-		results = append(results, &Registration{k.Category, k.Key, k.SubKey})
+		results = append(results, k)
 	}
 	return results
 }
@@ -157,8 +156,7 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	for k, producers := range r.registrationMap {
 		for _, p := range producers {
 			if p.peerInfo.id == id {
-				// strangely, we can't just return &k because k here is a copy and a local variable
-				results = append(results, &Registration{k.Category, k.Key, k.SubKey})
+				results = append(results, k)
 				break
 			}
 		}

@@ -142,13 +142,13 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	registrations := lookupd.DB.FindRegistrations("channel", topicName, "*")
 	for _, registration := range registrations {
 		log.Printf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	registrations = lookupd.DB.FindRegistrations("topic", topicName, "")
 	for _, registration := range registrations {
 		log.Printf("DB: removing topic(%s)", topicName)
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
@@ -230,7 +230,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	log.Printf("DB: removing channel(%s) from topic(%s)", channelName, topicName)
 	for _, registration := range registrations {
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
