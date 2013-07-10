@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -759,6 +760,83 @@ func TestTLS(t *testing.T) {
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestDeflate(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.deflateEnabled = true
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"deflate": true})
+	r := struct {
+		Deflate bool `json:"deflate"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.Deflate, true)
+
+	compressConn := flate.NewReader(conn)
+	resp, _ := nsq.ReadResponse(compressConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestTLSDeflate(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.deflateEnabled = true
+	options.tlsCert = "./test/cert.pem"
+	options.tlsKey = "./test/key.pem"
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true, "deflate": true})
+	r := struct {
+		TLSv1   bool `json:"tls_v1"`
+		Deflate bool `json:"deflate"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	assert.Equal(t, r.Deflate, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	compressConn := flate.NewReader(tlsConn)
+
+	resp, _ = nsq.ReadResponse(compressConn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeResponse)
 	assert.Equal(t, data, []byte("OK"))

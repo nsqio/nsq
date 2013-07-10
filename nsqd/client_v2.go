@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"compress/flate"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -21,6 +22,8 @@ type IdentifyDataV2 struct {
 	OutputBufferTimeout int    `json:"output_buffer_timeout"`
 	FeatureNegotiation  bool   `json:"feature_negotiation"`
 	TLSv1               bool   `json:"tls_v1"`
+	Deflate             bool   `json:"deflate"`
+	DeflateLevel        int    `json:"deflate_level"`
 }
 
 type ClientV2 struct {
@@ -35,9 +38,10 @@ type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
-	ID      int64
-	context *Context
-	tlsConn net.Conn
+	ID          int64
+	context     *Context
+	tlsConn     net.Conn
+	flateWriter *flate.Writer
 
 	// buffered IO
 	Reader                        *bufio.Reader
@@ -315,10 +319,34 @@ func (c *ClientV2) UpgradeTLS() error {
 	return nil
 }
 
+func (c *ClientV2) UpgradeDeflate(level int) error {
+	c.Lock()
+	defer c.Unlock()
+
+	conn := c.Conn
+	if c.tlsConn != nil {
+		conn = c.tlsConn
+	}
+
+	fr := flate.NewReader(conn)
+	c.Reader = bufio.NewReaderSize(fr, 16*1024)
+
+	fw, _ := flate.NewWriter(conn, level)
+	c.flateWriter = fw
+	c.Writer = bufio.NewWriterSize(fw, c.OutputBufferSize)
+
+	return nil
+}
+
 func (c *ClientV2) Flush() error {
 	err := c.Writer.Flush()
 	if err != nil {
 		return err
 	}
+
+	if c.flateWriter != nil {
+		return c.flateWriter.Flush()
+	}
+
 	return nil
 }
