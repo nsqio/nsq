@@ -142,13 +142,13 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	registrations := lookupd.DB.FindRegistrations("channel", topicName, "*")
 	for _, registration := range registrations {
 		log.Printf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	registrations = lookupd.DB.FindRegistrations("topic", topicName, "")
 	for _, registration := range registrations {
 		log.Printf("DB: removing topic(%s)", topicName)
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
@@ -230,14 +230,14 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 
 	log.Printf("DB: removing channel(%s) from topic(%s)", channelName, topicName)
 	for _, registration := range registrations {
-		lookupd.DB.RemoveRegistration(*registration)
+		lookupd.DB.RemoveRegistration(registration)
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
 // note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
-type producerTopic struct {
+type node struct {
 	RemoteAddress    string   `json:"remote_address"`
 	Address          string   `json:"address"` //TODO: drop for 1.0
 	Hostname         string   `json:"hostname"`
@@ -245,14 +245,30 @@ type producerTopic struct {
 	TcpPort          int      `json:"tcp_port"`
 	HttpPort         int      `json:"http_port"`
 	Version          string   `json:"version"`
+	Tombstones       []bool   `json:"tombstones"`
 	Topics           []string `json:"topics"`
 }
 
 func nodesHandler(w http.ResponseWriter, req *http.Request) {
-	producers := lookupd.DB.FindProducers("client", "", "")
-	producerTopics := make([]*producerTopic, len(producers))
+	// dont filter out tombstoned nodes
+	producers := lookupd.DB.FindProducers("client", "", "").FilterByActive(lookupd.inactiveProducerTimeout, 0)
+	nodes := make([]*node, len(producers))
 	for i, p := range producers {
-		producerTopics[i] = &producerTopic{
+		topics := lookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
+
+		// for each topic find the producer that matches this peer
+		// to add tombstone information
+		tombstones := make([]bool, len(topics))
+		for j, t := range topics {
+			topicProducers := lookupd.DB.FindProducers("topic", t, "")
+			for _, tp := range topicProducers {
+				if tp.peerInfo == p.peerInfo {
+					tombstones[j] = tp.IsTombstoned(lookupd.tombstoneLifetime)
+				}
+			}
+		}
+
+		nodes[i] = &node{
 			RemoteAddress:    p.peerInfo.RemoteAddress,
 			Address:          p.peerInfo.Address, //TODO: drop for 1.0
 			Hostname:         p.peerInfo.Hostname,
@@ -260,12 +276,13 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 			TcpPort:          p.peerInfo.TcpPort,
 			HttpPort:         p.peerInfo.HttpPort,
 			Version:          p.peerInfo.Version,
-			Topics:           lookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys(),
+			Tombstones:       tombstones,
+			Topics:           topics,
 		}
 	}
 
 	data := make(map[string]interface{})
-	data["producers"] = producerTopics
+	data["producers"] = nodes
 	util.ApiResponse(w, 200, "OK", data)
 }
 

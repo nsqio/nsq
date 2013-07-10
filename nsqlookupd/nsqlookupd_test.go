@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/bitly/nsq/nsq"
+	lookuputil "github.com/bitly/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -278,4 +279,71 @@ func TestTombstoneUnregister(t *testing.T) {
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
+}
+
+func TestInactiveNodes(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr := mustStartLookupd()
+	defer lookupd.Exit()
+	lookupd.inactiveProducerTimeout = 50 * time.Millisecond
+
+	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+
+	topicName := "inactive_nodes"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
+	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+
+	time.Sleep(55 * time.Millisecond)
+
+	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 0)
+}
+
+func TestTombstonedNodes(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	tcpAddr, httpAddr := mustStartLookupd()
+	defer lookupd.Exit()
+	lookupd.inactiveProducerTimeout = 50 * time.Millisecond
+
+	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+
+	topicName := "inactive_nodes"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	nsq.Register(topicName, "channel1").Write(conn)
+	_, err := nsq.ReadResponse(conn)
+	assert.Equal(t, err, nil)
+
+	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+
+	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
+	_, err = nsq.ApiRequest(endpoint)
+	assert.Equal(t, err, nil)
+
+	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	assert.Equal(t, len(producers), 1)
+	assert.Equal(t, len(producers[0].Topics), 1)
+	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
+	assert.Equal(t, producers[0].Topics[0].Tombstoned, true)
 }

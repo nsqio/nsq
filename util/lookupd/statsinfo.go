@@ -8,6 +8,17 @@ import (
 	"time"
 )
 
+type ProducerTopic struct {
+	Topic      string `json:"topic"`
+	Tombstoned bool   `json:"tombstoned"`
+}
+
+type ProducerTopics []ProducerTopic
+
+func (pt ProducerTopics) Len() int           { return len(pt) }
+func (pt ProducerTopics) Swap(i, j int)      { pt[i], pt[j] = pt[j], pt[i] }
+func (pt ProducerTopics) Less(i, j int) bool { return pt[i].Topic < pt[j].Topic }
+
 type Producer struct {
 	RemoteAddresses  []string        `json:"remote_addresses"`
 	Address          string          `json:"address"` //TODO: remove for 1.0
@@ -17,7 +28,7 @@ type Producer struct {
 	HttpPort         int             `json:"http_port"`
 	Version          string          `json:"version"`
 	VersionObj       *semver.Version `json:-`
-	Topics           []string        `json:"topics"`
+	Topics           ProducerTopics  `json:"topics"`
 	OutOfDate        bool
 }
 
