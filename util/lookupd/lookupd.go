@@ -127,12 +127,29 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 				key := fmt.Sprintf("%s:%d:%d", broadcastAddress, httpPort, tcpPort)
 				p, ok := allProducers[key]
 				if !ok {
+					var tombstones []bool
+					var topics ProducerTopics
+
 					topicList, _ := producer.Get("topics").Array()
-					var topics []string
-					for _, t := range topicList {
-						topics = append(topics, t.(string))
+					tombstoneList, err := producer.Get("tombstones").Array()
+					if err != nil {
+						// backwards compatibility with nsqlookupd < v0.2.22
+						tombstones = make([]bool, len(topicList))
+					} else {
+						for _, t := range tombstoneList {
+							tombstones = append(tombstones, t.(bool))
+						}
 					}
-					sort.Strings(topics)
+
+					for i, t := range topicList {
+						topics = append(topics, ProducerTopic{
+							Topic:      t.(string),
+							Tombstoned: tombstones[i],
+						})
+					}
+
+					sort.Sort(topics)
+
 					version := producer.Get("version").MustString("unknown")
 					versionObj, err := semver.Parse(version)
 					if err != nil {
@@ -141,6 +158,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					if maxVersion.Less(versionObj) {
 						maxVersion = versionObj
 					}
+
 					p = &Producer{
 						Address:          address, //TODO: remove for 1.0
 						Hostname:         hostname,

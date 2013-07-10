@@ -71,7 +71,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	if client.peerInfo != nil {
 		registrations := lookupd.DB.LookupRegistrations(client.peerInfo.id)
 		for _, r := range registrations {
-			if removed, _ := lookupd.DB.RemoveProducer(*r, client.peerInfo.id); removed {
+			if removed, _ := lookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
 				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -170,7 +170,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := lookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			if removed, _ := lookupd.DB.RemoveProducer(*r, client.peerInfo.id); removed {
+			if removed, _ := lookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
 				log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
