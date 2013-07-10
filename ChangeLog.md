@@ -2,6 +2,19 @@
 
 ## Binaries
 
+### 0.2.22-alpha
+
+**Upgrading from 0.2.21**: there are no backward incompatible changes in this release.
+
+New Features / Enhancements:
+
+ * #228 - nsqadmin displays tombstoned topics in the /nodes list
+
+Bug Fixes:
+
+ * #228 - nsqlookupd/nsqadmin would display inactive nodes in /nodes list
+ * #216 - fix edge cases in nsq_to_file that caused empty files
+
 ### 0.2.21 - 2013-06-07
 
 **Upgrading from 0.2.20**: there are no backward incompatible changes in this release.
