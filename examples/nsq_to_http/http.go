@@ -32,6 +32,6 @@ func HttpPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Type", *contentType)
 	return httpclient.Do(req)
 }
