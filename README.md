@@ -73,10 +73,12 @@ doc][design] or [blog post][nsq_post].
 * [libnsq][libnsq] C
 * [nsq-java][nsq-java] Java
 * [TrendrrNSQClient][TrendrrNSQClient] Java
+* [nsqjava][nsqjava] Java
 * [nsq-client][node2_lib] Node.js [npm][nsq-client_npm]
 * [nodensq][node_lib] Node.js [npm][nodensq_npm]
 * [nsqphp][php_lib] PHP
 * [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
+* [NSQnet][nsq_net] .NET
 
 ## Additional Documentation
 
@@ -163,9 +165,9 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 
 ### Contributors
 
- * Phillip Rosen ([@phillro][phil_github]) for the [Node.js Client Library][node_lib]
- * David Gardner ([@davidgardnerisme][david_twitter]) for the [PHP Client Library][php_lib]
- * Clarity Services ([@ClarityServices][clarity_github]) for the [Ruby Client Library][ruby_lib]
+ * Phillip Rosen ([@phillro][phil_github])
+ * David Gardner ([@davidgardnerisme][david_twitter])
+ * Clarity Services ([@ClarityServices][clarity_github])
  * Harley Laue ([@losinggeneration][harley_github])
  * Justin Azoff ([@JustinAzoff][justin_github])
  * Michael Hood ([@michaelhood][michael_github])
@@ -176,6 +178,8 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
  * Francisco Souza ([@fsouza][fsouza_github])
  * galvinhsiu ([@galvinhsiu][galvinhsiu_github])
  * Eric Lubow ([@elubow][elubow_github])
+ * Will Charczuk ([@wcharczuk][wcharczuk_github])
+ * Dominic Wong ([@domwong][domwong_github])
 
 [github]: https://github.com/bitly/nsq
 [issues]: https://github.com/bitly/nsq/issues
@@ -234,3 +238,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [galvinhsiu_github]: https://github.com/galvinhsiu
 [elubow_github]: https://github.com/elubow
 [jphines_twitter]: https://twitter.com/jphines
+[nsq_net]: https://github.com/ClothesHorse/NSQnet
+[wcharczuk_github]: https://github.com/wcharczuk
+[nsqjava]: https://github.com/domwong/nsqjava
+[domwong_github]: https://github.com/domwong
