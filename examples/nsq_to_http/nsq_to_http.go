@@ -42,6 +42,7 @@ var (
 	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
 	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
 	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "the maximum backoff duration")
+	contentType        = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 	getAddrs           = util.StringArray{}
 	postAddrs          = util.StringArray{}
 	nsqdTCPAddrs       = util.StringArray{}
@@ -199,6 +200,15 @@ func main() {
 
 	if *maxInFlight < 0 {
 		log.Fatalf("--max-in-flight must be > 0")
+	}
+
+	if *contentType != flag.Lookup("content-type").DefValue {
+		if len(postAddrs) == 0 {
+			log.Fatalf("--content-type only used with --post")
+		}
+		if len(*contentType) == 0 {
+			log.Fatalf("--content-type requires a value when used")
+		}
 	}
 
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
