@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/bitly/nsq/nsq"
@@ -59,11 +60,16 @@ func identifyHeartbeatInterval(t *testing.T, conn net.Conn, interval int, f int3
 	readValidate(t, conn, f, d)
 }
 
-func identifyFeatureNegotiation(t *testing.T, conn net.Conn) []byte {
+func identifyFeatureNegotiation(t *testing.T, conn net.Conn, extra map[string]interface{}) []byte {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
 	ci["feature_negotiation"] = true
+	if extra != nil {
+		for k, v := range extra {
+			ci[k] = v
+		}
+	}
 	cmd, _ := nsq.Identify(ci)
 	err := cmd.Write(conn)
 	assert.Equal(t, err, nil)
@@ -570,7 +576,7 @@ func TestMaxRdyCount(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
-	data := identifyFeatureNegotiation(t, conn)
+	data := identifyFeatureNegotiation(t, conn, nil)
 	r := struct {
 		MaxRdyCount int64 `json:"max_rdy_count"`
 	}{}
@@ -687,6 +693,43 @@ func TestOutputBufferingValidity(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	identifyOutputBuffering(t, conn, 0, 1001, nsq.FrameTypeError, "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
+}
+
+func TestTLS(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.tlsCert = "./test/cert.pem"
+	options.tlsKey = "./test/key.pem"
+	tcpAddr, _ := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true})
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {

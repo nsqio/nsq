@@ -3,9 +3,11 @@ package nsq
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -68,8 +70,12 @@ type incomingMessage struct {
 }
 
 type nsqConn struct {
+	sync.Mutex
 	net.Conn
-	r                *bufio.Reader
+
+	tlsConn          *tls.Conn
+	r                io.Reader
+	w                io.Writer
 	addr             string
 	stopFlag         int32
 	finishedMessages chan *FinishedMessage
@@ -100,6 +106,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 	nc := &nsqConn{
 		Conn:             conn,
 		r:                bufio.NewReader(conn),
+		w:                conn,
 		addr:             addr,
 		finishedMessages: make(chan *FinishedMessage),
 		readTimeout:      readTimeout,
@@ -112,8 +119,7 @@ func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Durati
 		lastMsgTimestamp: time.Now().UnixNano(),
 	}
 
-	nc.SetWriteDeadline(time.Now().Add(nc.writeTimeout))
-	_, err = conn.Write(MagicV2)
+	_, err = nc.Write(MagicV2)
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("[%s] failed to write magic - %s", addr, err.Error())
@@ -133,17 +139,51 @@ func (c *nsqConn) Read(p []byte) (int, error) {
 
 func (c *nsqConn) Write(p []byte) (int, error) {
 	c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
-	return c.Conn.Write(p)
+	return c.w.Write(p)
 }
 
 func (c *nsqConn) sendCommand(buf *bytes.Buffer, cmd *Command) error {
+	c.Lock()
+	defer c.Unlock()
+
 	buf.Reset()
 	err := cmd.Write(buf)
 	if err != nil {
 		return err
 	}
+
 	_, err = buf.WriteTo(c)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *nsqConn) readUnpackedResponse() (int32, []byte, error) {
+	resp, err := ReadResponse(c)
+	if err != nil {
+		return -1, nil, err
+	}
+	return UnpackResponse(resp)
+}
+
+func (c *nsqConn) upgradeTLS(conf *tls.Config) error {
+	c.tlsConn = tls.Client(c.Conn, conf)
+	err := c.tlsConn.Handshake()
+	if err != nil {
+		return err
+	}
+	c.r = bufio.NewReader(c.tlsConn)
+	c.w = c.tlsConn
+	frameType, data, err := c.readUnpackedResponse()
+	if err != nil {
+		return err
+	}
+	if frameType != FrameTypeResponse || !bytes.Equal(data, []byte("OK")) {
+		return errors.New("invalid response from TLS upgrade")
+	}
+	return nil
 }
 
 // Reader is a high-level type to consume from NSQ.
@@ -174,6 +214,8 @@ type Reader struct {
 	MessagesFinished    uint64        // an atomic counter - # of messages FINished
 	MessagesRequeued    uint64        // an atomic counter - # of messages REQueued
 	ExitChan            chan int      // read from this channel to block your main loop
+	TLSv1               bool          // negotiate enabling TLS
+	TLSConfig           *tls.Config   // client TLS configuration
 
 	// internal variables
 	totalRdyCount      int64
@@ -426,6 +468,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	ci := make(map[string]interface{})
 	ci["short_id"] = q.ShortIdentifier
 	ci["long_id"] = q.LongIdentifier
+	ci["tls_v1"] = q.TLSv1
 	ci["feature_negotiation"] = true
 	cmd, err := Identify(ci)
 	if err != nil {
@@ -439,31 +482,39 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		return fmt.Errorf("[%s] failed to identify - %s", connection, err.Error())
 	}
 
-	resp, err := ReadResponse(connection)
+	_, data, err := connection.readUnpackedResponse()
 	if err != nil {
 		connection.Close()
 		return fmt.Errorf("[%s] error reading response %s", connection, err.Error())
-	}
-
-	frameType, data, err := UnpackResponse(resp)
-	if err != nil {
-		connection.Close()
-		return fmt.Errorf("[%s] error (%s) unpacking response %d %s", connection, err.Error(), frameType, data)
 	}
 
 	// check to see if the server was able to respond w/ capabilities
 	if data[0] == '{' {
 		resp := struct {
 			MaxRdyCount int64 `json:"max_rdy_count"`
+			TLSv1       bool  `json:"tls_v1"`
 		}{}
 		err := json.Unmarshal(data, &resp)
 		if err != nil {
+			connection.Close()
 			return fmt.Errorf("[%s] error (%s) unmarshaling IDENTIFY response %s", connection, err.Error(), data)
 		}
+
+		log.Printf("[%s] IDENTIFY response: %+v", connection, resp)
+
 		connection.maxRdyCount = resp.MaxRdyCount
 		if resp.MaxRdyCount < int64(q.maxInFlight) {
 			log.Printf("[%s] max RDY count %d < reader max in flight %d, truncation possible",
 				connection, resp.MaxRdyCount, q.maxInFlight)
+		}
+
+		if resp.TLSv1 {
+			log.Printf("[%s] upgrading to TLS", connection)
+			err := connection.upgradeTLS(q.TLSConfig)
+			if err != nil {
+				connection.Close()
+				return fmt.Errorf("[%s] error (%s) upgrading to TLS", connection, err.Error())
+			}
 		}
 	}
 
@@ -528,15 +579,9 @@ func (q *Reader) readLoop(c *nsqConn) {
 			goto exit
 		}
 
-		resp, err := ReadResponse(c)
+		frameType, data, err := c.readUnpackedResponse()
 		if err != nil {
-			handleError(q, c, fmt.Sprintf("[%s] error reading response %s", c, err.Error()))
-			continue
-		}
-
-		frameType, data, err := UnpackResponse(resp)
-		if err != nil {
-			handleError(q, c, fmt.Sprintf("[%s] error (%s) unpacking response %d %s", c, err.Error(), frameType, data))
+			handleError(q, c, fmt.Sprintf("[%s] error (%s) reading response %d %s", c, err.Error(), frameType, data))
 			continue
 		}
 

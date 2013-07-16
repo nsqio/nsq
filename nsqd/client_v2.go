@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/bitly/nsq/nsq"
@@ -19,15 +20,19 @@ type IdentifyDataV2 struct {
 	OutputBufferSize    int    `json:"output_buffer_size"`
 	OutputBufferTimeout int    `json:"output_buffer_timeout"`
 	FeatureNegotiation  bool   `json:"feature_negotiation"`
+	TLSv1               bool   `json:"tls_v1"`
 }
 
 type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
+	tlsConn net.Conn
+
 	// buffered IO
 	Reader                        *bufio.Reader
 	Writer                        *bufio.Writer
+	OutputBufferSize              int
 	OutputBufferTimeout           *time.Ticker
 	OutputBufferTimeoutUpdateChan chan time.Duration
 
@@ -67,6 +72,7 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 
 		Reader:                        bufio.NewReaderSize(conn, 16*1024),
 		Writer:                        bufio.NewWriterSize(conn, 16*1024),
+		OutputBufferSize:              16 * 1024,
 		OutputBufferTimeout:           time.NewTicker(5 * time.Millisecond),
 		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
 
@@ -254,6 +260,7 @@ func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 		if err != nil {
 			return err
 		}
+		c.OutputBufferSize = size
 		c.Writer = bufio.NewWriterSize(c.Conn, size)
 	}
 
@@ -282,5 +289,30 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *ClientV2) UpgradeTLS() error {
+	c.Lock()
+	defer c.Unlock()
+
+	tlsConn := tls.Server(c.Conn, nsqd.tlsConfig)
+	err := tlsConn.Handshake()
+	if err != nil {
+		return err
+	}
+	c.tlsConn = tlsConn
+
+	c.Reader = bufio.NewReaderSize(c.tlsConn, 16*1024)
+	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
+
+	return nil
+}
+
+func (c *ClientV2) Flush() error {
+	err := c.Writer.Flush()
+	if err != nil {
+		return err
+	}
 	return nil
 }

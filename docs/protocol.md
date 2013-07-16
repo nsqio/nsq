@@ -20,8 +20,8 @@ For `nsqd`, there is currently only one protocol:
 ### V2 Protocol
 
 After authenticating, the client can optionally send an `IDENTIFY` command to provide custom
-metadata (like, for example, more descriptive identifiers). In order to begin consuming messages, a
-client must `SUB` to a channel.
+metadata (like, for example, more descriptive identifiers) and negotiate features. In order to begin
+consuming messages, a client must `SUB` to a channel.
 
 Upon subscribing the client is placed in a `RDY` state of 0. This means that no messages
 will be sent to the client. When a client is ready to receive messages it should send a command that
@@ -29,57 +29,71 @@ updates its `RDY` state to some # it is prepared to handle, say 100. Without any
 commands, 100 messages will be pushed to the client as they are available (each time decrementing
 the server-side `RDY` count for that client).
 
-The **V2** protocol also features client heartbeats. Every 30 seconds by default, `nsqd` will send a
-`_heartbeat_` response and expect a command in return. If the client is idle, send `NOP`. After 2 
-unanswered `_heartbeat_` responses, `nsqd` will timeout and forcefully close a client connection that
-it has not heard from. The `IDENTIFY` command may be used to change/disable this behavior.
+The **V2** protocol also features client heartbeats. Every 30s (default but configurable), `nsqd`
+will send a `_heartbeat_` response and expect a command in return. If the client is idle, send
+`NOP`. After 2 unanswered `_heartbeat_` responses, `nsqd` will timeout and forcefully close a client
+connection that it has not heard from. The `IDENTIFY` command may be used to change/disable this
+behavior.
 
 Commands are line oriented and structured as follows:
 
-  * `IDENTIFY` - update client metadata on the server
+  * `IDENTIFY` - update client metadata on the server and negotiate features
     
         IDENTIFY\n
         [ 4-byte size in bytes ][ N-byte JSON data ]
     
     NOTE: this command takes a size prefixed JSON body, relevant fields:
     
-    **`short_id`** an identifier used as a short-form descriptor (ie. short hostname)
+    * **`short_id`** an identifier used as a short-form descriptor (ie. short hostname)
     
-    **`long_id`** an identifier used as a long-form descriptor (ie. fully-qualified hostname)
+    * **`long_id`** an identifier used as a long-form descriptor (ie. fully-qualified hostname)
     
-    **`heartbeat_interval`** (nsqd 0.2.19+) milliseconds between heartbeats where:
+    * **`feature_negotiation`** (nsqd 0.2.19+) bool used to indicate that the client supports
+                                feature negotiation. If the server is capable, it will send back a 
+                                JSON payload of supported features and metadata.
     
-        1000 <= heartbeat_interval <= configured_max
-        (may also be set to -1 to disable heartbeats)
+    * **`heartbeat_interval`** (nsqd 0.2.19+) milliseconds between heartbeats.
+    
+        Valid range: `1000 <= heartbeat_interval <= configured_max` (`-1` disables heartbeats)
         
-        defaults to --client-timeout / 2
-        --max-heartbeat-interval (nsqd flag) controls the max
+        `--max-heartbeat-interval` (nsqd flag) controls the max
+        
+        Defaults to `--client-timeout / 2`
     
-    **`output_buffer_size`** (nsqd 0.2.21+) the size in bytes of the buffer nsqd will use when
-                             writing to this client.
-        
-        64 <= output_buffer_size <= configured_max
-        (may also be set to -1 to disable output buffering)
-        
-        defaults to 16kb
-        --max-output-buffer-size (nsqd flag) controls the max
+    * **`output_buffer_size`** (nsqd 0.2.21+) the size in bytes of the buffer nsqd will use when
+                               writing to this client.
     
-    **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
-                                buffered will be flushed to this client.
+        Valid range: `64 <= output_buffer_size <= configured_max` (`-1` disables output buffering)
         
-        5ms <= output_buffer_timeout <= configured_max
-        (may also be set to -1 to disable timeouts on output buffering)
+        `--max-output-buffer-size` (nsqd flag) controls the max
         
-        defaults to 5ms
-        --max-output-buffer-timeout (nsqd flag) controls the max
+        Defaults to `16kb`
     
-    **`feature_negotiation`** bool used to indicate that the client supports feature negotiation. 
-                              If the server is capable, it will send back a JSON payload of 
-                              features and metadata.
+    * **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
+                                  buffered will be flushed to this client.
+    
+        Valid range: `5ms <= output_buffer_timeout <= configured_max` (`-1` disabled timeouts)
+        
+        `--max-output-buffer-timeout` (nsqd flag) controls the max
+        
+        Defaults to `5ms`
+    
+    * **`tls_v1`** (nsqd 0.2.22+) enable TLS for this connection.
+    
+        `--tls-cert` and `--tls-key` (nsqd flags) enable TLS and configure the server certificate
+        
+        If the server supports TLS it will reply `"tls_v1": true`
+        
+        The client should begin the TLS handshake immediately after reading the `IDENTIFY` response
+        
+        The server will respond 'OK' after completing the TLS handshake
     
     Success Response:
     
         OK
+        
+        NOTE: if 'feature_negotiation' was sent by the client (and the server supports it) the
+        response will be a JSON payload as described above.
     
     Error Responses:
     
