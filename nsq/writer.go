@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -21,11 +22,11 @@ type Writer struct {
 	transactions      []*writerTransaction
 	state             int32
 	stopFlag          int32
-	transactionStat   int32
 	HeartbeatInterval int
 	ShortIdentifier   string
 	LongIdentifier    string
 	exitChan          chan int
+	wg                sync.WaitGroup
 }
 
 type writerTransaction struct {
@@ -45,9 +46,8 @@ func NewWriter(heartbeatInterval int) *Writer {
 		transactionChan:   make(chan *writerTransaction),
 		exitChan:          make(chan int),
 		dataChan:          make(chan []byte),
-		state:             StateDisconnected,
+		state:             StateInit,
 		stopFlag:          0,
-		transactionStat:   0,
 		WriteTimeout:      time.Second,
 		HeartbeatInterval: heartbeatInterval,
 		ShortIdentifier:   strings.Split(hostname, ".")[0],
@@ -94,24 +94,24 @@ func (this *Writer) ConnectToNSQ(addr string) error {
 	if atomic.LoadInt32(&this.stopFlag) == 1 {
 		return errors.New("writer stopped")
 	}
-	if atomic.LoadInt32(&this.transactionStat) != 0 {
-		return errors.New("writer transactions not cleaned")
-	}
-	if !atomic.CompareAndSwapInt32(&this.state, StateDisconnected, StateConnected) {
+
+	if !atomic.CompareAndSwapInt32(&this.state, StateInit, StateConnected) {
 		return nil
 	}
-	var err error
-	this.Conn, err = net.DialTimeout("tcp", addr, time.Second*5)
+
+	conn, err := net.DialTimeout("tcp", addr, time.Second*5)
 	if err != nil {
-		atomic.StoreInt32(&this.state, StateDisconnected)
+		atomic.StoreInt32(&this.state, StateInit)
 		return errors.New("failed to connect nsq")
 	}
+	this.Conn = conn
+
 	this.SetWriteDeadline(time.Now().Add(this.WriteTimeout))
 	if _, err := this.Conn.Write(MagicV2); err != nil {
 		this.close()
 		return err
 	}
-	atomic.StoreInt32(&this.state, StateConnected)
+
 	this.exitChan = make(chan int)
 	ci := make(map[string]interface{})
 	ci["short_id"] = this.ShortIdentifier
@@ -123,29 +123,42 @@ func (this *Writer) ConnectToNSQ(addr string) error {
 		this.close()
 		return fmt.Errorf("[%s] failed to create identify command - %s", this.RemoteAddr(), err.Error())
 	}
-	go this.readLoop()
-	go this.messageRouter()
+
+	this.wg.Add(1)
+	go func() {
+		this.readLoop()
+		this.wg.Done()
+	}()
+
+	this.wg.Add(1)
+	go func() {
+		this.messageRouter()
+		this.wg.Done()
+	}()
+
 	frameType, data, err := this.sendCommand(cmd)
 	if frameType == FrameTypeError {
 		if err == nil {
 			this.close()
-			err = fmt.Errorf("[%s] error failed to identify - %s", this.RemoteAddr(), string(data))
+			return fmt.Errorf("[%s] error failed to identify - %s", this.RemoteAddr(), string(data))
 		}
 	}
-	return err
+
+	return nil
 }
 
 func (this *Writer) close() {
 	if atomic.CompareAndSwapInt32(&this.state, StateConnected, StateDisconnected) {
 		close(this.exitChan)
 		this.Conn.Close()
+		this.wg.Wait()
+		atomic.StoreInt32(&this.state, StateInit)
 	}
 }
 
 func (this *Writer) messageRouter() {
 	var err error
 	defer this.transactionCleanup()
-	atomic.StoreInt32(&this.transactionStat, 1)
 	for {
 		select {
 		case t := <-this.transactionChan:
@@ -200,7 +213,6 @@ func (this *Writer) transactionCleanup() {
 		t.doneChan <- 1
 	}
 	this.transactions = this.transactions[:0]
-	atomic.StoreInt32(&this.transactionStat, 0)
 }
 
 func (this *Writer) readLoop() {
