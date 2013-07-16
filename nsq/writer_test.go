@@ -110,7 +110,7 @@ func TestHeartbeat(t *testing.T) {
 	w := NewWriter(1)
 	err := w.ConnectToNSQ(addr)
 	if err == nil {
-		t.Fatalf("heartbeat test failed")
+		t.Fatalf(err.Error())
 	}
 	_, _, err = w.Publish(topicName, []byte("publish_test_case"))
 	if err.Error() != "not connected" {
@@ -121,7 +121,7 @@ func TestHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-	time.Sleep(time.Second * 3)
+	time.Sleep(1500 * time.Millisecond)
 	msg_count := 10
 	for i := 0; i < msg_count; i++ {
 		frameType, data, err := w.Publish(topicName, []byte("publish_test_case"))
