@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,7 @@ type NSQd struct {
 	waitGroup       util.WaitGroupWrapper
 	lookupPeers     []*nsq.LookupPeer
 	notifyChan      chan interface{}
+	tlsConfig       *tls.Config
 }
 
 type nsqdOptions struct {
@@ -53,6 +55,9 @@ type nsqdOptions struct {
 	clientTimeout        time.Duration
 	maxHeartbeatInterval time.Duration
 	broadcastAddress     string
+	tlsCert              string
+	tlsKey               string
+	deflateEnabled       bool
 
 	maxOutputBufferSize    int64
 	maxOutputBufferTimeout time.Duration
@@ -73,6 +78,9 @@ func NewNsqdOptions() *nsqdOptions {
 		clientTimeout:        nsq.DefaultClientTimeout,
 		maxHeartbeatInterval: 60 * time.Second,
 		broadcastAddress:     "",
+		tlsCert:              "",
+		tlsKey:               "",
+		deflateEnabled:       true,
 
 		maxOutputBufferSize:    64 * 1024,
 		maxOutputBufferTimeout: 1 * time.Second,
@@ -87,6 +95,18 @@ func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 		idChan:     make(chan nsq.MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
+	}
+
+	if options.tlsCert != "" || options.tlsKey != "" {
+		cert, err := tls.LoadX509KeyPair(options.tlsCert, options.tlsKey)
+		if err != nil {
+			log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
+		}
+		n.tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+		}
+		n.tlsConfig.BuildNameToCertificate()
 	}
 
 	n.waitGroup.Wrap(func() { n.idPump() })

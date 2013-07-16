@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -47,6 +48,9 @@ var (
 	postAddrs          = util.StringArray{}
 	nsqdTCPAddrs       = util.StringArray{}
 	lookupdHTTPAddrs   = util.StringArray{}
+
+	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
+	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
 )
 
 func init() {
@@ -273,6 +277,13 @@ func main() {
 	r.SetMaxInFlight(*maxInFlight)
 	r.SetMaxBackoffDuration(*maxBackoffDuration)
 	r.VerboseLogging = *verbose
+
+	if *tlsEnabled {
+		r.TLSv1 = true
+		r.TLSConfig = &tls.Config{
+			InsecureSkipVerify: *tlsInsecureSkipVerify,
+		}
+	}
 
 	for i := 0; i < *numPublishers; i++ {
 		handler := &PublishHandler{

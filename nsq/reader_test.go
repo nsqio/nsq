@@ -2,6 +2,7 @@ package nsq
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/bitly/go-simplejson"
@@ -58,18 +59,40 @@ func SendMessage(t *testing.T, port int, topic string, method string, body []byt
 	resp.Body.Close()
 }
 
-func TestQueuereader(t *testing.T) {
+func TestReader(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	addr := "127.0.0.1:4150"
-	topicName := "reader_test" + strconv.Itoa(int(time.Now().Unix()))
+	readerTest(t, false, false)
+}
+
+func TestReaderTLS(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	readerTest(t, false, true)
+}
+
+func readerTest(t *testing.T, deflate bool, tlsv1 bool) {
+	topicName := "reader_test"
+	if tlsv1 {
+		topicName = topicName + "_tls"
+	}
+	topicName = topicName + strconv.Itoa(int(time.Now().Unix()))
+
 	q, _ := NewReader(topicName, "ch")
 	q.VerboseLogging = true
 	// so that the test can simulate reaching max requeues and a call to LogFailedMessage
 	q.DefaultRequeueDelay = 0
 	// so that the test wont timeout from backing off
 	q.SetMaxBackoffDuration(time.Millisecond * 50)
+
+	if tlsv1 {
+		q.TLSv1 = true
+		q.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
 
 	h := &MyTestHandler{
 		t: t,
@@ -82,6 +105,7 @@ func TestQueuereader(t *testing.T) {
 	SendMessage(t, 4151, topicName, "put", []byte("TOBEFAILED"))
 	h.messagesSent = 4
 
+	addr := "127.0.0.1:4150"
 	err := q.ConnectToNSQ(addr)
 	if err != nil {
 		t.Fatalf(err.Error())
@@ -94,9 +118,8 @@ func TestQueuereader(t *testing.T) {
 
 	<-q.ExitChan
 
-	log.Println("got", h.messagesReceived, "and sent", h.messagesSent)
 	if h.messagesReceived != 9 || h.messagesSent != 4 {
-		t.Fatalf("end of test. should have handled a diff number of messages")
+		t.Fatalf("end of test. should have handled a diff number of messages (got %d, sent %d)", h.messagesReceived, h.messagesSent)
 	}
 	if h.messagesFailed != 1 {
 		t.Fatal("failed message not done")

@@ -44,9 +44,20 @@ It listens on two TCP ports, one for clients and another for the HTTP API.
     -sync-every=2500: number of messages per diskqueue fsync
     -sync-timeout=2s: duration of time per diskqueue fsync
     -tcp-address="0.0.0.0:4150": <addr>:<port> to listen on for TCP clients
+    -tls-cert="": path to certificate file
+    -tls-key="": path to private key file
     -verbose=false: enable verbose logging
     -version=false: print version string
     -worker-id=0: unique identifier (int) for this worker (will default to a hash of hostname)
+
+### TLS
+
+When `nsqd` is configured with `--tls-cert` and `--tls-key` clients can negotiate upgrading their
+connection to TLS for enhanced security.
+
+If you want to generate a password-less self-signed certificate using openssl:
+
+    $ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
 
 ### Statsd / Graphite Integration
 
