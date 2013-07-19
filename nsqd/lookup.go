@@ -107,8 +107,8 @@ func (n *NSQd) lookupLoop() {
 		case lookupPeer := <-syncTopicChan:
 			commands := make([]*nsq.Command, 0)
 			// build all the commands first so we exit the lock(s) as fast as possible
-			nsqd.RLock()
-			for _, topic := range nsqd.topicMap {
+			n.RLock()
+			for _, topic := range n.topicMap {
 				topic.RLock()
 				if len(topic.channelMap) == 0 {
 					commands = append(commands, nsq.Register(topic.name, ""))
@@ -119,7 +119,7 @@ func (n *NSQd) lookupLoop() {
 				}
 				topic.RUnlock()
 			}
-			nsqd.RUnlock()
+			n.RUnlock()
 
 			for _, cmd := range commands {
 				log.Printf("LOOKUPD(%s): %s", lookupPeer, cmd)

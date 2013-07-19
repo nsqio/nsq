@@ -28,19 +28,23 @@ func NewNSQLookupd() *NSQLookupd {
 }
 
 func (l *NSQLookupd) Main() {
+	context := &Context{l}
+
 	tcpListener, err := net.Listen("tcp", l.tcpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", l.tcpAddr, err.Error())
 	}
 	l.tcpListener = tcpListener
-	l.waitGroup.Wrap(func() { util.TcpServer(tcpListener, &TcpProtocol{protocols: protocols}) })
+	tcpServer := &tcpServer{context: context}
+	l.waitGroup.Wrap(func() { util.TCPServer(tcpListener, tcpServer) })
 
 	httpListener, err := net.Listen("tcp", l.httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", l.httpAddr, err.Error())
 	}
 	l.httpListener = httpListener
-	l.waitGroup.Wrap(func() { httpServer(httpListener) })
+	httpServer := &httpServer{context: context}
+	l.waitGroup.Wrap(func() { util.HTTPServer(httpListener, httpServer) })
 }
 
 func (l *NSQLookupd) Exit() {

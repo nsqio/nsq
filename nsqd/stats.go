@@ -89,10 +89,10 @@ func (n *NSQd) getStats() []TopicStats {
 	n.RLock()
 	defer n.RUnlock()
 
-	realTopics := make([]*Topic, len(nsqd.topicMap))
-	topics := make([]TopicStats, len(nsqd.topicMap))
+	realTopics := make([]*Topic, len(n.topicMap))
+	topics := make([]TopicStats, len(n.topicMap))
 	topic_index := 0
-	for _, t := range nsqd.topicMap {
+	for _, t := range n.topicMap {
 		realTopics[topic_index] = t
 		topic_index++
 	}

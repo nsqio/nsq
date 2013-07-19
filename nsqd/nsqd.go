@@ -59,6 +59,10 @@ type nsqdOptions struct {
 	tlsKey               string
 	deflateEnabled       bool
 
+	statsdAddress  string
+	statsdPrefix   string
+	statsdInterval time.Duration
+
 	maxOutputBufferSize    int64
 	maxOutputBufferTimeout time.Duration
 }
@@ -81,6 +85,10 @@ func NewNsqdOptions() *nsqdOptions {
 		tlsCert:              "",
 		tlsKey:               "",
 		deflateEnabled:       true,
+
+		statsdAddress:  "",
+		statsdPrefix:   "",
+		statsdInterval: 60 * time.Second,
 
 		maxOutputBufferSize:    64 * 1024,
 		maxOutputBufferTimeout: 1 * time.Second,
@@ -115,6 +123,8 @@ func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 }
 
 func (n *NSQd) Main() {
+	context := &Context{n}
+
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
@@ -122,14 +132,20 @@ func (n *NSQd) Main() {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
 	}
 	n.tcpListener = tcpListener
-	n.waitGroup.Wrap(func() { util.TcpServer(n.tcpListener, &TcpProtocol{protocols: protocols}) })
+	tcpServer := &tcpServer{context: context}
+	n.waitGroup.Wrap(func() { util.TCPServer(n.tcpListener, tcpServer) })
 
 	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
 	}
 	n.httpListener = httpListener
-	n.waitGroup.Wrap(func() { httpServer(n.httpListener) })
+	httpServer := &httpServer{context: context}
+	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer) })
+
+	if n.options.statsdAddress != "" {
+		n.waitGroup.Wrap(func() { n.statsdLoop() })
+	}
 }
 
 func (n *NSQd) LoadMetadata() {

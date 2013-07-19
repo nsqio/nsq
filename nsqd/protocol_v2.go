@@ -22,11 +22,7 @@ var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
 
 type ProtocolV2 struct {
-	nsq.Protocol
-}
-
-func init() {
-	protocols[string(nsq.MagicV2)] = &ProtocolV2{}
+	context *Context
 }
 
 func (p *ProtocolV2) IOLoop(conn net.Conn) error {
@@ -34,7 +30,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var line []byte
 	var zeroTime time.Time
 
-	client := NewClientV2(conn)
+	client := NewClientV2(p.context, conn)
 	go p.messagePump(client)
 	for {
 		if client.HeartbeatInterval > 0 {
@@ -287,9 +283,9 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
 	}
 
-	if int64(bodyLen) > nsqd.options.maxBodySize {
+	if int64(bodyLen) > p.context.nsqd.options.maxBodySize {
 		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("IDENTIFY body too big %d > %d", bodyLen, nsqd.options.maxBodySize))
+			fmt.Sprintf("IDENTIFY body too big %d > %d", bodyLen, p.context.nsqd.options.maxBodySize))
 	}
 
 	body := make([]byte, bodyLen)
@@ -315,7 +311,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		return okBytes, nil
 	}
 
-	tlsv1 := nsqd.tlsConfig != nil && identifyData.TLSv1
+	tlsv1 := p.context.nsqd.tlsConfig != nil && identifyData.TLSv1
 
 	resp, err := json.Marshal(struct {
 		MaxRdyCount   int64  `json:"max_rdy_count"`
@@ -324,10 +320,10 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		MsgTimeout    int64  `json:"msg_timeout"`
 		TLSv1         bool   `json:"tls_v1"`
 	}{
-		MaxRdyCount:   nsqd.options.maxRdyCount,
+		MaxRdyCount:   p.context.nsqd.options.maxRdyCount,
 		Version:       util.BINARY_VERSION,
-		MaxMsgTimeout: int64(nsqd.options.maxMsgTimeout / time.Millisecond),
-		MsgTimeout:    int64(nsqd.options.msgTimeout / time.Millisecond),
+		MaxMsgTimeout: int64(p.context.nsqd.options.maxMsgTimeout / time.Millisecond),
+		MsgTimeout:    int64(p.context.nsqd.options.msgTimeout / time.Millisecond),
 		TLSv1:         tlsv1,
 	})
 	if err != nil {
@@ -380,7 +376,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("SUB channel name '%s' is not valid", channelName))
 	}
 
-	topic := nsqd.GetTopic(topicName)
+	topic := p.context.nsqd.GetTopic(topicName)
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client)
 
@@ -415,11 +411,11 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 		count = int64(b10)
 	}
 
-	if count < 0 || count > nsqd.options.maxRdyCount {
+	if count < 0 || count > p.context.nsqd.options.maxRdyCount {
 		// this needs to be a fatal error otherwise clients would have
 		// inconsistent state
 		return nil, nsq.NewFatalClientErr(nil, "E_INVALID",
-			fmt.Sprintf("RDY count %d out of range 0-%d", count, nsqd.options.maxRdyCount))
+			fmt.Sprintf("RDY count %d out of range 0-%d", count, p.context.nsqd.options.maxRdyCount))
 	}
 
 	client.SetReadyCount(count)
@@ -515,9 +511,9 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body size")
 	}
 
-	if int64(bodyLen) > nsqd.options.maxMessageSize {
+	if int64(bodyLen) > p.context.nsqd.options.maxMessageSize {
 		return nil, nsq.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("PUB message too big %d > %d", bodyLen, nsqd.options.maxMessageSize))
+			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.context.nsqd.options.maxMessageSize))
 	}
 
 	messageBody := make([]byte, bodyLen)
@@ -526,8 +522,8 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body")
 	}
 
-	topic := nsqd.GetTopic(topicName)
-	msg := nsq.NewMessage(<-nsqd.idChan, messageBody)
+	topic := p.context.nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-p.context.nsqd.idChan, messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, nsq.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -554,9 +550,9 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read body size")
 	}
 
-	if int64(bodyLen) > nsqd.options.maxBodySize {
+	if int64(bodyLen) > p.context.nsqd.options.maxBodySize {
 		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, nsqd.options.maxBodySize))
+			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.context.nsqd.options.maxBodySize))
 	}
 
 	numMessages, err := p.readLen(client)
@@ -572,9 +568,9 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 				fmt.Sprintf("MPUB failed to read message(%d) body size", i))
 		}
 
-		if int64(messageSize) > nsqd.options.maxMessageSize {
+		if int64(messageSize) > p.context.nsqd.options.maxMessageSize {
 			return nil, nsq.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB message too big %d > %d", messageSize, nsqd.options.maxMessageSize))
+				fmt.Sprintf("MPUB message too big %d > %d", messageSize, p.context.nsqd.options.maxMessageSize))
 		}
 
 		msgBody := make([]byte, messageSize)
@@ -583,10 +579,10 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			return nil, nsq.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, nsq.NewMessage(<-nsqd.idChan, msgBody))
+		messages = append(messages, nsq.NewMessage(<-p.context.nsqd.idChan, msgBody))
 	}
 
-	topic := nsqd.GetTopic(topicName)
+	topic := p.context.nsqd.GetTopic(topicName)
 
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
