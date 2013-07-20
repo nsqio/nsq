@@ -96,6 +96,10 @@ So we have a few ideas:
 * Normally Stressed Queue
 * Non Stop Queue
 * Not Simply Queued
+* Never Say Queue
+* Noticibly Stagnant Queue
+* Not Sure Queue
+* Naming Sucks Queue
 
 ## Additional Documentation
 
