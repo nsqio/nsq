@@ -21,7 +21,7 @@ func TestStartup(t *testing.T) {
 	options := NewNsqdOptions()
 	options.memQueueSize = 100
 	options.maxBytesPerFile = 10240
-	mustStartNSQd(options)
+	_, _, nsqd := mustStartNSQd(options)
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -64,7 +64,7 @@ func TestStartup(t *testing.T) {
 	options = NewNsqdOptions()
 	options.memQueueSize = 100
 	options.maxBytesPerFile = 10240
-	mustStartNSQd(options)
+	_, _, nsqd = mustStartNSQd(options)
 
 	go func() {
 		<-exitChan
@@ -109,7 +109,7 @@ func TestEphemeralChannel(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.memQueueSize = 100
-	mustStartNSQd(options)
+	_, _, nsqd := mustStartNSQd(options)
 
 	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
 	doneExitChan := make(chan int)

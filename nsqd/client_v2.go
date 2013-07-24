@@ -27,6 +27,7 @@ type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
+	context *Context
 	tlsConn net.Conn
 
 	// buffered IO
@@ -61,14 +62,15 @@ type ClientV2 struct {
 	HeartbeatUpdateChan chan time.Duration
 }
 
-func NewClientV2(conn net.Conn) *ClientV2 {
+func NewClientV2(context *Context, conn net.Conn) *ClientV2 {
 	var identifier string
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
 	c := &ClientV2{
-		Conn: conn,
+		Conn:    conn,
+		context: context,
 
 		Reader:                        bufio.NewReaderSize(conn, 16*1024),
 		Writer:                        bufio.NewWriterSize(conn, 16*1024),
@@ -87,8 +89,8 @@ func NewClientV2(conn net.Conn) *ClientV2 {
 		SubEventChan:    make(chan *Channel, 1),
 
 		// heartbeats are client configurable but default to 30s
-		Heartbeat:           time.NewTicker(nsqd.options.clientTimeout / 2),
-		HeartbeatInterval:   nsqd.options.clientTimeout / 2,
+		Heartbeat:           time.NewTicker(context.nsqd.options.clientTimeout / 2),
+		HeartbeatInterval:   context.nsqd.options.clientTimeout / 2,
 		HeartbeatUpdateChan: make(chan time.Duration, 1),
 	}
 	c.lenSlice = c.lenBuf[:]
@@ -219,7 +221,7 @@ func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
-		desiredInterval <= int(nsqd.options.maxHeartbeatInterval/time.Millisecond):
+		desiredInterval <= int(c.context.nsqd.options.maxHeartbeatInterval/time.Millisecond):
 		interval = (time.Duration(desiredInterval) * time.Millisecond)
 	default:
 		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
@@ -249,7 +251,7 @@ func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 		size = 1
 	case desiredSize == 0:
 		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(nsqd.options.maxOutputBufferSize):
+	case desiredSize >= 64 && desiredSize <= int(c.context.nsqd.options.maxOutputBufferSize):
 		size = desiredSize
 	default:
 		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
@@ -276,7 +278,7 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case desiredTimeout >= 5 &&
-		desiredTimeout <= int(nsqd.options.maxOutputBufferTimeout/time.Millisecond):
+		desiredTimeout <= int(c.context.nsqd.options.maxOutputBufferTimeout/time.Millisecond):
 		timeout = (time.Duration(desiredTimeout) * time.Millisecond)
 	default:
 		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
@@ -296,7 +298,7 @@ func (c *ClientV2) UpgradeTLS() error {
 	c.Lock()
 	defer c.Unlock()
 
-	tlsConn := tls.Server(c.Conn, nsqd.tlsConfig)
+	tlsConn := tls.Server(c.Conn, c.context.nsqd.tlsConfig)
 	err := tlsConn.Handshake()
 	if err != nil {
 		return err

@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"net"
@@ -21,9 +20,6 @@ var (
 	tombstoneLifetime       = flag.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 	broadcastAddress        = flag.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 )
-
-var protocols = map[string]nsq.Protocol{}
-var lookupd *NSQLookupd
 
 func main() {
 	flag.Parse()
@@ -61,13 +57,13 @@ func main() {
 
 	log.Println(util.Version("nsqlookupd"))
 
-	lookupd = NewNSQLookupd()
-	lookupd.tcpAddr = tcpAddr
-	lookupd.httpAddr = httpAddr
-	lookupd.broadcastAddress = *broadcastAddress
-	lookupd.inactiveProducerTimeout = *inactiveProducerTimeout
-	lookupd.tombstoneLifetime = *tombstoneLifetime
-	lookupd.Main()
+	nsqlookupd := NewNSQLookupd()
+	nsqlookupd.tcpAddr = tcpAddr
+	nsqlookupd.httpAddr = httpAddr
+	nsqlookupd.broadcastAddress = *broadcastAddress
+	nsqlookupd.inactiveProducerTimeout = *inactiveProducerTimeout
+	nsqlookupd.tombstoneLifetime = *tombstoneLifetime
+	nsqlookupd.Main()
 	<-exitChan
-	lookupd.Exit()
+	nsqlookupd.Exit()
 }

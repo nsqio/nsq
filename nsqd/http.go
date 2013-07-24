@@ -17,41 +17,52 @@ import (
 
 import httpprof "net/http/pprof"
 
-func httpServer(listener net.Listener) {
-	log.Printf("HTTP: listening on %s", listener.Addr().String())
-
-	handler := http.NewServeMux()
-	handler.HandleFunc("/ping", pingHandler)
-	handler.HandleFunc("/info", infoHandler)
-	handler.HandleFunc("/put", putHandler)
-	handler.HandleFunc("/mput", mputHandler)
-	handler.HandleFunc("/stats", statsHandler)
-	handler.HandleFunc("/empty_topic", emptyTopicHandler)
-	handler.HandleFunc("/delete_topic", deleteTopicHandler)
-	handler.HandleFunc("/empty_channel", emptyChannelHandler)
-	handler.HandleFunc("/delete_channel", deleteChannelHandler)
-	handler.HandleFunc("/mem_profile", memProfileHandler)
-	handler.HandleFunc("/cpu_profile", httpprof.Profile)
-	handler.HandleFunc("/pause_channel", pauseChannelHandler)
-	handler.HandleFunc("/unpause_channel", pauseChannelHandler)
-	handler.HandleFunc("/create_topic", createTopicHandler)
-	handler.HandleFunc("/create_channel", createChannelHandler)
-
-	// these timeouts are absolute per server connection NOT per request
-	// this means that a single persistent connection will only last N seconds
-	server := &http.Server{
-		Handler: handler,
-	}
-	err := server.Serve(listener)
-	// theres no direct way to detect this error because it is not exposed
-	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-		log.Printf("ERROR: http.Serve() - %s", err.Error())
-	}
-
-	log.Printf("HTTP: closing %s", listener.Addr().String())
+type httpServer struct {
+	context *Context
 }
 
-func memProfileHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/pub":
+		fallthrough
+	case "/put":
+		s.putHandler(w, req)
+	case "/mpub":
+		fallthrough
+	case "/mput":
+		s.mputHandler(w, req)
+	case "/stats":
+		s.statsHandler(w, req)
+	case "/ping":
+		s.pingHandler(w, req)
+	case "/info":
+		s.infoHandler(w, req)
+	case "/empty_topic":
+		s.emptyTopicHandler(w, req)
+	case "/delete_topic":
+		s.deleteTopicHandler(w, req)
+	case "/empty_channel":
+		s.emptyChannelHandler(w, req)
+	case "/delete_channel":
+		s.deleteChannelHandler(w, req)
+	case "/pause_channel":
+		s.pauseChannelHandler(w, req)
+	case "/unpause_channel":
+		s.pauseChannelHandler(w, req)
+	case "/create_topic":
+		s.createTopicHandler(w, req)
+	case "/create_channel":
+		s.createChannelHandler(w, req)
+	case "/mem_profile":
+		s.memProfileHandler(w, req)
+	case "/cpu_profile":
+		httpprof.Profile(w, req)
+	default:
+		util.ApiResponse(w, 404, "NOT_FOUND", nil)
+	}
+}
+
+func (s *httpServer) memProfileHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("MEMORY Profiling Enabled")
 	f, err := os.Create("nsqd.mprof")
 	if err != nil {
@@ -64,12 +75,12 @@ func memProfileHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func pingHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
 }
 
-func infoHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) infoHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", struct {
 		Version string `json:"version"`
 	}{
@@ -77,7 +88,7 @@ func infoHandler(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func putHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
@@ -101,13 +112,13 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if int64(len(reqParams.Body)) > nsqd.options.maxMessageSize {
+	if int64(len(reqParams.Body)) > s.context.nsqd.options.maxMessageSize {
 		util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
 		return
 	}
 
-	topic := nsqd.GetTopic(topicName)
-	msg := nsq.NewMessage(<-nsqd.idChan, reqParams.Body)
+	topic := s.context.nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-s.context.nsqd.idChan, reqParams.Body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		util.ApiResponse(w, 500, "NOK", nil)
@@ -118,7 +129,7 @@ func putHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func mputHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
@@ -142,15 +153,15 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic := nsqd.GetTopic(topicName)
+	topic := s.context.nsqd.GetTopic(topicName)
 	for _, block := range bytes.Split(reqParams.Body, []byte("\n")) {
 		if len(block) != 0 {
-			if int64(len(reqParams.Body)) > nsqd.options.maxMessageSize {
+			if int64(len(reqParams.Body)) > s.context.nsqd.options.maxMessageSize {
 				util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
 				return
 			}
 
-			msg := nsq.NewMessage(<-nsqd.idChan, block)
+			msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
 			err := topic.PutMessage(msg)
 			if err != nil {
 				util.ApiResponse(w, 500, "NOK", nil)
@@ -163,7 +174,7 @@ func mputHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func createTopicHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) createTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -182,11 +193,11 @@ func createTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	nsqd.GetTopic(topicName)
+	s.context.nsqd.GetTopic(topicName)
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -205,7 +216,7 @@ func emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -220,7 +231,7 @@ func emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -234,7 +245,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = nsqd.DeleteExistingTopic(topicName)
+	err = s.context.nsqd.DeleteExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -243,7 +254,7 @@ func deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func createChannelHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) createChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -257,7 +268,7 @@ func createChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -267,7 +278,7 @@ func createChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -281,7 +292,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -302,7 +313,7 @@ func emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -316,7 +327,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -331,7 +342,7 @@ func deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -345,7 +356,7 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
@@ -366,7 +377,7 @@ func pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
-func statsHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
@@ -382,7 +393,7 @@ func statsHandler(w http.ResponseWriter, req *http.Request) {
 		io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
 	}
 
-	stats := nsqd.getStats()
+	stats := s.context.nsqd.getStats()
 
 	if jsonFormat {
 		util.ApiResponse(w, 200, "OK", struct {
