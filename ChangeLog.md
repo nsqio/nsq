@@ -4,14 +4,22 @@
 
 ### 0.2.22-alpha
 
-**Upgrading from 0.2.21**: there are no backward incompatible changes in this release.
+**Upgrading from 0.2.21**: message timestamps are now officially nanoseconds.  The protocol docs
+always stated this however `nsqd` was actually sending seconds.  This may cause some compatibility
+issues for client libraries/clients that were taking advantage of this field.
+
+This release also introduces support for TLS feature negotiation in `nsqd`.  Clients can optionally
+enable TLS by using the appropriate handshake via the `IDENTIFY` command.
 
 New Features / Enhancements:
 
+ * #227 - TLS feature negotiation
+ * #230 - nsq_to_http takes --content-type flag (thanks @michaelhood)
  * #228 - nsqadmin displays tombstoned topics in the /nodes list
 
 Bug Fixes:
 
+ * #232 - message timestamps are now nano
  * #228 - nsqlookupd/nsqadmin would display inactive nodes in /nodes list
  * #216 - fix edge cases in nsq_to_file that caused empty files
 
@@ -253,6 +261,10 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
+ * #227 - TLS feature negotiation
+ * #169 - auto-reconnect to hard-coded nsqd
+          use last RDY count for IsStarved()
+          redistribute RDY state when num_conns > max_in_flight
  * #204 - fix early termination blocking
  * #186 - max backoff duration of 0 disables backoff
  * #164/#202 - add Writer
