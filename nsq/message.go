@@ -28,7 +28,7 @@ func NewMessage(id MessageID, body []byte) *Message {
 	return &Message{
 		Id:        id,
 		Body:      body,
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now().UnixNano(),
 	}
 }
 
