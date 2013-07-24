@@ -16,7 +16,7 @@ func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQd(1, NewNsqdOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
@@ -37,7 +37,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQd(1, NewNsqdOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
@@ -64,7 +64,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.msgTimeout = 200 * time.Millisecond
-	nsqd = NewNSQd(1, options)
+	nsqd := NewNSQd(1, options)
 	defer nsqd.Exit()
 
 	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
@@ -73,7 +73,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, NewClientV2(nil))
+		channel.StartInFlightTimeout(msg, NewClientV2(&Context{nsqd}, nil))
 	}
 
 	assert.Equal(t, len(channel.inFlightMessages), 1000)
@@ -91,13 +91,13 @@ func TestChannelEmpty(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd = NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQd(1, NewNsqdOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := NewClientV2(nil)
+	client := NewClientV2(&Context{nsqd}, nil)
 
 	msgs := make([]*nsq.Message, 0, 25)
 	for i := 0; i < 25; i++ {
@@ -125,14 +125,14 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	tcpAddr, _, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 	conn, _ := mustConnectNSQd(tcpAddr)
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := NewClientV2(conn)
+	client := NewClientV2(&Context{nsqd}, conn)
 	client.SetReadyCount(25)
 	channel.AddClient(client)
 

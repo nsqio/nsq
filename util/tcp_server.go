@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
-type TcpHandler interface {
+type TCPHandler interface {
 	Handle(net.Conn)
 }
 
-func TcpServer(listener net.Listener, handler TcpHandler) {
+func TCPServer(listener net.Listener, handler TCPHandler) {
 	log.Printf("TCP: listening on %s", listener.Addr().String())
 
 	for {

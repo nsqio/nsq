@@ -7,13 +7,15 @@ import (
 	"time"
 )
 
-func statsdLoop(addr string, prefix string, interval time.Duration) {
+func (n *NSQd) statsdLoop() {
 	lastStats := make([]TopicStats, 0)
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(n.options.statsdInterval)
 	for {
 		select {
+		case <-n.exitChan:
+			goto exit
 		case <-ticker.C:
-			statsd := util.NewStatsdClient(addr, prefix)
+			statsd := util.NewStatsdClient(n.options.statsdAddress, n.options.statsdPrefix)
 			err := statsd.CreateSocket()
 			if err != nil {
 				log.Printf("ERROR: failed to create UDP socket to statsd(%s)", statsd)
@@ -22,7 +24,7 @@ func statsdLoop(addr string, prefix string, interval time.Duration) {
 
 			log.Printf("STATSD: pushing stats to %s", statsd)
 
-			stats := nsqd.getStats()
+			stats := n.getStats()
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := TopicStats{}
@@ -84,5 +86,7 @@ func statsdLoop(addr string, prefix string, interval time.Duration) {
 			statsd.Close()
 		}
 	}
+
+exit:
 	ticker.Stop()
 }

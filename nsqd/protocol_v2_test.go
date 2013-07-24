@@ -20,14 +20,14 @@ import (
 	"time"
 )
 
-func mustStartNSQd(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr) {
+func mustStartNSQd(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQd) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	nsqd = NewNSQd(1, options)
+	nsqd := NewNSQd(1, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.Main()
-	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr)
+	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr), nsqd
 }
 
 func mustConnectNSQd(tcpAddr *net.TCPAddr) (net.Conn, error) {
@@ -134,7 +134,7 @@ func TestBasicV2(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 60 * time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -169,7 +169,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 60 * time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -215,7 +215,7 @@ func TestClientTimeout(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 50 * time.Millisecond
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -251,7 +251,7 @@ func TestClientHeartbeat(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 100 * time.Millisecond
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -287,7 +287,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 200 * time.Millisecond
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -303,7 +303,7 @@ func TestClientHeartbeatDisable(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.clientTimeout = 100 * time.Millisecond
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -323,7 +323,7 @@ func TestMaxHeartbeatIntervalValid(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.maxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -339,7 +339,7 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 
 	options := NewNsqdOptions()
 	options.maxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -355,7 +355,7 @@ func TestPausing(t *testing.T) {
 
 	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	tcpAddr, _, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -418,7 +418,7 @@ func TestEmptyCommand(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	tcpAddr, _, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -438,7 +438,7 @@ func TestSizeLimits(t *testing.T) {
 	*verbose = true
 	options.maxMessageSize = 100
 	options.maxBodySize = 1000
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -518,7 +518,7 @@ func TestTouch(t *testing.T) {
 	*verbose = true
 	options := NewNsqdOptions()
 	options.msgTimeout = 50 * time.Millisecond
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
@@ -564,7 +564,7 @@ func TestMaxRdyCount(t *testing.T) {
 	*verbose = true
 	options := NewNsqdOptions()
 	options.maxRdyCount = 50
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	topicName := "test_max_rdy_count" + strconv.Itoa(int(time.Now().Unix()))
@@ -609,7 +609,7 @@ func TestFatalError(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _ := mustStartNSQd(NewNsqdOptions())
+	tcpAddr, _, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -636,7 +636,7 @@ func TestOutputBuffering(t *testing.T) {
 	options := NewNsqdOptions()
 	options.maxOutputBufferSize = 512 * 1024
 	options.maxOutputBufferTimeout = time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	topicName := "test_output_buffering" + strconv.Itoa(int(time.Now().Unix()))
@@ -678,7 +678,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 	options := NewNsqdOptions()
 	options.maxOutputBufferSize = 512 * 1024
 	options.maxOutputBufferTimeout = time.Second
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -703,7 +703,7 @@ func TestTLS(t *testing.T) {
 	options := NewNsqdOptions()
 	options.tlsCert = "./test/cert.pem"
 	options.tlsKey = "./test/key.pem"
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQd(tcpAddr)
@@ -737,7 +737,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	p := &ProtocolV2{}
-	c := NewClientV2(nil)
+	c := NewClientV2(nil, nil)
 	params := [][]byte{[]byte("NOP")}
 	b.StartTimer()
 
@@ -753,7 +753,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	defer log.SetOutput(os.Stdout)
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	msg := make([]byte, size)
 	batchSize := 200
 	batch := make([][]byte, 0)
@@ -824,7 +824,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	defer log.SetOutput(os.Stdout)
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -922,7 +922,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	tcpAddr, _ := mustStartNSQd(options)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
 	msg := make([]byte, 256)
 	b.SetBytes(int64(len(msg) * num))
 

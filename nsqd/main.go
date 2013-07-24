@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"hash/crc32"
 	"io"
@@ -61,9 +60,6 @@ func init() {
 	flag.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 }
 
-var nsqd *NSQd
-var protocols = map[string]nsq.Protocol{}
-
 func main() {
 	flag.Parse()
 
@@ -108,14 +104,6 @@ func main() {
 	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	if *statsdAddress != "" {
-		// flagToDuration will fatally error if it is invalid
-		statsdInterval := flagToDuration(*statsdInterval, time.Second, "--statsd-interval")
-		undered := fmt.Sprintf("%s_%d", strings.Replace(*broadcastAddress, ".", "_", -1), httpAddr.Port)
-		prefix := fmt.Sprintf("nsq.%s.", undered)
-		go statsdLoop(*statsdAddress, prefix, statsdInterval)
-	}
-
 	// flagToDuration will fatally error if it is invalid
 	msgTimeoutDuration := flagToDuration(*msgTimeout, time.Millisecond, "--msg-timeout")
 
@@ -137,7 +125,15 @@ func main() {
 	options.tlsCert = *tlsCert
 	options.tlsKey = *tlsKey
 
-	nsqd = NewNSQd(*workerId, options)
+	if *statsdAddress != "" {
+		// flagToDuration will fatally error if it is invalid
+		options.statsdInterval = flagToDuration(*statsdInterval, time.Second, "--statsd-interval")
+		undered := fmt.Sprintf("%s_%d", strings.Replace(*broadcastAddress, ".", "_", -1), httpAddr.Port)
+		options.statsdPrefix = fmt.Sprintf("nsq.%s.", undered)
+		options.statsdAddress = *statsdAddress
+	}
+
+	nsqd := NewNSQd(*workerId, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.lookupdTCPAddrs = lookupdTCPAddrs

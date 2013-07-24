@@ -19,7 +19,7 @@ func TestHTTPput(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	_, httpAddr := mustStartNSQd(NewNsqdOptions())
+	_, httpAddr, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_http_put" + strconv.Itoa(int(time.Now().Unix()))
@@ -40,7 +40,7 @@ func TestHTTPmput(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	_, httpAddr := mustStartNSQd(NewNsqdOptions())
+	_, httpAddr, nsqd := mustStartNSQd(NewNsqdOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput" + strconv.Itoa(int(time.Now().Unix()))
@@ -70,7 +70,7 @@ func BenchmarkHTTPput(b *testing.B) {
 	defer log.SetOutput(os.Stdout)
 	options := NewNsqdOptions()
 	options.memQueueSize = int64(b.N)
-	_, httpAddr := mustStartNSQd(options)
+	_, httpAddr, nsqd := mustStartNSQd(options)
 	msg := make([]byte, 256)
 	topicName := "bench_http_put" + strconv.Itoa(int(time.Now().Unix()))
 	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
