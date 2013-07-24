@@ -80,6 +80,27 @@ doc][design] or [blog post][nsq_post].
 * [ruby_nsq][ruby_lib] Ruby [rubygems][ruby_nsq_rubygems]
 * [NSQnet][nsq_net] .NET
 
+## Naming
+
+What does NSQ stand for? That is a great question. The answer, is, what's in a name?
+So we have a few ideas:
+
+* Not Shitty Queue
+* Non Sense Queue
+* Not Stable Queue
+* Not Safe Queue
+* Never Sane Queue
+* Neglecting Safety Queue
+* Non Starter Queue
+* Non Structured Queue
+* Normally Stressed Queue
+* Non Stop Queue
+* Not Simply Queued
+* Never Say Queue
+* Noticibly Stagnant Queue
+* Not Sure Queue
+* Naming Sucks Queue
+
 ## Additional Documentation
 
 **NSQ** is composed of the following individual components, each with their own README:
@@ -97,7 +118,7 @@ DISCLAIMER: Please keep in mind that NSQ is designed to be used in a distributed
 node performance is important, but not the end-all-be-all of what we're looking to achieve. Also,
 benchmarks are stupid, but here's a few anyway to ignite the flame:
 
-On a 2012 MacBook Air i7 2ghz (`GOMAXPROCS=1`, `go 1.1 beta2 4a712e80e9b1`, NSQ v0.2.19-alpha) 
+On a 2012 MacBook Air i7 2ghz (`GOMAXPROCS=1`, `go 1.1 beta2 4a712e80e9b1`, NSQ v0.2.19-alpha)
 single publisher, single consumer:
 
 ```
@@ -118,7 +139,7 @@ and archiving messages to disk.
  1. follow the instructions in the [INSTALLING][installing] doc (or [download a binary
     release][binary]).
  2. in one shell, start `nsqlookupd`:
-        
+
         $ nsqlookupd
 
  3. in another shell, start `nsqd`:
@@ -130,7 +151,7 @@ and archiving messages to disk.
         $ nsqadmin --lookupd-http-address=127.0.0.1:4161
 
  5. publish an initial message (creates the topic in the cluster, too):
- 
+
         $ curl -d 'hello world 1' 'http://127.0.0.1:4151/put?topic=test'
 
  6. finally, in another shell, start `nsq_to_file`:
@@ -142,8 +163,8 @@ and archiving messages to disk.
         $ curl -d 'hello world 2' 'http://127.0.0.1:4151/put?topic=test'
         $ curl -d 'hello world 3' 'http://127.0.0.1:4151/put?topic=test'
 
- 8. to verify things worked as expected, in a web browser open `http://127.0.0.1:4171/` to view 
-    the `nsqadmin` UI and see statistics.  Also, check the contents of the log files (`test.*.log`) 
+ 8. to verify things worked as expected, in a web browser open `http://127.0.0.1:4171/` to view
+    the `nsqadmin` UI and see statistics.  Also, check the contents of the log files (`test.*.log`)
     written to `/tmp`.
 
 The important lesson here is that `nsq_to_file` (the client) is not explicitly told where the `test`
