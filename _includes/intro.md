@@ -1,4 +1,4 @@
-### Overview
+### Introduction
 
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
@@ -15,7 +15,8 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
 ### Getting Help
 
-If you're having trouble or have questions about NSQ, the best place to ask is the [user group][google_group].
+If you're having trouble or have questions about NSQ, the best place to ask is the [user
+group][google_group].
 
 ### Issues
 

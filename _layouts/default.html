@@ -1,19 +1,22 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>{{ page.title }}</title>
-    <link rel="stylesheet" type="text/css" href="static/css/bootstrap.min.css" />
-    <link rel="stylesheet" type="text/css" href="static/css/base.css" />
+    <title>NSQ Docs {{ site.version }} - {{ page.title }}</title>
+    <link rel="stylesheet" type="text/css" href="{{ site.url }}/static/css/bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="{{ site.url }}/static/css/base.css" />
+    <link rel="stylesheet" type="text/css" href="{{ site.url }}/static/css/pygments.css" />
   </head>
   <body lang="en">
     <div class="container">
       <div class="row">
-        <div class="span3">{% include sidebar.html %}</div>
+        <div class="span3 sidebar">{% include sidebar.html %}</div>
         <div class="span9">{{ content }}</div>
       </div>
+      <div class="row">
+        <footer class="footer">
+          <p class="muted built">Built: {{ site.time | date_to_rfc822 }}</p>
+        </footer>
+      </div>
     </div>
-    <footer class="footer">
-      <p>Page generated: {{ site.time | date_to_string }}</p>
-    </footer>
   </body>
 </html>

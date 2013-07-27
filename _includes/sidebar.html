@@ -1,6 +1,13 @@
-<div class="well sidebar">
+<a href="{{ site.url }}/"><img src="{{ site.url }}/static/img/nsq.png" /></a>
+
+<p class="muted version">{{ site.version }}</p>
+<div class="well well-small navigation">
   <ul class="nav nav-list">
-    <li class="nav-header">Basics</li>
-    <li class="active"><a href="index.html">Home</a></li>
+    {% for category in site.categories %} 
+      <li class="nav-header">{{ category[0] }}</li>
+      {% for post in category[1] %} 
+        <li><a href="{{ post.url }}">{{ post.title }}</a></li> 
+      {% endfor %}
+    {% endfor %}
   </ul>
 </div>
