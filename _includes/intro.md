@@ -1,5 +1,3 @@
-## NSQ
-
 ### Overview
 
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
