@@ -12,7 +12,7 @@ examples/nsq_to_http/nsq_to_http
 examples/nsq_tail/nsq_tail
 examples/nsq_stat/nsq_stat
 dist
-
+_site
 *.dat
 
 # Go.gitignore
