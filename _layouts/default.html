@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" type="text/css" href="static/css/bootstrap.min.css" />
+  </head>
+  <body lang="en">
+    <div class="container-fluid">
+      <div class="row-fluid">
+        <div class="span2">{% include sidebar.html %}</div>
+        <div class="span10">{{ content }}</div>
+      </div>
+    </div>
+    <footer class="footer">
+      <p>Page generated: {{ site.time | date_to_string }}</p>
+    </footer>
+  </body>
+</html>

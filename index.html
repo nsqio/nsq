@@ -1,6 +1,7 @@
 ---
 layout: default
-title: NSQ: realtime distributed message processing at scale
+title: NSQ - realtime distributed message processing at scale
 ---
 
-Page generated: {{ site.time | date_to_string }}
+{% capture intro %}{% include intro.md %}{% endcapture %}
+{{ intro | markdownify }}
