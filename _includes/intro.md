@@ -1,8 +1,6 @@
-NSQ v0.2.22-alpha Documentation
-==================================
+## NSQ
 
-Overview
---------
+### Overview
 
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
@@ -17,19 +15,16 @@ data format (messages can be JSON, MsgPack, go-protobuf, or anything else). Offi
 libraries are available out of the box and, if you're interested in building your own client,
 there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
-Getting Help
-------------
+### Getting Help
 
 If you're having trouble or have questions about NSQ, the best place to ask is the [user group][google_group].
 
-Issues
-------
+### Issues
 
 All issues should be reported via [github issues][github_issues]. Don't forget to search through the
 existing issues to see if that topic has come up before posting.
 
-Contributing
-------------
+### Contributing
 
 **NSQ** has growing community and contributions are always welcome (particularly documentation). To
 contribute, fork the project on [github][github_nsq] and send a pull request.
