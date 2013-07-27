@@ -1,3 +1,4 @@
 source: .
 version: 0.2.22-alpha
 pygments: true
+base_url: /nsq

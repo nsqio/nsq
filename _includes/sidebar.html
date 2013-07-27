@@ -1,4 +1,4 @@
-<a href="{{ site.url }}/"><img src="{{ site.url }}/static/img/nsq.png" /></a>
+<a href="{{ site.base_url }}/"><img src="{{ site.base_url }}/static/img/nsq.png" /></a>
 
 <p class="muted version">{{ site.version }}</p>
 <div class="well well-small navigation">
@@ -6,7 +6,7 @@
     {% for category in site.categories %} 
       <li class="nav-header">{{ category[0] }}</li>
       {% for post in category[1] %} 
-        <li><a href="{{ post.url }}">{{ post.title }}</a></li> 
+        <li><a href="{{ site.base_url }}{{ post.url }}">{{ post.title }}</a></li> 
       {% endfor %}
     {% endfor %}
   </ul>
