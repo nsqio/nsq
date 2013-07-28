@@ -3,9 +3,9 @@
 **NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
 billions of messages per day.
 
-It promotes *distributed* and *decentralized* topologies [without single points of failure][spof],
-enabling fault tolerance and high availability coupled with a reliable [message delivery
-guarantee][message_guarantee].
+It promotes *distributed* and *decentralized* topologies without single points of failure,
+enabling fault tolerance and high availability coupled with a reliable message delivery
+guarantee.  See [features & guarantees][features_guarantees].
 
 Operationally, **NSQ** is easy to configure and deploy (all parameters are specified on the command
 line and compiled binaries have no runtime dependencies). For maximum flexibility, it is agnostic to
@@ -28,10 +28,58 @@ existing issues to see if that topic has come up before posting.
 **NSQ** has growing community and contributions are always welcome (particularly documentation). To
 contribute, fork the project on [github][github_nsq] and send a pull request.
 
-[spof]: #
-[message_guarantee]: #
-[protocol]: #
-[client_libraries]: #
+### Contributors
+
+ * Dan Frank ([@danielhfrank][dan_twitter])
+ * Pierce Lopez ([@ploxiln][pierce_twitter])
+ * Will McCutchen ([@mccutchen][mccutch_twitter])
+ * Micha Gorelick ([@mynameisfiber][micha_twitter])
+ * Jay Ridgeway ([@jayridge][jay_twitter])
+ * Todd Levy ([@toddml][todd_twitter])
+ * Justin Hines ([@jphines][jphines_twitter])
+ * Phillip Rosen ([@phillro][phil_github])
+ * David Gardner ([@davidgardnerisme][david_twitter])
+ * Clarity Services ([@ClarityServices][clarity_github])
+ * Harley Laue ([@losinggeneration][harley_github])
+ * Justin Azoff ([@JustinAzoff][justin_github])
+ * Michael Hood ([@michaelhood][michael_github])
+ * Xianjie ([@datastream][datastream_github])
+ * Dustin Norlander ([@dustismo][dustismo_github])
+ * Funky Gao ([@funkygao][funkygao_github])
+ * Dan Markham ([@dmarkham][dmarkham_github])
+ * Francisco Souza ([@fsouza][fsouza_github])
+ * galvinhsiu ([@galvinhsiu][galvinhsiu_github])
+ * Eric Lubow ([@elubow][elubow_github])
+ * Will Charczuk ([@wcharczuk][wcharczuk_github])
+ * Dominic Wong ([@domwong][domwong_github])
+
+[features_guarantees]: {{ site.baseurl }}/overview/features_and_guarantees.html
+[protocol]: {{ site.baseurl }}/clients/tcp_protocol_spec.html
+[client_libraries]: {{ site.baseurl }}/clients/client_libraries.html
 [github_issues]: https://github.com/bitly/nsq/issues
 [github_nsq]: http://github.com/bitly/nsq
 [google_group]: http://groups.google.com/group/nsq-users
+[snakes_twitter]: https://twitter.com/imsnakes
+[jehiah_twitter]: https://twitter.com/jehiah
+[dan_twitter]: https://twitter.com/danielhfrank
+[pierce_twitter]: https://twitter.com/ploxiln
+[mccutch_twitter]: https://twitter.com/mccutchen
+[micha_twitter]: https://twitter.com/mynameisfiber
+[harley_github]: https://github.com/losinggeneration
+[david_twitter]: https://twitter.com/davegardnerisme
+[justin_github]: https://github.com/JustinAzoff
+[phil_github]: https://github.com/phillro
+[todd_twitter]: https://twitter.com/toddml
+[jay_twitter]: https://twitter.com/jayridge
+[clarity_github]: https://github.com/ClarityServices
+[michael_github]: https://github.com/michaelhood
+[datastream_github]: https://github.com/datastream
+[dustismo_github]: https://github.com/dustismo
+[funkygao_github]: https://github.com/funkygao
+[dmarkham_github]: https://github.com/dmarkham
+[fsouza_github]: https://github.com/fsouza
+[galvinhsiu_github]: https://github.com/galvinhsiu
+[elubow_github]: https://github.com/elubow
+[jphines_twitter]: https://twitter.com/jphines
+[wcharczuk_github]: https://github.com/wcharczuk
+[domwong_github]: https://github.com/domwong

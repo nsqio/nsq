@@ -33,6 +33,8 @@ guarantees and tradeoffs.
  
  * transport layer security (TLS)
  
+ * data format agnostic
+ 
  * few dependencies (easy to deploy) and a sane, bounded, default configuration
  
  * simple TCP protocol supporting client libraries in any language

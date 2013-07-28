@@ -29,3 +29,7 @@ a[name] {
   color: #000;
   text-decoration: none;
 }
+
+.authors {
+  font-size: 75%;
+}
