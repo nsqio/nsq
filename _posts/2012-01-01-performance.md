@@ -5,7 +5,7 @@ category: overview
 permalink: /overview/performance.html
 ---
 
-DISCLAIMER: Please keep in mind that NSQ is designed to be used in a distributed fashion. Single
+DISCLAIMER: Please keep in mind that **NSQ** is designed to be used in a distributed fashion. Single
 node performance is important, but not the end-all-be-all of what we're looking to achieve. Also,
 benchmarks are stupid, but here's a few anyway to ignite the flame:
 

@@ -15,7 +15,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
 ### Getting Help
 
-If you're having trouble or have questions about NSQ, the best place to ask is the [user
+If you're having trouble or have questions about **NSQ**, the best place to ask is the [user
 group][google_group].
 
 ### Issues
