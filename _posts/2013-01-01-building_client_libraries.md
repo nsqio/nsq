@@ -427,11 +427,3 @@ libraries](/clients/client_libraries.html).
 
 [go-nsq]: https://github.com/bitly/nsq/tree/master/nsq
 [pynsq]: https://github.com/bitly/pynsq
-[libnsq]: https://github.com/mreiferson/libnsq
-[nsq-java]: https://github.com/bitly/nsq-java
-[TrendrrNSQClient]: https://github.com/dustismo/TrendrrNSQClient
-[nsqjava]: https://github.com/domwong/nsqjava
-[nsq-client]: https://github.com/jmanero/nsq-client
-[nodensq]: https://github.com/phillro/nodensq
-[nsqphp]: https://github.com/davegardnerisme/nsqphp
-[ruby_nsq]: https://github.com/ClarityServices/ruby_nsq
