@@ -1,7 +1,7 @@
 ### Introduction
 
-**NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
-billions of messages per day.
+**NSQ** is a realtime distributed messaging platform designed to operate at bitly's scale, handling
+billions of messages per day (current peak of 90k+ messages per second).
 
 It promotes *distributed* and *decentralized* topologies without single points of failure,
 enabling fault tolerance and high availability coupled with a reliable message delivery
