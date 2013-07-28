@@ -84,13 +84,13 @@ Returns version information
 
 ### <a name="deletion_tombstones">Deletion and Tombstones</a>
 
-When a topic is no longer produced it is a relatively simple operation to purge that information
-from the cluster. Assuming all the applications that were producing messages are downed, using the
-`/delete_topic` endpoint of your `nsqlookupd` instances is all that is necessary to complete the
-operation (internally, it will identify the relevant `nsqd` producers and perform the appropriate
-actions on those nodes).
+When a topic is no longer globally produced it is a relatively simple operation to purge that
+information from the cluster. Assuming all the applications that were producing messages are downed,
+using the `/delete_topic` endpoint of your `nsqlookupd` instances is all that is necessary to
+complete the operation (internally, it will identify the relevant `nsqd` producers and perform the
+appropriate actions on those nodes).
 
-For a channel deletion the process is similar, the only difference being you would use the
+For a global channel deletion the process is similar, the only difference being you would use the
 `/delete_channel` endpoint on your `nsqlookupd` instances and you would need to ensure that all
 consumers that were subscribed the the channel were already downed.
 
