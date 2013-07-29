@@ -7,12 +7,9 @@ permalink: /overview/features_and_guarantees.html
 
 **NSQ** is a realtime distributed messaging platform.
 
-As with any distributed system you are forced to make tradeoffs to achieve your goals. By being
-transparent about the reality of our tradeoffs, we hope to set expectations about how our system
-will behave when deployed in production.
-
-This outlines the **NSQ** feature set and the result of those design decisions in terms of
-guarantees and tradeoffs.
+As with any distributed system, achieving your goals is a matter of making intelligent tradeoffs. By
+being transparent about the reality of these tradeoffs, we hope to set expectations about how
+**NSQ** will behave when deployed in production.
 
 ### Features
 
@@ -26,8 +23,7 @@ guarantees and tradeoffs.
  
  * excel at both streaming (high-throughput) and "job" oriented (low-throughput) workloads
  
- * in-memory message storage with a configurable high-water mark after which messages are 
-   transparently kept on disk
+ * primarily in-memory (beyond a high-water mark messages are transparently kept on disk)
  
  * runtime discovery service for consumers to find producers ([nsqlookupd][nsqlookupd])
  
