@@ -14,32 +14,18 @@ being transparent about the reality of these tradeoffs, we hope to set expectati
 ### Features
 
  * support distributed topologies with no SPOF
- 
  * horizontally scalable (no brokers, seamlessly add more nodes to the cluster)
- 
  * low-latency push based message delivery ([performance][performance])
- 
  * combination load-balanced *and* multicast style message routing
- 
- * excel at both streaming (high-throughput) and "job" oriented (low-throughput) workloads
- 
+ * excel at both streaming (high-throughput) and job oriented (low-throughput) workloads
  * primarily in-memory (beyond a high-water mark messages are transparently kept on disk)
- 
  * runtime discovery service for consumers to find producers ([nsqlookupd][nsqlookupd])
- 
  * transport layer security (TLS)
- 
  * data format agnostic
- 
  * few dependencies (easy to deploy) and a sane, bounded, default configuration
- 
  * simple TCP protocol supporting client libraries in any language
- 
- * HTTP interface for stats, administrative actions, and producers (*no client library needed to 
-   publish*)
- 
+ * HTTP interface for stats, admin actions, and producers (*no client library needed to publish*)
  * integrates with [statsd][statsd] for realtime instrumentation
- 
  * robust cluster administration interface ([nsqadmin][nsqadmin])
 
 ### Guarantees
