@@ -33,3 +33,7 @@ a[name] {
 .authors {
   font-size: 75%;
 }
+
+.production td {
+  padding: 10px;
+}

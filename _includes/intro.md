@@ -13,6 +13,18 @@ data format (messages can be JSON, MsgPack, go-protobuf, or anything else). Offi
 libraries are available out of the box and, if you're interested in building your own client,
 there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
+### In Production
+
+<center><table class="production"><tr>
+<td><a href="http://bitly.com"><img src="{{ site.baseurl }}/static/img/bitly_logo.png" width="67"/></a></td>
+<td><a href="http://life360.com"><img src="{{ site.baseurl }}/static/img/life360_logo.png" width="80"/></a></td>
+<td><a href="http://hailocab.com"><img src="{{ site.baseurl }}/static/img/hailo_logo.png" width="50"/></a></td>
+<td><a href="http://path.com"><img src="{{ site.baseurl }}/static/img/path_logo.png" width="67"/></a></td>
+<td><a href="http://trendrr.com"><img src="{{ site.baseurl }}/static/img/trendrr_logo.png" width="77"/></a></td>
+<td><a href="http://simplereach.com"><img src="{{ site.baseurl }}/static/img/simplereach_logo.png" width="108"/></a></td>
+<td><a href="http://energyhub.com"><img src="{{ site.baseurl }}/static/img/energyhub_logo.png" width="80"/></a></td>
+</tr></table></center>
+
 ### Getting Help
 
 If you're having trouble or have questions about **NSQ**, the best place to ask is the [user
