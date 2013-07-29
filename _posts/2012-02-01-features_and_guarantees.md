@@ -7,10 +7,6 @@ permalink: /overview/features_and_guarantees.html
 
 **NSQ** is a realtime distributed messaging platform.
 
-As with any distributed system, achieving your goals is a matter of making intelligent tradeoffs. By
-being transparent about the reality of these tradeoffs, we hope to set expectations about how
-**NSQ** will behave when deployed in production.
-
 ### Features
 
  * support distributed topologies with no SPOF
@@ -29,6 +25,10 @@ being transparent about the reality of these tradeoffs, we hope to set expectati
  * robust cluster administration interface ([nsqadmin][nsqadmin])
 
 ### Guarantees
+
+As with any distributed system, achieving your goal is a matter of making intelligent tradeoffs.
+By being transparent about the reality of these tradeoffs we hope to set expectations about how
+**NSQ** will behave when deployed in production.
 
 #### messages are *not* durable (by default)
 
