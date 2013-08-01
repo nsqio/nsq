@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"sync"
@@ -26,6 +27,8 @@ func mustStartNSQd(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQd) {
 	nsqd := NewNSQd(1, options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
+	fn := fmt.Sprintf(path.Join(nsqd.options.dataPath, "nsqd.%d.dat"), nsqd.workerId)
+	os.Remove(fn)
 	nsqd.Main()
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr), nsqd
 }
