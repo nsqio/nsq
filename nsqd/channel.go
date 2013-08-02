@@ -200,8 +200,15 @@ func (c *Channel) Empty() error {
 		client.Empty()
 	}
 
+	clientMsgChan := c.clientMsgChan
 	for {
 		select {
+		case _, ok := <-clientMsgChan:
+			if !ok {
+				// c.clientMsgChan may be closed while in this loop
+				// so just remove it from the select so we can make progress
+				clientMsgChan = nil
+			}
 		case <-c.memoryMsgChan:
 		default:
 			goto finish
