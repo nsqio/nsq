@@ -9,8 +9,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"runtime/pprof"
 	"strings"
 	"time"
 )
@@ -53,26 +51,21 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		s.createTopicHandler(w, req)
 	case "/create_channel":
 		s.createChannelHandler(w, req)
-	case "/mem_profile":
-		s.memProfileHandler(w, req)
-	case "/cpu_profile":
+	case "/debug/pprof":
+		httpprof.Index(w, req)
+	case "/debug/pprof/heap":
+		httpprof.Handler("heap").ServeHTTP(w, req)
+	case "/debug/pprof/goroutine":
+		httpprof.Handler("goroutine").ServeHTTP(w, req)
+	case "/debug/pprof/cpu":
 		httpprof.Profile(w, req)
+	case "/debug/pprof/block":
+		httpprof.Handler("block").ServeHTTP(w, req)
+	case "/debug/pprof/threadcreate":
+		httpprof.Handler("threadcreate").ServeHTTP(w, req)
 	default:
 		util.ApiResponse(w, 404, "NOT_FOUND", nil)
 	}
-}
-
-func (s *httpServer) memProfileHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("MEMORY Profiling Enabled")
-	f, err := os.Create("nsqd.mprof")
-	if err != nil {
-		log.Fatal(err)
-	}
-	pprof.WriteHeapProfile(f)
-	f.Close()
-
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
 }
 
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
