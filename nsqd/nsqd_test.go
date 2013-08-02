@@ -1,15 +1,36 @@
 package main
 
 import (
+	"fmt"
+	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strconv"
 	"testing"
 	"time"
 )
+
+func getMetadata(n *NSQd) (*simplejson.Json, error) {
+	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("ERROR: failed to read channel metadata from %s - %s", fn, err.Error())
+		}
+		return nil, err
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
+		return nil, err
+	}
+	return js, nil
+}
 
 func TestStartup(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
@@ -31,6 +52,15 @@ func TestStartup(t *testing.T) {
 		nsqd.Exit()
 		doneExitChan <- 1
 	}()
+
+	// verify nsqd metadata shows no topics
+	err := nsqd.PersistMetadata()
+	assert.Equal(t, err, nil)
+	metaData, err := getMetadata(nsqd)
+	assert.Equal(t, err, nil)
+	topics, err := metaData.Get("topics").Array()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, len(topics), 0)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -55,6 +85,16 @@ func TestStartup(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+
+	// make sure metadata shows the topic
+	metaData, err = getMetadata(nsqd)
+	assert.Equal(t, err, nil)
+	topics, err = metaData.Get("topics").Array()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, len(topics), 1)
+	observedTopicName, err := metaData.Get("topics").GetIndex(0).Get("name").String()
+	assert.Equal(t, observedTopicName, topicName)
+	assert.Equal(t, err, nil)
 
 	exitChan <- 1
 	<-doneExitChan
