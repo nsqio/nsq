@@ -11,14 +11,20 @@ issues for client libraries/clients that were taking advantage of this field.
 This release also introduces support for TLS feature negotiation in `nsqd`.  Clients can optionally
 enable TLS by using the appropriate handshake via the `IDENTIFY` command.
 
+Finally, a whole suite of debug HTTP endpoints were added (and consolidated) under the
+`/debug/pprof` namespace.  See #238.
+
 New Features / Enhancements:
 
+ * #238 - support for more HTTP debug endpoints
  * #227 - TLS feature negotiation
  * #230 - nsq_to_http takes --content-type flag (thanks @michaelhood)
  * #228 - nsqadmin displays tombstoned topics in the /nodes list
 
 Bug Fixes:
 
+ * #231 - persist nsqd metadata on topic/channel changes
+ * #237 - fix potential memory leaks with retained channel references
  * #232 - message timestamps are now nano
  * #228 - nsqlookupd/nsqadmin would display inactive nodes in /nodes list
  * #216 - fix edge cases in nsq_to_file that caused empty files

@@ -22,7 +22,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 The latest stable release is **[0.2.21][latest_tag]** ([ChangeLog][changelog]). We publish [binary
 releases][installing] for linux and darwin.
 
-NOTE: master is our *development* branch and may *not* be stable at all times.
+NOTE: master is our *development* branch and may not be stable at all times.
 
 [![Build Status](https://secure.travis-ci.org/bitly/nsq.png?branch=master)](http://travis-ci.org/bitly/nsq)
 
@@ -40,9 +40,9 @@ NOTE: master is our *development* branch and may *not* be stable at all times.
 
 ## Documentation
 
-Online documentation is available at [http://bitly.github.io/nsq][docs].
+Online documentation is available at [http://bitly.github.io/nsq][docs]
 
-Documentation can be viewed offline by:
+Offline documentation requires [jekyll][jekyll]:
 
 ```bash
 $ gem install jekyll
@@ -69,3 +69,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [latest_tag]: https://github.com/bitly/nsq/tree/v0.2.21
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
 [client_libraries]: http://bitly.github.io/nsq/clients/client_libraries.html
+[jekyll]: http://jekyllrb.com/
