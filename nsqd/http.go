@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -123,44 +124,61 @@ func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
+	var msgs []*nsq.Message
+	var exit bool
+
 	if req.Method != "POST" {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicNames, ok := reqParams["topic"]
+	if !ok {
 		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
 		return
 	}
+	topicName := topicNames[0]
 
 	if !nsq.IsValidTopicName(topicName) {
 		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
 		return
 	}
-
 	topic := s.context.nsqd.GetTopic(topicName)
-	for _, block := range bytes.Split(reqParams.Body, []byte("\n")) {
-		if len(block) != 0 {
-			if int64(len(reqParams.Body)) > s.context.nsqd.options.maxMessageSize {
-				util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
-				return
-			}
 
-			msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
-			err := topic.PutMessage(msg)
-			if err != nil {
-				util.ApiResponse(w, 500, "NOK", nil)
+	rdr := bufio.NewReader(req.Body)
+	for !exit {
+		block, err := rdr.ReadBytes('\n')
+		if err != nil {
+			if err != io.EOF {
+				util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
 				return
 			}
+			exit = true
 		}
+
+		if len(block) > 0 && block[len(block)-1] == '\n' {
+			block = block[:len(block)-1]
+		}
+
+		if int64(len(block)) > s.context.nsqd.options.maxMessageSize {
+			util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
+			return
+		}
+
+		msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
+		msgs = append(msgs, msg)
+	}
+
+	err = topic.PutMessages(msgs)
+	if err != nil {
+		util.ApiResponse(w, 500, "NOK", nil)
+		return
 	}
 
 	w.Header().Set("Content-Length", "2")
