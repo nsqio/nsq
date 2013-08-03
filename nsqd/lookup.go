@@ -104,13 +104,6 @@ func (n *NSQd) lookupLoop() {
 					log.Printf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err.Error())
 				}
 			}
-
-			n.RLock()
-			err := n.PersistMetadata()
-			if err != nil {
-				log.Printf("ERROR: failed to persist metadata - %s", err.Error())
-			}
-			n.RUnlock()
 		case lookupPeer := <-syncTopicChan:
 			commands := make([]*nsq.Command, 0)
 			// build all the commands first so we exit the lock(s) as fast as possible

@@ -40,9 +40,7 @@ type Channel struct {
 
 	topicName string
 	name      string
-
-	notifier Notifier
-	options  *nsqdOptions
+	context   *Context
 
 	backend BackendQueue
 
@@ -82,21 +80,18 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, options *nsqdOptions,
-	notifier Notifier, deleteCallback func(*Channel)) *Channel {
-	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
-	backendName := topicName + ":" + channelName
+func NewChannel(topicName string, channelName string, context *Context,
+	deleteCallback func(*Channel)) *Channel {
 	c := &Channel{
 		topicName:       topicName,
 		name:            channelName,
 		incomingMsgChan: make(chan *nsq.Message, 1),
-		memoryMsgChan:   make(chan *nsq.Message, options.memQueueSize),
+		memoryMsgChan:   make(chan *nsq.Message, context.nsqd.options.memQueueSize),
 		clientMsgChan:   make(chan *nsq.Message),
 		exitChan:        make(chan int),
 		clients:         make([]Consumer, 0, 5),
 		deleteCallback:  deleteCallback,
-		notifier:        notifier,
-		options:         options,
+		context:         context,
 	}
 
 	c.initPQ()
@@ -105,8 +100,13 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 		c.ephemeralChannel = true
 		c.backend = NewDummyBackendQueue()
 	} else {
-		c.backend = NewDiskQueue(backendName, options.dataPath, options.maxBytesPerFile,
-			options.syncEvery, options.syncTimeout)
+		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
+		backendName := topicName + ":" + channelName
+		c.backend = NewDiskQueue(backendName,
+			context.nsqd.options.dataPath,
+			context.nsqd.options.maxBytesPerFile,
+			context.nsqd.options.syncEvery,
+			context.nsqd.options.syncTimeout)
 	}
 
 	go c.messagePump()
@@ -115,13 +115,13 @@ func NewChannel(topicName string, channelName string, options *nsqdOptions,
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
-	go notifier.Notify(c)
+	go c.context.nsqd.Notify(c)
 
 	return c
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.options.memQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.context.nsqd.options.memQueueSize)/10))
 
 	c.inFlightMessages = make(map[nsq.MessageID]*pqueue.Item)
 	c.deferredMessages = make(map[nsq.MessageID]*pqueue.Item)
@@ -160,7 +160,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		go c.notifier.Notify(c)
+		go c.context.nsqd.Notify(c)
 	} else {
 		log.Printf("CHANNEL(%s): closing", c.name)
 	}
@@ -317,10 +317,10 @@ func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
 
 	ifMsg := item.Value.(*inFlightMessage)
 	currentTimeout := time.Unix(0, item.Priority)
-	newTimeout := currentTimeout.Add(c.options.msgTimeout)
-	if newTimeout.Add(c.options.msgTimeout).Sub(ifMsg.ts) >= c.options.maxMsgTimeout {
+	newTimeout := currentTimeout.Add(c.context.nsqd.options.msgTimeout)
+	if newTimeout.Add(c.context.nsqd.options.msgTimeout).Sub(ifMsg.ts) >= c.context.nsqd.options.maxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = ifMsg.ts.Add(c.options.maxMsgTimeout)
+		newTimeout = ifMsg.ts.Add(c.context.nsqd.options.maxMsgTimeout)
 	}
 
 	item.Priority = newTimeout.UnixNano()
@@ -407,7 +407,7 @@ func (c *Channel) RemoveClient(client Consumer) {
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client Consumer) error {
 	now := time.Now()
 	value := &inFlightMessage{msg, client, now}
-	absTs := now.Add(c.options.msgTimeout).UnixNano()
+	absTs := now.Add(c.context.nsqd.options.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {

@@ -22,30 +22,35 @@ type Topic struct {
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
 	messageCount      uint64
-	notifier          Notifier
 	options           *nsqdOptions
+	context           *Context
 }
 
 // Topic constructor
-func NewTopic(topicName string, options *nsqdOptions, notifier Notifier) *Topic {
-	topic := &Topic{
+func NewTopic(topicName string, context *Context) *Topic {
+	diskQueue := NewDiskQueue(topicName,
+		context.nsqd.options.dataPath,
+		context.nsqd.options.maxBytesPerFile,
+		context.nsqd.options.syncEvery,
+		context.nsqd.options.syncTimeout)
+
+	t := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
-		backend:           NewDiskQueue(topicName, options.dataPath, options.maxBytesPerFile, options.syncEvery, options.syncTimeout),
+		backend:           diskQueue,
 		incomingMsgChan:   make(chan *nsq.Message, 1),
-		memoryMsgChan:     make(chan *nsq.Message, options.memQueueSize),
-		notifier:          notifier,
-		options:           options,
+		memoryMsgChan:     make(chan *nsq.Message, context.nsqd.options.memQueueSize),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
+		context:           context,
 	}
 
-	topic.waitGroup.Wrap(func() { topic.router() })
-	topic.waitGroup.Wrap(func() { topic.messagePump() })
+	t.waitGroup.Wrap(func() { t.router() })
+	t.waitGroup.Wrap(func() { t.messagePump() })
 
-	go notifier.Notify(topic)
+	go t.context.nsqd.Notify(t)
 
-	return topic
+	return t
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting
@@ -79,7 +84,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.name, channelName, t.options, t.notifier, deleteCallback)
+		channel = NewChannel(t.name, channelName, t.context, deleteCallback)
 		t.channelMap[channelName] = channel
 		log.Printf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
@@ -263,7 +268,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		go t.notifier.Notify(t)
+		go t.context.nsqd.Notify(t)
 	} else {
 		log.Printf("TOPIC(%s): closing", t.name)
 	}

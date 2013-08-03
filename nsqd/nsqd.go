@@ -19,10 +19,6 @@ import (
 	"time"
 )
 
-type Notifier interface {
-	Notify(v interface{})
-}
-
 type NSQd struct {
 	sync.RWMutex
 	options         *nsqdOptions
@@ -304,8 +300,9 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, n.options, n)
+		t = NewTopic(topicName, &Context{n})
 		n.topicMap[topicName] = t
+
 		log.Printf("TOPIC(%s): created", t.name)
 
 		// release our global nsqd lock, and switch to a more granular topic lock while we init our
@@ -403,5 +400,11 @@ func (n *NSQd) Notify(v interface{}) {
 	select {
 	case <-n.exitChan:
 	case n.notifyChan <- v:
+		n.RLock()
+		err := n.PersistMetadata()
+		if err != nil {
+			log.Printf("ERROR: failed to persist metadata - %s", err.Error())
+		}
+		n.RUnlock()
 	}
 }
