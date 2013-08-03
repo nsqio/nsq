@@ -737,7 +737,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	p := &ProtocolV2{}
-	c := NewClientV2(nil, nil)
+	c := NewClientV2(0, nil, nil)
 	params := [][]byte{[]byte("NOP")}
 	b.StartTimer()
 
