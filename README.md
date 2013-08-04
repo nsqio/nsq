@@ -16,8 +16,9 @@ guarantee.  See [features & guarantees][features_guarantees].
 Operationally, **NSQ** is easy to configure and deploy (all parameters are specified on the command
 line and compiled binaries have no runtime dependencies). For maximum flexibility, it is agnostic to
 data format (messages can be JSON, MsgPack, Protocol Buffers, or anything else). Official Go and
-Python libraries are available out of the box and, if you're interested in building your own client,
-there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
+Python libraries are available out of the box (as well as many other [client
+libraries][client_libraries]) and, if you're interested in building your own, there's a [protocol
+spec][protocol].
 
 The latest stable release is **[0.2.21][latest_tag]** ([ChangeLog][changelog]). We publish [binary
 releases][installing] for linux and darwin.
