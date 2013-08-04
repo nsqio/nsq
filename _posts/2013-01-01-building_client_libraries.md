@@ -423,7 +423,8 @@ reference codebases. The structure of [pynsq][pynsq] can be broken down into thr
 We're happy to help support anyone interested in building client libraries for NSQ. We're looking
 for contributors to continue to expand our language support as well as flesh out functionality in
 existing libraries. The community has already open sourced [many client
-libraries](/clients/client_libraries.html).
+libraries][client_libraries].
 
 [go-nsq]: https://github.com/bitly/nsq/tree/master/nsq
 [pynsq]: https://github.com/bitly/pynsq
+[client_libraries]: {{ site.baseurl }}/clients/client_libraries.html
