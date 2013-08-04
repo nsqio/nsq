@@ -25,7 +25,7 @@ const (
 const DefaultClientTimeout = 60 * time.Second
 
 var validTopicNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+$`)
-var validChannelNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+(#ephemeral)?$`)
+var validChannelNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+(#[\.;a-zA-Z0-9_\-=]+)?$`)
 
 // IsValidTopicName checks a topic name for correctness
 func IsValidTopicName(name string) bool {

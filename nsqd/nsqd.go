@@ -223,7 +223,7 @@ func (n *NSQd) PersistMetadata() error {
 		topic.Lock()
 		for _, channel := range topic.channelMap {
 			channel.Lock()
-			if !channel.ephemeralChannel {
+			if !channel.properties.ephemeralChannel {
 				channelData := make(map[string]interface{})
 				channelData["name"] = channel.name
 				channelData["paused"] = channel.IsPaused()

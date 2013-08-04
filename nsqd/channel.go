@@ -9,6 +9,8 @@ import (
 	"github.com/bitly/nsq/util/pqueue"
 	"log"
 	"math"
+	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,7 +44,8 @@ type Channel struct {
 	name      string
 	context   *Context
 
-	backend BackendQueue
+	backend    BackendQueue
+	properties channelProperties
 
 	incomingMsgChan chan *nsq.Message
 	memoryMsgChan   chan *nsq.Message
@@ -52,11 +55,10 @@ type Channel struct {
 	exitFlag        int32
 
 	// state tracking
-	clients          []Consumer
-	paused           int32
-	ephemeralChannel bool
-	deleteCallback   func(*Channel)
-	deleter          sync.Once
+	clients        []Consumer
+	paused         int32
+	deleteCallback func(*Channel)
+	deleter        sync.Once
 
 	// TODO: these can be DRYd up
 	deferredMessages map[nsq.MessageID]*pqueue.Item
@@ -79,6 +81,12 @@ type inFlightMessage struct {
 	ts     time.Time
 }
 
+// Channel property struct
+type channelProperties struct {
+	ephemeralChannel bool
+	sampleRate       int32
+}
+
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, context *Context,
 	deleteCallback func(*Channel)) *Channel {
@@ -96,8 +104,14 @@ func NewChannel(topicName string, channelName string, context *Context,
 
 	c.initPQ()
 
-	if strings.HasSuffix(channelName, "#ephemeral") {
-		c.ephemeralChannel = true
+	// Split the channel name into properties if any are passed
+	channelProperties := strings.SplitN(channelName, "#", 2)
+	if len(channelProperties) > 1 {
+		c.setChannelProperties(channelProperties[1])
+	}
+
+	// Create the channels
+	if c.properties.ephemeralChannel == true {
 		c.backend = NewDummyBackendQueue()
 	} else {
 		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
@@ -118,6 +132,52 @@ func NewChannel(topicName string, channelName string, context *Context,
 	go c.context.nsqd.Notify(c)
 
 	return c
+}
+
+// Set the channel properties for the channel by parsing the channel name string properties
+func (c *Channel) setChannelProperties(properties string) {
+	channelProperties := strings.Split(properties, ";")
+	// Iterate over all properties and set the valid ones on the channel
+	for _, property := range channelProperties {
+		var propertyField = ""
+		var propertyValue = ""
+		if strings.Contains(property, "=") {
+			p := strings.Split(property, "=")
+			propertyField = p[0]
+			propertyValue = p[1]
+		} else {
+			propertyField = property
+			propertyValue = "true"
+		}
+		switch strings.ToLower(propertyField) {
+		case "ephemeral":
+			if propertyValue == "true" {
+				c.properties.ephemeralChannel = true
+			} else {
+				c.properties.ephemeralChannel = false
+			}
+		case "samplerate":
+			c.properties.sampleRate = c.validateSampleRate(propertyValue)
+		}
+	}
+}
+
+// Need to validate the sampleRate passed in on channel instantiation
+func (c *Channel) validateSampleRate(dirtySampleRate string) int32 {
+	sampleRate, err := strconv.ParseInt(dirtySampleRate, 10, 0)
+	// If we get an error when trying to ParseInt, fail on channel creation
+	if err != nil {
+		log.Printf("Float conversion error on %s: Setting sample rate to 0", dirtySampleRate)
+	}
+
+	// If 1<rate<100, consider it a number and use that (100 means no sampling)
+	if (int32(sampleRate) >= int32(1)) && (int32(sampleRate) <= int32(100)) {
+		return int32(sampleRate)
+	} else {
+		// Here we fail on channel creation because the sampleRate makes no sense
+	}
+
+	return int32(0)
 }
 
 func (c *Channel) initPQ() {
@@ -399,7 +459,7 @@ func (c *Channel) RemoveClient(client Consumer) {
 		c.clients = finalClients
 	}
 
-	if len(c.clients) == 0 && c.ephemeralChannel == true {
+	if len(c.clients) == 0 && c.properties.ephemeralChannel == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
 }
@@ -577,6 +637,13 @@ func (c *Channel) messagePump() {
 			}
 		case <-c.exitChan:
 			goto exit
+		}
+
+		// If we are sampling, discard the sampled messages here
+		if c.properties.sampleRate > 0 {
+			if rand.Int31n(100) > c.properties.sampleRate {
+				continue
+			}
 		}
 
 		msg.Attempts++

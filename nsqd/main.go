@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -137,6 +138,9 @@ func main() {
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.lookupdTCPAddrs = lookupdTCPAddrs
+
+	// Set the random seed for the future
+	rand.Seed(time.Now().UTC().UnixNano())
 
 	nsqd.LoadMetadata()
 	err = nsqd.PersistMetadata()

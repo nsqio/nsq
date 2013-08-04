@@ -41,3 +41,6 @@ _testmain.go
 *.exe
 
 profile
+
+# Vim files
+*.sw[op]
