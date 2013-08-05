@@ -47,7 +47,7 @@ func TestHTTPmput(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
-	msgs := make([][]byte, 4)
+	msgs := make([][]byte, 0)
 	for i := 0; i < 4; i++ {
 		msgs = append(msgs, msg)
 	}
