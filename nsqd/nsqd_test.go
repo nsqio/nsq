@@ -164,6 +164,8 @@ func TestEphemeralChannel(t *testing.T) {
 	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
+	client := NewClientV2(0, nil, &Context{nsqd})
+	ephemeralChannel.AddClient(client.ID, client)
 
 	msg := nsq.NewMessage(<-nsqd.idChan, body)
 	topic.PutMessage(msg)
@@ -171,7 +173,7 @@ func TestEphemeralChannel(t *testing.T) {
 	assert.Equal(t, msg.Body, body)
 
 	log.Printf("pulling from channel")
-	ephemeralChannel.RemoveClient(nil)
+	ephemeralChannel.RemoveClient(client.ID)
 
 	time.Sleep(50 * time.Millisecond)
 
