@@ -30,7 +30,8 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	var line []byte
 	var zeroTime time.Time
 
-	client := NewClientV2(p.context, conn)
+	clientID := atomic.AddInt64(&p.context.nsqd.clientIDSequence, 1)
+	client := NewClientV2(clientID, conn, p.context)
 	go p.messagePump(client)
 	for {
 		if client.HeartbeatInterval > 0 {
@@ -106,7 +107,7 @@ func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.
 		return err
 	}
 
-	client.Channel.StartInFlightTimeout(msg, client)
+	client.Channel.StartInFlightTimeout(msg, client.ID)
 	client.SendingMessage()
 
 	err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
@@ -264,7 +265,7 @@ exit:
 	client.Heartbeat.Stop()
 	client.OutputBufferTimeout.Stop()
 	if subChannel != nil {
-		subChannel.RemoveClient(client)
+		subChannel.RemoveClient(client.ID)
 	}
 	if err != nil {
 		log.Printf("PROTOCOL(V2): [%s] messagePump error - %s", client, err.Error())
@@ -378,7 +379,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 
 	topic := p.context.nsqd.GetTopic(topicName)
 	channel := topic.GetChannel(channelName)
-	channel.AddClient(client)
+	channel.AddClient(client.ID, client)
 
 	atomic.StoreInt32(&client.State, nsq.StateSubscribed)
 	client.Channel = channel
@@ -434,7 +435,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 	}
 
 	id := *(*nsq.MessageID)(unsafe.Pointer(&params[1][0]))
-	err := client.Channel.FinishMessage(client, id)
+	err := client.Channel.FinishMessage(client.ID, id)
 	if err != nil {
 		return nil, nsq.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %s failed %s", id, err.Error()))
@@ -468,7 +469,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, maxTimeout))
 	}
 
-	err = client.Channel.RequeueMessage(client, id, timeoutDuration)
+	err = client.Channel.RequeueMessage(client.ID, id, timeoutDuration)
 	if err != nil {
 		return nil, nsq.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %s failed %s", id, err.Error()))
@@ -606,7 +607,7 @@ func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
 	}
 
 	id := *(*nsq.MessageID)(unsafe.Pointer(&params[1][0]))
-	err := client.Channel.TouchMessage(client, id)
+	err := client.Channel.TouchMessage(client.ID, id)
 	if err != nil {
 		return nil, nsq.NewClientErr(err, "E_TOUCH_FAILED",
 			fmt.Sprintf("TOUCH %s failed %s", id, err.Error()))

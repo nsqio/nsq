@@ -21,20 +21,27 @@ import (
 
 type NSQd struct {
 	sync.RWMutex
-	options         *nsqdOptions
-	workerId        int64
-	topicMap        map[string]*Topic
+
+	options  *nsqdOptions
+	workerId int64
+
+	clientIDSequence int64
+
+	topicMap map[string]*Topic
+
 	lookupdTCPAddrs util.StringArray
-	tcpAddr         *net.TCPAddr
-	httpAddr        *net.TCPAddr
-	tcpListener     net.Listener
-	httpListener    net.Listener
-	idChan          chan nsq.MessageID
-	exitChan        chan int
-	waitGroup       util.WaitGroupWrapper
 	lookupPeers     []*nsq.LookupPeer
-	notifyChan      chan interface{}
-	tlsConfig       *tls.Config
+
+	tcpAddr      *net.TCPAddr
+	httpAddr     *net.TCPAddr
+	tcpListener  net.Listener
+	httpListener net.Listener
+	tlsConfig    *tls.Config
+
+	idChan     chan nsq.MessageID
+	notifyChan chan interface{}
+	exitChan   chan int
+	waitGroup  util.WaitGroupWrapper
 }
 
 type nsqdOptions struct {

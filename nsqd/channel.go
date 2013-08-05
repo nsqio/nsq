@@ -52,7 +52,7 @@ type Channel struct {
 	exitFlag        int32
 
 	// state tracking
-	clients          []Consumer
+	clients          map[int64]Consumer
 	paused           int32
 	ephemeralChannel bool
 	deleteCallback   func(*Channel)
@@ -74,9 +74,9 @@ type Channel struct {
 }
 
 type inFlightMessage struct {
-	msg    *nsq.Message
-	client Consumer
-	ts     time.Time
+	msg      *nsq.Message
+	clientID int64
+	ts       time.Time
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -89,7 +89,7 @@ func NewChannel(topicName string, channelName string, context *Context,
 		memoryMsgChan:   make(chan *nsq.Message, context.nsqd.options.memQueueSize),
 		clientMsgChan:   make(chan *nsq.Message),
 		exitChan:        make(chan int),
-		clients:         make([]Consumer, 0, 5),
+		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
 		context:         context,
 	}
@@ -308,8 +308,8 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 }
 
 // TouchMessage resets the timeout for an in-flight message
-func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
-	item, err := c.popInFlightMessage(client, id)
+func (c *Channel) TouchMessage(clientID int64, id nsq.MessageID) error {
+	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
@@ -333,8 +333,8 @@ func (c *Channel) TouchMessage(client Consumer, id nsq.MessageID) error {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(client Consumer, id nsq.MessageID) error {
-	item, err := c.popInFlightMessage(client, id)
+func (c *Channel) FinishMessage(clientID int64, id nsq.MessageID) error {
+	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
@@ -348,9 +348,9 @@ func (c *Channel) FinishMessage(client Consumer, id nsq.MessageID) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(client Consumer, id nsq.MessageID, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(clientID int64, id nsq.MessageID, timeout time.Duration) error {
 	// remove from inflight first
-	item, err := c.popInFlightMessage(client, id)
+	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
@@ -367,46 +367,36 @@ func (c *Channel) RequeueMessage(client Consumer, id nsq.MessageID, timeout time
 }
 
 // AddClient adds a client to the Channel's client list
-func (c *Channel) AddClient(client Consumer) {
+func (c *Channel) AddClient(clientID int64, client Consumer) {
 	c.Lock()
 	defer c.Unlock()
 
-	found := false
-	for _, cli := range c.clients {
-		if cli == client {
-			found = true
-			break
-		}
+	_, ok := c.clients[clientID]
+	if ok {
+		return
 	}
-
-	if !found {
-		c.clients = append(c.clients, client)
-	}
+	c.clients[clientID] = client
 }
 
 // RemoveClient removes a client from the Channel's client list
-func (c *Channel) RemoveClient(client Consumer) {
+func (c *Channel) RemoveClient(clientID int64) {
 	c.Lock()
 	defer c.Unlock()
 
-	if len(c.clients) != 0 {
-		finalClients := make([]Consumer, 0, len(c.clients)-1)
-		for _, cli := range c.clients {
-			if cli != client {
-				finalClients = append(finalClients, cli)
-			}
-		}
-		c.clients = finalClients
+	_, ok := c.clients[clientID]
+	if !ok {
+		return
 	}
+	delete(c.clients, clientID)
 
 	if len(c.clients) == 0 && c.ephemeralChannel == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *nsq.Message, client Consumer) error {
+func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64) error {
 	now := time.Now()
-	value := &inFlightMessage{msg, client, now}
+	value := &inFlightMessage{msg, clientID, now}
 	absTs := now.Add(c.context.nsqd.options.msgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
@@ -456,7 +446,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(client Consumer, id nsq.MessageID) (*pqueue.Item, error) {
+func (c *Channel) popInFlightMessage(clientID int64, id nsq.MessageID) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -465,8 +455,8 @@ func (c *Channel) popInFlightMessage(client Consumer, id nsq.MessageID) (*pqueue
 		return nil, errors.New("ID not in flight")
 	}
 
-	if item.Value.(*inFlightMessage).client != client {
-		return nil, errors.New("client does not own ID")
+	if item.Value.(*inFlightMessage).clientID != clientID {
+		return nil, errors.New("client does not own message")
 	}
 
 	delete(c.inFlightMessages, id)
@@ -605,14 +595,17 @@ func (c *Channel) deferredWorker() {
 
 func (c *Channel) inFlightWorker() {
 	c.pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
-		client := item.Value.(*inFlightMessage).client
+		clientID := item.Value.(*inFlightMessage).clientID
 		msg := item.Value.(*inFlightMessage).msg
-		_, err := c.popInFlightMessage(client, msg.Id)
+		_, err := c.popInFlightMessage(clientID, msg.Id)
 		if err != nil {
 			return
 		}
 		atomic.AddUint64(&c.timeoutCount, 1)
-		client.TimedOutMessage()
+		client, ok := c.clients[clientID]
+		if ok {
+			client.TimedOutMessage()
+		}
 		c.doRequeue(msg)
 	})
 }

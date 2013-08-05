@@ -73,7 +73,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, NewClientV2(&Context{nsqd}, nil))
+		channel.StartInFlightTimeout(msg, 0)
 	}
 
 	assert.Equal(t, len(channel.inFlightMessages), 1000)
@@ -97,16 +97,15 @@ func TestChannelEmpty(t *testing.T) {
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := NewClientV2(&Context{nsqd}, nil)
 
 	msgs := make([]*nsq.Message, 0, 25)
 	for i := 0; i < 25; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, client)
+		channel.StartInFlightTimeout(msg, 0)
 		msgs = append(msgs, msg)
 	}
 
-	channel.RequeueMessage(client, msgs[len(msgs)-1].Id, 100*time.Millisecond)
+	channel.RequeueMessage(0, msgs[len(msgs)-1].Id, 100*time.Millisecond)
 	assert.Equal(t, len(channel.inFlightMessages), 24)
 	assert.Equal(t, len(channel.inFlightPQ), 24)
 	assert.Equal(t, len(channel.deferredMessages), 1)
@@ -132,13 +131,13 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := NewClientV2(&Context{nsqd}, conn)
+	client := NewClientV2(0, conn, &Context{nsqd})
 	client.SetReadyCount(25)
-	channel.AddClient(client)
+	channel.AddClient(client.ID, client)
 
 	for i := 0; i < 25; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, client)
+		channel.StartInFlightTimeout(msg, 0)
 		client.SendingMessage()
 	}
 

@@ -27,6 +27,7 @@ type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
+	ID      int64
 	context *Context
 	tlsConn net.Conn
 
@@ -62,13 +63,14 @@ type ClientV2 struct {
 	HeartbeatUpdateChan chan time.Duration
 }
 
-func NewClientV2(context *Context, conn net.Conn) *ClientV2 {
+func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 	var identifier string
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
 	c := &ClientV2{
+		ID:      id,
 		Conn:    conn,
 		context: context,
 
