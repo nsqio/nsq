@@ -295,8 +295,8 @@ func (q *Reader) IsStarved() bool {
 
 	for _, conn := range q.nsqConnections {
 		threshold := int64(float64(atomic.LoadInt64(&conn.lastRdyCount)) * 0.85)
-		if atomic.LoadInt64(&conn.messagesInFlight) >= threshold &&
-			atomic.LoadInt32(&conn.stopFlag) != 1 {
+		inFlight := atomic.LoadInt64(&conn.messagesInFlight)
+		if inFlight >= threshold && inFlight > 0 && atomic.LoadInt32(&conn.stopFlag) != 1 {
 			return true
 		}
 	}
