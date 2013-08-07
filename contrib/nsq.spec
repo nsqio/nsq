@@ -1,5 +1,5 @@
 %define name nsq
-%define version 0.2.19
+%define version 0.2.22
 %define release 1
 %define path usr/local
 %define group Database/Applications
@@ -41,7 +41,10 @@ make PREFIX=/${path} DESTDIR=$RPM_BUILD_ROOT install
 /%{path}/bin/nsqadmin
 /%{path}/bin/nsqd
 /%{path}/bin/nsqlookupd
-/%{path}/bin/nsq_to_file
 /%{path}/bin/nsq_pubsub
+/%{path}/bin/nsq_to_file
 /%{path}/bin/nsq_to_http
+/%{path}/bin/nsq_to_nsq
+/%{path}/bin/nsq_tail
+/%{path}/bin/nsq_stat
 /%{path}/share/nsqadmin/templates

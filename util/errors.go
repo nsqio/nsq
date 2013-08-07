@@ -1,6 +1,6 @@
-package nsq
+package util
 
-type ChildError interface {
+type ChildErr interface {
 	Parent() error
 }
 

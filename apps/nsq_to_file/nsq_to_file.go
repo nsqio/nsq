@@ -8,7 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"os"

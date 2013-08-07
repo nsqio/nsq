@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"

@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 )
 
 // BackendQueue represents the behavior for the secondary message

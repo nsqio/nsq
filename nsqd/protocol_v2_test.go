@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -250,7 +250,7 @@ func TestClientHeartbeat(t *testing.T) {
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	options := NewNsqdOptions()
-	options.clientTimeout = 100 * time.Millisecond
+	options.clientTimeout = 200 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQd(options)
 	defer nsqd.Exit()
 
@@ -267,13 +267,13 @@ func TestClientHeartbeat(t *testing.T) {
 	_, data, _ := nsq.UnpackResponse(resp)
 	assert.Equal(t, data, []byte("_heartbeat_"))
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	err = nsq.Nop().Write(conn)
 	assert.Equal(t, err, nil)
 
 	// wait long enough that would have timed out (had we not sent the above cmd)
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	err = nsq.Nop().Write(conn)
 	assert.Equal(t, err, nil)

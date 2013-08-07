@@ -10,7 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bitly/go-hostpool"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"math"

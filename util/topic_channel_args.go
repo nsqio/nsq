@@ -2,7 +2,7 @@ package util
 
 import (
 	"errors"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 )
 
 type Getter interface {

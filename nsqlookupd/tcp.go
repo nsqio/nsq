@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"
@@ -27,12 +27,12 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	log.Printf("CLIENT(%s): desired protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 
-	var prot nsq.Protocol
+	var prot util.Protocol
 	switch protocolMagic {
 	case "  V1":
 		prot = &LookupProtocolV1{context: p.context}
 	default:
-		nsq.SendResponse(clientConn, []byte("E_BAD_PROTOCOL"))
+		util.SendResponse(clientConn, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
 		log.Printf("ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return

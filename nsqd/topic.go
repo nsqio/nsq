@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"sync"
