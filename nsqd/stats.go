@@ -89,38 +89,34 @@ func (n *NSQd) getStats() []TopicStats {
 	n.RLock()
 	defer n.RUnlock()
 
-	realTopics := make([]*Topic, len(n.topicMap))
-	topics := make([]TopicStats, len(n.topicMap))
-	topic_index := 0
+	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for _, t := range n.topicMap {
-		realTopics[topic_index] = t
-		topic_index++
+		realTopics = append(realTopics, t)
 	}
-
 	sort.Sort(TopicsByName{realTopics})
-	for topic_index, t := range realTopics {
+
+	topics := make([]TopicStats, 0, len(n.topicMap))
+	for _, t := range realTopics {
 		t.RLock()
 
-		realChannels := make([]*Channel, len(t.channelMap))
-		channel_index := 0
+		realChannels := make([]*Channel, 0, len(t.channelMap))
 		for _, c := range t.channelMap {
-			realChannels[channel_index] = c
-			channel_index++
+			realChannels = append(realChannels, c)
 		}
 		sort.Sort(ChannelsByName{realChannels})
 
-		channels := make([]ChannelStats, len(t.channelMap))
-		for channel_index, c := range realChannels {
+		channels := make([]ChannelStats, 0, len(t.channelMap))
+		for _, c := range realChannels {
 			c.RLock()
-			clients := make([]ClientStats, len(c.clients))
-			for client_index, client := range c.clients {
-				clients[client_index] = client.Stats()
+			clients := make([]ClientStats, 0, len(c.clients))
+			for _, client := range c.clients {
+				clients = append(clients, client.Stats())
 			}
-			channels[channel_index] = NewChannelStats(c, clients)
+			channels = append(channels, NewChannelStats(c, clients))
 			c.RUnlock()
 		}
 
-		topics[topic_index] = NewTopicStats(t, channels)
+		topics = append(topics, NewTopicStats(t, channels))
 
 		t.RUnlock()
 	}
