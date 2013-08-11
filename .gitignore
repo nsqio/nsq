@@ -1,3 +1,7 @@
 _site
 dist
 profile
+nsqadmin
+nsqd
+nsqlookupd
+examples

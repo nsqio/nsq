@@ -69,6 +69,12 @@ The NSQ community has contributed client libraries for 8 languages:
     <td></td>
   </tr>
   <tr class="warning">
+    <td><a href="https://github.com/anvie/nsqie">nsqie</a></td>
+    <td>Scala</td>
+    <td>alpha</td>
+    <td></td>
+  </tr>
+  <tr class="warning">
     <td><a href="https://github.com/phillro/nodensq">nodensq</a></td>
     <td>Node</td>
     <td>alpha</td>
