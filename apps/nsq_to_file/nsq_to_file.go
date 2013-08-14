@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -218,6 +219,13 @@ func (f *FileLogger) updateFile() bool {
 				}
 				tempFilename := strings.Replace(filename, "<GZIPREV>", revisionSuffix, -1)
 				fullPath := path.Join(*outputDir, tempFilename)
+				dir, _ := filepath.Split(fullPath)
+				if dir != "" {
+					err = os.MkdirAll(dir, 777)
+					if err != nil {
+						log.Fatalf("ERROR: %s Unable to create %s", err, dir)
+					}
+				}
 				newFile, err = os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 				if err != nil && os.IsExist(err) {
 					log.Printf("INFO: file already exists: %s", fullPath)
@@ -234,7 +242,15 @@ func (f *FileLogger) updateFile() bool {
 			}
 		} else {
 			log.Printf("opening %s/%s", *outputDir, filename)
-			newFile, err = os.OpenFile(path.Join(*outputDir, filename), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+			fullPath := path.Join(*outputDir, filename)
+			dir, _ := filepath.Split(fullPath)
+			if dir != "" {
+				err = os.MkdirAll(dir, 777)
+				if err != nil {
+					log.Fatalf("ERROR: %s Unable to create %s", err, dir)
+				}
+			}
+			newFile, err = os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 			if err != nil {
 				log.Fatal(err)
 			}
