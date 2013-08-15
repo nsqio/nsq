@@ -36,6 +36,28 @@ func TestHTTPput(t *testing.T) {
 	assert.Equal(t, topic.Depth(), int64(1))
 }
 
+func TestHTTPputEmpty(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_http_put_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	buf := bytes.NewBuffer([]byte(""))
+	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	assert.Equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	assert.Equal(t, resp.StatusCode, 500)
+	assert.Equal(t, string(body), `{"status_code":500,"status_txt":"MSG_EMPTY","data":null}`)
+
+	assert.Equal(t, topic.Depth(), int64(0))
+}
+
 func TestHTTPmput(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
@@ -52,6 +74,35 @@ func TestHTTPmput(t *testing.T) {
 		msgs = append(msgs, msg)
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
+
+	url := fmt.Sprintf("http://%s/mput?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	assert.Equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	assert.Equal(t, string(body), "OK")
+
+	assert.Equal(t, topic.Depth(), int64(4))
+}
+
+func TestHTTPmputEmpty(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_http_mput_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	msg := []byte("test message")
+	msgs := make([][]byte, 0)
+	for i := 0; i < 4; i++ {
+		msgs = append(msgs, msg)
+	}
+	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
+	_, err := buf.Write([]byte("\n"))
+	assert.Equal(t, err, nil)
 
 	url := fmt.Sprintf("http://%s/mput?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
