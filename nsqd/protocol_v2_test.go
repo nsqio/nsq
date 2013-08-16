@@ -449,6 +449,7 @@ func TestSizeLimits(t *testing.T) {
 	identify(t, conn)
 	sub(t, conn, topicName, "ch")
 
+	// PUB that's valid
 	nsq.Publish(topicName, make([]byte, 95)).Write(conn)
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
@@ -456,12 +457,25 @@ func TestSizeLimits(t *testing.T) {
 	assert.Equal(t, frameType, nsq.FrameTypeResponse)
 	assert.Equal(t, data, []byte("OK"))
 
+	// PUB that's invalid (too big)
 	nsq.Publish(topicName, make([]byte, 105)).Write(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"))
+
+	// need to reconnect
+	conn, err = mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	// PUB thats empty
+	nsq.Publish(topicName, make([]byte, 0)).Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQd(tcpAddr)
@@ -492,6 +506,24 @@ func TestSizeLimits(t *testing.T) {
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"))
+
+	// need to reconnect
+	conn, err = mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	// MPUB that's invalid (one message empty)
+	mpub = make([][]byte, 0)
+	for i := 0; i < 5; i++ {
+		mpub = append(mpub, make([]byte, 100))
+	}
+	mpub = append(mpub, make([]byte, 0))
+	cmd, _ = nsq.MultiPublish(topicName, mpub)
+	cmd.Write(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB invalid message(5) body size 0"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQd(tcpAddr)

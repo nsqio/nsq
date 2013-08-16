@@ -106,6 +106,11 @@ func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if len(reqParams.Body) == 0 {
+		util.ApiResponse(w, 500, "MSG_EMPTY", nil)
+		return
+	}
+
 	if int64(len(reqParams.Body)) > s.context.nsqd.options.maxMessageSize {
 		util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
 		return
@@ -164,6 +169,12 @@ func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
 
 		if len(block) > 0 && block[len(block)-1] == '\n' {
 			block = block[:len(block)-1]
+		}
+
+		// silently discard 0 length messages
+		// this maintains the behavior pre 0.2.22
+		if len(block) == 0 {
+			continue
 		}
 
 		if int64(len(block)) > s.context.nsqd.options.maxMessageSize {
