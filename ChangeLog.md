@@ -20,9 +20,11 @@ New Features / Enhancements:
  * #227 - TLS feature negotiation
  * #230 - nsq_to_http takes --content-type flag (thanks @michaelhood)
  * #228 - nsqadmin displays tombstoned topics in the /nodes list
+ * #242/#239/#245 - reduced GC pressure for inflight and /mput
 
 Bug Fixes:
 
+ * #247 - publish methods should not allow 0 length messages
  * #231 - persist nsqd metadata on topic/channel changes
  * #237 - fix potential memory leaks with retained channel references
  * #232 - message timestamps are now nano
@@ -267,9 +269,9 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
+ * #243 - limit IsStarved to connections w/ inflight messages
  * #227 - TLS feature negotiation
- * #169 - auto-reconnect to hard-coded nsqd
-          use last RDY count for IsStarved()
+ * #169 - auto-reconnect to hard-coded nsqd; use last RDY count for IsStarved(); 
           redistribute RDY state when num_conns > max_in_flight
  * #204 - fix early termination blocking
  * #186 - max backoff duration of 0 disables backoff
