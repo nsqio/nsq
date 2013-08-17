@@ -54,6 +54,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		s.createChannelHandler(w, req)
 	case "/debug/pprof":
 		httpprof.Index(w, req)
+	case "/debug/pprof/cmdline":
+		httpprof.Cmdline(w, req)
+	case "/debug/pprof/symbol":
+		httpprof.Symbol(w, req)
 	case "/debug/pprof/heap":
 		httpprof.Handler("heap").ServeHTTP(w, req)
 	case "/debug/pprof/goroutine":
@@ -65,6 +69,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/debug/pprof/threadcreate":
 		httpprof.Handler("threadcreate").ServeHTTP(w, req)
 	default:
+		log.Printf("ERROR: 404 %s", req.URL.Path)
 		util.ApiResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
