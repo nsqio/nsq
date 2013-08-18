@@ -200,7 +200,8 @@ type Reader struct {
 
 	TopicName           string        // name of topic to subscribe to
 	ChannelName         string        // name of channel to subscribe to
-	LookupdPollInterval time.Duration // seconds between polling lookupd's (+/- random 1/10th this value for jitter)
+	LookupdPollInterval time.Duration // duration between polling lookupd for new connections
+	LookupdPollJitter   float64       // Maximum fractional amount of jitter to add to the lookupd pool loop. This helps evenly distribute requests even if multiple consumers restart at the same time.
 	MaxAttemptCount     uint16        // maximum number of times this reader will attempt to process a message
 	DefaultRequeueDelay time.Duration // the default duration when REQueueing
 	MaxRequeueDelay     time.Duration // the maximum duration when REQueueing (for doubling backoff)
@@ -224,6 +225,7 @@ type Reader struct {
 	maxBackoffCount    int32
 	maxInFlight        int
 	incomingMessages   chan *incomingMessage
+	pendingConnections map[string]bool
 	nsqConnections     map[string]*nsqConn
 	lookupdExitChan    chan int
 	lookupdRecheckChan chan int
@@ -232,6 +234,7 @@ type Reader struct {
 	messagesInFlight   int64
 	lookupdHTTPAddrs   []string
 	stopHandler        sync.Once
+	lookupdQueryIndex  int
 }
 
 // NewReader creates a new instance of Reader for the specified topic/channel
@@ -256,9 +259,11 @@ func NewReader(topic string, channel string) (*Reader, error) {
 		ChannelName:         channel,
 		incomingMessages:    make(chan *incomingMessage),
 		ExitChan:            make(chan int),
+		pendingConnections:  make(map[string]bool),
 		nsqConnections:      make(map[string]*nsqConn),
 		MaxAttemptCount:     5,
-		LookupdPollInterval: 120 * time.Second,
+		LookupdPollInterval: 60 * time.Second,
+		LookupdPollJitter:   0.3,
 		LowRdyIdleTimeout:   10 * time.Second,
 		lookupdExitChan:     make(chan int),
 		lookupdRecheckChan:  make(chan int, 1), // used at connection close to force a possible reconnect
@@ -370,7 +375,8 @@ func (q *Reader) lookupdLoop() {
 	// add some jitter so that multiple consumers discovering the same topic,
 	// when restarted at the same time, dont all connect at once.
 	rand.Seed(time.Now().UnixNano())
-	jitter := time.Duration(rand.Int63n(int64(q.LookupdPollInterval / 10)))
+
+	jitter := time.Duration(int64(rand.Float64() * q.LookupdPollJitter * float64(q.LookupdPollInterval)))
 	ticker := time.NewTicker(q.LookupdPollInterval)
 
 	select {
@@ -395,39 +401,46 @@ exit:
 	log.Printf("exiting lookupdLoop")
 }
 
-// make a HTTP req to the /lookup endpoint on each lookup server
+// make a HTTP req to the /lookup endpoint on one lookup server
 // to find what nsq's provide the topic we are consuming.
 // for any new topics, initiate a connection to those NSQ's
 func (q *Reader) queryLookupd() {
-	for _, addr := range q.lookupdHTTPAddrs {
-		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
 
-		log.Printf("LOOKUPD: querying %s", endpoint)
+	i := q.lookupdQueryIndex
 
-		data, err := ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
-			continue
+	if i >= len(q.lookupdHTTPAddrs) {
+		i = 0
+	}
+	q.lookupdQueryIndex += 1
+
+	addr := q.lookupdHTTPAddrs[i]
+	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(q.TopicName))
+
+	log.Printf("LOOKUPD: querying %s", endpoint)
+
+	data, err := ApiRequest(endpoint)
+	if err != nil {
+		log.Printf("ERROR: lookupd %s - %s", addr, err.Error())
+		return
+	}
+
+	// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local", "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
+	producers, _ := data.Get("producers").Array()
+	for _, producer := range producers {
+		producerData, _ := producer.(map[string]interface{})
+		address := producerData["address"].(string)
+		broadcastAddress, ok := producerData["broadcast_address"]
+		if ok {
+			address = broadcastAddress.(string)
 		}
+		port := int(producerData["tcp_port"].(float64))
 
-		// {"data":{"channels":[],"producers":[{"address":"jehiah-air.local", "tpc_port":4150, "http_port":4151}],"timestamp":1340152173},"status_code":200,"status_txt":"OK"}
-		producers, _ := data.Get("producers").Array()
-		for _, producer := range producers {
-			producerData, _ := producer.(map[string]interface{})
-			address := producerData["address"].(string)
-			broadcastAddress, ok := producerData["broadcast_address"]
-			if ok {
-				address = broadcastAddress.(string)
-			}
-			port := int(producerData["tcp_port"].(float64))
-
-			// make an address, start a connection
-			joined := net.JoinHostPort(address, strconv.Itoa(port))
-			err = q.ConnectToNSQ(joined)
-			if err != nil && err != ErrAlreadyConnected {
-				log.Printf("ERROR: failed to connect to nsqd (%s) - %s", joined, err.Error())
-				continue
-			}
+		// make an address, start a connection
+		joined := net.JoinHostPort(address, strconv.Itoa(port))
+		err = q.ConnectToNSQ(joined)
+		if err != nil && err != ErrAlreadyConnected {
+			log.Printf("ERROR: failed to connect to nsqd (%s) - %s", joined, err.Error())
+			continue
 		}
 	}
 }
@@ -450,7 +463,8 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 
 	q.RLock()
 	_, ok := q.nsqConnections[addr]
-	if ok {
+	_, pendingOk := q.pendingConnections[addr]
+	if ok || pendingOk {
 		q.RUnlock()
 		return ErrAlreadyConnected
 	}
@@ -464,6 +478,13 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	if err != nil {
 		return err
 	}
+	cleanupConnection := func() {
+		q.Lock()
+		delete(q.pendingConnections, addr)
+		q.Unlock()
+		connection.Close()
+	}
+	q.pendingConnections[addr] = true
 
 	ci := make(map[string]interface{})
 	ci["short_id"] = q.ShortIdentifier
@@ -472,19 +493,19 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	ci["feature_negotiation"] = true
 	cmd, err := Identify(ci)
 	if err != nil {
-		connection.Close()
+		cleanupConnection()
 		return fmt.Errorf("[%s] failed to create identify command - %s", connection, err.Error())
 	}
 
 	err = connection.sendCommand(&buf, cmd)
 	if err != nil {
-		connection.Close()
+		cleanupConnection()
 		return fmt.Errorf("[%s] failed to identify - %s", connection, err.Error())
 	}
 
 	_, data, err := connection.readUnpackedResponse()
 	if err != nil {
-		connection.Close()
+		cleanupConnection()
 		return fmt.Errorf("[%s] error reading response %s", connection, err.Error())
 	}
 
@@ -496,7 +517,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 		}{}
 		err := json.Unmarshal(data, &resp)
 		if err != nil {
-			connection.Close()
+			cleanupConnection()
 			return fmt.Errorf("[%s] error (%s) unmarshaling IDENTIFY response %s", connection, err.Error(), data)
 		}
 
@@ -512,7 +533,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 			log.Printf("[%s] upgrading to TLS", connection)
 			err := connection.upgradeTLS(q.TLSConfig)
 			if err != nil {
-				connection.Close()
+				cleanupConnection()
 				return fmt.Errorf("[%s] error (%s) upgrading to TLS", connection, err.Error())
 			}
 		}
@@ -521,11 +542,12 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	cmd = Subscribe(q.TopicName, q.ChannelName)
 	err = connection.sendCommand(&buf, cmd)
 	if err != nil {
-		connection.Close()
+		cleanupConnection()
 		return fmt.Errorf("[%s] failed to subscribe to %s:%s - %s", connection, q.TopicName, q.ChannelName, err.Error())
 	}
 
 	q.Lock()
+	delete(q.pendingConnections, addr)
 	q.nsqConnections[connection.String()] = connection
 	q.Unlock()
 
