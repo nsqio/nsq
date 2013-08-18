@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -87,42 +89,65 @@ func (s *httpServer) infoHandler(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
+func (s *httpServer) getTopicFromQuery(req *http.Request) (*Topic, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		return nil, errors.New("INVALID_REQUEST")
+	}
+
+	topicNames, ok := reqParams["topic"]
+	if !ok {
+		return nil, errors.New("MISSING_ARG_TOPIC")
+	}
+	topicName := topicNames[0]
+
+	if !nsq.IsValidTopicName(topicName) {
+		return nil, errors.New("INVALID_ARG_TOPIC")
+	}
+
+	return s.context.nsqd.GetTopic(topicName), nil
+}
+
 func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
-	reqParams, err := util.NewReqParams(req)
-	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		return
-	}
+	// TODO: one day I'd really like to just error on chunked requests
+	// to be able to fail "too big" requests before we even read
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
-		return
-	}
-
-	if !nsq.IsValidTopicName(topicName) {
-		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
-		return
-	}
-
-	if len(reqParams.Body) == 0 {
-		util.ApiResponse(w, 500, "MSG_EMPTY", nil)
-		return
-	}
-
-	if int64(len(reqParams.Body)) > s.context.nsqd.options.maxMessageSize {
+	if req.ContentLength > s.context.nsqd.options.maxMessageSize {
 		util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
 		return
 	}
 
-	topic := s.context.nsqd.GetTopic(topicName)
-	msg := nsq.NewMessage(<-s.context.nsqd.idChan, reqParams.Body)
+	// add 1 so that it's greater than our max when we test for it
+	// (LimitReader returns a "fake" EOF)
+	readMax := s.context.nsqd.options.maxMessageSize + 1
+	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+	if int64(len(body)) == readMax {
+		log.Printf("ERROR: /put hit max message size")
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+	if len(body) == 0 {
+		util.ApiResponse(w, 500, "MSG_EMPTY", nil)
+		return
+	}
+
+	topic, err := s.getTopicFromQuery(req)
+	if err != nil {
+		util.ApiResponse(w, 500, err.Error(), nil)
+		return
+	}
+
+	msg := nsq.NewMessage(<-s.context.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		util.ApiResponse(w, 500, "NOK", nil)
@@ -142,26 +167,25 @@ func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	// TODO: one day I'd really like to just error on chunked requests
+	// to be able to fail "too big" requests before we even read
+
+	if req.ContentLength > s.context.nsqd.options.maxBodySize {
+		util.ApiResponse(w, 500, "BODY_TOO_BIG", nil)
+		return
+	}
+
+	topic, err := s.getTopicFromQuery(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-	}
-
-	topicNames, ok := reqParams["topic"]
-	if !ok {
-		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		util.ApiResponse(w, 500, err.Error(), nil)
 		return
 	}
-	topicName := topicNames[0]
 
-	if !nsq.IsValidTopicName(topicName) {
-		util.ApiResponse(w, 500, "INVALID_ARG_TOPIC", nil)
-		return
-	}
-	topic := s.context.nsqd.GetTopic(topicName)
-
-	rdr := bufio.NewReader(req.Body)
+	// add 1 so that it's greater than our max when we test for it
+	// (LimitReader returns a "fake" EOF)
+	readMax := s.context.nsqd.options.maxBodySize + 1
+	rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
+	total := 0
 	for !exit {
 		block, err := rdr.ReadBytes('\n')
 		if err != nil {
@@ -170,6 +194,11 @@ func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 			exit = true
+		}
+		total += len(block)
+		if int64(total) == readMax {
+			log.Printf("ERROR: /mput hit max body size")
+			continue
 		}
 
 		if len(block) > 0 && block[len(block)-1] == '\n' {
