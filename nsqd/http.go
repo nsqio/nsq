@@ -62,7 +62,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		httpprof.Handler("heap").ServeHTTP(w, req)
 	case "/debug/pprof/goroutine":
 		httpprof.Handler("goroutine").ServeHTTP(w, req)
-	case "/debug/pprof/cpu":
+	case "/debug/pprof/profile":
 		httpprof.Profile(w, req)
 	case "/debug/pprof/block":
 		httpprof.Handler("block").ServeHTTP(w, req)
