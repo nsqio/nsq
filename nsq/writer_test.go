@@ -139,6 +139,7 @@ func TestHeartbeat(t *testing.T) {
 func ReadMessage(topicName string, t *testing.T, msg_count int) {
 	addr := "127.0.0.1:4150"
 	q, _ := NewReader(topicName, "ch")
+	q.VerboseLogging = true
 	q.DefaultRequeueDelay = 0
 	q.SetMaxBackoffDuration(time.Millisecond * 50)
 
