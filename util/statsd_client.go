@@ -37,23 +37,23 @@ func (c *StatsdClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *StatsdClient) Incr(stat string, count int) error {
+func (c *StatsdClient) Incr(stat string, count int64) error {
 	return c.send(stat, "%d|c", count)
 }
 
-func (c *StatsdClient) Decr(stat string, count int) error {
+func (c *StatsdClient) Decr(stat string, count int64) error {
 	return c.send(stat, "%d|c", -count)
 }
 
-func (c *StatsdClient) Timing(stat string, delta int) error {
+func (c *StatsdClient) Timing(stat string, delta int64) error {
 	return c.send(stat, "%d|ms", delta)
 }
 
-func (c *StatsdClient) Gauge(stat string, value int) error {
+func (c *StatsdClient) Gauge(stat string, value int64) error {
 	return c.send(stat, "%d|g", value)
 }
 
-func (c *StatsdClient) send(stat string, format string, value int) error {
+func (c *StatsdClient) send(stat string, format string, value int64) error {
 	if c.conn == nil {
 		return errors.New("not connected")
 	}

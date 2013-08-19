@@ -50,6 +50,7 @@ var (
 	// statsd integration options
 	statsdAddress  = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for pushing stats")
 	statsdInterval = flag.String("statsd-interval", "60s", "duration between pushing to statsd")
+	statsdMemStats = flag.Bool("statsd-mem-stats", true, "toggle sending memory and GC stats to statsd")
 
 	// TLS config
 	tlsCert = flag.String("tls-cert", "", "path to certificate file")
