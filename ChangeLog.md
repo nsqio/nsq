@@ -9,14 +9,20 @@ always stated this however `nsqd` was actually sending seconds.  This may cause 
 issues for client libraries/clients that were taking advantage of this field.
 
 This release also introduces support for TLS feature negotiation in `nsqd`.  Clients can optionally
-enable TLS by using the appropriate handshake via the `IDENTIFY` command.
+enable TLS by using the appropriate handshake via the `IDENTIFY` command. See #227.
+
+Significant improvements were made to the HTTP publish endpoints and in flight message handling to
+reduce GC pressure and eliminate memory abuse vectors. See #242, #239, and #245.
 
 Finally, a whole suite of debug HTTP endpoints were added (and consolidated) under the
-`/debug/pprof` namespace.  See #238.
+`/debug/pprof` namespace. See #238, #248, and #252. As a result `nsqd` now supports *direct*
+profiling via Go's `pprof` tool, ie:
+
+    $ go tool pprof --web http://ip.address:4151/debug/pprof/heap
 
 New Features / Enhancements:
 
- * #238 - support for more HTTP debug endpoints
+ * #238/#248/#252 - support for more HTTP debug endpoints
  * #227 - TLS feature negotiation
  * #230 - nsq_to_http takes --content-type flag (thanks @michaelhood)
  * #228 - nsqadmin displays tombstoned topics in the /nodes list
@@ -24,6 +30,7 @@ New Features / Enhancements:
 
 Bug Fixes:
 
+ * #251 - respect configured limits for HTTP publishing
  * #247 - publish methods should not allow 0 length messages
  * #231 - persist nsqd metadata on topic/channel changes
  * #237 - fix potential memory leaks with retained channel references
@@ -269,6 +276,7 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
+ * #250 - lookupd polling improvements
  * #243 - limit IsStarved to connections w/ inflight messages
  * #227 - TLS feature negotiation
  * #169 - auto-reconnect to hard-coded nsqd; use last RDY count for IsStarved(); 
