@@ -25,20 +25,8 @@ Also, `nsqd` will need to be configured with `nsqlookupd` addresses (see below f
 
 In terms of topology, we recommend running `nsqd` co-located with services producing messages.
 
-`nsqd` can be configured to push data to [statsd][statsd] by specifying `--statsd-address`.  By
-turning this on, each `nsqd` instance will push to the following `statsd` paths:
-
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.backend_depth [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.depth [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.message_count
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.backend_depth [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.clients [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.deferred_count [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.depth [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.in_flight_count [gauge]
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.message_count
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.requeue_count
-    nsq.<nsqd_host>_<nsqd_port>.topic.<topic_name>.channel.<channel_name>.timeout_count
+`nsqd` can be configured to push data to [statsd][statsd] by specifying `--statsd-address`. `nsqd`
+sends stats under the `nsq.*` namespace. See 
 
 ### nsqlookupd
 
@@ -79,3 +67,4 @@ Typically most debugging, analysis, and administration is done via `nsqadmin`.
 
 [statsd]: https://github.com/bitly/statsdaemon
 [graphite]: http://graphite.wikidot.com/
+[nsqd_statsd]: {{ site.baseurl }}/components/nsqd.html#statsd
