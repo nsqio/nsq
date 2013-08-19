@@ -24,6 +24,9 @@ import (
 // returned from ConnectToNSQ() when already connected
 var ErrAlreadyConnected = errors.New("already connected")
 
+// return from updateRdy if over max-in-flight
+var ErrOverMaxInFlight = errors.New("over configure max-inflight")
+
 // Handler is the synchronous interface to Reader.
 //
 // Implement this interface for handlers that return whether or not message
@@ -555,6 +558,9 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	go q.finishLoop(connection)
 	go q.rdyLoop(connection)
 
+	// prime RDY state
+	connection.readyChan <- 1
+
 	return nil
 }
 
@@ -582,14 +588,6 @@ func handleError(q *Reader, c *nsqConn, errMsg string) {
 }
 
 func (q *Reader) readLoop(c *nsqConn) {
-	// prime our ready state
-	err := q.updateRDY(c, 1)
-	if err != nil {
-		handleError(q, c, fmt.Sprintf("[%s] failed to send initial ready - %s", c, err.Error()))
-		q.stopFinishLoop(c)
-		return
-	}
-
 	for {
 		if atomic.LoadInt32(&c.stopFlag) == 1 || atomic.LoadInt32(&q.stopFlag) == 1 {
 			// start the connection close
@@ -727,6 +725,22 @@ func (q *Reader) finishLoop(c *nsqConn) {
 			if backoffCounter > 0 && backoffUpdated {
 				backoffDuration := q.backoffDuration(backoffCounter)
 				backoffDeadline = now.Add(backoffDuration)
+
+				// going into backoff. set all RDY to 0 immediately
+				q.RLock()
+				for _, c := range q.nsqConnections {
+					if q.VerboseLogging {
+						log.Printf("[%s] in backoff. sending RDY 0", c)
+					}
+					q.updateRDY(c, 0)
+
+					// prime the rdy loop so it starts waiting on the backoff timer (if not already doing so)
+					select {
+					case c.readyChan <- 1:
+					default:
+					}
+				}
+				q.RUnlock()
 			}
 
 			if atomic.LoadInt64(&c.messagesInFlight) == 0 &&
@@ -809,8 +823,8 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 				remain := atomic.LoadInt64(&c.rdyCount)
 				lastRdyCount := atomic.LoadInt64(&c.lastRdyCount)
 				count := q.ConnectionMaxInFlight()
-				// refill when at 1, or at 25% whichever comes first
-				if remain <= 1 || remain < (lastRdyCount/4) {
+				// refill when at 1, or at 25%, or if connections have changed and we have too many RDY
+				if remain <= 1 || remain < (lastRdyCount/4) || (count > 0 && count < remain) {
 					if q.VerboseLogging {
 						log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
 					}
@@ -828,7 +842,7 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 			backoffTimerChan = backoffTimer.C
 			readyChan = nil
 
-			log.Printf("[%s] backing off for %.02f seconds", c, backoffDuration.Seconds())
+			log.Printf("[%s] backing off for %.02f seconds (backoff level %d)", c, backoffDuration.Seconds(), backoffCounter)
 		case <-c.exitChan:
 			if backoffTimer != nil {
 				backoffTimer.Stop()
@@ -851,9 +865,14 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 		count = c.maxRdyCount
 	}
 
-	// never exceed our configured max in flight
-	if atomic.LoadInt64(&q.totalRdyCount)+count > int64(q.maxInFlight) {
-		return nil
+	// never exceed our global max in flight. truncate if possible.
+	// this could help a new connection get partial max-in-flight
+	maxPossibleRdy := int64(q.maxInFlight) - atomic.LoadInt64(&q.totalRdyCount)
+	if maxPossibleRdy > 0 && maxPossibleRdy < count {
+		count = maxPossibleRdy
+	}
+	if maxPossibleRdy <= 0 && count > 0 {
+		return ErrOverMaxInFlight
 	}
 
 	return q.sendRDY(c, count)
@@ -861,6 +880,12 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 
 func (q *Reader) sendRDY(c *nsqConn, count int64) error {
 	var buf bytes.Buffer
+
+	if count == 0 && atomic.LoadInt64(&c.lastRdyCount) == 0 {
+		// no need to send. It's already that RDY count
+		return nil
+	}
+
 	atomic.AddInt64(&q.totalRdyCount, atomic.LoadInt64(&c.rdyCount)*-1+count)
 	atomic.StoreInt64(&c.rdyCount, count)
 	atomic.StoreInt64(&c.lastRdyCount, count)
