@@ -98,6 +98,7 @@ type nsqConn struct {
 	readyChan        chan int
 	exitChan         chan int
 	backoffCounter   int32
+	rdyRetryTimer    *time.Timer
 }
 
 func newNSQConn(addr string, readTimeout time.Duration, writeTimeout time.Duration) (*nsqConn, error) {
@@ -187,6 +188,13 @@ func (c *nsqConn) upgradeTLS(conf *tls.Config) error {
 		return errors.New("invalid response from TLS upgrade")
 	}
 	return nil
+}
+
+func (c *nsqConn) tryUpdateRDY() {
+	select {
+	case c.readyChan <- 1:
+	default:
+	}
 }
 
 // Reader is a high-level type to consume from NSQ.
@@ -329,10 +337,7 @@ func (q *Reader) SetMaxInFlight(maxInFlight int) {
 	defer q.RUnlock()
 
 	for _, c := range q.nsqConnections {
-		select {
-		case c.readyChan <- 1:
-		default:
-		}
+		c.tryUpdateRDY()
 	}
 }
 
@@ -408,7 +413,6 @@ exit:
 // to find what nsq's provide the topic we are consuming.
 // for any new topics, initiate a connection to those NSQ's
 func (q *Reader) queryLookupd() {
-
 	i := q.lookupdQueryIndex
 
 	if i >= len(q.lookupdHTTPAddrs) {
@@ -559,7 +563,7 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	go q.rdyLoop(connection)
 
 	// prime RDY state
-	connection.readyChan <- 1
+	connection.tryUpdateRDY()
 
 	return nil
 }
@@ -627,10 +631,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 
 			q.incomingMessages <- &incomingMessage{msg, c.finishedMessages}
 
-			select {
-			case c.readyChan <- 1:
-			default:
-			}
+			c.tryUpdateRDY()
 		case FrameTypeResponse:
 			switch {
 			case bytes.Equal(data, []byte("CLOSE_WAIT")):
@@ -735,10 +736,7 @@ func (q *Reader) finishLoop(c *nsqConn) {
 					q.updateRDY(c, 0)
 
 					// prime the rdy loop so it starts waiting on the backoff timer (if not already doing so)
-					select {
-					case c.readyChan <- 1:
-					default:
-					}
+					c.tryUpdateRDY()
 				}
 				q.RUnlock()
 			}
@@ -815,34 +813,38 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 			// while in backoff only ever let 1 message at a time through
 			q.updateRDY(c, 1)
 			readyChan = c.readyChan
+			backoffTimer = nil
 		case <-readyChan:
 			backoffCounter := atomic.LoadInt32(&c.backoffCounter)
 
-			// send ready immediately
-			if backoffCounter == 0 || q.maxBackoffDuration == 0 {
-				remain := atomic.LoadInt64(&c.rdyCount)
-				lastRdyCount := atomic.LoadInt64(&c.lastRdyCount)
-				count := q.ConnectionMaxInFlight()
-				// refill when at 1, or at 25%, or if connections have changed and we have too many RDY
-				if remain <= 1 || remain < (lastRdyCount/4) || (count > 0 && count < remain) {
-					if q.VerboseLogging {
-						log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
-					}
-					q.updateRDY(c, count)
-				} else {
-					if q.VerboseLogging {
-						log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, lastRdyCount)
-					}
+			if backoffCounter != 0 && q.maxBackoffDuration != 0 {
+				if backoffTimer != nil {
+					// dont overwrite an existing backoff timer
+					continue
 				}
+				backoffDuration := q.backoffDuration(backoffCounter)
+				backoffTimer = time.NewTimer(backoffDuration)
+				backoffTimerChan = backoffTimer.C
+				readyChan = nil
+				log.Printf("[%s] backing off for %.02f seconds (backoff level %d)", c, backoffDuration.Seconds(), backoffCounter)
 				continue
 			}
 
-			backoffDuration := q.backoffDuration(backoffCounter)
-			backoffTimer = time.NewTimer(backoffDuration)
-			backoffTimerChan = backoffTimer.C
-			readyChan = nil
-
-			log.Printf("[%s] backing off for %.02f seconds (backoff level %d)", c, backoffDuration.Seconds(), backoffCounter)
+			// send ready immediately
+			remain := atomic.LoadInt64(&c.rdyCount)
+			lastRdyCount := atomic.LoadInt64(&c.lastRdyCount)
+			count := q.ConnectionMaxInFlight()
+			// refill when at 1, or at 25%, or if connections have changed and we have too many RDY
+			if remain <= 1 || remain < (lastRdyCount/4) || (count > 0 && count < remain) {
+				if q.VerboseLogging {
+					log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
+				}
+				q.updateRDY(c, count)
+			} else {
+				if q.VerboseLogging {
+					log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, lastRdyCount)
+				}
+			}
 		case <-c.exitChan:
 			if backoffTimer != nil {
 				backoffTimer.Stop()
@@ -865,6 +867,12 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 		count = c.maxRdyCount
 	}
 
+	// stop any pending retry of an old RDY update
+	if c.rdyRetryTimer != nil {
+		c.rdyRetryTimer.Stop()
+		c.rdyRetryTimer = nil
+	}
+
 	// never exceed our global max in flight. truncate if possible.
 	// this could help a new connection get partial max-in-flight
 	maxPossibleRdy := int64(q.maxInFlight) - atomic.LoadInt64(&q.totalRdyCount)
@@ -872,6 +880,14 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 		count = maxPossibleRdy
 	}
 	if maxPossibleRdy <= 0 && count > 0 {
+		if atomic.LoadInt64(&c.rdyCount) == 0 {
+			// we wanted a to exit a zero RDY count but we couldn't send it...
+			// in order to prevent eternal starvation we reschedule this attempt
+			// (if any other RDY update succeeds this timer will be stopped)
+			c.rdyRetryTimer = time.AfterFunc(5*time.Second, func() {
+				q.updateRDY(c, count)
+			})
+		}
 		return ErrOverMaxInFlight
 	}
 
