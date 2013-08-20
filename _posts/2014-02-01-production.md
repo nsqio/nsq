@@ -26,7 +26,7 @@ Also, `nsqd` will need to be configured with `nsqlookupd` addresses (see below f
 In terms of topology, we recommend running `nsqd` co-located with services producing messages.
 
 `nsqd` can be configured to push data to [statsd][statsd] by specifying `--statsd-address`. `nsqd`
-sends stats under the `nsq.*` namespace. See 
+sends stats under the `nsq.*` namespace. See [nsqd statsd][nsqd_statsd].
 
 ### nsqlookupd
 
