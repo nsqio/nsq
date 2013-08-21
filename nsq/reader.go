@@ -556,6 +556,10 @@ func (q *Reader) ConnectToNSQ(addr string) error {
 	q.Lock()
 	delete(q.pendingConnections, addr)
 	q.nsqConnections[connection.String()] = connection
+	// signal to existing connections to lower their RDY count
+	for _, c := range q.nsqConnections {
+		c.tryUpdateRDY()
+	}
 	q.Unlock()
 
 	go q.readLoop(connection)
@@ -837,12 +841,12 @@ func (q *Reader) rdyLoop(c *nsqConn) {
 			// refill when at 1, or at 25%, or if connections have changed and we have too many RDY
 			if remain <= 1 || remain < (lastRdyCount/4) || (count > 0 && count < remain) {
 				if q.VerboseLogging {
-					log.Printf("[%s] sending RDY %d (%d remain)", c, count, remain)
+					log.Printf("[%s] sending RDY %d (%d remain from last RDY %d)", c, count, remain, lastRdyCount)
 				}
 				q.updateRDY(c, count)
 			} else {
 				if q.VerboseLogging {
-					log.Printf("[%s] skip sending RDY (%d remain out of %d)", c, remain, lastRdyCount)
+					log.Printf("[%s] skip sending RDY %d (%d remain out of last RDY %d)", c, count, remain, lastRdyCount)
 				}
 			}
 		case <-c.exitChan:
@@ -875,7 +879,7 @@ func (q *Reader) updateRDY(c *nsqConn, count int64) error {
 
 	// never exceed our global max in flight. truncate if possible.
 	// this could help a new connection get partial max-in-flight
-	maxPossibleRdy := int64(q.maxInFlight) - atomic.LoadInt64(&q.totalRdyCount)
+	maxPossibleRdy := int64(q.maxInFlight) - atomic.LoadInt64(&q.totalRdyCount) + atomic.LoadInt64(&c.rdyCount)
 	if maxPossibleRdy > 0 && maxPossibleRdy < count {
 		count = maxPossibleRdy
 	}
