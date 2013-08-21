@@ -407,11 +407,11 @@ func (n *NSQd) Notify(v interface{}) {
 	select {
 	case <-n.exitChan:
 	case n.notifyChan <- v:
-		n.RLock()
+		n.Lock()
 		err := n.PersistMetadata()
 		if err != nil {
 			log.Printf("ERROR: failed to persist metadata - %s", err.Error())
 		}
-		n.RUnlock()
+		n.Unlock()
 	}
 }
