@@ -2,9 +2,9 @@ package lookupd
 
 import (
 	"fmt"
+	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/semver"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -49,18 +49,19 @@ func (p *Producer) IsInconsistent(numLookupd int) bool {
 
 type TopicStats struct {
 	HostAddress  string
+	TopicName    string
 	Depth        int64
 	MemoryDepth  int64
 	BackendDepth int64
 	MessageCount int64
 	ChannelCount int
-	Topic        string
 	Aggregate    bool
+	Channels     []*ChannelStats
 }
 
-func (t *TopicStats) AddHostStats(a *TopicStats) {
+func (t *TopicStats) Add(a *TopicStats) {
 	t.Aggregate = true
-	t.Topic = a.Topic
+	t.TopicName = a.TopicName
 	t.Depth += a.Depth
 	t.MemoryDepth += a.MemoryDepth
 	t.BackendDepth += a.BackendDepth
@@ -71,7 +72,7 @@ func (t *TopicStats) AddHostStats(a *TopicStats) {
 }
 
 func (t *TopicStats) Target(key string) (string, string) {
-	h := graphiteHostKey(t.HostAddress)
+	h := util.StatsdHostKey(t.HostAddress)
 	if t.Aggregate {
 		h = "*"
 	}
@@ -79,12 +80,13 @@ func (t *TopicStats) Target(key string) (string, string) {
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("nsq.%s.topic.%s.%s", h, t.Topic, key)
+	target := fmt.Sprintf("sumSeries(%%snsq.%s.topic.%s.%s)", h, t.TopicName, key)
 	return target, color
 }
 
 type ChannelStats struct {
 	HostAddress   string
+	TopicName     string
 	ChannelName   string
 	Depth         int64
 	MemoryDepth   int64
@@ -96,13 +98,12 @@ type ChannelStats struct {
 	MessageCount  int64
 	ClientCount   int
 	Selected      bool
-	Topic         string
 	HostStats     []*ChannelStats
 	Clients       []*ClientInfo
 	Paused        bool
 }
 
-func (c *ChannelStats) AddHostStats(a *ChannelStats) {
+func (c *ChannelStats) Add(a *ChannelStats) {
 	c.Depth += a.Depth
 	c.MemoryDepth += a.MemoryDepth
 	c.BackendDepth += a.BackendDepth
@@ -122,13 +123,13 @@ func (c *ChannelStats) AddHostStats(a *ChannelStats) {
 func (c *ChannelStats) Target(key string) (string, string) {
 	h := "*"
 	if len(c.HostStats) == 0 {
-		h = graphiteHostKey(c.HostAddress)
+		h = util.StatsdHostKey(c.HostAddress)
 	}
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("nsq.%s.topic.%s.channel.%s.%s", h, c.Topic, c.ChannelName, key)
+	target := fmt.Sprintf("sumSeries(%%snsq.%s.topic.%s.channel.%s.%s)", h, c.TopicName, c.ChannelName, key)
 	return target, color
 }
 
@@ -148,9 +149,9 @@ type ChannelStatsList []*ChannelStats
 type ChannelStatsByHost struct {
 	ChannelStatsList
 }
-type ClientInfos []*ClientInfo
+type ClientInfoList []*ClientInfo
 type ClientsByHost struct {
-	ClientInfos
+	ClientInfoList
 }
 type TopicStatsList []*TopicStats
 type TopicStatsByHost struct {
@@ -163,8 +164,8 @@ type ProducersByHost struct {
 
 func (c ChannelStatsList) Len() int      { return len(c) }
 func (c ChannelStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
-func (c ClientInfos) Len() int           { return len(c) }
-func (c ClientInfos) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
+func (c ClientInfoList) Len() int        { return len(c) }
+func (c ClientInfoList) Swap(i, j int)   { c[i], c[j] = c[j], c[i] }
 func (t TopicStatsList) Len() int        { return len(t) }
 func (t TopicStatsList) Swap(i, j int)   { t[i], t[j] = t[j], t[i] }
 func (t ProducerList) Len() int          { return len(t) }
@@ -174,19 +175,14 @@ func (c ChannelStatsByHost) Less(i, j int) bool {
 	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
 }
 func (c ClientsByHost) Less(i, j int) bool {
-	if c.ClientInfos[i].ClientIdentifier == c.ClientInfos[j].ClientIdentifier {
-		return c.ClientInfos[i].HostAddress < c.ClientInfos[j].HostAddress
+	if c.ClientInfoList[i].ClientIdentifier == c.ClientInfoList[j].ClientIdentifier {
+		return c.ClientInfoList[i].HostAddress < c.ClientInfoList[j].HostAddress
 	}
-	return c.ClientInfos[i].ClientIdentifier < c.ClientInfos[j].ClientIdentifier
+	return c.ClientInfoList[i].ClientIdentifier < c.ClientInfoList[j].ClientIdentifier
 }
 func (c TopicStatsByHost) Less(i, j int) bool {
 	return c.TopicStatsList[i].HostAddress < c.TopicStatsList[j].HostAddress
 }
 func (c ProducersByHost) Less(i, j int) bool {
 	return c.ProducerList[i].BroadcastAddress < c.ProducerList[j].BroadcastAddress
-}
-
-func graphiteHostKey(h string) string {
-	s := strings.Replace(h, ".", "_", -1)
-	return strings.Replace(s, ":", "_", -1)
 }

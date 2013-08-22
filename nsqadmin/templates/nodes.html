@@ -21,7 +21,7 @@
     {{range $p := .Producers }}
     <tr {{if .OutOfDate}}class="warning"{{end}}>
         <td>{{.Hostname}}</td>
-        <td>{{.BroadcastAddress}}</td>
+        <td><a href="/node/{{.BroadcastAddress}}:{{.HttpPort}}">{{.BroadcastAddress}}</a></td>
         <td>{{.TcpPort}}</td>
         <td>{{.HttpPort}}</td>
         <td>{{.Version}}</td>
