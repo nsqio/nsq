@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,220 +15,286 @@ import (
 
 type Writer struct {
 	net.Conn
-	transactionChan   chan *writerTransaction
+	transactionChan   chan *WriterTransaction
 	dataChan          chan []byte
 	WriteTimeout      time.Duration
-	transactions      []*writerTransaction
+	transactions      []*WriterTransaction
 	state             int32
 	stopFlag          int32
-	HeartbeatInterval int
+	Addr              string
+	HeartbeatInterval time.Duration
 	ShortIdentifier   string
 	LongIdentifier    string
 	exitChan          chan int
+	closeChan         chan int
 	wg                sync.WaitGroup
 }
 
-type writerTransaction struct {
-	doneChan  chan int
+type WriterTransaction struct {
 	cmd       *Command
-	frameType int32
-	data      []byte
-	err       error
+	doneChan  chan *WriterTransaction
+	FrameType int32
+	Data      []byte
+	Error     error
+	Args      []interface{}
 }
 
-func NewWriter(heartbeatInterval int) *Writer {
+var ErrNotConnected = errors.New("not connected")
+var ErrStopped = errors.New("stopped")
+
+func NewWriter(addr string) *Writer {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
-	this := &Writer{
-		transactionChan:   make(chan *writerTransaction),
-		exitChan:          make(chan int),
-		dataChan:          make(chan []byte),
-		state:             StateInit,
-		stopFlag:          0,
+	return &Writer{
+		transactionChan: make(chan *WriterTransaction),
+		exitChan:        make(chan int),
+		closeChan:       make(chan int),
+		dataChan:        make(chan []byte),
+
+		// can be overriden before connecting
+		Addr:              addr,
 		WriteTimeout:      time.Second,
-		HeartbeatInterval: heartbeatInterval,
+		HeartbeatInterval: DefaultClientTimeout / 2,
 		ShortIdentifier:   strings.Split(hostname, ".")[0],
 		LongIdentifier:    hostname,
 	}
-	return this
 }
 
-func (this *Writer) Stop() {
-	if !atomic.CompareAndSwapInt32(&this.stopFlag, 0, 1) {
+func (w *Writer) String() string {
+	return w.Addr
+}
+
+func (w *Writer) Stop() {
+	if !atomic.CompareAndSwapInt32(&w.stopFlag, 0, 1) {
 		return
 	}
-	this.close()
+	w.close()
+	w.wg.Wait()
 }
 
-func (this *Writer) Publish(topic string, body []byte) (int32, []byte, error) {
-	cmd := Publish(topic, body)
-	return this.sendCommand(cmd)
+func (w *Writer) PublishAsync(topic string, body []byte, doneChan chan *WriterTransaction, args ...interface{}) error {
+	return w.sendCommandAsync(Publish(topic, body), doneChan, args)
 }
 
-func (this *Writer) MultiPublish(topic string, body [][]byte) (int32, []byte, error) {
+func (w *Writer) MultiPublishAsync(topic string, body [][]byte, doneChan chan *WriterTransaction, args ...interface{}) error {
+	cmd, err := MultiPublish(topic, body)
+	if err != nil {
+		return err
+	}
+	return w.sendCommandAsync(cmd, doneChan, args)
+}
+
+func (w *Writer) Publish(topic string, body []byte) (int32, []byte, error) {
+	return w.sendCommand(Publish(topic, body))
+}
+
+func (w *Writer) MultiPublish(topic string, body [][]byte) (int32, []byte, error) {
 	cmd, err := MultiPublish(topic, body)
 	if err != nil {
 		return -1, nil, err
 	}
-	return this.sendCommand(cmd)
+	return w.sendCommand(cmd)
 }
 
-func (this *Writer) sendCommand(cmd *Command) (int32, []byte, error) {
-	if atomic.LoadInt32(&this.state) != StateConnected {
-		return -1, nil, errors.New("not connected")
+func (w *Writer) sendCommand(cmd *Command) (int32, []byte, error) {
+	doneChan := make(chan *WriterTransaction)
+	err := w.sendCommandAsync(cmd, doneChan, nil)
+	if err != nil {
+		close(doneChan)
+		return -1, nil, err
 	}
-	t := &writerTransaction{
+	t := <-doneChan
+	return t.FrameType, t.Data, t.Error
+}
+
+func (w *Writer) sendCommandAsync(cmd *Command, doneChan chan *WriterTransaction, args []interface{}) error {
+	if atomic.LoadInt32(&w.state) != StateConnected {
+		err := w.connect()
+		if err != nil {
+			return err
+		}
+	}
+	t := &WriterTransaction{
 		cmd:       cmd,
-		frameType: -1,
-		doneChan:  make(chan int),
+		doneChan:  doneChan,
+		FrameType: -1,
+		Args:      args,
 	}
-	this.transactionChan <- t
-	<-t.doneChan
-	return t.frameType, t.data, t.err
+	select {
+	case w.transactionChan <- t:
+	case <-w.exitChan:
+		return ErrStopped
+	}
+	return nil
 }
 
-func (this *Writer) ConnectToNSQ(addr string) error {
-	if atomic.LoadInt32(&this.stopFlag) == 1 {
-		return errors.New("writer stopped")
+func (w *Writer) connect() error {
+	if atomic.LoadInt32(&w.stopFlag) == 1 {
+		return ErrStopped
 	}
 
-	if !atomic.CompareAndSwapInt32(&this.state, StateInit, StateConnected) {
+	if !atomic.CompareAndSwapInt32(&w.state, StateInit, StateConnected) {
 		return nil
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, time.Second*5)
+	conn, err := net.DialTimeout("tcp", w.Addr, time.Second*5)
 	if err != nil {
-		atomic.StoreInt32(&this.state, StateInit)
-		return errors.New("failed to connect nsq")
-	}
-	this.Conn = conn
-
-	this.SetWriteDeadline(time.Now().Add(this.WriteTimeout))
-	if _, err := this.Conn.Write(MagicV2); err != nil {
-		this.close()
+		log.Printf("ERROR: [%s] failed to dial %s - %s", w, w.Addr, err)
+		atomic.StoreInt32(&w.state, StateInit)
 		return err
 	}
 
-	this.exitChan = make(chan int)
+	w.closeChan = make(chan int)
+	w.Conn = conn
+
+	w.SetWriteDeadline(time.Now().Add(w.WriteTimeout))
+	_, err = w.Write(MagicV2)
+	if err != nil {
+		log.Printf("ERROR: [%s] failed to write magic - %s", w, err)
+		w.close()
+		return err
+	}
+
 	ci := make(map[string]interface{})
-	ci["short_id"] = this.ShortIdentifier
-	ci["long_id"] = this.LongIdentifier
-	ci["heartbeat_interval"] = this.HeartbeatInterval
+	ci["short_id"] = w.ShortIdentifier
+	ci["long_id"] = w.LongIdentifier
+	ci["heartbeat_interval"] = int64(w.HeartbeatInterval / time.Millisecond)
 	ci["feature_negotiation"] = true
 	cmd, err := Identify(ci)
 	if err != nil {
-		this.close()
-		return fmt.Errorf("[%s] failed to create identify command - %s", this.RemoteAddr(), err.Error())
-	}
-
-	this.wg.Add(1)
-	go func() {
-		this.readLoop()
-		this.wg.Done()
-	}()
-
-	this.wg.Add(1)
-	go func() {
-		this.messageRouter()
-		this.wg.Done()
-	}()
-
-	frameType, data, err := this.sendCommand(cmd)
-	if frameType == FrameTypeError {
-		if err == nil {
-			this.close()
-			return fmt.Errorf("[%s] error failed to identify - %s", this.RemoteAddr(), string(data))
-		}
-	}
-
-	return nil
-}
-
-func (this *Writer) close() {
-	if atomic.CompareAndSwapInt32(&this.state, StateConnected, StateDisconnected) {
-		close(this.exitChan)
-		this.Conn.Close()
-		this.wg.Wait()
-		atomic.StoreInt32(&this.state, StateInit)
-	}
-}
-
-func (this *Writer) messageRouter() {
-	var err error
-	defer this.transactionCleanup()
-	for {
-		select {
-		case t := <-this.transactionChan:
-			this.transactions = append(this.transactions, t)
-			this.SetWriteDeadline(time.Now().Add(this.WriteTimeout))
-			if err = t.cmd.Write(this.Conn); err != nil {
-				log.Printf("[%s] error writing %s", this.RemoteAddr(), err.Error())
-				this.close()
-				return
-			}
-		case buf := <-this.dataChan:
-			frameType, data, err := UnpackResponse(buf)
-			if err != nil {
-				log.Printf("[%s] error (%s) unpacking response %d %s", this.RemoteAddr(), err.Error(), frameType, data)
-				return
-			}
-			if frameType == FrameTypeResponse &&
-				bytes.Equal(data, []byte("_heartbeat_")) {
-				log.Printf("[%s] received heartbeat", this.RemoteAddr())
-				if err := this.heartbeat(); err != nil {
-					log.Printf("[%s] error sending heartbeat - %s", this.RemoteAddr(), err.Error())
-					this.close()
-					return
-				}
-			} else {
-				t := this.transactions[0]
-				this.transactions = this.transactions[1:]
-				t.frameType = frameType
-				t.data = data
-				t.err = err
-				t.doneChan <- 1
-			}
-		case <-this.exitChan:
-			return
-		}
-	}
-}
-
-//send heartbeat
-func (this *Writer) heartbeat() error {
-	this.SetWriteDeadline(time.Now().Add(this.WriteTimeout))
-	if err := Nop().Write(this.Conn); err != nil {
+		log.Printf("ERROR: [%s] failed to create IDENTIFY command - %s", w, err)
+		w.close()
 		return err
 	}
+
+	w.SetWriteDeadline(time.Now().Add(w.WriteTimeout))
+	err = cmd.Write(w)
+	if err != nil {
+		log.Printf("ERROR: [%s] failed to write IDENTIFY - %s", w, err)
+		w.close()
+		return err
+	}
+
+	w.SetReadDeadline(time.Now().Add(w.HeartbeatInterval * 2))
+	resp, err := ReadResponse(w)
+	if err != nil {
+		log.Printf("ERROR: [%s] failed to read IDENTIFY response - %s", w, err)
+		w.close()
+		return err
+	}
+
+	frameType, data, err := UnpackResponse(resp)
+	if err != nil {
+		log.Printf("ERROR: [%s] failed to unpack IDENTIFY response - %s", w, resp)
+		w.close()
+		return err
+	}
+
+	if frameType == FrameTypeError {
+		return errors.New(string(data))
+	}
+
+	w.wg.Add(1)
+	go w.readLoop()
+
+	w.wg.Add(1)
+	go w.messageRouter()
+
 	return nil
 }
 
-// cleanup transactions
-func (this *Writer) transactionCleanup() {
-	for _, t := range this.transactions {
-		t.err = errors.New("not connected")
-		t.doneChan <- 1
+func (w *Writer) close() {
+	if !atomic.CompareAndSwapInt32(&w.state, StateConnected, StateDisconnected) {
+		return
 	}
-	this.transactions = this.transactions[:0]
+	close(w.closeChan)
+	w.Conn.Close()
+	go func() {
+		w.wg.Wait()
+		atomic.StoreInt32(&w.state, StateInit)
+	}()
 }
 
-func (this *Writer) readLoop() {
-	rbuf := bufio.NewReader(this.Conn)
+func (w *Writer) messageRouter() {
+	defer w.transactionCleanup()
+
 	for {
-		resp, err := ReadResponse(rbuf)
-		if err != nil {
-			log.Printf("[%s] error reading response %s", this.RemoteAddr(), err.Error())
-			if !strings.Contains(err.Error(), "use of closed network connection") {
-				this.close()
-			}
-			break
-		}
 		select {
-		case this.dataChan <- resp:
-		case <-this.exitChan:
-			return
+		case t := <-w.transactionChan:
+			w.transactions = append(w.transactions, t)
+			w.SetWriteDeadline(time.Now().Add(w.WriteTimeout))
+			err := t.cmd.Write(w.Conn)
+			if err != nil {
+				log.Printf("ERROR: [%s] failed writing %s", w, err)
+				w.close()
+				goto exit
+			}
+		case buf := <-w.dataChan:
+			frameType, data, err := UnpackResponse(buf)
+			if err != nil {
+				log.Printf("ERROR: [%s] failed (%s) unpacking response %d %s", w, err, frameType, data)
+				w.close()
+				goto exit
+			}
+
+			if frameType == FrameTypeResponse && bytes.Equal(data, []byte("_heartbeat_")) {
+				log.Printf("[%s] heartbeat received", w)
+				w.SetWriteDeadline(time.Now().Add(w.WriteTimeout))
+				err := Nop().Write(w.Conn)
+				if err != nil {
+					log.Printf("ERROR: [%s] failed sending heartbeat - %s", w, err)
+					w.close()
+					goto exit
+				}
+				continue
+			}
+
+			t := w.transactions[0]
+			w.transactions = w.transactions[1:]
+			t.FrameType = frameType
+			t.Data = data
+			t.Error = err
+			t.doneChan <- t
+		case <-w.closeChan:
+			goto exit
 		}
 	}
+
+exit:
+	w.wg.Done()
+	log.Printf("[%s] exiting messageRouter()", w)
+}
+
+func (w *Writer) transactionCleanup() {
+	for _, t := range w.transactions {
+		t.Error = ErrNotConnected
+		t.doneChan <- t
+	}
+	w.transactions = w.transactions[:0]
+}
+
+func (w *Writer) readLoop() {
+	rbuf := bufio.NewReader(w.Conn)
+	for {
+		w.SetReadDeadline(time.Now().Add(w.HeartbeatInterval * 2))
+		resp, err := ReadResponse(rbuf)
+		if err != nil {
+			log.Printf("ERROR: [%s] reading response %s", w, err)
+			if !strings.Contains(err.Error(), "use of closed network connection") {
+				w.close()
+			}
+			goto exit
+		}
+		select {
+		case w.dataChan <- resp:
+		case <-w.closeChan:
+			goto exit
+		}
+	}
+
+exit:
+	w.wg.Done()
+	log.Printf("[%s] exiting readLoop()", w)
 }

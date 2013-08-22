@@ -297,7 +297,7 @@ func main() {
 		log.Fatalf("--topic and --channel are required")
 	}
 
-	if *maxInFlight < 0 {
+	if *maxInFlight <= 0 {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 

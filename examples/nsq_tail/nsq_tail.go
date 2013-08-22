@@ -62,7 +62,7 @@ func main() {
 		log.Fatalf("--topic is required")
 	}
 
-	if *maxInFlight < 0 {
+	if *maxInFlight <= 0 {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 

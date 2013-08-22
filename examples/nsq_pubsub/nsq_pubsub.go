@@ -221,7 +221,7 @@ func main() {
 		return
 	}
 
-	if *maxInFlight < 0 {
+	if *maxInFlight <= 0 {
 		log.Fatalf("--max-in-flight must be > 0")
 	}
 

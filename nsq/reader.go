@@ -646,7 +646,7 @@ func (q *Reader) readLoop(c *nsqConn) {
 				atomic.StoreInt32(&c.stopFlag, 1)
 			case bytes.Equal(data, []byte("_heartbeat_")):
 				var buf bytes.Buffer
-				log.Printf("[%s] received heartbeat from nsqd", c)
+				log.Printf("[%s] heartbeat received", c)
 				err := c.sendCommand(&buf, Nop())
 				if err != nil {
 					handleError(q, c, fmt.Sprintf("[%s] error sending NOP - %s", c, err.Error()))
