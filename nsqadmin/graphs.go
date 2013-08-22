@@ -18,6 +18,16 @@ type GraphTarget interface {
 	Target(key string) (string, string)
 }
 
+type Node string
+
+func (n Node) Target(key string) (string, string) {
+	target := fmt.Sprintf("%%snsq.%s.mem.%s", util.StatsdHostKey(string(n)), key)
+	if key == "gc_runs" {
+		target = fmt.Sprintf("movingAverage(%s,45)", target)
+	}
+	return target, "red,green,blue,purple"
+}
+
 type Topic struct {
 	TopicName string
 }
@@ -38,7 +48,7 @@ func (t *Topic) Target(key string) (string, string) {
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("nsq.*.topic.%s.%s", t.TopicName, key)
+	target := fmt.Sprintf("sumSeries(%%snsq.*.topic.%s.%s)", t.TopicName, key)
 	return target, color
 }
 
@@ -160,7 +170,7 @@ func (g *GraphOptions) Prefix(metricType string) string {
 
 func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	target, color := gr.Target(key)
-	target = g.Prefix(metricType(key)) + target
+	target = fmt.Sprintf(target, g.Prefix(metricType(key)))
 	params := url.Values{}
 	params.Set("height", "20")
 	params.Set("width", "120")
@@ -173,7 +183,7 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
 	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
-	params.Set("target", fmt.Sprintf(`summarize(sumSeries(%s),"%s","avg")`, target, interval))
+	params.Set("target", fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval))
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
@@ -181,7 +191,7 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 
 func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	target, color := gr.Target(key)
-	target = g.Prefix(metricType(key)) + target
+	target = fmt.Sprintf(target, g.Prefix(metricType(key)))
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
@@ -190,8 +200,8 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	params.Set("colorList", color)
 	params.Set("yMin", "0")
 	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
-	target = fmt.Sprintf(`summarize(sumSeries(%s),"%s","avg")`, target, interval)
-	if metricType(key) != "gauge" {
+	target = fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval)
+	if metricType(key) == "counter" {
 		scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
 		target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
 	}
@@ -203,16 +213,23 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 
 func (g *GraphOptions) Rate(gr GraphTarget) string {
 	target, _ := gr.Target("message_count")
-	return g.Prefix(metricType("message_count")) + target
+	return fmt.Sprintf(target, g.Prefix(metricType("message_count")))
 }
 
 func metricType(key string) string {
-	metricType := "counter"
-	switch key {
-	case "backend_depth", "depth", "clients", "in_flight_count", "deferred_count":
-		metricType = "gauge"
-	}
-	return metricType
+	return map[string]string{
+		"depth":           "gauge",
+		"in_flight_count": "gauge",
+		"deferred_count":  "gauge",
+		"requeue_count":   "counter",
+		"timeout_count":   "counter",
+		"message_count":   "counter",
+		"clients":         "gauge",
+		"*_bytes":         "gauge",
+		"gc_pause_*":      "gauge",
+		"gc_runs":         "counter",
+		"heap_objects":    "gauge",
+	}[key]
 }
 
 func rateQuery(target string) string {
@@ -222,7 +239,7 @@ func rateQuery(target string) string {
 	untilInterval := fmt.Sprintf("-%dsec", *statsdInterval/time.Second)
 	params.Set("until", untilInterval)
 	params.Set("format", "json")
-	params.Set("target", fmt.Sprintf("sumSeries(%s)", target))
+	params.Set("target", target)
 	return fmt.Sprintf("/render?%s", params.Encode())
 }
 

@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -129,8 +128,7 @@ func main() {
 	if *statsdAddress != "" {
 		// flagToDuration will fatally error if it is invalid
 		options.statsdInterval = flagToDuration(*statsdInterval, time.Second, "--statsd-interval")
-		undered := fmt.Sprintf("%s_%d", strings.Replace(*broadcastAddress, ".", "_", -1), httpAddr.Port)
-		options.statsdPrefix = fmt.Sprintf("nsq.%s.", undered)
+		options.statsdPrefix = fmt.Sprintf("nsq.%s.", util.StatsdHostKey(net.JoinHostPort(*broadcastAddress, strconv.Itoa(httpAddr.Port))))
 		options.statsdAddress = *statsdAddress
 	}
 

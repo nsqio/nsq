@@ -43,7 +43,7 @@
 <h4>Topic Message Queue</h4>
 <table class="table table-bordered table-condensed">
     <tr>
-        <th>nsqd Host</th>
+        <th>NSQd Host</th>
         <th>Depth</th>
         <th>Memory + Disk</th>
         <th>Messages</th>
@@ -54,10 +54,10 @@
     <tr>
         <td>
             <form class="form-inline" style="margin:0" action="/tombstone_topic_producer" method="POST">
-                <input type="hidden" name="rd" value="/topic/{{.Topic}}">
-                <input type="hidden" name="topic" value="{{.Topic}}">
+                <input type="hidden" name="rd" value="/topic/{{.TopicName}}">
+                <input type="hidden" name="topic" value="{{.TopicName}}">
                 <input type="hidden" name="node" value="{{.HostAddress}}">
-                <button class="btn btn-mini btn-link red" type="submit">✘</button>{{.HostAddress}}
+                <button class="btn btn-mini btn-link red" type="submit">✘</button> <a href="/node/{{.HostAddress}}">{{.HostAddress}}</a>
             </form>
         </td>
         <td>
@@ -117,7 +117,7 @@
 
 {{range $c := .ChannelStats}}
     <tr >
-        <th><a href="/topic/{{$c.Topic}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
+        <th><a href="/topic/{{$c.TopicName}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
             {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
             </th>
         <td>

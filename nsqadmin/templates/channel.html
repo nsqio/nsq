@@ -29,14 +29,14 @@
 <div class="row-fluid">
     <div class="span2">
         <form action="/empty_channel" method="POST">
-            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="topic" value="{{.ChannelStats.TopicName}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-warning" type="submit">Empty Queue</button>
         </form>
     </div>
     <div class="span2">
         <form action="/delete_channel" method="POST">
-            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="topic" value="{{.ChannelStats.TopicName}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-danger" type="submit">Delete Channel</button>
         </form>
@@ -44,13 +44,13 @@
     <div class="span2">
         {{if .ChannelStats.Paused}}
         <form action="/unpause_channel" method="POST">
-            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="topic" value="{{.ChannelStats.TopicName}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-success" type="submit">UnPause Channel</button>
         </form>
         {{else}}
         <form action="/pause_channel" method="POST">
-            <input type="hidden" name="topic" value="{{.ChannelStats.Topic}}">
+            <input type="hidden" name="topic" value="{{.ChannelStats.TopicName}}">
             <input type="hidden" name="channel" value="{{.ChannelStats.ChannelName}}">
             <button class="btn btn-medium btn-inverse" type="submit">Pause Channel</button>
         </form>
@@ -72,7 +72,7 @@
             {{end}}
         </tr>
         <tr>
-            <th>Host</th>
+            <th>NSQd Host</th>
             <th>Depth</th>
             <th>Memory + Disk</th>
             <th>In-Flight</th>
@@ -88,7 +88,7 @@
 
 {{range $c := .ChannelStats.HostStats}}
         <tr>
-            <td>{{$c.HostAddress}}{{if $c.Paused}} <span class="label label-important">paused</span>{{end}}</td>
+            <td><a href="/node/{{$c.HostAddress}}">{{$c.HostAddress}}</a>{{if $c.Paused}} <span class="label label-important">paused</span>{{end}}</td>
             <td>{{$c.Depth | commafy}}</td>
             <td>{{$c.MemoryDepth | commafy}} + {{$c.BackendDepth | commafy}}</td>
             <td>{{$c.InFlightCount | commafy}}</td>
@@ -170,7 +170,7 @@
     <tr>
         <td>{{.ClientIdentifier}}</td>
         <td>{{.ClientVersion}}</td>
-        <td>{{.HostAddress}}</td>
+        <td><a href="/node/{{.HostAddress}}">{{.HostAddress}}</a></td>
         <td>{{.InFlightCount | commafy}}</td>
         <td>{{.ReadyCount | commafy}}</td>
         <td>{{.FinishCount | commafy}}</td>
