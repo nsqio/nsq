@@ -22,21 +22,22 @@ profiling via Go's `pprof` tool, ie:
 
 New Features / Enhancements:
 
- * #238/#248/#252 - support for more HTTP debug endpoints
  * #227 - TLS feature negotiation
- * #230 - nsq_to_http takes --content-type flag (thanks @michaelhood)
- * #228 - nsqadmin displays tombstoned topics in the /nodes list
- * #242/#239/#245 - reduced GC pressure for inflight and /mput
+ * #238/#248/#252 - support for more HTTP debug endpoints
+ * #256 - `nsqadmin` single node view (with GC/mem graphs)
+ * #230 - `nsq_to_http` takes `--content-type` flag (thanks @michaelhood)
+ * #228 - `nsqadmin` displays tombstoned topics in the `/nodes` list
+ * #242/#239/#245 - reduced GC pressure for inflight and `/mput`
 
 Bug Fixes:
 
  * #251 - respect configured limits for HTTP publishing
  * #247 - publish methods should not allow 0 length messages
- * #231 - persist nsqd metadata on topic/channel changes
+ * #231 - persist `nsqd` metadata on topic/channel changes
  * #237 - fix potential memory leaks with retained channel references
  * #232 - message timestamps are now nano
- * #228 - nsqlookupd/nsqadmin would display inactive nodes in /nodes list
- * #216 - fix edge cases in nsq_to_file that caused empty files
+ * #228 - `nsqlookupd`/`nsqadmin` would display inactive nodes in `/nodes` list
+ * #216 - fix edge cases in `nsq_to_file` that caused empty files
 
 ### 0.2.21 - 2013-06-07
 
@@ -276,16 +277,17 @@ removed in a future release.
 
 ### 0.3.2-alpha
 
- * #250 - lookupd polling improvements
- * #243 - limit IsStarved to connections w/ inflight messages
+ * #254/#256/#257 - `Reader` new connection RDY starvation
+ * #250 - `nsqlookupd` polling improvements
+ * #243 - limit `IsStarved` to connections w/ inflight messages
  * #227 - TLS feature negotiation
- * #169 - auto-reconnect to hard-coded nsqd; use last RDY count for IsStarved(); 
-          redistribute RDY state when num_conns > max_in_flight
+ * #169 - auto-reconnect to hard-coded `nsqd`; use last RDY count for `IsStarved()`; 
+          redistribute RDY state when `num_conns > max_in_flight`
  * #204 - fix early termination blocking
  * #186 - max backoff duration of 0 disables backoff
- * #164/#202 - add Writer
+ * #164/#202/#255 - add Writer
  * #175 - support server side configurable max RDY count
- * #177 - support broadcast_address
+ * #177 - support `broadcast_address`
  * #161 - connection pool goroutine safety
 
 ### 0.3.1 - 2013-02-07
