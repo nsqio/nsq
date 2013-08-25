@@ -15,19 +15,21 @@ import (
 
 type Writer struct {
 	net.Conn
-	transactionChan   chan *WriterTransaction
-	dataChan          chan []byte
+
 	WriteTimeout      time.Duration
-	transactions      []*WriterTransaction
-	state             int32
-	stopFlag          int32
 	Addr              string
 	HeartbeatInterval time.Duration
 	ShortIdentifier   string
 	LongIdentifier    string
-	exitChan          chan int
-	closeChan         chan int
-	wg                sync.WaitGroup
+
+	transactionChan chan *WriterTransaction
+	dataChan        chan []byte
+	transactions    []*WriterTransaction
+	state           int32
+	stopFlag        int32
+	exitChan        chan int
+	closeChan       chan int
+	wg              sync.WaitGroup
 }
 
 type WriterTransaction struct {

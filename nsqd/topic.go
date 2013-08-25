@@ -11,7 +11,11 @@ import (
 )
 
 type Topic struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	messageCount uint64
+
 	sync.RWMutex
+
 	name              string
 	channelMap        map[string]*Channel
 	backend           BackendQueue
@@ -21,9 +25,9 @@ type Topic struct {
 	channelUpdateChan chan int
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
-	messageCount      uint64
-	options           *nsqdOptions
-	context           *Context
+
+	options *nsqdOptions
+	context *Context
 }
 
 // Topic constructor
