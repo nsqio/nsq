@@ -24,6 +24,14 @@ type IdentifyDataV2 struct {
 }
 
 type ClientV2 struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	ReadyCount     int64
+	LastReadyCount int64
+	InFlightCount  int64
+	MessageCount   uint64
+	FinishCount    uint64
+	RequeueCount   uint64
+
 	net.Conn
 	sync.Mutex
 
@@ -39,12 +47,6 @@ type ClientV2 struct {
 	OutputBufferTimeoutUpdateChan chan time.Duration
 
 	State           int32
-	ReadyCount      int64
-	LastReadyCount  int64
-	InFlightCount   int64
-	MessageCount    uint64
-	FinishCount     uint64
-	RequeueCount    uint64
 	ConnectTime     time.Time
 	Channel         *Channel
 	ReadyStateChan  chan int

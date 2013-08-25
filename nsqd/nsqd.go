@@ -20,12 +20,13 @@ import (
 )
 
 type NSQd struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	workerId         int64
+	clientIDSequence int64
+
 	sync.RWMutex
 
-	options  *nsqdOptions
-	workerId int64
-
-	clientIDSequence int64
+	options *nsqdOptions
 
 	topicMap map[string]*Topic
 
@@ -45,56 +46,66 @@ type NSQd struct {
 }
 
 type nsqdOptions struct {
-	memQueueSize         int64
-	dataPath             string
-	maxMessageSize       int64
-	maxBodySize          int64
-	maxBytesPerFile      int64
-	maxRdyCount          int64
-	syncEvery            int64
-	syncTimeout          time.Duration
-	msgTimeout           time.Duration
-	maxMsgTimeout        time.Duration
-	clientTimeout        time.Duration
-	maxHeartbeatInterval time.Duration
-	broadcastAddress     string
-	tlsCert              string
-	tlsKey               string
-	deflateEnabled       bool
+	// basic options
+	broadcastAddress string
 
+	// diskqueue options
+	dataPath        string
+	memQueueSize    int64
+	maxBytesPerFile int64
+	syncEvery       int64
+	syncTimeout     time.Duration
+
+	// msg and command options
+	msgTimeout     time.Duration
+	maxMsgTimeout  time.Duration
+	maxMessageSize int64
+	maxBodySize    int64
+	clientTimeout  time.Duration
+
+	// client overridable configuration options
+	maxHeartbeatInterval   time.Duration
+	maxRdyCount            int64
+	maxOutputBufferSize    int64
+	maxOutputBufferTimeout time.Duration
+
+	// statsd integration
 	statsdAddress  string
 	statsdPrefix   string
 	statsdInterval time.Duration
 
-	maxOutputBufferSize    int64
-	maxOutputBufferTimeout time.Duration
+	// TLS config
+	tlsCert string
+	tlsKey  string
 }
 
 func NewNsqdOptions() *nsqdOptions {
 	return &nsqdOptions{
-		memQueueSize:         10000,
-		dataPath:             os.TempDir(),
-		maxMessageSize:       1024768,
-		maxBodySize:          5 * 1024768,
-		maxBytesPerFile:      104857600,
-		maxRdyCount:          2500,
-		syncEvery:            2500,
-		syncTimeout:          2 * time.Second,
-		msgTimeout:           60 * time.Second,
-		maxMsgTimeout:        15 * time.Minute,
-		clientTimeout:        nsq.DefaultClientTimeout,
-		maxHeartbeatInterval: 60 * time.Second,
-		broadcastAddress:     "",
-		tlsCert:              "",
-		tlsKey:               "",
-		deflateEnabled:       true,
+		broadcastAddress: "",
+
+		dataPath:        os.TempDir(),
+		memQueueSize:    10000,
+		maxBytesPerFile: 104857600,
+		syncEvery:       2500,
+		syncTimeout:     2 * time.Second,
+
+		msgTimeout:     60 * time.Second,
+		maxMsgTimeout:  15 * time.Minute,
+		maxMessageSize: 1024768,
+		maxBodySize:    5 * 1024768,
+		clientTimeout:  nsq.DefaultClientTimeout,
+
+		maxHeartbeatInterval:   60 * time.Second,
+		maxRdyCount:            2500,
+		maxOutputBufferSize:    64 * 1024,
+		maxOutputBufferTimeout: 1 * time.Second,
 
 		statsdAddress:  "",
 		statsdPrefix:   "",
 		statsdInterval: 60 * time.Second,
 
-		maxOutputBufferSize:    64 * 1024,
-		maxOutputBufferTimeout: 1 * time.Second,
+		tlsCert: "",
+		tlsKey:  "",
 	}
 }
 

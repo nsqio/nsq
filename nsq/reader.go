@@ -73,6 +73,16 @@ type incomingMessage struct {
 }
 
 type nsqConn struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	messagesInFlight int64
+	messagesReceived uint64
+	messagesFinished uint64
+	messagesRequeued uint64
+	maxRdyCount      int64
+	rdyCount         int64
+	lastRdyCount     int64
+	lastMsgTimestamp int64
+
 	sync.Mutex
 	net.Conn
 
@@ -82,14 +92,6 @@ type nsqConn struct {
 	addr             string
 	stopFlag         int32
 	finishedMessages chan *FinishedMessage
-	messagesInFlight int64
-	messagesReceived uint64
-	messagesFinished uint64
-	messagesRequeued uint64
-	maxRdyCount      int64
-	rdyCount         int64
-	lastRdyCount     int64
-	lastMsgTimestamp int64
 	readTimeout      time.Duration
 	writeTimeout     time.Duration
 	stopper          sync.Once
@@ -207,6 +209,13 @@ func (c *nsqConn) tryUpdateRDY() {
 // If configured, it will poll nsqlookupd instances and handle connection (and
 // reconnection) to any discovered nsqds.
 type Reader struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	MessagesReceived uint64 // an atomic counter - # of messages received
+	MessagesFinished uint64 // an atomic counter - # of messages FINished
+	MessagesRequeued uint64 // an atomic counter - # of messages REQueued
+	totalRdyCount    int64
+	messagesInFlight int64
+
 	sync.RWMutex
 
 	TopicName           string        // name of topic to subscribe to
@@ -222,15 +231,11 @@ type Reader struct {
 	LongIdentifier      string        // an identifier to send to nsqd when connecting (defaults: long hostname)
 	ReadTimeout         time.Duration // the deadline set for network reads
 	WriteTimeout        time.Duration // the deadline set for network writes
-	MessagesReceived    uint64        // an atomic counter - # of messages received
-	MessagesFinished    uint64        // an atomic counter - # of messages FINished
-	MessagesRequeued    uint64        // an atomic counter - # of messages REQueued
 	ExitChan            chan int      // read from this channel to block your main loop
 	TLSv1               bool          // negotiate enabling TLS
 	TLSConfig           *tls.Config   // client TLS configuration
 
 	// internal variables
-	totalRdyCount      int64
 	redistributeOnce   sync.Once
 	maxBackoffDuration time.Duration
 	maxBackoffCount    int32
@@ -242,7 +247,6 @@ type Reader struct {
 	lookupdRecheckChan chan int
 	stopFlag           int32
 	runningHandlers    int32
-	messagesInFlight   int64
 	lookupdHTTPAddrs   []string
 	stopHandler        sync.Once
 	lookupdQueryIndex  int

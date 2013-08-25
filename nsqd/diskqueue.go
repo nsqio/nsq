@@ -18,6 +18,15 @@ import (
 // DiskQueue implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type DiskQueue struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+
+	// run-time state (also persisted to disk)
+	readPos      int64
+	writePos     int64
+	readFileNum  int64
+	writeFileNum int64
+	depth        int64
+
 	sync.RWMutex
 
 	// instantiation time metadata
@@ -28,13 +37,6 @@ type DiskQueue struct {
 	syncTimeout     time.Duration // duration of time per fsync
 	exitFlag        int32
 	needSync        bool
-
-	// run-time state (also persisted to disk)
-	readPos      int64
-	writePos     int64
-	readFileNum  int64
-	writeFileNum int64
-	depth        int64
 
 	// keeps track of the position where we have read
 	// (but not yet sent over readChan)
