@@ -14,9 +14,10 @@ import (
 type AdminAction struct {
 	Action    string `json:"action"`
 	Topic     string `json:"topic"`
-	Channel   string `json:"channel"`
+	Channel   string `json:"channel,omitempty"`
+	Node      string `json:"node,omitempty"`
 	Timestamp int64  `json:"timestamp"`
-	User      string `json:"user"`
+	User      string `json:"user,omitempty"`
 	RemoteIP  string `json:"remote_ip"`
 	UserAgent string `json:"user_agent"`
 }
@@ -52,7 +53,7 @@ func basicAuthUser(req *http.Request) string {
 	return pair[0]
 }
 
-func NotifyAdminAction(actionType string, topicName string, channelName string, req *http.Request) {
+func NotifyAdminAction(actionType string, topicName string, channelName string, node string, req *http.Request) {
 	if *notificationHTTPEndpoint == "" {
 		return
 	}
@@ -60,6 +61,7 @@ func NotifyAdminAction(actionType string, topicName string, channelName string, 
 		actionType,
 		topicName,
 		channelName,
+		node,
 		time.Now().Unix(),
 		basicAuthUser(req),
 		req.RemoteAddr,
