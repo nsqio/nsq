@@ -2,7 +2,7 @@
 
 ## Binaries
 
-### 0.2.22-alpha
+### 0.2.22 - 2013-08-26
 
 **Upgrading from 0.2.21**: message timestamps are now officially nanoseconds.  The protocol docs
 always stated this however `nsqd` was actually sending seconds.  This may cause some compatibility
@@ -13,6 +13,9 @@ enable TLS by using the appropriate handshake via the `IDENTIFY` command. See #2
 
 Significant improvements were made to the HTTP publish endpoints and in flight message handling to
 reduce GC pressure and eliminate memory abuse vectors. See #242, #239, and #245.
+
+This release also includes a new utility `nsq_to_nsq` for performant, low-latency, copying of an NSQ
+topic over the TCP protocol.
 
 Finally, a whole suite of debug HTTP endpoints were added (and consolidated) under the
 `/debug/pprof` namespace. See #238, #248, and #252. As a result `nsqd` now supports *direct*
@@ -25,15 +28,18 @@ New Features / Enhancements:
  * #227 - TLS feature negotiation
  * #238/#248/#252 - support for more HTTP debug endpoints
  * #256 - `nsqadmin` single node view (with GC/mem graphs)
+ * #255 - `nsq_to_nsq` utility for copying a topic over TCP
  * #230 - `nsq_to_http` takes `--content-type` flag (thanks @michaelhood)
  * #228 - `nsqadmin` displays tombstoned topics in the `/nodes` list
  * #242/#239/#245 - reduced GC pressure for inflight and `/mput`
 
 Bug Fixes:
 
+ * #260 - `tombstone_topic_producer` action in `nsqadmin` missing node info
+ * #244 - fix 64bit atomic alignment issues on 32bit platforms
  * #251 - respect configured limits for HTTP publishing
  * #247 - publish methods should not allow 0 length messages
- * #231 - persist `nsqd` metadata on topic/channel changes
+ * #231/#259 - persist `nsqd` metadata on topic/channel changes
  * #237 - fix potential memory leaks with retained channel references
  * #232 - message timestamps are now nano
  * #228 - `nsqlookupd`/`nsqadmin` would display inactive nodes in `/nodes` list
@@ -275,18 +281,25 @@ removed in a future release.
 
 ## Go Client Library
 
-### 0.3.2-alpha
+### 0.3.2 - 2013-08-26
 
- * #254/#256/#257 - `Reader` new connection RDY starvation
- * #250 - `nsqlookupd` polling improvements
- * #243 - limit `IsStarved` to connections w/ inflight messages
+**Upgrading from 0.3.1**: This release requires NSQ binary version `0.2.22+` for TLS support.
+
+New Features/Improvements:
+
  * #227 - TLS feature negotiation
- * #169 - auto-reconnect to hard-coded `nsqd`; use last RDY count for `IsStarved()`; 
-          redistribute RDY state when `num_conns > max_in_flight`
+ * #164/#202/#255 - add `Writer`
+ * #186 - `MaxBackoffDuration` of `0` disables backoff
+ * #175 - support for `nsqd` config option `--max-rdy-count`
+ * #169 - auto-reconnect to hard-coded `nsqd`
+
+Bug Fixes:
+
+ * #254/#256/#257 - new connection RDY starvation
+ * #250 - `nsqlookupd` polling improvements
+ * #243 - limit `IsStarved()` to connections w/ in-flight messages
+ * #169 - use last RDY count for `IsStarved()`; redistribute RDY state
  * #204 - fix early termination blocking
- * #186 - max backoff duration of 0 disables backoff
- * #164/#202/#255 - add Writer
- * #175 - support server side configurable max RDY count
  * #177 - support `broadcast_address`
  * #161 - connection pool goroutine safety
 
