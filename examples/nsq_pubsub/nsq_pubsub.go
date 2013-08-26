@@ -32,9 +32,11 @@ func init() {
 }
 
 type StreamServer struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	messageCount uint64
+
 	sync.RWMutex // embed a r/w mutex
 	clients      []*StreamReader
-	messageCount uint64
 }
 
 func (s *StreamServer) Set(sr *StreamReader) {

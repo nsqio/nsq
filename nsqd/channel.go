@@ -36,7 +36,12 @@ type Consumer interface {
 // Channels maintain all client and message metadata, orchestrating in-flight
 // messages, timeouts, requeueing, etc.
 type Channel struct {
-	sync.RWMutex // embed a r/w mutex
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	requeueCount uint64
+	messageCount uint64
+	timeoutCount uint64
+
+	sync.RWMutex
 
 	topicName string
 	name      string
@@ -67,9 +72,6 @@ type Channel struct {
 	inFlightMutex    sync.Mutex
 
 	// stat counters
-	requeueCount  uint64
-	messageCount  uint64
-	timeoutCount  uint64
 	bufferedCount int32
 }
 

@@ -63,17 +63,17 @@ func TestReader(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	readerTest(t, false, false)
+	readerTest(t, false)
 }
 
 func TestReaderTLS(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	readerTest(t, false, true)
+	readerTest(t, true)
 }
 
-func readerTest(t *testing.T, deflate bool, tlsv1 bool) {
+func readerTest(t *testing.T, tlsv1 bool) {
 	topicName := "reader_test"
 	if tlsv1 {
 		topicName = topicName + "_tls"
