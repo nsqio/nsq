@@ -40,7 +40,7 @@ go test -v -timeout 15s
 popd >/dev/null
 
 # no tests, but a build is something
-for dir in nsqadmin nsqlookupd examples/*; do
+for dir in nsqadmin nsqlookupd apps/* bench/*; do
     pushd $dir >/dev/null
     echo "building $dir"
     go build
