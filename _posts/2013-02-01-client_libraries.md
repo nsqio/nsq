@@ -15,7 +15,7 @@ The NSQ community has contributed client libraries for 8 languages:
     <th>Notes</th>
   </tr>
   <tr class="success">
-    <td><a href="https://github.com/bitly/nsq/blob/master/nsq/README.md">go-nsq</a></td>
+    <td><a href="https://github.com/bitly/go-nsq">go-nsq</a></td>
     <td>Go</td>
     <td>stable (<strong>official</strong>)</td>
     <td>in production at <em>bitly</em>, <em>Life360</em></td>
