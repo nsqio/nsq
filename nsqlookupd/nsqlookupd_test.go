@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 	lookuputil "github.com/bitly/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
@@ -72,7 +73,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	log.Printf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -92,7 +93,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, producer.peerInfo.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
@@ -100,7 +101,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -135,7 +136,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -187,7 +188,7 @@ func TestChannelUnregister(t *testing.T) {
 	assert.Equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -217,17 +218,17 @@ func TestTombstoneRecover(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = nsq.ApiRequest(endpoint)
+	_, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
@@ -235,7 +236,7 @@ func TestTombstoneRecover(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
@@ -259,11 +260,11 @@ func TestTombstoneUnregister(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = nsq.ApiRequest(endpoint)
+	_, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := nsq.ApiRequest(endpoint)
+	data, err := util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
@@ -275,7 +276,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = nsq.ApiRequest(endpoint)
+	data, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
@@ -338,7 +339,7 @@ func TestTombstonedNodes(t *testing.T) {
 	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
 
 	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = nsq.ApiRequest(endpoint)
+	_, err = util.ApiRequest(endpoint)
 	assert.Equal(t, err, nil)
 
 	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)

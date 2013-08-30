@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"net"
@@ -13,7 +13,7 @@ import (
 )
 
 func (n *NSQd) lookupLoop() {
-	syncTopicChan := make(chan *nsq.LookupPeer)
+	syncTopicChan := make(chan *LookupPeer)
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -22,7 +22,7 @@ func (n *NSQd) lookupLoop() {
 
 	for _, host := range n.lookupdTCPAddrs {
 		log.Printf("LOOKUP: adding peer %s", host)
-		lookupPeer := nsq.NewLookupPeer(host, func(lp *nsq.LookupPeer) {
+		lookupPeer := NewLookupPeer(host, func(lp *LookupPeer) {
 			ci := make(map[string]interface{})
 			ci["version"] = util.BINARY_VERSION
 			ci["tcp_port"] = n.tcpAddr.Port

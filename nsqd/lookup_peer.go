@@ -1,6 +1,7 @@
-package nsq
+package main
 
 import (
+	"github.com/bitly/go-nsq"
 	"log"
 	"net"
 	"time"
@@ -34,7 +35,7 @@ type PeerInfo struct {
 func NewLookupPeer(addr string, connectCallback func(*LookupPeer)) *LookupPeer {
 	return &LookupPeer{
 		addr:            addr,
-		state:           StateDisconnected,
+		state:           nsq.StateDisconnected,
 		connectCallback: connectCallback,
 	}
 }
@@ -69,7 +70,7 @@ func (lp *LookupPeer) Write(data []byte) (int, error) {
 
 // Close implements the io.Closer interface
 func (lp *LookupPeer) Close() error {
-	lp.state = StateDisconnected
+	lp.state = nsq.StateDisconnected
 	return lp.conn.Close()
 }
 
@@ -79,16 +80,16 @@ func (lp *LookupPeer) Close() error {
 // reconnecting in the event of a failure.
 //
 // It returns the response from nsqlookupd as []byte
-func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
+func (lp *LookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 	initialState := lp.state
-	if lp.state != StateConnected {
+	if lp.state != nsq.StateConnected {
 		err := lp.Connect()
 		if err != nil {
 			return nil, err
 		}
-		lp.state = StateConnected
-		lp.Write(MagicV1)
-		if initialState == StateDisconnected {
+		lp.state = nsq.StateConnected
+		lp.Write(nsq.MagicV1)
+		if initialState == nsq.StateDisconnected {
 			lp.connectCallback(lp)
 		}
 	}
@@ -100,7 +101,7 @@ func (lp *LookupPeer) Command(cmd *Command) ([]byte, error) {
 		lp.Close()
 		return nil, err
 	}
-	resp, err := ReadResponse(lp)
+	resp, err := nsq.ReadResponse(lp)
 	if err != nil {
 		lp.Close()
 		return nil, err

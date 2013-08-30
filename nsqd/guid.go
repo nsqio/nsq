@@ -12,7 +12,7 @@ package main
 import (
 	"encoding/hex"
 	"errors"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"time"
 )
 

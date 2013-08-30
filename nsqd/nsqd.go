@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/nsq"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
 	"io/ioutil"
@@ -31,7 +31,7 @@ type NSQd struct {
 	topicMap map[string]*Topic
 
 	lookupdTCPAddrs util.StringArray
-	lookupPeers     []*nsq.LookupPeer
+	lookupPeers     []*LookupPeer
 
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr

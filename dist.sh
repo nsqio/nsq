@@ -21,8 +21,9 @@ export GOPATH="$TMPGOPATH:$GOROOT"
 
 echo "... getting dependencies"
 go get -v github.com/bitly/go-simplejson
-go get -v github.com/bmizerany/assert
 go get -v github.com/bitly/go-hostpool
+go get -v github.com/bitly/go-nsq
+go get -v github.com/bmizerany/assert
 
 pushd $TMPGOPATH/src/github.com/bitly/nsq
 

@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"log"
 	"math"
 	"net"

@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"log"
 	"math/rand"

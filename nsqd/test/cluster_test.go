@@ -1,6 +1,8 @@
 package nsq
 
 import (
+	"fmt"
+	"github.com/bitly/nsq/util"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -9,12 +11,6 @@ import (
 	"testing"
 	"time"
 )
-
-type MyOtherTestHandler struct{}
-
-func (h *MyOtherTestHandler) HandleMessage(message *Message) error {
-	return nil
-}
 
 func TestNsqdToLookupd(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
@@ -27,11 +23,12 @@ func TestNsqdToLookupd(t *testing.T) {
 		t.Fatalf("ERROR: failed to get hostname - %s", err.Error())
 	}
 
-	q, _ := NewReader(topicName, "ch")
-	q.VerboseLogging = true
-	q.AddHandler(&MyOtherTestHandler{})
+	_, err = util.ApiRequest(fmt.Sprintf("http://127.0.0.1:4151/create_topic?topic=%s", topicName))
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 
-	err = q.ConnectToNSQ("127.0.0.1:4150")
+	_, err = util.ApiRequest(fmt.Sprintf("http://127.0.0.1:4151/create_channel?topic=%s&channel=ch", topicName))
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -39,7 +36,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err := ApiRequest("http://127.0.0.1:4161/debug")
+	data, err := util.ApiRequest("http://127.0.0.1:4161/debug")
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -77,7 +74,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	assert.Equal(t, port, 4150)
 	assert.Equal(t, tombstoned, false)
 
-	data, err = ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
+	data, err = util.ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -102,7 +99,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	channel := channels[0].(string)
 	assert.Equal(t, channel, "ch")
 
-	data, err = ApiRequest("http://127.0.0.1:4151/delete_topic?topic=" + topicName)
+	data, err = util.ApiRequest("http://127.0.0.1:4151/delete_topic?topic=" + topicName)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -110,7 +107,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err = ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
+	data, err = util.ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -118,7 +115,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
-	data, err = ApiRequest("http://127.0.0.1:4161/debug")
+	data, err = util.ApiRequest("http://127.0.0.1:4161/debug")
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -128,7 +125,4 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
 	assert.Equal(t, len(producers), 0)
-
-	q.Stop()
-	<-q.ExitChan
 }
