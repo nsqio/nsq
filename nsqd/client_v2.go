@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const DefaultBufferSize = 16 * 1024
+
 type IdentifyDataV2 struct {
 	ShortId             string `json:"short_id"`
 	LongId              string `json:"long_id"`
@@ -79,12 +81,13 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 
 	c := &ClientV2{
 		ID:      id,
-		Conn:    conn,
 		context: context,
 
-		Reader:                        bufio.NewReaderSize(conn, 16*1024),
-		Writer:                        bufio.NewWriterSize(conn, 16*1024),
-		OutputBufferSize:              16 * 1024,
+		Conn: conn,
+
+		Reader:                        bufio.NewReaderSize(conn, DefaultBufferSize),
+		Writer:                        bufio.NewWriterSize(conn, DefaultBufferSize),
+		OutputBufferSize:              DefaultBufferSize,
 		OutputBufferTimeout:           time.NewTicker(250 * time.Millisecond),
 		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
 
@@ -315,7 +318,7 @@ func (c *ClientV2) UpgradeTLS() error {
 	}
 	c.tlsConn = tlsConn
 
-	c.Reader = bufio.NewReaderSize(c.tlsConn, 16*1024)
+	c.Reader = bufio.NewReaderSize(c.tlsConn, DefaultBufferSize)
 	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
 
 	return nil
@@ -330,8 +333,7 @@ func (c *ClientV2) UpgradeDeflate(level int) error {
 		conn = c.tlsConn
 	}
 
-	fr := flate.NewReader(conn)
-	c.Reader = bufio.NewReaderSize(fr, 16*1024)
+	c.Reader = bufio.NewReaderSize(flate.NewReader(conn), DefaultBufferSize)
 
 	fw, _ := flate.NewWriter(conn, level)
 	c.flateWriter = fw
