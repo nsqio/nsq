@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bitly/go-nsq"
+	"github.com/mreiferson/go-snappystream"
 	"log"
 	"net"
 	"sync"
@@ -24,6 +25,7 @@ type IdentifyDataV2 struct {
 	TLSv1               bool   `json:"tls_v1"`
 	Deflate             bool   `json:"deflate"`
 	DeflateLevel        int    `json:"deflate_level"`
+	Snappy              bool   `json:"snappy"`
 }
 
 type ClientV2 struct {
@@ -38,12 +40,12 @@ type ClientV2 struct {
 	net.Conn
 	sync.Mutex
 
-	ID          int64
-	context     *Context
-	tlsConn     net.Conn
-	flateWriter *flate.Writer
+	ID      int64
+	context *Context
 
-	// buffered IO
+	tlsConn      net.Conn
+	flateWriter  *flate.Writer
+
 	Reader                        *bufio.Reader
 	Writer                        *bufio.Writer
 	OutputBufferSize              int
@@ -334,6 +336,21 @@ func (c *ClientV2) UpgradeDeflate(level int) error {
 	fw, _ := flate.NewWriter(conn, level)
 	c.flateWriter = fw
 	c.Writer = bufio.NewWriterSize(fw, c.OutputBufferSize)
+
+	return nil
+}
+
+func (c *ClientV2) UpgradeSnappy() error {
+	c.Lock()
+	defer c.Unlock()
+
+	conn := c.Conn
+	if c.tlsConn != nil {
+		conn = c.tlsConn
+	}
+
+	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), DefaultBufferSize)
+	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
 
 	return nil
 }

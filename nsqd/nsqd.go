@@ -78,9 +78,10 @@ type nsqdOptions struct {
 	tlsCert string
 	tlsKey  string
 
-	// deflate
+	// compression
 	deflateEnabled  bool
 	maxDeflateLevel int
+	snappyEnabled   bool
 }
 
 func NewNsqdOptions() *nsqdOptions {
@@ -113,6 +114,7 @@ func NewNsqdOptions() *nsqdOptions {
 
 		deflateEnabled:  true,
 		maxDeflateLevel: -1,
+		snappyEnabled:   true,
 	}
 }
 

@@ -58,6 +58,7 @@ var (
 	// compression
 	deflateEnabled  = flag.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
 	maxDeflateLevel = flag.Int("max-deflate-level", 6, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
+	snappyEnabled   = flag.Bool("snappy", true, "enable snappy feature negotiation (client compression)")
 )
 
 func init() {
@@ -134,6 +135,7 @@ func main() {
 	options.tlsKey = *tlsKey
 	options.deflateEnabled = *deflateEnabled
 	options.maxDeflateLevel = *maxDeflateLevel
+	options.snappyEnabled = *snappyEnabled
 
 	if *statsdAddress != "" {
 		// flagToDuration will fatally error if it is invalid

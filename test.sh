@@ -21,8 +21,9 @@ popd >/dev/null
 pushd nsqd >/dev/null
 go build
 rm -f *.dat
-echo "starting nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=./test/cert.pem --tls-key=./test/key.pem --deflate"
-./nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=./test/cert.pem --tls-key=./test/key.pem --deflate >/dev/null 2>&1 &
+cmd="./nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=./test/cert.pem --tls-key=./test/key.pem"
+echo "starting $cmd"
+$cmd >/dev/null 2>&1 &
 NSQD_PID=$!
 popd >/dev/null
 

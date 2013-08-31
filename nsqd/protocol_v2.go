@@ -322,6 +322,11 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		}
 		deflateLevel = int(math.Min(float64(deflateLevel), float64(p.context.nsqd.options.maxDeflateLevel)))
 	}
+	snappy := p.context.nsqd.options.snappyEnabled && identifyData.Snappy
+
+	if deflate && snappy {
+		return nil, util.NewFatalClientErr(nil, "E_IDENTIFY_FAILED", "cannot enable both deflate and snappy compression")
+	}
 
 	resp, err := json.Marshal(struct {
 		MaxRdyCount     int64  `json:"max_rdy_count"`
@@ -332,6 +337,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		Deflate         bool   `json:"deflate"`
 		DeflateLevel    int    `json:"deflate_level"`
 		MaxDeflateLevel int    `json:"max_deflate_level"`
+		Snappy          bool   `json:"snappy"`
 	}{
 		MaxRdyCount:     p.context.nsqd.options.maxRdyCount,
 		Version:         util.BINARY_VERSION,
@@ -341,6 +347,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		Deflate:         deflate,
 		DeflateLevel:    deflateLevel,
 		MaxDeflateLevel: p.context.nsqd.options.maxDeflateLevel,
+		Snappy:          snappy,
 	})
 	if err != nil {
 		panic("should never happen")
@@ -354,6 +361,19 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	if tlsv1 {
 		log.Printf("PROTOCOL(V2): [%s] upgrading connection to TLS", client)
 		err = client.UpgradeTLS()
+		if err != nil {
+			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
+		}
+
+		err = p.Send(client, nsq.FrameTypeResponse, okBytes)
+		if err != nil {
+			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
+		}
+	}
+
+	if snappy {
+		log.Printf("PROTOCOL(V2): [%s] upgrading connection to snappy", client)
+		err = client.UpgradeSnappy()
 		if err != nil {
 			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
