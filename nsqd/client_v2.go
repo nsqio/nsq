@@ -39,17 +39,23 @@ type ClientV2 struct {
 	FinishCount    uint64
 	RequeueCount   uint64
 
-	net.Conn
 	sync.Mutex
 
 	ID      int64
 	context *Context
 
-	tlsConn      net.Conn
+	// original connection
+	net.Conn
+
+	// connections based on negotiated features
+	tlsConn      *tls.Conn
 	flateWriter  *flate.Writer
 
-	Reader                        *bufio.Reader
-	Writer                        *bufio.Writer
+	// reading/writing interfaces
+	Reader *bufio.Reader
+	Writer *bufio.Writer
+
+	// output buffering
 	OutputBufferSize              int
 	OutputBufferTimeout           *time.Ticker
 	OutputBufferTimeoutUpdateChan chan time.Duration
@@ -85,8 +91,9 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 
 		Conn: conn,
 
-		Reader:                        bufio.NewReaderSize(conn, DefaultBufferSize),
-		Writer:                        bufio.NewWriterSize(conn, DefaultBufferSize),
+		Reader: bufio.NewReaderSize(conn, DefaultBufferSize),
+		Writer: bufio.NewWriterSize(conn, DefaultBufferSize),
+
 		OutputBufferSize:              DefaultBufferSize,
 		OutputBufferTimeout:           time.NewTicker(250 * time.Millisecond),
 		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
@@ -358,6 +365,8 @@ func (c *ClientV2) UpgradeSnappy() error {
 }
 
 func (c *ClientV2) Flush() error {
+	c.SetWriteDeadline(time.Now().Add(time.Second))
+
 	err := c.Writer.Flush()
 	if err != nil {
 		return err

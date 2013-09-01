@@ -121,11 +121,11 @@ func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.
 
 func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
 	client.Lock()
-	defer client.Unlock()
 
 	client.SetWriteDeadline(time.Now().Add(time.Second))
 	_, err := util.SendFramedResponse(client.Writer, frameType, data)
 	if err != nil {
+		client.Unlock()
 		return err
 	}
 
@@ -133,15 +133,9 @@ func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error 
 		err = client.Flush()
 	}
 
+	client.Unlock()
+
 	return err
-}
-
-func (p *ProtocolV2) Flush(client *ClientV2) error {
-	client.Lock()
-	defer client.Unlock()
-
-	client.SetWriteDeadline(time.Now().Add(time.Second))
-	return client.Flush()
 }
 
 func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
@@ -197,7 +191,9 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			clientMsgChan = nil
 			flusherChan = nil
 			// force flush
-			err = p.Flush(client)
+			client.Lock()
+			err = client.Flush()
+			client.Unlock()
 			if err != nil {
 				goto exit
 			}
@@ -219,7 +215,9 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// if this case wins, we're either starved
 			// or we won the race between other channels...
 			// in either case, force flush
-			err = p.Flush(client)
+			client.Lock()
+			err = client.Flush()
+			client.Unlock()
 			if err != nil {
 				goto exit
 			}
