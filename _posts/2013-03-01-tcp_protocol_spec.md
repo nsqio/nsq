@@ -78,11 +78,18 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
  * **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
                                  buffered will be flushed to this client.
  
-     Valid range: `5ms <= output_buffer_timeout <= configured_max` (`-1` disabled timeouts)
+     Valid range: `1ms <= output_buffer_timeout <= configured_max` (`-1` disabled timeouts)
      
      `--max-output-buffer-timeout` (nsqd flag) controls the max
      
-     Defaults to `5ms`
+     Defaults to `250ms`
+     
+     **Warning**: configuring clients with an extremely low (`< 25ms`) `output_buffer_timeout`
+     has a significant effect on `nsqd` CPU usage (particularly with `> 50` clients connected).  
+     
+     This is due to the current implementation relying on Go timers which are maintained by the Go 
+     runtime in a priority queue.  See the commit message in [pull request #236][pull_req_236] for
+     more details.
  
  * **`tls_v1`** (nsqd 0.2.22+) enable TLS for this connection.
  
@@ -286,3 +293,5 @@ And finally, the message format:
                            (uint16)
                             2-byte
                            attempts
+
+[pull_req_236]: https://github.com/bitly/nsq/pull/236
