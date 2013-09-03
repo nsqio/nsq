@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"log"
 	"net"
 	"runtime"

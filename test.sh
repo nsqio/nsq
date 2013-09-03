@@ -34,7 +34,7 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-pushd nsq >/dev/null
+pushd nsqd/test >/dev/null
 echo "testing nsq"
 go test -v -timeout 15s
 popd >/dev/null

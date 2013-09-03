@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/nsq/util"
 	"log"
 	"net/http"
 	"strings"
@@ -28,7 +28,7 @@ func HandleAdminActions() {
 		if err != nil {
 			log.Printf("Error serializing admin action! %s", err)
 		}
-		httpclient := &http.Client{Transport: nsq.NewDeadlineTransport(10 * time.Second)}
+		httpclient := &http.Client{Transport: util.NewDeadlineTransport(10 * time.Second)}
 		log.Printf("Posting notification to %s", *notificationHTTPEndpoint)
 		_, err = httpclient.Post(*notificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
 		if err != nil {

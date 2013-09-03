@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/pqueue"
 	"log"

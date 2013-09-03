@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/nsq/nsq"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"io"
 	"log"
@@ -38,25 +38,25 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		response, err := p.Exec(client, reader, params)
 		if err != nil {
 			context := ""
-			if parentErr := err.(nsq.ChildError).Parent(); parentErr != nil {
+			if parentErr := err.(util.ChildErr).Parent(); parentErr != nil {
 				context = " - " + parentErr.Error()
 			}
 			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), context)
 
-			_, err = nsq.SendResponse(client, []byte(err.Error()))
+			_, err = util.SendResponse(client, []byte(err.Error()))
 			if err != nil {
 				break
 			}
 
 			// errors of type FatalClientErr should forceably close the connection
-			if _, ok := err.(*nsq.FatalClientErr); ok {
+			if _, ok := err.(*util.FatalClientErr); ok {
 				break
 			}
 			continue
 		}
 
 		if response != nil {
-			_, err = nsq.SendResponse(client, response)
+			_, err = util.SendResponse(client, response)
 			if err != nil {
 				break
 			}
@@ -87,12 +87,12 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 	case "UNREGISTER":
 		return p.UNREGISTER(client, reader, params[1:])
 	}
-	return nil, nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
+	return nil, util.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
 func getTopicChan(command string, params []string) (string, string, error) {
 	if len(params) == 0 {
-		return "", "", nsq.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
+		return "", "", util.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
 	}
 
 	topicName := params[0]
@@ -102,11 +102,11 @@ func getTopicChan(command string, params []string) (string, string, error) {
 	}
 
 	if !nsq.IsValidTopicName(topicName) {
-		return "", "", nsq.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
+		return "", "", util.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
 	}
 
 	if channelName != "" && !nsq.IsValidChannelName(channelName) {
-		return "", "", nsq.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
+		return "", "", util.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
 
 	return topicName, channelName, nil
@@ -114,7 +114,7 @@ func getTopicChan(command string, params []string) (string, string, error) {
 
 func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	if client.peerInfo == nil {
-		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
+		return nil, util.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
 	topic, channel, err := getTopicChan("REGISTER", params)
@@ -140,7 +140,7 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	if client.peerInfo == nil {
-		return nil, nsq.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
+		return nil, util.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
 	topic, channel, err := getTopicChan("UNREGISTER", params)
@@ -186,26 +186,26 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	var err error
 
 	if client.peerInfo != nil {
-		return nil, nsq.NewFatalClientErr(err, "E_INVALID", "cannot IDENTIFY again")
+		return nil, util.NewFatalClientErr(err, "E_INVALID", "cannot IDENTIFY again")
 	}
 
 	var bodyLen int32
 	err = binary.Read(reader, binary.BigEndian, &bodyLen)
 	if err != nil {
-		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
+		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
 	}
 
 	body := make([]byte, bodyLen)
 	_, err = io.ReadFull(reader, body)
 	if err != nil {
-		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body")
+		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body")
 	}
 
 	// body is a json structure with producer information
 	peerInfo := PeerInfo{id: client.RemoteAddr().String()}
 	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
-		return nil, nsq.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
+		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
 	peerInfo.RemoteAddress = client.RemoteAddr().String()
@@ -216,7 +216,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 
 	// require all fields
 	if peerInfo.BroadcastAddress == "" || peerInfo.TcpPort == 0 || peerInfo.HttpPort == 0 || peerInfo.Version == "" {
-		return nil, nsq.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
+		return nil, util.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
 	peerInfo.lastUpdate = time.Now()

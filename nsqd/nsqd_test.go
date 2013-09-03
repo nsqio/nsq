@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
