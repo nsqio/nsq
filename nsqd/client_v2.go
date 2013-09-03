@@ -79,7 +79,7 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		Reader:                        bufio.NewReaderSize(conn, 16*1024),
 		Writer:                        bufio.NewWriterSize(conn, 16*1024),
 		OutputBufferSize:              16 * 1024,
-		OutputBufferTimeout:           time.NewTicker(5 * time.Millisecond),
+		OutputBufferTimeout:           time.NewTicker(250 * time.Millisecond),
 		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
@@ -281,7 +281,7 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		timeout = -1
 	case desiredTimeout == 0:
 		// do nothing (use default)
-	case desiredTimeout >= 5 &&
+	case desiredTimeout >= 1 &&
 		desiredTimeout <= int(c.context.nsqd.options.maxOutputBufferTimeout/time.Millisecond):
 		timeout = (time.Duration(desiredTimeout) * time.Millisecond)
 	default:
