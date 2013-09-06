@@ -41,7 +41,7 @@ behavior.
 
 ### Commands
 
-#### IDENTIFY
+#### <a name="identify">IDENTIFY</a>
 
 Update client metadata on the server and negotiate features
 
