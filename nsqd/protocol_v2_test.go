@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
+	"github.com/mreiferson/go-snappystream"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -39,7 +42,7 @@ func mustConnectNSQd(tcpAddr *net.TCPAddr) (net.Conn, error) {
 	return conn, nil
 }
 
-func identify(t *testing.T, conn net.Conn) {
+func identify(t *testing.T, conn io.ReadWriter) {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
@@ -49,7 +52,7 @@ func identify(t *testing.T, conn net.Conn) {
 	readValidate(t, conn, nsq.FrameTypeResponse, "OK")
 }
 
-func identifyHeartbeatInterval(t *testing.T, conn net.Conn, interval int, f int32, d string) {
+func identifyHeartbeatInterval(t *testing.T, conn io.ReadWriter, interval int, f int32, d string) {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
@@ -60,7 +63,7 @@ func identifyHeartbeatInterval(t *testing.T, conn net.Conn, interval int, f int3
 	readValidate(t, conn, f, d)
 }
 
-func identifyFeatureNegotiation(t *testing.T, conn net.Conn, extra map[string]interface{}) []byte {
+func identifyFeatureNegotiation(t *testing.T, conn io.ReadWriter, extra map[string]interface{}) []byte {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
@@ -81,7 +84,7 @@ func identifyFeatureNegotiation(t *testing.T, conn net.Conn, extra map[string]in
 	return data
 }
 
-func identifyOutputBuffering(t *testing.T, conn net.Conn, size int, timeout int, f int32, d string) {
+func identifyOutputBuffering(t *testing.T, conn io.ReadWriter, size int, timeout int, f int32, d string) {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
@@ -93,13 +96,13 @@ func identifyOutputBuffering(t *testing.T, conn net.Conn, size int, timeout int,
 	readValidate(t, conn, f, d)
 }
 
-func sub(t *testing.T, conn net.Conn, topicName string, channelName string) {
+func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	err := nsq.Subscribe(topicName, channelName).Write(conn)
 	assert.Equal(t, err, nil)
 	readValidate(t, conn, nsq.FrameTypeResponse, "OK")
 }
 
-func subFail(t *testing.T, conn net.Conn, topicName string, channelName string) {
+func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	err := nsq.Subscribe(topicName, channelName).Write(conn)
 	assert.Equal(t, err, nil)
 	resp, err := nsq.ReadResponse(conn)
@@ -107,7 +110,7 @@ func subFail(t *testing.T, conn net.Conn, topicName string, channelName string) 
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 }
 
-func readValidate(t *testing.T, conn net.Conn, f int32, d string) {
+func readValidate(t *testing.T, conn io.Reader, f int32, d string) {
 	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
@@ -759,6 +762,187 @@ func TestTLS(t *testing.T) {
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestDeflate(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.deflateEnabled = true
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"deflate": true})
+	r := struct {
+		Deflate bool `json:"deflate"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.Deflate, true)
+
+	compressConn := flate.NewReader(conn)
+	resp, _ := nsq.ReadResponse(compressConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+type readWriter struct {
+	io.Reader
+	io.Writer
+}
+
+func TestSnappy(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.snappyEnabled = true
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"snappy": true})
+	r := struct {
+		Snappy bool `json:"snappy"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.Snappy, true)
+
+	compressConn := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
+	resp, _ := nsq.ReadResponse(compressConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	msgBody := make([]byte, 128000)
+	w := snappystream.NewWriter(conn)
+
+	rw := readWriter{compressConn, w}
+
+	topicName := "test_snappy" + strconv.Itoa(int(time.Now().Unix()))
+	sub(t, rw, topicName, "ch")
+
+	err = nsq.Ready(1).Write(rw)
+	assert.Equal(t, err, nil)
+
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, msgBody)
+	topic.PutMessage(msg)
+
+	resp, _ = nsq.ReadResponse(compressConn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	msgOut, _ := nsq.DecodeMessage(data)
+	assert.Equal(t, frameType, nsq.FrameTypeMessage)
+	assert.Equal(t, msgOut.Id, msg.Id)
+	assert.Equal(t, msgOut.Body, msg.Body)
+}
+
+func TestTLSDeflate(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.deflateEnabled = true
+	options.tlsCert = "./test/cert.pem"
+	options.tlsKey = "./test/key.pem"
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true, "deflate": true})
+	r := struct {
+		TLSv1   bool `json:"tls_v1"`
+		Deflate bool `json:"deflate"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	assert.Equal(t, r.Deflate, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	compressConn := flate.NewReader(tlsConn)
+
+	resp, _ = nsq.ReadResponse(compressConn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestTLSSnappy(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.snappyEnabled = true
+	options.tlsCert = "./test/cert.pem"
+	options.tlsKey = "./test/key.pem"
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true, "snappy": true})
+	r := struct {
+		TLSv1  bool `json:"tls_v1"`
+		Snappy bool `json:"snappy"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	assert.Equal(t, r.Snappy, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+	compressConn := snappystream.NewReader(tlsConn, snappystream.SkipVerifyChecksum)
+
+	resp, _ = nsq.ReadResponse(compressConn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeResponse)
 	assert.Equal(t, data, []byte("OK"))
