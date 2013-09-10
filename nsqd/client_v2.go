@@ -2,16 +2,20 @@ package main
 
 import (
 	"bufio"
+	"compress/flate"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/bitly/go-nsq"
+	"github.com/mreiferson/go-snappystream"
 	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+const DefaultBufferSize = 16 * 1024
 
 type IdentifyDataV2 struct {
 	ShortId             string `json:"short_id"`
@@ -21,6 +25,9 @@ type IdentifyDataV2 struct {
 	OutputBufferTimeout int    `json:"output_buffer_timeout"`
 	FeatureNegotiation  bool   `json:"feature_negotiation"`
 	TLSv1               bool   `json:"tls_v1"`
+	Deflate             bool   `json:"deflate"`
+	DeflateLevel        int    `json:"deflate_level"`
+	Snappy              bool   `json:"snappy"`
 }
 
 type ClientV2 struct {
@@ -32,16 +39,23 @@ type ClientV2 struct {
 	FinishCount    uint64
 	RequeueCount   uint64
 
-	net.Conn
 	sync.Mutex
 
 	ID      int64
 	context *Context
-	tlsConn net.Conn
 
-	// buffered IO
-	Reader                        *bufio.Reader
-	Writer                        *bufio.Writer
+	// original connection
+	net.Conn
+
+	// connections based on negotiated features
+	tlsConn      *tls.Conn
+	flateWriter  *flate.Writer
+
+	// reading/writing interfaces
+	Reader *bufio.Reader
+	Writer *bufio.Writer
+
+	// output buffering
 	OutputBufferSize              int
 	OutputBufferTimeout           *time.Ticker
 	OutputBufferTimeoutUpdateChan chan time.Duration
@@ -73,12 +87,14 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 
 	c := &ClientV2{
 		ID:      id,
-		Conn:    conn,
 		context: context,
 
-		Reader:                        bufio.NewReaderSize(conn, 16*1024),
-		Writer:                        bufio.NewWriterSize(conn, 16*1024),
-		OutputBufferSize:              16 * 1024,
+		Conn: conn,
+
+		Reader: bufio.NewReaderSize(conn, DefaultBufferSize),
+		Writer: bufio.NewWriterSize(conn, DefaultBufferSize),
+
+		OutputBufferSize:              DefaultBufferSize,
 		OutputBufferTimeout:           time.NewTicker(250 * time.Millisecond),
 		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
 
@@ -309,16 +325,56 @@ func (c *ClientV2) UpgradeTLS() error {
 	}
 	c.tlsConn = tlsConn
 
-	c.Reader = bufio.NewReaderSize(c.tlsConn, 16*1024)
+	c.Reader = bufio.NewReaderSize(c.tlsConn, DefaultBufferSize)
 	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
 
 	return nil
 }
 
+func (c *ClientV2) UpgradeDeflate(level int) error {
+	c.Lock()
+	defer c.Unlock()
+
+	conn := c.Conn
+	if c.tlsConn != nil {
+		conn = c.tlsConn
+	}
+
+	c.Reader = bufio.NewReaderSize(flate.NewReader(conn), DefaultBufferSize)
+
+	fw, _ := flate.NewWriter(conn, level)
+	c.flateWriter = fw
+	c.Writer = bufio.NewWriterSize(fw, c.OutputBufferSize)
+
+	return nil
+}
+
+func (c *ClientV2) UpgradeSnappy() error {
+	c.Lock()
+	defer c.Unlock()
+
+	conn := c.Conn
+	if c.tlsConn != nil {
+		conn = c.tlsConn
+	}
+
+	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), DefaultBufferSize)
+	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
+
+	return nil
+}
+
 func (c *ClientV2) Flush() error {
+	c.SetWriteDeadline(time.Now().Add(time.Second))
+
 	err := c.Writer.Flush()
 	if err != nil {
 		return err
 	}
+
+	if c.flateWriter != nil {
+		return c.flateWriter.Flush()
+	}
+
 	return nil
 }

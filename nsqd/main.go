@@ -54,6 +54,11 @@ var (
 	// TLS config
 	tlsCert = flag.String("tls-cert", "", "path to certificate file")
 	tlsKey  = flag.String("tls-key", "", "path to private key file")
+
+	// compression
+	deflateEnabled  = flag.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
+	maxDeflateLevel = flag.Int("max-deflate-level", 6, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
+	snappyEnabled   = flag.Bool("snappy", true, "enable snappy feature negotiation (client compression)")
 )
 
 func init() {
@@ -107,6 +112,10 @@ func main() {
 	// flagToDuration will fatally error if it is invalid
 	msgTimeoutDuration := flagToDuration(*msgTimeout, time.Millisecond, "--msg-timeout")
 
+	if *maxDeflateLevel < 1 || *maxDeflateLevel > 9 {
+		log.Fatalf("--max-deflate-level must be [1,9]")
+	}
+
 	options := NewNsqdOptions()
 	options.maxRdyCount = *maxRdyCount
 	options.maxMessageSize = *maxMessageSize
@@ -124,6 +133,9 @@ func main() {
 	options.maxOutputBufferTimeout = *maxOutputBufferTimeout
 	options.tlsCert = *tlsCert
 	options.tlsKey = *tlsKey
+	options.deflateEnabled = *deflateEnabled
+	options.maxDeflateLevel = *maxDeflateLevel
+	options.snappyEnabled = *snappyEnabled
 
 	if *statsdAddress != "" {
 		// flagToDuration will fatally error if it is invalid

@@ -6,10 +6,11 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 install:
-  - go get github.com/bmizerany/assert
   - go get github.com/bitly/go-nsq
-  - go get github.com/bitly/go-hostpool
   - go get github.com/bitly/go-simplejson
+  - go get github.com/mreiferson/go-snappystream
+  - go get github.com/bitly/go-hostpool
+  - go get github.com/bmizerany/assert
 script:
   - pushd $TRAVIS_BUILD_DIR
   - ./test.sh
