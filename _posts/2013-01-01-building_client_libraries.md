@@ -425,6 +425,6 @@ for contributors to continue to expand our language support as well as flesh out
 existing libraries. The community has already open sourced [many client
 libraries][client_libraries].
 
-[go-nsq]: https://github.com/bitly/nsq/tree/master/nsq
+[go-nsq]: https://github.com/bitly/go-nsq
 [pynsq]: https://github.com/bitly/pynsq
 [client_libraries]: {{ site.baseurl }}/clients/client_libraries.html
