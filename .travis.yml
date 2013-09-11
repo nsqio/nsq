@@ -6,14 +6,11 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 install:
-  - go get github.com/bitly/go-nsq
-  - go get github.com/bitly/go-simplejson
-  - go get github.com/mreiferson/go-snappystream
-  - go get github.com/bitly/go-hostpool
-  - go get github.com/bmizerany/assert
+  - go get code.google.com/p/go.tools/go/vcs || true
+  - "sed -i -e '26s/}/}\\nreturn nil, nil/' $HOME/gopath/src/code.google.com/p/go.tools/go/vcs/discovery.go"
+  - go get github.com/kr/godep
 script:
-  - pushd $TRAVIS_BUILD_DIR
+  - export PATH="$HOME/gopath/bin:$PATH"
   - ./test.sh
-  - popd
 notifications:
   email: false
