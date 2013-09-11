@@ -99,7 +99,33 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
      
      The client should begin the TLS handshake immediately after reading the `IDENTIFY` response
      
-     The server will respond 'OK' after completing the TLS handshake
+     The server will respond `OK` after completing the TLS handshake
+ 
+ * **`snappy`** (nsqd 0.2.23+) enable snappy compression for this connection.
+ 
+    `--snappy` (nsqd flag) enables support for this server side
+    
+    The client should expect an *additional*, snappy compressed `OK` response immediately 
+    after the `IDENTIFY` response.
+    
+    A client cannot enable both `snappy` and `deflate`.
+ 
+ * **`deflate`** (nsqd 0.2.23+) enable deflate compression for this connection.
+ 
+    `--deflate` (nsqd flag) enables support for this server side
+    
+    The client should expect an *additional*, deflate compressed `OK` response immediately 
+    after the `IDENTIFY` response.
+    
+    A client cannot enable both `snappy` and `deflate`.
+ 
+ * **`deflate_level`** (nsqd 0.2.23+) configure the deflate compression level for this connection.
+ 
+    `--max-deflate-level` (nsqd flag) configures the maximum allowed value
+    
+    Valid range: `1 <= deflate_level <= configured_max`
+    
+    Higher values mean better compression but more CPU usage for nsqd.
 
 Success Response:
 
