@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -112,6 +113,33 @@ func TestHTTPmputEmpty(t *testing.T) {
 	assert.Equal(t, string(body), "OK")
 
 	assert.Equal(t, topic.Depth(), int64(4))
+}
+
+func TestHTTPmputBinary(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQd(NewNsqdOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	mpub := make([][]byte, 0)
+	for i := 0; i < 5; i++ {
+		mpub = append(mpub, make([]byte, 100))
+	}
+	cmd, _ := nsq.MultiPublish(topicName, mpub)
+	buf := bytes.NewBuffer(cmd.Body)
+
+	url := fmt.Sprintf("http://%s/mput?topic=%s&binary=true", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	assert.Equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	assert.Equal(t, string(body), "OK")
+
+	assert.Equal(t, topic.Depth(), int64(5))
 }
 
 func BenchmarkHTTPput(b *testing.B) {
