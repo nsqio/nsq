@@ -48,8 +48,8 @@ type ClientV2 struct {
 	net.Conn
 
 	// connections based on negotiated features
-	tlsConn      *tls.Conn
-	flateWriter  *flate.Writer
+	tlsConn     *tls.Conn
+	flateWriter *flate.Writer
 
 	// reading/writing interfaces
 	Reader *bufio.Reader
