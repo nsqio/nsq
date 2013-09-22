@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -50,6 +51,7 @@ var (
 	statsdAddress  = flag.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for pushing stats")
 	statsdInterval = flag.String("statsd-interval", "60s", "duration between pushing to statsd")
 	statsdMemStats = flag.Bool("statsd-mem-stats", true, "toggle sending memory and GC stats to statsd")
+	statsdPrefix   = flag.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement)")
 
 	// TLS config
 	tlsCert = flag.String("tls-cert", "", "path to certificate file")
@@ -140,7 +142,12 @@ func main() {
 	if *statsdAddress != "" {
 		// flagToDuration will fatally error if it is invalid
 		options.statsdInterval = flagToDuration(*statsdInterval, time.Second, "--statsd-interval")
-		options.statsdPrefix = fmt.Sprintf("nsq.%s.", util.StatsdHostKey(net.JoinHostPort(*broadcastAddress, strconv.Itoa(httpAddr.Port))))
+		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(*broadcastAddress, strconv.Itoa(httpAddr.Port)))
+		prefixWithHost := strings.Replace(*statsdPrefix, "%s", statsdHostKey, -1)
+		if prefixWithHost[len(prefixWithHost)-1] != '.' {
+			prefixWithHost += "."
+		}
+		options.statsdPrefix = prefixWithHost
 		options.statsdAddress = *statsdAddress
 	}
 
