@@ -278,7 +278,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot IDENTIFY in current state")
 	}
 
-	bodyLen, err := p.readLen(client)
+	bodyLen, err := readLen(client.Reader, client.lenSlice)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
 	}
@@ -553,7 +553,7 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("PUB topic name '%s' is not valid", topicName))
 	}
 
-	bodyLen, err := p.readLen(client)
+	bodyLen, err := readLen(client.Reader, client.lenSlice)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body size")
 	}
@@ -597,7 +597,7 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("E_BAD_TOPIC MPUB topic name '%s' is not valid", topicName))
 	}
 
-	bodyLen, err := p.readLen(client)
+	bodyLen, err := readLen(client.Reader, client.lenSlice)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read body size")
 	}
@@ -612,43 +612,11 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.context.nsqd.options.maxBodySize))
 	}
 
-	numMessages, err := p.readLen(client)
+	messages, err := readMPUB(client.Reader, client.lenSlice, p.context.nsqd.idChan,
+		p.context.nsqd.options.maxMessageSize)
 	if err != nil {
-		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
+		return nil, err
 	}
-
-	if numMessages <= 0 {
-		return nil, util.NewFatalClientErr(err, "E_BAD_BODY",
-			fmt.Sprintf("MPUB invalid message count %d", numMessages))
-	}
-
-	messages := make([]*nsq.Message, 0, numMessages)
-	for i := int32(0); i < numMessages; i++ {
-		messageSize, err := p.readLen(client)
-		if err != nil {
-			return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB failed to read message(%d) body size", i))
-		}
-
-		if messageSize <= 0 {
-			return nil, util.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB invalid message(%d) body size %d", i, messageSize))
-		}
-
-		if int64(messageSize) > p.context.nsqd.options.maxMessageSize {
-			return nil, util.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB message too big %d > %d", messageSize, p.context.nsqd.options.maxMessageSize))
-		}
-
-		msgBody := make([]byte, messageSize)
-		_, err = io.ReadFull(client.Reader, msgBody)
-		if err != nil {
-			return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
-		}
-
-		messages = append(messages, nsq.NewMessage(<-p.context.nsqd.idChan, msgBody))
-	}
-
 	topic := p.context.nsqd.GetTopic(topicName)
 
 	// if we've made it this far we've validated all the input,
@@ -682,11 +650,51 @@ func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) readLen(client *ClientV2) (int32, error) {
-	client.lenSlice = client.lenSlice[0:]
-	_, err := io.ReadFull(client.Reader, client.lenSlice)
+func readMPUB(r io.Reader, tmp []byte, idChan chan nsq.MessageID, maxMessageSize int64) ([]*nsq.Message, error) {
+	numMessages, err := readLen(r, tmp)
+	if err != nil {
+		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
+	}
+
+	if numMessages <= 0 {
+		return nil, util.NewFatalClientErr(err, "E_BAD_BODY",
+			fmt.Sprintf("MPUB invalid message count %d", numMessages))
+	}
+
+	messages := make([]*nsq.Message, 0, numMessages)
+	for i := int32(0); i < numMessages; i++ {
+		messageSize, err := readLen(r, tmp)
+		if err != nil {
+			return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE",
+				fmt.Sprintf("MPUB failed to read message(%d) body size", i))
+		}
+
+		if messageSize <= 0 {
+			return nil, util.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+				fmt.Sprintf("MPUB invalid message(%d) body size %d", i, messageSize))
+		}
+
+		if int64(messageSize) > maxMessageSize {
+			return nil, util.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+				fmt.Sprintf("MPUB message too big %d > %d", messageSize, maxMessageSize))
+		}
+
+		msgBody := make([]byte, messageSize)
+		_, err = io.ReadFull(r, msgBody)
+		if err != nil {
+			return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
+		}
+
+		messages = append(messages, nsq.NewMessage(<-idChan, msgBody))
+	}
+
+	return messages, nil
+}
+
+func readLen(r io.Reader, tmp []byte) (int32, error) {
+	_, err := io.ReadFull(r, tmp)
 	if err != nil {
 		return 0, err
 	}
-	return int32(binary.BigEndian.Uint32(client.lenSlice)), nil
+	return int32(binary.BigEndian.Uint32(tmp)), nil
 }
