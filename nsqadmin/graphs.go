@@ -11,21 +11,27 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
 type GraphTarget interface {
 	Target(key string) (string, string)
+	Host() string
 }
 
 type Node string
 
 func (n Node) Target(key string) (string, string) {
-	target := fmt.Sprintf("%%snsq.%s.mem.%s", util.StatsdHostKey(string(n)), key)
+	target := fmt.Sprintf("%%smem.%s", key)
 	if key == "gc_runs" {
 		target = fmt.Sprintf("movingAverage(%s,45)", target)
 	}
 	return target, "red,green,blue,purple"
+}
+
+func (n Node) Host() string {
+	return string(n)
 }
 
 type Topic struct {
@@ -48,8 +54,12 @@ func (t *Topic) Target(key string) (string, string) {
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("sumSeries(%%snsq.*.topic.%s.%s)", t.TopicName, key)
+	target := fmt.Sprintf("sumSeries(%%stopic.%s.%s)", t.TopicName, key)
 	return target, color
+}
+
+func (t *Topic) Host() string {
+	return "*"
 }
 
 type GraphInterval struct {
@@ -107,6 +117,7 @@ type GraphOptions struct {
 	Enabled           bool
 	GraphiteUrl       string
 	UseStatsdPrefix   bool
+	StatsdPrefix      string
 	TimeframeString   template.URL
 	AllGraphIntervals []*GraphInterval
 	GraphInterval     *GraphInterval
@@ -152,6 +163,7 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParam
 		Configured:        configured,
 		Enabled:           enabled,
 		UseStatsdPrefix:   *useStatsdPrefixes,
+		StatsdPrefix:      *statsdPrefix,
 		GraphiteUrl:       base,
 		AllGraphIntervals: DefaultGraphTimeframes(selectedTimeString),
 		GraphInterval:     g,
@@ -159,18 +171,25 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request, r *util.ReqParam
 	return o
 }
 
-func (g *GraphOptions) Prefix(metricType string) string {
-	if g.UseStatsdPrefix && metricType == "counter" {
-		return "stats_counts."
-	} else if g.UseStatsdPrefix && metricType == "gauge" {
-		return "stats.gauges."
+func (g *GraphOptions) Prefix(host string, metricType string) string {
+	prefix := ""
+	statsdHostKey := util.StatsdHostKey(host)
+	prefixWithHost := strings.Replace(g.StatsdPrefix, "%s", statsdHostKey, -1)
+	if prefixWithHost[len(prefixWithHost)-1] != '.' {
+		prefixWithHost += "."
 	}
-	return ""
+	if g.UseStatsdPrefix && metricType == "counter" {
+		prefix += "stats_counts."
+	} else if g.UseStatsdPrefix && metricType == "gauge" {
+		prefix += "stats.gauges."
+	}
+	prefix += prefixWithHost
+	return prefix
 }
 
 func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	target, color := gr.Target(key)
-	target = fmt.Sprintf(target, g.Prefix(metricType(key)))
+	target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
 	params := url.Values{}
 	params.Set("height", "20")
 	params.Set("width", "120")
@@ -191,7 +210,7 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 
 func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	target, color := gr.Target(key)
-	target = fmt.Sprintf(target, g.Prefix(metricType(key)))
+	target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
@@ -213,7 +232,7 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 
 func (g *GraphOptions) Rate(gr GraphTarget) string {
 	target, _ := gr.Target("message_count")
-	return fmt.Sprintf(target, g.Prefix(metricType("message_count")))
+	return fmt.Sprintf(target, g.Prefix(gr.Host(), metricType("message_count")))
 }
 
 func metricType(key string) string {
