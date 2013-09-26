@@ -2,7 +2,6 @@ package lookupd
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/semver"
 	"sort"
 	"time"
@@ -72,16 +71,20 @@ func (t *TopicStats) Add(a *TopicStats) {
 }
 
 func (t *TopicStats) Target(key string) (string, string) {
-	h := util.StatsdHostKey(t.HostAddress)
-	if t.Aggregate {
-		h = "*"
-	}
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("sumSeries(%%snsq.%s.topic.%s.%s)", h, t.TopicName, key)
+	target := fmt.Sprintf("sumSeries(%%stopic.%s.%s)", t.TopicName, key)
 	return target, color
+}
+
+func (t *TopicStats) Host() string {
+	h := t.HostAddress
+	if t.Aggregate {
+		h = "*"
+	}
+	return h
 }
 
 type ChannelStats struct {
@@ -121,16 +124,20 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 }
 
 func (c *ChannelStats) Target(key string) (string, string) {
-	h := "*"
-	if len(c.HostStats) == 0 {
-		h = util.StatsdHostKey(c.HostAddress)
-	}
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
-	target := fmt.Sprintf("sumSeries(%%snsq.%s.topic.%s.channel.%s.%s)", h, c.TopicName, c.ChannelName, key)
+	target := fmt.Sprintf("sumSeries(%%stopic.%s.channel.%s.%s)", c.TopicName, c.ChannelName, key)
 	return target, color
+}
+
+func (c *ChannelStats) Host() string {
+	h := "*"
+	if len(c.HostStats) == 0 {
+		h = c.HostAddress
+	}
+	return h
 }
 
 type ClientInfo struct {
