@@ -18,7 +18,8 @@ var (
 	graphiteUrl              = flag.String("graphite-url", "", "URL to graphite HTTP address")
 	proxyGraphite            = flag.Bool("proxy-graphite", false, "Proxy HTTP requests to graphite")
 	useStatsdPrefixes        = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
-	statsdInterval           = flag.Duration("statsd-interval", 60*time.Second, "duration of time nsqd is configured to push to statsd (must match)")
+	statsdPrefix             = flag.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement, must match nsqd)")
+	statsdInterval           = flag.Duration("statsd-interval", 60*time.Second, "time interval nsqd is configured to push to statsd (must match nsqd)")
 	lookupdHTTPAddrs         = util.StringArray{}
 	nsqdHTTPAddrs            = util.StringArray{}
 	notificationHTTPEndpoint = flag.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
