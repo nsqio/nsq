@@ -89,24 +89,24 @@ func (s *httpServer) infoHandler(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (s *httpServer) getTopicFromQuery(req *http.Request) (*Topic, error) {
+func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err.Error())
-		return nil, errors.New("INVALID_REQUEST")
+		return nil, nil, errors.New("INVALID_REQUEST")
 	}
 
 	topicNames, ok := reqParams["topic"]
 	if !ok {
-		return nil, errors.New("MISSING_ARG_TOPIC")
+		return nil, nil, errors.New("MISSING_ARG_TOPIC")
 	}
 	topicName := topicNames[0]
 
 	if !nsq.IsValidTopicName(topicName) {
-		return nil, errors.New("INVALID_ARG_TOPIC")
+		return nil, nil, errors.New("INVALID_ARG_TOPIC")
 	}
 
-	return s.context.nsqd.GetTopic(topicName), nil
+	return reqParams, s.context.nsqd.GetTopic(topicName), nil
 }
 
 func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
@@ -141,7 +141,7 @@ func (s *httpServer) putHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := s.getTopicFromQuery(req)
+	_, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		util.ApiResponse(w, 500, err.Error(), nil)
 		return
@@ -175,49 +175,60 @@ func (s *httpServer) mputHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	topic, err := s.getTopicFromQuery(req)
+	reqParams, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		util.ApiResponse(w, 500, err.Error(), nil)
 		return
 	}
 
-	// add 1 so that it's greater than our max when we test for it
-	// (LimitReader returns a "fake" EOF)
-	readMax := s.context.nsqd.options.maxBodySize + 1
-	rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
-	total := 0
-	for !exit {
-		block, err := rdr.ReadBytes('\n')
+	_, ok := reqParams["binary"]
+	if ok {
+		tmp := make([]byte, 4)
+		msgs, err = readMPUB(req.Body, tmp, s.context.nsqd.idChan,
+			s.context.nsqd.options.maxMessageSize)
 		if err != nil {
-			if err != io.EOF {
-				util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
-				return
-			}
-			exit = true
-		}
-		total += len(block)
-		if int64(total) == readMax {
-			log.Printf("ERROR: /mput hit max body size")
-			continue
-		}
-
-		if len(block) > 0 && block[len(block)-1] == '\n' {
-			block = block[:len(block)-1]
-		}
-
-		// silently discard 0 length messages
-		// this maintains the behavior pre 0.2.22
-		if len(block) == 0 {
-			continue
-		}
-
-		if int64(len(block)) > s.context.nsqd.options.maxMessageSize {
-			util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
+			util.ApiResponse(w, 500, err.(*util.FatalClientErr).Code[2:], nil)
 			return
 		}
+	} else {
+		// add 1 so that it's greater than our max when we test for it
+		// (LimitReader returns a "fake" EOF)
+		readMax := s.context.nsqd.options.maxBodySize + 1
+		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
+		total := 0
+		for !exit {
+			block, err := rdr.ReadBytes('\n')
+			if err != nil {
+				if err != io.EOF {
+					util.ApiResponse(w, 500, "INTERNAL_ERROR", nil)
+					return
+				}
+				exit = true
+			}
+			total += len(block)
+			if int64(total) == readMax {
+				log.Printf("ERROR: /mput hit max body size")
+				continue
+			}
 
-		msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
-		msgs = append(msgs, msg)
+			if len(block) > 0 && block[len(block)-1] == '\n' {
+				block = block[:len(block)-1]
+			}
+
+			// silently discard 0 length messages
+			// this maintains the behavior pre 0.2.22
+			if len(block) == 0 {
+				continue
+			}
+
+			if int64(len(block)) > s.context.nsqd.options.maxMessageSize {
+				util.ApiResponse(w, 500, "MSG_TOO_BIG", nil)
+				return
+			}
+
+			msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
+			msgs = append(msgs, msg)
+		}
 	}
 
 	err = topic.PutMessages(msgs)
