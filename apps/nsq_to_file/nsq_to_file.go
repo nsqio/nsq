@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -27,6 +28,7 @@ var (
 	outputDir        = flag.String("output-dir", "/tmp", "directory to write output files to")
 	topic            = flag.String("topic", "", "nsq topic")
 	channel          = flag.String("channel", "nsq_to_file", "nsq channel")
+	msgsPerLine      = flag.Int64("per-line", 1, "messages per line")
 	maxInFlight      = flag.Int("max-in-flight", 1000, "max number of messages to allow in flight")
 	gzipCompression  = flag.Int("gzip-compression", 3, "gzip compression level. 1 BestSpeed, 2 BestCompression, 3 DefaultCompression")
 	gzipEnabled      = flag.Bool("gzip", false, "gzip output files.")
@@ -37,6 +39,8 @@ var (
 
 	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
 	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
+
+	writtenMessages int64 = 0
 )
 
 func init() {
@@ -110,7 +114,14 @@ func (f *FileLogger) router(r *nsq.Reader, termChan chan os.Signal, hupChan chan
 			if err != nil {
 				log.Fatalf("ERROR: writing message to disk - %s", err.Error())
 			}
-			_, err = f.Write([]byte("\n"))
+			msgs := atomic.AddInt64(&writtenMessages, 1)
+			var bd []byte
+			if msgs % *msgsPerLine == 0 {
+				bd = []byte("\n")
+			} else {
+				bd = []byte(" ")
+			}
+			_, err = f.Write(bd)
 			if err != nil {
 				log.Fatalf("ERROR: writing newline to disk - %s", err.Error())
 			}
