@@ -5,7 +5,7 @@ set -e
 for dir in nsqd nsqlookupd util/pqueue; do
     echo "testing $dir"
     pushd $dir >/dev/null
-    go test -test.v -timeout 15s
+    go test -test.v -timeout 60s
     popd >/dev/null
 done
 
