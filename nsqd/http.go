@@ -436,9 +436,12 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 	}
 
 	if strings.HasPrefix(req.URL.Path, "/pause") {
-		channel.Pause()
+		err = channel.Pause()
 	} else {
-		channel.UnPause()
+		err = channel.UnPause()
+	}
+	if err != nil {
+		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err.Error())
 	}
 
 	util.ApiResponse(w, 200, "OK", nil)
