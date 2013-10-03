@@ -274,22 +274,36 @@ func (c *Channel) Depth() int64 {
 	return int64(len(c.memoryMsgChan)) + c.backend.Depth() + int64(atomic.LoadInt32(&c.bufferedCount))
 }
 
-func (c *Channel) Pause() {
+func (c *Channel) Pause() error {
 	atomic.StoreInt32(&c.paused, 1)
+
 	c.RLock()
-	defer c.RUnlock()
 	for _, client := range c.clients {
 		client.Pause()
 	}
+	c.RUnlock()
+
+	c.context.nsqd.Lock()
+	defer c.context.nsqd.Unlock()
+	// pro-actively persist metadata so in case of process failure
+	// nsqd won't suddenly unpause a channel
+	return c.context.nsqd.PersistMetadata()
 }
 
-func (c *Channel) UnPause() {
+func (c *Channel) UnPause() error {
 	atomic.StoreInt32(&c.paused, 0)
+
 	c.RLock()
-	defer c.RUnlock()
 	for _, client := range c.clients {
 		client.UnPause()
 	}
+	c.RUnlock()
+
+	c.context.nsqd.Lock()
+	defer c.context.nsqd.Unlock()
+	// pro-actively persist metadata so in case of process failure
+	// nsqd won't suddenly pause a channel
+	return c.context.nsqd.PersistMetadata()
 }
 
 func (c *Channel) IsPaused() bool {

@@ -181,3 +181,34 @@ func TestEphemeralChannel(t *testing.T) {
 	exitChan <- 1
 	<-doneExitChan
 }
+
+func metadataForChannel(n *NSQd, topicIndex int, channelIndex int) *simplejson.Json {
+	metadata, _ := getMetadata(n)
+	mChannels := metadata.Get("topics").GetIndex(topicIndex).Get("channels")
+	return mChannels.GetIndex(channelIndex)
+}
+
+func TestPauseMetadata(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	options := NewNsqdOptions()
+	_, _, nsqd := mustStartNSQd(options)
+
+	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("ch")
+
+	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	assert.Equal(t, b, false)
+
+	channel.Pause()
+
+	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	assert.Equal(t, b, true)
+
+	channel.UnPause()
+
+	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	assert.Equal(t, b, false)
+}
