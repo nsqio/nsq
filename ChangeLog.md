@@ -2,6 +2,21 @@
 
 ## Binaries
 
+### 0.2.23-alpha
+
+**Upgrading from 0.2.22**: No backwards incompatible changes.
+
+New Features / Enhancements:
+
+ * #229 - compression (Snappy/Deflate) feature negotiation
+ * #241 - binary support for HTTP /mput
+ * #269 - add --statsd-prefix flag
+
+Bug Fixes:
+
+ * #274 - channel pause state lost during unclean restart
+ * #236 - reduce "idle" CPU usage by 90% with large # of clients
+
 ### 0.2.22 - 2013-08-26
 
 **Upgrading from 0.2.21**: message timestamps are now officially nanoseconds.  The protocol docs
