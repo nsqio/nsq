@@ -92,6 +92,9 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	// TODO: gracefully send clients the close signal
 	conn.Close()
 	close(client.ExitChan)
+	if client.Channel != nil {
+		client.Channel.RemoveClient(client.ID)
+	}
 
 	return err
 }
@@ -263,9 +266,6 @@ exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	client.Heartbeat.Stop()
 	client.OutputBufferTimeout.Stop()
-	if subChannel != nil {
-		subChannel.RemoveClient(client.ID)
-	}
 	if err != nil {
 		log.Printf("PROTOCOL(V2): [%s] messagePump error - %s", client, err.Error())
 	}
