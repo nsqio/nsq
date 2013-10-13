@@ -111,9 +111,6 @@ func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.
 		return err
 	}
 
-	client.Channel.StartInFlightTimeout(msg, client.ID)
-	client.SendingMessage()
-
 	err = p.Send(client, nsq.FrameTypeMessage, buf.Bytes())
 	if err != nil {
 		return err
@@ -252,6 +249,8 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			if !ok {
 				goto exit
 			}
+			subChannel.StartInFlightTimeout(msg, client.ID)
+			client.SendingMessage()
 			err = p.SendMessage(client, msg, &buf)
 			if err != nil {
 				goto exit
