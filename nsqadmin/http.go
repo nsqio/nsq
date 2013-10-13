@@ -687,7 +687,11 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 type counterTarget struct{}
 
 func (c counterTarget) Target(key string) (string, string) {
-	return fmt.Sprintf("sumSeries(%%snsq.*.topic.*.channel.*.%s)", key), "green"
+	return fmt.Sprintf("sumSeries(%%stopic.*.channel.*.%s)", key), "green"
+}
+
+func (c counterTarget) Host() string {
+	return "*"
 }
 
 func counterHandler(w http.ResponseWriter, req *http.Request) {
