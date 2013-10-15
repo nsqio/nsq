@@ -10,24 +10,6 @@ arch=$(go env GOARCH)
 version=$(cat $DIR/util/binary_version.go | grep "const BINARY_VERSION" | awk '{print $NF}' | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
 
-TMPGOPATH=$(mktemp -d -t nsqgopath)
-mkdir -p $TMPGOPATH/src
-mkdir -p $TMPGOPATH/pkg/${os}_${arch}
-mkdir -p $TMPGOPATH/src/github.com/bitly/nsq
-
-git archive HEAD | tar -x -C $TMPGOPATH/src/github.com/bitly/nsq
-
-export GOPATH="$TMPGOPATH:$GOROOT"
-
-echo "... getting dependencies"
-go get -v github.com/bitly/go-nsq
-go get -v github.com/bitly/go-simplejson
-go get -v github.com/mreiferson/go-snappystream
-go get -v github.com/bitly/go-hostpool
-go get -v github.com/bmizerany/assert
-
-pushd $TMPGOPATH/src/github.com/bitly/nsq
-
 echo "... running tests"
 ./test.sh || exit 1
 
@@ -43,5 +25,3 @@ for os in linux darwin; do
     popd
     make clean
 done
-
-popd
