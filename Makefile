@@ -22,7 +22,7 @@ all: $(BINARIES) $(EXAMPLES)
 
 $(BLDDIR)/%:
 	mkdir -p $(dir $@)
-	cd $* && go build ${GOFLAGS} -o $(abspath $@)
+	godep go build ${GOFLAGS} -o $(abspath $@) ./$*
 
 $(BINARIES): %: $(BLDDIR)/%
 $(EXAMPLES): %: $(BLDDIR)/apps/%
