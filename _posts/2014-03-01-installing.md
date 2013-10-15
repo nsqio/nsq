@@ -41,21 +41,31 @@ Built with **Go 1.0.3**:
 #### Pre-requisites
 
  * **[golang](http://golang.org/doc/install)** (version **`1.0.3+`** is required)
+ * **[godep](https://github.com/kr/godep)** (dependency manager)
 
- * **[go-nsq](https://github.com/bitly/go-nsq)**
- 
- * **[go-hostpool](https://github.com/bitly/go-hostpool)**
+    Which manages the following package dependencies:
+    
+    **[go-nsq](https://github.com/bitly/go-nsq)**,
+    **[go-hostpool](https://github.com/bitly/go-hostpool)**,
+    **[go-simplejson](https://github.com/bitly/go-simplejson)**.
+    **[go-snappystream](https://github.com/mreiferson/go-snappystream)**,
+    
+    and **[assert](https://github.com/bmizerany/assert)** (for tests)
 
- * **[go-simplejson](https://github.com/bitly/go-simplejson)**
-
- * **[assert](https://github.com/bmizerany/assert)** (required for running tests)
-
-NOTE: running `go get` as described in the _Compiling_ section will automatically download and
-install the pre-requisites.
+NSQ uses **[godep](https://github.com/kr/godep)** to manage dependencies and produce reliable
+builds.  
 
 #### Compiling
 
-Use `go get` do download and compile the packages and binaries:
+**Using `godep` is the preferred method when compiling from source.**
+
+{% highlight bash %}
+$ git clone git@github.com:bitly/nsq.git && cd nsq
+$ make
+{% endhighlight %}
+
+While NSQ is `go get` compatible, it is not recommended because it is not guaranteed to
+produce reliable builds (you have to satisfy dependencies manually).
 
 {% highlight bash %}
 $ go get github.com/bitly/nsq/...
