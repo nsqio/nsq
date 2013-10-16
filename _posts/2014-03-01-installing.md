@@ -48,24 +48,21 @@ Built with **Go 1.0.3**:
     **[go-nsq](https://github.com/bitly/go-nsq)**,
     **[go-hostpool](https://github.com/bitly/go-hostpool)**,
     **[go-simplejson](https://github.com/bitly/go-simplejson)**.
-    **[go-snappystream](https://github.com/mreiferson/go-snappystream)**,
+    **[go-snappystream](https://github.com/mreiferson/go-snappystream)**
     
     and **[assert](https://github.com/bmizerany/assert)** (for tests)
 
-NSQ uses **[godep](https://github.com/kr/godep)** to manage dependencies and produce reliable
-builds.  
-
 #### Compiling
 
-**Using `godep` is the preferred method when compiling from source.**
+NSQ uses **[godep](https://github.com/kr/godep)** to manage dependencies and produce reliable
+builds.  **Using `godep` is the preferred method when compiling from source.**
 
 {% highlight bash %}
-$ git clone git@github.com:bitly/nsq.git && cd nsq
-$ make
+$ godep get github.com/bitly/nsq/...
 {% endhighlight %}
 
-While NSQ is `go get` compatible, it is not recommended because it is not guaranteed to
-produce reliable builds (you have to satisfy dependencies manually).
+NSQ remains `go get` compatible but it is not recommended as it is not guaranteed to
+produce reliable builds (pinned dependencies need to be satisfied manually).
 
 {% highlight bash %}
 $ go get github.com/bitly/nsq/...
