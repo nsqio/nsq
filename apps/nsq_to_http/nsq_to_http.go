@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -31,29 +30,35 @@ const (
 )
 
 var (
-	showVersion        = flag.Bool("version", false, "print version string")
-	topic              = flag.String("topic", "", "nsq topic")
-	channel            = flag.String("channel", "nsq_to_http", "nsq channel")
-	maxInFlight        = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
-	verbose            = flag.Bool("verbose", false, "enable verbose logging")
-	numPublishers      = flag.Int("n", 100, "number of concurrent publishers")
-	roundRobin         = flag.Bool("round-robin", false, "enable round robin mode")
-	mode               = flag.String("mode", "", "the upstream request mode options: multicast, round-robin, hostpool")
-	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "publish only a fraction of messages")
-	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "timeout for HTTP connect/read/write (each)")
-	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "the maximum backoff duration")
-	contentType        = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
-	getAddrs           = util.StringArray{}
-	postAddrs          = util.StringArray{}
-	nsqdTCPAddrs       = util.StringArray{}
-	lookupdHTTPAddrs   = util.StringArray{}
+	showVersion = flag.Bool("version", false, "print version string")
 
-	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
-	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
+	topic       = flag.String("topic", "", "nsq topic")
+	channel     = flag.String("channel", "nsq_to_http", "nsq channel")
+	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+
+	numPublishers = flag.Int("n", 100, "number of concurrent publishers")
+	mode          = flag.String("mode", "round-robin", "the upstream request mode options: multicast, round-robin, hostpool")
+	sample        = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
+	httpTimeout   = flag.Duration("http-timeout", 20*time.Second, "timeout for HTTP connect/read/write (each)")
+	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
+	contentType   = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
+
+	readerOpts       = util.StringArray{}
+	getAddrs         = util.StringArray{}
+	postAddrs        = util.StringArray{}
+	nsqdTCPAddrs     = util.StringArray{}
+	lookupdHTTPAddrs = util.StringArray{}
+
+	// TODO: remove, deprecated
+	roundRobin         = flag.Bool("round-robin", false, "(deprecated) use --mode=round-robin, enable round robin mode")
+	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --reader-opt=max_backoff_duration=X, the maximum backoff duration")
+	verbose            = flag.Bool("verbose", false, "(depgrecated) use --reader-opt=verbose")
+	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "(deprecated) use --sample=X, publish only a fraction of messages")
+	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "(deprecated) use --http-timeout=X, timeout for HTTP connect/read/write (each)")
 )
 
 func init() {
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
@@ -91,7 +96,7 @@ type PublishHandler struct {
 func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	var startTime time.Time
 
-	if *throttleFraction < 1.0 && rand.Float64() > *throttleFraction {
+	if *sample < 1.0 && rand.Float64() > *sample {
 		return nil
 	}
 
@@ -186,6 +191,15 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	return nil
 }
 
+func hasArg(s string) bool {
+	for _, arg := range os.Args {
+		if strings.Contains(arg, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	var publisher Publisher
 	var addresses util.StringArray
@@ -200,10 +214,6 @@ func main() {
 
 	if *topic == "" || *channel == "" {
 		log.Fatalf("--topic and --channel are required")
-	}
-
-	if *maxInFlight <= 0 {
-		log.Fatalf("--max-in-flight must be > 0")
 	}
 
 	if *contentType != flag.Lookup("content-type").DefValue {
@@ -236,15 +246,6 @@ func main() {
 		}
 	}
 
-	if *roundRobin {
-		log.Printf("WARNING: the use of the --round-robin flag is deprecated in favor of --mode=round-robin (and will be dropped in a future release)")
-		selectedMode = ModeRoundRobin
-	}
-
-	if *roundRobin && *mode != "" {
-		log.Fatalf("ERROR: cannot use both --round-robin and --mode flags")
-	}
-
 	switch *mode {
 	case "multicast":
 		log.Printf("WARNING: multicast mode is deprecated in favor of using separate nsq_to_http on different channels (and will be dropped in a future release)")
@@ -255,8 +256,26 @@ func main() {
 		selectedMode = ModeHostPool
 	}
 
-	if *throttleFraction > 1.0 || *throttleFraction < 0.0 {
-		log.Fatalf("ERROR: --throttle-fraction must be between 0.0 and 1.0")
+	// TODO: remove, deprecated
+	if hasArg("--round-robin") {
+		log.Printf("WARNING: --round-robin is deprecated in favor of --mode=round-robin")
+		selectedMode = ModeRoundRobin
+	}
+
+	// TODO: remove, deprecated
+	if hasArg("throttle-fraction") {
+		log.Printf("WARNING: --throttle-fraction is deprecatedin favor of --sample=X")
+		*sample = *throttleFraction
+	}
+
+	if *sample > 1.0 || *sample < 0.0 {
+		log.Fatalf("ERROR: --sample must be between 0.0 and 1.0")
+	}
+
+	// TODO: remove, deprecated
+	if hasArg("http-timeout-ms") {
+		log.Printf("WARNING: --http-timeout-ms is deprecated in favor of --http-timeout=X")
+		*httpTimeout = time.Duration(*httpTimeoutMs) * time.Millisecond
 	}
 
 	termChan := make(chan os.Signal, 1)
@@ -274,15 +293,22 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+	err = util.ParseReaderOpts(r, readerOpts)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	r.SetMaxInFlight(*maxInFlight)
-	r.SetMaxBackoffDuration(*maxBackoffDuration)
-	r.VerboseLogging = *verbose
 
-	if *tlsEnabled {
-		r.TLSv1 = true
-		r.TLSConfig = &tls.Config{
-			InsecureSkipVerify: *tlsInsecureSkipVerify,
-		}
+	// TODO: remove, deprecated
+	if hasArg("verbose") {
+		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
+		r.Configure("verbose", true)
+	}
+
+	// TODO: remove, deprecated
+	if hasArg("max-backoff-duration") {
+		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
+		r.Configure("max_backoff_duration", *maxBackoffDuration)
 	}
 
 	for i := 0; i < *numPublishers; i++ {

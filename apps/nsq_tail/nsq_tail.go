@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
 	"github.com/bitly/go-nsq"
@@ -15,18 +14,19 @@ import (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version string")
-	topic            = flag.String("topic", "", "nsq topic")
-	channel          = flag.String("channel", "", "nsq channel")
-	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+	showVersion = flag.Bool("version", false, "print version string")
+
+	topic       = flag.String("topic", "", "nsq topic")
+	channel     = flag.String("channel", "", "nsq channel")
+	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+
+	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
-
-	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
-	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
 )
 
 func init() {
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
@@ -62,10 +62,6 @@ func main() {
 		log.Fatalf("--topic is required")
 	}
 
-	if *maxInFlight <= 0 {
-		log.Fatalf("--max-in-flight must be > 0")
-	}
-
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
 	}
@@ -80,15 +76,12 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+	err = util.ParseReaderOpts(r, readerOpts)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	r.SetMaxInFlight(*maxInFlight)
 	r.AddHandler(&TailHandler{})
-
-	if *tlsEnabled {
-		r.TLSv1 = true
-		r.TLSConfig = &tls.Config{
-			InsecureSkipVerify: *tlsInsecureSkipVerify,
-		}
-	}
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQ(addrString)
