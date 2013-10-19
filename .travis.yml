@@ -6,9 +6,13 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 install:
-  - go get code.google.com/p/go.tools/go/vcs || true
-  - "sed -i -e '26s/}/}\\nreturn nil, nil/' $HOME/gopath/src/code.google.com/p/go.tools/go/vcs/discovery.go"
-  - go get github.com/kr/godep
+  - go get github.com/kr/godep || true
+  # these need to be installed manually for go1.0.x
+  - go get github.com/bitly/go-nsq
+  - go get github.com/bitly/go-simplejson
+  - go get github.com/bitly/go-hostpool
+  - go get github.com/mreiferson/go-snappystream
+  - go get github.com/bmizerany/assert
 script:
   - export PATH="$HOME/gopath/bin:$PATH"
   - ./test.sh
