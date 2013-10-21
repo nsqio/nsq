@@ -12,8 +12,8 @@
 		},
 		{
 			"ImportPath": "github.com/bitly/go-nsq",
-			"Comment": "v0.3.3-alpha",
-			"Rev": "4d7f86de2099a4b71d17b26b7fa7fa1a81c88e4c"
+			"Comment": "v0.3.3",
+			"Rev": "97ea060927af3af0ad2c25debf94014a22e891ca"
 		},
 		{
 			"ImportPath": "github.com/bitly/go-hostpool",
