@@ -44,6 +44,11 @@
 			"ImportPath": "github.com/kr/text",
 			"Comment": "",
 			"Rev": "6807e777504f54ad073ecef66747de158294b639"
+		},
+		{
+			"ImportPath": "github.com/bmizerany/perks",
+			"Comment": "",
+			"Rev": "da72989a59aaaecda7110926d3a6198ee4421c1f"
 		}
 	]
 }

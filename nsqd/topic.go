@@ -348,3 +348,19 @@ func (t *Topic) flush() error {
 finish:
 	return nil
 }
+
+func (t *Topic) AggregateChannelE2eProcessingLatency() *util.Quantile {
+	var latencyStream *util.Quantile
+	for _, c := range t.channelMap {
+		if c.e2eProcessingLatencyStream == nil {
+			continue
+		}
+		if latencyStream == nil {
+			latencyStream = util.NewQuantile(
+				t.context.nsqd.options.e2eProcessingLatencyWindowTime,
+				t.context.nsqd.options.e2eProcessingLatencyPercentiles)
+		}
+		latencyStream.Merge(c.e2eProcessingLatencyStream)
+	}
+	return latencyStream
+}

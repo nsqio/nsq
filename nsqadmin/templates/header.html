@@ -4,6 +4,7 @@
         <meta http-equiv="Content-type" content="text/html; charset=utf-8">
         <title>{{.Title}}</title>
         <!-- from http://www.bootstrapcdn.com/ -->
+        <script src="http://code.jquery.com/jquery-1.10.1.min.js"></script>
         <link rel="stylesheet" href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" type="text/css" charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style type="text/css">
@@ -16,9 +17,52 @@
         .bold {
             font-weight: bold;
         }
+        .graph-row td {
+            text-align: center;
+        }
+        .image-preview {
+             display: none;
+             position: absolute;
+             z-index: 100;
+             height: 240px;
+             width: 480px;
+        }
         </style>
     </head>
     <body>
+
+<script>
+$(document).ready(function () {
+ // Get all the thumbnail
+ $('td a[href^="/render"] img').mouseenter(function(e) {
+ 
+  // Calculate the position of the image tooltip
+  x = e.pageX - 25;
+  y = e.pageY + 25;
+  x = Math.min(x, $(window).width() - 510)
+  if (y + 240 > $(window).height()) {
+    y = e.pageY - 265;
+  }
+ 
+  // Set the z-index of the current item,
+  // make sure it's greater than the rest of thumbnail items
+  // Set the position and display the image tooltip
+  var tooltip = $('.image-preview');
+
+  tooltip.attr("src", $(this).parent().attr("href"));
+  tooltip.stop().css({'top': y,'left': x,'display':'block','opacity':1});
+    
+ }).mouseleave(function() {
+    
+  // Reset the z-index and hide the image tooltip
+  var tooltip = $('.image-preview');
+  tooltip.animate({"opacity": "hide"}, "fast");
+ });
+ 
+});
+</script>
+
+<img class="image-preview img-polaroid">
         
 <div class="navbar navbar-inverse">
   <div class="navbar-inner">

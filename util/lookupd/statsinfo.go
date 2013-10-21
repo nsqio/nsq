@@ -2,6 +2,7 @@ package lookupd
 
 import (
 	"fmt"
+	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/semver"
 	"sort"
 	"time"
@@ -56,6 +57,9 @@ type TopicStats struct {
 	ChannelCount int
 	Aggregate    bool
 	Channels     []*ChannelStats
+
+	E2eProcessingLatency *util.E2eProcessingLatencyAggregate
+	numAggregates        int
 }
 
 func (t *TopicStats) Add(a *TopicStats) {
@@ -68,15 +72,17 @@ func (t *TopicStats) Add(a *TopicStats) {
 	if a.ChannelCount > t.ChannelCount {
 		t.ChannelCount = a.ChannelCount
 	}
+	t.numAggregates += 1
+	t.E2eProcessingLatency = t.E2eProcessingLatency.Add(a.E2eProcessingLatency, t.numAggregates)
 }
 
-func (t *TopicStats) Target(key string) (string, string) {
+func (t *TopicStats) Target(key string) ([]string, string) {
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("sumSeries(%%stopic.%s.%s)", t.TopicName, key)
-	return target, color
+	return []string{target}, color
 }
 
 func (t *TopicStats) Host() string {
@@ -104,6 +110,8 @@ type ChannelStats struct {
 	HostStats     []*ChannelStats
 	Clients       []*ClientInfo
 	Paused        bool
+
+	E2eProcessingLatency *util.E2eProcessingLatencyAggregate
 }
 
 func (c *ChannelStats) Add(a *ChannelStats) {
@@ -120,16 +128,17 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 		c.Paused = a.Paused
 	}
 	c.HostStats = append(c.HostStats, a)
+	c.E2eProcessingLatency = c.E2eProcessingLatency.Add(a.E2eProcessingLatency, len(c.HostStats))
 	sort.Sort(ChannelStatsByHost{c.HostStats})
 }
 
-func (c *ChannelStats) Target(key string) (string, string) {
+func (c *ChannelStats) Target(key string) ([]string, string) {
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("sumSeries(%%stopic.%s.channel.%s.%s)", c.TopicName, c.ChannelName, key)
-	return target, color
+	return []string{target}, color
 }
 
 func (c *ChannelStats) Host() string {
@@ -156,6 +165,7 @@ type ChannelStatsList []*ChannelStats
 type ChannelStatsByHost struct {
 	ChannelStatsList
 }
+
 type ClientInfoList []*ClientInfo
 type ClientsByHost struct {
 	ClientInfoList

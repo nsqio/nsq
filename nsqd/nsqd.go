@@ -74,6 +74,10 @@ type nsqdOptions struct {
 	statsdPrefix   string
 	statsdInterval time.Duration
 
+	// e2e message latency
+	e2eProcessingLatencyWindowTime  time.Duration
+	e2eProcessingLatencyPercentiles []float64
+
 	// TLS config
 	tlsCert string
 	tlsKey  string
@@ -108,6 +112,8 @@ func NewNsqdOptions() *nsqdOptions {
 		statsdAddress:  "",
 		statsdPrefix:   "",
 		statsdInterval: 60 * time.Second,
+
+		e2eProcessingLatencyWindowTime: time.Duration(10 * time.Minute),
 
 		tlsCert: "",
 		tlsKey:  "",

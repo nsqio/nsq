@@ -16,18 +16,18 @@ import (
 )
 
 type GraphTarget interface {
-	Target(key string) (string, string)
+	Target(key string) ([]string, string)
 	Host() string
 }
 
 type Node string
 
-func (n Node) Target(key string) (string, string) {
+func (n Node) Target(key string) ([]string, string) {
 	target := fmt.Sprintf("%%smem.%s", key)
 	if key == "gc_runs" {
 		target = fmt.Sprintf("movingAverage(%s,45)", target)
 	}
-	return target, "red,green,blue,purple"
+	return []string{target}, "red,green,blue,purple"
 }
 
 func (n Node) Host() string {
@@ -49,13 +49,13 @@ func TopicsFromStrings(s []string) Topics {
 	return t
 }
 
-func (t *Topic) Target(key string) (string, string) {
+func (t *Topic) Target(key string) ([]string, string) {
 	color := "blue"
 	if key == "depth" || key == "deferred_count" {
 		color = "red"
 	}
 	target := fmt.Sprintf("sumSeries(%%stopic.%s.%s)", t.TopicName, key)
-	return target, color
+	return []string{target}, color
 }
 
 func (t *Topic) Host() string {
@@ -188,8 +188,6 @@ func (g *GraphOptions) Prefix(host string, metricType string) string {
 }
 
 func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
-	target, color := gr.Target(key)
-	target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
 	params := url.Values{}
 	params.Set("height", "20")
 	params.Set("width", "120")
@@ -199,32 +197,47 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	params.Set("bgcolor", "ff000000") // transparent
 	params.Set("fgcolor", "black")
 	params.Set("margin", "0")
-	params.Set("colorList", color)
 	params.Set("yMin", "0")
+	params.Set("lineMode", "connected")
+	params.Set("drawNullAsZero", "false")
+
 	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
-	params.Set("target", fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval))
+	targets, color := gr.Target(key)
+	for _, target := range targets {
+		target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
+		params.Add("target", fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval))
+	}
+	params.Add("colorList", color)
+
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
 }
 
 func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
-	target, color := gr.Target(key)
-	target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
 	params := url.Values{}
 	params.Set("height", "450")
 	params.Set("width", "800")
 	params.Set("bgcolor", "ff000000") // transparent
 	params.Set("fgcolor", "999999")
-	params.Set("colorList", color)
 	params.Set("yMin", "0")
+	params.Set("lineMode", "connected")
+	params.Set("drawNullAsZero", "false")
+
 	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
-	target = fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval)
-	if metricType(key) == "counter" {
-		scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
-		target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
+	targets, color := gr.Target(key)
+	for _, target := range targets {
+		target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
+		target = fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval)
+		if metricType(key) == "counter" {
+			scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
+			target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
+		}
+		log.Println("Adding target: ", target)
+		params.Add("target", target)
 	}
-	params.Set("target", target)
+	params.Add("colorList", color)
+
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
 	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
@@ -232,7 +245,7 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 
 func (g *GraphOptions) Rate(gr GraphTarget) string {
 	target, _ := gr.Target("message_count")
-	return fmt.Sprintf(target, g.Prefix(gr.Host(), metricType("message_count")))
+	return fmt.Sprintf(target[0], g.Prefix(gr.Host(), metricType("message_count")))
 }
 
 func metricType(key string) string {
@@ -248,6 +261,8 @@ func metricType(key string) string {
 		"gc_pause_*":      "gauge",
 		"gc_runs":         "counter",
 		"heap_objects":    "gauge",
+
+		"e2e_processing_latency": "gauge",
 	}[key]
 }
 

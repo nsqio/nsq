@@ -13,6 +13,7 @@ install:
   - go get github.com/bitly/go-hostpool
   - go get github.com/mreiferson/go-snappystream
   - go get github.com/bmizerany/assert
+  - go get github.com/bmizerany/perks/quantile
 script:
   - export PATH="$HOME/gopath/bin:$PATH"
   - ./test.sh

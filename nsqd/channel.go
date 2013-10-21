@@ -63,6 +63,9 @@ type Channel struct {
 	deleteCallback   func(*Channel)
 	deleter          sync.Once
 
+	// Stats tracking
+	e2eProcessingLatencyStream *util.Quantile
+
 	// TODO: these can be DRYd up
 	deferredMessages map[nsq.MessageID]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
@@ -84,6 +87,7 @@ type inFlightMessage struct {
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, context *Context,
 	deleteCallback func(*Channel)) *Channel {
+
 	c := &Channel{
 		topicName:       topicName,
 		name:            channelName,
@@ -94,6 +98,12 @@ func NewChannel(topicName string, channelName string, context *Context,
 		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
 		context:         context,
+	}
+	if len(context.nsqd.options.e2eProcessingLatencyPercentiles) > 0 {
+		c.e2eProcessingLatencyStream = util.NewQuantile(
+			context.nsqd.options.e2eProcessingLatencyWindowTime,
+			context.nsqd.options.e2eProcessingLatencyPercentiles,
+		)
 	}
 
 	c.initPQ()
@@ -355,6 +365,10 @@ func (c *Channel) FinishMessage(clientID int64, id nsq.MessageID) error {
 		return err
 	}
 	c.removeFromInFlightPQ(item)
+	if c.e2eProcessingLatencyStream != nil {
+		c.e2eProcessingLatencyStream.Insert(item.Value.(*inFlightMessage).msg.Timestamp)
+	}
+
 	return nil
 }
 
