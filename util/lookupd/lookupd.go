@@ -351,6 +351,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 				backendDepth := t.Get("backend_depth").MustInt64()
 				channels := t.Get("channels").MustArray()
 
+				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(t.Get("e2e_processing_latency"), topicName, "", addr)
+
 				topicStats := &TopicStats{
 					HostAddress:  addr,
 					TopicName:    topicName,
@@ -359,6 +361,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					MemoryDepth:  depth - backendDepth,
 					MessageCount: t.Get("message_count").MustInt64(),
 					ChannelCount: len(channels),
+
+					E2eProcessingLatency: e2eProcessingLatency,
 				}
 				topicStatsList = append(topicStatsList, topicStats)
 
@@ -385,6 +389,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					backendDepth := c.Get("backend_depth").MustInt64()
 					clients := c.Get("clients").MustArray()
 
+					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(c.Get("e2e_processing_latency"), topicName, channelName, addr)
+
 					hostChannelStats := &ChannelStats{
 						HostAddress:   addr,
 						TopicName:     topicName,
@@ -398,6 +404,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						MessageCount:  c.Get("message_count").MustInt64(),
 						RequeueCount:  c.Get("requeue_count").MustInt64(),
 						TimeoutCount:  c.Get("timeout_count").MustInt64(),
+
+						E2eProcessingLatency: e2eProcessingLatency,
 						// TODO: this is sort of wrong; clients should be de-duped
 						// client A that connects to NSQD-a and NSQD-b should only be counted once. right?
 						ClientCount: len(clients),

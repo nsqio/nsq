@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/bitly/nsq/util"
 	"sort"
 )
 
@@ -10,6 +11,8 @@ type TopicStats struct {
 	Depth        int64          `json:"depth"`
 	BackendDepth int64          `json:"backend_depth"`
 	MessageCount uint64         `json:"message_count"`
+
+	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
 }
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
@@ -19,6 +22,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Depth:        t.Depth(),
 		BackendDepth: t.backend.Depth(),
 		MessageCount: t.messageCount,
+
+		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().PercentileResult(),
 	}
 }
 
@@ -33,6 +38,8 @@ type ChannelStats struct {
 	TimeoutCount  uint64        `json:"timeout_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
+
+	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
@@ -47,6 +54,8 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		TimeoutCount:  c.timeoutCount,
 		Clients:       clients,
 		Paused:        c.IsPaused(),
+
+		E2eProcessingLatency: c.e2eProcessingLatencyStream.PercentileResult(),
 	}
 }
 

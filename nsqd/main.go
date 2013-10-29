@@ -53,6 +53,10 @@ var (
 	statsdMemStats = flag.Bool("statsd-mem-stats", true, "toggle sending memory and GC stats to statsd")
 	statsdPrefix   = flag.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement)")
 
+	// End to end percentile flags
+	e2eProcessingLatencyPercentiles = util.FloatArray{}
+	e2eProcessingLatencyWindowTime  = flag.Duration("e2e-processing-latency-window-time", 10*time.Minute, "calculate end to end latency quantiles for this duration of time (ie: 60s would only show quantile calculations from the past 60 seconds)")
+
 	// TLS config
 	tlsCert = flag.String("tls-cert", "", "path to certificate file")
 	tlsKey  = flag.String("tls-key", "", "path to private key file")
@@ -65,6 +69,7 @@ var (
 
 func init() {
 	flag.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
+	flag.Var(&e2eProcessingLatencyPercentiles, "e2e-processing-latency-percentile", "message processing time percentiles to keep track of (can be specified multiple times or comma separated, default none)")
 }
 
 func main() {
@@ -138,6 +143,8 @@ func main() {
 	options.deflateEnabled = *deflateEnabled
 	options.maxDeflateLevel = *maxDeflateLevel
 	options.snappyEnabled = *snappyEnabled
+	options.e2eProcessingLatencyWindowTime = *e2eProcessingLatencyWindowTime
+	options.e2eProcessingLatencyPercentiles = e2eProcessingLatencyPercentiles
 
 	if *statsdAddress != "" {
 		// flagToDuration will fatally error if it is invalid

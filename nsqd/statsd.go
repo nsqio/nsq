@@ -62,6 +62,14 @@ func (n *NSQd) statsdLoop() {
 				stat = fmt.Sprintf("topic.%s.backend_depth", topic.TopicName)
 				statsd.Gauge(stat, topic.BackendDepth)
 
+				for _, item := range topic.E2eProcessingLatency.Percentiles {
+					stat = fmt.Sprintf("topic.%s.e2e_processing_latency_%.0f", topic.TopicName, item["quantile"]*100.0)
+					// We can cast the value to int64 since a value of 1 is the
+					// minimum resolution we will have, so there is no loss of
+					// accuracy
+					statsd.Gauge(stat, int64(item["value"]))
+				}
+
 				for _, channel := range topic.Channels {
 					// try to find the channel in the last collection
 					lastChannel := ChannelStats{}
@@ -97,6 +105,11 @@ func (n *NSQd) statsdLoop() {
 
 					stat = fmt.Sprintf("topic.%s.channel.%s.clients", topic.TopicName, channel.ChannelName)
 					statsd.Gauge(stat, int64(len(channel.Clients)))
+
+					for _, item := range channel.E2eProcessingLatency.Percentiles {
+						stat = fmt.Sprintf("topic.%s.channel.%s.e2e_processing_latency_%.0f", topic.TopicName, channel.ChannelName, item["quantile"]*100.0)
+						statsd.Gauge(stat, int64(item["value"]))
+					}
 				}
 			}
 			lastStats = stats

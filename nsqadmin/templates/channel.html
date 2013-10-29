@@ -1,5 +1,6 @@
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
+{{$firstHost := index .ChannelStats.HostStats 0}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
@@ -65,10 +66,9 @@
         <tr>
             <th>&nbsp;</th>
             <th colspan="4" class='text-center'>Message Queues</th>
-            {{if $g.Enabled}}
-            <th colspan="4" class='text-center'>Statistics</th>
-            {{else}}
-            <th colspan="5" class='text-center'>Statistics</th>
+            <th colspan="{{if $g.Enabled}}5{{else}}4{{end}}" class='text-center'>Statistics</th>
+            {{if $firstHost.E2eProcessingLatency.Percentiles}}
+              <th colspan="{{len $firstHost.E2eProcessingLatency.Percentiles}}">E2E Processing Latency</th>
             {{end}}
         </tr>
         <tr>
@@ -82,6 +82,9 @@
             <th>Messages</th>
             {{if $g.Enabled}}<th>Rate</th>{{end}}
             <th>Connections</th>
+            {{range $e2e := $firstHost.E2eProcessingLatency.Percentiles}}
+              <th>{{$e2e.quantile | floatToPercent}}<sup>{{$e2e.quantile | percSuffix}}</sup></th>
+            {{end}}
         </tr>
     </thead>
     <tbody>
@@ -98,9 +101,16 @@
             <td>{{$c.MessageCount | commafy}}</td>
             {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $c}}"></td> {{end}}
             <td>{{$c.ClientCount}}</td>
+            {{if $c.E2eProcessingLatency.Percentiles}}
+              {{range $e2e := $c.E2eProcessingLatency.Percentiles}}
+                <td>
+                  <span title="{{$e2e.quantile | floatToPercent}}: min = {{$e2e.min | nanotohuman}}, max = {{$e2e.max | nanotohuman}}">{{$e2e.average | nanotohuman}}</span>
+                </td>
+              {{end}}
+            {{end}}
         </tr>
         {{if $g.Enabled}}
-        <tr>
+        <tr class="graph-row">
             <td></td>
             <td><a href="{{$g.LargeGraph $c "depth"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "depth"}}"></a></td>
             <td></td>
@@ -111,6 +121,11 @@
             <td><a href="{{$g.LargeGraph $c "message_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "message_count"}}"></a></td>
             <td></td>
             <td><a href="{{$g.LargeGraph $c "clients"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "clients"}}"></a></td>
+            {{if $c.E2eProcessingLatency.Percentiles}}
+                <td colspan="{{len $c.E2eProcessingLatency.Percentiles}}">
+                    <a href="{{$g.LargeGraph $c.E2eProcessingLatency "e2e_processing_latency"}}"><img width="120" height="20"  src="{{$g.Sparkline $c.E2eProcessingLatency "e2e_processing_latency"}}"></a>
+                </td>
+            {{end}}
         </tr>
         {{end}}
 
@@ -127,9 +142,16 @@
             <td>{{$c.MessageCount | commafy}}</td>
             {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $c}}"></td> {{end}}
             <td>{{$c.ClientCount}}</td>
+            {{if $c.E2eProcessingLatency.Percentiles}}
+              {{range $e2e := $c.E2eProcessingLatency.Percentiles}}
+                <td>
+                  <span title="{{$e2e.quantile | floatToPercent}}: min = {{$e2e.min | nanotohuman}}, max = {{$e2e.max | nanotohuman}}">{{$e2e.average | nanotohuman}}</span>
+                </td>
+              {{end}}
+            {{end}}
         </tr>
         {{if $g.Enabled}}
-        <tr class="info">
+        <tr class="info graph-row">
             <td></td>
             <td><a href="{{$g.LargeGraph $c "depth"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "depth"}}"></a></td>
             <td></td>
@@ -140,6 +162,11 @@
             <td><a href="{{$g.LargeGraph $c "message_count"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "message_count"}}"></a></td>
             <td></td>
             <td><a href="{{$g.LargeGraph $c "clients"}}"><img width="120" height="20"  src="{{$g.Sparkline $c "clients"}}"></a></td>
+            {{if $c.E2eProcessingLatency.Percentiles}}
+                <td colspan="{{len $c.E2eProcessingLatency.Percentiles}}">
+                    <a href="{{$g.LargeGraph $c.E2eProcessingLatency "e2e_processing_latency"}}"><img width="120" height="20"  src="{{$g.Sparkline $c.E2eProcessingLatency "e2e_processing_latency"}}"></a>
+                </td>
+            {{end}}
         </tr>
         {{end}}
     </tbody>

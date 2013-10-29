@@ -475,11 +475,12 @@ func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		for _, t := range stats {
-			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d\n",
+			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
 				t.TopicName,
 				t.Depth,
 				t.BackendDepth,
-				t.MessageCount))
+				t.MessageCount,
+				t.E2eProcessingLatency))
 			for _, c := range t.Channels {
 				var pausedPrefix string
 				if c.Paused {
@@ -488,7 +489,7 @@ func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 					pausedPrefix = "    "
 				}
 				io.WriteString(w,
-					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d\n",
+					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
 						pausedPrefix,
 						c.ChannelName,
 						c.Depth,
@@ -497,7 +498,8 @@ func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 						c.DeferredCount,
 						c.RequeueCount,
 						c.TimeoutCount,
-						c.MessageCount))
+						c.MessageCount,
+						c.E2eProcessingLatency))
 				for _, client := range c.Clients {
 					connectTime := time.Unix(client.ConnectTime, 0)
 					// truncate to the second

@@ -24,6 +24,9 @@ func loadTemplates() {
 	var err error
 	t := template.New("nsqadmin").Funcs(template.FuncMap{
 		"commafy":                 util.Commafy,
+		"nanotohuman":             util.NanoSecondToHuman,
+		"floatToPercent":          util.FloatToPercent,
+		"percSuffix":              util.PercSuffix,
 		"getNodeConsistencyClass": getNodeConsistencyClass,
 	})
 	templates, err = t.ParseGlob(fmt.Sprintf("%s/*.html", *templateDir))
@@ -169,6 +172,8 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		globalTopicStats.Add(t)
 	}
 
+	hasE2eLatency := len(globalTopicStats.E2eProcessingLatency.Percentiles) > 0
+
 	p := struct {
 		Title            string
 		GraphOptions     *GraphOptions
@@ -178,6 +183,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		TopicStats       []*lookupd.TopicStats
 		GlobalTopicStats *lookupd.TopicStats
 		ChannelStats     map[string]*lookupd.ChannelStats
+		HasE2eLatency    bool
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topicName),
 		GraphOptions:     NewGraphOptions(w, req, reqParams),
@@ -187,6 +193,7 @@ func topicHandler(w http.ResponseWriter, req *http.Request) {
 		TopicStats:       topicStats,
 		GlobalTopicStats: globalTopicStats,
 		ChannelStats:     channelStats,
+		HasE2eLatency:    hasE2eLatency,
 	}
 	err = templates.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
@@ -207,6 +214,8 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, 
 	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 	channelStats := allChannelStats[channelName]
 
+	hasE2eLatency := len(channelStats.E2eProcessingLatency.Percentiles) > 0
+
 	p := struct {
 		Title          string
 		GraphOptions   *GraphOptions
@@ -215,6 +224,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, 
 		Channel        string
 		TopicProducers []string
 		ChannelStats   *lookupd.ChannelStats
+		HasE2eLatency  bool
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
 		GraphOptions:   NewGraphOptions(w, req, reqParams),
@@ -223,6 +233,7 @@ func channelHandler(w http.ResponseWriter, req *http.Request, topicName string, 
 		Channel:        channelName,
 		TopicProducers: producers,
 		ChannelStats:   channelStats,
+		HasE2eLatency:  hasE2eLatency,
 	}
 
 	err = templates.ExecuteTemplate(w, "channel.html", p)
@@ -686,8 +697,8 @@ func nodesHandler(w http.ResponseWriter, req *http.Request) {
 
 type counterTarget struct{}
 
-func (c counterTarget) Target(key string) (string, string) {
-	return fmt.Sprintf("sumSeries(%%stopic.*.channel.*.%s)", key), "green"
+func (c counterTarget) Target(key string) ([]string, string) {
+	return []string{fmt.Sprintf("sumSeries(%%stopic.*.channel.*.%s)", key)}, "green"
 }
 
 func (c counterTarget) Host() string {
