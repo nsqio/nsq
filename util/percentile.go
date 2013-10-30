@@ -138,6 +138,9 @@ func (e *E2eProcessingLatencyAggregate) Target(key string) ([]string, string) {
 		} else {
 			target = fmt.Sprintf(`%%stopic.%s.%s_%.0f`, e.Topic, key, percentile["quantile"]*100.0)
 		}
+		if e.Addr == "*" {
+			target = fmt.Sprintf(`averageSeries(%s)`, target)
+		}
 		target = fmt.Sprintf(`scale(%s,0.000001)`, target)
 		targets = append(targets, target)
 	}
