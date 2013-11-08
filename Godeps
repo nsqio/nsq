@@ -1,14 +1,17 @@
 {
 	"ImportPath": "github.com/bitly/nsq",
-	"GoVersion": "go version go1.1.2 darwin/amd64",
+	"GoVersion": "go1.1.2",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
 		{
 			"ImportPath": "code.google.com/p/snappy-go/snappy",
-			"Comment": "",
-			"Rev": "12e4b4183793"
+			"Rev": "12e4b4183793ac4b061921e7980845e750679fd0"
+		},
+		{
+			"ImportPath": "github.com/bitly/go-hostpool",
+			"Rev": "58b95b10d6ca26723a7f46017b348653b825a8d6"
 		},
 		{
 			"ImportPath": "github.com/bitly/go-nsq",
@@ -16,39 +19,30 @@
 			"Rev": "97ea060927af3af0ad2c25debf94014a22e891ca"
 		},
 		{
-			"ImportPath": "github.com/bitly/go-hostpool",
-			"Comment": "",
-			"Rev": "58b95b10d6ca26723a7f46017b348653b825a8d6"
-		},
-		{
 			"ImportPath": "github.com/bitly/go-simplejson",
 			"Comment": "v0.5.0-alpha",
 			"Rev": "fc395a5db941cf38922b1ccbc083640cd76fe4bc"
 		},
 		{
-			"ImportPath": "github.com/mreiferson/go-snappystream",
-			"Comment": "v0.1.1",
-			"Rev": "97c96e6648e99c2ce4fe7d169aa3f7368204e04d"
-		},
-		{
 			"ImportPath": "github.com/bmizerany/assert",
-			"Comment": "",
 			"Rev": "e17e99893cb6509f428e1728281c2ad60a6b31e3"
 		},
 		{
+			"ImportPath": "github.com/bmizerany/perks/quantile",
+			"Rev": "da72989a59aaaecda7110926d3a6198ee4421c1f"
+		},
+		{
 			"ImportPath": "github.com/kr/pretty",
-			"Comment": "",
 			"Rev": "bc9499caa0f45ee5edb2f0209fbd61fbf3d9018f"
 		},
 		{
 			"ImportPath": "github.com/kr/text",
-			"Comment": "",
 			"Rev": "6807e777504f54ad073ecef66747de158294b639"
 		},
 		{
-			"ImportPath": "github.com/bmizerany/perks",
-			"Comment": "",
-			"Rev": "da72989a59aaaecda7110926d3a6198ee4421c1f"
+			"ImportPath": "github.com/mreiferson/go-snappystream",
+			"Comment": "v0.1.1",
+			"Rev": "97c96e6648e99c2ce4fe7d169aa3f7368204e04d"
 		}
 	]
 }
