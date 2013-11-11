@@ -6,7 +6,7 @@
  * **Docs**: [http://bitly.github.io/nsq][docs]
  * **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
 
-**NSQ** is a realtime message processing system designed to operate at bitly's scale, handling
+**NSQ** is a realtime distributed messaging platform designed to operate at bitly's scale, handling
 billions of messages per day.
 
 It promotes *distributed* and *decentralized* topologies without single points of failure,
