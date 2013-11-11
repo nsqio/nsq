@@ -2,6 +2,8 @@
 
 # build binary distributions for linux/amd64 and darwin/amd64
 
+export GOPATH=$(godep path):$GOPATH
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p $DIR/dist
 
