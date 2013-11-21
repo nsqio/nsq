@@ -33,9 +33,11 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <td><a href="http://bitly.com"><img src="http://bitly.github.io/nsq/static/img/bitly_logo.png" width="84"/></a></td>
 <td><a href="http://life360.com"><img src="http://bitly.github.io/nsq/static/img/life360_logo.png" width="100"/></a></td>
 <td><a href="http://hailocab.com"><img src="http://bitly.github.io/nsq/static/img/hailo_logo.png" width="62"/></a></td>
+<td><a href="http://simplereach.com"><img src="http://bitly.github.io/nsq/static/img/simplereach_logo.png" width="136"/></a></td>
+
+<td><a href="http://moz.com"><img src="http://bitly.github.io/nsq/static/img/moz_logo.png" width="108"/></a></td>
 <td><a href="http://path.com"><img src="http://bitly.github.io/nsq/static/img/path_logo.png" width="84"/></a></td>
 <td><a href="http://trendrr.com"><img src="http://bitly.github.io/nsq/static/img/trendrr_logo.png" width="97"/></a></td>
-<td><a href="http://simplereach.com"><img src="http://bitly.github.io/nsq/static/img/simplereach_logo.png" width="136"/></a></td>
 <td><a href="http://energyhub.com"><img src="http://bitly.github.io/nsq/static/img/energyhub_logo.png" width="99"/></a></td>
 </tr></table></center>
 
