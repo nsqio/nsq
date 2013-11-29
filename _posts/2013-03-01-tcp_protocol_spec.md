@@ -32,7 +32,7 @@ will send a `_heartbeat_` response and expect a command in return. If the client
 connection that it has not heard from. The `IDENTIFY` command may be used to change/disable this
 behavior.
 
-### Notes
+### <a name="notes">Notes</a>
 
  * Unless stated otherwise, **all** binary sizes/integers on the wire are **network byte order**
   (ie. *big* endian)
