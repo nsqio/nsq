@@ -440,11 +440,14 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 
 	n.Lock()
 
+	// need to try again to prevent race condition
+	// between outer RUnlock and Lock (above)
 	t, ok = n.topicMap[topicName]
 	if ok {
 		n.Unlock()
 		return t
 	}
+
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.name)
 	}
