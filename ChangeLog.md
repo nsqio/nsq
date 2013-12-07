@@ -2,6 +2,50 @@
 
 ## Binaries
 
+### 0.2.24 - 2013-12-07
+
+**Upgrading from 0.2.23**: No backwards incompatible changes. However, as you'll see below, quite a
+few command line flags to the utility apps (`nsq_to_http`, `nsq_to_file`, `nsq_to_http`) were
+deprecated and will be removed in the next release. Please use this release to transition over to
+the new ones.
+
+NOTE: we are now publishing additional binaries built against go1.2
+
+The most prominent addition is the tracking of end-to-end message processing percentiles. This
+measures the amount of time it's taking from `PUB` to `FIN` per topic/channel. The percentiles are
+configurable and, because there is *some* overhead in collecting this data, it can be turned off
+entirely. Please see [the section in the docs](http://bitly.github.io/nsq/components/nsqd.html) for
+implementation details.
+
+Additionally, the utility apps received comprehensive support for all configurable reader options
+(including compression, which was previously missing). This necessitated a bit of command line flag
+cleanup, as follows:
+
+#### nsq_to_file
+
+ * deprecated `--gzip-compression` in favor of `--gzip-level`
+ * deprecated `--verbose` in favor of `--reader-opt=verbose`
+
+#### nsq_to_http
+
+ * deprecated `--throttle-fraction` in favor of `--sample`
+ * deprecated `--http-timeout-ms` in favor of `--http-timeout` (which is a
+   *duration* flag)
+ * deprecated `--verbose` in favor of `--reader-opt=verbose`
+ * deprecated `--max-backoff-duration` in favor of
+   `--reader-opt=max_backoff_duration=X`
+
+#### nsq_to_nsq
+
+ * deprecated `--verbose` in favor of `--reader-opt=verbose`
+ * deprecated `--max-backoff-duration` in favor of
+   `--reader-opt=max_backoff_duration=X`
+
+New Features / Enhancements:
+
+ * #280 - add end-to-end message processing latency metrics
+ * #267 - comprehensive reader command line flags for utilities
+
 ### 0.2.23 - 2013-10-21
 
 **Upgrading from 0.2.22**: No backwards incompatible changes.

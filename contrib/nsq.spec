@@ -1,5 +1,5 @@
 %define name nsq
-%define version 0.2.23
+%define version 0.2.24
 %define release 1
 %define path usr/local
 %define group Database/Applications
