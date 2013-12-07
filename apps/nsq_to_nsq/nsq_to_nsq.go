@@ -4,7 +4,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -26,24 +26,28 @@ const (
 )
 
 var (
-	showVersion        = flag.Bool("version", false, "print version string")
-	topic              = flag.String("topic", "", "nsq topic")
-	channel            = flag.String("channel", "nsq_to_http", "nsq channel")
-	destTopic          = flag.String("destination-topic", "", "destination nsq topic")
-	maxInFlight        = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
-	verbose            = flag.Bool("verbose", false, "enable verbose logging")
-	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
-	mode               = flag.String("mode", "", "the upstream request mode options: round-robin (default), hostpool")
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "the maximum backoff duration")
-	nsqdTCPAddrs       = util.StringArray{}
-	lookupdHTTPAddrs   = util.StringArray{}
-	destNsqdTCPAddrs   = util.StringArray{}
+	showVersion = flag.Bool("version", false, "print version string")
 
-	tlsEnabled            = flag.Bool("tls", false, "enable TLS")
-	tlsInsecureSkipVerify = flag.Bool("tls-insecure-skip-verify", false, "disable TLS server certificate validation")
+	topic       = flag.String("topic", "", "nsq topic")
+	channel     = flag.String("channel", "nsq_to_http", "nsq channel")
+	destTopic   = flag.String("destination-topic", "", "destination nsq topic")
+	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+
+	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
+	mode        = flag.String("mode", "round-robin", "the upstream request mode options: round-robin (default), hostpool")
+
+	readerOpts       = util.StringArray{}
+	nsqdTCPAddrs     = util.StringArray{}
+	lookupdHTTPAddrs = util.StringArray{}
+	destNsqdTCPAddrs = util.StringArray{}
+
+	// TODO: remove, deprecated
+	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --reader-opt=max_backoff_duration=X, the maximum backoff duration")
+	verbose            = flag.Bool("verbose", false, "(depgrecated) use --reader-opt=verbose")
 )
 
 func init() {
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -165,6 +169,15 @@ func percentile(perc float64, arr []time.Duration, length int) time.Duration {
 	return arr[indexOfPerc]
 }
 
+func hasArg(s string) bool {
+	for _, arg := range os.Args {
+		if strings.Contains(arg, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	var selectedMode int
 
@@ -195,10 +208,6 @@ func main() {
 		log.Fatalf("--channel is invalid")
 	}
 
-	if *maxInFlight <= 0 {
-		log.Fatalf("--max-in-flight must be > 0")
-	}
-
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
 	}
@@ -224,15 +233,22 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+	err = util.ParseReaderOpts(r, readerOpts)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	r.SetMaxInFlight(*maxInFlight)
-	r.SetMaxBackoffDuration(*maxBackoffDuration)
-	r.VerboseLogging = *verbose
 
-	if *tlsEnabled {
-		r.TLSv1 = true
-		r.TLSConfig = &tls.Config{
-			InsecureSkipVerify: *tlsInsecureSkipVerify,
-		}
+	// TODO: remove, deprecated
+	if hasArg("verbose") {
+		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
+		r.Configure("verbose", true)
+	}
+
+	// TODO: remove, deprecated
+	if hasArg("max-backoff-duration") {
+		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
+		r.Configure("max_backoff_duration", *maxBackoffDuration)
 	}
 
 	writers := make(map[string]*nsq.Writer)

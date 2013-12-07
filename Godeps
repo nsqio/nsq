@@ -15,8 +15,8 @@
 		},
 		{
 			"ImportPath": "github.com/bitly/go-nsq",
-			"Comment": "v0.3.3",
-			"Rev": "97ea060927af3af0ad2c25debf94014a22e891ca"
+			"Comment": "v0.3.4",
+			"Rev": "66a09524da8312e7a7b0402c28e2730f4a97042d"
 		},
 		{
 			"ImportPath": "github.com/bitly/go-simplejson",
