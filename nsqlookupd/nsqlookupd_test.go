@@ -39,7 +39,6 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	ci := make(map[string]interface{})
 	ci["tcp_port"] = tcpPort
 	ci["http_port"] = httpPort
-	ci["address"] = address //TODO: remove for 1.0
 	ci["broadcast_address"] = address
 	ci["hostname"] = address
 	ci["version"] = version
@@ -86,7 +85,6 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(producers), 1)
 	producer := producers[0]
 
-	assert.Equal(t, producer.peerInfo.Address, "ip.address") //TODO: remove for 1.0
 	assert.Equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
 	assert.Equal(t, producer.peerInfo.Hostname, "ip.address")
 	assert.Equal(t, producer.peerInfo.TcpPort, tcpPort)
@@ -114,19 +112,19 @@ func TestBasicLookupd(t *testing.T) {
 	for i := range returnedProducers {
 		producer := data.Get("producers").GetIndex(i)
 		log.Printf("producer %v", producer)
-		assert.Equal(t, err, nil)
+
 		port, err := producer.Get("tcp_port").Int()
 		assert.Equal(t, err, nil)
 		assert.Equal(t, port, tcpPort)
+
 		port, err = producer.Get("http_port").Int()
 		assert.Equal(t, err, nil)
 		assert.Equal(t, port, httpPort)
-		address, err := producer.Get("address").String() //TODO: remove for 1.0
-		broadcastaddress, err := producer.Get("broadcast_address").String()
 
+		broadcastaddress, err := producer.Get("broadcast_address").String()
 		assert.Equal(t, err, nil)
-		assert.Equal(t, address, "ip.address")
 		assert.Equal(t, broadcastaddress, "ip.address")
+
 		ver, err := producer.Get("version").String()
 		assert.Equal(t, err, nil)
 		assert.Equal(t, ver, "fake-version")

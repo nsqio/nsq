@@ -243,7 +243,6 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 // note: we can't embed the *Producer here because embeded objects are ignored for json marshalling
 type node struct {
 	RemoteAddress    string   `json:"remote_address"`
-	Address          string   `json:"address"` //TODO: drop for 1.0
 	Hostname         string   `json:"hostname"`
 	BroadcastAddress string   `json:"broadcast_address"`
 	TcpPort          int      `json:"tcp_port"`
@@ -274,7 +273,6 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 
 		nodes[i] = &node{
 			RemoteAddress:    p.peerInfo.RemoteAddress,
-			Address:          p.peerInfo.Address, //TODO: drop for 1.0
 			Hostname:         p.peerInfo.Hostname,
 			BroadcastAddress: p.peerInfo.BroadcastAddress,
 			TcpPort:          p.peerInfo.TcpPort,
@@ -309,7 +307,6 @@ func (s *httpServer) debugHandler(w http.ResponseWriter, req *http.Request) {
 		for _, p := range producers {
 			m := make(map[string]interface{})
 			m["id"] = p.peerInfo.id
-			m["address"] = p.peerInfo.Address //TODO: remove for 1.0
 			m["hostname"] = p.peerInfo.Hostname
 			m["broadcast_address"] = p.peerInfo.BroadcastAddress
 			m["tcp_port"] = p.peerInfo.TcpPort

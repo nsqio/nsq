@@ -231,7 +231,6 @@ func (c *ClientV2) StartClose() {
 	c.SetReadyCount(0)
 	// mark this client as closing
 	atomic.StoreInt32(&c.State, nsq.StateClosing)
-	// TODO: start a timer to actually close the channel (in case the client doesn't do it first)
 }
 
 func (c *ClientV2) Pause() {

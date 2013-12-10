@@ -46,7 +46,6 @@ func TestNsqdToLookupd(t *testing.T) {
 	assert.Equal(t, len(producers), 1)
 
 	producer := topicData.GetIndex(0)
-	assert.Equal(t, producer.Get("address").MustString(), hostname)
 	assert.Equal(t, producer.Get("hostname").MustString(), hostname)
 	assert.Equal(t, producer.Get("broadcast_address").MustString(), hostname)
 	assert.Equal(t, producer.Get("tcp_port").MustInt(), 4150)
@@ -57,7 +56,6 @@ func TestNsqdToLookupd(t *testing.T) {
 	assert.Equal(t, len(producers), 1)
 
 	producer = topicData.GetIndex(0)
-	assert.Equal(t, producer.Get("address").MustString(), hostname)
 	assert.Equal(t, producer.Get("hostname").MustString(), hostname)
 	assert.Equal(t, producer.Get("broadcast_address").MustString(), hostname)
 	assert.Equal(t, producer.Get("tcp_port").MustInt(), 4150)
@@ -72,7 +70,6 @@ func TestNsqdToLookupd(t *testing.T) {
 	assert.Equal(t, len(producers), 1)
 
 	producer = data.Get("producers").GetIndex(0)
-	assert.Equal(t, producer.Get("address").MustString(), hostname)
 	assert.Equal(t, producer.Get("hostname").MustString(), hostname)
 	assert.Equal(t, producer.Get("broadcast_address").MustString(), hostname)
 	assert.Equal(t, producer.Get("tcp_port").MustInt(), 4150)

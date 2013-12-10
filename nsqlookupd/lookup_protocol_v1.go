@@ -209,10 +209,6 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	peerInfo.RemoteAddress = client.RemoteAddr().String()
-	//TODO: remove this check for 1.0
-	if peerInfo.BroadcastAddress == "" {
-		peerInfo.BroadcastAddress = peerInfo.Address
-	}
 
 	// require all fields
 	if peerInfo.BroadcastAddress == "" || peerInfo.TcpPort == 0 || peerInfo.HttpPort == 0 || peerInfo.Version == "" {
@@ -238,7 +234,6 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
-	data["address"] = hostname //TODO: remove for 1.0
 	data["broadcast_address"] = p.context.nsqlookupd.broadcastAddress
 	data["hostname"] = hostname
 
