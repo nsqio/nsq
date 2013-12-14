@@ -16,9 +16,10 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 
-	topic       = flag.String("topic", "", "nsq topic")
-	channel     = flag.String("channel", "", "nsq channel")
-	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+	topic         = flag.String("topic", "", "nsq topic")
+	channel       = flag.String("channel", "", "nsq channel")
+	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 
 	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -31,9 +32,13 @@ func init() {
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
-type TailHandler struct{}
+type TailHandler struct {
+	totalMessages int
+	messagesShown int
+}
 
 func (th *TailHandler) HandleMessage(m *nsq.Message) error {
+	th.messagesShown++
 	_, err := os.Stdout.Write(m.Body)
 	if err != nil {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err.Error())
@@ -41,6 +46,9 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 	_, err = os.Stdout.WriteString("\n")
 	if err != nil {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err.Error())
+	}
+	if th.messagesShown >= th.totalMessages {
+		os.Exit(0)
 	}
 	return nil
 }
@@ -80,8 +88,13 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+
+	// Don't ask for more messages than we want
+	if *totalMessages < *maxInFlight {
+		*maxInFlight = *totalMessages
+	}
 	r.SetMaxInFlight(*maxInFlight)
-	r.AddHandler(&TailHandler{})
+	r.AddHandler(&TailHandler{totalMessages: *totalMessages})
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQ(addrString)
