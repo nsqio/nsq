@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"os"
 	"runtime"
@@ -898,6 +899,62 @@ func TestTLSDeflate(t *testing.T) {
 	log.Printf("frameType: %d, data: %s", frameType, data)
 	assert.Equal(t, frameType, nsq.FrameTypeResponse)
 	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestSampling(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	num := 3000
+
+	*verbose = true
+	options := NewNsqdOptions()
+	options.maxRdyCount = int64(num)
+	tcpAddr, _, nsqd := mustStartNSQd(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQd(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"sample_rate": int32(42)})
+	r := struct {
+		SampleRate int32 `json:"sample_rate"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.SampleRate, int32(42))
+
+	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	for i := 0; i < num; i++ {
+		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
+		topic.PutMessage(msg)
+	}
+	channel := topic.GetChannel("ch")
+
+	// let the topic drain into the channel
+	time.Sleep(50 * time.Millisecond)
+
+	sub(t, conn, topicName, "ch")
+	err = nsq.Ready(num).Write(conn)
+	assert.Equal(t, err, nil)
+
+	doneChan := make(chan int)
+	go func() {
+		for {
+			if channel.Depth() == 0 {
+				close(doneChan)
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	<-doneChan
+	// within 3%
+	assert.Equal(t, len(channel.inFlightMessages) <= int(float64(num)*0.45), true)
+	assert.Equal(t, len(channel.inFlightMessages) >= int(float64(num)*0.39), true)
 }
 
 func TestTLSSnappy(t *testing.T) {

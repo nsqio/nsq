@@ -28,6 +28,7 @@ type IdentifyDataV2 struct {
 	Deflate             bool   `json:"deflate"`
 	DeflateLevel        int    `json:"deflate_level"`
 	Snappy              bool   `json:"snappy"`
+	SampleRate          int32  `json:"sample_rate"`
 }
 
 type ClientV2 struct {
@@ -69,6 +70,9 @@ type ClientV2 struct {
 	LongIdentifier  string
 	SubEventChan    chan *Channel
 
+	SampleRate           int32
+	SampleRateUpdateChan chan int32
+
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
 	lenSlice []byte
@@ -108,6 +112,8 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		State:           nsq.StateInit,
 		SubEventChan:    make(chan *Channel, 1),
 
+		SampleRateUpdateChan: make(chan int32, 1),
+
 		// heartbeats are client configurable but default to 30s
 		Heartbeat:           time.NewTicker(context.nsqd.options.clientTimeout / 2),
 		HeartbeatInterval:   context.nsqd.options.clientTimeout / 2,
@@ -132,7 +138,11 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	if err != nil {
 		return err
 	}
-	return c.SetOutputBufferTimeout(data.OutputBufferTimeout)
+	err = c.SetOutputBufferTimeout(data.OutputBufferTimeout)
+	if err != nil {
+		return err
+	}
+	return c.SetSampleRate(data.SampleRate)
 }
 
 func (c *ClientV2) Stats() ClientStats {
@@ -147,6 +157,7 @@ func (c *ClientV2) Stats() ClientStats {
 		FinishCount:   atomic.LoadUint64(&c.FinishCount),
 		RequeueCount:  atomic.LoadUint64(&c.RequeueCount),
 		ConnectTime:   c.ConnectTime.Unix(),
+		SampleRate:    c.SampleRate,
 	}
 }
 
@@ -307,6 +318,22 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	if desiredTimeout != 0 {
 		select {
 		case c.OutputBufferTimeoutUpdateChan <- timeout:
+		default:
+		}
+	}
+
+	return nil
+}
+
+func (c *ClientV2) SetSampleRate(sampleRate int32) error {
+	if sampleRate < 0 || sampleRate > 99 {
+		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
+	}
+
+	if sampleRate != 0 {
+		c.SampleRate = sampleRate
+		select {
+		case c.SampleRateUpdateChan <- sampleRate:
 		default:
 		}
 	}

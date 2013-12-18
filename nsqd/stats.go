@@ -70,6 +70,7 @@ type ClientStats struct {
 	FinishCount   uint64 `json:"finish_count"`
 	RequeueCount  uint64 `json:"requeue_count"`
 	ConnectTime   int64  `json:"connect_ts"`
+	SampleRate    int32  `json:"sample_rate"`
 }
 
 type Topics []*Topic
