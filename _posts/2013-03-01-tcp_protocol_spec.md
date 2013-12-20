@@ -137,7 +137,7 @@ Success Response:
 
     OK
 
-NOTE: if 'feature_negotiation' was sent by the client (and the server supports it) the
+NOTE: if `feature_negotiation` was sent by the client (and the server supports it) the
 response will be a JSON payload as described above.
 
 Error Responses:
