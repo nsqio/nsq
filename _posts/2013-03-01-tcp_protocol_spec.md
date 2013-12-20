@@ -1,4 +1,4 @@
---- 
+---
 title: TCP Protocol Spec
 layout: post
 category: clients
@@ -51,81 +51,87 @@ Update client metadata on the server and negotiate features
 NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
  * **`short_id`** an identifier used as a short-form descriptor (ie. short hostname)
- 
+
  * **`long_id`** an identifier used as a long-form descriptor (ie. fully-qualified hostname)
- 
+
  * **`feature_negotiation`** (nsqd 0.2.19+) bool used to indicate that the client supports
-                             feature negotiation. If the server is capable, it will send back a 
+                             feature negotiation. If the server is capable, it will send back a
                              JSON payload of supported features and metadata.
- 
+
  * **`heartbeat_interval`** (nsqd 0.2.19+) milliseconds between heartbeats.
- 
+
      Valid range: `1000 <= heartbeat_interval <= configured_max` (`-1` disables heartbeats)
-     
+
      `--max-heartbeat-interval` (nsqd flag) controls the max
-     
+
      Defaults to `--client-timeout / 2`
- 
+
  * **`output_buffer_size`** (nsqd 0.2.21+) the size in bytes of the buffer nsqd will use when
                             writing to this client.
- 
+
      Valid range: `64 <= output_buffer_size <= configured_max` (`-1` disables output buffering)
-     
+
      `--max-output-buffer-size` (nsqd flag) controls the max
-     
+
      Defaults to `16kb`
- 
+
  * **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
                                  buffered will be flushed to this client.
- 
+
      Valid range: `1ms <= output_buffer_timeout <= configured_max` (`-1` disabled timeouts)
-     
+
      `--max-output-buffer-timeout` (nsqd flag) controls the max
-     
+
      Defaults to `250ms`
-     
+
      **Warning**: configuring clients with an extremely low (`< 25ms`) `output_buffer_timeout`
-     has a significant effect on `nsqd` CPU usage (particularly with `> 50` clients connected).  
-     
-     This is due to the current implementation relying on Go timers which are maintained by the Go 
+     has a significant effect on `nsqd` CPU usage (particularly with `> 50` clients connected).
+
+     This is due to the current implementation relying on Go timers which are maintained by the Go
      runtime in a priority queue.  See the commit message in [pull request #236][pull_req_236] for
      more details.
- 
+
  * **`tls_v1`** (nsqd 0.2.22+) enable TLS for this connection.
- 
+
      `--tls-cert` and `--tls-key` (nsqd flags) enable TLS and configure the server certificate
-     
+
      If the server supports TLS it will reply `"tls_v1": true`
-     
+
      The client should begin the TLS handshake immediately after reading the `IDENTIFY` response
-     
+
      The server will respond `OK` after completing the TLS handshake
- 
+
  * **`snappy`** (nsqd 0.2.23+) enable snappy compression for this connection.
- 
+
     `--snappy` (nsqd flag) enables support for this server side
-    
-    The client should expect an *additional*, snappy compressed `OK` response immediately 
+
+    The client should expect an *additional*, snappy compressed `OK` response immediately
     after the `IDENTIFY` response.
-    
+
     A client cannot enable both `snappy` and `deflate`.
- 
+
  * **`deflate`** (nsqd 0.2.23+) enable deflate compression for this connection.
- 
+
     `--deflate` (nsqd flag) enables support for this server side
-    
-    The client should expect an *additional*, deflate compressed `OK` response immediately 
+
+    The client should expect an *additional*, deflate compressed `OK` response immediately
     after the `IDENTIFY` response.
-    
+
     A client cannot enable both `snappy` and `deflate`.
- 
+
  * **`deflate_level`** (nsqd 0.2.23+) configure the deflate compression level for this connection.
- 
+
     `--max-deflate-level` (nsqd flag) configures the maximum allowed value
-    
+
     Valid range: `1 <= deflate_level <= configured_max`
-    
+
     Higher values mean better compression but more CPU usage for nsqd.
+
+ * **`sample_rate`** (nsqd 0.2.25+) sample messages delivered over this connection.
+
+    Valid range: `0 <= sample_rate <= 99` (`0` disables sampling)
+    
+    Defaults to `0`
 
 Success Response:
 
@@ -144,7 +150,7 @@ Error Responses:
 Subscribe to a specified topic/channel
 
     SUB <topic_name> <channel_name>\n
-    
+
     <topic_name> - a valid string
     <channel_name> - a valid string (optionally having #ephemeral suffix)
 
@@ -164,7 +170,7 @@ Publish a message to a specified **topic**:
 
     PUB <topic_name>\n
     [ 4-byte size in bytes ][ N-byte binary data ]
-    
+
     <topic_name> - a valid string
 
 Success Response:
@@ -189,7 +195,7 @@ NOTE: available in `0.2.16+`
     [ 4-byte num messages ]
     [ 4-byte message #1 size ][ N-byte binary data ]
           ... (repeated <num_messages> times)
-    
+
     <topic_name> - a valid string
 
 Success Response:
@@ -212,7 +218,7 @@ NOTE: as of `0.2.20+` nsqd has `--max-rdy-count` to configure the maximum value 
 clients to send via this command.
 
     RDY <count>\n
-    
+
     <count> - a string representation of integer N where 0 < N <= configured_max
 
 NOTE: there is no success response
@@ -226,7 +232,7 @@ Error Responses:
 Finish a message (indicate *successful* processing)
 
     FIN <message_id>\n
-    
+
     <message_id> - message id as 16-byte hex string
 
 NOTE: there is no success response
@@ -241,7 +247,7 @@ Error Responses:
 Re-queue a message (indicate *failure* to process)
 
     REQ <message_id> <timeout>\n
-    
+
     <message_id> - message id as 16-byte hex string
     <timeout> - a string representation of integer N where N <= configured max timeout
         0 is a special case that will not defer re-queueing
@@ -260,7 +266,7 @@ Reset the timeout for an in-flight message
 NOTE: available in 0.2.17+
 
     TOUCH <message_id>\n
-    
+
     <message_id> - the hex id of the message
 
 NOTE: there is no success response
@@ -310,7 +316,7 @@ A client should expect one of the following frame identifiers:
     FrameTypeMessage  int32 = 2
 
 And finally, the message format:
-    
+
     [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
     |       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)
     |       8-byte         ||    ||                 16-byte                      || N-byte
