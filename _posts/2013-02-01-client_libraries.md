@@ -34,7 +34,7 @@ permalink: /clients/client_libraries.html
   <tr class="success">
     <td><a href="https://github.com/mreiferson/libnsq">libnsq</a></td>
     <td>C</td>
-    <td>stable (official)</td>
+    <td>stable (<strong>official</strong>)</td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/davegardnerisme/nsqphp">nsqphp</a></td>
