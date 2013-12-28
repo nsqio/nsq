@@ -43,7 +43,7 @@ permalink: /clients/client_libraries.html
   </tr>
   <tr class="info">
     <td><a href="https://github.com/dudleycarr/nsqjs">nsqjs</a></td>
-    <td>JavaScript</td>
+    <td>JavaScript (CoffeeScript)</td>
     <td>beta (<strong>official</strong>)</td>
   </tr>
   <tr class="info">
