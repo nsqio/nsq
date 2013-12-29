@@ -47,7 +47,7 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 	if err != nil {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err.Error())
 	}
-	if th.messagesShown >= th.totalMessages {
+	if th.totalMessages > 0 && th.messagesShown >= th.totalMessages {
 		os.Exit(0)
 	}
 	return nil
@@ -90,7 +90,7 @@ func main() {
 	}
 
 	// Don't ask for more messages than we want
-	if *totalMessages < *maxInFlight {
+	if *totalMessages > 0 && *totalMessages < *maxInFlight {
 		*maxInFlight = *totalMessages
 	}
 	r.SetMaxInFlight(*maxInFlight)
