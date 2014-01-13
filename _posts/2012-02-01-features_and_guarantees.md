@@ -1,4 +1,4 @@
---- 
+---
 title: Features & Guarantees
 layout: post
 category: overview
@@ -36,40 +36,40 @@ Although the system supports a "release valve" (`--mem-queue-size`) after which 
 be transparently kept on disk, it is primarily an *in-memory* messaging platform.
 
 `--mem-queue-size` can be set to 0 to to ensure that all incoming messages are persisted to disk.
-In this case, if a node failed, you are susceptible to a reduced failure surface (i.e. did the 
+In this case, if a node failed, you are susceptible to a reduced failure surface (i.e. did the
 OS or underlying IO subsystem fail).
 
-There is no built in replication.  However, there are a variety of ways this tradeoff is managed 
-such as deployment topology and techniques which actively slave and persist topics to disk in a 
+There is no built in replication.  However, there are a variety of ways this tradeoff is managed
+such as deployment topology and techniques which actively slave and persist topics to disk in a
 fault-tolerant fashion.
- 
+
 #### messages are delivered *at least once*
- 
+
 Closely related to above, this assumes that the given `nsqd` node does not fail.
 
 This means, for a variety of reasons, messages can be delivered *multiple* times (client
 timeouts, disconnections, requeues, etc.).  It is the client's responsibility to perform
 idempotent operations or de-dupe.
- 
+
 #### messages received are *un-ordered*
- 
+
 You **cannot** rely on the order of messages being delivered to consumers.
 
-Similar to message delivery semantics, this is the result of requeues, the combination of 
+Similar to message delivery semantics, this is the result of requeues, the combination of
 in-memory and on disk storage, and the fact that each `nsqd` node shares nothing.
 
-It is relatively straightforward to achieve *loose ordering* (i.e. for a given consumer its 
-messages are ordered but not across the cluster as a whole) by introducing a window of latency in 
-your consumer to accept messages and order them before processing (although, in order to preserve 
+It is relatively straightforward to achieve *loose ordering* (i.e. for a given consumer its
+messages are ordered but not across the cluster as a whole) by introducing a window of latency in
+your consumer to accept messages and order them before processing (although, in order to preserve
 this invariant one must drop messages falling *outside* that window).
- 
+
 #### consumers *eventually* find all topic producers
 
 The discovery service ([nsqlookupd][nsqlookupd]) is designed to be *eventually consistent*.
 `nsqlookupd` nodes do not coordinate to maintain state or answer queries.
 
-Network partitions do not affect *availability* in the sense that both sides of the partition can 
-still answer queries.  Deployment topology has the most significant effect of mitigating these 
+Network partitions do not affect *availability* in the sense that both sides of the partition can
+still answer queries.  Deployment topology has the most significant effect of mitigating these
 types of issues.
 
 [performance]: {{ site.baseurl }}/overview/performance.html
