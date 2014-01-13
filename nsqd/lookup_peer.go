@@ -25,7 +25,6 @@ type PeerInfo struct {
 	TcpPort          int    `json:"tcp_port"`
 	HttpPort         int    `json:"http_port"`
 	Version          string `json:"version"`
-	Address          string `json:"address"` //TODO: remove for 1.0
 	BroadcastAddress string `json:"broadcast_address"`
 }
 

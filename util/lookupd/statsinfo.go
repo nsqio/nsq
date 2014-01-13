@@ -21,7 +21,6 @@ func (pt ProducerTopics) Less(i, j int) bool { return pt[i].Topic < pt[j].Topic 
 
 type Producer struct {
 	RemoteAddresses  []string        `json:"remote_addresses"`
-	Address          string          `json:"address"` //TODO: remove for 1.0
 	Hostname         string          `json:"hostname"`
 	BroadcastAddress string          `json:"broadcast_address"`
 	TcpPort          int             `json:"tcp_port"`

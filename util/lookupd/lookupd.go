@@ -115,12 +115,8 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 				if remoteAddress == "" {
 					remoteAddress = "NA"
 				}
-				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				hostname := producer.Get("hostname").MustString()
 				broadcastAddress := producer.Get("broadcast_address").MustString()
-				if broadcastAddress == "" {
-					broadcastAddress = address
-				}
 				httpPort := producer.Get("http_port").MustInt()
 				tcpPort := producer.Get("tcp_port").MustInt()
 				key := fmt.Sprintf("%s:%d:%d", broadcastAddress, httpPort, tcpPort)
@@ -159,7 +155,6 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					}
 
 					p = &Producer{
-						Address:          address, //TODO: remove for 1.0
 						Hostname:         hostname,
 						BroadcastAddress: broadcastAddress,
 						TcpPort:          tcpPort,
@@ -216,11 +211,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 			producersArray, _ := producers.Array()
 			for i := range producersArray {
 				producer := producers.GetIndex(i)
-				address := producer.Get("address").MustString() //TODO: remove for 1.0
 				broadcastAddress := producer.Get("broadcast_address").MustString()
-				if broadcastAddress == "" {
-					broadcastAddress = address
-				}
 				httpPort := producer.Get("http_port").MustInt()
 				key := fmt.Sprintf("%s:%d", broadcastAddress, httpPort)
 				allSources = util.StringAdd(allSources, key)
