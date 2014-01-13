@@ -62,6 +62,11 @@ permalink: /clients/client_libraries.html
     <td>beta</td>
   </tr>
   <tr class="warning">
+    <td><a href="https://github.com/thieman/nsq-clojure">nsq-clojure</a></td>
+    <td>Clojure</td>
+    <td>alpha</td>
+  </tr>
+  <tr class="warning">
     <td><a href="https://github.com/anvie/nsqie">nsqie</a></td>
     <td>Scala</td>
     <td>alpha</td>
