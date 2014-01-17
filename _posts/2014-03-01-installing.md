@@ -39,6 +39,10 @@ Built with **Go 1.0.3**:
  * [nsq-0.2.21.darwin-amd64.go1.0.3.tar.gz][0.2.21_darwin]
  * [nsq-0.2.21.linux-amd64.go1.0.3.tar.gz][0.2.21_linux]
 
+### OSX
+
+     $ brew install nsq
+
 ### Building From Source
 
 #### Pre-requisites
