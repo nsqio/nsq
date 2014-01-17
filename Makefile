@@ -5,7 +5,7 @@ BINDIR=${PREFIX}/bin
 DATADIR=${PREFIX}/share
 
 NSQD_SRCS = $(wildcard nsqd/*.go nsq/*.go util/*.go util/pqueue/*.go)
-NSQLOOKUPD_SRCS = $(wildcard nsqlookupd/*.go nsq/*.go util/*.go)
+NSQLOOKUPD_SRCS = $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go nsq/*.go util/*.go)
 NSQADMIN_SRCS = $(wildcard nsqadmin/*.go util/*.go)
 NSQ_PUBSUB_SRCS = $(wildcard apps/nsq_pubsub/*.go nsq/*.go util/*.go)
 NSQ_TO_NSQ_SRCS = $(wildcard apps/nsq_to_nsq/*.go nsq/*.go util/*.go)

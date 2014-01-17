@@ -3,7 +3,7 @@ set -e
 
 # build and run nsqlookupd
 echo "building and starting nsqlookupd"
-go build -o nsqlookupd/nsqlookupd ./nsqlookupd
+go build -o nsqlookupd/nsqlookupd ./apps/nsqlookupd/
 nsqlookupd/nsqlookupd >/dev/null 2>&1 &
 LOOKUPD_PID=$!
 

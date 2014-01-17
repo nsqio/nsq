@@ -1,4 +1,4 @@
-package main
+package nsqlookupd
 
 import (
 	"github.com/bitly/nsq/util"

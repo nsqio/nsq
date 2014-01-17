@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/nsqlookupd"
 	"log"
 	"os"
 	"os/signal"
@@ -51,13 +52,14 @@ func main() {
 		}
 	}
 
-	options := NewNSQLookupdOptions()
+	options := nsqlookupd.NewNSQLookupdOptions()
 	util.ResolveOptions(options, flagSet, cfg)
-	nsqlookupd := NewNSQLookupd(options)
+	daemon := nsqlookupd.NewNSQLookupd(options)
 
 	log.Println(util.Version("nsqlookupd"))
 
-	nsqlookupd.Main()
+	daemon.Main()
 	<-exitChan
-	nsqlookupd.Exit()
+	daemon.Exit()
 }
+
