@@ -1,97 +1,86 @@
 package main
 
 import (
-	"flag"
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"github.com/bitly/nsq/util"
 	"log"
 	"net"
+	"net/http"
 	"os"
-	"os/signal"
 	"time"
 )
 
-var (
-	showVersion              = flag.Bool("version", false, "print version string")
-	httpAddress              = flag.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
-	templateDir              = flag.String("template-dir", "", "path to templates directory")
-	graphiteUrl              = flag.String("graphite-url", "", "URL to graphite HTTP address")
-	proxyGraphite            = flag.Bool("proxy-graphite", false, "Proxy HTTP requests to graphite")
-	useStatsdPrefixes        = flag.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
-	statsdPrefix             = flag.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement, must match nsqd)")
-	statsdInterval           = flag.Duration("statsd-interval", 60*time.Second, "time interval nsqd is configured to push to statsd (must match nsqd)")
-	lookupdHTTPAddrs         = util.StringArray{}
-	nsqdHTTPAddrs            = util.StringArray{}
-	notificationHTTPEndpoint = flag.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
-)
-
-var notifications chan *AdminAction
-
-func init() {
-	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
-	flag.Var(&nsqdHTTPAddrs, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
+type NSQAdmin struct {
+	options       *nsqadminOptions
+	httpAddr      *net.TCPAddr
+	httpListener  net.Listener
+	waitGroup     util.WaitGroupWrapper
+	notifications chan *AdminAction
 }
 
-func main() {
-	var waitGroup util.WaitGroupWrapper
-
-	flag.Parse()
-
-	if *showVersion {
-		fmt.Println(util.Version("nsqadmin"))
-		return
-	}
-
-	if *templateDir == "" {
+func NewNSQAdmin(options *nsqadminOptions) *NSQAdmin {
+	if options.TemplateDir == "" {
 		for _, defaultPath := range []string{"templates", "/usr/local/share/nsqadmin/templates"} {
 			if info, err := os.Stat(defaultPath); err == nil && info.IsDir() {
-				*templateDir = defaultPath
+				options.TemplateDir = defaultPath
 				break
 			}
 		}
 	}
 
-	if *templateDir == "" {
+	if options.TemplateDir == "" {
 		log.Fatalf("--template-dir must be specified (or install the templates to /usr/local/share/nsqadmin/templates)")
 	}
 
-	if len(nsqdHTTPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
+	if len(options.NSQDHTTPAddresses) == 0 && len(options.NSQLookupdHTTPAddresses) == 0 {
 		log.Fatalf("--nsqd-http-address or --lookupd-http-address required.")
 	}
 
-	if len(nsqdHTTPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
+	if len(options.NSQDHTTPAddresses) != 0 && len(options.NSQLookupdHTTPAddresses) != 0 {
 		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
 	}
 
-	log.Println(util.Version("nsqadmin"))
-
-	exitChan := make(chan int)
-	signalChan := make(chan os.Signal, 1)
-
-	go func() {
-		<-signalChan
-		exitChan <- 1
-	}()
-	signal.Notify(signalChan, os.Interrupt)
-
-	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", options.HTTPAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	httpListener, err := net.Listen("tcp", httpAddr.String())
-	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", httpAddr, err.Error())
+	return &NSQAdmin{
+		options:       options,
+		httpAddr:      httpAddr,
+		notifications: make(chan *AdminAction),
 	}
-	waitGroup.Wrap(func() { httpServer(httpListener) })
+}
 
-	notifications = make(chan *AdminAction)
-	waitGroup.Wrap(func() { HandleAdminActions() })
+func (n *NSQAdmin) handleAdminActions() {
+	for action := range n.notifications {
+		content, err := json.Marshal(action)
+		if err != nil {
+			log.Printf("Error serializing admin action! %s", err)
+		}
+		httpclient := &http.Client{Transport: util.NewDeadlineTransport(10 * time.Second)}
+		log.Printf("Posting notification to %s", *notificationHTTPEndpoint)
+		_, err = httpclient.Post(*notificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
+		if err != nil {
+			log.Printf("Error posting notification: %s", err)
+		}
+	}
+}
 
-	<-exitChan
+func (n *NSQAdmin) Main() {
+	httpListener, err := net.Listen("tcp", n.httpAddr.String())
+	if err != nil {
+		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
+	}
+	n.httpListener = httpListener
+	httpServer := NewHTTPServer(&Context{n})
+	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer) })
+	n.waitGroup.Wrap(func() { n.handleAdminActions() })
+}
 
-	httpListener.Close()
-	close(notifications)
-
-	waitGroup.Wait()
+func (n *NSQAdmin) Exit() {
+	n.httpListener.Close()
+	close(n.notifications)
+	n.waitGroup.Wait()
 }

@@ -1,0 +1,31 @@
+## <addr>:<port> to listen on for HTTP clients
+http_address = "0.0.0.0:4171"
+
+## path to templates directory
+template_dir = ""
+
+## graphite HTTP address
+graphite_url = ""
+
+## proxy HTTP requests to graphite
+proxy_graphite = false
+
+## prefix used for keys sent to statsd (%s for host replacement, must match nsqd)
+statsd_prefix = "nsq.%s"
+
+## time interval nsqd is configured to push to statsd (must match nsqd)
+statsd_interval = "60s"
+
+## HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent
+notification_http_endpoint = ""
+
+
+## nsqlookupd HTTP addresses
+nsqlookupd_http_addresses = [
+    "127.0.0.1:4161"
+]
+
+## nsqd HTTP addresses (optional)
+nsqd_http_addresses = [
+    "127.0.0.1:4151"
+]
