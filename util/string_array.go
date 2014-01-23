@@ -1,7 +1,7 @@
 package util
 
 import (
-	"fmt"
+	"strings"
 )
 
 type StringArray []string
@@ -12,5 +12,5 @@ func (a *StringArray) Set(s string) error {
 }
 
 func (a *StringArray) String() string {
-	return fmt.Sprint(*a)
+	return strings.Join(*a, ",")
 }
