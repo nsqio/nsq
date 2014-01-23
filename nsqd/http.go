@@ -42,6 +42,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		s.emptyTopicHandler(w, req)
 	case "/delete_topic":
 		s.deleteTopicHandler(w, req)
+	case "/pause_topic":
+		s.pauseTopicHandler(w, req)
+	case "/unpause_topic":
+		s.pauseTopicHandler(w, req)
 	case "/empty_channel":
 		s.emptyChannelHandler(w, req)
 	case "/delete_channel":
@@ -321,6 +325,38 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	util.ApiResponse(w, 200, "OK", nil)
 }
 
+func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request) {
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		return
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		util.ApiResponse(w, 500, "MISSING_ARG_TOPIC", nil)
+		return
+	}
+
+	topic, err := s.context.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
+		return
+	}
+
+	if strings.HasPrefix(req.URL.Path, "/pause") {
+		err = topic.Pause()
+	} else {
+		err = topic.UnPause()
+	}
+	if err != nil {
+		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err.Error())
+	}
+
+	util.ApiResponse(w, 200, "OK", nil)
+}
+
 func (s *httpServer) createChannelHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
@@ -475,18 +511,24 @@ func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		for _, t := range stats {
-			io.WriteString(w, fmt.Sprintf("\n[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
+			var pausedPrefix string
+			if t.Paused {
+				pausedPrefix = "*P "
+			} else {
+				pausedPrefix = "   "
+			}
+			io.WriteString(w, fmt.Sprintf("\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
+				pausedPrefix,
 				t.TopicName,
 				t.Depth,
 				t.BackendDepth,
 				t.MessageCount,
 				t.E2eProcessingLatency))
 			for _, c := range t.Channels {
-				var pausedPrefix string
 				if c.Paused {
-					pausedPrefix = " *P "
+					pausedPrefix = "   *P "
 				} else {
-					pausedPrefix = "    "
+					pausedPrefix = "      "
 				}
 				io.WriteString(w,
 					fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",

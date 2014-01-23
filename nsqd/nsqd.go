@@ -162,6 +162,11 @@ func (n *NSQD) LoadMetadata() {
 		}
 		topic := n.GetTopic(topicName)
 
+		paused, _ := topicJs.Get("paused").Bool()
+		if paused {
+			topic.Pause()
+		}
+
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
 			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
@@ -182,7 +187,7 @@ func (n *NSQD) LoadMetadata() {
 			}
 			channel := topic.GetChannel(channelName)
 
-			paused, _ := channelJs.Get("paused").Bool()
+			paused, _ = channelJs.Get("paused").Bool()
 			if paused {
 				channel.Pause()
 			}
@@ -201,6 +206,7 @@ func (n *NSQD) PersistMetadata() error {
 	for _, topic := range n.topicMap {
 		topicData := make(map[string]interface{})
 		topicData["name"] = topic.name
+		topicData["paused"] = topic.IsPaused()
 		channels := make([]interface{}, 0)
 		topic.Lock()
 		for _, channel := range topic.channelMap {
