@@ -3,34 +3,32 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/BurntSushi/toml"
 	"github.com/bitly/nsq/util"
 	"log"
-	"net"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 )
 
 var (
-	showVersion             = flag.Bool("version", false, "print version string")
-	tcpAddress              = flag.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
-	httpAddress             = flag.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
-	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
-	inactiveProducerTimeout = flag.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
-	tombstoneLifetime       = flag.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
-	broadcastAddress        = flag.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
+	flagSet = flag.NewFlagSet("nsqlookupd", flag.ExitOnError)
+
+	config      = flagSet.String("config", "", "path to config file")
+	showVersion = flagSet.Bool("version", false, "print version string")
+	verbose     = flagSet.Bool("verbose", false, "enable verbose logging")
+
+	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
+	httpAddress      = flagSet.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
+	broadcastAddress = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
+
+	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
+	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 )
 
 func main() {
-	flag.Parse()
-
-	if *broadcastAddress == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			log.Fatal(err)
-		}
-		*broadcastAddress = hostname
-	}
+	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {
 		fmt.Println(util.Version("nsqlookupd"))
@@ -43,26 +41,22 @@ func main() {
 		<-signalChan
 		exitChan <- 1
 	}()
-	signal.Notify(signalChan, os.Interrupt)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", *tcpAddress)
-	if err != nil {
-		log.Fatal(err)
+	var cfg map[string]interface{}
+	if *config != "" {
+		_, err := toml.DecodeFile(*config, &cfg)
+		if err != nil {
+			log.Fatalf("ERROR: failed to load config file %s - %s", *config, err.Error())
+		}
 	}
 
-	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
-	if err != nil {
-		log.Fatal(err)
-	}
+	options := NewNSQLookupdOptions()
+	util.ResolveOptions(options, flagSet, cfg)
+	nsqlookupd := NewNSQLookupd(options)
 
 	log.Println(util.Version("nsqlookupd"))
 
-	nsqlookupd := NewNSQLookupd()
-	nsqlookupd.tcpAddr = tcpAddr
-	nsqlookupd.httpAddr = httpAddr
-	nsqlookupd.broadcastAddress = *broadcastAddress
-	nsqlookupd.inactiveProducerTimeout = *inactiveProducerTimeout
-	nsqlookupd.tombstoneLifetime = *tombstoneLifetime
 	nsqlookupd.Main()
 	<-exitChan
 	nsqlookupd.Exit()

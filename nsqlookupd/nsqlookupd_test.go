@@ -14,11 +14,11 @@ import (
 	"time"
 )
 
-func mustStartLookupd() (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
+func mustStartLookupd(options *nsqlookupdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 
-	nsqlookupd := NewNSQLookupd()
+	nsqlookupd := NewNSQLookupd(options)
 	nsqlookupd.tcpAddr = tcpAddr
 	nsqlookupd.httpAddr = httpAddr
 	nsqlookupd.Main()
@@ -53,7 +53,7 @@ func TestBasicLookupd(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(NewNSQLookupdOptions())
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
@@ -148,7 +148,7 @@ func TestChannelUnregister(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(NewNSQLookupdOptions())
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
@@ -197,9 +197,10 @@ func TestTombstoneRecover(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	options := NewNSQLookupdOptions()
+	options.TombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
-	nsqlookupd.tombstoneLifetime = 50 * time.Millisecond
 
 	topicName := "tombstone_recover"
 	topicName2 := topicName + "2"
@@ -244,9 +245,10 @@ func TestTombstoneUnregister(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	options := NewNSQLookupdOptions()
+	options.TombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
-	nsqlookupd.tombstoneLifetime = 50 * time.Millisecond
 
 	topicName := "tombstone_unregister"
 
@@ -284,9 +286,10 @@ func TestInactiveNodes(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	options := NewNSQLookupdOptions()
+	options.InactiveProducerTimeout = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
-	nsqlookupd.inactiveProducerTimeout = 50 * time.Millisecond
 
 	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
 
@@ -315,9 +318,10 @@ func TestTombstonedNodes(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd()
+	options := NewNSQLookupdOptions()
+	options.InactiveProducerTimeout = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
-	nsqlookupd.inactiveProducerTimeout = 50 * time.Millisecond
 
 	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
 

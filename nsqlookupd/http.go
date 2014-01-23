@@ -97,7 +97,8 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 
 	channels := s.context.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
 	producers := s.context.nsqlookupd.DB.FindProducers("topic", topicName, "")
-	producers = producers.FilterByActive(s.context.nsqlookupd.inactiveProducerTimeout, s.context.nsqlookupd.tombstoneLifetime)
+	producers = producers.FilterByActive(s.context.nsqlookupd.options.InactiveProducerTimeout,
+		s.context.nsqlookupd.options.TombstoneLifetime)
 	data := make(map[string]interface{})
 	data["channels"] = channels
 	data["producers"] = producers.PeerInfo()
@@ -254,7 +255,8 @@ type node struct {
 
 func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 	// dont filter out tombstoned nodes
-	producers := s.context.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(s.context.nsqlookupd.inactiveProducerTimeout, 0)
+	producers := s.context.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
+		s.context.nsqlookupd.options.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {
 		topics := s.context.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
@@ -266,7 +268,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 			topicProducers := s.context.nsqlookupd.DB.FindProducers("topic", t, "")
 			for _, tp := range topicProducers {
 				if tp.peerInfo == p.peerInfo {
-					tombstones[j] = tp.IsTombstoned(s.context.nsqlookupd.tombstoneLifetime)
+					tombstones[j] = tp.IsTombstoned(s.context.nsqlookupd.options.TombstoneLifetime)
 				}
 			}
 		}
