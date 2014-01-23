@@ -10,6 +10,10 @@
 			"Rev": "12e4b4183793ac4b061921e7980845e750679fd0"
 		},
 		{
+			"ImportPath": "github.com/BurntSushi/toml",
+			"Rev": "2dff11163ee667d51dcc066660925a92ce138deb"
+		},
+		{
 			"ImportPath": "github.com/bitly/go-hostpool",
 			"Rev": "58b95b10d6ca26723a7f46017b348653b825a8d6"
 		},

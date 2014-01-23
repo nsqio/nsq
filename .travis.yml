@@ -6,17 +6,10 @@ go:
 env:
   - GOARCH=amd64
   - GOARCH=386
-install:
-  - go get github.com/kr/godep || true
-  # these need to be installed manually for go1.0.x
-  - go get github.com/bitly/go-nsq
-  - go get github.com/bitly/go-simplejson
-  - go get github.com/bitly/go-hostpool
-  - go get github.com/mreiferson/go-snappystream
-  - go get github.com/bmizerany/assert
-  - go get github.com/bmizerany/perks/quantile
 script:
-  - export PATH="$HOME/gopath/bin:$PATH"
+  - wget "http://bitly-downloads.s3.amazonaws.com/nsq/godep.linux-$(go env GOARCH).tar.gz"
+  - tar zxvf "godep.linux-$(go env GOARCH).tar.gz"
+  - export GOPATH="$(./godep path):$GOPATH"
   - ./test.sh
 notifications:
   email: false

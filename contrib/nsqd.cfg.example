@@ -1,0 +1,102 @@
+## enable verbose logging
+verbose = false
+
+## unique identifier (int) for this worker (will default to a hash of hostname)
+# worker_id = 5150
+
+## <addr>:<port> to listen on for TCP clients
+tcp_address = "0.0.0.0:4150"
+
+## <addr>:<port> to listen on for HTTP clients
+http_address = "0.0.0.0:4151"
+
+## address that will be registered with lookupd (defaults to the OS hostname)
+# broadcast_address = ""
+
+## cluster of nsqlookupd TCP addresses
+nsqlookupd_tcp_addresses = [
+    "127.0.0.1:4160"
+]
+
+
+## path to store disk-backed messages
+# data_path = "/var/lib/nsq"
+
+## number of messages to keep in memory (per topic/channel)
+mem_queue_size = 10000
+
+## number of bytes per diskqueue file before rolling
+max_bytes_per_file = 104857600
+
+## number of messages per diskqueue fsync
+sync_every = 2500
+
+## duration of time per diskqueue fsync (time.Duration)
+sync_timeout = "2s"
+
+
+## duration to wait before auto-requeing a message
+msg_timeout = "60s"
+
+## maximum duration before a message will timeout
+max_msg_timeout = "15m"
+
+## maximum size of a single message in bytes
+max_msg_size = 1024768
+
+## maximum size of a single command body
+max_body_size = 5123840
+
+
+## maximum client configurable duration of time between client heartbeats
+max_heartbeat_interval = "60s"
+
+## maximum RDY count for a client
+max_rdy_count = 2500
+
+## maximum client configurable size (in bytes) for a client output buffer
+max_output_buffer_size = 65536
+
+## maximum client configurable duration of time between flushing to a client (time.Duration)
+max_output_buffer_timeout = "1s"
+
+
+## UDP <addr>:<port> of a statsd daemon for pushing stats
+# statsd_address = "127.0.0.1:8125"
+
+## prefix used for keys sent to statsd (%s for host replacement)
+statsd_prefix = "nsq.%s"
+
+## duration between pushing to statsd (time.Duration)
+statsd_interval = "60s"
+
+## toggle sending memory and GC stats to statsd
+statsd_mem_stats = true
+
+
+## message processing time percentiles to keep track of (float)
+e2e_processing_latency_percentiles = [
+    100.0,
+    99.0,
+    95.0
+]
+
+## calculate end to end latency quantiles for this duration of time (time.Duration)
+e2e_processing_latency_window_time = "10m"
+
+
+## path to certificate file
+tls_cert = ""
+
+## path to private key file
+tls_key = ""
+
+
+## enable deflate feature negotiation (client compression)
+deflate = true
+
+## max deflate compression level a client can negotiate (> values == > nsqd CPU usage)
+max_deflate_level = 6
+
+## enable snappy feature negotiation (client compression)
+snappy = true

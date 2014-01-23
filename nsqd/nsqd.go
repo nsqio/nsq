@@ -15,13 +15,14 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
-type NSQd struct {
+type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	workerId         int64
 	clientIDSequence int64
 
 	sync.RWMutex
@@ -30,8 +31,7 @@ type NSQd struct {
 
 	topicMap map[string]*Topic
 
-	lookupdTCPAddrs util.StringArray
-	lookupPeers     []*LookupPeer
+	lookupPeers []*LookupPeer
 
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr
@@ -45,105 +45,54 @@ type NSQd struct {
 	waitGroup  util.WaitGroupWrapper
 }
 
-type nsqdOptions struct {
-	// basic options
-	broadcastAddress string
+func NewNSQD(options *nsqdOptions) *NSQD {
+	var tlsConfig *tls.Config
 
-	// diskqueue options
-	dataPath        string
-	memQueueSize    int64
-	maxBytesPerFile int64
-	syncEvery       int64
-	syncTimeout     time.Duration
-
-	// msg and command options
-	msgTimeout     time.Duration
-	maxMsgTimeout  time.Duration
-	maxMessageSize int64
-	maxBodySize    int64
-	clientTimeout  time.Duration
-
-	// client overridable configuration options
-	maxHeartbeatInterval   time.Duration
-	maxRdyCount            int64
-	maxOutputBufferSize    int64
-	maxOutputBufferTimeout time.Duration
-
-	// statsd integration
-	statsdAddress  string
-	statsdPrefix   string
-	statsdInterval time.Duration
-
-	// e2e message latency
-	e2eProcessingLatencyWindowTime  time.Duration
-	e2eProcessingLatencyPercentiles []float64
-
-	// TLS config
-	tlsCert string
-	tlsKey  string
-
-	// compression
-	deflateEnabled  bool
-	maxDeflateLevel int
-	snappyEnabled   bool
-}
-
-func NewNsqdOptions() *nsqdOptions {
-	return &nsqdOptions{
-		broadcastAddress: "",
-
-		dataPath:        os.TempDir(),
-		memQueueSize:    10000,
-		maxBytesPerFile: 104857600,
-		syncEvery:       2500,
-		syncTimeout:     2 * time.Second,
-
-		msgTimeout:     60 * time.Second,
-		maxMsgTimeout:  15 * time.Minute,
-		maxMessageSize: 1024768,
-		maxBodySize:    5 * 1024768,
-		clientTimeout:  nsq.DefaultClientTimeout,
-
-		maxHeartbeatInterval:   60 * time.Second,
-		maxRdyCount:            2500,
-		maxOutputBufferSize:    64 * 1024,
-		maxOutputBufferTimeout: 1 * time.Second,
-
-		statsdAddress:  "",
-		statsdPrefix:   "",
-		statsdInterval: 60 * time.Second,
-
-		e2eProcessingLatencyWindowTime: time.Duration(10 * time.Minute),
-
-		tlsCert: "",
-		tlsKey:  "",
-
-		deflateEnabled:  true,
-		maxDeflateLevel: -1,
-		snappyEnabled:   true,
+	if options.MaxDeflateLevel < 1 || options.MaxDeflateLevel > 9 {
+		log.Fatalf("--max-deflate-level must be [1,9]")
 	}
-}
 
-func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
-	n := &NSQd{
-		workerId:   workerId,
+	tcpAddr, err := net.ResolveTCPAddr("tcp", options.TCPAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	httpAddr, err := net.ResolveTCPAddr("tcp", options.HTTPAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if options.StatsdPrefix == "" {
+		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(options.BroadcastAddress,
+			strconv.Itoa(httpAddr.Port)))
+		prefixWithHost := strings.Replace(options.StatsdPrefix, "%s", statsdHostKey, -1)
+		if prefixWithHost[len(prefixWithHost)-1] != '.' {
+			prefixWithHost += "."
+		}
+		options.StatsdPrefix = prefixWithHost
+	}
+
+	if options.TLSCert != "" || options.TLSKey != "" {
+		cert, err := tls.LoadX509KeyPair(options.TLSCert, options.TLSKey)
+		if err != nil {
+			log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
+		}
+		tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+		}
+		tlsConfig.BuildNameToCertificate()
+	}
+
+	n := &NSQD{
 		options:    options,
+		tcpAddr:    tcpAddr,
+		httpAddr:   httpAddr,
 		topicMap:   make(map[string]*Topic),
 		idChan:     make(chan nsq.MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
-	}
-
-	if options.tlsCert != "" || options.tlsKey != "" {
-		cert, err := tls.LoadX509KeyPair(options.tlsCert, options.tlsKey)
-		if err != nil {
-			log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
-		}
-		n.tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-		}
-		n.tlsConfig.BuildNameToCertificate()
+		tlsConfig:  tlsConfig,
 	}
 
 	n.waitGroup.Wrap(func() { n.idPump() })
@@ -151,7 +100,7 @@ func NewNSQd(workerId int64, options *nsqdOptions) *NSQd {
 	return n
 }
 
-func (n *NSQd) Main() {
+func (n *NSQD) Main() {
 	context := &Context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
@@ -172,13 +121,13 @@ func (n *NSQd) Main() {
 	httpServer := &httpServer{context: context}
 	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer) })
 
-	if n.options.statsdAddress != "" {
+	if n.options.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
 }
 
-func (n *NSQd) LoadMetadata() {
-	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+func (n *NSQD) LoadMetadata() {
+	fn := fmt.Sprintf(path.Join(n.options.DataPath, "nsqd.%d.dat"), n.options.ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -241,10 +190,10 @@ func (n *NSQd) LoadMetadata() {
 	}
 }
 
-func (n *NSQd) PersistMetadata() error {
+func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
-	fileName := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+	fileName := fmt.Sprintf(path.Join(n.options.DataPath, "nsqd.%d.dat"), n.options.ID)
 	log.Printf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
@@ -298,7 +247,7 @@ func (n *NSQd) PersistMetadata() error {
 	return nil
 }
 
-func (n *NSQd) Exit() {
+func (n *NSQD) Exit() {
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
 	}
@@ -326,7 +275,7 @@ func (n *NSQd) Exit() {
 
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
-func (n *NSQd) GetTopic(topicName string) *Topic {
+func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.Lock()
 	t, ok := n.topicMap[topicName]
 	if ok {
@@ -367,7 +316,7 @@ func (n *NSQd) GetTopic(topicName string) *Topic {
 }
 
 // GetExistingTopic gets a topic only if it exists
-func (n *NSQd) GetExistingTopic(topicName string) (*Topic, error) {
+func (n *NSQD) GetExistingTopic(topicName string) (*Topic, error) {
 	n.RLock()
 	defer n.RUnlock()
 	topic, ok := n.topicMap[topicName]
@@ -378,7 +327,7 @@ func (n *NSQd) GetExistingTopic(topicName string) (*Topic, error) {
 }
 
 // DeleteExistingTopic removes a topic only if it exists
-func (n *NSQd) DeleteExistingTopic(topicName string) error {
+func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	n.RLock()
 	topic, ok := n.topicMap[topicName]
 	if !ok {
@@ -402,10 +351,10 @@ func (n *NSQd) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
-func (n *NSQd) idPump() {
+func (n *NSQD) idPump() {
 	lastError := time.Now()
 	for {
-		id, err := NewGUID(n.workerId)
+		id, err := NewGUID(n.options.ID)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {
@@ -427,7 +376,7 @@ exit:
 	log.Printf("ID: closing")
 }
 
-func (n *NSQd) Notify(v interface{}) {
+func (n *NSQD) Notify(v interface{}) {
 	// by selecting on exitChan we guarantee that
 	// we do not block exit, see issue #123
 	select {

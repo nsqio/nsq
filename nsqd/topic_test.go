@@ -16,7 +16,7 @@ func TestGetTopic(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topic1 := nsqd.GetTopic("test")
@@ -35,7 +35,7 @@ func TestGetChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test")
@@ -54,7 +54,7 @@ func TestDeletes(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test")
@@ -79,7 +79,7 @@ func TestDeleteLast(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test")
@@ -103,9 +103,9 @@ func BenchmarkTopicPut(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
-	options := NewNsqdOptions()
-	options.memQueueSize = int64(b.N)
-	nsqd := NewNSQd(1, options)
+	options := NewNSQDOptions()
+	options.MemQueueSize = int64(b.N)
+	nsqd := NewNSQD(options)
 	defer nsqd.Exit()
 	b.StartTimer()
 
@@ -122,9 +122,9 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	defer log.SetOutput(os.Stdout)
 	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
 	channelName := "bench"
-	options := NewNsqdOptions()
-	options.memQueueSize = int64(b.N)
-	nsqd := NewNSQd(1, options)
+	options := NewNSQDOptions()
+	options.MemQueueSize = int64(b.N)
+	nsqd := NewNSQD(options)
 	defer nsqd.Exit()
 	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
 	b.StartTimer()

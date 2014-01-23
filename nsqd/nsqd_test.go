@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-func getMetadata(n *NSQd) (*simplejson.Json, error) {
-	fn := fmt.Sprintf(path.Join(n.options.dataPath, "nsqd.%d.dat"), n.workerId)
+func getMetadata(n *NSQD) (*simplejson.Json, error) {
+	fn := fmt.Sprintf(path.Join(n.options.DataPath, "nsqd.%d.dat"), n.options.ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -39,10 +39,10 @@ func TestStartup(t *testing.T) {
 	iterations := 300
 	doneExitChan := make(chan int)
 
-	options := NewNsqdOptions()
-	options.memQueueSize = 100
-	options.maxBytesPerFile = 10240
-	_, _, nsqd := mustStartNSQd(options)
+	options := NewNSQDOptions()
+	options.MemQueueSize = 100
+	options.MaxBytesPerFile = 10240
+	_, _, nsqd := mustStartNSQD(options)
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -101,10 +101,10 @@ func TestStartup(t *testing.T) {
 
 	// start up a new nsqd w/ the same folder
 
-	options = NewNsqdOptions()
-	options.memQueueSize = 100
-	options.maxBytesPerFile = 10240
-	_, _, nsqd = mustStartNSQd(options)
+	options = NewNSQDOptions()
+	options.MemQueueSize = 100
+	options.MaxBytesPerFile = 10240
+	_, _, nsqd = mustStartNSQD(options)
 
 	go func() {
 		<-exitChan
@@ -147,9 +147,9 @@ func TestEphemeralChannel(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNsqdOptions()
-	options.memQueueSize = 100
-	_, _, nsqd := mustStartNSQd(options)
+	options := NewNSQDOptions()
+	options.MemQueueSize = 100
+	_, _, nsqd := mustStartNSQD(options)
 
 	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
 	doneExitChan := make(chan int)
@@ -182,7 +182,7 @@ func TestEphemeralChannel(t *testing.T) {
 	<-doneExitChan
 }
 
-func metadataForChannel(n *NSQd, topicIndex int, channelIndex int) *simplejson.Json {
+func metadataForChannel(n *NSQD, topicIndex int, channelIndex int) *simplejson.Json {
 	metadata, _ := getMetadata(n)
 	mChannels := metadata.Get("topics").GetIndex(topicIndex).Get("channels")
 	return mChannels.GetIndex(channelIndex)
@@ -192,8 +192,8 @@ func TestPauseMetadata(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNsqdOptions()
-	_, _, nsqd := mustStartNSQd(options)
+	options := NewNSQDOptions()
+	_, _, nsqd := mustStartNSQD(options)
 
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)

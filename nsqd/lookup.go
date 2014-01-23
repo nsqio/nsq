@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (n *NSQd) lookupLoop() {
+func (n *NSQD) lookupLoop() {
 	syncTopicChan := make(chan *LookupPeer)
 
 	hostname, err := os.Hostname()
@@ -20,7 +20,7 @@ func (n *NSQd) lookupLoop() {
 		log.Fatalf("ERROR: failed to get hostname - %s", err.Error())
 	}
 
-	for _, host := range n.lookupdTCPAddrs {
+	for _, host := range n.options.NSQLookupdTCPAddresses {
 		log.Printf("LOOKUP: adding peer %s", host)
 		lookupPeer := NewLookupPeer(host, func(lp *LookupPeer) {
 			ci := make(map[string]interface{})
@@ -28,7 +28,7 @@ func (n *NSQd) lookupLoop() {
 			ci["tcp_port"] = n.tcpAddr.Port
 			ci["http_port"] = n.httpAddr.Port
 			ci["hostname"] = hostname
-			ci["broadcast_address"] = n.options.broadcastAddress
+			ci["broadcast_address"] = n.options.BroadcastAddress
 
 			cmd, err := nsq.Identify(ci)
 			if err != nil {
@@ -137,7 +137,7 @@ exit:
 	log.Printf("LOOKUP: closing")
 }
 
-func (n *NSQd) lookupHttpAddrs() []string {
+func (n *NSQD) lookupHttpAddrs() []string {
 	var lookupHttpAddrs []string
 	for _, lp := range n.lookupPeers {
 		if len(lp.Info.BroadcastAddress) <= 0 {

@@ -15,8 +15,8 @@ func TestStats(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNsqdOptions()
-	tcpAddr, _, nsqd := mustStartNSQd(options)
+	options := NewNSQDOptions()
+	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
@@ -24,7 +24,7 @@ func TestStats(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
-	conn, err := mustConnectNSQd(tcpAddr)
+	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
 	identify(t, conn)

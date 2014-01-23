@@ -1,0 +1,19 @@
+## enable verbose logging
+verbose = false
+
+
+## <addr>:<port> to listen on for TCP clients
+tcp_address = "0.0.0.0:4160"
+
+## <addr>:<port> to listen on for HTTP clients
+http_address = "0.0.0.0:4161"
+
+## address that will be registered with lookupd (defaults to the OS hostname)
+# broadcast_address = ""
+
+
+## duration of time a producer will remain in the active list since its last ping
+inactive_producer_timeout = "300s"
+
+## duration of time a producer will remain tombstoned if registration remains
+tombstone_lifetime = "45s"
