@@ -307,9 +307,9 @@ bodies, ie:
     |  (int32) ||  (int32) || (binary)
     |  4-byte  ||  4-byte  || N-byte
     ------------------------------------...
-        size      frame ID     data
+        size     frame type     data
 
-A client should expect one of the following frame identifiers:
+A client should expect one of the following frame types:
 
     FrameTypeResponse int32 = 0
     FrameTypeError    int32 = 1
