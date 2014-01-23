@@ -92,17 +92,17 @@ func NewChannel(topicName string, channelName string, context *Context,
 		topicName:       topicName,
 		name:            channelName,
 		incomingMsgChan: make(chan *nsq.Message, 1),
-		memoryMsgChan:   make(chan *nsq.Message, context.nsqd.options.memQueueSize),
+		memoryMsgChan:   make(chan *nsq.Message, context.nsqd.options.MemQueueSize),
 		clientMsgChan:   make(chan *nsq.Message),
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
 		context:         context,
 	}
-	if len(context.nsqd.options.e2eProcessingLatencyPercentiles) > 0 {
+	if len(context.nsqd.options.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = util.NewQuantile(
-			context.nsqd.options.e2eProcessingLatencyWindowTime,
-			context.nsqd.options.e2eProcessingLatencyPercentiles,
+			context.nsqd.options.E2EProcessingLatencyWindowTime,
+			context.nsqd.options.E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -115,10 +115,10 @@ func NewChannel(topicName string, channelName string, context *Context,
 		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 		backendName := topicName + ":" + channelName
 		c.backend = NewDiskQueue(backendName,
-			context.nsqd.options.dataPath,
-			context.nsqd.options.maxBytesPerFile,
-			context.nsqd.options.syncEvery,
-			context.nsqd.options.syncTimeout)
+			context.nsqd.options.DataPath,
+			context.nsqd.options.MaxBytesPerFile,
+			context.nsqd.options.SyncEvery,
+			context.nsqd.options.SyncTimeout)
 	}
 
 	go c.messagePump()
@@ -133,7 +133,7 @@ func NewChannel(topicName string, channelName string, context *Context,
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.context.nsqd.options.memQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.context.nsqd.options.MemQueueSize)/10))
 
 	c.inFlightMessages = make(map[nsq.MessageID]*pqueue.Item)
 	c.deferredMessages = make(map[nsq.MessageID]*pqueue.Item)
@@ -343,10 +343,10 @@ func (c *Channel) TouchMessage(clientID int64, id nsq.MessageID) error {
 
 	ifMsg := item.Value.(*inFlightMessage)
 	currentTimeout := time.Unix(0, item.Priority)
-	newTimeout := currentTimeout.Add(c.context.nsqd.options.msgTimeout)
-	if newTimeout.Add(c.context.nsqd.options.msgTimeout).Sub(ifMsg.ts) >= c.context.nsqd.options.maxMsgTimeout {
+	newTimeout := currentTimeout.Add(c.context.nsqd.options.MsgTimeout)
+	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(ifMsg.ts) >= c.context.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = ifMsg.ts.Add(c.context.nsqd.options.maxMsgTimeout)
+		newTimeout = ifMsg.ts.Add(c.context.nsqd.options.MaxMsgTimeout)
 	}
 
 	item.Priority = newTimeout.UnixNano()
@@ -427,7 +427,7 @@ func (c *Channel) RemoveClient(clientID int64) {
 func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64) error {
 	now := time.Now()
 	value := &inFlightMessage{msg, clientID, now}
-	absTs := now.Add(c.context.nsqd.options.msgTimeout).UnixNano()
+	absTs := now.Add(c.context.nsqd.options.MsgTimeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {

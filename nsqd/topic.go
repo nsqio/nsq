@@ -33,17 +33,17 @@ type Topic struct {
 // Topic constructor
 func NewTopic(topicName string, context *Context) *Topic {
 	diskQueue := NewDiskQueue(topicName,
-		context.nsqd.options.dataPath,
-		context.nsqd.options.maxBytesPerFile,
-		context.nsqd.options.syncEvery,
-		context.nsqd.options.syncTimeout)
+		context.nsqd.options.DataPath,
+		context.nsqd.options.MaxBytesPerFile,
+		context.nsqd.options.SyncEvery,
+		context.nsqd.options.SyncTimeout)
 
 	t := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
 		backend:           diskQueue,
 		incomingMsgChan:   make(chan *nsq.Message, 1),
-		memoryMsgChan:     make(chan *nsq.Message, context.nsqd.options.memQueueSize),
+		memoryMsgChan:     make(chan *nsq.Message, context.nsqd.options.MemQueueSize),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
 		context:           context,
@@ -357,8 +357,8 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *util.Quantile {
 		}
 		if latencyStream == nil {
 			latencyStream = util.NewQuantile(
-				t.context.nsqd.options.e2eProcessingLatencyWindowTime,
-				t.context.nsqd.options.e2eProcessingLatencyPercentiles)
+				t.context.nsqd.options.E2EProcessingLatencyWindowTime,
+				t.context.nsqd.options.E2EProcessingLatencyPercentiles)
 		}
 		latencyStream.Merge(c.e2eProcessingLatencyStream)
 	}

@@ -95,7 +95,7 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQd) getStats() []TopicStats {
+func (n *NSQD) getStats() []TopicStats {
 	n.RLock()
 	defer n.RUnlock()
 

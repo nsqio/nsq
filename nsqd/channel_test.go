@@ -16,7 +16,7 @@ func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
@@ -37,7 +37,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
@@ -62,9 +62,9 @@ func TestInFlightWorker(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNsqdOptions()
-	options.msgTimeout = 200 * time.Millisecond
-	nsqd := NewNSQd(1, options)
+	options := NewNSQDOptions()
+	options.MsgTimeout = 200 * time.Millisecond
+	nsqd := NewNSQD(options)
 	defer nsqd.Exit()
 
 	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
@@ -81,7 +81,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	// the in flight worker has a resolution of 100ms so we need to wait
 	// at least that much longer than our msgTimeout (in worst case)
-	time.Sleep(options.msgTimeout + 100*time.Millisecond)
+	time.Sleep(options.MsgTimeout + 100*time.Millisecond)
 
 	assert.Equal(t, len(channel.inFlightMessages), 0)
 	assert.Equal(t, len(channel.inFlightPQ), 0)
@@ -91,7 +91,7 @@ func TestChannelEmpty(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQd(1, NewNsqdOptions())
+	nsqd := NewNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -124,9 +124,9 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _, nsqd := mustStartNSQd(NewNsqdOptions())
+	tcpAddr, _, nsqd := mustStartNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
-	conn, _ := mustConnectNSQd(tcpAddr)
+	conn, _ := mustConnectNSQD(tcpAddr)
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
