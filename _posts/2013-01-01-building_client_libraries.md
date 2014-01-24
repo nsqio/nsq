@@ -126,7 +126,7 @@ to each `nsqd` for each topic the client wants to consume.
 When connecting to an `nsqd` instance, the client library should send the following data, in order:
 
  1. the magic identifier
- 2. an `IDENTIFY` command (and payload) and read/verify response
+ 2. an `IDENTIFY` command (and payload) and read/verify response (see [Feature Negotiation](#feature_negotiation))
  3. a `SUB` command (specifying desired topic) and read/verify response
  4. an initial `RDY` count of 1 (see [RDY State](#rdy_state)).
  
@@ -151,14 +151,14 @@ Client libraries should automatically handle reconnection as follows:
 The `IDENTIFY` command can be used to set `nsqd` side metadata, modify client settings,
 and negotiate features.  It satisfies two needs:
 
- 1. In certain cases a client would like to modify how `nsqd` interacts with it (currently this 
-    is limited to modifying a client's heartbeat interval but you can imagine this could evolve to 
-    include enabling compression, TLS, output buffering, etc.)
+ 1. In certain cases a client would like to modify how `nsqd` interacts with it (such as 
+    modifying a client's heartbeat interval and enabling compression, TLS, output buffering, etc. - 
+    for a complete list see the [spec](protocol.md))
  2. `nsqd` responds to the `IDENTIFY` command with a JSON payload that includes important server 
     side configuration values that the client should respect while interacting with the instance.
 
 After connecting, based on the user's configuration, a client library should send an `IDENTIFY`
-command (the body of an `IDENTIFY` command is a JSON payload), e.g:
+command, the body of which is a JSON payload:
 
 {% highlight json %}
 {
