@@ -1,11 +1,13 @@
-package main
+package nsqlookupd
 
 import (
 	"fmt"
-	"github.com/bitly/go-nsq"
+
 	"github.com/bitly/nsq/util"
 	lookuputil "github.com/bitly/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
+	"github.com/bitly/go-nsq"
+
 	"io/ioutil"
 	"log"
 	"net"
