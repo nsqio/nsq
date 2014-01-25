@@ -62,6 +62,16 @@ permalink: /clients/client_libraries.html
     <td>beta</td>
   </tr>
   <tr class="warning">
+    <td><a href="https://github.com/chrisroberts/krakow">krakow</a></td>
+    <td>Ruby</td>
+    <td>alpha</td>
+  </tr>
+  <tr class="warning">
+    <td><a href="https://github.com/brianc/node-nsqueue">node-nsqueue</a></td>
+    <td>JavaScript</td>
+    <td>alpha</td>
+  </tr>
+  <tr class="warning">
     <td><a href="https://github.com/project-fifo/ensq">ensq</a></td>
     <td>Erlang</td>
     <td>alpha</td>
