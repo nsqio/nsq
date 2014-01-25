@@ -285,34 +285,34 @@ func (c *Channel) Depth() int64 {
 }
 
 func (c *Channel) Pause() error {
-	atomic.StoreInt32(&c.paused, 1)
-
-	c.RLock()
-	for _, client := range c.clients {
-		client.Pause()
-	}
-	c.RUnlock()
-
-	c.context.nsqd.Lock()
-	defer c.context.nsqd.Unlock()
-	// pro-actively persist metadata so in case of process failure
-	// nsqd won't suddenly unpause a channel
-	return c.context.nsqd.PersistMetadata()
+	return c.doPause(true)
 }
 
 func (c *Channel) UnPause() error {
-	atomic.StoreInt32(&c.paused, 0)
+	return c.doPause(false)
+}
+
+func (c *Channel) doPause(pause bool) error {
+	if pause {
+		atomic.StoreInt32(&c.paused, 1)
+	} else {
+		atomic.StoreInt32(&c.paused, 0)
+	}
 
 	c.RLock()
 	for _, client := range c.clients {
-		client.UnPause()
+		if pause {
+			client.Pause()
+		} else {
+			client.UnPause()
+		}
 	}
 	c.RUnlock()
 
 	c.context.nsqd.Lock()
 	defer c.context.nsqd.Unlock()
 	// pro-actively persist metadata so in case of process failure
-	// nsqd won't suddenly pause a channel
+	// nsqd won't suddenly (un)pause a channel
 	return c.context.nsqd.PersistMetadata()
 }
 
