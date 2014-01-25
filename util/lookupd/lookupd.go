@@ -352,6 +352,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					MemoryDepth:  depth - backendDepth,
 					MessageCount: t.Get("message_count").MustInt64(),
 					ChannelCount: len(channels),
+					Paused:       t.Get("paused").MustBool(),
 
 					E2eProcessingLatency: e2eProcessingLatency,
 				}
