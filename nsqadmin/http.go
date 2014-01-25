@@ -78,6 +78,14 @@ func NewHTTPServer(context *Context) *httpServer {
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if strings.HasPrefix(req.URL.Path, "/node/") {
+		s.nodeHandler(w, req)
+		return
+	} else if strings.HasPrefix(req.URL.Path, "/topic/") {
+		s.topicHandler(w, req)
+		return
+	}
+
 	switch req.URL.Path {
 	case "/":
 		s.indexHandler(w, req)
