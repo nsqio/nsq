@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("nodes.html", `
 {{template "header.html" .}}
 {{$ld := .Lookupd}}
 
@@ -48,3 +52,5 @@
 
 {{template "js.html" .}}
 {{template "footer.html" .}}
+`)
+}

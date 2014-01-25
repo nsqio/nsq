@@ -34,7 +34,6 @@ make PREFIX=/%{path}
 export DONT_STRIP=1
 rm -rf $RPM_BUILD_ROOT
 cd $RPM_BUILD_DIR/%{name}-%{version}-%{release}/nsq
-# binaries and template data
 make PREFIX=/${path} DESTDIR=$RPM_BUILD_ROOT install
 
 %files
@@ -47,4 +46,4 @@ make PREFIX=/${path} DESTDIR=$RPM_BUILD_ROOT install
 /%{path}/bin/nsq_to_nsq
 /%{path}/bin/nsq_tail
 /%{path}/bin/nsq_stat
-/%{path}/share/nsqadmin/templates
+

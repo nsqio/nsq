@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("node.html", `
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
 {{$node := .Node}}
@@ -156,3 +160,5 @@
 
 {{template "js.html" .}}
 {{template "footer.html" .}}
+`)
+}

@@ -1,9 +1,6 @@
 ## <addr>:<port> to listen on for HTTP clients
 http_address = "0.0.0.0:4171"
 
-## path to templates directory
-template_dir = ""
-
 ## graphite HTTP address
 graphite_url = ""
 

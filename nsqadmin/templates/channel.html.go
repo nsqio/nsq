@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("channel.html", `
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
 {{$firstHost := index .ChannelStats.HostStats 0}}
@@ -213,3 +217,5 @@
 
 {{template "js.html" .}}
 {{template "footer.html" .}}
+`)
+}

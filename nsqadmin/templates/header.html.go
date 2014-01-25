@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("header.html", `
 <!DOCTYPE html>
 <html lang="en">
     <head>
@@ -84,3 +88,5 @@ $(document).ready(function () {
 </div>
 
 <div class="container-fluid">
+`)
+}

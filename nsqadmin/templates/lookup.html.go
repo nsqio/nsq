@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("lookup.html", `
 {{template "header.html" .}}
 
 <div class="row-fluid">
@@ -79,3 +83,5 @@
 
 {{template "js.html" .}}
 {{template "footer.html" .}}
+`)
+}
