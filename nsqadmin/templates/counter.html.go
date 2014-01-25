@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("counter.html", `
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
 {{$targ := .Target}}
@@ -328,3 +332,5 @@ startLoop(1000);
 </script>
 
 {{template "footer.html" .}}
+`)
+}

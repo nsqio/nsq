@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/nsqadmin/templates"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
 	"html/template"
@@ -34,16 +35,15 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 }
 
 type httpServer struct {
-	context   *Context
-	templates *template.Template
-	counters  map[string]map[string]int64
-	proxy     *httputil.ReverseProxy
+	context  *Context
+	counters map[string]map[string]int64
+	proxy    *httputil.ReverseProxy
 }
 
 func NewHTTPServer(context *Context) *httpServer {
 	var proxy *httputil.ReverseProxy
 
-	t := template.New("nsqadmin").Funcs(template.FuncMap{
+	templates.T.Funcs(template.FuncMap{
 		"commafy":        util.Commafy,
 		"nanotohuman":    util.NanoSecondToHuman,
 		"floatToPercent": util.FloatToPercent,
@@ -55,10 +55,7 @@ func NewHTTPServer(context *Context) *httpServer {
 			return ""
 		},
 	})
-	templates, err := t.ParseGlob(fmt.Sprintf("%s/*.html", context.nsqadmin.options.TemplateDir))
-	if err != nil {
-		log.Fatalf("ERROR: %s", err.Error())
-	}
+	templates.Parse()
 
 	if context.nsqadmin.options.ProxyGraphite {
 		url, err := url.Parse(context.nsqadmin.options.GraphiteURL)
@@ -70,10 +67,9 @@ func NewHTTPServer(context *Context) *httpServer {
 	}
 
 	return &httpServer{
-		context:   context,
-		counters:  make(map[string]map[string]int64),
-		templates: templates,
-		proxy:     proxy,
+		context:  context,
+		counters: make(map[string]map[string]int64),
+		proxy:    proxy,
 	}
 }
 
@@ -164,7 +160,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 		Topics:       TopicsFromStrings(topics),
 		Version:      util.BINARY_VERSION,
 	}
-	err = s.templates.ExecuteTemplate(w, "index.html", p)
+	err = templates.T.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -232,7 +228,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		ChannelStats:     channelStats,
 		HasE2eLatency:    hasE2eLatency,
 	}
-	err = s.templates.ExecuteTemplate(w, "topic.html", p)
+	err = templates.T.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -273,7 +269,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 		HasE2eLatency:  hasE2eLatency,
 	}
 
-	err = s.templates.ExecuteTemplate(w, "channel.html", p)
+	err = templates.T.ExecuteTemplate(w, "channel.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -312,7 +308,7 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 		Lookupd:      s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
 		Version:      util.BINARY_VERSION,
 	}
-	err = s.templates.ExecuteTemplate(w, "lookup.html", p)
+	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -721,7 +717,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 		NumMessages:  numMessages,
 		NumClients:   numClients,
 	}
-	err = s.templates.ExecuteTemplate(w, "node.html", p)
+	err = templates.T.ExecuteTemplate(w, "node.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -750,7 +746,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 		Producers:    producers,
 		Lookupd:      s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
 	}
-	err = s.templates.ExecuteTemplate(w, "nodes.html", p)
+	err = templates.T.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)
@@ -785,7 +781,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
 		Target:       counterTarget{},
 	}
-	err = s.templates.ExecuteTemplate(w, "counter.html", p)
+	err = templates.T.ExecuteTemplate(w, "counter.html", p)
 	if err != nil {
 		log.Printf("Template Error %s", err.Error())
 		http.Error(w, "Template Error", 500)

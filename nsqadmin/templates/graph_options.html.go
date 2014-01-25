@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("graph_options.html", `
 {{if .GraphOptions.Configured}}
 
 <li class="dropdown">
@@ -14,3 +18,5 @@
 
 </li>
 {{end}}
+`)
+}

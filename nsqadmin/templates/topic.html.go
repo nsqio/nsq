@@ -1,3 +1,7 @@
+package templates
+
+func init() {
+	registerTemplate("topic.html", `
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
 {{$gts := .GlobalTopicStats}}
@@ -237,3 +241,5 @@
 
 {{template "js.html" .}}
 {{template "footer.html" .}}
+`)
+}
