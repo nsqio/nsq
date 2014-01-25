@@ -73,6 +73,9 @@ type ClientStats struct {
 	RequeueCount  uint64 `json:"requeue_count"`
 	ConnectTime   int64  `json:"connect_ts"`
 	SampleRate    int32  `json:"sample_rate"`
+	TLS           bool   `json:"tls"`
+	Deflate       bool   `json:"deflate"`
+	Snappy        bool   `json:"snappy"`
 }
 
 type Topics []*Topic

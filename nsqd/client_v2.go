@@ -73,6 +73,11 @@ type ClientV2 struct {
 	SampleRate           int32
 	SampleRateUpdateChan chan int32
 
+	// states for exposing to nsqadmin
+	TLS     int32
+	Snappy  int32
+	Deflate int32
+
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
 	lenSlice []byte
@@ -157,7 +162,10 @@ func (c *ClientV2) Stats() ClientStats {
 		FinishCount:   atomic.LoadUint64(&c.FinishCount),
 		RequeueCount:  atomic.LoadUint64(&c.RequeueCount),
 		ConnectTime:   c.ConnectTime.Unix(),
-		SampleRate:    c.SampleRate,
+		SampleRate:    atomic.LoadInt32(&c.SampleRate),
+		TLS:           atomic.LoadInt32(&c.TLS) == 1,
+		Deflate:       atomic.LoadInt32(&c.Deflate) == 1,
+		Snappy:        atomic.LoadInt32(&c.Snappy) == 1,
 	}
 }
 
@@ -330,7 +338,7 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	}
 
 	if sampleRate != 0 {
-		c.SampleRate = sampleRate
+		atomic.StoreInt32(&c.SampleRate, sampleRate)
 		select {
 		case c.SampleRateUpdateChan <- sampleRate:
 		default:
@@ -354,6 +362,8 @@ func (c *ClientV2) UpgradeTLS() error {
 	c.Reader = bufio.NewReaderSize(c.tlsConn, DefaultBufferSize)
 	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
 
+	atomic.StoreInt32(&c.TLS, 1)
+
 	return nil
 }
 
@@ -372,6 +382,8 @@ func (c *ClientV2) UpgradeDeflate(level int) error {
 	c.flateWriter = fw
 	c.Writer = bufio.NewWriterSize(fw, c.OutputBufferSize)
 
+	atomic.StoreInt32(&c.Deflate, 1)
+
 	return nil
 }
 
@@ -386,6 +398,8 @@ func (c *ClientV2) UpgradeSnappy() error {
 
 	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), DefaultBufferSize)
 	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
+
+	atomic.StoreInt32(&c.Snappy, 1)
 
 	return nil
 }
