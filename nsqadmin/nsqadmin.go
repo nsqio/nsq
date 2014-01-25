@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -20,19 +19,6 @@ type NSQAdmin struct {
 }
 
 func NewNSQAdmin(options *nsqadminOptions) *NSQAdmin {
-	if options.TemplateDir == "" {
-		for _, defaultPath := range []string{"templates", "/usr/local/share/nsqadmin/templates"} {
-			if info, err := os.Stat(defaultPath); err == nil && info.IsDir() {
-				options.TemplateDir = defaultPath
-				break
-			}
-		}
-	}
-
-	if options.TemplateDir == "" {
-		log.Fatalf("--template-dir must be specified (or install the templates to /usr/local/share/nsqadmin/templates)")
-	}
-
 	if len(options.NSQDHTTPAddresses) == 0 && len(options.NSQLookupdHTTPAddresses) == 0 {
 		log.Fatalf("--nsqd-http-address or --lookupd-http-address required.")
 	}

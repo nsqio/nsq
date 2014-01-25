@@ -6,7 +6,6 @@ import (
 
 type nsqadminOptions struct {
 	HTTPAddress string `flag:"http-address"`
-	TemplateDir string `flag:"template-dir"`
 
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`

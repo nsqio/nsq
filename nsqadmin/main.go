@@ -47,6 +47,10 @@ func main() {
 		return
 	}
 
+	if *templateDir != "" {
+		log.Printf("WARNING: --template-dir is deprecated and will be removed in the next release (templates are now compiled into the binary)")
+	}
+
 	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
 	go func() {
