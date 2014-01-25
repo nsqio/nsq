@@ -2,6 +2,39 @@
 
 ## Binaries
 
+### 0.2.25-alpha
+
+**Upgrading from 0.2.24**: No backwards incompatible changes.
+
+This release adds several commonly requested features.
+
+First, thanks to [@elubow](https://twitter.com/elubow) you can now configure your clients to sample
+the stream they're subscribed to. To read more about the details of the implementation see #286 and
+the original discussion in #223.  Eric also contributed an improvement to `nsq_tail` to add
+the ability to tail the last `N` messages and exit.
+
+We added config file support ([TOML](https://github.com/mojombo/toml/blob/master/README.md)) for
+`nsqd`, `nsqlookupd`, and `nsqadmin` - providing even more deployment flexibility. Example configs
+are in the `contrib` directory. Command line arguments override the equivalent option in the config
+file.
+
+We added the ability to pause a *topic* (it is already possible to pause individual *channels*).
+This functionality stops all message flow from topic to channel for *all channels* of a topic,
+queueing at the topic level. This enables all kinds of interesting possibilities like atomic
+channel renames and trivial infrastructure wide operations.
+
+Finally, we now compile the static assets used by `nsqadmin` into the binary, simplifying
+deployment.  This means that `--template-dir` is now deprecated and will be removed in a future
+release and you can remove the templates you previously deployed and maintained.
+
+New Features / Enhancements:
+
+ * #286 - add client `IDENTIFY` option to sample a % of messages
+ * #279 - add TOML config file support to `nsqd`, `nsqlookupd`, and `nsqadmin`
+ * #263 - add ability to pause a topic
+ * #291 - compile templates into `nsqadmin` binary
+ * #285/#288 - `nsq_tail` support for `-n #` to get recent # messages
+
 ### 0.2.24 - 2013-12-07
 
 **Upgrading from 0.2.23**: No backwards incompatible changes. However, as you'll see below, quite a
