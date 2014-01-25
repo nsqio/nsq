@@ -162,6 +162,10 @@ type ClientInfo struct {
 	FinishCount       int64
 	RequeueCount      int64
 	MessageCount      int64
+	SampleRate        int32
+	TLS               bool
+	Deflate           bool
+	Snappy            bool
 }
 
 type ChannelStatsList []*ChannelStats
