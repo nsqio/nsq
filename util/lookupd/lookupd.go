@@ -411,8 +411,9 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						connectedDuration := time.Now().Sub(connected).Seconds()
 
 						clientInfo := &ClientInfo{
-							HostAddress:   addr,
-							ClientVersion: client.Get("version").MustString(),
+							HostAddress:     addr,
+							ClientVersion:   client.Get("version").MustString(),
+							ClientUserAgent: client.Get("user_agent").MustString(),
 							ClientIdentifier: fmt.Sprintf("%s:%s", client.Get("name").MustString(),
 								strings.Split(client.Get("remote_address").MustString(), ":")[1]),
 							ConnectedDuration: time.Duration(int64(connectedDuration)) * time.Second, // truncate to second

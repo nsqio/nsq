@@ -140,7 +140,7 @@ func init() {
             <tr>
                 <td></td>
                 <td>{{.ClientIdentifier}}</td>
-                <td>{{.ClientVersion}}</td>
+                <td>{{.ClientVersion}} {{if ne .ClientUserAgent ""}}({{.ClientUserAgent}}){{end}}</td>
                 <td>{{.HostAddress}}</td>
                 <td>{{.InFlightCount | commafy}}</td>
                 <td>{{.ReadyCount | commafy}}</td>
