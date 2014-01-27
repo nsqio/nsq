@@ -35,6 +35,7 @@ New Features / Enhancements:
  * #291 - compile templates into `nsqadmin` binary
  * #285/#288 - `nsq_tail` support for `-n #` to get recent # messages
  * #287/#294 - nsqadmin support added for showing client attributes (sample rate, TLS, compression)
+ * #189/#296 - add client user agent to nsqadmin
 
 ### 0.2.24 - 2013-12-07
 

@@ -76,6 +76,7 @@ type ClientStats struct {
 	TLS           bool   `json:"tls"`
 	Deflate       bool   `json:"deflate"`
 	Snappy        bool   `json:"snappy"`
+	UserAgent     string `json:"user_agent"`
 }
 
 type Topics []*Topic

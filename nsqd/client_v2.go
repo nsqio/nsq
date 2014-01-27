@@ -29,6 +29,7 @@ type IdentifyDataV2 struct {
 	DeflateLevel        int    `json:"deflate_level"`
 	Snappy              bool   `json:"snappy"`
 	SampleRate          int32  `json:"sample_rate"`
+	UserAgent           string `json:"user_agent"`
 }
 
 type ClientV2 struct {
@@ -42,8 +43,9 @@ type ClientV2 struct {
 
 	sync.Mutex
 
-	ID      int64
-	context *Context
+	ID        int64
+	context   *Context
+	UserAgent string
 
 	// original connection
 	net.Conn
@@ -135,6 +137,7 @@ func (c *ClientV2) String() string {
 func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	c.ShortIdentifier = data.ShortId
 	c.LongIdentifier = data.LongId
+	c.UserAgent = data.UserAgent
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
 		return err
@@ -155,6 +158,7 @@ func (c *ClientV2) Stats() ClientStats {
 		Version:       "V2",
 		RemoteAddress: c.RemoteAddr().String(),
 		Name:          c.ShortIdentifier,
+		UserAgent:     c.UserAgent,
 		State:         atomic.LoadInt32(&c.State),
 		ReadyCount:    atomic.LoadInt64(&c.ReadyCount),
 		InFlightCount: atomic.LoadInt64(&c.InFlightCount),

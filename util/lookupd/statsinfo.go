@@ -155,6 +155,7 @@ func (c *ChannelStats) Host() string {
 type ClientInfo struct {
 	HostAddress       string
 	ClientVersion     string
+	ClientUserAgent   string
 	ClientIdentifier  string
 	ConnectedDuration time.Duration
 	InFlightCount     int

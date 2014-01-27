@@ -128,6 +128,7 @@ func init() {
                 <th></th>
                 <th>Client Host</th>
                 <th>Protocol</th>
+                <th>Attributes</th>
                 <th>NSQd Host</th>
                 <th>In-Flight</th>
                 <th>Ready Count</th>
@@ -140,7 +141,21 @@ func init() {
             <tr>
                 <td></td>
                 <td>{{.ClientIdentifier}}</td>
-                <td>{{.ClientVersion}}</td>
+                <td>{{.ClientVersion}} {{if ne .ClientUserAgent ""}}({{.ClientUserAgent}}){{end}}</td>
+                <td>
+                  {{if gt .SampleRate 0}}
+                  <span class="label label-info">Sampled {{.SampleRate}}%</span>
+                  {{end}}
+                  {{if .TLS}}
+                  <span class="label label-warning">TLS</span>
+                  {{end}}
+                  {{if .Deflate}}
+                  <span class="label label-default">Delfate</span>
+                  {{end}}
+                  {{if .Snappy}}
+                  <span class="label label-primary">Snappy</span>
+                  {{end}}
+                </td>
                 <td>{{.HostAddress}}</td>
                 <td>{{.InFlightCount | commafy}}</td>
                 <td>{{.ReadyCount | commafy}}</td>
