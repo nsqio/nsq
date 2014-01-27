@@ -359,9 +359,10 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 }
 
 func (n *NSQD) idPump() {
+	factory := &GUIDFactory{}
 	lastError := time.Now()
 	for {
-		id, err := NewGUID(n.options.ID)
+		id, err := factory.NewGUID(n.options.ID)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {

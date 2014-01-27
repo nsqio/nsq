@@ -77,15 +77,29 @@ func TestInFlightWorker(t *testing.T) {
 		channel.StartInFlightTimeout(msg, 0)
 	}
 
-	assert.Equal(t, len(channel.inFlightMessages), 1000)
-	assert.Equal(t, len(channel.inFlightPQ), 1000)
+	channel.Lock()
+	inFlightMsgs := len(channel.inFlightMessages)
+	channel.Unlock()
+	assert.Equal(t, inFlightMsgs, 1000)
+
+	channel.inFlightMutex.Lock()
+	inFlightPQMsgs := len(channel.inFlightPQ)
+	channel.inFlightMutex.Unlock()
+	assert.Equal(t, inFlightPQMsgs, 1000)
 
 	// the in flight worker has a resolution of 100ms so we need to wait
 	// at least that much longer than our msgTimeout (in worst case)
-	time.Sleep(options.MsgTimeout + 100*time.Millisecond)
+	time.Sleep(2 * options.MsgTimeout)
 
-	assert.Equal(t, len(channel.inFlightMessages), 0)
-	assert.Equal(t, len(channel.inFlightPQ), 0)
+	channel.Lock()
+	inFlightMsgs = len(channel.inFlightMessages)
+	channel.Unlock()
+	assert.Equal(t, inFlightMsgs, 0)
+
+	channel.inFlightMutex.Lock()
+	inFlightPQMsgs = len(channel.inFlightPQ)
+	channel.inFlightMutex.Unlock()
+	assert.Equal(t, inFlightPQMsgs, 0)
 }
 
 func TestChannelEmpty(t *testing.T) {
