@@ -29,7 +29,7 @@ var (
 	showVersion = flag.Bool("version", false, "print version string")
 
 	topic       = flag.String("topic", "", "nsq topic")
-	channel     = flag.String("channel", "nsq_to_http", "nsq channel")
+	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
 	destTopic   = flag.String("destination-topic", "", "destination nsq topic")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
