@@ -152,6 +152,18 @@ func Coerce(v interface{}, opt interface{}, arg string) (interface{}, error) {
 	switch opt.(type) {
 	case bool:
 		return coerceBool(v)
+	case int:
+		i, err := coerceInt64(v)
+		if err != nil {
+			return nil, err
+		}
+		return int(i), nil
+	case int32:
+		i, err := coerceInt64(v)
+		if err != nil {
+			return nil, err
+		}
+		return int32(i), nil
 	case int64:
 		return coerceInt64(v)
 	case string:
