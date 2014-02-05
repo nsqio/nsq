@@ -28,9 +28,9 @@ func (a FloatArray) Less(i, j int) bool { return a[i] > a[j] }
 func (a FloatArray) Len() int           { return len(a) }
 
 func (a *FloatArray) String() string {
-	s := ""
+	var s []string
 	for _, v := range *a {
-		s += fmt.Sprintf("%f ", v)
+		s = append(s, fmt.Sprintf("%f", v))
 	}
-	return s
+	return strings.Join(s, ",")
 }
