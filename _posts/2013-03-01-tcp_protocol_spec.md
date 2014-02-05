@@ -88,7 +88,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
      has a significant effect on `nsqd` CPU usage (particularly with `> 50` clients connected).
 
      This is due to the current implementation relying on Go timers which are maintained by the Go
-     runtime in a priority queue.  See the [commit message][043b79ac] in 
+     runtime in a priority queue.  See the [commit message][043b79ac] in
      [pull request #236][pull_req_236] for more details.
 
  * **`tls_v1`** (nsqd 0.2.22+) enable TLS for this connection.
@@ -130,8 +130,13 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
  * **`sample_rate`** (nsqd 0.2.25+) sample messages delivered over this connection.
 
     Valid range: `0 <= sample_rate <= 99` (`0` disables sampling)
-    
+
     Defaults to `0`
+
+ * **`user_agent`** (nsqd 0.2.25+) a string identifying the agent for this client in
+                    the spirit of HTTP
+
+    Default: `<client_library_name>/<version>`
 
 Success Response:
 
