@@ -2,7 +2,7 @@
 
 ## Binaries
 
-### 0.2.25-alpha
+### 0.2.25 - 2014-02-05
 
 **Upgrading from 0.2.24**: No backwards incompatible changes.
 
@@ -34,8 +34,9 @@ New Features / Enhancements:
  * #263 - add ability to pause a topic
  * #291 - compile templates into `nsqadmin` binary
  * #285/#288 - `nsq_tail` support for `-n #` to get recent # messages
- * #287/#294 - nsqadmin support added for showing client attributes (sample rate, TLS, compression)
- * #189/#296 - add client user agent to nsqadmin
+ * #287/#294 - display client `IDENTIFY` attributes in `nsqadmin` (sample rate, TLS, compression)
+ * #189/#296 - add client user agent to `nsqadmin``
+ * #297 - add `nsq_to_nsq` JSON message filtering options
 
 ### 0.2.24 - 2013-12-07
 
