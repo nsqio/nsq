@@ -14,6 +14,7 @@ apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
 dist
 _site
+_posts
 *.dat
 
 # Go.gitignore
