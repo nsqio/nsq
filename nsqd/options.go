@@ -42,6 +42,7 @@ type nsqdOptions struct {
 	StatsdAddress  string        `flag:"statsd-address"`
 	StatsdPrefix   string        `flag:"statsd-prefix"`
 	StatsdInterval time.Duration `flag:"statsd-interval" arg:"1s"`
+	StatsdMemStats bool          `flag:"statsd-mem-stats"`
 
 	// e2e message latency
 	E2EProcessingLatencyWindowTime  time.Duration `flag:"e2e-processing-latency-window-time"`
@@ -68,7 +69,6 @@ func NewNSQDOptions() *nsqdOptions {
 		HTTPAddress:      "0.0.0.0:4151",
 		BroadcastAddress: hostname,
 
-		DataPath:        os.TempDir(),
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 104857600,
 		SyncEvery:       2500,
@@ -87,6 +87,7 @@ func NewNSQDOptions() *nsqdOptions {
 
 		StatsdPrefix:   "nsq.%s",
 		StatsdInterval: 60 * time.Second,
+		StatsdMemStats: true,
 
 		E2EProcessingLatencyWindowTime: time.Duration(10 * time.Minute),
 

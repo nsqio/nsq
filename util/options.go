@@ -43,7 +43,7 @@ func ResolveOptions(options interface{}, flagSet *flag.FlagSet, cfg map[string]i
 		fieldVal := val.FieldByName(field.Name)
 		coerced, err := Coerce(v, fieldVal.Interface(), field.Tag.Get("arg"))
 		if err != nil {
-			log.Panicf("ERROR: failed to coerce %v for %s (%+v) - %s",
+			log.Fatalf("ERROR: option resolution failed to coerce %v for %s (%+v) - %s",
 				v, field.Name, fieldVal, err)
 		}
 		fieldVal.Set(reflect.ValueOf(coerced))

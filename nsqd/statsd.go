@@ -114,7 +114,7 @@ func (n *NSQD) statsdLoop() {
 			}
 			lastStats = stats
 
-			if *statsdMemStats {
+			if n.options.StatsdMemStats {
 				var memStats runtime.MemStats
 				runtime.ReadMemStats(&memStats)
 
