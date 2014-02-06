@@ -3,8 +3,8 @@ set -e
 
 # build and run nsqlookupd
 echo "building and starting nsqlookupd"
-go build -o nsqlookupd/nsqlookupd ./apps/nsqlookupd/
-nsqlookupd/nsqlookupd >/dev/null 2>&1 &
+go build -o apps/nsqlookupd/nsqlookupd ./apps/nsqlookupd/
+apps/nsqlookupd/nsqlookupd >/dev/null 2>&1 &
 LOOKUPD_PID=$!
 
 # build and run nsqd configured to use our lookupd above
