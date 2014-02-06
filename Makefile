@@ -20,7 +20,7 @@ BLDDIR = build
 all: $(BINARIES) $(APPS)
 
 $(BLDDIR)/%:
-	mkdir -p $(dir $@)
+	@mkdir -p $(dir $@)
 	go build ${GOFLAGS} -o $(abspath $@) ./$*
 
 $(BINARIES): %: $(BLDDIR)/%
