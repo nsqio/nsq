@@ -62,7 +62,7 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 		log.Fatal(err)
 	}
 
-	if options.StatsdPrefix == "" {
+	if options.StatsdPrefix != "" {
 		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(options.BroadcastAddress,
 			strconv.Itoa(httpAddr.Port)))
 		prefixWithHost := strings.Replace(options.StatsdPrefix, "%s", statsdHostKey, -1)
