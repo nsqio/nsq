@@ -10,19 +10,37 @@ permalink: /deployment/installing.html
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:
 
-Built with **Go 1.2**:
+#### Current Stable Release: **`v0.2.26`**
 
- * [nsq-0.2.25.darwin-amd64.go1.2.tar.gz][0.2.25_darwin_go12]
- * [nsq-0.2.25.linux-amd64.go1.2.tar.gz][0.2.25_linux_go12]
+**IMPORTANT**: if you are running `v0.2.25` and using `--statsd-prefix` with `%s` you should
+upgrade to `v0.2.26` to resolve a regression that broke `statsd` prefixes.
+
+**Go 1.2**:
+
+ * [nsq-0.2.26.darwin-amd64.go1.2.tar.gz][0.2.26_darwin_go12]
+ * [nsq-0.2.26.linux-amd64.go1.2.tar.gz][0.2.26_linux_go12]
+
+**Go 1.1.2**:
+
+ * [nsq-0.2.26.darwin-amd64.go1.1.2.tar.gz][0.2.26_darwin_go112]
+ * [nsq-0.2.26.linux-amd64.go1.1.2.tar.gz][0.2.26_linux_go112]
+
+**Go 1.0.3**:
+
+ * [nsq-0.2.26.darwin-amd64.go1.0.3.tar.gz][0.2.26_darwin]
+ * [nsq-0.2.26.linux-amd64.go1.0.3.tar.gz][0.2.26_linux]
+
+#### Older Releases
+
+**Go 1.2**:
+
  * [nsq-0.2.24.darwin-amd64.go1.2.tar.gz][0.2.24_darwin_go12]
  * [nsq-0.2.24.linux-amd64.go1.2.tar.gz][0.2.24_linux_go12]
  * [nsq-0.2.23.darwin-amd64.go1.2.tar.gz][0.2.23_darwin_go12]
  * [nsq-0.2.23.linux-amd64.go1.2.tar.gz][0.2.23_linux_go12]
 
-Built with **Go 1.1.2**:
+**Go 1.1.2**:
 
- * [nsq-0.2.25.darwin-amd64.go1.1.2.tar.gz][0.2.25_darwin_go112]
- * [nsq-0.2.25.linux-amd64.go1.1.2.tar.gz][0.2.25_linux_go112]
  * [nsq-0.2.24.darwin-amd64.go1.1.2.tar.gz][0.2.24_darwin_go112]
  * [nsq-0.2.24.linux-amd64.go1.1.2.tar.gz][0.2.24_linux_go112]
  * [nsq-0.2.23.darwin-amd64.go1.1.2.tar.gz][0.2.23_darwin_go112]
@@ -32,10 +50,8 @@ Built with **Go 1.1.2**:
  * [nsq-0.2.21.darwin-amd64.go1.1.2.tar.gz][0.2.21_darwin_go112]
  * [nsq-0.2.21.linux-amd64.go1.1.2.tar.gz][0.2.21_linux_go112]
 
-Built with **Go 1.0.3**:
+**Go 1.0.3**:
 
- * [nsq-0.2.25.darwin-amd64.go1.0.3.tar.gz][0.2.25_darwin]
- * [nsq-0.2.25.linux-amd64.go1.0.3.tar.gz][0.2.25_linux]
  * [nsq-0.2.24.darwin-amd64.go1.0.3.tar.gz][0.2.24_darwin]
  * [nsq-0.2.24.linux-amd64.go1.0.3.tar.gz][0.2.24_linux]
  * [nsq-0.2.23.darwin-amd64.go1.0.3.tar.gz][0.2.23_darwin]
@@ -92,12 +108,12 @@ $ ./test.sh
 We've published official [docker][docker] containers for [`nsqd`][docker_nsqd] and
 [`nsqlookupd`][docker_nsqlookupd].
 
-[0.2.25_darwin_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.darwin-amd64.go1.2.tar.gz
-[0.2.25_linux_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.linux-amd64.go1.2.tar.gz
-[0.2.25_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.darwin-amd64.go1.0.3.tar.gz
-[0.2.25_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.linux-amd64.go1.0.3.tar.gz
-[0.2.25_darwin_go112]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.darwin-amd64.go1.1.2.tar.gz
-[0.2.25_linux_go112]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.25.linux-amd64.go1.1.2.tar.gz
+[0.2.26_darwin_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.darwin-amd64.go1.2.tar.gz
+[0.2.26_linux_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.linux-amd64.go1.2.tar.gz
+[0.2.26_darwin]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.darwin-amd64.go1.0.3.tar.gz
+[0.2.26_linux]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.linux-amd64.go1.0.3.tar.gz
+[0.2.26_darwin_go112]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.darwin-amd64.go1.1.2.tar.gz
+[0.2.26_linux_go112]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.26.linux-amd64.go1.1.2.tar.gz
 
 [0.2.24_darwin_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.24.darwin-amd64.go1.2.tar.gz
 [0.2.24_linux_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.24.linux-amd64.go1.2.tar.gz
