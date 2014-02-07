@@ -2,6 +2,16 @@
 
 ## Binaries
 
+### 0.2.26 - 2014-02-06
+
+**Upgrading from 0.2.25**: No backwards incompatible changes.
+
+IMPORTANT: this is a quick bug-fix release to address a regression identified in `0.2.25` where
+`statsd` prefixes were broken when using the default (or any) prefix that contained a `%s` for
+automatic host replacement.
+
+ * #303 - fix `nsqd` `--statsd-prefix` when using `%s` host replacement
+
 ### 0.2.25 - 2014-02-05
 
 **Upgrading from 0.2.24**: No backwards incompatible changes.
