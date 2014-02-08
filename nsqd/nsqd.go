@@ -5,10 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
 	"io/ioutil"
 	"log"
 	"net"
@@ -19,6 +15,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 )
 
 type NSQD struct {

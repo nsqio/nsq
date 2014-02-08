@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/bitly/go-nsq"
 	"log"
 	"net"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 // LookupPeer is a low-level type for connecting/reading/writing to nsqlookupd

@@ -3,13 +3,14 @@ package main
 import (
 	"bufio"
 	"flag"
-	"github.com/bitly/go-nsq"
 	"log"
 	"math"
 	"net"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 var (

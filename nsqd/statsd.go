@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
 	"log"
 	"math"
 	"runtime"
 	"sort"
 	"time"
+
+	"github.com/bitly/nsq/util"
 )
 
 type Uint64Slice []uint64

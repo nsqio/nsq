@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/nsqlookupd"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/BurntSushi/toml"
+	"github.com/bitly/nsq/nsqlookupd"
+	"github.com/bitly/nsq/util"
 )
 
 var (
@@ -62,4 +63,3 @@ func main() {
 	<-exitChan
 	daemon.Exit()
 }
-

@@ -8,10 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/bitly/go-hostpool"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
 	"log"
 	"math"
 	"os"
@@ -21,6 +17,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/bitly/go-hostpool"
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/util"
 )
 
 const (

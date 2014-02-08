@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/pqueue"
 	"log"
 	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/pqueue"
 )
 
 // the amount of time a worker will wait when idle

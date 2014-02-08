@@ -3,16 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
-	"github.com/bmizerany/assert"
-	"github.com/mreiferson/go-snappystream"
 	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
+	"github.com/bmizerany/assert"
+	"github.com/mreiferson/go-snappystream"
 )
 
 func TestStats(t *testing.T) {

@@ -2,10 +2,11 @@ package lookupd
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/semver"
 	"sort"
 	"time"
+
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/semver"
 )
 
 type ProducerTopic struct {

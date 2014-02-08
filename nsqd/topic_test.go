@@ -1,8 +1,6 @@
 package main
 
 import (
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
@@ -10,6 +8,9 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
 )
 
 func TestGetTopic(t *testing.T) {

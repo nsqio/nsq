@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+
 	"github.com/bitly/go-nsq"
 )
 

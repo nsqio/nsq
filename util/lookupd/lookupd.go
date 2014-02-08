@@ -3,14 +3,15 @@ package lookupd
 import (
 	"errors"
 	"fmt"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/semver"
 	"log"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/semver"
 )
 
 // GetLookupdTopics returns a []string containing a union of all the topics

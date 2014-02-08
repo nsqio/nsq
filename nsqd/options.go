@@ -2,12 +2,13 @@ package main
 
 import (
 	"crypto/md5"
-	"github.com/bitly/go-nsq"
 	"hash/crc32"
 	"io"
 	"log"
 	"os"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 type nsqdOptions struct {

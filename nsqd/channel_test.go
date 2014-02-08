@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
 )
 
 // ensure that we can push a message through a topic and get it out of a channel

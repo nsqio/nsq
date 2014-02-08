@@ -2,8 +2,9 @@ package util
 
 import (
 	"errors"
-	"github.com/bitly/go-nsq"
 	"strings"
+
+	"github.com/bitly/go-nsq"
 )
 
 func ParseReaderOpts(r *nsq.Reader, opts StringArray) error {

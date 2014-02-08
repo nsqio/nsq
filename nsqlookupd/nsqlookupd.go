@@ -1,9 +1,10 @@
 package nsqlookupd
 
 import (
-	"github.com/bitly/nsq/util"
 	"log"
 	"net"
+
+	"github.com/bitly/nsq/util"
 )
 
 type NSQLookupd struct {

@@ -7,9 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
-	"github.com/mreiferson/go-snappystream"
 	"io"
 	"io/ioutil"
 	"log"
@@ -22,6 +19,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
+	"github.com/mreiferson/go-snappystream"
 )
 
 func mustStartNSQD(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {

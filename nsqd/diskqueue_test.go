@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/bmizerany/assert"
 )
 
 func TestDiskQueue(t *testing.T) {

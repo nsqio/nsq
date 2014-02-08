@@ -12,8 +12,9 @@ package main
 import (
 	"encoding/hex"
 	"errors"
-	"github.com/bitly/go-nsq"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 const (

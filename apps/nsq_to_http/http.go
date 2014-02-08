@@ -3,9 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
-	"net/http"
 )
 
 var httpclient *http.Client

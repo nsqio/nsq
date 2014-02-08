@@ -6,13 +6,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/mreiferson/go-snappystream"
 	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/mreiferson/go-snappystream"
 )
 
 const DefaultBufferSize = 16 * 1024

@@ -2,10 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/nsqadmin/templates"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -16,6 +12,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/nsqadmin/templates"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 )
 
 // this is similar to httputil.NewSingleHostReverseProxy except it passes along basic auth

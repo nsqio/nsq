@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/bitly/go-nsq"
 	"testing"
 	"unsafe"
+
+	"github.com/bitly/go-nsq"
 )
 
 func BenchmarkGUIDCopy(b *testing.B) {
