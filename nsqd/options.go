@@ -7,8 +7,6 @@ import (
 	"log"
 	"os"
 	"time"
-
-	"github.com/bitly/go-nsq"
 )
 
 type nsqdOptions struct {
@@ -27,11 +25,11 @@ type nsqdOptions struct {
 	SyncTimeout     time.Duration `flag:"sync-timeout"`
 
 	// msg and command options
-	MsgTimeout     time.Duration `flag:"msg-timeout" arg:"1ms"`
-	MaxMsgTimeout  time.Duration `flag:"max-msg-timeout"`
-	MaxMessageSize int64         `flag:"max-message-size" cfg:"max_msg_size"`
-	MaxBodySize    int64         `flag:"max-body-size"`
-	ClientTimeout  time.Duration
+	MsgTimeout    time.Duration `flag:"msg-timeout" arg:"1ms"`
+	MaxMsgTimeout time.Duration `flag:"max-msg-timeout"`
+	MaxMsgSize    int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
+	MaxBodySize   int64         `flag:"max-body-size"`
+	ClientTimeout time.Duration
 
 	// client overridable configuration options
 	MaxHeartbeatInterval   time.Duration `flag:"max-heartbeat-interval"`
@@ -75,11 +73,11 @@ func NewNSQDOptions() *nsqdOptions {
 		SyncEvery:       2500,
 		SyncTimeout:     2 * time.Second,
 
-		MsgTimeout:     60 * time.Second,
-		MaxMsgTimeout:  15 * time.Minute,
-		MaxMessageSize: 1024768,
-		MaxBodySize:    5 * 1024768,
-		ClientTimeout:  nsq.DefaultClientTimeout,
+		MsgTimeout:    60 * time.Second,
+		MaxMsgTimeout: 15 * time.Minute,
+		MaxMsgSize:    1024768,
+		MaxBodySize:   5 * 1024768,
+		ClientTimeout: 60 * time.Second,
 
 		MaxHeartbeatInterval:   60 * time.Second,
 		MaxRdyCount:            2500,

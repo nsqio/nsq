@@ -441,7 +441,7 @@ func TestSizeLimits(t *testing.T) {
 
 	options := NewNSQDOptions()
 	*verbose = true
-	options.MaxMessageSize = 100
+	options.MaxMsgSize = 100
 	options.MaxBodySize = 1000
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()

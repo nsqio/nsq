@@ -575,9 +575,9 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("PUB invalid message body size %d", bodyLen))
 	}
 
-	if int64(bodyLen) > p.context.nsqd.options.MaxMessageSize {
+	if int64(bodyLen) > p.context.nsqd.options.MaxMsgSize {
 		return nil, util.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.context.nsqd.options.MaxMessageSize))
+			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.context.nsqd.options.MaxMsgSize))
 	}
 
 	messageBody := make([]byte, bodyLen)
@@ -625,7 +625,7 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	}
 
 	messages, err := readMPUB(client.Reader, client.lenSlice, p.context.nsqd.idChan,
-		p.context.nsqd.options.MaxMessageSize)
+		p.context.nsqd.options.MaxMsgSize)
 	if err != nil {
 		return nil, err
 	}

@@ -36,9 +36,11 @@ var (
 	syncTimeout     = flagSet.Duration("sync-timeout", 2*time.Second, "duration of time per diskqueue fsync")
 
 	// msg and command options
-	msgTimeout     = flagSet.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
-	maxMsgTimeout  = flagSet.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
-	maxMessageSize = flagSet.Int64("max-message-size", 1024768, "maximum size of a single message in bytes")
+	msgTimeout    = flagSet.String("msg-timeout", "60s", "duration to wait before auto-requeing a message")
+	maxMsgTimeout = flagSet.Duration("max-msg-timeout", 15*time.Minute, "maximum duration before a message will timeout")
+	maxMsgSize    = flagSet.Int64("max-msg-size", 1024768, "maximum size of a single message in bytes")
+	// remove, deprecated
+	maxMessageSize = flagSet.Int64("max-message-size", 1024768, "(deprecated use --max-msg-size) maximum size of a single message in bytes")
 	maxBodySize    = flagSet.Int64("max-body-size", 5*1024768, "maximum size of a single command body")
 
 	// client overridable configuration options
