@@ -111,7 +111,7 @@ type ChannelStats struct {
 	ClientCount   int
 	Selected      bool
 	HostStats     []*ChannelStats
-	Clients       []*ClientInfo
+	Clients       []*ClientStats
 	Paused        bool
 
 	E2eProcessingLatency *util.E2eProcessingLatencyAggregate
@@ -152,11 +152,11 @@ func (c *ChannelStats) Host() string {
 	return h
 }
 
-type ClientInfo struct {
+type ClientStats struct {
 	HostAddress       string
-	ClientVersion     string
-	ClientUserAgent   string
-	ClientIdentifier  string
+	Version           string
+	UserAgent         string
+	Identifier        string
 	ConnectedDuration time.Duration
 	InFlightCount     int
 	ReadyCount        int
@@ -169,11 +169,11 @@ type ClientInfo struct {
 	Snappy            bool
 }
 
-func (c *ClientInfo) HasUserAgent() bool {
-	return c.ClientUserAgent != ""
+func (c *ClientStats) HasUserAgent() bool {
+	return c.UserAgent != ""
 }
 
-func (c *ClientInfo) HasSampleRate() bool {
+func (c *ClientStats) HasSampleRate() bool {
 	return c.SampleRate > 0
 }
 
@@ -182,9 +182,9 @@ type ChannelStatsByHost struct {
 	ChannelStatsList
 }
 
-type ClientInfoList []*ClientInfo
+type ClientStatsList []*ClientStats
 type ClientsByHost struct {
-	ClientInfoList
+	ClientStatsList
 }
 type TopicStatsList []*TopicStats
 type TopicStatsByHost struct {
@@ -197,8 +197,8 @@ type ProducersByHost struct {
 
 func (c ChannelStatsList) Len() int      { return len(c) }
 func (c ChannelStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
-func (c ClientInfoList) Len() int        { return len(c) }
-func (c ClientInfoList) Swap(i, j int)   { c[i], c[j] = c[j], c[i] }
+func (c ClientStatsList) Len() int       { return len(c) }
+func (c ClientStatsList) Swap(i, j int)  { c[i], c[j] = c[j], c[i] }
 func (t TopicStatsList) Len() int        { return len(t) }
 func (t TopicStatsList) Swap(i, j int)   { t[i], t[j] = t[j], t[i] }
 func (t ProducerList) Len() int          { return len(t) }
@@ -208,10 +208,10 @@ func (c ChannelStatsByHost) Less(i, j int) bool {
 	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
 }
 func (c ClientsByHost) Less(i, j int) bool {
-	if c.ClientInfoList[i].ClientIdentifier == c.ClientInfoList[j].ClientIdentifier {
-		return c.ClientInfoList[i].HostAddress < c.ClientInfoList[j].HostAddress
+	if c.ClientStatsList[i].Identifier == c.ClientStatsList[j].Identifier {
+		return c.ClientStatsList[i].HostAddress < c.ClientStatsList[j].HostAddress
 	}
-	return c.ClientInfoList[i].ClientIdentifier < c.ClientInfoList[j].ClientIdentifier
+	return c.ClientStatsList[i].Identifier < c.ClientStatsList[j].Identifier
 }
 func (c TopicStatsByHost) Less(i, j int) bool {
 	return c.TopicStatsList[i].HostAddress < c.TopicStatsList[j].HostAddress
