@@ -12,6 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/bitly/nsq/util"
+	"github.com/mreiferson/go-options"
 )
 
 var (
@@ -97,12 +98,12 @@ func main() {
 		}
 	}
 
-	options := NewNSQDOptions()
-	util.ResolveOptions(options, flagSet, cfg)
-	nsqd := NewNSQD(options)
+	opts := NewNSQDOptions()
+	options.Resolve(opts, flagSet, cfg)
+	nsqd := NewNSQD(opts)
 
 	log.Println(util.Version("nsqd"))
-	log.Printf("worker id %d", options.ID)
+	log.Printf("worker id %d", opts.ID)
 
 	nsqd.LoadMetadata()
 	err := nsqd.PersistMetadata()
