@@ -169,6 +169,14 @@ type ClientInfo struct {
 	Snappy            bool
 }
 
+func (c *ClientInfo) HasUserAgent() bool {
+	return c.ClientUserAgent != ""
+}
+
+func (c *ClientInfo) HasSampleRate() bool {
+	return c.SampleRate > 0
+}
+
 type ChannelStatsList []*ChannelStats
 type ChannelStatsByHost struct {
 	ChannelStatsList

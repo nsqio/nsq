@@ -201,9 +201,9 @@ func init() {
 {{range .ChannelStats.Clients}}
     <tr>
         <td>{{.ClientIdentifier}}</td>
-        <td>{{.ClientVersion}} {{if ne .ClientUserAgent ""}}({{.ClientUserAgent}}){{end}}</td>
+        <td>{{.ClientVersion}} {{if .HasUserAgent}}({{.ClientUserAgent}}){{end}}</td>
         <td>
-          {{if gt .SampleRate 0}}
+          {{if .HasSampleRate}}
           <span class="label label-info">Sampled {{.SampleRate}}%</span>
           {{end}}
           {{if .TLS}}
