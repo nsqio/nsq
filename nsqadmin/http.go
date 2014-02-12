@@ -205,7 +205,13 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		globalTopicStats.Add(t)
 	}
 
-	hasE2eLatency := len(globalTopicStats.E2eProcessingLatency.Percentiles) > 0
+	hasE2eLatency := globalTopicStats.E2eProcessingLatency != nil &&
+		len(globalTopicStats.E2eProcessingLatency.Percentiles) > 0
+
+	var firstTopic *lookupd.TopicStats
+	if len(topicStats) > 0 {
+		firstTopic = topicStats[0]
+	}
 
 	p := struct {
 		Title            string
@@ -214,6 +220,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		Topic            string
 		TopicProducers   []string
 		TopicStats       []*lookupd.TopicStats
+		FirstTopic       *lookupd.TopicStats
 		GlobalTopicStats *lookupd.TopicStats
 		ChannelStats     map[string]*lookupd.ChannelStats
 		HasE2eLatency    bool
@@ -224,6 +231,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		Topic:            topicName,
 		TopicProducers:   producers,
 		TopicStats:       topicStats,
+		FirstTopic:       firstTopic,
 		GlobalTopicStats: globalTopicStats,
 		ChannelStats:     channelStats,
 		HasE2eLatency:    hasE2eLatency,
@@ -247,7 +255,13 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 	channelStats := allChannelStats[channelName]
 
-	hasE2eLatency := len(channelStats.E2eProcessingLatency.Percentiles) > 0
+	hasE2eLatency := channelStats.E2eProcessingLatency != nil &&
+		len(channelStats.E2eProcessingLatency.Percentiles) > 0
+
+	var firstHost *lookupd.ChannelStats
+	if len(channelStats.HostStats) > 0 {
+		firstHost = channelStats.HostStats[0]
+	}
 
 	p := struct {
 		Title          string
@@ -257,6 +271,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 		Channel        string
 		TopicProducers []string
 		ChannelStats   *lookupd.ChannelStats
+		FirstHost      *lookupd.ChannelStats
 		HasE2eLatency  bool
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
@@ -266,6 +281,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 		Channel:        channelName,
 		TopicProducers: producers,
 		ChannelStats:   channelStats,
+		FirstHost:      firstHost,
 		HasE2eLatency:  hasE2eLatency,
 	}
 
