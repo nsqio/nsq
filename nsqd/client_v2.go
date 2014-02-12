@@ -41,7 +41,7 @@ type ClientV2 struct {
 	FinishCount    uint64
 	RequeueCount   uint64
 
-	sync.Mutex
+	sync.RWMutex
 
 	ID        int64
 	context   *Context
@@ -135,9 +135,11 @@ func (c *ClientV2) String() string {
 }
 
 func (c *ClientV2) Identify(data IdentifyDataV2) error {
+	c.Lock()
 	c.ShortIdentifier = data.ShortId
 	c.LongIdentifier = data.LongId
 	c.UserAgent = data.UserAgent
+	c.Unlock()
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
 		return err
@@ -154,11 +156,15 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 }
 
 func (c *ClientV2) Stats() ClientStats {
+	c.RLock()
+	name := c.ShortIdentifier
+	userAgent := c.UserAgent
+	c.RUnlock()
 	return ClientStats{
 		Version:       "V2",
 		RemoteAddress: c.RemoteAddr().String(),
-		Name:          c.ShortIdentifier,
-		UserAgent:     c.UserAgent,
+		Name:          name,
+		UserAgent:     userAgent,
 		State:         atomic.LoadInt32(&c.State),
 		ReadyCount:    atomic.LoadInt64(&c.ReadyCount),
 		InFlightCount: atomic.LoadInt64(&c.InFlightCount),
