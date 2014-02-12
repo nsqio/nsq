@@ -5,7 +5,7 @@ func init() {
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
 {{$gts := .GlobalTopicStats}}
-{{$firstTopic := index .TopicStats 0}}
+{{$firstTopic := .FirstTopic}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>

@@ -4,7 +4,7 @@ func init() {
 	registerTemplate("channel.html", `
 {{template "header.html" .}}
 {{$g := .GraphOptions}}
-{{$firstHost := index .ChannelStats.HostStats 0}}
+{{$firstHost := .FirstHost}}
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
