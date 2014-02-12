@@ -71,6 +71,9 @@ func TestClientAttributes(t *testing.T) {
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))
 	sub(t, readWriter{r, w}, topicName, "ch")
 
+	// need to give nsqd a chance to sub the client
+	time.Sleep(50 * time.Millisecond)
+
 	testUrl := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
 
 	statsData, err := util.ApiRequest(testUrl)
