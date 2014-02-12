@@ -65,7 +65,14 @@ func init() {
                 <th>Channels</th>
             </tr>
             <tr class="info">
-                <td colspan="3"><a href="/tombstone_topic_producer?topic={{.TopicName}}&node={{$node}}&rd=/node/{{$node}}" class="red">✘</a> {{.TopicName}}</td>
+                <td colspan="3">
+                    <form class="form-inline" style="margin:0" action="/tombstone_topic_producer" method="POST">
+                        <input type="hidden" name="rd" value="/node/{{$node}}">
+                        <input type="hidden" name="topic" value="{{.TopicName}}">
+                        <input type="hidden" name="node" value="{{$node}}">
+                        <button class="btn btn-mini btn-link red" type="submit">✘</button> {{.TopicName}}
+                    </form>
+                </td>
                 <td>
                     {{if $g.Enabled}}<a href="{{$g.LargeGraph $t "depth"}}"><img width="120" src="{{$g.Sparkline $t "depth"}}"></a>{{end}}
                     {{.Depth | commafy}}</td>
