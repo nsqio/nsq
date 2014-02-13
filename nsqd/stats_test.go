@@ -57,25 +57,22 @@ func TestClientAttributes(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"snappy": true, "user_agent": userAgent})
-	r := struct {
+	resp := struct {
 		Snappy    bool   `json:"snappy"`
 		UserAgent string `json:"user_agent"`
 	}{}
-	err = json.Unmarshal(data, &r)
+	err = json.Unmarshal(data, &resp)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, r.Snappy, true)
+	assert.Equal(t, resp.Snappy, true)
 
-	compressConn := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
-
+	r := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
 	w := snappystream.NewWriter(conn)
 
-	rw := readWriter{compressConn, w}
-
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))
-	sub(t, rw, topicName, "ch")
+	sub(t, readWriter{r, w}, topicName, "ch")
 
-	err = nsq.Ready(1).Write(rw)
-	assert.Equal(t, err, nil)
+	// need to give nsqd a chance to sub the client
+	time.Sleep(50 * time.Millisecond)
 
 	testUrl := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
 
