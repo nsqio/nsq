@@ -41,10 +41,15 @@ permalink: /clients/client_libraries.html
     <td>PHP</td>
     <td>stable</td>
   </tr>
-  <tr class="info">
+  <tr class="success">
     <td><a href="https://github.com/dudleycarr/nsqjs">nsqjs</a></td>
     <td>JavaScript (CoffeeScript)</td>
-    <td>beta (<strong>official</strong>)</td>
+    <td>stable (<strong>official</strong>)</td>
+  </tr>
+  <tr class="success">
+    <td><a href="https://github.com/brianc/node-nsqueue">node-nsqueue</a></td>
+    <td>JavaScript</td>
+    <td>stable</td>
   </tr>
   <tr class="info">
     <td><a href="https://github.com/bitly/nsq-java">nsq-java</a></td>
@@ -57,24 +62,24 @@ permalink: /clients/client_libraries.html
     <td>beta</td>
   </tr>
   <tr class="info">
+    <td><a href="https://github.com/chrisroberts/krakow">krakow</a></td>
+    <td>Ruby</td>
+    <td>beta</td>
+  </tr>
+  <tr class="info">
     <td><a href="https://github.com/ClarityServices/ruby_nsq">ruby_nsq</a></td>
     <td>Ruby</td>
     <td>beta</td>
   </tr>
-  <tr class="warning">
-    <td><a href="https://github.com/chrisroberts/krakow">krakow</a></td>
-    <td>Ruby</td>
-    <td>alpha</td>
-  </tr>
-  <tr class="warning">
-    <td><a href="https://github.com/brianc/node-nsqueue">node-nsqueue</a></td>
+  <tr class="info">
+    <td><a href="https://github.com/jmanero/nsq-client">nsq-client</a></td>
     <td>JavaScript</td>
-    <td>alpha</td>
+    <td>beta</td>
   </tr>
-  <tr class="warning">
+  <tr class="info">
     <td><a href="https://github.com/project-fifo/ensq">ensq</a></td>
     <td>Erlang</td>
-    <td>alpha</td>
+    <td>beta</td>
   </tr>
   <tr class="warning">
     <td><a href="https://github.com/thieman/nsq-clojure">nsq-clojure</a></td>
@@ -88,11 +93,6 @@ permalink: /clients/client_libraries.html
   </tr>
   <tr class="warning">
     <td><a href="https://github.com/phillro/nodensq">nodensq</a></td>
-    <td>JavaScript</td>
-    <td>alpha</td>
-  </tr>
-  <tr class="warning">
-    <td><a href="https://github.com/jmanero/nsq-client">nsq-client</a></td>
     <td>JavaScript</td>
     <td>alpha</td>
   </tr>
