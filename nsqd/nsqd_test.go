@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/go-simplejson"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
@@ -12,6 +9,10 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/go-simplejson"
+	"github.com/bmizerany/assert"
 )
 
 func getMetadata(n *NSQD) (*simplejson.Json, error) {
@@ -177,7 +178,11 @@ func TestEphemeralChannel(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	assert.Equal(t, len(topic.channelMap), 0)
+	topic.Lock()
+	numChannels := len(topic.channelMap)
+	topic.Unlock()
+	assert.Equal(t, numChannels, 0)
+
 	exitChan <- 1
 	<-doneExitChan
 }

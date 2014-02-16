@@ -1,12 +1,13 @@
 package nsqlookupd
 
 import (
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/bmizerany/assert"
 )
 
 func TestRegistrationDB(t *testing.T) {

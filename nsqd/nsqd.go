@@ -5,10 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
 	"io/ioutil"
 	"log"
 	"net"
@@ -19,6 +15,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 )
 
 type NSQD struct {
@@ -358,9 +359,10 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 }
 
 func (n *NSQD) idPump() {
+	factory := &GUIDFactory{}
 	lastError := time.Now()
 	for {
-		id, err := NewGUID(n.options.ID)
+		id, err := factory.NewGUID(n.options.ID)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {

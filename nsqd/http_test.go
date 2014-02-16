@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,6 +12,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
 )
 
 func TestHTTPput(t *testing.T) {

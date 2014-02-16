@@ -1,10 +1,11 @@
 package nsqlookupd
 
 import (
-	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"
+
+	"github.com/bitly/nsq/util"
 )
 
 type tcpServer struct {

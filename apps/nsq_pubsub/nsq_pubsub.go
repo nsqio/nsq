@@ -6,8 +6,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net"
@@ -16,6 +14,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 )
 
 var (

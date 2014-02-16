@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
 	"log"
 	"sync"
 	"sync/atomic"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 )
 
 type Topic struct {

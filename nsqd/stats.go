@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/bitly/nsq/util"
 	"sort"
+
+	"github.com/bitly/nsq/util"
 )
 
 type TopicStats struct {

@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
-	"github.com/bitly/go-nsq"
 	"log"
 	"net"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 var (

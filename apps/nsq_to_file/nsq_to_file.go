@@ -7,8 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +14,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 )
 
 var (

@@ -2,14 +2,15 @@ package nsq
 
 import (
 	"fmt"
-	"github.com/bitly/nsq/util"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/nsq/util"
+	"github.com/bmizerany/assert"
 )
 
 func TestNsqdToLookupd(t *testing.T) {

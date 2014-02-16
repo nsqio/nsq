@@ -12,8 +12,9 @@ package main
 import (
 	"encoding/hex"
 	"errors"
-	"github.com/bitly/go-nsq"
 	"time"
+
+	"github.com/bitly/go-nsq"
 )
 
 const (
@@ -30,40 +31,42 @@ const (
 var ErrTimeBackwards = errors.New("time has gone backwards")
 var ErrSequenceExpired = errors.New("sequence expired")
 
-var sequence int64
-var lastTimestamp int64
-
 type GUID int64
 
-func NewGUID(workerId int64) (GUID, error) {
+type GUIDFactory struct {
+	sequence      int64
+	lastTimestamp int64
+}
+
+func (f *GUIDFactory) NewGUID(workerId int64) (GUID, error) {
 	ts := time.Now().UnixNano() / 1e6
 
-	if ts < lastTimestamp {
+	if ts < f.lastTimestamp {
 		return 0, ErrTimeBackwards
 	}
 
-	if lastTimestamp == ts {
-		sequence = (sequence + 1) & sequenceMask
-		if sequence == 0 {
+	if f.lastTimestamp == ts {
+		f.sequence = (f.sequence + 1) & sequenceMask
+		if f.sequence == 0 {
 			return 0, ErrSequenceExpired
 		}
 	} else {
-		sequence = 0
+		f.sequence = 0
 	}
 
-	lastTimestamp = ts
+	f.lastTimestamp = ts
 
 	id := ((ts - twepoch) << timestampShift) |
 		(workerId << workerIdShift) |
-		sequence
+		f.sequence
 
 	return GUID(id), nil
 }
 
 func (g GUID) Hex() nsq.MessageID {
 	var h nsq.MessageID
+	var b [8]byte
 
-	b := make([]byte, 8)
 	b[0] = byte(g >> 56)
 	b[1] = byte(g >> 48)
 	b[2] = byte(g >> 40)
@@ -73,6 +76,6 @@ func (g GUID) Hex() nsq.MessageID {
 	b[6] = byte(g >> 8)
 	b[7] = byte(g)
 
-	hex.Encode(h[:], b)
+	hex.Encode(h[:], b[:])
 	return h
 }

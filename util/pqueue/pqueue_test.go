@@ -2,10 +2,11 @@ package pqueue
 
 import (
 	"container/heap"
-	"github.com/bmizerany/assert"
 	"math/rand"
 	"sort"
 	"testing"
+
+	"github.com/bmizerany/assert"
 )
 
 func TestPriorityQueue(t *testing.T) {

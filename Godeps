@@ -44,6 +44,10 @@
 			"Rev": "6807e777504f54ad073ecef66747de158294b639"
 		},
 		{
+			"ImportPath": "github.com/mreiferson/go-options",
+			"Rev": "896a539cd709f4f39d787562d1583c016ce7517e"
+		},
+		{
 			"ImportPath": "github.com/mreiferson/go-snappystream",
 			"Comment": "v0.1.1",
 			"Rev": "97c96e6648e99c2ce4fe7d169aa3f7368204e04d"

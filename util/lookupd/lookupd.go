@@ -3,14 +3,15 @@ package lookupd
 import (
 	"errors"
 	"fmt"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/semver"
 	"log"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/semver"
 )
 
 // GetLookupdTopics returns a []string containing a union of all the topics
@@ -410,11 +411,11 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						connected := time.Unix(client.Get("connect_ts").MustInt64(), 0)
 						connectedDuration := time.Now().Sub(connected).Seconds()
 
-						clientInfo := &ClientInfo{
-							HostAddress:     addr,
-							ClientVersion:   client.Get("version").MustString(),
-							ClientUserAgent: client.Get("user_agent").MustString(),
-							ClientIdentifier: fmt.Sprintf("%s:%s", client.Get("name").MustString(),
+						clientStats := &ClientStats{
+							HostAddress: addr,
+							Version:     client.Get("version").MustString(),
+							UserAgent:   client.Get("user_agent").MustString(),
+							Identifier: fmt.Sprintf("%s:%s", client.Get("name").MustString(),
 								strings.Split(client.Get("remote_address").MustString(), ":")[1]),
 							ConnectedDuration: time.Duration(int64(connectedDuration)) * time.Second, // truncate to second
 							InFlightCount:     client.Get("in_flight_count").MustInt(),
@@ -427,8 +428,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							Deflate:           client.Get("deflate").MustBool(),
 							Snappy:            client.Get("snappy").MustBool(),
 						}
-						hostChannelStats.Clients = append(hostChannelStats.Clients, clientInfo)
-						channelStats.Clients = append(channelStats.Clients, clientInfo)
+						hostChannelStats.Clients = append(hostChannelStats.Clients, clientStats)
+						channelStats.Clients = append(channelStats.Clients, clientStats)
 					}
 					sort.Sort(ClientsByHost{hostChannelStats.Clients})
 					sort.Sort(ClientsByHost{channelStats.Clients})

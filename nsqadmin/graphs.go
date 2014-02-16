@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
 	"html/template"
 	"log"
 	"net"
@@ -13,6 +11,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/util"
 )
 
 type GraphTarget interface {

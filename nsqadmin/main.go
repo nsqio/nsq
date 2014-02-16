@@ -3,13 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/util"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/BurntSushi/toml"
+	"github.com/bitly/nsq/util"
+	"github.com/mreiferson/go-options"
 )
 
 var (
@@ -67,9 +69,9 @@ func main() {
 		}
 	}
 
-	options := NewNSQAdminOptions()
-	util.ResolveOptions(options, flagSet, cfg)
-	nsqadmin := NewNSQAdmin(options)
+	opts := NewNSQAdminOptions()
+	options.Resolve(opts, flagSet, cfg)
+	nsqadmin := NewNSQAdmin(opts)
 
 	log.Println(util.Version("nsqadmin"))
 

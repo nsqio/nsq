@@ -2,11 +2,12 @@ package nsqlookupd
 
 import (
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
 	"io"
 	"log"
 	"net/http"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 )
 
 type httpServer struct {

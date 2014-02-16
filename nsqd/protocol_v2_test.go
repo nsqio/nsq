@@ -7,9 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
-	"github.com/mreiferson/go-snappystream"
 	"io"
 	"io/ioutil"
 	"log"
@@ -22,11 +19,16 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
+	"github.com/mreiferson/go-snappystream"
 )
 
 func mustStartNSQD(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	options.DataPath = os.TempDir()
 	nsqd := NewNSQD(options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
@@ -440,7 +442,7 @@ func TestSizeLimits(t *testing.T) {
 
 	options := NewNSQDOptions()
 	*verbose = true
-	options.MaxMessageSize = 100
+	options.MaxMsgSize = 100
 	options.MaxBodySize = 1000
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()

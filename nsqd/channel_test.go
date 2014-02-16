@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/bitly/go-nsq"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/bitly/go-nsq"
+	"github.com/bmizerany/assert"
 )
 
 // ensure that we can push a message through a topic and get it out of a channel
@@ -16,7 +17,7 @@ func TestPutMessage(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQD(NewNSQDOptions())
+	_, _, nsqd := mustStartNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
@@ -37,7 +38,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQD(NewNSQDOptions())
+	_, _, nsqd := mustStartNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
@@ -64,7 +65,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	options := NewNSQDOptions()
 	options.MsgTimeout = 200 * time.Millisecond
-	nsqd := NewNSQD(options)
+	_, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
 	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
@@ -76,22 +77,36 @@ func TestInFlightWorker(t *testing.T) {
 		channel.StartInFlightTimeout(msg, 0)
 	}
 
-	assert.Equal(t, len(channel.inFlightMessages), 1000)
-	assert.Equal(t, len(channel.inFlightPQ), 1000)
+	channel.Lock()
+	inFlightMsgs := len(channel.inFlightMessages)
+	channel.Unlock()
+	assert.Equal(t, inFlightMsgs, 1000)
+
+	channel.inFlightMutex.Lock()
+	inFlightPQMsgs := len(channel.inFlightPQ)
+	channel.inFlightMutex.Unlock()
+	assert.Equal(t, inFlightPQMsgs, 1000)
 
 	// the in flight worker has a resolution of 100ms so we need to wait
 	// at least that much longer than our msgTimeout (in worst case)
-	time.Sleep(options.MsgTimeout + 100*time.Millisecond)
+	time.Sleep(2 * options.MsgTimeout)
 
-	assert.Equal(t, len(channel.inFlightMessages), 0)
-	assert.Equal(t, len(channel.inFlightPQ), 0)
+	channel.Lock()
+	inFlightMsgs = len(channel.inFlightMessages)
+	channel.Unlock()
+	assert.Equal(t, inFlightMsgs, 0)
+
+	channel.inFlightMutex.Lock()
+	inFlightPQMsgs = len(channel.inFlightPQ)
+	channel.inFlightMutex.Unlock()
+	assert.Equal(t, inFlightPQMsgs, 0)
 }
 
 func TestChannelEmpty(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	nsqd := NewNSQD(NewNSQDOptions())
+	_, _, nsqd := mustStartNSQD(NewNSQDOptions())
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))

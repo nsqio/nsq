@@ -2,13 +2,14 @@ package util
 
 import (
 	"fmt"
-	"github.com/bitly/go-simplejson"
-	"github.com/bmizerany/perks/quantile"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-simplejson"
+	"github.com/bmizerany/perks/quantile"
 )
 
 type PercentileResult struct {
