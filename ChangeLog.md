@@ -2,6 +2,20 @@
 
 ## Binaries
 
+### 0.2.27 - 2014-02-17
+
+**Upgrading from 0.2.26**: No backwards incompatible changes.  We deprecated `--max-message-size`
+in favor of `--max-msg-size` for consistency with the rest of the flag names.
+
+IMPORTANT: this is another quick bug-fix release to address an issue in `nsqadmin` where templates
+were incompatible with older versions of Go (pre-1.2).
+
+ * #306 - fix `nsqadmin` template compatibility (and formatting)
+ * #310 - fix `nsqadmin` behavior when E2E stats are disabled
+ * #309 - fix `nsqadmin` `INVALID_ERROR` on node page tombstone link
+ * #311/#312 - fix `nsqd` client metadata race condition and test flakiness
+ * #314 - fix `nsqd` test races (run w/ `-race` and `GOMAXPROCS=4`) deprecate `--max-message-size`
+
 ### 0.2.26 - 2014-02-06
 
 **Upgrading from 0.2.25**: No backwards incompatible changes.
