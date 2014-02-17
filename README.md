@@ -69,7 +69,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
 [features_guarantees]: http://bitly.github.io/nsq/overview/features_and_guarantees.html
-[latest_tag]: https://github.com/bitly/nsq/tree/v0.2.27
+[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.2.27
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
 [client_libraries]: http://bitly.github.io/nsq/clients/client_libraries.html
 [jekyll]: http://jekyllrb.com/
