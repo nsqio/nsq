@@ -12,8 +12,8 @@ available for download:
 
 #### Current Stable Release: **`v0.2.27`**
 
-**IMPORTANT**: if you are running `v0.2.25` and using `--statsd-prefix` with `%s` or if you are
-running `v0.2.26` built with Go prior to 1.2 you should upgrade to `v0.2.27` to resolve ASAP.
+**IMPORTANT**: if you are running `nsqd` `v0.2.25` and using `--statsd-prefix` with `%s` or if you are
+running `nsqadmin` `v0.2.26` built with pre-Go1.2 you should upgrade to `v0.2.27` ASAP.
 
 **Go 1.2**:
 
