@@ -954,9 +954,14 @@ func TestSampling(t *testing.T) {
 		}
 	}()
 	<-doneChan
+
+	channel.Lock()
+	numInFlight := len(channel.inFlightMessages)
+	channel.Unlock()
+
 	// within 3%
-	assert.Equal(t, len(channel.inFlightMessages) <= int(float64(num)*0.45), true)
-	assert.Equal(t, len(channel.inFlightMessages) >= int(float64(num)*0.39), true)
+	assert.Equal(t, numInFlight <= int(float64(num)*0.45), true)
+	assert.Equal(t, numInFlight >= int(float64(num)*0.39), true)
 }
 
 func TestTLSSnappy(t *testing.T) {

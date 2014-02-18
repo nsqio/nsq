@@ -179,9 +179,11 @@ func (c *Channel) exit(deleted bool) error {
 	}
 
 	// this forceably closes client connections
+	c.RLock()
 	for _, client := range c.clients {
 		client.Close()
 	}
+	c.RUnlock()
 
 	close(c.exitChan)
 
