@@ -35,6 +35,8 @@ func TestHTTPput(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, string(body), "OK")
 
+	time.Sleep(5 * time.Millisecond)
+
 	assert.Equal(t, topic.Depth(), int64(1))
 }
 
@@ -56,6 +58,8 @@ func TestHTTPputEmpty(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, resp.StatusCode, 500)
 	assert.Equal(t, string(body), `{"status_code":500,"status_txt":"MSG_EMPTY","data":null}`)
+
+	time.Sleep(5 * time.Millisecond)
 
 	assert.Equal(t, topic.Depth(), int64(0))
 }
@@ -83,6 +87,8 @@ func TestHTTPmput(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, string(body), "OK")
+
+	time.Sleep(5 * time.Millisecond)
 
 	assert.Equal(t, topic.Depth(), int64(4))
 }
@@ -113,6 +119,8 @@ func TestHTTPmputEmpty(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, string(body), "OK")
 
+	time.Sleep(5 * time.Millisecond)
+
 	assert.Equal(t, topic.Depth(), int64(4))
 }
 
@@ -139,6 +147,8 @@ func TestHTTPmputBinary(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, string(body), "OK")
+
+	time.Sleep(5 * time.Millisecond)
 
 	assert.Equal(t, topic.Depth(), int64(5))
 }
