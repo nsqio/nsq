@@ -41,3 +41,7 @@ a[name] {
 ul ol, ol ul, ol ol, ul ul {
     margin-bottom: 1em;
 }
+
+.client-libraries {
+    font-size: 80%;
+}
