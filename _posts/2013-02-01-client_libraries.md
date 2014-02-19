@@ -13,14 +13,14 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
   <tr>
     <th>Name</th>
     <th>Language</th>
-    <th>Consumer</th>
-    <th>Producer</th>
+    <th>SUB</th>
+    <th>PUB</th>
     <th>Discovery</th>
-    <th>Back-pressure</th>
+    <th>Backoff</th>
     <th>TLS</th>
     <th>Snappy</th>
     <th>Sampling</th>
-    <th>In Production</th>
+    <th>In Prod.</th>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/bitly/go-nsq">go-nsq</a></td>
