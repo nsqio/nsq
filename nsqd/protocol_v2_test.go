@@ -219,6 +219,7 @@ func TestClientTimeout(t *testing.T) {
 
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
+	*verbose = true
 	options := NewNSQDOptions()
 	options.ClientTimeout = 50 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(options)
@@ -291,6 +292,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
+	*verbose = true
 	options := NewNSQDOptions()
 	options.ClientTimeout = 200 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(options)

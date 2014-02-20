@@ -35,7 +35,16 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 
 	clientID := atomic.AddInt64(&p.context.nsqd.clientIDSequence, 1)
 	client := NewClientV2(clientID, conn, p.context)
-	go p.messagePump(client)
+
+	// synchronize the startup of messagePump in order
+	// to guarantee that it gets a chance to initialize
+	// goroutine local state derived from client attributes
+	// and avoid a potential race with IDENTIFY (where a client
+	// could have changed or disabled said attributes)
+	messagePumpStartedChan := make(chan bool)
+	go p.messagePump(client, messagePumpStartedChan)
+	<-messagePumpStartedChan
+
 	for {
 		if client.HeartbeatInterval > 0 {
 			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 2))
@@ -165,7 +174,7 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, util.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func (p *ProtocolV2) messagePump(client *ClientV2) {
+func (p *ProtocolV2) messagePump(client *ClientV2, startedChan chan bool) {
 	var err error
 	var buf bytes.Buffer
 	var clientMsgChan chan *nsq.Message
@@ -176,17 +185,23 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 	var flusherChan <-chan time.Time
 	var sampleRate int32
 
+	subEventChan := client.SubEventChan
+	identifyEventChan := client.IdentifyEventChan
+	outputBufferTicker := time.NewTicker(client.OutputBufferTimeout)
+	heartbeatTicker := time.NewTicker(client.HeartbeatInterval)
+	heartbeatChan := heartbeatTicker.C
+
 	// v2 opportunistically buffers data to clients to reduce write system calls
 	// we force flush in two cases:
 	//    1. when the client is not ready to receive messages
 	//    2. we're buffered and the channel has nothing left to send us
 	//       (ie. we would block in this loop anyway)
 	//
-	subEventChan := client.SubEventChan
-	heartbeatUpdateChan := client.HeartbeatUpdateChan
-	outputBufferTimeoutUpdateChan := client.OutputBufferTimeoutUpdateChan
-	sampleRateUpdateChan := client.SampleRateUpdateChan
 	flushed := true
+
+	// signal to the goroutine that started the messagePump
+	// that we've started up
+	close(startedChan)
 
 	for {
 		if subChannel == nil || !client.IsReadyForMessages() {
@@ -210,7 +225,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
 			clientMsgChan = subChannel.clientMsgChan
-			flusherChan = client.OutputBufferTimeout.C
+			flusherChan = outputBufferTicker.C
 		}
 
 		select {
@@ -225,37 +240,39 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 				goto exit
 			}
 			flushed = true
-		case subChannel = <-subEventChan:
-			// you can't subscribe anymore
-			subEventChan = nil
 		case <-client.ReadyStateChan:
-		case timeout := <-outputBufferTimeoutUpdateChan:
-			client.OutputBufferTimeout.Stop()
-			if timeout > 0 {
-				client.OutputBufferTimeout = time.NewTicker(timeout)
+		case subChannel = <-subEventChan:
+			// you can't SUB anymore
+			subEventChan = nil
+		case identifyData := <-identifyEventChan:
+			// you can't IDENTIFY anymore
+			identifyEventChan = nil
+
+			outputBufferTicker.Stop()
+			if identifyData.OutputBufferTimeout > 0 {
+				outputBufferTicker = time.NewTicker(identifyData.OutputBufferTimeout)
 			}
-			// you can't update output buffer timeout anymore
-			outputBufferTimeoutUpdateChan = nil
-		case interval := <-heartbeatUpdateChan:
-			client.Heartbeat.Stop()
-			if interval > 0 {
-				client.Heartbeat = time.NewTicker(interval)
+
+			heartbeatTicker.Stop()
+			heartbeatChan = nil
+			if identifyData.HeartbeatInterval > 0 {
+				heartbeatTicker = time.NewTicker(identifyData.HeartbeatInterval)
+				heartbeatChan = heartbeatTicker.C
 			}
-			// you can't update heartbeat anymore
-			heartbeatUpdateChan = nil
-		case <-client.Heartbeat.C:
+
+			if identifyData.SampleRate > 0 {
+				sampleRate = identifyData.SampleRate
+			}
+		case <-heartbeatChan:
 			err = p.Send(client, nsq.FrameTypeResponse, heartbeatBytes)
 			if err != nil {
 				goto exit
 			}
-		case sampleRate = <-sampleRateUpdateChan:
-			sampleRateUpdateChan = nil
 		case msg, ok := <-clientMsgChan:
 			if !ok {
 				goto exit
 			}
 
-			// if we are sampling, do so here
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				continue
 			}
@@ -274,8 +291,8 @@ func (p *ProtocolV2) messagePump(client *ClientV2) {
 
 exit:
 	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
-	client.Heartbeat.Stop()
-	client.OutputBufferTimeout.Stop()
+	heartbeatTicker.Stop()
+	outputBufferTicker.Stop()
 	if err != nil {
 		log.Printf("PROTOCOL(V2): [%s] messagePump error - %s", client, err.Error())
 	}
@@ -415,7 +432,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot SUB in current state")
 	}
 
-	if client.HeartbeatInterval < 0 {
+	if client.HeartbeatInterval <= 0 {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot SUB with heartbeats disabled")
 	}
 
