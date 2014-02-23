@@ -917,7 +917,9 @@ func TestSampling(t *testing.T) {
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	num := 3000
+	num := 10000
+	sampleRate := 42
+	slack := 5
 
 	*verbose = true
 	options := NewNSQDOptions()
@@ -929,14 +931,14 @@ func TestSampling(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	data := identify(t, conn, map[string]interface{}{
-		"sample_rate": int32(42),
+		"sample_rate": int32(sampleRate),
 	}, nsq.FrameTypeResponse)
 	r := struct {
 		SampleRate int32 `json:"sample_rate"`
 	}{}
 	err = json.Unmarshal(data, &r)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, r.SampleRate, int32(42))
+	assert.Equal(t, r.SampleRate, int32(sampleRate))
 
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -969,9 +971,8 @@ func TestSampling(t *testing.T) {
 	numInFlight := len(channel.inFlightMessages)
 	channel.Unlock()
 
-	// within 3%
-	assert.Equal(t, numInFlight <= int(float64(num)*0.45), true)
-	assert.Equal(t, numInFlight >= int(float64(num)*0.39), true)
+	assert.Equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
+	assert.Equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)
 }
 
 func TestTLSSnappy(t *testing.T) {
