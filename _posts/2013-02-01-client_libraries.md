@@ -129,6 +129,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
       <td></td>
       <td><i class="fa fa-check"></i></td>
       <td></td>
+  </tr>
   <tr class="info">
     <td><a href="https://github.com/mreiferson/libnsq">libnsq</a></td>
     <td>C</td>
