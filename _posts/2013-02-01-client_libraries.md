@@ -119,6 +119,17 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"></i></td>
   </tr>
   <tr class="info">
+      <td><a href="https://github.com/dlecocq/nsq-py">nsq-py</a></td>
+      <td>Python</td>
+      <td><i class="fa fa-check"></i></td>
+      <td><i class="fa fa-check"></i></td>
+      <td><i class="fa fa-check"></i></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td><i class="fa fa-check"></i></td>
+      <td></td>
+  <tr class="info">
     <td><a href="https://github.com/mreiferson/libnsq">libnsq</a></td>
     <td>C</td>
     <td><i class="fa fa-check"></i></td>
