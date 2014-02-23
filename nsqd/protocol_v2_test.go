@@ -1014,6 +1014,54 @@ func TestTLSSnappy(t *testing.T) {
 	assert.Equal(t, data, []byte("OK"))
 }
 
+func TestClientMsgTimeout(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	*verbose = true
+	options := NewNSQDOptions()
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	msg := nsq.NewMessage(<-nsqd.idChan, make([]byte, 100))
+	topic.PutMessage(msg)
+
+	// without this the race detector thinks there's a write
+	// to msg.Attempts that races with the read in the protocol's messagePump...
+	// it does not reflect a realistically possible condition
+	topic.PutMessage(nsq.NewMessage(<-nsqd.idChan, make([]byte, 100)))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identifyFeatureNegotiation(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	})
+	sub(t, conn, topicName, "ch")
+
+	err = nsq.Ready(1).Write(conn)
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	msgOut, err := nsq.DecodeMessage(data)
+	assert.Equal(t, msgOut.Id, msg.Id)
+	assert.Equal(t, msgOut.Body, msg.Body)
+
+	time.Sleep(1100 * time.Millisecond)
+
+	err = nsq.Finish(msgOut.Id).Write(conn)
+	assert.Equal(t, err, nil)
+
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	assert.Equal(t, frameType, nsq.FrameTypeError)
+	assert.Equal(t, string(data),
+		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.Id))
+}
+
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)

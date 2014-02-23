@@ -74,7 +74,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, 0)
+		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 	}
 
 	channel.Lock()
@@ -106,7 +106,8 @@ func TestChannelEmpty(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	_, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	options := NewNSQDOptions()
+	_, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -116,7 +117,7 @@ func TestChannelEmpty(t *testing.T) {
 	msgs := make([]*nsq.Message, 0, 25)
 	for i := 0; i < 25; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, 0)
+		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 		msgs = append(msgs, msg)
 	}
 
@@ -139,7 +140,8 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	tcpAddr, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	options := NewNSQDOptions()
+	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 	conn, _ := mustConnectNSQD(tcpAddr)
 
@@ -152,7 +154,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 
 	for i := 0; i < 25; i++ {
 		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
-		channel.StartInFlightTimeout(msg, 0)
+		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 		client.SendingMessage()
 	}
 

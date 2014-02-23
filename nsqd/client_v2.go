@@ -31,12 +31,14 @@ type IdentifyDataV2 struct {
 	Snappy              bool   `json:"snappy"`
 	SampleRate          int32  `json:"sample_rate"`
 	UserAgent           string `json:"user_agent"`
+	MsgTimeout          int    `json:"msg_timeout"`
 }
 
 type IdentifyEvent struct {
 	OutputBufferTimeout time.Duration
 	HeartbeatInterval   time.Duration
 	SampleRate          int32
+	MsgTimeout          time.Duration
 }
 
 type ClientV2 struct {
@@ -69,6 +71,8 @@ type ClientV2 struct {
 	OutputBufferTimeout time.Duration
 
 	HeartbeatInterval time.Duration
+
+	MsgTimeout time.Duration
 
 	State           int32
 	ConnectTime     time.Time
@@ -109,6 +113,8 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		OutputBufferSize:    DefaultBufferSize,
 		OutputBufferTimeout: 250 * time.Millisecond,
 
+		MsgTimeout: context.nsqd.options.MsgTimeout,
+
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
 		ReadyStateChan:  make(chan int, 1),
@@ -138,27 +144,39 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	c.LongIdentifier = data.LongId
 	c.UserAgent = data.UserAgent
 	c.Unlock()
+
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
 		return err
 	}
+
 	err = c.SetOutputBufferSize(data.OutputBufferSize)
 	if err != nil {
 		return err
 	}
+
 	err = c.SetOutputBufferTimeout(data.OutputBufferTimeout)
 	if err != nil {
 		return err
 	}
+
 	err = c.SetSampleRate(data.SampleRate)
 	if err != nil {
 		return err
 	}
+
+	err = c.SetMsgTimeout(data.MsgTimeout)
+	if err != nil {
+		return err
+	}
+
 	ie := IdentifyEvent{
 		OutputBufferTimeout: c.OutputBufferTimeout,
 		HeartbeatInterval:   c.HeartbeatInterval,
 		SampleRate:          c.SampleRate,
+		MsgTimeout:          c.MsgTimeout,
 	}
+
 	// update the client's message pump
 	select {
 	case c.IdentifyEventChan <- ie:
@@ -344,6 +362,23 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
 	}
 	atomic.StoreInt32(&c.SampleRate, sampleRate)
+	return nil
+}
+
+func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
+	c.Lock()
+	defer c.Unlock()
+
+	switch {
+	case msgTimeout == 0:
+		// do nothing (use default)
+	case msgTimeout >= 1000 &&
+		msgTimeout <= int(c.context.nsqd.options.MaxMsgTimeout/time.Millisecond):
+		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
+	default:
+		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
+	}
+
 	return nil
 }
 

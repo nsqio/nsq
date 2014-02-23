@@ -190,6 +190,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2, startedChan chan bool) {
 	outputBufferTicker := time.NewTicker(client.OutputBufferTimeout)
 	heartbeatTicker := time.NewTicker(client.HeartbeatInterval)
 	heartbeatChan := heartbeatTicker.C
+	msgTimeout := client.MsgTimeout
 
 	// v2 opportunistically buffers data to clients to reduce write system calls
 	// we force flush in two cases:
@@ -263,6 +264,8 @@ func (p *ProtocolV2) messagePump(client *ClientV2, startedChan chan bool) {
 			if identifyData.SampleRate > 0 {
 				sampleRate = identifyData.SampleRate
 			}
+
+			msgTimeout = identifyData.MsgTimeout
 		case <-heartbeatChan:
 			err = p.Send(client, nsq.FrameTypeResponse, heartbeatBytes)
 			if err != nil {
@@ -277,7 +280,7 @@ func (p *ProtocolV2) messagePump(client *ClientV2, startedChan chan bool) {
 				continue
 			}
 
-			subChannel.StartInFlightTimeout(msg, client.ID)
+			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()
 			err = p.SendMessage(client, msg, &buf)
 			if err != nil {
@@ -326,6 +329,10 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	err = json.Unmarshal(body, &identifyData)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
+	}
+
+	if *verbose {
+		log.Printf("PROTOCOL(V2): [%s] %+v", client, identifyData)
 	}
 
 	err = client.Identify(identifyData)
