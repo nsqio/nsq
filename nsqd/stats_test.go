@@ -32,7 +32,7 @@ func TestStats(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	stats := nsqd.getStats()
@@ -57,7 +57,10 @@ func TestClientAttributes(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"snappy": true, "user_agent": userAgent})
+	data := identify(t, conn, map[string]interface{}{
+		"snappy":     true,
+		"user_agent": userAgent,
+	}, nsq.FrameTypeResponse)
 	resp := struct {
 		Snappy    bool   `json:"snappy"`
 		UserAgent string `json:"user_agent"`

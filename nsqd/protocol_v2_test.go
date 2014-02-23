@@ -45,28 +45,7 @@ func mustConnectNSQD(tcpAddr *net.TCPAddr) (net.Conn, error) {
 	return conn, nil
 }
 
-func identify(t *testing.T, conn io.ReadWriter) {
-	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
-	cmd, _ := nsq.Identify(ci)
-	err := cmd.Write(conn)
-	assert.Equal(t, err, nil)
-	readValidate(t, conn, nsq.FrameTypeResponse, "OK")
-}
-
-func identifyHeartbeatInterval(t *testing.T, conn io.ReadWriter, interval int, f int32, d string) {
-	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
-	ci["heartbeat_interval"] = interval
-	cmd, _ := nsq.Identify(ci)
-	err := cmd.Write(conn)
-	assert.Equal(t, err, nil)
-	readValidate(t, conn, f, d)
-}
-
-func identifyFeatureNegotiation(t *testing.T, conn io.ReadWriter, extra map[string]interface{}) []byte {
+func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f int32) []byte {
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
@@ -83,20 +62,8 @@ func identifyFeatureNegotiation(t *testing.T, conn io.ReadWriter, extra map[stri
 	assert.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, frameType, f)
 	return data
-}
-
-func identifyOutputBuffering(t *testing.T, conn io.ReadWriter, size int, timeout int, f int32, d string) {
-	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
-	ci["output_buffer_size"] = size
-	ci["output_buffer_timeout"] = timeout
-	cmd, _ := nsq.Identify(ci)
-	err := cmd.Write(conn)
-	assert.Equal(t, err, nil)
-	readValidate(t, conn, f, d)
 }
 
 func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
@@ -113,13 +80,14 @@ func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName str
 	assert.Equal(t, frameType, nsq.FrameTypeError)
 }
 
-func readValidate(t *testing.T, conn io.Reader, f int32, d string) {
+func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
 	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, frameType, f)
 	assert.Equal(t, string(data), d)
+	return data
 }
 
 // test channel/topic names
@@ -151,7 +119,7 @@ func TestBasicV2(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
@@ -189,7 +157,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 		conn, err := mustConnectNSQD(tcpAddr)
 		assert.Equal(t, err, nil)
 
-		identify(t, conn)
+		identify(t, conn, nil, nsq.FrameTypeResponse)
 		sub(t, conn, topicName, "ch"+i)
 
 		err = nsq.Ready(1).Write(conn)
@@ -228,7 +196,7 @@ func TestClientTimeout(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	time.Sleep(50 * time.Millisecond)
@@ -264,7 +232,7 @@ func TestClientHeartbeat(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
@@ -301,7 +269,9 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyHeartbeatInterval(t, conn, -1, nsq.FrameTypeResponse, "OK")
+	identify(t, conn, map[string]interface{}{
+		"heartbeat_interval": -1,
+	}, nsq.FrameTypeResponse)
 	subFail(t, conn, topicName, "ch")
 }
 
@@ -317,7 +287,9 @@ func TestClientHeartbeatDisable(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyHeartbeatInterval(t, conn, -1, nsq.FrameTypeResponse, "OK")
+	identify(t, conn, map[string]interface{}{
+		"heartbeat_interval": -1,
+	}, nsq.FrameTypeResponse)
 
 	time.Sleep(150 * time.Millisecond)
 
@@ -338,7 +310,9 @@ func TestMaxHeartbeatIntervalValid(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	hbi := int(options.MaxHeartbeatInterval / time.Millisecond)
-	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeResponse, "OK")
+	identify(t, conn, map[string]interface{}{
+		"heartbeat_interval": hbi,
+	}, nsq.FrameTypeResponse)
 }
 
 func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
@@ -354,7 +328,10 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 	hbi := int(options.MaxHeartbeatInterval/time.Millisecond + 1)
-	identifyHeartbeatInterval(t, conn, hbi, nsq.FrameTypeError, "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
+	data := identify(t, conn, map[string]interface{}{
+		"heartbeat_interval": hbi,
+	}, nsq.FrameTypeError)
+	assert.Equal(t, string(data), "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
 }
 
 func TestPausing(t *testing.T) {
@@ -369,7 +346,7 @@ func TestPausing(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
@@ -454,7 +431,7 @@ func TestSizeLimits(t *testing.T) {
 
 	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	// PUB that's valid
@@ -566,7 +543,7 @@ func TestTouch(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn)
+	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	topic := nsqd.GetTopic(topicName)
@@ -616,7 +593,7 @@ func TestMaxRdyCount(t *testing.T) {
 	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
-	data := identifyFeatureNegotiation(t, conn, nil)
+	data := identify(t, conn, nil, nsq.FrameTypeResponse)
 	r := struct {
 		MaxRdyCount int64 `json:"max_rdy_count"`
 	}{}
@@ -692,7 +669,10 @@ func TestOutputBuffering(t *testing.T) {
 	topic.PutMessage(msg)
 
 	start := time.Now()
-	identifyOutputBuffering(t, conn, outputBufferSize, outputBufferTimeout, nsq.FrameTypeResponse, "OK")
+	identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    outputBufferSize,
+		"output_buffer_timeout": outputBufferTimeout,
+	}, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(10).Write(conn)
@@ -724,15 +704,32 @@ func TestOutputBufferingValidity(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyOutputBuffering(t, conn, 512*1024, 1000, nsq.FrameTypeResponse, "OK")
-	identifyOutputBuffering(t, conn, -1, -1, nsq.FrameTypeResponse, "OK")
-	identifyOutputBuffering(t, conn, 0, 0, nsq.FrameTypeResponse, "OK")
-	identifyOutputBuffering(t, conn, 512*1024+1, 0, nsq.FrameTypeError, fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1))
+	identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    512 * 1024,
+		"output_buffer_timeout": 1000,
+	}, nsq.FrameTypeResponse)
+	identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    -1,
+		"output_buffer_timeout": -1,
+	}, nsq.FrameTypeResponse)
+	identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    0,
+		"output_buffer_timeout": 0,
+	}, nsq.FrameTypeResponse)
+	data := identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    512*1024 + 1,
+		"output_buffer_timeout": 0,
+	}, nsq.FrameTypeError)
+	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1))
 
 	conn, err = mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyOutputBuffering(t, conn, 0, 1001, nsq.FrameTypeError, "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
+	data = identify(t, conn, map[string]interface{}{
+		"output_buffer_size":    0,
+		"output_buffer_timeout": 1001,
+	}, nsq.FrameTypeError)
+	assert.Equal(t, string(data), "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
 }
 
 func TestTLS(t *testing.T) {
@@ -749,7 +746,9 @@ func TestTLS(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true})
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
@@ -785,7 +784,9 @@ func TestDeflate(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"deflate": true})
+	data := identify(t, conn, map[string]interface{}{
+		"deflate": true,
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		Deflate bool `json:"deflate"`
 	}{}
@@ -819,7 +820,9 @@ func TestSnappy(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"snappy": true})
+	data := identify(t, conn, map[string]interface{}{
+		"snappy": true,
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		Snappy bool `json:"snappy"`
 	}{}
@@ -872,7 +875,10 @@ func TestTLSDeflate(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true, "deflate": true})
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1":  true,
+		"deflate": true,
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		TLSv1   bool `json:"tls_v1"`
 		Deflate bool `json:"deflate"`
@@ -922,7 +928,9 @@ func TestSampling(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"sample_rate": int32(42)})
+	data := identify(t, conn, map[string]interface{}{
+		"sample_rate": int32(42),
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		SampleRate int32 `json:"sample_rate"`
 	}{}
@@ -981,7 +989,10 @@ func TestTLSSnappy(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	data := identifyFeatureNegotiation(t, conn, map[string]interface{}{"tls_v1": true, "snappy": true})
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+		"snappy": true,
+	}, nsq.FrameTypeResponse)
 	r := struct {
 		TLSv1  bool `json:"tls_v1"`
 		Snappy bool `json:"snappy"`
@@ -1036,9 +1047,9 @@ func TestClientMsgTimeout(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identifyFeatureNegotiation(t, conn, map[string]interface{}{
+	identify(t, conn, map[string]interface{}{
 		"msg_timeout": 1000,
-	})
+	}, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	err = nsq.Ready(1).Write(conn)
@@ -1191,7 +1202,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
-	identify(nil, conn)
+	identify(nil, conn, nil, nsq.FrameTypeResponse)
 	sub(nil, conn, topicName, "ch")
 
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
