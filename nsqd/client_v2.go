@@ -31,6 +31,14 @@ type IdentifyDataV2 struct {
 	Snappy              bool   `json:"snappy"`
 	SampleRate          int32  `json:"sample_rate"`
 	UserAgent           string `json:"user_agent"`
+	MsgTimeout          int    `json:"msg_timeout"`
+}
+
+type IdentifyEvent struct {
+	OutputBufferTimeout time.Duration
+	HeartbeatInterval   time.Duration
+	SampleRate          int32
+	MsgTimeout          time.Duration
 }
 
 type ClientV2 struct {
@@ -59,10 +67,12 @@ type ClientV2 struct {
 	Reader *bufio.Reader
 	Writer *bufio.Writer
 
-	// output buffering
-	OutputBufferSize              int
-	OutputBufferTimeout           *time.Ticker
-	OutputBufferTimeoutUpdateChan chan time.Duration
+	OutputBufferSize    int
+	OutputBufferTimeout time.Duration
+
+	HeartbeatInterval time.Duration
+
+	MsgTimeout time.Duration
 
 	State           int32
 	ConnectTime     time.Time
@@ -71,12 +81,11 @@ type ClientV2 struct {
 	ExitChan        chan int
 	ShortIdentifier string
 	LongIdentifier  string
-	SubEventChan    chan *Channel
+	SampleRate      int32
 
-	SampleRate           int32
-	SampleRateUpdateChan chan int32
+	IdentifyEventChan chan IdentifyEvent
+	SubEventChan      chan *Channel
 
-	// states for exposing to nsqadmin
 	TLS     int32
 	Snappy  int32
 	Deflate int32
@@ -84,11 +93,6 @@ type ClientV2 struct {
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
 	lenSlice []byte
-
-	// heartbeats are client configurable via IDENTIFY
-	Heartbeat           *time.Ticker
-	HeartbeatInterval   time.Duration
-	HeartbeatUpdateChan chan time.Duration
 }
 
 func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
@@ -106,9 +110,10 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		Reader: bufio.NewReaderSize(conn, DefaultBufferSize),
 		Writer: bufio.NewWriterSize(conn, DefaultBufferSize),
 
-		OutputBufferSize:              DefaultBufferSize,
-		OutputBufferTimeout:           time.NewTicker(250 * time.Millisecond),
-		OutputBufferTimeoutUpdateChan: make(chan time.Duration, 1),
+		OutputBufferSize:    DefaultBufferSize,
+		OutputBufferTimeout: 250 * time.Millisecond,
+
+		MsgTimeout: context.nsqd.options.MsgTimeout,
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -118,14 +123,12 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		ShortIdentifier: identifier,
 		LongIdentifier:  identifier,
 		State:           nsq.StateInit,
-		SubEventChan:    make(chan *Channel, 1),
 
-		SampleRateUpdateChan: make(chan int32, 1),
+		SubEventChan:      make(chan *Channel, 1),
+		IdentifyEventChan: make(chan IdentifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
-		Heartbeat:           time.NewTicker(context.nsqd.options.ClientTimeout / 2),
-		HeartbeatInterval:   context.nsqd.options.ClientTimeout / 2,
-		HeartbeatUpdateChan: make(chan time.Duration, 1),
+		HeartbeatInterval: context.nsqd.options.ClientTimeout / 2,
 	}
 	c.lenSlice = c.lenBuf[:]
 	return c
@@ -141,19 +144,46 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	c.LongIdentifier = data.LongId
 	c.UserAgent = data.UserAgent
 	c.Unlock()
+
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
 		return err
 	}
+
 	err = c.SetOutputBufferSize(data.OutputBufferSize)
 	if err != nil {
 		return err
 	}
+
 	err = c.SetOutputBufferTimeout(data.OutputBufferTimeout)
 	if err != nil {
 		return err
 	}
-	return c.SetSampleRate(data.SampleRate)
+
+	err = c.SetSampleRate(data.SampleRate)
+	if err != nil {
+		return err
+	}
+
+	err = c.SetMsgTimeout(data.MsgTimeout)
+	if err != nil {
+		return err
+	}
+
+	ie := IdentifyEvent{
+		OutputBufferTimeout: c.OutputBufferTimeout,
+		HeartbeatInterval:   c.HeartbeatInterval,
+		SampleRate:          c.SampleRate,
+		MsgTimeout:          c.MsgTimeout,
+	}
+
+	// update the client's message pump
+	select {
+	case c.IdentifyEventChan <- ie:
+	default:
+	}
+
+	return nil
 }
 
 func (c *ClientV2) Stats() ClientStats {
@@ -261,37 +291,25 @@ func (c *ClientV2) UnPause() {
 }
 
 func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
-	// clients can modify the rate of heartbeats (or disable)
-	var interval time.Duration
+	c.Lock()
+	defer c.Unlock()
 
 	switch {
 	case desiredInterval == -1:
-		interval = -1
+		c.HeartbeatInterval = 0
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
 		desiredInterval <= int(c.context.nsqd.options.MaxHeartbeatInterval/time.Millisecond):
-		interval = (time.Duration(desiredInterval) * time.Millisecond)
+		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
 		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
-	}
-
-	// leave the default heartbeat in place
-	if desiredInterval != 0 {
-		select {
-		case c.HeartbeatUpdateChan <- interval:
-		default:
-		}
-		c.HeartbeatInterval = interval
 	}
 
 	return nil
 }
 
 func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
-	c.Lock()
-	defer c.Unlock()
-
 	var size int
 
 	switch {
@@ -307,11 +325,13 @@ func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 	}
 
 	if size > 0 {
+		c.Lock()
+		defer c.Unlock()
+		c.OutputBufferSize = size
 		err := c.Writer.Flush()
 		if err != nil {
 			return err
 		}
-		c.OutputBufferSize = size
 		c.Writer = bufio.NewWriterSize(c.Conn, size)
 	}
 
@@ -319,25 +339,19 @@ func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 }
 
 func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
-	var timeout time.Duration
+	c.Lock()
+	defer c.Unlock()
 
 	switch {
 	case desiredTimeout == -1:
-		timeout = -1
+		c.OutputBufferTimeout = 0
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case desiredTimeout >= 1 &&
 		desiredTimeout <= int(c.context.nsqd.options.MaxOutputBufferTimeout/time.Millisecond):
-		timeout = (time.Duration(desiredTimeout) * time.Millisecond)
+		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
 		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
-	}
-
-	if desiredTimeout != 0 {
-		select {
-		case c.OutputBufferTimeoutUpdateChan <- timeout:
-		default:
-		}
 	}
 
 	return nil
@@ -347,13 +361,22 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
 		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
 	}
+	atomic.StoreInt32(&c.SampleRate, sampleRate)
+	return nil
+}
 
-	if sampleRate != 0 {
-		atomic.StoreInt32(&c.SampleRate, sampleRate)
-		select {
-		case c.SampleRateUpdateChan <- sampleRate:
-		default:
-		}
+func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
+	c.Lock()
+	defer c.Unlock()
+
+	switch {
+	case msgTimeout == 0:
+		// do nothing (use default)
+	case msgTimeout >= 1000 &&
+		msgTimeout <= int(c.context.nsqd.options.MaxMsgTimeout/time.Millisecond):
+		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
+	default:
+		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
 	}
 
 	return nil

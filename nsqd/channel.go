@@ -427,10 +427,10 @@ func (c *Channel) RemoveClient(clientID int64) {
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64) error {
+func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64, timeout time.Duration) error {
 	now := time.Now()
 	value := &inFlightMessage{msg, clientID, now}
-	absTs := now.Add(c.context.nsqd.options.MsgTimeout).UnixNano()
+	absTs := now.Add(timeout).UnixNano()
 	item := &pqueue.Item{Value: value, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {
