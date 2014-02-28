@@ -1,7 +1,7 @@
 ### Introduction
 
-**NSQ** is a realtime distributed messaging platform designed to operate at bitly's scale, handling
-billions of messages per day (current peak of 90k+ messages per second).
+**NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
+billions of messages per day.
 
 It promotes *distributed* and *decentralized* topologies without single points of failure,
 enabling fault tolerance and high availability coupled with a reliable message delivery
@@ -31,6 +31,8 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
 If you're having trouble or have questions about **NSQ**, the best place to ask is the [user
 group][google_group].
+
+If you're on IRC on freenode, join **#nsq**.
 
 ### Issues
 

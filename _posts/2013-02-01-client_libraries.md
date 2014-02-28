@@ -107,6 +107,18 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"> (<strong>official</strong>)</i></td>
   </tr>
   <tr class="success">
+    <td><a href="https://github.com/segmentio/nsq.js">nsq.js</a></td>
+    <td>JavaScript</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td><i class="fa fa-check"></i></td>
+  </tr>
+  <tr class="success">
     <td><a href="https://github.com/brianc/node-nsqueue">node-nsqueue</a></td>
     <td>JavaScript</td>
     <td><i class="fa fa-check"></i></td>
