@@ -29,10 +29,11 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 
 ### Getting Help
 
-If you're having trouble or have questions about **NSQ**, the best place to ask is the [user
-group][google_group].
-
-If you're on IRC on freenode, join **#nsq**.
+* **Source**: [https://github.com/bitly/nsq][github_nsq]
+* **Issues**: [https://github.com/bitly/nsq/issues][github_issues]
+* **Mailing List**: [nsq-users@googlegroups.com][google_group]
+* **IRC**: #nsq on freenode
+* **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
 
 ### Issues
 
