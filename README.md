@@ -3,10 +3,11 @@
  * **Source**: [https://github.com/bitly/nsq][github]
  * **Issues**: [https://github.com/bitly/nsq/issues][issues]
  * **Mailing List**: [nsq-users@googlegroups.com](https://groups.google.com/d/forum/nsq-users)
+ * **IRC**: #nsq on freenode
  * **Docs**: [http://bitly.github.io/nsq][docs]
  * **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
 
-**NSQ** is a realtime distributed messaging platform designed to operate at bitly's scale, handling
+**NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.
 
 It promotes *distributed* and *decentralized* topologies without single points of failure,
