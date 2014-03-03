@@ -21,8 +21,9 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://hailocab.com"><img src="{{ site.baseurl }}/static/img/hailo_logo.png" width="50"/></a></td>
 <td align="center"><a href="http://simplereach.com"><img src="{{ site.baseurl }}/static/img/simplereach_logo.png" width="108"/></a></td>
 <td align="center"><a href="http://moz.com"><img src="{{ site.baseurl }}/static/img/moz_logo.png" width="108"/></a></td>
-</tr><tr>
 <td align="center"><a href="http://path.com"><img src="{{ site.baseurl }}/static/img/path_logo.png" width="67"/></a></td>
+</tr><tr>
+<td align="center"><a href="http://eventful.com"><img src="{{ site.baseurl }}/static/img/eventful_logo.png" width="67"/></a></td>
 <td align="center"><a href="http://reonomy.com"><img src="{{ site.baseurl }}/static/img/reonomy_logo.png" width="67"/></a></td>
 <td align="center"><a href="https://project-fifo.net"><img src="{{ site.baseurl }}/static/img/project_fifo.png" width="77"/></a></td>
 <td align="center"><a href="http://trendrr.com"><img src="{{ site.baseurl }}/static/img/trendrr_logo.png" width="77"/></a></td>
