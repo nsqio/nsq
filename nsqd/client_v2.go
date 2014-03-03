@@ -19,8 +19,11 @@ import (
 const DefaultBufferSize = 16 * 1024
 
 type IdentifyDataV2 struct {
-	ShortId             string `json:"short_id"`
-	LongId              string `json:"long_id"`
+	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
+	LongId  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
+
+	ClientID            string `json:"client_id"`
+	Hostname            string `json:"hostname"`
 	HeartbeatInterval   int    `json:"heartbeat_interval"`
 	OutputBufferSize    int    `json:"output_buffer_size"`
 	OutputBufferTimeout int    `json:"output_buffer_timeout"`
@@ -74,14 +77,16 @@ type ClientV2 struct {
 
 	MsgTimeout time.Duration
 
-	State           int32
-	ConnectTime     time.Time
-	Channel         *Channel
-	ReadyStateChan  chan int
-	ExitChan        chan int
-	ShortIdentifier string
-	LongIdentifier  string
-	SampleRate      int32
+	State          int32
+	ConnectTime    time.Time
+	Channel        *Channel
+	ReadyStateChan chan int
+	ExitChan       chan int
+
+	ClientID string
+	Hostname string
+
+	SampleRate int32
 
 	IdentifyEventChan chan IdentifyEvent
 	SubEventChan      chan *Channel
@@ -117,12 +122,13 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
-		ReadyStateChan:  make(chan int, 1),
-		ExitChan:        make(chan int),
-		ConnectTime:     time.Now(),
-		ShortIdentifier: identifier,
-		LongIdentifier:  identifier,
-		State:           nsq.StateInit,
+		ReadyStateChan: make(chan int, 1),
+		ExitChan:       make(chan int),
+		ConnectTime:    time.Now(),
+		State:          nsq.StateInit,
+
+		ClientID: identifier,
+		Hostname: identifier,
 
 		SubEventChan:      make(chan *Channel, 1),
 		IdentifyEventChan: make(chan IdentifyEvent, 1),
@@ -139,9 +145,20 @@ func (c *ClientV2) String() string {
 }
 
 func (c *ClientV2) Identify(data IdentifyDataV2) error {
+	// TODO: for backwards compatibility, remove in 1.0
+	hostname := data.Hostname
+	if hostname == "" {
+		hostname = data.LongId
+	}
+	// TODO: for backwards compatibility, remove in 1.0
+	clientId := data.ClientID
+	if clientId == "" {
+		clientId = data.ShortId
+	}
+
 	c.Lock()
-	c.ShortIdentifier = data.ShortId
-	c.LongIdentifier = data.LongId
+	c.ClientID = clientId
+	c.Hostname = hostname
 	c.UserAgent = data.UserAgent
 	c.Unlock()
 
@@ -188,13 +205,21 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 
 func (c *ClientV2) Stats() ClientStats {
 	c.RLock()
-	name := c.ShortIdentifier
+	// TODO: deprecated, remove in 1.0
+	name := c.ClientID
+
+	clientId := c.ClientID
+	hostname := c.Hostname
 	userAgent := c.UserAgent
 	c.RUnlock()
 	return ClientStats{
+		// TODO: deprecated, remove in 1.0
+		Name: name,
+
 		Version:       "V2",
 		RemoteAddress: c.RemoteAddr().String(),
-		Name:          name,
+		ClientID:      clientId,
+		Hostname:      hostname,
 		UserAgent:     userAgent,
 		State:         atomic.LoadInt32(&c.State),
 		ReadyCount:    atomic.LoadInt64(&c.ReadyCount),
