@@ -156,8 +156,9 @@ func (c *ChannelStats) Host() string {
 type ClientStats struct {
 	HostAddress       string
 	Version           string
+	ClientID          string
+	Hostname          string
 	UserAgent         string
-	Identifier        string
 	ConnectedDuration time.Duration
 	InFlightCount     int
 	ReadyCount        int
@@ -209,10 +210,10 @@ func (c ChannelStatsByHost) Less(i, j int) bool {
 	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
 }
 func (c ClientsByHost) Less(i, j int) bool {
-	if c.ClientStatsList[i].Identifier == c.ClientStatsList[j].Identifier {
+	if c.ClientStatsList[i].ClientID == c.ClientStatsList[j].ClientID {
 		return c.ClientStatsList[i].HostAddress < c.ClientStatsList[j].HostAddress
 	}
-	return c.ClientStatsList[i].Identifier < c.ClientStatsList[j].Identifier
+	return c.ClientStatsList[i].ClientID < c.ClientStatsList[j].ClientID
 }
 func (c TopicStatsByHost) Less(i, j int) bool {
 	return c.TopicStatsList[i].HostAddress < c.TopicStatsList[j].HostAddress

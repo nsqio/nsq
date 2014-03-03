@@ -147,7 +147,7 @@ func init() {
             {{range .Clients}}
             <tr>
                 <td></td>
-                <td>{{.Identifier}}</td>
+                <td>{{.ClientID}}</td>
                 <td>{{.Version}} {{if .HasUserAgent}}({{.UserAgent}}){{end}}</td>
                 <td>
                   {{if .HasSampleRate}}
