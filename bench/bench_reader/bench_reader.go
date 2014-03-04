@@ -16,6 +16,7 @@ import (
 var (
 	num        = flag.Int("num", 1000000, "num messages")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
+	size       = flag.Int("size", 200, "size of messages")
 	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
 	channel    = flag.String("channel", "ch", "channel to receive messages on")
 )
@@ -43,7 +44,7 @@ func main() {
 	duration := end.Sub(start)
 	log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op",
 		duration,
-		float64(*num*200)/duration.Seconds()/1024/1024,
+		float64(*num*(*size))/duration.Seconds()/1024/1024,
 		float64(*num)/duration.Seconds(),
 		float64(duration/time.Microsecond)/float64(*num))
 }
@@ -81,7 +82,9 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 			panic(err.Error())
 		}
 		if frameType == nsq.FrameTypeError {
-			panic("got something else")
+			panic(string(data))
+		} else if frameType == nsq.FrameTypeResponse {
+			continue
 		}
 		msg, err := nsq.DecodeMessage(data)
 		if err != nil {
