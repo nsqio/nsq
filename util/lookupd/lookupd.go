@@ -411,12 +411,24 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						connected := time.Unix(client.Get("connect_ts").MustInt64(), 0)
 						connectedDuration := time.Now().Sub(connected).Seconds()
 
+						clientId := client.Get("clientId").MustString()
+						if clientId == "" {
+							// TODO: deprecated, remove in 1.0
+							name := client.Get("name").MustString()
+							remoteAddressParts := strings.Split(client.Get("remote_address").MustString(), ":")
+							port := remoteAddressParts[len(remoteAddressParts)-1]
+							if len(remoteAddressParts) < 2 {
+								port = "NA"
+							}
+							clientId = fmt.Sprintf("%s:%s", name, port)
+						}
+
 						clientStats := &ClientStats{
-							HostAddress: addr,
-							Version:     client.Get("version").MustString(),
-							UserAgent:   client.Get("user_agent").MustString(),
-							Identifier: fmt.Sprintf("%s:%s", client.Get("name").MustString(),
-								strings.Split(client.Get("remote_address").MustString(), ":")[1]),
+							HostAddress:       addr,
+							Version:           client.Get("version").MustString(),
+							ClientID:          clientId,
+							Hostname:          client.Get("hostname").MustString(),
+							UserAgent:         client.Get("user_agent").MustString(),
 							ConnectedDuration: time.Duration(int64(connectedDuration)) * time.Second, // truncate to second
 							InFlightCount:     client.Get("in_flight_count").MustInt(),
 							ReadyCount:        client.Get("ready_count").MustInt(),

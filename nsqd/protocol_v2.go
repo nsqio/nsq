@@ -384,7 +384,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 		SampleRate:      client.SampleRate,
 	})
 	if err != nil {
-		panic("should never happen")
+		return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 	}
 
 	err = p.Send(client, nsq.FrameTypeResponse, resp)
