@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bytes"
@@ -24,17 +24,17 @@ var separatorBytes = []byte(" ")
 var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
 
-type ProtocolV2 struct {
-	context *Context
+type protocolV2 struct {
+	context *context
 }
 
-func (p *ProtocolV2) IOLoop(conn net.Conn) error {
+func (p *protocolV2) IOLoop(conn net.Conn) error {
 	var err error
 	var line []byte
 	var zeroTime time.Time
 
 	clientID := atomic.AddInt64(&p.context.nsqd.clientIDSequence, 1)
-	client := NewClientV2(clientID, conn, p.context)
+	client := newClientV2(clientID, conn, p.context)
 
 	// synchronize the startup of messagePump in order
 	// to guarantee that it gets a chance to initialize
@@ -67,7 +67,7 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 		}
 		params := bytes.Split(line, separatorBytes)
 
-		if *verbose {
+		if p.context.nsqd.options.Verbose {
 			log.Printf("PROTOCOL(V2): [%s] %s", client, params)
 		}
 
@@ -109,8 +109,8 @@ func (p *ProtocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.Buffer) error {
-	if *verbose {
+func (p *protocolV2) SendMessage(client *clientV2, msg *nsq.Message, buf *bytes.Buffer) error {
+	if p.context.nsqd.options.Verbose {
 		log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
 			msg.Id, client, msg.Body)
 	}
@@ -129,7 +129,7 @@ func (p *ProtocolV2) SendMessage(client *ClientV2, msg *nsq.Message, buf *bytes.
 	return nil
 }
 
-func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error {
+func (p *protocolV2) Send(client *clientV2, frameType int32, data []byte) error {
 	client.Lock()
 
 	client.SetWriteDeadline(time.Now().Add(time.Second))
@@ -148,7 +148,7 @@ func (p *ProtocolV2) Send(client *ClientV2, frameType int32, data []byte) error 
 	return err
 }
 
-func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 	switch {
 	case bytes.Equal(params[0], []byte("FIN")):
 		return p.FIN(client, params)
@@ -174,7 +174,7 @@ func (p *ProtocolV2) Exec(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, util.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func (p *ProtocolV2) messagePump(client *ClientV2, startedChan chan bool) {
+func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
 	var buf bytes.Buffer
 	var clientMsgChan chan *nsq.Message
@@ -301,7 +301,7 @@ exit:
 	}
 }
 
-func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error) {
 	var err error
 
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
@@ -325,13 +325,13 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	// body is a json structure with producer information
-	var identifyData IdentifyDataV2
+	var identifyData identifyDataV2
 	err = json.Unmarshal(body, &identifyData)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
-	if *verbose {
+	if p.context.nsqd.options.Verbose {
 		log.Printf("PROTOCOL(V2): [%s] %+v", client, identifyData)
 	}
 
@@ -434,7 +434,7 @@ func (p *ProtocolV2) IDENTIFY(client *ClientV2, params [][]byte) ([]byte, error)
 	return nil, nil
 }
 
-func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateInit {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot SUB in current state")
 	}
@@ -471,7 +471,7 @@ func (p *ProtocolV2) SUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	return okBytes, nil
 }
 
-func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 
 	if state == nsq.StateClosing {
@@ -506,7 +506,7 @@ func (p *ProtocolV2) RDY(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot FIN in current state")
@@ -528,7 +528,7 @@ func (p *ProtocolV2) FIN(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot REQ in current state")
@@ -562,7 +562,7 @@ func (p *ProtocolV2) REQ(client *ClientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) CLS(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) CLS(client *clientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != nsq.StateSubscribed {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot CLS in current state")
 	}
@@ -572,11 +572,11 @@ func (p *ProtocolV2) CLS(client *ClientV2, params [][]byte) ([]byte, error) {
 	return []byte("CLOSE_WAIT"), nil
 }
 
-func (p *ProtocolV2) NOP(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) NOP(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	var err error
 
 	if len(params) < 2 {
@@ -620,7 +620,7 @@ func (p *ProtocolV2) PUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	return okBytes, nil
 }
 
-func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	var err error
 
 	if len(params) < 2 {
@@ -666,7 +666,7 @@ func (p *ProtocolV2) MPUB(client *ClientV2, params [][]byte) ([]byte, error) {
 	return okBytes, nil
 }
 
-func (p *ProtocolV2) TOUCH(client *ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != nsq.StateSubscribed && state != nsq.StateClosing {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "cannot TOUCH in current state")

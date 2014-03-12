@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bufio"
@@ -18,7 +18,7 @@ import (
 
 const DefaultBufferSize = 16 * 1024
 
-type IdentifyDataV2 struct {
+type identifyDataV2 struct {
 	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
 	LongId  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
 
@@ -37,14 +37,14 @@ type IdentifyDataV2 struct {
 	MsgTimeout          int    `json:"msg_timeout"`
 }
 
-type IdentifyEvent struct {
+type identifyEvent struct {
 	OutputBufferTimeout time.Duration
 	HeartbeatInterval   time.Duration
 	SampleRate          int32
 	MsgTimeout          time.Duration
 }
 
-type ClientV2 struct {
+type clientV2 struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	ReadyCount     int64
 	LastReadyCount int64
@@ -56,7 +56,7 @@ type ClientV2 struct {
 	sync.RWMutex
 
 	ID        int64
-	context   *Context
+	context   *context
 	UserAgent string
 
 	// original connection
@@ -88,7 +88,7 @@ type ClientV2 struct {
 
 	SampleRate int32
 
-	IdentifyEventChan chan IdentifyEvent
+	IdentifyEventChan chan identifyEvent
 	SubEventChan      chan *Channel
 
 	TLS     int32
@@ -100,13 +100,13 @@ type ClientV2 struct {
 	lenSlice []byte
 }
 
-func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
+func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
 	var identifier string
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
-	c := &ClientV2{
+	c := &clientV2{
 		ID:      id,
 		context: context,
 
@@ -131,7 +131,7 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 		Hostname: identifier,
 
 		SubEventChan:      make(chan *Channel, 1),
-		IdentifyEventChan: make(chan IdentifyEvent, 1),
+		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: context.nsqd.options.ClientTimeout / 2,
@@ -140,11 +140,11 @@ func NewClientV2(id int64, conn net.Conn, context *Context) *ClientV2 {
 	return c
 }
 
-func (c *ClientV2) String() string {
+func (c *clientV2) String() string {
 	return c.RemoteAddr().String()
 }
 
-func (c *ClientV2) Identify(data IdentifyDataV2) error {
+func (c *clientV2) Identify(data identifyDataV2) error {
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
 	if hostname == "" {
@@ -187,7 +187,7 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 		return err
 	}
 
-	ie := IdentifyEvent{
+	ie := identifyEvent{
 		OutputBufferTimeout: c.OutputBufferTimeout,
 		HeartbeatInterval:   c.HeartbeatInterval,
 		SampleRate:          c.SampleRate,
@@ -203,7 +203,7 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	return nil
 }
 
-func (c *ClientV2) Stats() ClientStats {
+func (c *clientV2) Stats() ClientStats {
 	c.RLock()
 	// TODO: deprecated, remove in 1.0
 	name := c.ClientID
@@ -235,7 +235,7 @@ func (c *ClientV2) Stats() ClientStats {
 	}
 }
 
-func (c *ClientV2) IsReadyForMessages() bool {
+func (c *clientV2) IsReadyForMessages() bool {
 	if c.Channel.IsPaused() {
 		return false
 	}
@@ -244,7 +244,7 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	if *verbose {
+	if c.context.nsqd.options.Verbose {
 		log.Printf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
 			readyCount, lastReadyCount, inFlightCount)
 	}
@@ -256,13 +256,13 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	return true
 }
 
-func (c *ClientV2) SetReadyCount(count int64) {
+func (c *clientV2) SetReadyCount(count int64) {
 	atomic.StoreInt64(&c.ReadyCount, count)
 	atomic.StoreInt64(&c.LastReadyCount, count)
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) tryUpdateReadyState() {
+func (c *clientV2) tryUpdateReadyState() {
 	// you can always *try* to write to ReadyStateChan because in the cases
 	// where you cannot the message pump loop would have iterated anyway.
 	// the atomic integer operations guarantee correctness of the value.
@@ -272,50 +272,50 @@ func (c *ClientV2) tryUpdateReadyState() {
 	}
 }
 
-func (c *ClientV2) FinishedMessage() {
+func (c *clientV2) FinishedMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) Empty() {
+func (c *clientV2) Empty() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) SendingMessage() {
+func (c *clientV2) SendingMessage() {
 	atomic.AddInt64(&c.ReadyCount, -1)
 	atomic.AddInt64(&c.InFlightCount, 1)
 	atomic.AddUint64(&c.MessageCount, 1)
 }
 
-func (c *ClientV2) TimedOutMessage() {
+func (c *clientV2) TimedOutMessage() {
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) RequeuedMessage() {
+func (c *clientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) StartClose() {
+func (c *clientV2) StartClose() {
 	// Force the client into ready 0
 	c.SetReadyCount(0)
 	// mark this client as closing
 	atomic.StoreInt32(&c.State, nsq.StateClosing)
 }
 
-func (c *ClientV2) Pause() {
+func (c *clientV2) Pause() {
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) UnPause() {
+func (c *clientV2) UnPause() {
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
+func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -334,7 +334,7 @@ func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
 	return nil
 }
 
-func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
+func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 	var size int
 
 	switch {
@@ -363,7 +363,7 @@ func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 	return nil
 }
 
-func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
+func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -382,7 +382,7 @@ func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	return nil
 }
 
-func (c *ClientV2) SetSampleRate(sampleRate int32) error {
+func (c *clientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
 		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
 	}
@@ -390,7 +390,7 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	return nil
 }
 
-func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
+func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -407,7 +407,7 @@ func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
 	return nil
 }
 
-func (c *ClientV2) UpgradeTLS() error {
+func (c *clientV2) UpgradeTLS() error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -426,7 +426,7 @@ func (c *ClientV2) UpgradeTLS() error {
 	return nil
 }
 
-func (c *ClientV2) UpgradeDeflate(level int) error {
+func (c *clientV2) UpgradeDeflate(level int) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -446,7 +446,7 @@ func (c *ClientV2) UpgradeDeflate(level int) error {
 	return nil
 }
 
-func (c *ClientV2) UpgradeSnappy() error {
+func (c *clientV2) UpgradeSnappy() error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -463,7 +463,7 @@ func (c *ClientV2) UpgradeSnappy() error {
 	return nil
 }
 
-func (c *ClientV2) Flush() error {
+func (c *clientV2) Flush() error {
 	c.SetWriteDeadline(time.Now().Add(time.Second))
 
 	err := c.Writer.Flush()

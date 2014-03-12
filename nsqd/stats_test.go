@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"encoding/json"
@@ -35,7 +35,7 @@ func TestStats(t *testing.T) {
 	identify(t, conn, nil, nsq.FrameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	stats := nsqd.getStats()
+	stats := nsqd.GetStats()
 	assert.Equal(t, len(stats), 1)
 	assert.Equal(t, len(stats[0].Channels), 1)
 	assert.Equal(t, len(stats[0].Channels[0].Clients), 1)
@@ -48,8 +48,8 @@ func TestClientAttributes(t *testing.T) {
 
 	userAgent := "Test User Agent"
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.SnappyEnabled = true
 	tcpAddr, httpAddr, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()

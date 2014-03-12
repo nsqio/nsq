@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"sort"
@@ -106,7 +106,7 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQD) getStats() []TopicStats {
+func (n *NSQD) GetStats() []TopicStats {
 	n.RLock()
 	defer n.RUnlock()
 

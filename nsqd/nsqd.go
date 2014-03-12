@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"crypto/tls"
@@ -32,7 +32,7 @@ type NSQD struct {
 
 	topicMap map[string]*Topic
 
-	lookupPeers []*LookupPeer
+	lookupPeers []*lookupPeer
 
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr
@@ -102,7 +102,7 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 }
 
 func (n *NSQD) Main() {
-	context := &Context{n}
+	context := &context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
@@ -289,7 +289,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, &Context{n})
+		t = NewTopic(topicName, &context{n})
 		n.topicMap[topicName] = t
 
 		log.Printf("TOPIC(%s): created", t.name)
@@ -359,7 +359,7 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 }
 
 func (n *NSQD) idPump() {
-	factory := &GUIDFactory{}
+	factory := &guidFactory{}
 	lastError := time.Now()
 	for {
 		id, err := factory.NewGUID(n.options.ID)

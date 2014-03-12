@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"crypto/md5"
@@ -12,6 +12,7 @@ import (
 type nsqdOptions struct {
 	// basic options
 	ID                     int64    `flag:"worker-id" cfg:"id"`
+	Verbose                bool     `flag:"verbose"`
 	TCPAddress             string   `flag:"tcp-address"`
 	HTTPAddress            string   `flag:"http-address"`
 	BroadcastAddress       string   `flag:"broadcast-address"`
