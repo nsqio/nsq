@@ -12,8 +12,18 @@ rm -f *.dat
 nsqd_pid=$!
 popd >/dev/null
 
+cleanup() {
+    kill -9 $nsqd_pid
+    rm -f nsqd/*.dat
+}
+trap cleanup INT TERM EXIT
+
 pushd bench >/dev/null
-go build ./...
+for app in bench_reader bench_writer; do
+    pushd $app >/dev/null
+    go build
+    popd >/dev/null
+done
 popd >/dev/null
 
 write_out=$(bench/bench_writer/bench_writer --size=$size 2>&1)
@@ -22,12 +32,6 @@ curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' 
 sleep 5
 
 read_out=$(bench/bench_reader/bench_reader --size=$size 2>&1)
-
-cleanup() {
-    kill -9 $nsqd_pid
-    rm -f nsqd/*.dat
-}
-trap cleanup INT TERM EXIT
 
 echo "results..."
 echo $write_out
