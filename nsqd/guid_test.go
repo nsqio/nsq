@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"testing"
@@ -25,7 +25,7 @@ func BenchmarkGUIDUnsafe(b *testing.B) {
 }
 
 func BenchmarkGUID(b *testing.B) {
-	factory := &GUIDFactory{}
+	factory := &guidFactory{}
 	for i := 0; i < b.N; i++ {
 		guid, err := factory.NewGUID(0)
 		if err != nil {

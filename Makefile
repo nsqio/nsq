@@ -3,7 +3,7 @@ DESTDIR=
 GOFLAGS=
 BINDIR=${PREFIX}/bin
 
-NSQD_SRCS = $(wildcard nsqd/*.go nsq/*.go util/*.go util/pqueue/*.go)
+NSQD_SRCS = $(wildcard apps/nsqd/*.go nsqd/*.go nsq/*.go util/*.go util/pqueue/*.go)
 NSQLOOKUPD_SRCS = $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go nsq/*.go util/*.go)
 NSQADMIN_SRCS = $(wildcard nsqadmin/*.go nsqadmin/templates/*.go util/*.go)
 NSQ_PUBSUB_SRCS = $(wildcard apps/nsq_pubsub/*.go nsq/*.go util/*.go)
@@ -13,8 +13,8 @@ NSQ_TO_HTTP_SRCS = $(wildcard apps/nsq_to_http/*.go nsq/*.go util/*.go)
 NSQ_TAIL_SRCS = $(wildcard apps/nsq_tail/*.go nsq/*.go util/*.go)
 NSQ_STAT_SRCS = $(wildcard apps/nsq_stat/*.go util/*.go util/lookupd/*.go)
 
-BINARIES = nsqd nsqadmin
-APPS = nsqlookupd nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat
+BINARIES = nsqadmin
+APPS = nsqlookupd nsqd nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat
 BLDDIR = build
 
 all: $(BINARIES) $(APPS)
@@ -26,7 +26,7 @@ $(BLDDIR)/%:
 $(BINARIES): %: $(BLDDIR)/%
 $(APPS): %: $(BLDDIR)/apps/%
 
-$(BLDDIR)/nsqd: $(NSQD_SRCS)
+$(BLDDIR)/apps/nsqd: $(NSQD_SRCS)
 $(BLDDIR)/apps/nsqlookupd: $(NSQLOOKUPD_SRCS)
 $(BLDDIR)/nsqadmin: $(NSQADMIN_SRCS)
 $(BLDDIR)/apps/nsq_pubsub: $(NSQ_PUBSUB_SRCS)
@@ -45,8 +45,8 @@ clean:
 
 install: $(BINARIES) $(EXAMPLES)
 	install -m 755 -d ${DESTDIR}${BINDIR}
-	install -m 755 $(BLDDIR)/nsqd ${DESTDIR}${BINDIR}/nsqd
 	install -m 755 $(BLDDIR)/apps/nsqlookupd ${DESTDIR}${BINDIR}/nsqlookupd
+	install -m 755 $(BLDDIR)/apps/nsqd ${DESTDIR}${BINDIR}/nsqd
 	install -m 755 $(BLDDIR)/nsqadmin ${DESTDIR}${BINDIR}/nsqadmin
 	install -m 755 $(BLDDIR)/apps/nsq_pubsub ${DESTDIR}${BINDIR}/nsq_pubsub
 	install -m 755 $(BLDDIR)/apps/nsq_to_nsq ${DESTDIR}${BINDIR}/nsq_to_nsq

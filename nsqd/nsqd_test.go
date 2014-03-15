@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"fmt"
@@ -165,7 +165,7 @@ func TestEphemeralChannel(t *testing.T) {
 	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
-	client := NewClientV2(0, nil, &Context{nsqd})
+	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
 	msg := nsq.NewMessage(<-nsqd.idChan, body)

@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 )
 
 func (n *NSQD) lookupLoop() {
-	syncTopicChan := make(chan *LookupPeer)
+	syncTopicChan := make(chan *lookupPeer)
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -23,7 +23,7 @@ func (n *NSQD) lookupLoop() {
 
 	for _, host := range n.options.NSQLookupdTCPAddresses {
 		log.Printf("LOOKUP: adding peer %s", host)
-		lookupPeer := NewLookupPeer(host, func(lp *LookupPeer) {
+		lookupPeer := newLookupPeer(host, func(lp *lookupPeer) {
 			ci := make(map[string]interface{})
 			ci["version"] = util.BINARY_VERSION
 			ci["tcp_port"] = n.tcpAddr.Port

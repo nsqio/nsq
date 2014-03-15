@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"io"
@@ -10,7 +10,7 @@ import (
 )
 
 type tcpServer struct {
-	context *Context
+	context *context
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
@@ -32,7 +32,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	var prot util.Protocol
 	switch protocolMagic {
 	case "  V2":
-		prot = &ProtocolV2{context: p.context}
+		prot = &protocolV2{context: p.context}
 	default:
 		util.SendFramedResponse(clientConn, nsq.FrameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()

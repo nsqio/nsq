@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bytes"
@@ -31,12 +31,12 @@ type Topic struct {
 	pauseChan chan bool
 
 	options *nsqdOptions
-	context *Context
+	context *context
 }
 
 // Topic constructor
-func NewTopic(topicName string, context *Context) *Topic {
-	diskQueue := NewDiskQueue(topicName,
+func NewTopic(topicName string, context *context) *Topic {
+	diskQueue := newDiskQueue(topicName,
 		context.nsqd.options.DataPath,
 		context.nsqd.options.MaxBytesPerFile,
 		context.nsqd.options.SyncEvery,
@@ -254,7 +254,7 @@ func (t *Topic) router() {
 		select {
 		case t.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(&msgBuf, msg, t.backend)
+			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 				// theres not really much we can do at this point, you're certainly
@@ -350,7 +350,7 @@ func (t *Topic) flush() error {
 	for {
 		select {
 		case msg := <-t.memoryMsgChan:
-			err := WriteMessageToBackend(&msgBuf, msg, t.backend)
+			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}

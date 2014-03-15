@@ -1,6 +1,7 @@
 build
 nsqd/nsqd
 apps/nsqlookupd/nsqlookupd
+apps/nsqd/nsqd
 nsqreader/nsqreader
 nsqstatsd/nsqstatsd
 nsqadmin/nsqadmin

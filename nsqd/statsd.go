@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"fmt"
@@ -43,7 +43,7 @@ func (n *NSQD) statsdLoop() {
 
 			log.Printf("STATSD: pushing stats to %s", statsd)
 
-			stats := n.getStats()
+			stats := n.GetStats()
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := TopicStats{}

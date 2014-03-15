@@ -8,9 +8,9 @@ apps/nsqlookupd/nsqlookupd >/dev/null 2>&1 &
 LOOKUPD_PID=$!
 
 # build and run nsqd configured to use our lookupd above
-cmd="nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/cert.pem --tls-key=nsqd/test/key.pem"
+cmd="apps/nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/cert.pem --tls-key=nsqd/test/key.pem"
 echo "building and starting $cmd"
-go build -o nsqd/nsqd ./nsqd
+go build -o apps/nsqd/nsqd ./apps/nsqd
 $cmd >/dev/null 2>&1 &
 NSQD_PID=$!
 

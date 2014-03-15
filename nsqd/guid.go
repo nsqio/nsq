@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 // the core algorithm here was borrowed from:
 // Blake Mizerany's `noeqd` https://github.com/bmizerany/noeqd
@@ -31,14 +31,14 @@ const (
 var ErrTimeBackwards = errors.New("time has gone backwards")
 var ErrSequenceExpired = errors.New("sequence expired")
 
-type GUID int64
+type guid int64
 
-type GUIDFactory struct {
+type guidFactory struct {
 	sequence      int64
 	lastTimestamp int64
 }
 
-func (f *GUIDFactory) NewGUID(workerId int64) (GUID, error) {
+func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
 	ts := time.Now().UnixNano() / 1e6
 
 	if ts < f.lastTimestamp {
@@ -60,10 +60,10 @@ func (f *GUIDFactory) NewGUID(workerId int64) (GUID, error) {
 		(workerId << workerIdShift) |
 		f.sequence
 
-	return GUID(id), nil
+	return guid(id), nil
 }
 
-func (g GUID) Hex() nsq.MessageID {
+func (g guid) Hex() nsq.MessageID {
 	var h nsq.MessageID
 	var b [8]byte
 

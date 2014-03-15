@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bufio"
@@ -187,9 +187,9 @@ func TestClientTimeout(t *testing.T) {
 
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	*verbose = true
 	options := NewNSQDOptions()
 	options.ClientTimeout = 50 * time.Millisecond
+	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
@@ -260,9 +260,9 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	*verbose = true
 	options := NewNSQDOptions()
 	options.ClientTimeout = 200 * time.Millisecond
+	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
@@ -420,7 +420,7 @@ func TestSizeLimits(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	options := NewNSQDOptions()
-	*verbose = true
+	options.Verbose = true
 	options.MaxMsgSize = 100
 	options.MaxBodySize = 1000
 	tcpAddr, _, nsqd := mustStartNSQD(options)
@@ -532,8 +532,8 @@ func TestTouch(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.MsgTimeout = 50 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -578,8 +578,8 @@ func TestMaxRdyCount(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.MaxRdyCount = 50
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -649,8 +649,8 @@ func TestOutputBuffering(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.MaxOutputBufferSize = 512 * 1024
 	options.MaxOutputBufferTimeout = time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(options)
@@ -694,8 +694,8 @@ func TestOutputBufferingValidity(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.MaxOutputBufferSize = 512 * 1024
 	options.MaxOutputBufferTimeout = time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(options)
@@ -736,8 +736,8 @@ func TestTLS(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.TLSCert = "./test/cert.pem"
 	options.TLSKey = "./test/key.pem"
 	tcpAddr, _, nsqd := mustStartNSQD(options)
@@ -775,8 +775,8 @@ func TestDeflate(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.DeflateEnabled = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -811,8 +811,8 @@ func TestSnappy(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.SnappyEnabled = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -864,8 +864,8 @@ func TestTLSDeflate(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.DeflateEnabled = true
 	options.TLSCert = "./test/cert.pem"
 	options.TLSKey = "./test/key.pem"
@@ -921,8 +921,8 @@ func TestSampling(t *testing.T) {
 	sampleRate := 42
 	slack := 5
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.MaxRdyCount = int64(num)
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -979,8 +979,8 @@ func TestTLSSnappy(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	options.SnappyEnabled = true
 	options.TLSCert = "./test/cert.pem"
 	options.TLSKey = "./test/key.pem"
@@ -1030,8 +1030,8 @@ func TestClientMsgTimeout(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	*verbose = true
 	options := NewNSQDOptions()
+	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
@@ -1078,8 +1078,8 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	p := &ProtocolV2{}
-	c := NewClientV2(0, nil, nil)
+	p := &protocolV2{}
+	c := newClientV2(0, nil, nil)
 	params := [][]byte{[]byte("NOP")}
 	b.StartTimer()
 

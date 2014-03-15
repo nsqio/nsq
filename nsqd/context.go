@@ -1,5 +1,5 @@
-package main
+package nsqd
 
-type Context struct {
+type context struct {
 	nsqd *NSQD
 }

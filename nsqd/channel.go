@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bytes"
@@ -46,7 +46,7 @@ type Channel struct {
 
 	topicName string
 	name      string
-	context   *Context
+	context   *context
 
 	backend BackendQueue
 
@@ -86,7 +86,7 @@ type inFlightMessage struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, context *Context,
+func NewChannel(topicName string, channelName string, context *context,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
@@ -111,11 +111,11 @@ func NewChannel(topicName string, channelName string, context *Context,
 
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeralChannel = true
-		c.backend = NewDummyBackendQueue()
+		c.backend = newDummyBackendQueue()
 	} else {
 		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
 		backendName := topicName + ":" + channelName
-		c.backend = NewDiskQueue(backendName,
+		c.backend = newDiskQueue(backendName,
 			context.nsqd.options.DataPath,
 			context.nsqd.options.MaxBytesPerFile,
 			context.nsqd.options.SyncEvery,
@@ -243,7 +243,7 @@ func (c *Channel) flush() error {
 	// this will read until its closed (exited)
 	for msg := range c.clientMsgChan {
 		log.Printf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		WriteMessageToBackend(&msgBuf, msg, c.backend)
+		writeMessageToBackend(&msgBuf, msg, c.backend)
 	}
 
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
@@ -254,7 +254,7 @@ func (c *Channel) flush() error {
 	for {
 		select {
 		case msg := <-c.memoryMsgChan:
-			err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+			err := writeMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
 				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 			}
@@ -266,7 +266,7 @@ func (c *Channel) flush() error {
 finish:
 	for _, item := range c.inFlightMessages {
 		msg := item.Value.(*inFlightMessage).msg
-		err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 		}
@@ -274,7 +274,7 @@ finish:
 
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*nsq.Message)
-		err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
 		}
@@ -560,7 +560,7 @@ func (c *Channel) router() {
 		select {
 		case c.memoryMsgChan <- msg:
 		default:
-			err := WriteMessageToBackend(&msgBuf, msg, c.backend)
+			err := writeMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
 				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s", c.name, err.Error())
 				// theres not really much we can do at this point, you're certainly

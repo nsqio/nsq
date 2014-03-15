@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/bitly/nsq/nsqd"
 	"github.com/bitly/nsq/util"
 	"github.com/mreiferson/go-options"
 )
@@ -100,9 +101,9 @@ func main() {
 		}
 	}
 
-	opts := NewNSQDOptions()
+	opts := nsqd.NewNSQDOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqd := NewNSQD(opts)
+	nsqd := nsqd.NewNSQD(opts)
 
 	log.Println(util.Version("nsqd"))
 	log.Printf("worker id %d", opts.ID)

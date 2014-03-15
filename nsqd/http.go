@@ -1,4 +1,4 @@
-package main
+package nsqd
 
 import (
 	"bufio"
@@ -20,7 +20,7 @@ import (
 import httpprof "net/http/pprof"
 
 type httpServer struct {
-	context *Context
+	context *context
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -500,7 +500,7 @@ func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
 		io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
 	}
 
-	stats := s.context.nsqd.getStats()
+	stats := s.context.nsqd.GetStats()
 
 	if jsonFormat {
 		util.ApiResponse(w, 200, "OK", struct {
