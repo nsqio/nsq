@@ -20,10 +20,16 @@ import (
 import httpprof "net/http/pprof"
 
 type httpServer struct {
-	context *context
+	context     *context
+	tlsEnabled  bool
+	tlsRequired bool
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if !s.tlsEnabled && s.tlsRequired {
+		util.ApiResponse(w, 403, "TLS_REQUIRED", nil)
+		return
+	}
 	switch req.URL.Path {
 	case "/pub":
 		fallthrough

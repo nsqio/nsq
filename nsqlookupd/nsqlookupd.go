@@ -53,7 +53,7 @@ func (l *NSQLookupd) Main() {
 	}
 	l.httpListener = httpListener
 	httpServer := &httpServer{context: context}
-	l.waitGroup.Wrap(func() { util.HTTPServer(httpListener, httpServer) })
+	l.waitGroup.Wrap(func() { util.HTTPServer(httpListener, httpServer, "HTTP") })
 }
 
 func (l *NSQLookupd) Exit() {

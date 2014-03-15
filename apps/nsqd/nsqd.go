@@ -24,6 +24,7 @@ var (
 	showVersion      = flagSet.Bool("version", false, "print version string")
 	verbose          = flagSet.Bool("verbose", false, "enable verbose logging")
 	workerId         = flagSet.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
+	httpsAddress     = flagSet.String("https-address", "", "<addr>:<port> to listen on for HTTPS clients")
 	httpAddress      = flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
 	broadcastAddress = flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
@@ -61,8 +62,10 @@ var (
 	e2eProcessingLatencyWindowTime  = flagSet.Duration("e2e-processing-latency-window-time", 10*time.Minute, "calculate end to end latency quantiles for this duration of time (ie: 60s would only show quantile calculations from the past 60 seconds)")
 
 	// TLS config
-	tlsCert = flagSet.String("tls-cert", "", "path to certificate file")
-	tlsKey  = flagSet.String("tls-key", "", "path to private key file")
+	tlsCert              = flagSet.String("tls-cert", "", "path to certificate file")
+	tlsKey               = flagSet.String("tls-key", "", "path to private key file")
+	tlsClientAuthPolicy  = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
+	tlsRootCAFile        = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
 
 	// compression
 	deflateEnabled  = flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")

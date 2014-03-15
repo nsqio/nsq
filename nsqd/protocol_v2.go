@@ -149,6 +149,13 @@ func (p *protocolV2) Send(client *clientV2, frameType int32, data []byte) error 
 }
 
 func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
+	if bytes.Equal(params[0], []byte("IDENTIFY")) {
+		return p.IDENTIFY(client, params)
+	}
+	err := enforceTLSPolicy(client, p, params[0])
+	if err != nil {
+		return nil, err
+	}
 	switch {
 	case bytes.Equal(params[0], []byte("FIN")):
 		return p.FIN(client, params)
@@ -164,8 +171,6 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 		return p.NOP(client, params)
 	case bytes.Equal(params[0], []byte("TOUCH")):
 		return p.TOUCH(client, params)
-	case bytes.Equal(params[0], []byte("IDENTIFY")):
-		return p.IDENTIFY(client, params)
 	case bytes.Equal(params[0], []byte("SUB")):
 		return p.SUB(client, params)
 	case bytes.Equal(params[0], []byte("CLS")):
@@ -733,4 +738,12 @@ func readLen(r io.Reader, tmp []byte) (int32, error) {
 		return 0, err
 	}
 	return int32(binary.BigEndian.Uint32(tmp)), nil
+}
+
+func enforceTLSPolicy(client *clientV2, p *protocolV2, command []byte) (error) {
+	if p.context.nsqd.options.TLSClientAuthPolicy != "" && atomic.LoadInt32(&client.TLS) != 1 {
+		return util.NewFatalClientErr(nil, "E_INVALID",
+			fmt.Sprintf("cannot %s in current state (TLS required)", command))
+	}
+	return nil
 }

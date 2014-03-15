@@ -10,6 +10,9 @@ tcp_address = "0.0.0.0:4150"
 ## <addr>:<port> to listen on for HTTP clients
 http_address = "0.0.0.0:4151"
 
+## <addr>:<port> to listen on for HTTPS clients
+# https_address = "0.0.0.0:4152"
+
 ## address that will be registered with lookupd (defaults to the OS hostname)
 # broadcast_address = ""
 
@@ -91,6 +94,12 @@ tls_cert = ""
 ## path to private key file
 tls_key = ""
 
+## set policy on client certificate (require - client must provide certificate,
+##  require-verify - client must provide verifiable signed certificate)
+# tls_client_auth_policy = "require-verify"
+
+## set custom root Certificate Authority
+# tls_root_ca_file = ""
 
 ## enable deflate feature negotiation (client compression)
 deflate = true

@@ -62,7 +62,7 @@ func (n *NSQAdmin) Main() {
 	}
 	n.httpListener = httpListener
 	httpServer := NewHTTPServer(&Context{n})
-	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer) })
+	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer, "HTTP") })
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }
 

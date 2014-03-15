@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-func HTTPServer(listener net.Listener, handler http.Handler) {
-	log.Printf("HTTP: listening on %s", listener.Addr().String())
+func HTTPServer(listener net.Listener, handler http.Handler, proto_name string) {
+	log.Printf("%s: listening on %s", proto_name, listener.Addr().String())
 
 	server := &http.Server{
 		Handler: handler,
@@ -19,5 +19,5 @@ func HTTPServer(listener net.Listener, handler http.Handler) {
 		log.Printf("ERROR: http.Serve() - %s", err.Error())
 	}
 
-	log.Printf("HTTP: closing %s", listener.Addr().String())
+	log.Printf("%s: closing %s", proto_name, listener.Addr().String())
 }
