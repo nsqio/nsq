@@ -5,7 +5,8 @@ if [ -z $size ]; then
 fi
 set -e
 
-pushd nsqd >/dev/null
+echo "# compiling/running nsqd"
+pushd apps/nsqd >/dev/null
 go build
 rm -f *.dat
 ./nsqd --mem-queue-size=1000000 >/dev/null 2>&1 &
@@ -18,6 +19,12 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
+sleep 0.3
+echo "# creating topic/channel"
+curl --silent 'http://127.0.0.1:4151/create_topic?topic=sub_bench' >/dev/null 2>&1
+curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' >/dev/null 2>&1
+
+echo "# compiling bench_reader/bench_writer"
 pushd bench >/dev/null
 for app in bench_reader bench_writer; do
     pushd $app >/dev/null
@@ -26,13 +33,8 @@ for app in bench_reader bench_writer; do
 done
 popd >/dev/null
 
-write_out=$(bench/bench_writer/bench_writer --size=$size 2>&1)
-
-curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' >/dev/null 2>&1
-sleep 5
-
-read_out=$(bench/bench_reader/bench_reader --size=$size 2>&1)
-
-echo "results..."
-echo $write_out
-echo $read_out
+echo -n "PUB: "
+bench/bench_writer/bench_writer --size=$size 2>&1
+echo -n "SUB: "
+bench/bench_reader/bench_reader --size=$size --channel=ch 2>&1 &
+wait $!
