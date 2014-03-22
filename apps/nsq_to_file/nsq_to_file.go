@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,7 +24,6 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 
-	topic       = flag.String("topic", "", "nsq topic")
 	channel     = flag.String("channel", "nsq_to_file", "nsq channel")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
@@ -34,10 +34,12 @@ var (
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
+	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
 
 	readerOpts       = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
+	topics           = util.StringArray{}
 
 	// TODO: remove, deprecated
 	gzipCompression = flag.Int("gzip-compression", 3, "(deprecated) use --gzip-level, gzip compression level (1 = BestSpeed, 2 = BestCompression, 3 = DefaultCompression)")
@@ -48,6 +50,7 @@ func init() {
 	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&topics, "topic", "nsq topic (may be given multiple times)")
 }
 
 type FileLogger struct {
@@ -70,6 +73,11 @@ type Message struct {
 type SyncMsg struct {
 	m             *nsq.FinishedMessage
 	returnChannel chan *nsq.FinishedMessage
+}
+
+type ReaderFileLogger struct {
+	F *FileLogger
+	R *nsq.Reader
 }
 
 func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.FinishedMessage) {
@@ -267,7 +275,7 @@ func (f *FileLogger) updateFile() bool {
 	return false
 }
 
-func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat string) (*FileLogger, error) {
+func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
 	if gzipEnabled && strings.Index(filenameFormat, "<GZIPREV>") == -1 {
 		return nil, errors.New("missing <GZIPREV> in filenameFormat")
 	}
@@ -282,7 +290,7 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat string
 		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
 		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
 	}
-	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", *topic, -1)
+	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", topic, -1)
 	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
 	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
 		filenameFormat = filenameFormat + ".gz"
@@ -307,6 +315,93 @@ func hasArg(s string) bool {
 	return false
 }
 
+// asynchronously fetch a list of unique topics from many nsqlookupds
+func fetchTopicLists(addrs []string) []string {
+	topics := make(map[string]interface{})
+	wg := new(sync.WaitGroup)
+	wg.Add(len(addrs))
+	discoveredTopics := make(chan string)
+	for _, addr := range addrs {
+		go func(wg *sync.WaitGroup, addr string, results chan string) {
+			defer wg.Done()
+			topics, err := fetchTopicList(addr)
+			if err != nil {
+				log.Printf(err.Error())
+				return
+			}
+			for _, topic := range topics {
+				results <- topic
+			}
+		}(wg, addr, discoveredTopics)
+	}
+	go func(topics map[string]interface{}, results chan string) {
+		for result := range results {
+			topics[result] = nil
+		}
+	}(topics, discoveredTopics)
+	wg.Wait()
+	close(discoveredTopics)
+	results := make([]string, len(topics))
+	for topic, _ := range topics {
+		results = append(results, topic)
+	}
+	return results
+}
+
+// fetch a list of topics from an nsqlookupd
+func fetchTopicList(addr string) ([]string, error) {
+	log.Printf("retrieving list of topics from nsqlookupd addr %s", addr)
+	json, err := nsq.ApiRequest(strings.Join([]string{strings.TrimRight(addr, "/"), "topics"}, "/"))
+	if err != nil {
+		return nil, err
+	}
+	return json.StringArray()
+}
+
+func topicToFileLogger(topic string) (*ReaderFileLogger, error) {
+	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := nsq.NewReader(topic, *channel)
+	if err != nil {
+		return nil, err
+	}
+	err = util.ParseReaderOpts(r, readerOpts)
+	if err != nil {
+		return nil, err
+	}
+	r.SetMaxInFlight(*maxInFlight)
+	r.AddAsyncHandler(f)
+
+	// TODO: remove, deprecated
+	if hasArg("verbose") {
+		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
+		r.Configure("verbose", true)
+	}
+
+	for _, addrString := range nsqdTCPAddrs {
+		err := r.ConnectToNSQ(addrString)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+	}
+
+	for _, addrString := range lookupdHTTPAddrs {
+		log.Printf("lookupd addr %s", addrString)
+		err := r.ConnectToLookupd(addrString)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+	}
+
+	logger := new(ReaderFileLogger)
+	logger.R = r
+	logger.F = f
+	return logger, nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -315,9 +410,11 @@ func main() {
 		return
 	}
 
-	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic and --channel are required")
+	if *channel == "" {
+		log.Fatalf("--channel is required")
 	}
+
+	var topicsFromNSQLookupd bool
 
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required.")
@@ -350,44 +447,68 @@ func main() {
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	r, err := nsq.NewReader(*topic, *channel)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	err = util.ParseReaderOpts(r, readerOpts)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	r.SetMaxInFlight(*maxInFlight)
-	r.AddAsyncHandler(f)
-
-	// TODO: remove, deprecated
-	if hasArg("verbose") {
-		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		r.Configure("verbose", true)
-	}
-
-	go f.router(r, termChan, hupChan)
-
-	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQ(addrString)
-		if err != nil {
-			log.Fatalf(err.Error())
+	if len(topics) < 1 {
+		topicsFromNSQLookupd = true
+		topics = fetchTopicLists(lookupdHTTPAddrs)
+		if len(topics) < 1 {
+			log.Fatalf("Could not find any topics from your nsqlookupds")
 		}
 	}
 
-	for _, addrString := range lookupdHTTPAddrs {
-		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToLookupd(addrString)
+	topicMap := make(map[string]*ReaderFileLogger)
+	topicListeners := new(sync.WaitGroup)
+	for _, topic := range topics {
+		logger, err := topicToFileLogger(topic)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalf("Error creating logger for topic %s: %s", topic, err.Error())
 		}
+		topicMap[topic] = logger
+		go func(logger *ReaderFileLogger, wg *sync.WaitGroup) {
+			wg.Add(1)
+			defer wg.Done()
+			go logger.F.router(logger.R, termChan, hupChan)
+			select {
+			case <-logger.F.ExitChan:
+				return
+			}
+		}(logger, topicListeners)
 	}
 
-	<-f.ExitChan
+	if topicsFromNSQLookupd {
+		// keep topic list in sync
+		go func(topics map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, addrs []string, termChan chan os.Signal) {
+			for {
+				select {
+				case <-time.Tick(*topicPollRate):
+					newTopics := fetchTopicLists(addrs)
+					if len(topics) < 1 {
+						log.Print("Could not find any topics from your nsqlookupds")
+						break
+					}
+					for _, topic := range newTopics {
+						if _, ok := topics[topic]; !ok {
+							logger, err := topicToFileLogger(topic)
+							if err != nil {
+								log.Printf("Error creating logger for new topic %s: %s", topic, err.Error())
+								continue
+							}
+							topicMap[topic] = logger
+							go func(logger *ReaderFileLogger, wg *sync.WaitGroup) {
+								wg.Add(1)
+								defer wg.Done()
+								go logger.F.router(logger.R, termChan, hupChan)
+								select {
+								case <-logger.F.ExitChan:
+									return
+								}
+							}(logger, topicListeners)
+						}
+					}
+				case <-termChan:
+					return
+				}
+			}
+		}(topicMap, topicListeners, lookupdHTTPAddrs, termChan)
+	}
+	topicListeners.Wait()
 }
