@@ -19,6 +19,7 @@ import (
 
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/lookupd"
 )
 
 var (
@@ -315,49 +316,6 @@ func hasArg(s string) bool {
 	return false
 }
 
-// asynchronously fetch a list of unique topics from many nsqlookupds
-func fetchTopicLists(addrs []string) []string {
-	topics := make(map[string]interface{})
-	wg := new(sync.WaitGroup)
-	wg.Add(len(addrs))
-	discoveredTopics := make(chan string)
-	for _, addr := range addrs {
-		go func(wg *sync.WaitGroup, addr string, results chan string) {
-			defer wg.Done()
-			topics, err := fetchTopicList(addr)
-			if err != nil {
-				log.Printf(err.Error())
-				return
-			}
-			for _, topic := range topics {
-				results <- topic
-			}
-		}(wg, addr, discoveredTopics)
-	}
-	go func(topics map[string]interface{}, results chan string) {
-		for result := range results {
-			topics[result] = nil
-		}
-	}(topics, discoveredTopics)
-	wg.Wait()
-	close(discoveredTopics)
-	results := make([]string, len(topics))
-	for topic, _ := range topics {
-		results = append(results, topic)
-	}
-	return results
-}
-
-// fetch a list of topics from an nsqlookupd
-func fetchTopicList(addr string) ([]string, error) {
-	log.Printf("retrieving list of topics from nsqlookupd addr %s", addr)
-	json, err := nsq.ApiRequest(strings.Join([]string{strings.TrimRight(addr, "/"), "topics"}, "/"))
-	if err != nil {
-		return nil, err
-	}
-	return json.StringArray()
-}
-
 func topicToFileLogger(topic string) (*ReaderFileLogger, error) {
 	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
 	if err != nil {
@@ -400,6 +358,34 @@ func topicToFileLogger(topic string) (*ReaderFileLogger, error) {
 	logger.R = r
 	logger.F = f
 	return logger, nil
+}
+
+func routeTopic(logger *ReaderFileLogger, wg *sync.WaitGroup, termChan, hupChan chan os.Signal) {
+	wg.Add(1)
+	defer wg.Done()
+	go logger.F.router(logger.R, termChan, hupChan)
+	select {
+	case <-logger.F.ExitChan:
+		return
+	}
+}
+
+func pollTopics(addrs []string, topicMap map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, termChan, hupChan chan os.Signal) {
+	newTopics, err := lookupd.GetLookupdTopics(addrs)
+	if err != nil {
+		log.Print("ERROR: could not retrieve topic list: %s", err)
+	}
+	for _, topic := range newTopics {
+		if _, ok := topicMap[topic]; !ok {
+			logger, err := topicToFileLogger(topic)
+			if err != nil {
+				log.Printf("Error creating logger for new topic %s: %s", topic, err.Error())
+				continue
+			}
+			topicMap[topic] = logger
+			go routeTopic(logger, topicListeners, termChan, hupChan)
+		}
+	}
 }
 
 func main() {
@@ -448,10 +434,14 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(topics) < 1 {
+		if len(lookupdHTTPAddrs) < 1 {
+			log.Fatalf("use --topic to list at least one topic to subscribe to or specify at least one --lookupd-http-address to subscribe to all its topics")
+		}
 		topicsFromNSQLookupd = true
-		topics = fetchTopicLists(lookupdHTTPAddrs)
-		if len(topics) < 1 {
-			log.Fatalf("Could not find any topics from your nsqlookupds")
+		var err error
+		topics, err = lookupd.GetLookupdTopics(lookupdHTTPAddrs)
+		if err != nil {
+			log.Fatalf("ERROR: could not retrieve topic list: %s", err)
 		}
 	}
 
@@ -463,52 +453,23 @@ func main() {
 			log.Fatalf("Error creating logger for topic %s: %s", topic, err.Error())
 		}
 		topicMap[topic] = logger
-		go func(logger *ReaderFileLogger, wg *sync.WaitGroup) {
-			wg.Add(1)
-			defer wg.Done()
-			go logger.F.router(logger.R, termChan, hupChan)
-			select {
-			case <-logger.F.ExitChan:
-				return
-			}
-		}(logger, topicListeners)
+		go routeTopic(logger, topicListeners, termChan, hupChan)
 	}
 
 	if topicsFromNSQLookupd {
 		// keep topic list in sync
-		go func(topics map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, addrs []string, termChan chan os.Signal) {
+		topicListeners.Add(1)
+		go func(topics map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, addrs []string, termChan, hupChan chan os.Signal) {
+			defer topicListeners.Done()
 			for {
 				select {
 				case <-time.Tick(*topicPollRate):
-					newTopics := fetchTopicLists(addrs)
-					if len(topics) < 1 {
-						log.Print("Could not find any topics from your nsqlookupds")
-						break
-					}
-					for _, topic := range newTopics {
-						if _, ok := topics[topic]; !ok {
-							logger, err := topicToFileLogger(topic)
-							if err != nil {
-								log.Printf("Error creating logger for new topic %s: %s", topic, err.Error())
-								continue
-							}
-							topicMap[topic] = logger
-							go func(logger *ReaderFileLogger, wg *sync.WaitGroup) {
-								wg.Add(1)
-								defer wg.Done()
-								go logger.F.router(logger.R, termChan, hupChan)
-								select {
-								case <-logger.F.ExitChan:
-									return
-								}
-							}(logger, topicListeners)
-						}
-					}
+					pollTopics(addrs, topics, topicListeners, termChan, hupChan)
 				case <-termChan:
 					return
 				}
 			}
-		}(topicMap, topicListeners, lookupdHTTPAddrs, termChan)
+		}(topicMap, topicListeners, lookupdHTTPAddrs, termChan, hupChan)
 	}
 	topicListeners.Wait()
 }
