@@ -64,6 +64,8 @@ type FileLogger struct {
 	filenameFormat   string
 
 	ExitChan chan int
+	termChan chan bool
+	hupChan  chan bool
 }
 
 type Message struct {
@@ -81,11 +83,27 @@ type ReaderFileLogger struct {
 	R *nsq.Reader
 }
 
+type TopicsListener struct {
+	topics   map[string]*ReaderFileLogger
+	termChan chan os.Signal
+	hupChan  chan os.Signal
+	wg       *sync.WaitGroup
+}
+
+func newTopicsListener() *TopicsListener {
+	return &TopicsListener{
+		topics:   make(map[string]*ReaderFileLogger),
+		termChan: make(chan os.Signal),
+		hupChan:  make(chan os.Signal),
+		wg:       new(sync.WaitGroup),
+	}
+}
+
 func (l *FileLogger) HandleMessage(m *nsq.Message, responseChannel chan *nsq.FinishedMessage) {
 	l.logChan <- &Message{m, responseChannel}
 }
 
-func (f *FileLogger) router(r *nsq.Reader, termChan chan os.Signal, hupChan chan os.Signal) {
+func (f *FileLogger) router(r *nsq.Reader) {
 	pos := 0
 	output := make([]*Message, r.MaxInFlight())
 	sync := false
@@ -100,12 +118,12 @@ func (f *FileLogger) router(r *nsq.Reader, termChan chan os.Signal, hupChan chan
 			sync = true
 			closeFile = true
 			exit = true
-		case <-termChan:
+		case <-f.termChan:
 			ticker.Stop()
 			r.Stop()
 			sync = true
 			closing = true
-		case <-hupChan:
+		case <-f.hupChan:
 			sync = true
 			closeFile = true
 		case <-ticker.C:
@@ -303,6 +321,8 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 		filenameFormat:   filenameFormat,
 		gzipEnabled:      gzipEnabled,
 		ExitChan:         make(chan int),
+		termChan:         make(chan bool),
+		hupChan:          make(chan bool),
 	}
 	return f, nil
 }
@@ -316,7 +336,7 @@ func hasArg(s string) bool {
 	return false
 }
 
-func topicToFileLogger(topic string) (*ReaderFileLogger, error) {
+func newReaderFileLogger(topic string) (*ReaderFileLogger, error) {
 	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
 	if err != nil {
 		return nil, err
@@ -354,36 +374,65 @@ func topicToFileLogger(topic string) (*ReaderFileLogger, error) {
 		}
 	}
 
-	logger := new(ReaderFileLogger)
-	logger.R = r
-	logger.F = f
-	return logger, nil
+	return &ReaderFileLogger{
+		R: r,
+		F: f,
+	}, nil
 }
 
-func routeTopic(logger *ReaderFileLogger, wg *sync.WaitGroup, termChan, hupChan chan os.Signal) {
-	wg.Add(1)
-	defer wg.Done()
-	go logger.F.router(logger.R, termChan, hupChan)
+func (t *TopicsListener) routeTopic(logger *ReaderFileLogger) {
+	t.wg.Add(1)
+	defer t.wg.Done()
+	go logger.F.router(logger.R)
 	select {
 	case <-logger.F.ExitChan:
 		return
 	}
 }
 
-func pollTopics(addrs []string, topicMap map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, termChan, hupChan chan os.Signal) {
+func (t *TopicsListener) syncTopics(addrs []string) {
 	newTopics, err := lookupd.GetLookupdTopics(addrs)
 	if err != nil {
 		log.Print("ERROR: could not retrieve topic list: %s", err)
 	}
 	for _, topic := range newTopics {
-		if _, ok := topicMap[topic]; !ok {
-			logger, err := topicToFileLogger(topic)
+		if _, ok := t.topics[topic]; !ok {
+			logger, err := newReaderFileLogger(topic)
 			if err != nil {
 				log.Printf("Error creating logger for new topic %s: %s", topic, err.Error())
 				continue
 			}
-			topicMap[topic] = logger
-			go routeTopic(logger, topicListeners, termChan, hupChan)
+			t.topics[topic] = logger
+			go t.routeTopic(logger)
+		}
+	}
+}
+
+func (t *TopicsListener) stopReaderFileLoggers() {
+	for _, topic := range t.topics {
+		topic.F.termChan <- true
+	}
+}
+
+func (t *TopicsListener) hupReaderFileLoggers() {
+	for _, topic := range t.topics {
+		topic.F.hupChan <- true
+	}
+}
+
+func (t *TopicsListener) listen(addrs []string, sync bool) {
+	for {
+		select {
+		case <-time.Tick(*topicPollRate):
+			if sync {
+				t.syncTopics(addrs)
+			}
+		case <-t.termChan:
+			t.stopReaderFileLoggers()
+			t.wg.Wait()
+			return
+		case <-t.hupChan:
+			t.hupReaderFileLoggers()
 		}
 	}
 }
@@ -428,10 +477,10 @@ func main() {
 		}
 	}
 
-	hupChan := make(chan os.Signal, 1)
-	termChan := make(chan os.Signal, 1)
-	signal.Notify(hupChan, syscall.SIGHUP)
-	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
+	listener := newTopicsListener()
+
+	signal.Notify(listener.hupChan, syscall.SIGHUP)
+	signal.Notify(listener.termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(topics) < 1 {
 		if len(lookupdHTTPAddrs) < 1 {
@@ -445,31 +494,14 @@ func main() {
 		}
 	}
 
-	topicMap := make(map[string]*ReaderFileLogger)
-	topicListeners := new(sync.WaitGroup)
 	for _, topic := range topics {
-		logger, err := topicToFileLogger(topic)
+		logger, err := newReaderFileLogger(topic)
 		if err != nil {
 			log.Fatalf("Error creating logger for topic %s: %s", topic, err.Error())
 		}
-		topicMap[topic] = logger
-		go routeTopic(logger, topicListeners, termChan, hupChan)
+		listener.topics[topic] = logger
+		go listener.routeTopic(logger)
 	}
 
-	if topicsFromNSQLookupd {
-		// keep topic list in sync
-		topicListeners.Add(1)
-		go func(topics map[string]*ReaderFileLogger, topicListeners *sync.WaitGroup, addrs []string, termChan, hupChan chan os.Signal) {
-			defer topicListeners.Done()
-			for {
-				select {
-				case <-time.Tick(*topicPollRate):
-					pollTopics(addrs, topics, topicListeners, termChan, hupChan)
-				case <-termChan:
-					return
-				}
-			}
-		}(topicMap, topicListeners, lookupdHTTPAddrs, termChan, hupChan)
-	}
-	topicListeners.Wait()
+	listener.listen(lookupdHTTPAddrs, topicsFromNSQLookupd)
 }
