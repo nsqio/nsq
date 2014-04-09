@@ -771,6 +771,50 @@ func TestTLS(t *testing.T) {
 	assert.Equal(t, data, []byte("OK"))
 }
 
+func TestTLSRequired(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	options := NewNSQDOptions()
+	options.Verbose = true
+	options.TLSCert = "./test/certs/server.pem"
+	options.TLSKey = "./test/certs/server.key"
+	options.TLSRequired = true
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	topicName := "test_tls_required" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	subFail(t, conn, topicName, "ch")
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
 func TestTLSAuthRequire(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)

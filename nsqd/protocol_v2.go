@@ -741,7 +741,7 @@ func readLen(r io.Reader, tmp []byte) (int32, error) {
 }
 
 func enforceTLSPolicy(client *clientV2, p *protocolV2, command []byte) (error) {
-	if p.context.nsqd.options.TLSClientAuthPolicy != "" && atomic.LoadInt32(&client.TLS) != 1 {
+	if p.context.nsqd.options.TLSRequired && atomic.LoadInt32(&client.TLS) != 1 {
 		return util.NewFatalClientErr(nil, "E_INVALID",
 			fmt.Sprintf("cannot %s in current state (TLS required)", command))
 	}

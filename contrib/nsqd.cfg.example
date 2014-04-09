@@ -101,6 +101,9 @@ tls_key = ""
 ## set custom root Certificate Authority
 # tls_root_ca_file = ""
 
+## require client TLS upgrades
+tls_required = false
+
 ## enable deflate feature negotiation (client compression)
 deflate = true
 

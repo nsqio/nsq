@@ -66,6 +66,7 @@ var (
 	tlsKey               = flagSet.String("tls-key", "", "path to private key file")
 	tlsClientAuthPolicy  = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
 	tlsRootCAFile        = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
+	tlsRequired          = flagSet.Bool("tls-required", false, "require TLS for client connections")
 
 	// compression
 	deflateEnabled  = flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")

@@ -106,8 +106,12 @@ func (n *NSQD) Main() {
 
 	context := &context{n}
 
-	if n.tlsConfig == nil && n.options.TLSClientAuthPolicy != "" {
-		log.Fatalf("FATAL: cannot enable TLS client auth policy without TLS key and cert")
+	if n.options.TLSClientAuthPolicy != "" {
+		n.options.TLSRequired = true
+	}
+
+	if n.tlsConfig == nil && n.options.TLSRequired {
+		log.Fatalf("FATAL: cannot require TLS client connections without TLS key and cert")
 	}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
@@ -141,7 +145,7 @@ func (n *NSQD) Main() {
 	httpServer := &httpServer{
 		context: context,
 		tlsEnabled: false,
-		tlsRequired: n.options.TLSClientAuthPolicy != "",
+		tlsRequired: n.options.TLSRequired,
 	}
 	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer, "HTTP") })
 
