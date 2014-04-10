@@ -28,10 +28,12 @@ import (
 func mustStartNSQD(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	httpsAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	options.DataPath = os.TempDir()
 	nsqd := NewNSQD(options)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
+	nsqd.httpsAddr = httpsAddr
 	nsqd.Main()
 	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr), nsqd
 }
@@ -735,14 +737,12 @@ func TestOutputBufferingValidity(t *testing.T) {
 func TestTLS(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-
 	options := NewNSQDOptions()
 	options.Verbose = true
-	options.TLSCert = "./test/cert.pem"
-	options.TLSKey = "./test/key.pem"
+	options.TLSCert = "./test/certs/server.pem"
+	options.TLSKey = "./test/certs/server.key"
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
-
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
@@ -761,6 +761,193 @@ func TestTLS(t *testing.T) {
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestTLSRequired(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	options := NewNSQDOptions()
+	options.Verbose = true
+	options.TLSCert = "./test/certs/server.pem"
+	options.TLSKey = "./test/certs/server.key"
+	options.TLSRequired = true
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	topicName := "test_tls_required" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	subFail(t, conn, topicName, "ch")
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+}
+
+func TestTLSAuthRequire(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	options := NewNSQDOptions()
+	options.Verbose = true
+	options.TLSCert = "./test/certs/server.pem"
+	options.TLSKey = "./test/certs/server.key"
+	options.TLSClientAuthPolicy = "require"
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	// No Certs
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	err = tlsConn.Handshake()
+	assert.NotEqual(t, err, nil)
+
+	// With Unsigned Cert
+	conn, err = mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data = identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r = struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+
+	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
+	assert.Equal(t, err, nil)
+	tlsConfig = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+	tlsConn = tls.Client(conn, tlsConfig)
+	err = tlsConn.Handshake()
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(tlsConn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	log.Printf("frameType: %d, data: %s", frameType, data)
+	assert.Equal(t, frameType, nsq.FrameTypeResponse)
+	assert.Equal(t, data, []byte("OK"))
+
+}
+
+func TestTLSAuthRequireVerify(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	options := NewNSQDOptions()
+	options.Verbose = true
+	options.TLSCert = "./test/certs/server.pem"
+	options.TLSKey = "./test/certs/server.key"
+	options.TLSRootCAFile = "./test/certs/ca.pem"
+	options.TLSClientAuthPolicy = "require-verify"
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	// with no cert
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	err = tlsConn.Handshake()
+	assert.NotEqual(t, err, nil)
+
+	// with invalid cert
+	conn, err = mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data = identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r = struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
+	assert.Equal(t, err, nil)
+	tlsConfig = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+	tlsConn = tls.Client(conn, tlsConfig)
+	err = tlsConn.Handshake()
+	assert.NotEqual(t, err, nil)
+
+	// with valid cert
+	conn, err = mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+	data = identify(t, conn, map[string]interface{}{
+		"tls_v1": true,
+	}, nsq.FrameTypeResponse)
+	r = struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, r.TLSv1, true)
+	cert, err = tls.LoadX509KeyPair("./test/certs/client.pem", "./test/certs/client.key")
+	assert.Equal(t, err, nil)
+	tlsConfig = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+	tlsConn = tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
 	assert.Equal(t, err, nil)
 
@@ -867,8 +1054,8 @@ func TestTLSDeflate(t *testing.T) {
 	options := NewNSQDOptions()
 	options.Verbose = true
 	options.DeflateEnabled = true
-	options.TLSCert = "./test/cert.pem"
-	options.TLSKey = "./test/key.pem"
+	options.TLSCert = "./test/certs/cert.pem"
+	options.TLSKey = "./test/certs/key.pem"
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
@@ -982,8 +1169,8 @@ func TestTLSSnappy(t *testing.T) {
 	options := NewNSQDOptions()
 	options.Verbose = true
 	options.SnappyEnabled = true
-	options.TLSCert = "./test/cert.pem"
-	options.TLSKey = "./test/key.pem"
+	options.TLSCert = "./test/certs/cert.pem"
+	options.TLSKey = "./test/certs/key.pem"
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 

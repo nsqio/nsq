@@ -15,6 +15,7 @@ type nsqdOptions struct {
 	Verbose                bool     `flag:"verbose"`
 	TCPAddress             string   `flag:"tcp-address"`
 	HTTPAddress            string   `flag:"http-address"`
+	HTTPSAddress           string   `flag:"https-address"`
 	BroadcastAddress       string   `flag:"broadcast-address"`
 	NSQLookupdTCPAddresses []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
 
@@ -49,8 +50,11 @@ type nsqdOptions struct {
 	E2EProcessingLatencyPercentiles []float64     `flag:"e2e-processing-latency-percentile" cfg:"e2e_processing_latency_percentiles"`
 
 	// TLS config
-	TLSCert string `flag:"tls-cert"`
-	TLSKey  string `flag:"tls-key"`
+	TLSCert              string `flag:"tls-cert"`
+	TLSKey               string `flag:"tls-key"`
+	TLSClientAuthPolicy  string `flag:"tls-client-auth-policy"`
+	TLSRootCAFile        string `flag:"tls-root-ca-file"`
+	TLSRequired          bool   `flag:"tls-required"`
 
 	// compression
 	DeflateEnabled  bool `flag:"deflate"`
@@ -67,6 +71,7 @@ func NewNSQDOptions() *nsqdOptions {
 	o := &nsqdOptions{
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
+		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
 
 		MemQueueSize:    10000,

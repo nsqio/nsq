@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,11 +35,13 @@ type NSQD struct {
 
 	lookupPeers []*lookupPeer
 
-	tcpAddr      *net.TCPAddr
-	httpAddr     *net.TCPAddr
-	tcpListener  net.Listener
-	httpListener net.Listener
-	tlsConfig    *tls.Config
+	tcpAddr       *net.TCPAddr
+	httpAddr      *net.TCPAddr
+	httpsAddr     *net.TCPAddr
+	tcpListener   net.Listener
+	httpListener  net.Listener
+	httpsListener net.Listener
+	tlsConfig     *tls.Config
 
 	idChan     chan nsq.MessageID
 	notifyChan chan interface{}
@@ -47,7 +50,7 @@ type NSQD struct {
 }
 
 func NewNSQD(options *nsqdOptions) *NSQD {
-	var tlsConfig *tls.Config
+	var httpsAddr *net.TCPAddr
 
 	if options.MaxDeflateLevel < 1 || options.MaxDeflateLevel > 9 {
 		log.Fatalf("--max-deflate-level must be [1,9]")
@@ -63,6 +66,13 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 		log.Fatal(err)
 	}
 
+	if options.HTTPSAddress != "" {
+		httpsAddr, err = net.ResolveTCPAddr("tcp", options.HTTPSAddress)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	if options.StatsdPrefix != "" {
 		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(options.BroadcastAddress,
 			strconv.Itoa(httpAddr.Port)))
@@ -73,27 +83,16 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 		options.StatsdPrefix = prefixWithHost
 	}
 
-	if options.TLSCert != "" || options.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(options.TLSCert, options.TLSKey)
-		if err != nil {
-			log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
-		}
-		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-		}
-		tlsConfig.BuildNameToCertificate()
-	}
-
 	n := &NSQD{
 		options:    options,
 		tcpAddr:    tcpAddr,
 		httpAddr:   httpAddr,
+		httpsAddr:  httpsAddr,
 		topicMap:   make(map[string]*Topic),
 		idChan:     make(chan nsq.MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
-		tlsConfig:  tlsConfig,
+		tlsConfig:  buildTLSConfig(options),
 	}
 
 	n.waitGroup.Wrap(func() { n.idPump() })
@@ -102,7 +101,18 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 }
 
 func (n *NSQD) Main() {
+	var httpListener net.Listener
+	var httpsListener net.Listener
+
 	context := &context{n}
+
+	if n.options.TLSClientAuthPolicy != "" {
+		n.options.TLSRequired = true
+	}
+
+	if n.tlsConfig == nil && n.options.TLSRequired {
+		log.Fatalf("FATAL: cannot require TLS client connections without TLS key and cert")
+	}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
@@ -114,13 +124,30 @@ func (n *NSQD) Main() {
 	tcpServer := &tcpServer{context: context}
 	n.waitGroup.Wrap(func() { util.TCPServer(n.tcpListener, tcpServer) })
 
-	httpListener, err := net.Listen("tcp", n.httpAddr.String())
+	if n.tlsConfig != nil && n.httpsAddr != nil {
+		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
+		if err != nil {
+			log.Fatalf("FATAL: listen (%s) failed - %s", n.httpsAddr, err.Error())
+		}
+		n.httpsListener = httpsListener
+		httpsServer := &httpServer{
+			context: context,
+			tlsEnabled: true,
+			tlsRequired: true,
+		}
+		n.waitGroup.Wrap(func() { util.HTTPServer(n.httpsListener, httpsServer, "HTTPS") })
+	}
+	httpListener, err = net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
 	}
 	n.httpListener = httpListener
-	httpServer := &httpServer{context: context}
-	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer) })
+	httpServer := &httpServer{
+		context: context,
+		tlsEnabled: false,
+		tlsRequired: n.options.TLSRequired,
+	}
+	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer, "HTTP") })
 
 	if n.options.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
@@ -263,6 +290,10 @@ func (n *NSQD) Exit() {
 		n.httpListener.Close()
 	}
 
+	if n.httpsListener != nil {
+		n.httpsListener.Close()
+	}
+
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
@@ -397,4 +428,48 @@ func (n *NSQD) Notify(v interface{}) {
 		}
 		n.Unlock()
 	}
+}
+
+func buildTLSConfig(options *nsqdOptions) (*tls.Config) {
+	var tlsConfig *tls.Config
+
+	if options.TLSCert == "" && options.TLSKey == "" {
+		return nil
+	}
+
+	tlsClientAuthPolicy := tls.VerifyClientCertIfGiven
+
+	cert, err := tls.LoadX509KeyPair(options.TLSCert, options.TLSKey)
+	if err != nil {
+		log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
+	}
+	switch options.TLSClientAuthPolicy {
+	case "require":
+		tlsClientAuthPolicy = tls.RequireAnyClientCert
+	case "require-verify":
+		tlsClientAuthPolicy = tls.RequireAndVerifyClientCert
+	default:
+		tlsClientAuthPolicy = tls.RequestClientCert
+	}
+
+	tlsConfig = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tlsClientAuthPolicy,
+	}
+
+	if options.TLSRootCAFile != "" {
+		tlsCertPool := x509.NewCertPool()
+		ca_cert_file, err := ioutil.ReadFile(options.TLSRootCAFile)
+		if err != nil {
+			log.Fatalf("ERROR: failed to read custom Certificate Authority file %s", err.Error())
+		}
+		if !tlsCertPool.AppendCertsFromPEM(ca_cert_file) {
+			log.Fatalf("ERROR: failed to append certificates from Certificate Authority file")
+		}
+		tlsConfig.ClientCAs = tlsCertPool
+	}
+
+	tlsConfig.BuildNameToCertificate()
+
+	return tlsConfig
 }

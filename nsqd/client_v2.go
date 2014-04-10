@@ -412,6 +412,7 @@ func (c *clientV2) UpgradeTLS() error {
 	defer c.Unlock()
 
 	tlsConn := tls.Server(c.Conn, c.context.nsqd.tlsConfig)
+	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
 	err := tlsConn.Handshake()
 	if err != nil {
 		return err
