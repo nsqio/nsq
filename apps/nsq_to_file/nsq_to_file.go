@@ -83,19 +83,18 @@ type ReaderFileLogger struct {
 	R *nsq.Reader
 }
 
-type TopicsListener struct {
+type TopicDiscoverer struct {
 	topics   map[string]*ReaderFileLogger
 	termChan chan os.Signal
 	hupChan  chan os.Signal
-	wg       *sync.WaitGroup
+	wg       sync.WaitGroup
 }
 
-func newTopicsListener() *TopicsListener {
-	return &TopicsListener{
+func newTopicDiscoverer() *TopicDiscoverer {
+	return &TopicDiscoverer{
 		topics:   make(map[string]*ReaderFileLogger),
 		termChan: make(chan os.Signal),
 		hupChan:  make(chan os.Signal),
-		wg:       new(sync.WaitGroup),
 	}
 }
 
@@ -380,17 +379,14 @@ func newReaderFileLogger(topic string) (*ReaderFileLogger, error) {
 	}, nil
 }
 
-func (t *TopicsListener) routeTopic(logger *ReaderFileLogger) {
+func (t *TopicDiscoverer) startTopicRouter(logger *ReaderFileLogger) {
 	t.wg.Add(1)
 	defer t.wg.Done()
 	go logger.F.router(logger.R)
-	select {
-	case <-logger.F.ExitChan:
-		return
-	}
+	<-logger.F.ExitChan
 }
 
-func (t *TopicsListener) syncTopics(addrs []string) {
+func (t *TopicDiscoverer) syncTopics(addrs []string) {
 	newTopics, err := lookupd.GetLookupdTopics(addrs)
 	if err != nil {
 		log.Print("ERROR: could not retrieve topic list: %s", err)
@@ -399,31 +395,32 @@ func (t *TopicsListener) syncTopics(addrs []string) {
 		if _, ok := t.topics[topic]; !ok {
 			logger, err := newReaderFileLogger(topic)
 			if err != nil {
-				log.Printf("Error creating logger for new topic %s: %s", topic, err.Error())
+				log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err.Error())
 				continue
 			}
 			t.topics[topic] = logger
-			go t.routeTopic(logger)
+			go t.startTopicRouter(logger)
 		}
 	}
 }
 
-func (t *TopicsListener) stopReaderFileLoggers() {
+func (t *TopicDiscoverer) stopReaderFileLoggers() {
 	for _, topic := range t.topics {
 		topic.F.termChan <- true
 	}
 }
 
-func (t *TopicsListener) hupReaderFileLoggers() {
+func (t *TopicDiscoverer) hupReaderFileLoggers() {
 	for _, topic := range t.topics {
 		topic.F.hupChan <- true
 	}
 }
 
-func (t *TopicsListener) listen(addrs []string, sync bool) {
+func (t *TopicDiscoverer) watch(addrs []string, sync bool) {
+	ticker := time.Tick(*topicPollRate)
 	for {
 		select {
-		case <-time.Tick(*topicPollRate):
+		case <-ticker:
 			if sync {
 				t.syncTopics(addrs)
 			}
@@ -477,10 +474,10 @@ func main() {
 		}
 	}
 
-	listener := newTopicsListener()
+	discoverer := newTopicDiscoverer()
 
-	signal.Notify(listener.hupChan, syscall.SIGHUP)
-	signal.Notify(listener.termChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(discoverer.hupChan, syscall.SIGHUP)
+	signal.Notify(discoverer.termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(topics) < 1 {
 		if len(lookupdHTTPAddrs) < 1 {
@@ -497,11 +494,11 @@ func main() {
 	for _, topic := range topics {
 		logger, err := newReaderFileLogger(topic)
 		if err != nil {
-			log.Fatalf("Error creating logger for topic %s: %s", topic, err.Error())
+			log.Fatalf("ERROR: couldn't create logger for topic %s: %s", topic, err.Error())
 		}
-		listener.topics[topic] = logger
-		go listener.routeTopic(logger)
+		discoverer.topics[topic] = logger
+		go discoverer.startTopicRouter(logger)
 	}
 
-	listener.listen(lookupdHTTPAddrs, topicsFromNSQLookupd)
+	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd)
 }
