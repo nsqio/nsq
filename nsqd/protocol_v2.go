@@ -132,7 +132,13 @@ func (p *protocolV2) SendMessage(client *clientV2, msg *nsq.Message, buf *bytes.
 func (p *protocolV2) Send(client *clientV2, frameType int32, data []byte) error {
 	client.Lock()
 
-	client.SetWriteDeadline(time.Now().Add(time.Second))
+	var zeroTime time.Time
+	if client.HeartbeatInterval > 0 {
+		client.SetWriteDeadline(time.Now().Add(client.HeartbeatInterval))
+	} else {
+		client.SetWriteDeadline(zeroTime)
+	}
+
 	_, err := util.SendFramedResponse(client.Writer, frameType, data)
 	if err != nil {
 		client.Unlock()

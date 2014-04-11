@@ -465,7 +465,12 @@ func (c *clientV2) UpgradeSnappy() error {
 }
 
 func (c *clientV2) Flush() error {
-	c.SetWriteDeadline(time.Now().Add(time.Second))
+	var zeroTime time.Time
+	if c.HeartbeatInterval > 0 {
+		c.SetWriteDeadline(time.Now().Add(c.HeartbeatInterval))
+	} else {
+		c.SetWriteDeadline(zeroTime)
+	}
 
 	err := c.Writer.Flush()
 	if err != nil {
