@@ -180,7 +180,7 @@ func TestHTTPSRequire(t *testing.T) {
 	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
 	assert.Equal(t, err, nil)
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	transport := &http.Transport{
@@ -229,7 +229,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
 	assert.Equal(t, err, nil)
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	transport := &http.Transport{
@@ -246,7 +246,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	cert, err = tls.LoadX509KeyPair("./test/certs/client.pem", "./test/certs/client.key")
 	assert.Equal(t, err, nil)
 	tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	transport = &http.Transport{

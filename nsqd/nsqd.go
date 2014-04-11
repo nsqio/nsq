@@ -131,8 +131,8 @@ func (n *NSQD) Main() {
 		}
 		n.httpsListener = httpsListener
 		httpsServer := &httpServer{
-			context: context,
-			tlsEnabled: true,
+			context:     context,
+			tlsEnabled:  true,
 			tlsRequired: true,
 		}
 		n.waitGroup.Wrap(func() { util.HTTPServer(n.httpsListener, httpsServer, "HTTPS") })
@@ -143,8 +143,8 @@ func (n *NSQD) Main() {
 	}
 	n.httpListener = httpListener
 	httpServer := &httpServer{
-		context: context,
-		tlsEnabled: false,
+		context:     context,
+		tlsEnabled:  false,
 		tlsRequired: n.options.TLSRequired,
 	}
 	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer, "HTTP") })
@@ -430,7 +430,7 @@ func (n *NSQD) Notify(v interface{}) {
 	}
 }
 
-func buildTLSConfig(options *nsqdOptions) (*tls.Config) {
+func buildTLSConfig(options *nsqdOptions) *tls.Config {
 	var tlsConfig *tls.Config
 
 	if options.TLSCert == "" && options.TLSKey == "" {

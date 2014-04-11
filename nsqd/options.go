@@ -50,11 +50,11 @@ type nsqdOptions struct {
 	E2EProcessingLatencyPercentiles []float64     `flag:"e2e-processing-latency-percentile" cfg:"e2e_processing_latency_percentiles"`
 
 	// TLS config
-	TLSCert              string `flag:"tls-cert"`
-	TLSKey               string `flag:"tls-key"`
-	TLSClientAuthPolicy  string `flag:"tls-client-auth-policy"`
-	TLSRootCAFile        string `flag:"tls-root-ca-file"`
-	TLSRequired          bool   `flag:"tls-required"`
+	TLSCert             string `flag:"tls-cert"`
+	TLSKey              string `flag:"tls-key"`
+	TLSClientAuthPolicy string `flag:"tls-client-auth-policy"`
+	TLSRootCAFile       string `flag:"tls-root-ca-file"`
+	TLSRequired         bool   `flag:"tls-required"`
 
 	// compression
 	DeflateEnabled  bool `flag:"deflate"`

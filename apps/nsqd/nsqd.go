@@ -62,11 +62,11 @@ var (
 	e2eProcessingLatencyWindowTime  = flagSet.Duration("e2e-processing-latency-window-time", 10*time.Minute, "calculate end to end latency quantiles for this duration of time (ie: 60s would only show quantile calculations from the past 60 seconds)")
 
 	// TLS config
-	tlsCert              = flagSet.String("tls-cert", "", "path to certificate file")
-	tlsKey               = flagSet.String("tls-key", "", "path to private key file")
-	tlsClientAuthPolicy  = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
-	tlsRootCAFile        = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
-	tlsRequired          = flagSet.Bool("tls-required", false, "require TLS for client connections")
+	tlsCert             = flagSet.String("tls-cert", "", "path to certificate file")
+	tlsKey              = flagSet.String("tls-key", "", "path to private key file")
+	tlsClientAuthPolicy = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
+	tlsRootCAFile       = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
+	tlsRequired         = flagSet.Bool("tls-required", false, "require TLS for client connections")
 
 	// compression
 	deflateEnabled  = flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
