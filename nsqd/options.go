@@ -18,6 +18,7 @@ type nsqdOptions struct {
 	HTTPSAddress           string   `flag:"https-address"`
 	BroadcastAddress       string   `flag:"broadcast-address"`
 	NSQLookupdTCPAddresses []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses      []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`

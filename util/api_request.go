@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -74,4 +75,36 @@ func ApiRequest(endpoint string) (*simplejson.Json, error) {
 			statusCode, statusTxt))
 	}
 	return data.Get("data"), nil
+}
+
+// ApiRequestV1 is a helper function to perform a v1 HTTP request
+// and parse our NSQ daemon's expected response format, with deadlines.
+func ApiRequestV1(endpoint string, v interface{}) error {
+	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Accept", "vnd/nsq; version=1.0")
+
+	resp, err := httpclient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("got response %s %q", resp.Status, body)
+	}
+	err = json.Unmarshal(body, &v)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
