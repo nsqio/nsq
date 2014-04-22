@@ -41,8 +41,12 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://reonomy.com"><img src="http://bitly.github.io/nsq/static/img/reonomy_logo.png" width="84"/></a>&nbsp;&nbsp;
 <a href="https://project-fifo.net"><img src="http://bitly.github.io/nsq/static/img/project_fifo.png" width="97"/></a>&nbsp;&nbsp;
 <a href="http://trendrr.com"><img src="http://bitly.github.io/nsq/static/img/trendrr_logo.png" width="97"/></a>&nbsp;&nbsp;
-<a href="http://energyhub.com"><img src="http://bitly.github.io/nsq/static/img/energyhub_logo.png" width="99"/></a>
-
+<a href="http://energyhub.com"><img src="http://bitly.github.io/nsq/static/img/energyhub_logo.png" width="99"/></a><br/>
+<a href="http://trypatterns.com"><img src="http://bitly.github.io/nsq/static/img/patterns.png" width="80"/></a>&nbsp;&nbsp;
+<a href="http://dramafever.com"><img src="http://bitly.github.io/nsq/static/img/dramafever.png" width="80"/></a>&nbsp;&nbsp;
+<a href="http://lytics.io"><img src="http://bitly.github.io/nsq/static/img/lytics.png" width="80"/></a>&nbsp;&nbsp;
+<a href="http://mediaforge.com"><img src="http://bitly.github.io/nsq/static/img/rakuten.png" width="80"/></a>&nbsp;&nbsp;
+<a href="http://hw-ops.com"><img src="http://bitly.github.io/nsq/static/img/heavy_water.png" width="40"/></a>
 
 ## Documentation
 
