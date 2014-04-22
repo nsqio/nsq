@@ -29,6 +29,12 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="https://project-fifo.net"><img src="{{ site.baseurl }}/static/img/project_fifo.png" width="77"/></a></td>
 <td align="center"><a href="http://trendrr.com"><img src="{{ site.baseurl }}/static/img/trendrr_logo.png" width="77"/></a></td>
 <td align="center"><a href="http://energyhub.com"><img src="{{ site.baseurl }}/static/img/energyhub_logo.png" width="80"/></a></td>
+</tr><tr>
+<td align="center"><a href="http://trypatterns.com"><img src="{{ site.baseurl }}/static/img/patterns.png" width="80"/></a></td>
+<td align="center"><a href="http://dramafever.com"><img src="{{ site.baseurl }}/static/img/dramafever.png" width="80"/></a></td>
+<td align="center"><a href="http://lytics.io"><img src="{{ site.baseurl }}/static/img/lytics.png" width="80"/></a></td>
+<td align="center"><a href="http://mediaforge.com"><img src="{{ site.baseurl }}/static/img/rakuten.png" width="80"/></a></td>
+<td align="center"><a href="http://hw-ops.com"><img src="{{ site.baseurl }}/static/img/heavy_water.png" width="40"/></a></td>
 </tr></table></center>
 
 ### Getting Help
