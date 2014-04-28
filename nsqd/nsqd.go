@@ -273,7 +273,7 @@ func (n *NSQD) PersistMetadata() error {
 	f.Sync()
 	f.Close()
 
-	err = os.Rename(tmpFileName, fileName)
+	err = atomic_rename(tmpFileName, fileName)
 	if err != nil {
 		return err
 	}
