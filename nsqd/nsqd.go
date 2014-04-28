@@ -449,7 +449,7 @@ func buildTLSConfig(options *nsqdOptions) *tls.Config {
 	case "require-verify":
 		tlsClientAuthPolicy = tls.RequireAndVerifyClientCert
 	default:
-		tlsClientAuthPolicy = tls.RequestClientCert
+		tlsClientAuthPolicy = tls.NoClientCert
 	}
 
 	tlsConfig = &tls.Config{
