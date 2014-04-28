@@ -113,8 +113,8 @@ func NewChannel(topicName string, channelName string, context *context,
 		c.ephemeralChannel = true
 		c.backend = newDummyBackendQueue()
 	} else {
-		// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
-		backendName := topicName + ":" + channelName
+		// backend names, for uniqueness, automatically include the topic...
+		backendName := getBackendName(topicName, channelName)
 		c.backend = newDiskQueue(backendName,
 			context.nsqd.options.DataPath,
 			context.nsqd.options.MaxBytesPerFile,
