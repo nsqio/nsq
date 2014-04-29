@@ -2,7 +2,7 @@
 
 ## Binaries
 
-### 0.2.28-alpha
+### 0.2.28 - 2014-04-28
 
 **Upgrading from 0.2.27**: No backwards incompatible changes.  We've deprecated the `short_id`
 and `long_id` options in the `IDENTIFY` command in favor of `client_id` and `hostname`, which
@@ -25,6 +25,7 @@ via `github.com/bitly/nsqd`, thanks to @kzvezdarov.
 
 New Features / Enhancements:
 
+ * #334 - `nsq_to_file` can archive many topics
  * #327 - add `nsqd` TLS client certificate verification policy, ability
           to require TLS, and HTTPS support (thanks @chrisroberts)
  * #325 - make `nsqd` importable (`github.com/bitly/nsq/nsqd`) (thanks @kzvezdarov)
@@ -39,6 +40,7 @@ Bug Fixes:
                                          impacts the utilities packaged with the NSQ binary
                                          distribution such as `nsq_to_file`, `nsq_to_http`,
                                          `nsq_to_nsq` and `nsq_tail`.
+ * #329 - use heartbeat interval for write deadline
  * #321/#326 - improve benchmarking tests
  * #315/#318 - fix test data races / flakiness
 
