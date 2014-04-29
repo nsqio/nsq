@@ -23,9 +23,13 @@ This can be used as a form of client authentication.
 Additionally, `nsqd` is now structured such that it is importable in other Go applications
 via `github.com/bitly/nsqd`, thanks to @kzvezdarov.
 
+Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or 
+optionally archive *all* disovered topics (by specifying no `--topic` params
+and using `--lookupd-http-address`).
+
 New Features / Enhancements:
 
- * #334 - `nsq_to_file` can archive many topics
+ * #334 - `nsq_to_file` can archive many topics (thanks @paddyforan)
  * #327 - add `nsqd` TLS client certificate verification policy, ability
           to require TLS, and HTTPS support (thanks @chrisroberts)
  * #325 - make `nsqd` importable (`github.com/bitly/nsq/nsqd`) (thanks @kzvezdarov)
