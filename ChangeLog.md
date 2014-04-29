@@ -21,10 +21,10 @@ client certificate policy via `--tls-client-auth-policy` (`require` or `require-
 This can be used as a form of client authentication.
 
 Additionally, `nsqd` is now structured such that it is importable in other Go applications
-via `github.com/bitly/nsqd`, thanks to @kzvezdarov.
+via `github.com/bitly/nsq/nsqd`, thanks to @kzvezdarov.
 
 Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or 
-optionally archive *all* disovered topics (by specifying no `--topic` params
+optionally archive *all* discovered topics (by specifying no `--topic` params
 and using `--lookupd-http-address`).
 
 New Features / Enhancements:
