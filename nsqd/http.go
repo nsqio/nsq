@@ -226,7 +226,7 @@ func (s *httpServer) pubHandler(w http.ResponseWriter, req *http.Request) {
 
 func (s *httpServer) doPUB(req *http.Request) error {
 	if req.Method != "POST" {
-		return httpError{400, "INVALID_REQUEST"}
+		return httpError{405, "INVALID_REQUEST"}
 	}
 
 	// TODO: one day I'd really like to just error on chunked requests
@@ -285,7 +285,7 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 	var exit bool
 
 	if req.Method != "POST" {
-		return httpError{400, "INVALID_REQUEST"}
+		return httpError{405, "INVALID_REQUEST"}
 	}
 
 	// TODO: one day I'd really like to just error on chunked requests
@@ -373,6 +373,10 @@ func (s *httpServer) createTopicHandler(w http.ResponseWriter, req *http.Request
 }
 
 func (s *httpServer) v1CreateTopicHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	_, _, err := s.getTopicFromQuery(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -400,6 +404,10 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 }
 
 func (s *httpServer) v1EmptyTopicHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doEmptyTopic(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -456,6 +464,10 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 }
 
 func (s *httpServer) v1DeleteTopicHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doDeleteTopic(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -503,6 +515,10 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 }
 
 func (s *httpServer) v1PauseTopicHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doPauseTopic(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -560,6 +576,10 @@ func (s *httpServer) createChannelHandler(w http.ResponseWriter, req *http.Reque
 }
 
 func (s *httpServer) v1CreateChannelHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doCreateChannel(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -596,6 +616,10 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 }
 
 func (s *httpServer) v1EmptyChannelHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doEmptyChannel(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -642,6 +666,10 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 }
 
 func (s *httpServer) v1DeleteChannelHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doDeleteChannel(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
@@ -683,6 +711,10 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 }
 
 func (s *httpServer) v1PauseChannelHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
+		return
+	}
 	err := s.doPauseChannel(req)
 	if err != nil {
 		util.V1ApiResponse(w, err.(httpError).Code(), err)
