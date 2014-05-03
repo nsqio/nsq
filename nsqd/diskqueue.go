@@ -421,7 +421,7 @@ func (d *diskQueue) persistMetaData() error {
 	f.Close()
 
 	// atomically rename
-	return os.Rename(tmpFileName, fileName)
+	return atomic_rename(tmpFileName, fileName)
 }
 
 func (d *diskQueue) metaDataFileName() string {
@@ -503,7 +503,7 @@ func (d *diskQueue) handleReadError() {
 
 	log.Printf("NOTICE: diskqueue(%s) jump to next file and saving bad file as %s", d.name, badRenameFn)
 
-	err := os.Rename(badFn, badRenameFn)
+	err := atomic_rename(badFn, badRenameFn)
 	if err != nil {
 		log.Printf("ERROR: diskqueue(%s) failed to rename bad diskqueue file %s to %s", d.name, badFn, badRenameFn)
 	}
