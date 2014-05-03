@@ -19,8 +19,8 @@
 		},
 		{
 			"ImportPath": "github.com/bitly/go-nsq",
-			"Comment": "v0.3.6-alpha",
-			"Rev": "c79a282f05364e340eadc2ce2f862a3d44eea9c0"
+			"Comment": "v0.3.6",
+			"Rev": "1bebffb09ebaf4746a2cd23c85fdd1fd5beae092"
 		},
 		{
 			"ImportPath": "github.com/bitly/go-simplejson",
@@ -33,7 +33,7 @@
 		},
 		{
 			"ImportPath": "github.com/bmizerany/perks/quantile",
-			"Rev": "da72989a59aaaecda7110926d3a6198ee4421c1f"
+			"Rev": "6cb9d9d729303ee2628580d9aec5db968da3a607"
 		},
 		{
 			"ImportPath": "github.com/kr/pretty",
