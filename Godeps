@@ -33,7 +33,7 @@
 		},
 		{
 			"ImportPath": "github.com/bmizerany/perks/quantile",
-			"Rev": "da72989a59aaaecda7110926d3a6198ee4421c1f"
+			"Rev": "6cb9d9d729303ee2628580d9aec5db968da3a607"
 		},
 		{
 			"ImportPath": "github.com/kr/pretty",
