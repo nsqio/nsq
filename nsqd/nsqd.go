@@ -20,6 +20,8 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
+	"github.com/bitly/nsq/util/registrationdb"
+	"github.com/hashicorp/serf/serf"
 )
 
 type NSQD struct {
@@ -45,6 +47,11 @@ type NSQD struct {
 	httpListener  net.Listener
 	httpsListener net.Listener
 	tlsConfig     *tls.Config
+
+	serf          *serf.Serf
+	serfEventChan chan serf.Event
+	gossipChan    chan interface{}
+	rdb           *registrationdb.RegistrationDB
 
 	idChan     chan MessageID
 	notifyChan chan interface{}
@@ -105,6 +112,35 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		opts.StatsdPrefix = prefixWithHost
 	}
 
+	gossipAddr, err := net.ResolveTCPAddr("tcp", options.GossipAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	serfEventChan := make(chan serf.Event, 256)
+	serfConfig := serf.DefaultConfig()
+	serfConfig.Init()
+	serfConfig.Tags["role"] = "nsqd"
+	serfConfig.Tags["tp"] = strconv.Itoa(tcpAddr.Port)
+	serfConfig.Tags["hp"] = strconv.Itoa(httpAddr.Port)
+	serfConfig.Tags["ba"] = options.BroadcastAddress
+	serfConfig.Tags["v"] = util.BINARY_VERSION
+	serfConfig.NodeName = net.JoinHostPort(options.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
+	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
+	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
+	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
+	serfConfig.MemberlistConfig.GossipNodes = 5
+	serfConfig.EventCh = serfEventChan
+	serfConfig.EventBuffer = 1024
+	serf, err := serf.Create(serfConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	n.serf = serf
+	n.serfEventChan = serfEventChan
+	n.gossipChan = make(chan interface{})
+	n.rdb = registrationdb.New()
+
 	if opts.TLSClientAuthPolicy != "" {
 		opts.TLSRequired = true
 	}
@@ -121,6 +157,8 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	n.tlsConfig = tlsConfig
 
 	n.waitGroup.Wrap(func() { n.idPump() })
+	n.waitGroup.Wrap(func() { n.serfEventLoop() })
+	n.waitGroup.Wrap(func() { n.gossipLoop() })
 
 	n.logf(util.Version("nsqd"))
 	n.logf("ID: %d", n.opts.ID)
@@ -358,6 +396,10 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
+	// TODO: should only the "bootstrap" node leave?
+	// n.serf.Leave()
+	n.serf.Shutdown()
+
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
@@ -495,6 +537,265 @@ func (n *NSQD) Notify(v interface{}) {
 		}
 		n.Unlock()
 	}
+
+	select {
+	case <-n.exitChan:
+	case n.gossipChan <- v:
+	}
+}
+
+func peerInfoForMember(member serf.Member) *registrationdb.PeerInfo {
+	tcpPort, _ := strconv.Atoi(member.Tags["tp"])
+	httpPort, _ := strconv.Atoi(member.Tags["hp"])
+	return &registrationdb.PeerInfo{
+		ID: member.Name,
+		RemoteAddress: net.JoinHostPort(member.Addr.String(),
+			strconv.Itoa(int(member.Port))),
+		LastUpdate:       time.Now(),
+		BroadcastAddress: member.Tags["ba"],
+		Hostname:         "", // TODO: send hostname too?
+		TcpPort:          tcpPort,
+		HttpPort:         httpPort,
+		Version:          member.Tags["v"],
+	}
+}
+
+func (n *NSQD) serfMemberJoin(ev serf.Event) {
+	memberEv := ev.(serf.MemberEvent)
+	log.Printf("MEMBER EVENT: %+v - members: %+v", memberEv, memberEv.Members)
+	for _, member := range memberEv.Members {
+		peerInfo := peerInfoForMember(member)
+		r := registrationdb.Registration{"client", "", ""}
+		producer := &registrationdb.Producer{PeerInfo: peerInfo}
+		n.rdb.AddProducer(r, producer)
+		log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
+			peerInfo.ID,
+			r.Category,
+			r.Key,
+			r.SubKey)
+	}
+}
+
+func (n *NSQD) serfMemberFailed(ev serf.Event) {
+	memberEv := ev.(serf.MemberEvent)
+	log.Printf("MEMBER EVENT: %+v - members: %+v", memberEv, memberEv.Members)
+	for _, member := range memberEv.Members {
+		registrations := n.rdb.LookupRegistrations(member.Name)
+		for _, r := range registrations {
+			if removed, _ := n.rdb.RemoveProducer(r, member.Name); removed {
+				log.Printf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
+					member.Name, r.Category, r.Key, r.SubKey)
+			}
+		}
+	}
+}
+
+func (n *NSQD) serfUserEvent(ev serf.Event) {
+	var gossipEvent GossipEvent
+	var member serf.Member
+	userEv := ev.(serf.UserEvent)
+	err := json.Unmarshal(userEv.Payload, &gossipEvent)
+	if err != nil {
+		log.Printf("ERROR: failed to Unmarshal GossipEvent - %s", err)
+		return
+	}
+	log.Printf("GossipEvent: %+v", gossipEvent)
+	found := false
+	for _, m := range n.serf.Members() {
+		if m.Name == gossipEvent.Name {
+			member = m
+			found = true
+		}
+	}
+	if !found {
+		log.Printf("ERROR: received GossipEvent for member not in list - %s",
+			userEv.Name)
+		return
+	}
+	peerInfo := peerInfoForMember(member)
+	if strings.HasSuffix(userEv.Name, "+") {
+		var registrations []registrationdb.Registration
+		if gossipEvent.Channel != "" {
+			registrations = append(registrations, registrationdb.Registration{
+				Category: "channel",
+				Key:      gossipEvent.Topic,
+				SubKey:   gossipEvent.Channel,
+			})
+		}
+		registrations = append(registrations, registrationdb.Registration{
+			Category: "topic",
+			Key:      gossipEvent.Topic,
+		})
+		for _, r := range registrations {
+			producer := &registrationdb.Producer{PeerInfo: peerInfo}
+			if n.rdb.AddProducer(r, producer) {
+				log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
+					gossipEvent.Name,
+					r.Category,
+					r.Key,
+					r.SubKey)
+			}
+		}
+	} else {
+		if gossipEvent.Channel != "" {
+			r := registrationdb.Registration{
+				Category: "channel",
+				Key:      gossipEvent.Topic,
+				SubKey:   gossipEvent.Channel,
+			}
+			removed, left := n.rdb.RemoveProducer(r, peerInfo.ID)
+			if removed {
+				log.Printf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
+					gossipEvent.Name,
+					r.Category,
+					r.Key,
+					r.SubKey)
+			}
+			// for ephemeral channels, remove the channel as well if it has no producers
+			if left == 0 && strings.HasSuffix(gossipEvent.Channel, "#ephemeral") {
+				n.rdb.RemoveRegistration(r)
+			}
+		} else {
+			// no channel was specified so this is a topic unregistration
+			// remove all of the channel registrations...
+			// normally this shouldn't happen which is why we print a warning message
+			// if anything is actually removed
+			registrations := n.rdb.FindRegistrations("channel", gossipEvent.Topic, "*")
+			for _, r := range registrations {
+				if removed, _ := n.rdb.RemoveProducer(r, peerInfo.ID); removed {
+					log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
+						gossipEvent.Name, r.Category, r.Key, r.SubKey)
+				}
+			}
+
+			r := registrationdb.Registration{
+				Category: "topic",
+				Key:      gossipEvent.Topic,
+				SubKey:   "",
+			}
+			if removed, _ := n.rdb.RemoveProducer(r, peerInfo.ID); removed {
+				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+					gossipEvent.Name, r.Category, r.Key, r.SubKey)
+			}
+		}
+	}
+}
+
+func (n *NSQD) serfEventLoop() {
+	// go func() {
+	// 	for {
+	// 		time.Sleep(500 * time.Millisecond)
+	// 		resp, err := n.serf.Query("foo", []byte("bar"), nil)
+	// 		if err != nil {
+	// 			log.Printf("ERROR: query failed - %s", err)
+	// 			continue
+	// 		}
+	// 		nr, ok := <-resp.ResponseCh()
+	// 		if !ok {
+	// 			log.Printf("ERROR: query timed out")
+	// 			continue
+	// 		}
+	// 		resp.Close()
+	// 		log.Printf("node response: %+v", nr)
+	// 	}
+	// }()
+
+	for {
+		select {
+		case ev := <-n.serfEventChan:
+			switch ev.EventType() {
+			case serf.EventMemberJoin:
+				n.serfMemberJoin(ev)
+			case serf.EventMemberLeave:
+				// nothing (should never happen)
+			case serf.EventMemberFailed:
+				n.serfMemberFailed(ev)
+			case serf.EventMemberReap:
+				// nothing
+			case serf.EventUser:
+				n.serfUserEvent(ev)
+			case serf.EventQuery:
+				// query := ev.(*serf.Query)
+				// query.Respond([]byte("baz"))
+				// log.Printf("QUERY EVENT: %+v", query)
+			case serf.EventMemberUpdate:
+				// nothing
+			default:
+				log.Printf("WARNING: unhandled Serf Event: %#v", ev)
+			}
+		case <-n.exitChan:
+			goto exit
+		}
+	}
+
+exit:
+	log.Printf("SERF: exiting")
+}
+
+type GossipEvent struct {
+	Name    string `json:"n"`
+	Topic   string `json:"t"`
+	Channel string `json:"c"`
+	Rnd     int64  `json:"r"`
+}
+
+func (n *NSQD) gossipLoop() {
+	var evName string
+	var gossipEvent GossipEvent
+
+	num, err := n.serf.Join(n.options.SeedNodeAddresses, false)
+	if err != nil {
+		log.Printf("ERROR: failed to join serf - %s", err)
+		// TODO: retry?
+	}
+	log.Printf("SERF: joined %d nodes", num)
+
+	for {
+		select {
+		case v := <-n.gossipChan:
+			switch v.(type) {
+			case *Channel:
+				channel := v.(*Channel)
+				gossipEvent = GossipEvent{
+					Name:    n.serf.LocalMember().Name,
+					Topic:   channel.topicName,
+					Channel: channel.name,
+					Rnd:     time.Now().UnixNano(),
+				}
+				if !channel.Exiting() {
+					evName = "chan+"
+				} else {
+					evName = "chan-"
+				}
+			case *Topic:
+				topic := v.(*Topic)
+				gossipEvent = GossipEvent{
+					Name:  n.serf.LocalMember().Name,
+					Topic: topic.name,
+					Rnd:   time.Now().UnixNano(),
+				}
+				if !topic.Exiting() {
+					evName = "topic+"
+				} else {
+					evName = "topic-"
+				}
+			}
+			payload, err := json.Marshal(&gossipEvent)
+			if err != nil {
+				log.Printf("ERROR: failed to send Serf user event - %s", err)
+				continue
+			}
+			err = n.serf.UserEvent(evName, payload, false)
+			if err != nil {
+				log.Printf("ERROR: failed to send Serf user event - %s", err)
+			}
+		case <-n.exitChan:
+			goto exit
+		}
+	}
+
+exit:
+	log.Printf("GOSSIP: exiting")
 }
 
 func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
