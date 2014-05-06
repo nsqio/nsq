@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/registrationdb"
 	"github.com/bitly/nsq/internal/version"
 )
 
@@ -207,7 +208,8 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 	}
 
 	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
-	key := Registration{"topic", topicName, ""}
+
+	key := registrationdb.Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	return nil, nil
@@ -258,7 +260,7 @@ func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, e
 	s.ctx.nsqlookupd.logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
-		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
+		thisNode := fmt.Sprintf("%s:%d", p.PeerInfo.BroadcastAddress, p.PeerInfo.HTTPPort)
 		if thisNode == node {
 			p.Tombstone()
 		}
@@ -279,11 +281,11 @@ func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
 	}
 
 	s.ctx.nsqlookupd.logf("DB: adding channel(%s) in topic(%s)", channelName, topicName)
-	key := Registration{"channel", topicName, channelName}
+	key := registrationdb.Registration{"channel", topicName, channelName}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
-	key = Registration{"topic", topicName, ""}
+	key = registrationdb.Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	return nil, nil
@@ -330,7 +332,7 @@ func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {
-		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
+		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.PeerInfo.ID).Filter("topic", "*", "").Keys()
 
 		// for each topic find the producer that matches this peer
 		// to add tombstone information
@@ -338,19 +340,19 @@ func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
 		for j, t := range topics {
 			topicProducers := s.ctx.nsqlookupd.DB.FindProducers("topic", t, "")
 			for _, tp := range topicProducers {
-				if tp.peerInfo == p.peerInfo {
+				if tp.PeerInfo == p.PeerInfo {
 					tombstones[j] = tp.IsTombstoned(s.ctx.nsqlookupd.opts.TombstoneLifetime)
 				}
 			}
 		}
 
 		nodes[i] = &node{
-			RemoteAddress:    p.peerInfo.RemoteAddress,
-			Hostname:         p.peerInfo.Hostname,
-			BroadcastAddress: p.peerInfo.BroadcastAddress,
-			TCPPort:          p.peerInfo.TCPPort,
-			HTTPPort:         p.peerInfo.HTTPPort,
-			Version:          p.peerInfo.Version,
+			RemoteAddress:    p.PeerInfo.RemoteAddress,
+			Hostname:         p.PeerInfo.Hostname,
+			BroadcastAddress: p.PeerInfo.BroadcastAddress,
+			TCPPort:          p.PeerInfo.TCPPort,
+			HTTPPort:         p.PeerInfo.HTTPPort,
+			Version:          p.PeerInfo.Version,
 			Tombstones:       tombstones,
 			Topics:           topics,
 		}
