@@ -10,6 +10,7 @@ import (
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/registrationdb"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -20,7 +21,7 @@ type NSQLookupd struct {
 	tcpListener  net.Listener
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
-	DB           *RegistrationDB
+	DB           *registrationdb.RegistrationDB
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -29,7 +30,7 @@ func New(opts *Options) *NSQLookupd {
 	}
 	n := &NSQLookupd{
 		opts: opts,
-		DB:   NewRegistrationDB(),
+		DB:   registrationdb.New(),
 	}
 
 	var err error

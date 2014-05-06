@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"sync/atomic"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/registrationdb"
 	"github.com/nsqio/nsq/internal/version"
 )
 
@@ -143,7 +143,8 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
-	key := Registration{"topic", topicName, ""}
+
+	key := registrationdb.Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	return nil, nil
@@ -194,7 +195,7 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
-		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
+		thisNode := fmt.Sprintf("%s:%d", p.PeerInfo.BroadcastAddress, p.PeerInfo.HTTPPort)
 		if thisNode == node {
 			p.Tombstone()
 		}
@@ -215,11 +216,11 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding channel(%s) in topic(%s)", channelName, topicName)
-	key := Registration{"channel", topicName, channelName}
+	key := registrationdb.Registration{"channel", topicName, channelName}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
-	key = Registration{"topic", topicName, ""}
+	key = registrationdb.Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
 	return nil, nil
@@ -265,9 +266,9 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
-	topicProducersMap := make(map[string]Producers)
+	topicProducersMap := make(map[string]registrationdb.Producers)
 	for i, p := range producers {
-		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
+		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.PeerInfo.ID).Filter("topic", "*", "").Keys()
 
 		// for each topic find the producer that matches this peer
 		// to add tombstone information
@@ -279,7 +280,7 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 
 			topicProducers := topicProducersMap[t]
 			for _, tp := range topicProducers {
-				if tp.peerInfo == p.peerInfo {
+				if tp.PeerInfo == p.PeerInfo {
 					tombstones[j] = tp.IsTombstoned(s.ctx.nsqlookupd.opts.TombstoneLifetime)
 					break
 				}
@@ -287,12 +288,12 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 		}
 
 		nodes[i] = &node{
-			RemoteAddress:    p.peerInfo.RemoteAddress,
-			Hostname:         p.peerInfo.Hostname,
-			BroadcastAddress: p.peerInfo.BroadcastAddress,
-			TCPPort:          p.peerInfo.TCPPort,
-			HTTPPort:         p.peerInfo.HTTPPort,
-			Version:          p.peerInfo.Version,
+			RemoteAddress:    p.PeerInfo.RemoteAddress,
+			Hostname:         p.PeerInfo.Hostname,
+			BroadcastAddress: p.PeerInfo.BroadcastAddress,
+			TCPPort:          p.PeerInfo.TCPPort,
+			HTTPPort:         p.PeerInfo.HTTPPort,
+			Version:          p.PeerInfo.Version,
 			Tombstones:       tombstones,
 			Topics:           topics,
 		}
@@ -304,27 +305,5 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 }
 
 func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	s.ctx.nsqlookupd.DB.RLock()
-	defer s.ctx.nsqlookupd.DB.RUnlock()
-
-	data := make(map[string][]map[string]interface{})
-	for r, producers := range s.ctx.nsqlookupd.DB.registrationMap {
-		key := r.Category + ":" + r.Key + ":" + r.SubKey
-		for _, p := range producers {
-			m := map[string]interface{}{
-				"id":                p.peerInfo.id,
-				"hostname":          p.peerInfo.Hostname,
-				"broadcast_address": p.peerInfo.BroadcastAddress,
-				"tcp_port":          p.peerInfo.TCPPort,
-				"http_port":         p.peerInfo.HTTPPort,
-				"version":           p.peerInfo.Version,
-				"last_update":       atomic.LoadInt64(&p.peerInfo.lastUpdate),
-				"tombstoned":        p.tombstoned,
-				"tombstoned_at":     p.tombstonedAt.UnixNano(),
-			}
-			data[key] = append(data[key], m)
-		}
-	}
-
-	return data, nil
+	return s.ctx.nsqlookupd.DB.Debug(), nil
 }

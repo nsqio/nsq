@@ -1,4 +1,4 @@
-package nsqlookupd
+package registrationdb
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 )
 
 type RegistrationDB struct {
-	sync.RWMutex
-	registrationMap map[Registration]ProducerMap
+	mtx  sync.RWMutex
+	data map[Registration]ProducerMap
 }
 
 type Registration struct {
@@ -19,19 +19,20 @@ type Registration struct {
 }
 type Registrations []Registration
 
+// TODO: do we really need separate PeerInfo and Producer types?
 type PeerInfo struct {
-	lastUpdate       int64
-	id               string
+	ID               string `json:"-"`
 	RemoteAddress    string `json:"remote_address"`
 	Hostname         string `json:"hostname"`
 	BroadcastAddress string `json:"broadcast_address"`
 	TCPPort          int    `json:"tcp_port"`
 	HTTPPort         int    `json:"http_port"`
 	Version          string `json:"version"`
+	LastUpdate       int64  `json:"-"`
 }
 
 type Producer struct {
-	peerInfo     *PeerInfo
+	PeerInfo     *PeerInfo
 	tombstoned   bool
 	tombstonedAt time.Time
 }
@@ -40,7 +41,8 @@ type Producers []*Producer
 type ProducerMap map[string]*Producer
 
 func (p *Producer) String() string {
-	return fmt.Sprintf("%s [%d, %d]", p.peerInfo.BroadcastAddress, p.peerInfo.TCPPort, p.peerInfo.HTTPPort)
+	return fmt.Sprintf("%s [%d, %d]",
+		p.PeerInfo.BroadcastAddress, p.PeerInfo.TCPPort, p.PeerInfo.HTTPPort)
 }
 
 func (p *Producer) Tombstone() {
@@ -52,43 +54,69 @@ func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
 	return p.tombstoned && time.Now().Sub(p.tombstonedAt) < lifetime
 }
 
-func NewRegistrationDB() *RegistrationDB {
+func New() *RegistrationDB {
 	return &RegistrationDB{
-		registrationMap: make(map[Registration]ProducerMap),
+		data: make(map[Registration]ProducerMap),
 	}
+}
+
+func (r *RegistrationDB) Debug() map[string][]map[string]interface{} {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	data := make(map[string][]map[string]interface{})
+	for r, producers := range r.data {
+		key := r.Category + ":" + r.Key + ":" + r.SubKey
+		data[key] = make([]map[string]interface{}, 0)
+		for _, p := range producers {
+			m := make(map[string]interface{})
+			m["id"] = p.PeerInfo.ID
+			m["hostname"] = p.PeerInfo.Hostname
+			m["broadcast_address"] = p.PeerInfo.BroadcastAddress
+			m["tcp_port"] = p.PeerInfo.TCPPort
+			m["http_port"] = p.PeerInfo.HTTPPort
+			m["version"] = p.PeerInfo.Version
+			m["last_update"] = p.PeerInfo.LastUpdate
+			m["tombstoned"] = p.tombstoned
+			m["tombstoned_at"] = p.tombstonedAt.UnixNano()
+			data[key] = append(data[key], m)
+		}
+	}
+
+	return data
 }
 
 // add a registration key
 func (r *RegistrationDB) AddRegistration(k Registration) {
-	r.Lock()
-	defer r.Unlock()
-	_, ok := r.registrationMap[k]
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	_, ok := r.data[k]
 	if !ok {
-		r.registrationMap[k] = make(map[string]*Producer)
+		r.data[k] = make(map[string]*Producer)
 	}
 }
 
 // add a producer to a registration
 func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
-	r.Lock()
-	defer r.Unlock()
-	_, ok := r.registrationMap[k]
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	_, ok := r.data[k]
 	if !ok {
-		r.registrationMap[k] = make(map[string]*Producer)
+		r.data[k] = make(map[string]*Producer)
 	}
-	producers := r.registrationMap[k]
-	_, found := producers[p.peerInfo.id]
+	producers := r.data[k]
+	_, found := producers[p.PeerInfo.ID]
 	if found == false {
-		producers[p.peerInfo.id] = p
+		producers[p.PeerInfo.ID] = p
 	}
 	return !found
 }
 
 // remove a producer from a registration
 func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
-	r.Lock()
-	defer r.Unlock()
-	producers, ok := r.registrationMap[k]
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	producers, ok := r.data[k]
 	if !ok {
 		return false, 0
 	}
@@ -104,9 +132,9 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 
 // remove a Registration and all it's producers
 func (r *RegistrationDB) RemoveRegistration(k Registration) {
-	r.Lock()
-	defer r.Unlock()
-	delete(r.registrationMap, k)
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	delete(r.data, k)
 }
 
 func (r *RegistrationDB) needFilter(key string, subkey string) bool {
@@ -114,17 +142,17 @@ func (r *RegistrationDB) needFilter(key string, subkey string) bool {
 }
 
 func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string) Registrations {
-	r.RLock()
-	defer r.RUnlock()
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	if !r.needFilter(key, subkey) {
 		k := Registration{category, key, subkey}
-		if _, ok := r.registrationMap[k]; ok {
+		if _, ok := r.data[k]; ok {
 			return Registrations{k}
 		}
 		return Registrations{}
 	}
 	results := Registrations{}
-	for k := range r.registrationMap {
+	for k := range r.data {
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}
@@ -134,23 +162,23 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 }
 
 func (r *RegistrationDB) FindProducers(category string, key string, subkey string) Producers {
-	r.RLock()
-	defer r.RUnlock()
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	if !r.needFilter(key, subkey) {
 		k := Registration{category, key, subkey}
-		return ProducerMap2Slice(r.registrationMap[k])
+		return ProducerMap2Slice(r.data[k])
 	}
 
 	results := make(map[string]struct{})
 	var retProducers Producers
-	for k, producers := range r.registrationMap {
+	for k, producers := range r.data {
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}
 		for _, producer := range producers {
-			_, found := results[producer.peerInfo.id]
+			_, found := results[producer.PeerInfo.ID]
 			if found == false {
-				results[producer.peerInfo.id] = struct{}{}
+				results[producer.PeerInfo.ID] = struct{}{}
 				retProducers = append(retProducers, producer)
 			}
 		}
@@ -159,10 +187,10 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 }
 
 func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
-	r.RLock()
-	defer r.RUnlock()
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
 	results := Registrations{}
-	for k, producers := range r.registrationMap {
+	for k, producers := range r.data {
 		if _, exists := producers[id]; exists {
 			results = append(results, k)
 		}
@@ -213,7 +241,7 @@ func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLif
 	now := time.Now()
 	results := Producers{}
 	for _, p := range pp {
-		cur := time.Unix(0, atomic.LoadInt64(&p.peerInfo.lastUpdate))
+		cur := time.Unix(0, atomic.LoadInt64(&p.PeerInfo.LastUpdate))
 		if now.Sub(cur) > inactivityTimeout || p.IsTombstoned(tombstoneLifetime) {
 			continue
 		}
@@ -225,7 +253,7 @@ func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLif
 func (pp Producers) PeerInfo() []*PeerInfo {
 	results := []*PeerInfo{}
 	for _, p := range pp {
-		results = append(results, p.peerInfo)
+		results = append(results, p.PeerInfo)
 	}
 	return results
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/registrationdb"
 	"github.com/nsqio/nsq/internal/version"
 )
 
@@ -69,9 +70,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	conn.Close()
 	p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): closing", client)
 	if client.peerInfo != nil {
-		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
+		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.ID)
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.ID); removed {
 				p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -127,14 +128,16 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
-		if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+		key := registrationdb.Registration{"channel", topic, channel}
+		producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+		if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
 			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
 		}
 	}
-	key := Registration{"topic", topic, ""}
-	if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+	key := registrationdb.Registration{"topic", topic, ""}
+	producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+	if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
 		p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 			client, "topic", topic, "")
 	}
@@ -153,8 +156,8 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
-		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		key := registrationdb.Registration{"channel", topic, channel}
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.ID)
 		if removed {
 			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
@@ -170,15 +173,14 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id)
-			if removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.ID); removed {
 				p.ctx.nsqlookupd.logf(LOG_WARN, "client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
-		key := Registration{"topic", topic, ""}
-		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		key := registrationdb.Registration{"topic", topic, ""}
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.ID)
 		if removed {
 			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
@@ -211,7 +213,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	// body is a json structure with producer information
-	peerInfo := PeerInfo{id: client.RemoteAddr().String()}
+	peerInfo := registrationdb.PeerInfo{ID: client.RemoteAddr().String()}
 	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
@@ -224,13 +226,15 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
-	atomic.StoreInt64(&peerInfo.lastUpdate, time.Now().UnixNano())
+	atomic.StoreInt64(&peerInfo.LastUpdate, time.Now().UnixNano())
 
 	p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
 		client, peerInfo.BroadcastAddress, peerInfo.TCPPort, peerInfo.HTTPPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
-	if p.ctx.nsqlookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
+	key := registrationdb.Registration{"client", "", ""}
+	producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+	if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
 		p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
 	}
 
@@ -257,11 +261,11 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
 	if client.peerInfo != nil {
 		// we could get a PING before other commands on the same client connection
-		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.lastUpdate))
+		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.LastUpdate))
 		now := time.Now()
-		p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): pinged (last ping %s)", client.peerInfo.id,
+		p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): pinged (last ping %s)", client.peerInfo.ID,
 			now.Sub(cur))
-		atomic.StoreInt64(&client.peerInfo.lastUpdate, now.UnixNano())
+		atomic.StoreInt64(&client.peerInfo.LastUpdate, now.UnixNano())
 	}
 	return []byte("OK"), nil
 }
