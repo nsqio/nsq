@@ -7,6 +7,11 @@
     <link rel="stylesheet" type="text/css" href="{{ site.baseurl }}/static/css/pygments.css" />
     <link rel="stylesheet" type="text/css" href="{{ site.baseurl }}/static/css/font-awesome.min.css" />
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <script>
+    if (window.location.indexOf('nsq.io') == -1) {
+        window.location = window.location.protocol + '//nsq.io/' + window.location.pathname.replace(/\/nsq\//, '');
+    }
+    </script>
   </head>
   <body lang="en">
     <div class="container">
