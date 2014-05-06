@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/registrationdb"
 )
 
 type NSQLookupd struct {
@@ -15,13 +16,13 @@ type NSQLookupd struct {
 	tcpListener  net.Listener
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
-	DB           *RegistrationDB
+	DB           *registrationdb.RegistrationDB
 }
 
 func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
 	n := &NSQLookupd{
 		opts: opts,
-		DB:   NewRegistrationDB(),
+		DB:   registrationdb.New(),
 	}
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
