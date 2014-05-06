@@ -436,11 +436,11 @@ The logs are verbose, but not verbose to the point where the log is overwhelming
 line, but **nsqd** leans towards the side of having *more* information in the logs when a fault
 occurs rather than trying to reduce chattiness at the expense of usefulness.
 
-[nsqd]: http://bitly.github.io/nsq/components/nsqd.html
-[nsqlookupd]: http://bitly.github.io/nsq/components/nsqlookupd.html
-[nsqadmin]: http://bitly.github.io/nsq/components/nsqadmin.html
-[design_doc]: http://bitly.github.io/nsq/overview/design.html
-[protocol_spec]: http://bitly.github.io/nsq/clients/tcp_protocol_spec.html
+[nsqd]: http://nsq.io/components/nsqd.html
+[nsqlookupd]: http://nsq.io/components/nsqlookupd.html
+[nsqadmin]: http://nsq.io/components/nsqadmin.html
+[design_doc]: http://nsq.io/overview/design.html
+[protocol_spec]: http://nsq.io/clients/tcp_protocol_spec.html
 [godep]: https://github.com/kr/godep
 [hol_blocking]: http://en.wikipedia.org/wiki/Head-of-line_blocking
 [encoding_binary]: http://golang.org/pkg/encoding/binary/
@@ -467,4 +467,4 @@ occurs rather than trying to reduce chattiness at the expense of usefulness.
 [go12_http_perf]: https://github.com/davecheney/autobench/blob/master/linux-amd64-x220-go1.1.2-vs-go1.2.txt#L156-L181
 [escape_an]: http://en.wikipedia.org/wiki/Escape_analysis
 [base10_convert]: https://github.com/bitly/nsq/blob/master/util/byte_base10.go#L7-L27
-[topology_patterns]: http://bitly.github.io/nsq/deployment/topology_patterns.html
+[topology_patterns]: http://nsq.io/deployment/topology_patterns.html
