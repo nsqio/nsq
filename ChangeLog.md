@@ -120,7 +120,7 @@ NOTE: we are now publishing additional binaries built against go1.2
 The most prominent addition is the tracking of end-to-end message processing percentiles. This
 measures the amount of time it's taking from `PUB` to `FIN` per topic/channel. The percentiles are
 configurable and, because there is *some* overhead in collecting this data, it can be turned off
-entirely. Please see [the section in the docs](http://bitly.github.io/nsq/components/nsqd.html) for
+entirely. Please see [the section in the docs](http://nsq.io/components/nsqd.html) for
 implementation details.
 
 Additionally, the utility apps received comprehensive support for all configurable reader options
