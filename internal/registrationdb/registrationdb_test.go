@@ -1,4 +1,4 @@
-package nsqlookupd
+package registrationdb
 
 import (
 	"testing"
