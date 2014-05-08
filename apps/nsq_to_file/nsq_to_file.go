@@ -232,7 +232,7 @@ func (f *FileLogger) updateFile() bool {
 	maxGzipRevisions := 1000
 	if filename != f.lastFilename || f.out == nil {
 		f.Close()
-		os.MkdirAll(*outputDir, 777)
+		os.MkdirAll(*outputDir, 0770)
 		var newFile *os.File
 		var err error
 		if f.gzipEnabled {
@@ -247,7 +247,7 @@ func (f *FileLogger) updateFile() bool {
 				fullPath := path.Join(*outputDir, tempFilename)
 				dir, _ := filepath.Split(fullPath)
 				if dir != "" {
-					err = os.MkdirAll(dir, 777)
+					err = os.MkdirAll(dir, 0770)
 					if err != nil {
 						log.Fatalf("ERROR: %s Unable to create %s", err, dir)
 					}
@@ -271,7 +271,7 @@ func (f *FileLogger) updateFile() bool {
 			fullPath := path.Join(*outputDir, filename)
 			dir, _ := filepath.Split(fullPath)
 			if dir != "" {
-				err = os.MkdirAll(dir, 777)
+				err = os.MkdirAll(dir, 0770)
 				if err != nil {
 					log.Fatalf("ERROR: %s Unable to create %s", err, dir)
 				}
