@@ -255,7 +255,7 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 	producers = producers.FilterByActive(300*time.Second, 45*time.Second)
 	data := make(map[string]interface{})
 	data["channels"] = channels
-	data["producers"] = producers.PeerInfo()
+	data["producers"] = producers
 
 	return data, nil
 }

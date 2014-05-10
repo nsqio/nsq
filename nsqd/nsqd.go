@@ -117,6 +117,11 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		log.Fatal(err)
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	serfEventChan := make(chan serf.Event, 256)
 	serfConfig := serf.DefaultConfig()
 	serfConfig.Init()
@@ -124,6 +129,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	serfConfig.Tags["tp"] = strconv.Itoa(tcpAddr.Port)
 	serfConfig.Tags["hp"] = strconv.Itoa(httpAddr.Port)
 	serfConfig.Tags["ba"] = options.BroadcastAddress
+	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(options.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
 	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
@@ -544,18 +550,18 @@ func (n *NSQD) Notify(v interface{}) {
 	}
 }
 
-func peerInfoForMember(member serf.Member) *registrationdb.PeerInfo {
+func memberToProducer(member serf.Member) registrationdb.Producer {
 	tcpPort, _ := strconv.Atoi(member.Tags["tp"])
 	httpPort, _ := strconv.Atoi(member.Tags["hp"])
-	return &registrationdb.PeerInfo{
+	return registrationdb.Producer{
 		ID: member.Name,
 		RemoteAddress: net.JoinHostPort(member.Addr.String(),
 			strconv.Itoa(int(member.Port))),
 		LastUpdate:       time.Now(),
 		BroadcastAddress: member.Tags["ba"],
-		Hostname:         "", // TODO: send hostname too?
-		TcpPort:          tcpPort,
-		HttpPort:         httpPort,
+		Hostname:         member.Tags["h"],
+		TCPPort:          tcpPort,
+		HTTPPort:         httpPort,
 		Version:          member.Tags["v"],
 	}
 }
@@ -564,12 +570,11 @@ func (n *NSQD) serfMemberJoin(ev serf.Event) {
 	memberEv := ev.(serf.MemberEvent)
 	log.Printf("MEMBER EVENT: %+v - members: %+v", memberEv, memberEv.Members)
 	for _, member := range memberEv.Members {
-		peerInfo := peerInfoForMember(member)
+		producer := memberToProducer(member)
 		r := registrationdb.Registration{"client", "", ""}
-		producer := &registrationdb.Producer{PeerInfo: peerInfo}
 		n.rdb.AddProducer(r, producer)
 		log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
-			peerInfo.ID,
+			producer.ID,
 			r.Category,
 			r.Key,
 			r.SubKey)
@@ -591,68 +596,78 @@ func (n *NSQD) serfMemberFailed(ev serf.Event) {
 }
 
 func (n *NSQD) serfUserEvent(ev serf.Event) {
-	var gossipEvent GossipEvent
+	var gev gossipEvent
 	var member serf.Member
 	userEv := ev.(serf.UserEvent)
-	err := json.Unmarshal(userEv.Payload, &gossipEvent)
+	err := json.Unmarshal(userEv.Payload, &gev)
 	if err != nil {
-		log.Printf("ERROR: failed to Unmarshal GossipEvent - %s", err)
+		log.Printf("ERROR: failed to Unmarshal gossipEvent - %s", err)
 		return
 	}
-	log.Printf("GossipEvent: %+v", gossipEvent)
+	log.Printf("gossipEvent: %+v", gev)
 	found := false
 	for _, m := range n.serf.Members() {
-		if m.Name == gossipEvent.Name {
+		if m.Name == gev.Name {
 			member = m
 			found = true
 		}
 	}
 	if !found {
-		log.Printf("ERROR: received GossipEvent for member not in list - %s",
+		log.Printf("ERROR: received gossipEvent for member not in list - %s",
 			userEv.Name)
 		return
 	}
-	peerInfo := peerInfoForMember(member)
-	if strings.HasSuffix(userEv.Name, "+") {
+	producer := memberToProducer(member)
+	operation := userEv.Name[len(userEv.Name)-1]
+	switch operation {
+	case '+', '=':
+		// a create event
 		var registrations []registrationdb.Registration
-		if gossipEvent.Channel != "" {
+		if gev.Channel != "" {
 			registrations = append(registrations, registrationdb.Registration{
 				Category: "channel",
-				Key:      gossipEvent.Topic,
-				SubKey:   gossipEvent.Channel,
+				Key:      gev.Topic,
+				SubKey:   gev.Channel,
 			})
 		}
 		registrations = append(registrations, registrationdb.Registration{
 			Category: "topic",
-			Key:      gossipEvent.Topic,
+			Key:      gev.Topic,
 		})
 		for _, r := range registrations {
-			producer := &registrationdb.Producer{PeerInfo: peerInfo}
 			if n.rdb.AddProducer(r, producer) {
 				log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
-					gossipEvent.Name,
+					gev.Name,
+					r.Category,
+					r.Key,
+					r.SubKey)
+			}
+			if operation == '=' && n.rdb.TouchRegistration(r.Category, r.Key, r.SubKey, producer.ID) {
+				log.Printf("DB: member(%s) TOUCH category:%s key:%s subkey:%s",
+					gev.Name,
 					r.Category,
 					r.Key,
 					r.SubKey)
 			}
 		}
-	} else {
-		if gossipEvent.Channel != "" {
+	case '-':
+		// a delete event
+		if gev.Channel != "" {
 			r := registrationdb.Registration{
 				Category: "channel",
-				Key:      gossipEvent.Topic,
-				SubKey:   gossipEvent.Channel,
+				Key:      gev.Topic,
+				SubKey:   gev.Channel,
 			}
-			removed, left := n.rdb.RemoveProducer(r, peerInfo.ID)
+			removed, left := n.rdb.RemoveProducer(r, producer.ID)
 			if removed {
 				log.Printf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
-					gossipEvent.Name,
+					gev.Name,
 					r.Category,
 					r.Key,
 					r.SubKey)
 			}
 			// for ephemeral channels, remove the channel as well if it has no producers
-			if left == 0 && strings.HasSuffix(gossipEvent.Channel, "#ephemeral") {
+			if left == 0 && strings.HasSuffix(gev.Channel, "#ephemeral") {
 				n.rdb.RemoveRegistration(r)
 			}
 		} else {
@@ -660,22 +675,22 @@ func (n *NSQD) serfUserEvent(ev serf.Event) {
 			// remove all of the channel registrations...
 			// normally this shouldn't happen which is why we print a warning message
 			// if anything is actually removed
-			registrations := n.rdb.FindRegistrations("channel", gossipEvent.Topic, "*")
+			registrations := n.rdb.FindRegistrations("channel", gev.Topic, "*")
 			for _, r := range registrations {
-				if removed, _ := n.rdb.RemoveProducer(r, peerInfo.ID); removed {
+				if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
 					log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
-						gossipEvent.Name, r.Category, r.Key, r.SubKey)
+						gev.Name, r.Category, r.Key, r.SubKey)
 				}
 			}
 
 			r := registrationdb.Registration{
 				Category: "topic",
-				Key:      gossipEvent.Topic,
+				Key:      gev.Topic,
 				SubKey:   "",
 			}
-			if removed, _ := n.rdb.RemoveProducer(r, peerInfo.ID); removed {
+			if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
 				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
-					gossipEvent.Name, r.Category, r.Key, r.SubKey)
+					gev.Name, r.Category, r.Key, r.SubKey)
 			}
 		}
 	}
@@ -732,16 +747,33 @@ exit:
 	log.Printf("SERF: exiting")
 }
 
-type GossipEvent struct {
+type gossipEvent struct {
 	Name    string `json:"n"`
 	Topic   string `json:"t"`
 	Channel string `json:"c"`
 	Rnd     int64  `json:"r"`
 }
 
+func (n *NSQD) gossip(evName string, topicName string, channelName string) error {
+	gev := gossipEvent{
+		Name:    n.serf.LocalMember().Name,
+		Topic:   topicName,
+		Channel: channelName,
+		Rnd:     time.Now().UnixNano(),
+	}
+	payload, err := json.Marshal(&gev)
+	if err != nil {
+		return err
+	}
+	return n.serf.UserEvent(evName, payload, false)
+}
+
 func (n *NSQD) gossipLoop() {
 	var evName string
-	var gossipEvent GossipEvent
+	var topicName string
+	var channelName string
+
+	regossipTicker := time.NewTicker(60 * time.Second)
 
 	num, err := n.serf.Join(n.options.SeedNodeAddresses, false)
 	if err != nil {
@@ -752,16 +784,32 @@ func (n *NSQD) gossipLoop() {
 
 	for {
 		select {
+		case <-regossipTicker.C:
+			stats := n.GetStats()
+			for _, topicStat := range stats {
+				if len(topicStat.Channels) == 0 {
+					// if there are no channels we just send a topic exists event
+					err := n.gossip("topic=", topicStat.TopicName, "")
+					if err != nil {
+						log.Printf("ERROR: failed to send Serf user event - %s", err)
+					}
+					continue
+				}
+				// otherwise we know that by sending over a channel for a topic the topic
+				// will be accounted for as well
+				for _, channelStat := range topicStat.Channels {
+					err := n.gossip("channel=", topicStat.TopicName, channelStat.ChannelName)
+					if err != nil {
+						log.Printf("ERROR: failed to send Serf user event - %s", err)
+					}
+				}
+			}
 		case v := <-n.gossipChan:
 			switch v.(type) {
 			case *Channel:
 				channel := v.(*Channel)
-				gossipEvent = GossipEvent{
-					Name:    n.serf.LocalMember().Name,
-					Topic:   channel.topicName,
-					Channel: channel.name,
-					Rnd:     time.Now().UnixNano(),
-				}
+				topicName = channel.topicName
+				channelName = channel.name
 				if !channel.Exiting() {
 					evName = "chan+"
 				} else {
@@ -769,23 +817,15 @@ func (n *NSQD) gossipLoop() {
 				}
 			case *Topic:
 				topic := v.(*Topic)
-				gossipEvent = GossipEvent{
-					Name:  n.serf.LocalMember().Name,
-					Topic: topic.name,
-					Rnd:   time.Now().UnixNano(),
-				}
+				topicName = topic.name
+				channelName = ""
 				if !topic.Exiting() {
 					evName = "topic+"
 				} else {
 					evName = "topic-"
 				}
 			}
-			payload, err := json.Marshal(&gossipEvent)
-			if err != nil {
-				log.Printf("ERROR: failed to send Serf user event - %s", err)
-				continue
-			}
-			err = n.serf.UserEvent(evName, payload, false)
+			err := n.gossip(evName, topicName, channelName)
 			if err != nil {
 				log.Printf("ERROR: failed to send Serf user event - %s", err)
 			}
