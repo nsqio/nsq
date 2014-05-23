@@ -310,6 +310,7 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 	}
 	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", topic, -1)
 	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
+	filenameFormat = strings.Replace(filenameFormat, "<SHORT_HOST>", shortHostname, -1)
 	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
 		filenameFormat = filenameFormat + ".gz"
 	}
