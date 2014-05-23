@@ -47,6 +47,9 @@ max_msg_timeout = "15m"
 ## maximum size of a single message in bytes
 max_msg_size = 1024768
 
+## maximum requeuing timeout for a message
+max_req_timeout = "1h"
+
 ## maximum size of a single command body
 max_body_size = 5123840
 

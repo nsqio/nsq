@@ -18,8 +18,6 @@ import (
 	"github.com/bitly/nsq/util"
 )
 
-const maxTimeout = time.Hour
-
 var separatorBytes = []byte(" ")
 var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
@@ -557,9 +555,9 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
-	if timeoutDuration < 0 || timeoutDuration > maxTimeout {
+	if timeoutDuration < 0 || timeoutDuration > p.context.nsqd.options.MaxReqTimeout {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID",
-			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, maxTimeout))
+			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.context.nsqd.options.MaxReqTimeout))
 	}
 
 	err = client.Channel.RequeueMessage(client.ID, id, timeoutDuration)
