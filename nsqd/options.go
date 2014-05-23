@@ -31,6 +31,7 @@ type nsqdOptions struct {
 	MaxMsgTimeout time.Duration `flag:"max-msg-timeout"`
 	MaxMsgSize    int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
 	MaxBodySize   int64         `flag:"max-body-size"`
+	MaxReqTimeout time.Duration `flag:"max-req-timeout"`
 	ClientTimeout time.Duration
 
 	// client overridable configuration options
@@ -83,6 +84,7 @@ func NewNSQDOptions() *nsqdOptions {
 		MaxMsgTimeout: 15 * time.Minute,
 		MaxMsgSize:    1024768,
 		MaxBodySize:   5 * 1024768,
+		MaxReqTimeout: 1 * time.Hour,
 		ClientTimeout: 60 * time.Second,
 
 		MaxHeartbeatInterval:   60 * time.Second,
