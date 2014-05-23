@@ -35,7 +35,7 @@ type Consumer interface {
 // of subscribers (clients).
 //
 // Channels maintain all client and message metadata, orchestrating in-flight
-// messages, timeouts, requeueing, etc.
+// messages, timeouts, requeuing, etc.
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	requeueCount uint64
