@@ -55,7 +55,7 @@ var (
 )
 
 func init() {
-	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Consumer (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -77,19 +77,14 @@ func (s Durations) Less(i, j int) bool {
 	return s[i] < s[j]
 }
 
-func getRequeueDelay(m *nsq.Message) int {
-	return int(60 * time.Second * time.Duration(m.Attempts) / time.Millisecond)
-}
-
 type PublishHandler struct {
 	addresses util.StringArray
-	writers   map[string]*nsq.Writer
+	producers map[string]*nsq.Producer
 	mode      int
 	counter   uint64
 	hostPool  hostpool.HostPool
 	reqs      Durations
-	id        int
-	respChan  chan *nsq.WriterTransaction
+	respChan  chan *nsq.ProducerTransaction
 
 	requireJsonValueParsed   bool
 	requireJsonValueIsNumber bool
@@ -98,7 +93,6 @@ type PublishHandler struct {
 
 func (ph *PublishHandler) responder() {
 	var msg *nsq.Message
-	var respChan chan *nsq.FinishedMessage
 	var startTime time.Time
 	var hostPoolResponse hostpool.HostPoolResponse
 
@@ -106,17 +100,15 @@ func (ph *PublishHandler) responder() {
 		switch ph.mode {
 		case ModeRoundRobin:
 			msg = t.Args[0].(*nsq.Message)
-			respChan = t.Args[1].(chan *nsq.FinishedMessage)
-			startTime = t.Args[2].(time.Time)
+			startTime = t.Args[1].(time.Time)
 			hostPoolResponse = nil
 		case ModeHostPool:
 			msg = t.Args[0].(*nsq.Message)
-			respChan = t.Args[1].(chan *nsq.FinishedMessage)
-			startTime = t.Args[2].(time.Time)
-			hostPoolResponse = t.Args[3].(hostpool.HostPoolResponse)
+			startTime = t.Args[1].(time.Time)
+			hostPoolResponse = t.Args[2].(hostpool.HostPoolResponse)
 		}
 
-		success := t.Error == nil && t.FrameType == nsq.FrameTypeResponse
+		success := t.Error == nil
 
 		if hostPoolResponse != nil {
 			if !success {
@@ -126,7 +118,11 @@ func (ph *PublishHandler) responder() {
 			}
 		}
 
-		respChan <- &nsq.FinishedMessage{msg.Id, getRequeueDelay(msg), success}
+		if success {
+			msg.Finish()
+		} else {
+			msg.Requeue(-1)
+		}
 
 		if *statusEvery > 0 {
 			duration := time.Now().Sub(startTime)
@@ -144,8 +140,8 @@ func (ph *PublishHandler) responder() {
 			p95Ms := percentile(95.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
 			p99Ms := percentile(99.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
 
-			log.Printf("handler(%d): finished %d requests - 99th: %.02fms - 95th: %.02fms - avg: %.02fms",
-				ph.id, *statusEvery, p99Ms, p95Ms, avgMs)
+			log.Printf("finished %d requests - 99th: %.02fms - 95th: %.02fms - avg: %.02fms",
+				*statusEvery, p99Ms, p95Ms, avgMs)
 
 			ph.reqs = ph.reqs[:0]
 		}
@@ -235,7 +231,7 @@ func filterMessage(jsonMsg *simplejson.Json, rawMsg []byte) ([]byte, error) {
 	return newRawMsg, nil
 }
 
-func (ph *PublishHandler) HandleMessage(m *nsq.Message, respChan chan *nsq.FinishedMessage) {
+func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	var err error
 	msgBody := m.Body
 
@@ -244,24 +240,20 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, respChan chan *nsq.Finis
 		jsonMsg, err = simplejson.NewJson(m.Body)
 		if err != nil {
 			log.Printf("ERROR: Unable to decode json: %s", m.Body)
-			respChan <- &nsq.FinishedMessage{m.Id, 0, true}
-			return
+			return nil
 		}
 
 		if pass, backoff := ph.shouldPassMessage(jsonMsg); !pass {
 			if backoff {
-				respChan <- &nsq.FinishedMessage{m.Id, getRequeueDelay(m), false}
-			} else {
-				respChan <- &nsq.FinishedMessage{m.Id, 0, true}
+				return errors.New("backoff")
 			}
-			return
+			return nil
 		}
 
 		msgBody, err = filterMessage(jsonMsg, m.Body)
 		if err != nil {
 			log.Printf("ERROR: filterMessage() failed: %s", err)
-			respChan <- &nsq.FinishedMessage{m.Id, getRequeueDelay(m), false}
-			return
+			return err
 		}
 	}
 
@@ -270,21 +262,23 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, respChan chan *nsq.Finis
 	switch ph.mode {
 	case ModeRoundRobin:
 		idx := ph.counter % uint64(len(ph.addresses))
-		writer := ph.writers[ph.addresses[idx]]
-		err = writer.PublishAsync(*destTopic, msgBody, ph.respChan, m, respChan, startTime)
+		p := ph.producers[ph.addresses[idx]]
+		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime)
 		ph.counter++
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
-		writer := ph.writers[hostPoolResponse.Host()]
-		err = writer.PublishAsync(*destTopic, msgBody, ph.respChan, m, respChan, startTime, hostPoolResponse)
+		p := ph.producers[hostPoolResponse.Host()]
+		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
 		if err != nil {
 			hostPoolResponse.Mark(err)
 		}
 	}
 
 	if err != nil {
-		respChan <- &nsq.FinishedMessage{m.Id, getRequeueDelay(m), false}
+		return err
 	}
+	m.DisableAutoResponse()
+	return nil
 }
 
 func percentile(perc float64, arr []time.Duration, length int) time.Duration {
@@ -322,15 +316,15 @@ func main() {
 		*destTopic = *topic
 	}
 
-	if !nsq.IsValidTopicName(*topic) {
+	if !util.IsValidTopicName(*topic) {
 		log.Fatalf("--topic is invalid")
 	}
 
-	if !nsq.IsValidTopicName(*destTopic) {
+	if !util.IsValidTopicName(*destTopic) {
 		log.Fatalf("--destination-topic is invalid")
 	}
 
-	if !nsq.IsValidChannelName(*channel) {
+	if !util.IsValidChannelName(*channel) {
 		log.Fatalf("--channel is invalid")
 	}
 
@@ -355,52 +349,54 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	r, err := nsq.NewReader(*topic, *channel)
+	cfg := nsq.NewConfig()
+
+	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	err = util.ParseReaderOpts(r, readerOpts)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	r.SetMaxInFlight(*maxInFlight)
+	cfg.Set("max_in_flight", *maxInFlight)
 
 	// TODO: remove, deprecated
 	if hasArg("verbose") {
 		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		r.Configure("verbose", true)
+		cfg.Set("verbose", true)
 	}
 
 	// TODO: remove, deprecated
 	if hasArg("max-backoff-duration") {
 		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
-		r.Configure("max_backoff_duration", *maxBackoffDuration)
+		cfg.Set("max_backoff_duration", *maxBackoffDuration)
 	}
 
-	writers := make(map[string]*nsq.Writer)
+	r, err := nsq.NewConsumer(*topic, *channel, cfg)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+
+	wcfg := nsq.NewConfig()
+	wcfg.Set("heartbeat_interval", nsq.DefaultClientTimeout/2)
+	producers := make(map[string]*nsq.Producer)
 	for _, addr := range destNsqdTCPAddrs {
-		writer := nsq.NewWriter(addr)
-		writer.HeartbeatInterval = nsq.DefaultClientTimeout / 2
-		writers[addr] = writer
+		producers[addr] = nsq.NewProducer(addr, wcfg)
 	}
 
+	handler := &PublishHandler{
+		addresses: destNsqdTCPAddrs,
+		producers: producers,
+		mode:      selectedMode,
+		reqs:      make(Durations, 0, *statusEvery),
+		hostPool:  hostpool.New(destNsqdTCPAddrs),
+		respChan:  make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+	}
+	r.SetConcurrentHandlers(handler, len(destNsqdTCPAddrs))
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
-		respChan := make(chan *nsq.WriterTransaction)
-		handler := &PublishHandler{
-			addresses: destNsqdTCPAddrs,
-			writers:   writers,
-			mode:      selectedMode,
-			reqs:      make(Durations, 0, *statusEvery),
-			id:        i,
-			hostPool:  hostpool.New(destNsqdTCPAddrs),
-			respChan:  respChan,
-		}
-		r.AddAsyncHandler(handler)
 		go handler.responder()
 	}
 
 	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQ(addrString)
+		err := r.ConnectToNSQD(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -408,7 +404,7 @@ func main() {
 
 	for _, addrString := range lookupdHTTPAddrs {
 		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToLookupd(addrString)
+		err := r.ConnectToNSQLookupd(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -416,7 +412,7 @@ func main() {
 
 	for {
 		select {
-		case <-r.ExitChan:
+		case <-r.StopChan:
 			return
 		case <-termChan:
 			r.Stop()

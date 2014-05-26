@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Consumer (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
@@ -81,24 +81,29 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	r, err := nsq.NewReader(*topic, *channel)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	err = util.ParseReaderOpts(r, readerOpts)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
 	// Don't ask for more messages than we want
 	if *totalMessages > 0 && *totalMessages < *maxInFlight {
 		*maxInFlight = *totalMessages
 	}
-	r.SetMaxInFlight(*maxInFlight)
-	r.AddHandler(&TailHandler{totalMessages: *totalMessages})
+
+	cfg := nsq.NewConfig()
+	cfg.Set("max_in_flight", *maxInFlight)
+
+	err := util.ParseReaderOpts(cfg, readerOpts)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	r, err := nsq.NewConsumer(*topic, *channel, cfg)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+
+	r.SetHandler(&TailHandler{totalMessages: *totalMessages})
 
 	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQ(addrString)
+		err := r.ConnectToNSQD(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -106,7 +111,7 @@ func main() {
 
 	for _, addrString := range lookupdHTTPAddrs {
 		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToLookupd(addrString)
+		err := r.ConnectToNSQLookupd(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -114,7 +119,7 @@ func main() {
 
 	for {
 		select {
-		case <-r.ExitChan:
+		case <-r.StopChan:
 			return
 		case <-sigChan:
 			r.Stop()
