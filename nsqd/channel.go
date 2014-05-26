@@ -78,12 +78,6 @@ type Channel struct {
 	bufferedCount int32
 }
 
-type inFlightMessage struct {
-	msg      *Message
-	clientID int64
-	ts       time.Time
-}
-
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, channelName string, context *context,
 	deleteCallback func(*Channel)) *Channel {
@@ -264,7 +258,7 @@ func (c *Channel) flush() error {
 
 finish:
 	for _, item := range c.inFlightMessages {
-		msg := item.Value.(*inFlightMessage).msg
+		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
@@ -343,12 +337,13 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID) error {
 	}
 	c.removeFromInFlightPQ(item)
 
-	ifMsg := item.Value.(*inFlightMessage)
+	msg := item.Value.(*Message)
 	currentTimeout := time.Unix(0, item.Priority)
 	newTimeout := currentTimeout.Add(c.context.nsqd.options.MsgTimeout)
-	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(ifMsg.ts) >= c.context.nsqd.options.MaxMsgTimeout {
+	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(msg.deliveryTS) >=
+		c.context.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = ifMsg.ts.Add(c.context.nsqd.options.MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.context.nsqd.options.MaxMsgTimeout)
 	}
 
 	item.Priority = newTimeout.UnixNano()
@@ -368,7 +363,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	}
 	c.removeFromInFlightPQ(item)
 	if c.e2eProcessingLatencyStream != nil {
-		c.e2eProcessingLatencyStream.Insert(item.Value.(*inFlightMessage).msg.Timestamp)
+		c.e2eProcessingLatencyStream.Insert(item.Value.(*Message).Timestamp)
 	}
 
 	return nil
@@ -388,7 +383,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 	}
 	c.removeFromInFlightPQ(item)
 
-	msg := item.Value.(*inFlightMessage).msg
+	msg := item.Value.(*Message)
 
 	if timeout == 0 {
 		return c.doRequeue(msg)
@@ -428,9 +423,10 @@ func (c *Channel) RemoveClient(clientID int64) {
 
 func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout time.Duration) error {
 	now := time.Now()
-	value := &inFlightMessage{msg, clientID, now}
+	msg.clientID = clientID
+	msg.deliveryTS = now
 	absTs := now.Add(timeout).UnixNano()
-	item := &pqueue.Item{Value: value, Priority: absTs}
+	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {
 		return err
@@ -467,7 +463,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	c.Lock()
 	defer c.Unlock()
 
-	id := item.Value.(*inFlightMessage).msg.ID
+	id := item.Value.(*Message).ID
 	_, ok := c.inFlightMessages[id]
 	if ok {
 		return errors.New("ID already in flight")
@@ -487,7 +483,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*pqueue.Item
 		return nil, errors.New("ID not in flight")
 	}
 
-	if item.Value.(*inFlightMessage).clientID != clientID {
+	if item.Value.(*Message).clientID != clientID {
 		return nil, errors.New("client does not own message")
 	}
 
@@ -627,14 +623,13 @@ func (c *Channel) deferredWorker() {
 
 func (c *Channel) inFlightWorker() {
 	c.pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
-		clientID := item.Value.(*inFlightMessage).clientID
-		msg := item.Value.(*inFlightMessage).msg
-		_, err := c.popInFlightMessage(clientID, msg.ID)
+		msg := item.Value.(*Message)
+		_, err := c.popInFlightMessage(msg.clientID, msg.ID)
 		if err != nil {
 			return
 		}
 		atomic.AddUint64(&c.timeoutCount, 1)
-		client, ok := c.clients[clientID]
+		client, ok := c.clients[msg.clientID]
 		if ok {
 			client.TimedOutMessage()
 		}

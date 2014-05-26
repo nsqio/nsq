@@ -17,6 +17,10 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
+
+	// for in-flight handling
+	deliveryTS time.Time
+	clientID   int64
 }
 
 func NewMessage(id MessageID, body []byte) *Message {
