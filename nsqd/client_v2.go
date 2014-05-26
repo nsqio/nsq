@@ -12,11 +12,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/mreiferson/go-snappystream"
 )
 
-const DefaultBufferSize = 16 * 1024
+const defaultBufferSize = 16 * 1024
+
+const (
+	stateInit = iota
+	stateDisconnected
+	stateConnected
+	stateSubscribed
+	stateClosing
+)
 
 type identifyDataV2 struct {
 	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
@@ -112,10 +119,10 @@ func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
 
 		Conn: conn,
 
-		Reader: bufio.NewReaderSize(conn, DefaultBufferSize),
-		Writer: bufio.NewWriterSize(conn, DefaultBufferSize),
+		Reader: bufio.NewReaderSize(conn, defaultBufferSize),
+		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
 
-		OutputBufferSize:    DefaultBufferSize,
+		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: 250 * time.Millisecond,
 
 		MsgTimeout: context.nsqd.options.MsgTimeout,
@@ -125,7 +132,7 @@ func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
 		ReadyStateChan: make(chan int, 1),
 		ExitChan:       make(chan int),
 		ConnectTime:    time.Now(),
-		State:          nsq.StateInit,
+		State:          stateInit,
 
 		ClientID: identifier,
 		Hostname: identifier,
@@ -304,7 +311,7 @@ func (c *clientV2) StartClose() {
 	// Force the client into ready 0
 	c.SetReadyCount(0)
 	// mark this client as closing
-	atomic.StoreInt32(&c.State, nsq.StateClosing)
+	atomic.StoreInt32(&c.State, stateClosing)
 }
 
 func (c *clientV2) Pause() {
@@ -419,7 +426,7 @@ func (c *clientV2) UpgradeTLS() error {
 	}
 	c.tlsConn = tlsConn
 
-	c.Reader = bufio.NewReaderSize(c.tlsConn, DefaultBufferSize)
+	c.Reader = bufio.NewReaderSize(c.tlsConn, defaultBufferSize)
 	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.TLS, 1)
@@ -436,7 +443,7 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = bufio.NewReaderSize(flate.NewReader(conn), DefaultBufferSize)
+	c.Reader = bufio.NewReaderSize(flate.NewReader(conn), defaultBufferSize)
 
 	fw, _ := flate.NewWriter(conn, level)
 	c.flateWriter = fw
@@ -456,7 +463,7 @@ func (c *clientV2) UpgradeSnappy() error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), DefaultBufferSize)
+	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), defaultBufferSize)
 	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)

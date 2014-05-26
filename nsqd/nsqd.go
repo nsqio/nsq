@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
@@ -43,7 +42,7 @@ type NSQD struct {
 	httpsListener net.Listener
 	tlsConfig     *tls.Config
 
-	idChan     chan nsq.MessageID
+	idChan     chan MessageID
 	notifyChan chan interface{}
 	exitChan   chan int
 	waitGroup  util.WaitGroupWrapper
@@ -89,7 +88,7 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 		httpAddr:   httpAddr,
 		httpsAddr:  httpsAddr,
 		topicMap:   make(map[string]*Topic),
-		idChan:     make(chan nsq.MessageID, 4096),
+		idChan:     make(chan MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
 		tlsConfig:  buildTLSConfig(options),
@@ -184,7 +183,7 @@ func (n *NSQD) LoadMetadata() {
 			log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 			return
 		}
-		if !nsq.IsValidTopicName(topicName) {
+		if !util.IsValidTopicName(topicName) {
 			log.Printf("WARNING: skipping creation of invalid topic %s", topicName)
 			continue
 		}
@@ -209,7 +208,7 @@ func (n *NSQD) LoadMetadata() {
 				log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 				return
 			}
-			if !nsq.IsValidChannelName(channelName) {
+			if !util.IsValidChannelName(channelName) {
 				log.Printf("WARNING: skipping creation of invalid channel %s", channelName)
 				continue
 			}

@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 )
 
@@ -34,7 +33,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	case "  V2":
 		prot = &protocolV2{context: p.context}
 	default:
-		util.SendFramedResponse(clientConn, nsq.FrameTypeError, []byte("E_BAD_PROTOCOL"))
+		util.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
 		log.Printf("ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return

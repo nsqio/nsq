@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
 )
 
@@ -92,7 +91,7 @@ func TestDeleteLast(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 0, len(topic.channelMap))
 
-	msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, nil, err)
@@ -114,7 +113,7 @@ func TestPause(t *testing.T) {
 	channel := topic.GetChannel("ch1")
 	assert.NotEqual(t, channel, nil)
 
-	msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	assert.Equal(t, err, nil)
 
@@ -145,7 +144,7 @@ func BenchmarkTopicPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
-		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }
@@ -165,7 +164,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
-		msg := nsq.NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 

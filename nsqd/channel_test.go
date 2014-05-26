@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bmizerany/assert"
 )
 
@@ -24,12 +23,12 @@ func TestPutMessage(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel1 := topic.GetChannel("ch")
 
-	var id nsq.MessageID
-	msg := nsq.NewMessage(id, []byte("test"))
+	var id MessageID
+	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg := <-channel1.clientMsgChan
-	assert.Equal(t, msg.Id, outputMsg.Id)
+	assert.Equal(t, msg.ID, outputMsg.ID)
 	assert.Equal(t, msg.Body, outputMsg.Body)
 }
 
@@ -46,16 +45,16 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
-	var id nsq.MessageID
-	msg := nsq.NewMessage(id, []byte("test"))
+	var id MessageID
+	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg1 := <-channel1.clientMsgChan
-	assert.Equal(t, msg.Id, outputMsg1.Id)
+	assert.Equal(t, msg.ID, outputMsg1.ID)
 	assert.Equal(t, msg.Body, outputMsg1.Body)
 
 	outputMsg2 := <-channel2.clientMsgChan
-	assert.Equal(t, msg.Id, outputMsg2.Id)
+	assert.Equal(t, msg.ID, outputMsg2.ID)
 	assert.Equal(t, msg.Body, outputMsg2.Body)
 }
 
@@ -75,7 +74,7 @@ func TestInFlightWorker(t *testing.T) {
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < count; i++ {
-		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		msg := NewMessage(<-nsqd.idChan, []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 	}
 
@@ -116,14 +115,14 @@ func TestChannelEmpty(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
 
-	msgs := make([]*nsq.Message, 0, 25)
+	msgs := make([]*Message, 0, 25)
 	for i := 0; i < 25; i++ {
-		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		msg := NewMessage(<-nsqd.idChan, []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 		msgs = append(msgs, msg)
 	}
 
-	channel.RequeueMessage(0, msgs[len(msgs)-1].Id, 100*time.Millisecond)
+	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 100*time.Millisecond)
 	assert.Equal(t, len(channel.inFlightMessages), 24)
 	assert.Equal(t, len(channel.inFlightPQ), 24)
 	assert.Equal(t, len(channel.deferredMessages), 1)
@@ -155,7 +154,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	channel.AddClient(client.ID, client)
 
 	for i := 0; i < 25; i++ {
-		msg := nsq.NewMessage(<-nsqd.idChan, []byte("test"))
+		msg := NewMessage(<-nsqd.idChan, []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, options.MsgTimeout)
 		client.SendingMessage()
 	}

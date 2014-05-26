@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
 	"github.com/bmizerany/assert"
 )
@@ -66,7 +65,7 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		msg := nsq.NewMessage(<-nsqd.idChan, body)
+		msg := NewMessage(<-nsqd.idChan, body)
 		topic.PutMessage(msg)
 	}
 
@@ -168,7 +167,7 @@ func TestEphemeralChannel(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	msg := nsq.NewMessage(<-nsqd.idChan, body)
+	msg := NewMessage(<-nsqd.idChan, body)
 	topic.PutMessage(msg)
 	msg = <-ephemeralChannel.clientMsgChan
 	assert.Equal(t, msg.Body, body)

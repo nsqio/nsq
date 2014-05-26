@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 )
 
@@ -202,7 +201,7 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	}
 	topicName := topicNames[0]
 
-	if !nsq.IsValidTopicName(topicName) {
+	if !util.IsValidTopicName(topicName) {
 		return nil, nil, httpError{400, "INVALID_TOPIC"}
 	}
 
@@ -256,7 +255,7 @@ func (s *httpServer) doPUB(req *http.Request) error {
 		return err
 	}
 
-	msg := nsq.NewMessage(<-s.context.nsqd.idChan, body)
+	msg := NewMessage(<-s.context.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return httpError{503, "EXITING"}
@@ -281,7 +280,7 @@ func (s *httpServer) mpubHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *httpServer) doMPUB(req *http.Request) error {
-	var msgs []*nsq.Message
+	var msgs []*Message
 	var exit bool
 
 	if req.Method != "POST" {
@@ -341,7 +340,7 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 				return httpError{413, "MSG_TOO_BIG"}
 			}
 
-			msg := nsq.NewMessage(<-s.context.nsqd.idChan, block)
+			msg := NewMessage(<-s.context.nsqd.idChan, block)
 			msgs = append(msgs, msg)
 		}
 	}
@@ -428,7 +427,7 @@ func (s *httpServer) doEmptyTopic(req *http.Request) error {
 		return httpError{400, "MISSING_ARG_TOPIC"}
 	}
 
-	if !nsq.IsValidTopicName(topicName) {
+	if !util.IsValidTopicName(topicName) {
 		return httpError{400, "INVALID_TOPIC"}
 	}
 

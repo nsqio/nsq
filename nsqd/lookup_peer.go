@@ -35,7 +35,7 @@ type peerInfo struct {
 func newLookupPeer(addr string, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
 		addr:            addr,
-		state:           nsq.StateDisconnected,
+		state:           stateDisconnected,
 		connectCallback: connectCallback,
 	}
 }
@@ -70,7 +70,7 @@ func (lp *lookupPeer) Write(data []byte) (int, error) {
 
 // Close implements the io.Closer interface
 func (lp *lookupPeer) Close() error {
-	lp.state = nsq.StateDisconnected
+	lp.state = stateDisconnected
 	return lp.conn.Close()
 }
 
@@ -82,21 +82,21 @@ func (lp *lookupPeer) Close() error {
 // It returns the response from nsqlookupd as []byte
 func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 	initialState := lp.state
-	if lp.state != nsq.StateConnected {
+	if lp.state != stateConnected {
 		err := lp.Connect()
 		if err != nil {
 			return nil, err
 		}
-		lp.state = nsq.StateConnected
+		lp.state = stateConnected
 		lp.Write(nsq.MagicV1)
-		if initialState == nsq.StateDisconnected {
+		if initialState == stateDisconnected {
 			lp.connectCallback(lp)
 		}
 	}
 	if cmd == nil {
 		return nil, nil
 	}
-	err := cmd.Write(lp)
+	_, err := cmd.WriteTo(lp)
 	if err != nil {
 		lp.Close()
 		return nil, err
