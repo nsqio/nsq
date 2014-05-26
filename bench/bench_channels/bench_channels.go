@@ -49,13 +49,13 @@ func subWorker(n int, tcpAddr string,
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
 	cmd, _ := nsq.Identify(ci)
-	cmd.Write(rw)
-	nsq.Subscribe(topic, channel).Write(rw)
+	cmd.WriteTo(rw)
+	nsq.Subscribe(topic, channel).WriteTo(rw)
 	rdyCount := 1
 	rdy := rdyCount
 	rdyChan <- 1
 	<-goChan
-	nsq.Ready(rdyCount).Write(rw)
+	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
 	nsq.ReadResponse(rw)
 	nsq.ReadResponse(rw)
@@ -71,7 +71,7 @@ func subWorker(n int, tcpAddr string,
 		if frameType == nsq.FrameTypeError {
 			panic(string(data))
 		} else if frameType == nsq.FrameTypeResponse {
-			nsq.Nop().Write(rw)
+			nsq.Nop().WriteTo(rw)
 			rw.Flush()
 			continue
 		}
@@ -79,10 +79,10 @@ func subWorker(n int, tcpAddr string,
 		if err != nil {
 			panic(err.Error())
 		}
-		nsq.Finish(msg.Id).Write(rw)
+		nsq.Finish(msg.ID).WriteTo(rw)
 		rdy--
 		if rdy == 0 {
-			nsq.Ready(rdyCount).Write(rw)
+			nsq.Ready(rdyCount).WriteTo(rw)
 			rdy = rdyCount
 			rw.Flush()
 		}
