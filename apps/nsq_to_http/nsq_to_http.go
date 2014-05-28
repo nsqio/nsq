@@ -59,7 +59,7 @@ var (
 )
 
 func init() {
-	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Reader (may be given multiple times)")
+	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Consumer (may be given multiple times)")
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
@@ -91,7 +91,6 @@ type PublishHandler struct {
 	mode      int
 	hostPool  hostpool.HostPool
 	reqs      Durations
-	id        int
 }
 
 func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
@@ -145,8 +144,8 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 		p95Ms := percentile(95.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
 		p99Ms := percentile(99.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
 
-		log.Printf("handler(%d): finished %d requests - 99th: %.02fms - 95th: %.02fms - avg: %.02fms",
-			ph.id, *statusEvery, p99Ms, p95Ms, avgMs)
+		log.Printf("finished %d requests - 99th: %.02fms - 95th: %.02fms - avg: %.02fms",
+			*statusEvery, p99Ms, p95Ms, avgMs)
 
 		ph.reqs = ph.reqs[:0]
 	}
@@ -290,42 +289,43 @@ func main() {
 		addresses = getAddrs
 	}
 
-	r, err := nsq.NewReader(*topic, *channel)
+	cfg := nsq.NewConfig()
+
+	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	err = util.ParseReaderOpts(r, readerOpts)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	r.SetMaxInFlight(*maxInFlight)
+	cfg.Set("max_in_flight", *maxInFlight)
 
 	// TODO: remove, deprecated
 	if hasArg("verbose") {
 		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		r.Configure("verbose", true)
+		cfg.Set("verbose", true)
 	}
 
 	// TODO: remove, deprecated
 	if hasArg("max-backoff-duration") {
 		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
-		r.Configure("max_backoff_duration", *maxBackoffDuration)
+		cfg.Set("max_backoff_duration", *maxBackoffDuration)
 	}
 
-	for i := 0; i < *numPublishers; i++ {
-		handler := &PublishHandler{
-			Publisher: publisher,
-			addresses: addresses,
-			mode:      selectedMode,
-			reqs:      make(Durations, 0, *statusEvery),
-			id:        i,
-			hostPool:  hostpool.New(addresses),
-		}
-		r.AddHandler(handler)
+	r, err := nsq.NewConsumer(*topic, *channel, cfg)
+	if err != nil {
+		log.Fatalf(err.Error())
 	}
+	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+
+	handler := &PublishHandler{
+		Publisher: publisher,
+		addresses: addresses,
+		mode:      selectedMode,
+		reqs:      make(Durations, 0, *statusEvery),
+		hostPool:  hostpool.New(addresses),
+	}
+	r.SetConcurrentHandlers(handler, *numPublishers)
 
 	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQ(addrString)
+		err := r.ConnectToNSQD(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -333,7 +333,7 @@ func main() {
 
 	for _, addrString := range lookupdHTTPAddrs {
 		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToLookupd(addrString)
+		err := r.ConnectToNSQLookupd(addrString)
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -341,7 +341,7 @@ func main() {
 
 	for {
 		select {
-		case <-r.ExitChan:
+		case <-r.StopChan:
 			return
 		case <-termChan:
 			r.Stop()

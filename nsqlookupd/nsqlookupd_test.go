@@ -45,7 +45,7 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	ci["hostname"] = address
 	ci["version"] = version
 	cmd, _ := nsq.Identify(ci)
-	err := cmd.Write(conn)
+	_, err := cmd.WriteTo(conn)
 	assert.Equal(t, err, nil)
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
@@ -68,7 +68,7 @@ func TestBasicLookupd(t *testing.T) {
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
-	nsq.Register(topicName, "channel1").Write(conn)
+	nsq.Register(topicName, "channel1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, v, []byte("OK"))
@@ -163,7 +163,7 @@ func TestChannelUnregister(t *testing.T) {
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
-	nsq.Register(topicName, "ch1").Write(conn)
+	nsq.Register(topicName, "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, v, []byte("OK"))
@@ -174,7 +174,7 @@ func TestChannelUnregister(t *testing.T) {
 	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
 	assert.Equal(t, len(channels), 1)
 
-	nsq.UnRegister(topicName, "ch1").Write(conn)
+	nsq.UnRegister(topicName, "ch1").WriteTo(conn)
 	v, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, v, []byte("OK"))
@@ -210,11 +210,11 @@ func TestTombstoneRecover(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").Write(conn)
+	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
-	nsq.Register(topicName2, "channel2").Write(conn)
+	nsq.Register(topicName2, "channel2").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
@@ -257,7 +257,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").Write(conn)
+	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
@@ -271,7 +271,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
-	nsq.UnRegister(topicName, "").Write(conn)
+	nsq.UnRegister(topicName, "").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
@@ -300,7 +300,7 @@ func TestInactiveNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").Write(conn)
+	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
@@ -332,7 +332,7 @@ func TestTombstonedNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").Write(conn)
+	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 

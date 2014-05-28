@@ -61,7 +61,7 @@ func pubWorker(n int, tcpAddr string, batchSize int, batch [][]byte, topic strin
 	num := n / runtime.GOMAXPROCS(0) / batchSize
 	for i := 0; i < num; i += 1 {
 		cmd, _ := nsq.MultiPublish(topic, batch)
-		err := cmd.Write(rw)
+		_, err := cmd.WriteTo(rw)
 		if err != nil {
 			panic(err.Error())
 		}

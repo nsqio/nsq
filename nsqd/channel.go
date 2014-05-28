@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/pqueue"
 )
@@ -50,9 +49,9 @@ type Channel struct {
 
 	backend BackendQueue
 
-	incomingMsgChan chan *nsq.Message
-	memoryMsgChan   chan *nsq.Message
-	clientMsgChan   chan *nsq.Message
+	incomingMsgChan chan *Message
+	memoryMsgChan   chan *Message
+	clientMsgChan   chan *Message
 	exitChan        chan int
 	waitGroup       util.WaitGroupWrapper
 	exitFlag        int32
@@ -68,21 +67,15 @@ type Channel struct {
 	e2eProcessingLatencyStream *util.Quantile
 
 	// TODO: these can be DRYd up
-	deferredMessages map[nsq.MessageID]*pqueue.Item
+	deferredMessages map[MessageID]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
-	inFlightMessages map[nsq.MessageID]*pqueue.Item
+	inFlightMessages map[MessageID]*pqueue.Item
 	inFlightPQ       pqueue.PriorityQueue
 	inFlightMutex    sync.Mutex
 
 	// stat counters
 	bufferedCount int32
-}
-
-type inFlightMessage struct {
-	msg      *nsq.Message
-	clientID int64
-	ts       time.Time
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -92,9 +85,9 @@ func NewChannel(topicName string, channelName string, context *context,
 	c := &Channel{
 		topicName:       topicName,
 		name:            channelName,
-		incomingMsgChan: make(chan *nsq.Message, 1),
-		memoryMsgChan:   make(chan *nsq.Message, context.nsqd.options.MemQueueSize),
-		clientMsgChan:   make(chan *nsq.Message),
+		incomingMsgChan: make(chan *Message, 1),
+		memoryMsgChan:   make(chan *Message, context.nsqd.options.MemQueueSize),
+		clientMsgChan:   make(chan *Message),
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
@@ -136,8 +129,8 @@ func NewChannel(topicName string, channelName string, context *context,
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.context.nsqd.options.MemQueueSize)/10))
 
-	c.inFlightMessages = make(map[nsq.MessageID]*pqueue.Item)
-	c.deferredMessages = make(map[nsq.MessageID]*pqueue.Item)
+	c.inFlightMessages = make(map[MessageID]*pqueue.Item)
+	c.deferredMessages = make(map[MessageID]*pqueue.Item)
 
 	c.inFlightMutex.Lock()
 	c.inFlightPQ = pqueue.New(pqSize)
@@ -265,7 +258,7 @@ func (c *Channel) flush() error {
 
 finish:
 	for _, item := range c.inFlightMessages {
-		msg := item.Value.(*inFlightMessage).msg
+		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
@@ -273,7 +266,7 @@ finish:
 	}
 
 	for _, item := range c.deferredMessages {
-		msg := item.Value.(*nsq.Message)
+		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			log.Printf("ERROR: failed to write message to backend - %s", err.Error())
@@ -325,7 +318,7 @@ func (c *Channel) IsPaused() bool {
 
 // PutMessage writes to the appropriate incoming message channel
 // (which will be routed asynchronously)
-func (c *Channel) PutMessage(msg *nsq.Message) error {
+func (c *Channel) PutMessage(msg *Message) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
@@ -337,19 +330,20 @@ func (c *Channel) PutMessage(msg *nsq.Message) error {
 }
 
 // TouchMessage resets the timeout for an in-flight message
-func (c *Channel) TouchMessage(clientID int64, id nsq.MessageID) error {
+func (c *Channel) TouchMessage(clientID int64, id MessageID) error {
 	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
 	c.removeFromInFlightPQ(item)
 
-	ifMsg := item.Value.(*inFlightMessage)
+	msg := item.Value.(*Message)
 	currentTimeout := time.Unix(0, item.Priority)
 	newTimeout := currentTimeout.Add(c.context.nsqd.options.MsgTimeout)
-	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(ifMsg.ts) >= c.context.nsqd.options.MaxMsgTimeout {
+	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(msg.deliveryTS) >=
+		c.context.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = ifMsg.ts.Add(c.context.nsqd.options.MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.context.nsqd.options.MaxMsgTimeout)
 	}
 
 	item.Priority = newTimeout.UnixNano()
@@ -362,14 +356,14 @@ func (c *Channel) TouchMessage(clientID int64, id nsq.MessageID) error {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id nsq.MessageID) error {
+func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
 	c.removeFromInFlightPQ(item)
 	if c.e2eProcessingLatencyStream != nil {
-		c.e2eProcessingLatencyStream.Insert(item.Value.(*inFlightMessage).msg.Timestamp)
+		c.e2eProcessingLatencyStream.Insert(item.Value.(*Message).Timestamp)
 	}
 
 	return nil
@@ -381,7 +375,7 @@ func (c *Channel) FinishMessage(clientID int64, id nsq.MessageID) error {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
-func (c *Channel) RequeueMessage(clientID int64, id nsq.MessageID, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {
 	// remove from inflight first
 	item, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
@@ -389,7 +383,7 @@ func (c *Channel) RequeueMessage(clientID int64, id nsq.MessageID, timeout time.
 	}
 	c.removeFromInFlightPQ(item)
 
-	msg := item.Value.(*inFlightMessage).msg
+	msg := item.Value.(*Message)
 
 	if timeout == 0 {
 		return c.doRequeue(msg)
@@ -427,11 +421,12 @@ func (c *Channel) RemoveClient(clientID int64) {
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64, timeout time.Duration) error {
+func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout time.Duration) error {
 	now := time.Now()
-	value := &inFlightMessage{msg, clientID, now}
+	msg.clientID = clientID
+	msg.deliveryTS = now
 	absTs := now.Add(timeout).UnixNano()
-	item := &pqueue.Item{Value: value, Priority: absTs}
+	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushInFlightMessage(item)
 	if err != nil {
 		return err
@@ -440,7 +435,7 @@ func (c *Channel) StartInFlightTimeout(msg *nsq.Message, clientID int64, timeout
 	return nil
 }
 
-func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) error {
+func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) error {
 	absTs := time.Now().Add(timeout).UnixNano()
 	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushDeferredMessage(item)
@@ -452,7 +447,7 @@ func (c *Channel) StartDeferredTimeout(msg *nsq.Message, timeout time.Duration) 
 }
 
 // doRequeue performs the low level operations to requeue a message
-func (c *Channel) doRequeue(msg *nsq.Message) error {
+func (c *Channel) doRequeue(msg *Message) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
@@ -468,7 +463,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 	c.Lock()
 	defer c.Unlock()
 
-	id := item.Value.(*inFlightMessage).msg.Id
+	id := item.Value.(*Message).ID
 	_, ok := c.inFlightMessages[id]
 	if ok {
 		return errors.New("ID already in flight")
@@ -479,7 +474,7 @@ func (c *Channel) pushInFlightMessage(item *pqueue.Item) error {
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(clientID int64, id nsq.MessageID) (*pqueue.Item, error) {
+func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -488,7 +483,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id nsq.MessageID) (*pqueue.
 		return nil, errors.New("ID not in flight")
 	}
 
-	if item.Value.(*inFlightMessage).clientID != clientID {
+	if item.Value.(*Message).clientID != clientID {
 		return nil, errors.New("client does not own message")
 	}
 
@@ -521,7 +516,7 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	defer c.Unlock()
 
 	// TODO: these map lookups are costly
-	id := item.Value.(*nsq.Message).Id
+	id := item.Value.(*Message).ID
 	_, ok := c.deferredMessages[id]
 	if ok {
 		return errors.New("ID already deferred")
@@ -531,7 +526,7 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	return nil
 }
 
-func (c *Channel) popDeferredMessage(id nsq.MessageID) (*pqueue.Item, error) {
+func (c *Channel) popDeferredMessage(id MessageID) (*pqueue.Item, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -578,7 +573,7 @@ func (c *Channel) router() {
 // it is also performs in-flight accounting and initiates the auto-requeue
 // goroutine
 func (c *Channel) messagePump() {
-	var msg *nsq.Message
+	var msg *Message
 	var buf []byte
 	var err error
 
@@ -593,7 +588,7 @@ func (c *Channel) messagePump() {
 		select {
 		case msg = <-c.memoryMsgChan:
 		case buf = <-c.backend.ReadChan():
-			msg, err = nsq.DecodeMessage(buf)
+			msg, err = decodeMessage(buf)
 			if err != nil {
 				log.Printf("ERROR: failed to decode message - %s", err.Error())
 				continue
@@ -617,8 +612,8 @@ exit:
 
 func (c *Channel) deferredWorker() {
 	c.pqWorker(&c.deferredPQ, &c.deferredMutex, func(item *pqueue.Item) {
-		msg := item.Value.(*nsq.Message)
-		_, err := c.popDeferredMessage(msg.Id)
+		msg := item.Value.(*Message)
+		_, err := c.popDeferredMessage(msg.ID)
 		if err != nil {
 			return
 		}
@@ -628,14 +623,13 @@ func (c *Channel) deferredWorker() {
 
 func (c *Channel) inFlightWorker() {
 	c.pqWorker(&c.inFlightPQ, &c.inFlightMutex, func(item *pqueue.Item) {
-		clientID := item.Value.(*inFlightMessage).clientID
-		msg := item.Value.(*inFlightMessage).msg
-		_, err := c.popInFlightMessage(clientID, msg.Id)
+		msg := item.Value.(*Message)
+		_, err := c.popInFlightMessage(msg.clientID, msg.ID)
 		if err != nil {
 			return
 		}
 		atomic.AddUint64(&c.timeoutCount, 1)
-		client, ok := c.clients[clientID]
+		client, ok := c.clients[msg.clientID]
 		if ok {
 			client.TimedOutMessage()
 		}

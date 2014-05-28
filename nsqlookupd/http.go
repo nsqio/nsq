@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 )
 
@@ -120,7 +119,7 @@ func (s *httpServer) createTopicHandler(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	if !nsq.IsValidTopicName(topicName) {
+	if !util.IsValidTopicName(topicName) {
 		util.ApiResponse(w, 500, "INVALID_TOPIC", nil)
 		return
 	}

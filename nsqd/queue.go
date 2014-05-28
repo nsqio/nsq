@@ -2,8 +2,6 @@ package nsqd
 
 import (
 	"bytes"
-
-	"github.com/bitly/go-nsq"
 )
 
 // BackendQueue represents the behavior for the secondary message
@@ -49,9 +47,9 @@ func (d *dummyBackendQueue) Empty() error {
 	return nil
 }
 
-func writeMessageToBackend(buf *bytes.Buffer, msg *nsq.Message, bq BackendQueue) error {
+func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
 	buf.Reset()
-	err := msg.Write(buf)
+	_, err := msg.WriteTo(buf)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 )
 
@@ -102,11 +101,11 @@ func getTopicChan(command string, params []string) (string, string, error) {
 		channelName = params[1]
 	}
 
-	if !nsq.IsValidTopicName(topicName) {
+	if !util.IsValidTopicName(topicName) {
 		return "", "", util.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
 	}
 
-	if channelName != "" && !nsq.IsValidChannelName(channelName) {
+	if channelName != "" && !util.IsValidChannelName(channelName) {
 		return "", "", util.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
 

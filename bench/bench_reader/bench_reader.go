@@ -60,12 +60,12 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
 	cmd, _ := nsq.Identify(ci)
-	cmd.Write(rw)
-	nsq.Subscribe(topic, channel).Write(rw)
+	cmd.WriteTo(rw)
+	nsq.Subscribe(topic, channel).WriteTo(rw)
 	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan
-	nsq.Ready(rdyCount).Write(rw)
+	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
 	nsq.ReadResponse(rw)
 	nsq.ReadResponse(rw)
@@ -90,10 +90,10 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 		if err != nil {
 			panic(err.Error())
 		}
-		nsq.Finish(msg.Id).Write(rw)
+		nsq.Finish(msg.ID).WriteTo(rw)
 		rdy--
 		if rdy == 0 && numRdy > 0 {
-			nsq.Ready(rdyCount).Write(rw)
+			nsq.Ready(rdyCount).WriteTo(rw)
 			rdy = rdyCount
 			numRdy--
 			rw.Flush()

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/nsqadmin/templates"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
@@ -177,13 +176,13 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	parts := strings.Split(matches[1], "/")
 	topicName := parts[0]
-	if !nsq.IsValidTopicName(topicName) {
+	if !util.IsValidTopicName(topicName) {
 		http.Error(w, "INVALID_TOPIC", 500)
 		return
 	}
 	if len(parts) == 2 {
 		channelName := parts[1]
-		if !nsq.IsValidChannelName(channelName) {
+		if !util.IsValidChannelName(channelName) {
 			http.Error(w, "INVALID_CHANNEL", 500)
 		} else {
 			s.channelHandler(w, req, topicName, channelName)
@@ -341,13 +340,13 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	reqParams := &util.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
-	if err != nil || !nsq.IsValidTopicName(topicName) {
+	if err != nil || !util.IsValidTopicName(topicName) {
 		http.Error(w, "INVALID_TOPIC", 500)
 		return
 	}
 
 	channelName, err := reqParams.Get("channel")
-	if err != nil || (len(channelName) > 0 && !nsq.IsValidChannelName(channelName)) {
+	if err != nil || (len(channelName) > 0 && !util.IsValidChannelName(channelName)) {
 		http.Error(w, "INVALID_CHANNEL", 500)
 		return
 	}

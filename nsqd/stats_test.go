@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	"github.com/bmizerany/assert"
 	"github.com/mreiferson/go-snappystream"
@@ -26,13 +25,13 @@ func TestStats(t *testing.T) {
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	msg := nsq.NewMessage(<-nsqd.idChan, []byte("test body"))
+	msg := NewMessage(<-nsqd.idChan, []byte("test body"))
 	topic.PutMessage(msg)
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	assert.Equal(t, err, nil)
 
-	identify(t, conn, nil, nsq.FrameTypeResponse)
+	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	stats := nsqd.GetStats()
@@ -60,7 +59,7 @@ func TestClientAttributes(t *testing.T) {
 	data := identify(t, conn, map[string]interface{}{
 		"snappy":     true,
 		"user_agent": userAgent,
-	}, nsq.FrameTypeResponse)
+	}, frameTypeResponse)
 	resp := struct {
 		Snappy    bool   `json:"snappy"`
 		UserAgent string `json:"user_agent"`

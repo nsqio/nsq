@@ -2,8 +2,6 @@ package util
 
 import (
 	"errors"
-
-	"github.com/bitly/go-nsq"
 )
 
 type Getter interface {
@@ -16,7 +14,7 @@ func GetTopicChannelArgs(rp Getter) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_TOPIC")
 	}
 
-	if !nsq.IsValidTopicName(topicName) {
+	if !IsValidTopicName(topicName) {
 		return "", "", errors.New("INVALID_ARG_TOPIC")
 	}
 
@@ -25,7 +23,7 @@ func GetTopicChannelArgs(rp Getter) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_CHANNEL")
 	}
 
-	if !nsq.IsValidChannelName(channelName) {
+	if !IsValidChannelName(channelName) {
 		return "", "", errors.New("INVALID_ARG_CHANNEL")
 	}
 

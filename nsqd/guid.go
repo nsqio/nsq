@@ -13,8 +13,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"time"
-
-	"github.com/bitly/go-nsq"
 )
 
 const (
@@ -63,8 +61,8 @@ func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
 	return guid(id), nil
 }
 
-func (g guid) Hex() nsq.MessageID {
-	var h nsq.MessageID
+func (g guid) Hex() MessageID {
+	var h MessageID
 	var b [8]byte
 
 	b[0] = byte(g >> 56)
