@@ -46,7 +46,8 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://dramafever.com"><img src="http://nsq.io/static/img/dramafever.png" width="80"/></a>&nbsp;&nbsp;
 <a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="80"/></a>&nbsp;&nbsp;
 <a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="80"/></a>&nbsp;&nbsp;
-<a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="40"/></a>
+<a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="40"/></a>&nbsp;&nbsp;
+<a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="80"/></a>
 
 ## Documentation
 
