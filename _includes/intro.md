@@ -35,6 +35,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://lytics.io"><img src="{{ site.baseurl }}/static/img/lytics.png" width="80"/></a></td>
 <td align="center"><a href="http://mediaforge.com"><img src="{{ site.baseurl }}/static/img/rakuten.png" width="80"/></a></td>
 <td align="center"><a href="http://hw-ops.com"><img src="{{ site.baseurl }}/static/img/heavy_water.png" width="40"/></a></td>
+<td align="center"><a href="http://socialradar.com"><img src="{{ site.baseurl }}/static/img/socialradar_logo.png" width="80"/></a></td>
 </tr></table></center>
 
 ### Getting Help
