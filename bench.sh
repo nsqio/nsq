@@ -1,15 +1,17 @@
 #!/bin/bash
-size="$1"
-if [ -z $size ]; then
-    size="200"
-fi
+readonly messageSize="${1:-200}"
+readonly batchSize="${2:-200}"
+readonly memQueueSize="${3:-1000000}"
+readonly dataPath="${4:-}"
 set -e
+set -u
 
+echo "# using --mem-queue-size=$memQueueSize --data-path=$dataPath --size=$messageSize --batch-size=$batchSize"
 echo "# compiling/running nsqd"
 pushd apps/nsqd >/dev/null
 go build
 rm -f *.dat
-./nsqd --mem-queue-size=1000000 >/dev/null 2>&1 &
+./nsqd --mem-queue-size=$memQueueSize --data-path=$dataPath >/dev/null 2>&1 &
 nsqd_pid=$!
 popd >/dev/null
 
@@ -34,7 +36,7 @@ done
 popd >/dev/null
 
 echo -n "PUB: "
-bench/bench_writer/bench_writer --size=$size 2>&1
+bench/bench_writer/bench_writer --size=$messageSize --batch-size=$batchSize 2>&1
 echo -n "SUB: "
-bench/bench_reader/bench_reader --size=$size --channel=ch 2>&1 &
+bench/bench_reader/bench_reader --size=$messageSize --channel=ch 2>&1 &
 wait $!
