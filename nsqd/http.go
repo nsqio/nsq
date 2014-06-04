@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,19 +17,6 @@ import (
 
 	"github.com/bitly/nsq/util"
 )
-
-type httpError struct {
-	code int
-	text string
-}
-
-func (e httpError) Error() string {
-	return e.text
-}
-
-func (e httpError) Code() int {
-	return e.code
-}
 
 type httpServer struct {
 	context     *context
@@ -85,27 +73,48 @@ func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error
 
 func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
+	case "/pub":
+		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doPUB(req) }))
+	case "/mpub":
+		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doMPUB(req) }))
+
+	case "/stats":
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doStats(req) })
+	case "/ping":
+		s.pingHandler(w, req)
+
 	case "/topic/create":
-		s.v1CreateTopicHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doCreateTopic(req) }))
 	case "/topic/delete":
-		s.v1DeleteTopicHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doDeleteTopic(req) }))
 	case "/topic/empty":
-		s.v1EmptyTopicHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doEmptyTopic(req) }))
 	case "/topic/pause":
-		s.v1PauseTopicHandler(w, req)
+		fallthrough
 	case "/topic/unpause":
-		s.v1PauseTopicHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doPauseTopic(req) }))
 
 	case "/channel/create":
-		s.v1CreateChannelHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doCreateChannel(req) }))
 	case "/channel/delete":
-		s.v1DeleteChannelHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doDeleteChannel(req) }))
 	case "/channel/empty":
-		s.v1EmptyChannelHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doEmptyChannel(req) }))
 	case "/channel/pause":
-		s.v1PauseChannelHandler(w, req)
+		fallthrough
 	case "/channel/unpause":
-		s.v1PauseChannelHandler(w, req)
+		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doPauseChannel(req) }))
 
 	default:
 		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
@@ -115,40 +124,43 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 
 func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
-	case "/pub":
-		fallthrough
 	case "/put":
-		s.pubHandler(w, req)
-	case "/mpub":
-		fallthrough
+		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doPUB(req) }))
 	case "/mput":
-		s.mpubHandler(w, req)
-	case "/stats":
-		s.statsHandler(w, req)
-	case "/ping":
-		s.pingHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+			func() (interface{}, error) { return s.doMPUB(req) }))
 	case "/info":
-		s.infoHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doInfo(req) })
 	case "/empty_topic":
-		s.emptyTopicHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doEmptyTopic(req) })
 	case "/delete_topic":
-		s.deleteTopicHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doDeleteTopic(req) })
 	case "/pause_topic":
-		s.pauseTopicHandler(w, req)
+		fallthrough
 	case "/unpause_topic":
-		s.pauseTopicHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doPauseTopic(req) })
 	case "/empty_channel":
-		s.emptyChannelHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doEmptyChannel(req) })
 	case "/delete_channel":
-		s.deleteChannelHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doDeleteChannel(req) })
 	case "/pause_channel":
-		s.pauseChannelHandler(w, req)
+		fallthrough
 	case "/unpause_channel":
-		s.pauseChannelHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doPauseChannel(req) })
 	case "/create_topic":
-		s.createTopicHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doCreateTopic(req) })
 	case "/create_channel":
-		s.createChannelHandler(w, req)
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doCreateChannel(req) })
 	default:
 		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
 	}
@@ -160,29 +172,29 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK")
 }
 
-func (s *httpServer) infoHandler(w http.ResponseWriter, req *http.Request) {
-	util.ApiResponse(w, 200, "OK", struct {
+func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
+	return struct {
 		Version string `json:"version"`
 	}{
 		Version: util.BINARY_VERSION,
-	})
+	}, nil
 }
 
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqParams, *Topic, string, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		return nil, nil, "", httpError{400, "INVALID_REQUEST"}
+		return nil, nil, "", util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, nil, "", httpError{400, err.Error()}
+		return nil, nil, "", util.HTTPError{400, err.Error()}
 	}
 
 	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, nil, "", httpError{404, "TOPIC_NOT_FOUND"}
+		return nil, nil, "", util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
 
 	return reqParams, topic, channelName, err
@@ -192,47 +204,28 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		return nil, nil, httpError{400, "INVALID_REQUEST"}
+		return nil, nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicNames, ok := reqParams["topic"]
 	if !ok {
-		return nil, nil, httpError{400, "MISSING_ARG_TOPIC"}
+		return nil, nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 	topicName := topicNames[0]
 
 	if !util.IsValidTopicName(topicName) {
-		return nil, nil, httpError{400, "INVALID_TOPIC"}
+		return nil, nil, util.HTTPError{400, "INVALID_TOPIC"}
 	}
 
 	return reqParams, s.context.nsqd.GetTopic(topicName), nil
 }
 
-func (s *httpServer) pubHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doPUB(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
-}
-
-func (s *httpServer) doPUB(req *http.Request) error {
-	if req.Method != "POST" {
-		return httpError{405, "INVALID_REQUEST"}
-	}
-
+func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.context.nsqd.options.MaxMsgSize {
-		return httpError{413, "MSG_TOO_BIG"}
+		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
@@ -240,63 +233,44 @@ func (s *httpServer) doPUB(req *http.Request) error {
 	readMax := s.context.nsqd.options.MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
-		return httpError{500, "INTERNAL_ERROR"}
+		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
 		log.Printf("ERROR: /put hit max message size")
-		return httpError{413, "MSG_TOO_BIG"}
+		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
-		return httpError{400, "MSG_EMPTY"}
+		return nil, util.HTTPError{400, "MSG_EMPTY"}
 	}
 
 	_, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	msg := NewMessage(<-s.context.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		return httpError{503, "EXITING"}
+		return nil, util.HTTPError{503, "EXITING"}
 	}
 
-	return nil
+	return "OK", nil
 }
 
-func (s *httpServer) mpubHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doMPUB(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
-}
-
-func (s *httpServer) doMPUB(req *http.Request) error {
+func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	var msgs []*Message
 	var exit bool
-
-	if req.Method != "POST" {
-		return httpError{405, "INVALID_REQUEST"}
-	}
 
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.context.nsqd.options.MaxBodySize {
-		return httpError{413, "BODY_TOO_BIG"}
+		return nil, util.HTTPError{413, "BODY_TOO_BIG"}
 	}
 
 	reqParams, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, ok := reqParams["binary"]
@@ -305,7 +279,7 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 		msgs, err = readMPUB(req.Body, tmp, s.context.nsqd.idChan,
 			s.context.nsqd.options.MaxMsgSize)
 		if err != nil {
-			return httpError{413, err.(*util.FatalClientErr).Code[2:]}
+			return nil, util.HTTPError{413, err.(*util.FatalClientErr).Code[2:]}
 		}
 	} else {
 		// add 1 so that it's greater than our max when we test for it
@@ -317,13 +291,13 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 			block, err := rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
-					return httpError{500, "INTERNAL_ERROR"}
+					return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 				}
 				exit = true
 			}
 			total += len(block)
 			if int64(total) == readMax {
-				return httpError{413, "BODY_TOO_BIG"}
+				return nil, util.HTTPError{413, "BODY_TOO_BIG"}
 			}
 
 			if len(block) > 0 && block[len(block)-1] == '\n' {
@@ -337,7 +311,7 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 			}
 
 			if int64(len(block)) > s.context.nsqd.options.MaxMsgSize {
-				return httpError{413, "MSG_TOO_BIG"}
+				return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 			}
 
 			msg := NewMessage(<-s.context.nsqd.idChan, block)
@@ -347,200 +321,81 @@ func (s *httpServer) doMPUB(req *http.Request) error {
 
 	err = topic.PutMessages(msgs)
 	if err != nil {
-		return httpError{503, "EXITING"}
+		return nil, util.HTTPError{503, "EXITING"}
 	}
 
-	return nil
+	return "OK", nil
 }
 
-func (s *httpServer) createTopicHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 	_, _, err := s.getTopicFromQuery(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
+	return nil, err
 }
 
-func (s *httpServer) v1CreateTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	_, _, err := s.getTopicFromQuery(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doEmptyTopic(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1EmptyTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doEmptyTopic(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doEmptyTopic(req *http.Request) error {
+func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		return httpError{400, "INVALID_REQUEST"}
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return httpError{400, "MISSING_ARG_TOPIC"}
+		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
 	if !util.IsValidTopicName(topicName) {
-		return httpError{400, "INVALID_TOPIC"}
+		return nil, util.HTTPError{400, "INVALID_TOPIC"}
 	}
 
 	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return httpError{404, "TOPIC_NOT_FOUND"}
+		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
 
 	err = topic.Empty()
 	if err != nil {
-		return httpError{500, "INTERNAL_ERROR"}
+		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doDeleteTopic(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1DeleteTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doDeleteTopic(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doDeleteTopic(req *http.Request) error {
+func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		return httpError{400, "INVALID_REQUEST"}
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return httpError{400, "MISSING_ARG_TOPIC"}
+		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
 	err = s.context.nsqd.DeleteExistingTopic(topicName)
 	if err != nil {
-		return httpError{404, "TOPIC_NOT_FOUND"}
+		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doPauseTopic(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1PauseTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doPauseTopic(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doPauseTopic(req *http.Request) error {
+func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		return httpError{400, "INVALID_REQUEST"}
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return httpError{400, "MISSING_ARG_TOPIC"}
+		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
 	topic, err := s.context.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return httpError{404, "TOPIC_NOT_FOUND"}
+		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -550,187 +405,63 @@ func (s *httpServer) doPauseTopic(req *http.Request) error {
 	}
 	if err != nil {
 		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err)
-		return httpError{500, "INTERNAL_ERROR"}
+		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) createChannelHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doCreateChannel(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1CreateChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doCreateChannel(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doCreateChannel(req *http.Request) error {
+func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	topic.GetChannel(channelName)
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doEmptyChannel(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1EmptyChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doEmptyChannel(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doEmptyChannel(req *http.Request) error {
+func (s *httpServer) doEmptyChannel(req *http.Request) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return httpError{404, "CHANNEL_NOT_FOUND"}
+		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	err = channel.Empty()
 	if err != nil {
-		return httpError{500, "INTERNAL_ERROR"}
+		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doDeleteChannel(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1DeleteChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doDeleteChannel(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doDeleteChannel(req *http.Request) error {
+func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = topic.DeleteExistingChannel(channelName)
 	if err != nil {
-		return httpError{404, "CHANNEL_NOT_FOUND"}
+		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
-	err := s.doPauseChannel(req)
-	if err != nil {
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, err.(httpError).Code(), err)
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, err.Error(), nil)
-		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, nil)
-	} else {
-		util.ApiResponse(w, 200, "OK", nil)
-	}
-}
-
-func (s *httpServer) v1PauseChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		util.V1ApiResponse(w, 405, "INVALID_REQUEST")
-		return
-	}
-	err := s.doPauseChannel(req)
-	if err != nil {
-		util.V1ApiResponse(w, err.(httpError).Code(), err)
-		return
-	}
-	util.V1ApiResponse(w, 200, "OK")
-}
-
-func (s *httpServer) doPauseChannel(req *http.Request) error {
+func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return httpError{404, "CHANNEL_NOT_FOUND"}
+		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -740,52 +471,40 @@ func (s *httpServer) doPauseChannel(req *http.Request) error {
 	}
 	if err != nil {
 		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err)
-		return httpError{500, "INTERNAL_ERROR"}
+		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *httpServer) statsHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		log.Printf("ERROR: failed to parse request params - %s", err)
-		if acceptVersion(req) == 1 {
-			util.V1ApiResponse(w, 400, "INVALID_REQUEST")
-		} else {
-			// this handler always returns 500 for backwards compatibility
-			util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
-		}
-		return
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
 	stats := s.context.nsqd.GetStats()
 
 	if !jsonFormat {
-		s.doTextStats(stats, w)
-		return
+		return s.printStats(stats), nil
 	}
 
-	if acceptVersion(req) == 1 {
-		util.V1ApiResponse(w, 200, struct {
-			Version string       `json:"version"`
-			Topics  []TopicStats `json:"topics"`
-		}{util.BINARY_VERSION, stats})
-	} else {
-		util.ApiResponse(w, 200, "OK", struct {
-			Version string       `json:"version"`
-			Topics  []TopicStats `json:"topics"`
-		}{util.BINARY_VERSION, stats})
-	}
+	return struct {
+		Version string       `json:"version"`
+		Topics  []TopicStats `json:"topics"`
+	}{util.BINARY_VERSION, stats}, nil
 }
 
-func (s *httpServer) doTextStats(stats []TopicStats, w http.ResponseWriter) {
+func (s *httpServer) printStats(stats []TopicStats) []byte {
+	var buf bytes.Buffer
+	w := &buf
 	now := time.Now()
 	io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
 	if len(stats) == 0 {
 		io.WriteString(w, "\nNO_TOPICS\n")
-		return
+		return buf.Bytes()
 	}
 	for _, t := range stats {
 		var pausedPrefix string
@@ -838,12 +557,5 @@ func (s *httpServer) doTextStats(stats []TopicStats, w http.ResponseWriter) {
 			}
 		}
 	}
-}
-
-func acceptVersion(req *http.Request) int {
-	if req.Header.Get("accept") == "vnd/nsq; version=1.0" {
-		return 1
-	}
-
-	return 0
+	return buf.Bytes()
 }
