@@ -23,6 +23,18 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <th>In Prod.</th>
   </tr>
   <tr class="success">
+    <td><a href="http://nsq.io/components/nsqd.html#http_api">nsqd</a></td>
+    <td>HTTP</td>
+    <td></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td><i class="fa fa-check"></i> (<strong>built-in</strong>)</td>
+  </tr>
+  <tr class="success">
     <td><a href="https://github.com/bitly/go-nsq">go-nsq</a></td>
     <td>Go</td>
     <td><i class="fa fa-check"></i></td>
