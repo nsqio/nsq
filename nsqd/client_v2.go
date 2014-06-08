@@ -105,6 +105,9 @@ type clientV2 struct {
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
 	lenSlice []byte
+
+	AuthSecret string
+	AuthState  *AuthState
 }
 
 func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
@@ -218,27 +221,35 @@ func (c *clientV2) Stats() ClientStats {
 	clientId := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
+	var identity string
+	var identityUrl string
+	if c.AuthState != nil {
+		identity = c.AuthState.Identity
+		identityUrl = c.AuthState.IdentityUrl
+	}
 	c.RUnlock()
 	return ClientStats{
 		// TODO: deprecated, remove in 1.0
 		Name: name,
 
-		Version:       "V2",
-		RemoteAddress: c.RemoteAddr().String(),
-		ClientID:      clientId,
-		Hostname:      hostname,
-		UserAgent:     userAgent,
-		State:         atomic.LoadInt32(&c.State),
-		ReadyCount:    atomic.LoadInt64(&c.ReadyCount),
-		InFlightCount: atomic.LoadInt64(&c.InFlightCount),
-		MessageCount:  atomic.LoadUint64(&c.MessageCount),
-		FinishCount:   atomic.LoadUint64(&c.FinishCount),
-		RequeueCount:  atomic.LoadUint64(&c.RequeueCount),
-		ConnectTime:   c.ConnectTime.Unix(),
-		SampleRate:    atomic.LoadInt32(&c.SampleRate),
-		TLS:           atomic.LoadInt32(&c.TLS) == 1,
-		Deflate:       atomic.LoadInt32(&c.Deflate) == 1,
-		Snappy:        atomic.LoadInt32(&c.Snappy) == 1,
+		Version:         "V2",
+		RemoteAddress:   c.RemoteAddr().String(),
+		ClientID:        clientId,
+		Hostname:        hostname,
+		UserAgent:       userAgent,
+		State:           atomic.LoadInt32(&c.State),
+		ReadyCount:      atomic.LoadInt64(&c.ReadyCount),
+		InFlightCount:   atomic.LoadInt64(&c.InFlightCount),
+		MessageCount:    atomic.LoadUint64(&c.MessageCount),
+		FinishCount:     atomic.LoadUint64(&c.FinishCount),
+		RequeueCount:    atomic.LoadUint64(&c.RequeueCount),
+		ConnectTime:     c.ConnectTime.Unix(),
+		SampleRate:      atomic.LoadInt32(&c.SampleRate),
+		TLS:             atomic.LoadInt32(&c.TLS) == 1,
+		Deflate:         atomic.LoadInt32(&c.Deflate) == 1,
+		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
+		AuthIdentity:    identity,
+		AuthIdentityURL: identityUrl,
 	}
 }
 
@@ -489,4 +500,60 @@ func (c *clientV2) Flush() error {
 	}
 
 	return nil
+}
+
+func (c *clientV2) QueryAuthd() error {
+	remoteIp, _, err := net.SplitHostPort(c.String())
+	if err != nil {
+		return err
+	}
+
+	tls := atomic.LoadInt32(&c.TLS) == 1
+	tlsEnabled := "false"
+	if tls {
+		tlsEnabled = "true"
+	}
+
+	// for each auth server, try to authorize. on success return authorizations, on failure try next auth server.
+	for _, authd := range c.context.nsqd.options.AuthHTTPAddresses {
+		authState, err := queryAuthd(authd, remoteIp, tlsEnabled, c.AuthSecret)
+		if err != nil {
+			log.Printf("Error: failed auth against %s %s", authd, err)
+			continue
+		}
+
+		c.AuthState = authState
+		return nil
+	}
+	return errors.New("Unable to access auth server")
+}
+
+func (c *clientV2) Auth(secret string) error {
+	c.AuthSecret = secret
+	return c.QueryAuthd()
+}
+
+func (c *clientV2) IsAuthorized(topic, channel string) (bool, error) {
+	if c.AuthState == nil {
+		return false, nil
+	}
+	if c.AuthState.IsExpired() {
+		err := c.QueryAuthd()
+		if err != nil {
+			return false, err
+		}
+	}
+	for _, a := range c.AuthState.Authorizations {
+		if a.IsAllowed(topic, channel) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *clientV2) HasAuthorizations() bool {
+	if c.AuthState != nil {
+		return len(c.AuthState.Authorizations) != 0
+	}
+	return false
 }

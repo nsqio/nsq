@@ -472,3 +472,7 @@ func buildTLSConfig(options *nsqdOptions) *tls.Config {
 
 	return tlsConfig
 }
+
+func (n *NSQD) IsAuthEnabled() bool {
+	return len(n.options.AuthHTTPAddresses) != 0
+}

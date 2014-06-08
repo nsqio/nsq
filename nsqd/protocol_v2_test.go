@@ -13,6 +13,9 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -75,6 +78,15 @@ func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
 
+func auth(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
+	auth := &nsq.Command{[]byte("AUTH"), nil, []byte(authSecret)}
+	_, err := auth.WriteTo(conn)
+	assert.Equal(t, err, nil)
+	if expectSuccess != "" {
+		readValidate(t, conn, nsq.FrameTypeResponse, expectSuccess)
+	}
+}
+
 func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
 	assert.Equal(t, err, nil)
@@ -87,6 +99,7 @@ func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
 	resp, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
+	log.Printf("%v %s %s", frameType, data, err)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, frameType, f)
 	assert.Equal(t, string(data), d)
@@ -1260,6 +1273,66 @@ func TestClientMsgTimeout(t *testing.T) {
 	assert.Equal(t, frameType, frameTypeError)
 	assert.Equal(t, string(data),
 		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.ID))
+}
+
+func TestClientAuth(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	authResponse := `{"ttl":1, "authorizations":[]}`
+	authSecret := "testsecret"
+	authError := "E_UNAUTHORIZED AUTH No authorizations found"
+	authSuccess := ""
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess)
+
+	// now one that will succeed
+	authResponse = `{"ttl":10, "authorizations":
+		[{"topic":"test", "channels":[".*"], "permissions":["subscribe","publish"]}]
+	}`
+	authError = ""
+	authSuccess = `{"identity":"","identity_url":"","permission_count":1}`
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess)
+
+}
+
+func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess string) {
+	var err error
+	var expectedAuthIp string
+	expectedAuthTls := "false"
+
+	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("in test auth handler %s", r.RequestURI)
+		r.ParseForm()
+		assert.Equal(t, r.Form.Get("remote_ip"), expectedAuthIp)
+		assert.Equal(t, r.Form.Get("tls"), expectedAuthTls)
+		assert.Equal(t, r.Form.Get("secret"), authSecret)
+		fmt.Fprint(w, authResponse)
+	}))
+	defer authd.Close()
+
+	options := NewNSQDOptions()
+	options.Verbose = true
+	addr, err := url.Parse(authd.URL)
+	assert.Equal(t, err, nil)
+	options.AuthHTTPAddresses = []string{addr.Host}
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+	assert.Equal(t, err, nil)
+
+	identify(t, conn, map[string]interface{}{
+		"tls_v1": false,
+	}, nsq.FrameTypeResponse)
+
+	auth(t, conn, authSecret, authSuccess)
+	if authError != "" {
+		readValidate(t, conn, nsq.FrameTypeError, authError)
+	} else {
+		sub(t, conn, "test", "ch")
+	}
+
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {

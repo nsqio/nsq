@@ -20,13 +20,15 @@ var (
 	flagSet = flag.NewFlagSet("nsqd", flag.ExitOnError)
 
 	// basic options
-	config           = flagSet.String("config", "", "path to config file")
-	showVersion      = flagSet.Bool("version", false, "print version string")
-	verbose          = flagSet.Bool("verbose", false, "enable verbose logging")
-	workerId         = flagSet.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
-	httpsAddress     = flagSet.String("https-address", "", "<addr>:<port> to listen on for HTTPS clients")
-	httpAddress      = flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
-	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
+	config          = flagSet.String("config", "", "path to config file")
+	showVersion     = flagSet.Bool("version", false, "print version string")
+	verbose         = flagSet.Bool("verbose", false, "enable verbose logging")
+	workerId        = flagSet.Int64("worker-id", 0, "unique identifier (int) for this worker (will default to a hash of hostname)")
+	httpsAddress    = flagSet.String("https-address", "", "<addr>:<port> to listen on for HTTPS clients")
+	httpAddress     = flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
+	tcpAddress      = flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
+	authHttpAddress = flagSet.String("auth-http-address", "", "<addr>:<port> to query auth server")
+
 	broadcastAddress = flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
 	lookupdTCPAddrs  = util.StringArray{}
 
