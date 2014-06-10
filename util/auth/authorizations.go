@@ -1,7 +1,9 @@
-package nsqd
+package auth
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"time"
@@ -58,6 +60,15 @@ func (a *Authorization) IsAllowed(topic, channel string) bool {
 	return false
 }
 
+func (a *AuthState) IsAllowed(topic, channel string) bool {
+	for _, aa := range a.Authorizations {
+		if aa.IsAllowed(topic, channel) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *AuthState) IsExpired() bool {
 	if a.Expires.Before(time.Now()) {
 		return true
@@ -65,7 +76,19 @@ func (a *AuthState) IsExpired() bool {
 	return false
 }
 
-func queryAuthd(authd, remoteIp, tlsEnabled, authSecret string) (*AuthState, error) {
+func QueryAnyAuthd(authd []string, remoteIp, tlsEnabled, authSecret string) (*AuthState, error) {
+	for _, a := range authd {
+		authState, err := QueryAuthd(a, remoteIp, tlsEnabled, authSecret)
+		if err != nil {
+			log.Printf("Error: failed auth against %s %s", a, err)
+			continue
+		}
+		return authState, nil
+	}
+	return nil, errors.New("Unable to access auth server")
+}
+
+func QueryAuthd(authd, remoteIp, tlsEnabled, authSecret string) (*AuthState, error) {
 
 	v := url.Values{}
 	v.Set("remote_ip", remoteIp)

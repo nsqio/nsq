@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bitly/nsq/util/auth"
 	"github.com/mreiferson/go-snappystream"
 )
 
@@ -107,7 +108,7 @@ type clientV2 struct {
 	lenSlice []byte
 
 	AuthSecret string
-	AuthState  *AuthState
+	AuthState  *auth.AuthState
 }
 
 func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
@@ -514,18 +515,13 @@ func (c *clientV2) QueryAuthd() error {
 		tlsEnabled = "true"
 	}
 
-	// for each auth server, try to authorize. on success return authorizations, on failure try next auth server.
-	for _, authd := range c.context.nsqd.options.AuthHTTPAddresses {
-		authState, err := queryAuthd(authd, remoteIp, tlsEnabled, c.AuthSecret)
-		if err != nil {
-			log.Printf("Error: failed auth against %s %s", authd, err)
-			continue
-		}
-
-		c.AuthState = authState
-		return nil
+	authState, err := auth.QueryAnyAuthd(c.context.nsqd.options.AuthHTTPAddresses,
+		remoteIp, tlsEnabled, c.AuthSecret)
+	if err != nil {
+		return err
 	}
-	return errors.New("Unable to access auth server")
+	c.AuthState = authState
+	return nil
 }
 
 func (c *clientV2) Auth(secret string) error {
@@ -543,10 +539,8 @@ func (c *clientV2) IsAuthorized(topic, channel string) (bool, error) {
 			return false, err
 		}
 	}
-	for _, a := range c.AuthState.Authorizations {
-		if a.IsAllowed(topic, channel) {
-			return true, nil
-		}
+	if c.AuthState.IsAllowed(topic, channel) {
+		return true, nil
 	}
 	return false, nil
 }
