@@ -361,41 +361,58 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 
 	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
-		endpoint := fmt.Sprintf("http://%s/create_topic?topic=%s", addr, url.QueryEscape(topicName))
-		log.Printf("LOOKUPD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
+		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "create_topic"
+		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+			uri = "topic/create"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
+			uri, url.QueryEscape(topicName))
+		log.Printf("LOOKUPD: querying %s", endpoint)
+		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			log.Printf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
+		}
+
+		if len(channelName) > 0 {
+			uri := "create_channel"
+			if !nsqlookupdVersion.Less(v1EndpointVersion) {
+				uri = "channel/create"
+			}
+			endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
+				addr, uri,
+				url.QueryEscape(topicName),
+				url.QueryEscape(channelName))
+			log.Printf("LOOKUPD: querying %s", endpoint)
+			_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
+			if err != nil {
+				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				continue
+			}
 		}
 	}
 
 	s.notifyAdminAction("create_topic", topicName, "", "", req)
 
 	if len(channelName) > 0 {
-		for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
-			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
-				addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
-			log.Printf("LOOKUPD: querying %s", endpoint)
-			_, err := util.ApiRequest(endpoint)
-			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
-				continue
-			}
-		}
-
 		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
-		producers, _ := lookupd.GetLookupdTopicProducers(topicName, s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
-		for _, addr := range producers {
-			endpoint := fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s",
-				addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
-			log.Printf("NSQD: querying %s", endpoint)
-			_, err := util.ApiRequest(endpoint)
-			if err != nil {
-				log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-				continue
-			}
-		}
+		producerAddrs, _ := lookupd.GetLookupdTopicProducers(topicName,
+			s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+
+		performVersionNegotiatedRequestsToNSQD(
+			s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+			producerAddrs,
+			"create_channel",
+			"channel/create",
+			fmt.Sprintf("topic=%s&channel=%s",
+				url.QueryEscape(topicName), url.QueryEscape(channelName)))
+
 		s.notifyAdminAction("create_channel", topicName, channelName, "", req)
 	}
 
@@ -429,19 +446,41 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 
 	// tombstone the topic on all the lookupds
 	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
-		endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s",
-			addr, url.QueryEscape(topicName), url.QueryEscape(node))
+		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		if err != nil {
+			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "tombstone_topic_producer"
+		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+			uri = "topic/tombstone"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&node=%s",
+			addr, uri,
+			url.QueryEscape(topicName), url.QueryEscape(node))
 		log.Printf("LOOKUPD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
+		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 		}
 	}
 
+	nsqdVersion, err := lookupd.GetVersion(node)
+	if err != nil {
+		log.Printf("ERROR: failed to get nsqd %s version - %s", node, err)
+	}
+
+	uri := "delete_topic"
+	if !nsqdVersion.Less(v1EndpointVersion) {
+		uri = "topic/delete"
+	}
+
 	// delete the topic on the producer
-	endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", node, url.QueryEscape(topicName))
+	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
+		uri, url.QueryEscape(topicName))
 	log.Printf("NSQD: querying %s", endpoint)
-	_, err = util.ApiRequest(endpoint)
+	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 	if err != nil {
 		log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
 	}
@@ -471,30 +510,35 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	}
 
 	// for topic removal, you need to get all the producers *first*
-	producers := s.getProducers(topicName)
+	producerAddrs := s.getProducers(topicName)
 
 	// remove the topic from all the lookupds
 	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
-		endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", addr, url.QueryEscape(topicName))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		if err != nil {
+			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
 
-		_, err := util.ApiRequest(endpoint)
+		uri := "delete_topic"
+		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+			uri = "topic/delete"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
+		log.Printf("LOOKUPD: querying %s", endpoint)
+		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
 		}
 	}
 
-	// now remove the topic from all the producers
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/delete_topic?topic=%s", addr, url.QueryEscape(topicName))
-		log.Printf("NSQD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
-	}
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"delete_topic",
+		"topic/delete",
+		fmt.Sprintf("topic=%s", url.QueryEscape(topicName)))
 
 	s.notifyAdminAction("delete_topic", topicName, "", "", req)
 
@@ -521,28 +565,36 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 	}
 
 	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
-		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
-			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		if err != nil {
+			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
 
-		_, err := util.ApiRequest(endpoint)
+		uri := "delete_channel"
+		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+			uri = "channel/delete"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
+			addr, uri,
+			url.QueryEscape(topicName),
+			url.QueryEscape(channelName))
+		log.Printf("LOOKUPD: querying %s", endpoint)
+		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
 			continue
 		}
 	}
 
-	producers := s.getProducers(topicName)
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s",
-			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
-		log.Printf("NSQD: querying %s", endpoint)
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
-	}
+	producerAddrs := s.getProducers(topicName)
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"delete_channel",
+		"channel/delete",
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
 
 	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
@@ -563,17 +615,14 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	producers := s.getProducers(topicName)
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/empty_topic?topic=%s", addr, url.QueryEscape(topicName))
-		log.Printf("NSQD: calling %s", endpoint)
-
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
-	}
+	producerAddrs := s.getProducers(topicName)
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"empty_topic",
+		"topic/empty",
+		fmt.Sprintf("topic=%s",
+			url.QueryEscape(topicName)))
 
 	s.notifyAdminAction("empty_topic", topicName, "", "", req)
 
@@ -594,20 +643,21 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	producers := s.getProducers(topicName)
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s%s?topic=%s",
-			addr, req.URL.Path, url.QueryEscape(topicName))
-		log.Printf("NSQD: calling %s", endpoint)
-
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
+	verb := "pause"
+	if strings.Contains(req.URL.Path, "unpause") {
+		verb = "unpause"
 	}
 
-	s.notifyAdminAction(strings.TrimLeft(req.URL.Path, "/"), topicName, "", "", req)
+	producerAddrs := s.getProducers(topicName)
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		verb+"_topic",
+		"topic/"+verb,
+		fmt.Sprintf("topic=%s",
+			url.QueryEscape(topicName)))
+
+	s.notifyAdminAction(verb+"_topic", topicName, "", "", req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
 }
@@ -626,22 +676,19 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	producers := s.getProducers(topicName)
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s/empty_channel?topic=%s&channel=%s",
-			addr, url.QueryEscape(topicName), url.QueryEscape(channelName))
-		log.Printf("NSQD: calling %s", endpoint)
-
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
-	}
+	producerAddrs := s.getProducers(topicName)
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"empty_channel",
+		"channel/empty",
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
 
 	s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
 
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
+	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s",
+		url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
 func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
@@ -658,20 +705,21 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	producers := s.getProducers(topicName)
-	for _, addr := range producers {
-		endpoint := fmt.Sprintf("http://%s%s?topic=%s&channel=%s",
-			addr, req.URL.Path, url.QueryEscape(topicName), url.QueryEscape(channelName))
-		log.Printf("NSQD: calling %s", endpoint)
-
-		_, err := util.ApiRequest(endpoint)
-		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
-			continue
-		}
+	verb := "pause"
+	if strings.Contains(req.URL.Path, "unpause") {
+		verb = "unpause"
 	}
 
-	s.notifyAdminAction(strings.TrimLeft(req.URL.Path, "/"), topicName, channelName, "", req)
+	producerAddrs := s.getProducers(topicName)
+	performVersionNegotiatedRequestsToNSQD(
+		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		verb+"_channel",
+		"channel/"+verb,
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+
+	s.notifyAdminAction(verb+"_channel", topicName, channelName, "", req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
