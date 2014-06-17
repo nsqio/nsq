@@ -79,7 +79,7 @@ func TestClientAttributes(t *testing.T) {
 
 	testUrl := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
 
-	statsData, err := util.ApiRequest(testUrl)
+	statsData, err := util.APIRequestNegotiateV1("GET", testUrl, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}

@@ -267,6 +267,330 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	assert.Equal(t, topic.Depth(), int64(1))
 }
 
+func TestHTTPDeprecatedTopicChannel(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_http_topic_channel" + strconv.Itoa(int(time.Now().Unix()))
+	channelName := "ch"
+
+	url := fmt.Sprintf("http://%s/create_topic?topic=%s", httpAddr, topicName)
+	resp, err := http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	url = fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, topic, nil)
+
+	channel, err := topic.GetExistingChannel(channelName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, channel, nil)
+
+	url = fmt.Sprintf("http://%s/pause_topic?topic=%s", httpAddr, topicName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	assert.Equal(t, topic.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/unpause_topic?topic=%s", httpAddr, topicName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	assert.Equal(t, topic.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/pause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	assert.Equal(t, channel.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/unpause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	assert.Equal(t, channel.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	_, err = topic.GetExistingChannel(channelName)
+	assert.NotEqual(t, err, nil)
+
+	url = fmt.Sprintf("http://%s/delete_topic?topic=%s", httpAddr, topicName)
+	resp, err = http.Get(url)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
+
+	_, err = nsqd.GetExistingTopic(topicName)
+	assert.NotEqual(t, err, nil)
+}
+
+func TestHTTPTransitionTopicChannel(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	defer nsqd.Exit()
+
+	client := http.Client{}
+	topicName := "test_http_topic_channel1" + strconv.Itoa(int(time.Now().Unix()))
+	channelName := "ch1"
+
+	url := fmt.Sprintf("http://%s/create_topic?topic=%s", httpAddr, topicName)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err := client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	url = fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, topic, nil)
+
+	channel, err := topic.GetExistingChannel(channelName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, channel, nil)
+
+	url = fmt.Sprintf("http://%s/pause_topic?topic=%s", httpAddr, topicName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, topic.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/unpause_topic?topic=%s", httpAddr, topicName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, topic.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/pause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, channel.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/unpause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, channel.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	_, err = topic.GetExistingChannel(channelName)
+	assert.NotEqual(t, err, nil)
+
+	url = fmt.Sprintf("http://%s/delete_topic?topic=%s", httpAddr, topicName)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	_, err = nsqd.GetExistingTopic(topicName)
+	assert.NotEqual(t, err, nil)
+}
+
+func TestHTTPV1TopicChannel(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	defer nsqd.Exit()
+
+	topicName := "test_http_topic_channel2" + strconv.Itoa(int(time.Now().Unix()))
+	channelName := "ch2"
+
+	url := fmt.Sprintf("http://%s/topic/create?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	topic, err := nsqd.GetExistingTopic(topicName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, topic, nil)
+
+	channel, err := topic.GetExistingChannel(channelName)
+	assert.Equal(t, err, nil)
+	assert.NotEqual(t, channel, nil)
+
+	url = fmt.Sprintf("http://%s/topic/pause?topic=%s", httpAddr, topicName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, topic.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/topic/unpause?topic=%s", httpAddr, topicName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, topic.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/channel/pause?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, channel.IsPaused(), true)
+
+	url = fmt.Sprintf("http://%s/channel/unpause?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	assert.Equal(t, channel.IsPaused(), false)
+
+	url = fmt.Sprintf("http://%s/channel/delete?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	_, err = topic.GetExistingChannel(channelName)
+	assert.NotEqual(t, err, nil)
+
+	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", httpAddr, topicName)
+	resp, err = http.Post(url, "application/json", nil)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, string(body), "")
+	assert.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
+
+	_, err = nsqd.GetExistingTopic(topicName)
+	assert.NotEqual(t, err, nil)
+}
+
 func BenchmarkHTTPput(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
