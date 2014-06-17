@@ -74,7 +74,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	data, err := util.ApiRequest(endpoint)
+	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 	log.Printf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -93,7 +93,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, producer.peerInfo.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	log.Printf("got returnedTopics %v", returnedTopics)
@@ -101,7 +101,7 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -136,7 +136,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	assert.Equal(t, err, nil)
@@ -188,7 +188,7 @@ func TestChannelUnregister(t *testing.T) {
 	assert.Equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := util.ApiRequest(endpoint)
+	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
@@ -218,18 +218,19 @@ func TestTombstoneRecover(t *testing.T) {
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
-	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = util.ApiRequest(endpoint)
+	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
+		httpAddr, topicName, "ip.address:5555")
+	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := util.ApiRequest(endpoint)
+	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
@@ -237,7 +238,7 @@ func TestTombstoneRecover(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
@@ -261,12 +262,13 @@ func TestTombstoneUnregister(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
-	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = util.ApiRequest(endpoint)
+	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
+		httpAddr, topicName, "ip.address:5555")
+	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 	assert.Equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := util.ApiRequest(endpoint)
+	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
@@ -278,7 +280,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = util.ApiRequest(endpoint)
+	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
@@ -342,8 +344,9 @@ func TestTombstonedNodes(t *testing.T) {
 	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
 	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
 
-	endpoint := fmt.Sprintf("http://%s/tombstone_topic_producer?topic=%s&node=%s", httpAddr, topicName, "ip.address:5555")
-	_, err = util.ApiRequest(endpoint)
+	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
+		httpAddr, topicName, "ip.address:5555")
+	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 	assert.Equal(t, err, nil)
 
 	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)

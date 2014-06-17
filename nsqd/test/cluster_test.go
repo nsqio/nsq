@@ -24,12 +24,14 @@ func TestNsqdToLookupd(t *testing.T) {
 		t.Fatalf("ERROR: failed to get hostname - %s", err.Error())
 	}
 
-	_, err = util.ApiRequest(fmt.Sprintf("http://127.0.0.1:4151/create_topic?topic=%s", topicName))
+	url := fmt.Sprintf("http://127.0.0.1:4151/topic/create?topic=%s", topicName)
+	_, err = util.APIRequestNegotiateV1("POST", url, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
 
-	_, err = util.ApiRequest(fmt.Sprintf("http://127.0.0.1:4151/create_channel?topic=%s&channel=ch", topicName))
+	url = fmt.Sprintf("http://127.0.0.1:4151/channel/create?topic=%s&channel=ch", topicName)
+	_, err = util.APIRequestNegotiateV1("POST", url, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -37,7 +39,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err := util.ApiRequest("http://127.0.0.1:4161/debug")
+	data, err := util.APIRequestNegotiateV1("GET", "http://127.0.0.1:4161/debug", nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -62,7 +64,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	assert.Equal(t, producer.Get("tcp_port").MustInt(), 4150)
 	assert.Equal(t, producer.Get("tombstoned").MustBool(), false)
 
-	data, err = util.ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
+	data, err = util.APIRequestNegotiateV1("GET", "http://127.0.0.1:4161/lookup?topic="+topicName, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -81,7 +83,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	channel := channels[0].(string)
 	assert.Equal(t, channel, "ch")
 
-	data, err = util.ApiRequest("http://127.0.0.1:4151/delete_topic?topic=" + topicName)
+	data, err = util.APIRequestNegotiateV1("POST", "http://127.0.0.1:4151/topic/delete?topic="+topicName, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -89,7 +91,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err = util.ApiRequest("http://127.0.0.1:4161/lookup?topic=" + topicName)
+	data, err = util.APIRequestNegotiateV1("GET", "http://127.0.0.1:4161/lookup?topic="+topicName, nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -97,7 +99,7 @@ func TestNsqdToLookupd(t *testing.T) {
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 0)
 
-	data, err = util.ApiRequest("http://127.0.0.1:4161/debug")
+	data, err = util.APIRequestNegotiateV1("GET", "http://127.0.0.1:4161/debug", nil)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}

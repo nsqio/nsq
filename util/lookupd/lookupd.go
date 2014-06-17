@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +15,19 @@ import (
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/semver"
 )
+
+// GetVersion returns a semver.Version object by querying /info
+func GetVersion(addr string) (*semver.Version, error) {
+	endpoint := fmt.Sprintf("http://%s/info", addr)
+	log.Printf("version negotiation %s", endpoint)
+	info, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+	if err != nil {
+		log.Printf("ERROR: %s - %s", endpoint, err)
+		return nil, err
+	}
+	version := info.Get("version").MustString("unknown")
+	return semver.Parse(version)
+}
 
 // GetLookupdTopics returns a []string containing a union of all the topics
 // from all the given lookupd
@@ -25,9 +40,8 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
-
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -61,7 +75,7 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -98,7 +112,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(addr string, endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -199,7 +213,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -214,7 +228,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 				producer := producers.GetIndex(i)
 				broadcastAddress := producer.Get("broadcast_address").MustString()
 				httpPort := producer.Get("http_port").MustInt()
-				key := fmt.Sprintf("%s:%d", broadcastAddress, httpPort)
+				key := net.JoinHostPort(broadcastAddress, strconv.Itoa(httpPort))
 				allSources = util.StringAdd(allSources, key)
 			}
 		}(endpoint)
@@ -239,7 +253,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -276,7 +290,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -320,7 +334,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string, addr string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
