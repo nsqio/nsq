@@ -295,18 +295,12 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	cfg.Set("max_in_flight", *maxInFlight)
-
-	// TODO: remove, deprecated
-	if hasArg("verbose") {
-		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		cfg.Set("verbose", true)
-	}
+	cfg.MaxInFlight = *maxInFlight
 
 	// TODO: remove, deprecated
 	if hasArg("max-backoff-duration") {
 		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
-		cfg.Set("max_backoff_duration", *maxBackoffDuration)
+		cfg.MaxBackoffDuration = *maxBackoffDuration
 	}
 
 	r, err := nsq.NewConsumer(*topic, *channel, cfg)
