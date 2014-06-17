@@ -143,7 +143,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.Set("max_in_flight", *maxInFlight)
+	cfg.MaxInFlight = *maxInFlight
 	r, err := nsq.NewConsumer(topicName, channelName, cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

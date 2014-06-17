@@ -338,13 +338,7 @@ func newReaderFileLogger(topic string) (*ReaderFileLogger, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Set("max_in_flight", *maxInFlight)
-
-	// TODO: remove, deprecated
-	if hasArg("verbose") {
-		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		cfg.Set("verbose", true)
-	}
+	cfg.MaxInFlight = *maxInFlight
 
 	r, err := nsq.NewConsumer(topic, *channel, cfg)
 	if err != nil {

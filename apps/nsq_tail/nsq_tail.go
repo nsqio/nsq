@@ -87,7 +87,7 @@ func main() {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.Set("max_in_flight", *maxInFlight)
+	cfg.MaxInFlight = *maxInFlight
 
 	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {

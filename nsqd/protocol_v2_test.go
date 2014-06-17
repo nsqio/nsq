@@ -78,7 +78,7 @@ func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
 
-func auth(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
+func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
 	auth := &nsq.Command{[]byte("AUTH"), nil, []byte(authSecret)}
 	_, err := auth.WriteTo(conn)
 	assert.Equal(t, err, nil)
@@ -1326,7 +1326,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 		"tls_v1": false,
 	}, nsq.FrameTypeResponse)
 
-	auth(t, conn, authSecret, authSuccess)
+	authCmd(t, conn, authSecret, authSuccess)
 	if authError != "" {
 		readValidate(t, conn, nsq.FrameTypeError, authError)
 	} else {

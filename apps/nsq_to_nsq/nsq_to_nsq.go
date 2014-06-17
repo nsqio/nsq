@@ -355,18 +355,12 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	cfg.Set("max_in_flight", *maxInFlight)
-
-	// TODO: remove, deprecated
-	if hasArg("verbose") {
-		log.Printf("WARNING: --verbose is deprecated in favor of --reader-opt=verbose")
-		cfg.Set("verbose", true)
-	}
+	cfg.MaxInFlight = *maxInFlight
 
 	// TODO: remove, deprecated
 	if hasArg("max-backoff-duration") {
 		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
-		cfg.Set("max_backoff_duration", *maxBackoffDuration)
+		cfg.MaxBackoffDuration = *maxBackoffDuration
 	}
 
 	r, err := nsq.NewConsumer(*topic, *channel, cfg)
@@ -376,10 +370,13 @@ func main() {
 	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 
 	wcfg := nsq.NewConfig()
-	wcfg.Set("heartbeat_interval", nsq.DefaultClientTimeout/2)
 	producers := make(map[string]*nsq.Producer)
 	for _, addr := range destNsqdTCPAddrs {
-		producers[addr] = nsq.NewProducer(addr, wcfg)
+		producer, err := nsq.NewProducer(addr, wcfg)
+		if err != nil {
+			log.Fatalf("failed creating producer %s", err)
+		}
+		producers[addr] = producer
 	}
 
 	handler := &PublishHandler{
