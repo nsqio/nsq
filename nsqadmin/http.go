@@ -897,7 +897,7 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	query := queryFunc(target)
 	url := s.context.nsqadmin.options.GraphiteURL + query
 	log.Printf("GRAPHITE: %s", url)
-	response, err := GraphiteGet(url)
+	response, err := graphiteGet(url)
 	if err != nil {
 		log.Printf("ERROR: graphite request failed %s", err.Error())
 		http.Error(w, "GRAPHITE_FAILED", 500)
@@ -916,7 +916,7 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	return
 }
 
-func GraphiteGet(request_url string) ([]byte, error) {
+func graphiteGet(request_url string) ([]byte, error) {
 	response, err := http.Get(request_url)
 
 	var contents []byte
