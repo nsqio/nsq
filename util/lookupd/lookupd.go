@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -227,7 +229,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 				producer := producers.GetIndex(i)
 				broadcastAddress := producer.Get("broadcast_address").MustString()
 				httpPort := producer.Get("http_port").MustInt()
-				key := fmt.Sprintf("%s:%d", broadcastAddress, httpPort)
+				key := net.JoinHostPort(broadcastAddress, strconv.Itoa(httpPort))
 				allSources = util.StringAdd(allSources, key)
 			}
 		}(endpoint)
