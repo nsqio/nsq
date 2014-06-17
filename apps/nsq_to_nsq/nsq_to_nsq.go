@@ -51,7 +51,6 @@ var (
 
 	// TODO: remove, deprecated
 	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --reader-opt=max_backoff_duration=X, the maximum backoff duration")
-	verbose            = flag.Bool("verbose", false, "(depgrecated) use --reader-opt=verbose")
 )
 
 func init() {

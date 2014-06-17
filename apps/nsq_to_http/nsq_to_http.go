@@ -53,7 +53,6 @@ var (
 	// TODO: remove, deprecated
 	roundRobin         = flag.Bool("round-robin", false, "(deprecated) use --mode=round-robin, enable round robin mode")
 	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --reader-opt=max_backoff_duration=X, the maximum backoff duration")
-	verbose            = flag.Bool("verbose", false, "(depgrecated) use --reader-opt=verbose")
 	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "(deprecated) use --sample=X, publish only a fraction of messages")
 	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "(deprecated) use --http-timeout=X, timeout for HTTP connect/read/write (each)")
 )
