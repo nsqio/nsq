@@ -6,17 +6,26 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bitly/nsq/nsqadmin/templates"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
+	"github.com/bitly/nsq/util/semver"
 )
+
+var v1EndpointVersion *semver.Version
+
+func init() {
+	v1EndpointVersion, _ = semver.Parse("0.2.29-alpha")
+}
 
 // this is similar to httputil.NewSingleHostReverseProxy except it passes along basic auth
 func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil.ReverseProxy {
@@ -943,4 +952,53 @@ func (s *httpServer) getProducers(topicName string) []string {
 		producers, _ = lookupd.GetNSQDTopicProducers(topicName, s.context.nsqadmin.options.NSQDHTTPAddresses)
 	}
 	return producers
+}
+
+func producerSearch(producers []*lookupd.Producer, needle string) *lookupd.Producer {
+	for _, producer := range producers {
+		addr := net.JoinHostPort(producer.BroadcastAddress, strconv.Itoa(producer.HttpPort))
+		if needle == addr {
+			return producer
+		}
+	}
+	return nil
+}
+
+func performVersionNegotiatedRequestsToNSQD(nsqlookupdAddrs []string, nsqdAddrs []string,
+	deprecatedURI string, v1URI string, queryString string) {
+	var err error
+	// get producer structs in one set of up-front requests
+	// so we can negotiate versions
+	//
+	// (this returns an empty list if there are no nsqlookupd configured)
+	producers, _ := lookupd.GetLookupdProducers(nsqlookupdAddrs)
+
+	for _, addr := range nsqdAddrs {
+		var nodeVer *semver.Version
+
+		uri := deprecatedURI
+		producer := producerSearch(producers, addr)
+		if producer != nil {
+			nodeVer = producer.VersionObj
+		} else {
+			// we couldn't find the node in our list
+			// so ask it for a version directly
+			nodeVer, err = lookupd.GetVersion(addr)
+			if err != nil {
+				log.Printf("ERROR: failed to get nsqd %s version - %s", addr, err)
+			}
+		}
+
+		if nodeVer != nil && !nodeVer.Less(v1EndpointVersion) {
+			uri = v1URI
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
+		log.Printf("NSQD: querying %s", endpoint)
+		_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+			continue
+		}
+	}
 }
