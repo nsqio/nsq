@@ -101,6 +101,8 @@ func V1ApiResponse(w http.ResponseWriter, code int, data interface{}) {
 			response = []byte(data.(string))
 		case []byte:
 			response = data.([]byte)
+		case nil:
+			response = []byte{}
 		default:
 			isJson = true
 			response, err = json.Marshal(data)
