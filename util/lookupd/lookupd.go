@@ -40,9 +40,8 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
-
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -76,7 +75,7 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -113,7 +112,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(addr string, endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -214,7 +213,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -254,7 +253,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -291,7 +290,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -335,7 +334,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string, addr string) {
-			data, err := util.ApiRequest(endpoint)
+			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
