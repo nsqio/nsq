@@ -17,7 +17,7 @@ func (e HTTPError) Error() string {
 }
 
 func acceptVersion(req *http.Request) int {
-	if req.Header.Get("accept") == "vnd/nsq; version=1.0" {
+	if req.Header.Get("accept") == "application/vnd.nsq; version=1.0" {
 		return 1
 	}
 
@@ -119,6 +119,7 @@ func V1ApiResponse(w http.ResponseWriter, code int, data interface{}) {
 	if isJson {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
+	w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.WriteHeader(code)
 	w.Write(response)
