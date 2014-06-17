@@ -14,6 +14,19 @@ import (
 	"github.com/bitly/nsq/util/semver"
 )
 
+// GetVersion returns a semver.Version object by querying /info
+func GetVersion(addr string) (*semver.Version, error) {
+	endpoint := fmt.Sprintf("http://%s/info", addr)
+	log.Printf("version negotiation %s", endpoint)
+	info, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+	if err != nil {
+		log.Printf("ERROR: %s - %s", endpoint, err)
+		return nil, err
+	}
+	version := info.Get("version").MustString("unknown")
+	return semver.Parse(version)
+}
+
 // GetLookupdTopics returns a []string containing a union of all the topics
 // from all the given lookupd
 func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
