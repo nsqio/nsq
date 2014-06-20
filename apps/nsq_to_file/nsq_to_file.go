@@ -44,7 +44,6 @@ var (
 
 	// TODO: remove, deprecated
 	gzipCompression = flag.Int("gzip-compression", 3, "(deprecated) use --gzip-level, gzip compression level (1 = BestSpeed, 2 = BestCompression, 3 = DefaultCompression)")
-	verbose         = flag.Bool("verbose", false, "(deprecated) use --reader-opt=verbose")
 )
 
 func init() {
