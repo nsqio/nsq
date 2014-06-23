@@ -145,6 +145,9 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
     Default: `<client_library_name>/<version>`
 
+ * **`msg_timeout`** (nsqd 0.2.28+) configure the server-side message timeout for messages
+                     delivered to this client.
+
 Success Response:
 
     OK
