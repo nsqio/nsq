@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -627,8 +628,12 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
 	}
 
-	id := *(*MessageID)(unsafe.Pointer(&params[1][0]))
-	err := client.Channel.FinishMessage(client.ID, id)
+	id, err := getMessageId(params[1])
+	if err != nil {
+		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
+	}
+
+	err = client.Channel.FinishMessage(client.ID, *id)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %s failed %s", id, err.Error()))
@@ -649,7 +654,11 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "REQ insufficient number of params")
 	}
 
-	id := *(*MessageID)(unsafe.Pointer(&params[1][0]))
+	id, err := getMessageId(params[1])
+	if err != nil {
+		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
+	}
+
 	timeoutMs, err := util.ByteToBase10(params[2])
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_INVALID",
@@ -662,7 +671,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.context.nsqd.options.MaxReqTimeout))
 	}
 
-	err = client.Channel.RequeueMessage(client.ID, id, timeoutDuration)
+	err = client.Channel.RequeueMessage(client.ID, *id, timeoutDuration)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %s failed %s", id, err.Error()))
@@ -796,8 +805,12 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
 	}
 
-	id := *(*MessageID)(unsafe.Pointer(&params[1][0]))
-	err := client.Channel.TouchMessage(client.ID, id)
+	id, err := getMessageId(params[1])
+	if err != nil {
+		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
+	}
+
+	err = client.Channel.TouchMessage(client.ID, *id)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_TOUCH_FAILED",
 			fmt.Sprintf("TOUCH %s failed %s", id, err.Error()))
@@ -845,6 +858,15 @@ func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int
 	}
 
 	return messages, nil
+}
+
+// validate and cast the bytes on the wire to a message ID
+func getMessageId(p []byte) (*MessageID, error) {
+	if len(p) != MsgIDLength {
+		return nil, errors.New("Invalid Message ID")
+	}
+	id := (*MessageID)(unsafe.Pointer(&p[0]))
+	return id, nil
 }
 
 func readLen(r io.Reader, tmp []byte) (int32, error) {
