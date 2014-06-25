@@ -200,7 +200,7 @@ func init() {
 
 {{range .ChannelStats.Clients}}
     <tr>
-        <td>{{.ClientID}}</td>
+        <td title="{{.RemoteAddress}}">{{.ClientID}}</td>
         <td>{{.Version}} {{if .HasUserAgent}}({{.UserAgent}}){{end}}</td>
         <td>
           {{if .HasSampleRate}}
@@ -214,6 +214,9 @@ func init() {
           {{end}}
           {{if .Snappy}}
           <span class="label label-primary">Snappy</span>
+          {{end}}
+          {{if .Authed}}
+          <span class="label label-success">{{if .AuthIdentityUrl}}<a href="{{.AuthIdentityUrl}}">{{end}}<i class="icon-user icon-white" title="Authed{{if .AuthIdentity}} Identity:{{.AuthIdentity}}{{end}}"></i>{{if .AuthIdentityUrl}}</a>{{end}}</span>
           {{end}}
         </td>
         <td><a href="/node/{{.HostAddress}}">{{.HostAddress}}</a></td>

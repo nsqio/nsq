@@ -155,6 +155,7 @@ func (c *ChannelStats) Host() string {
 
 type ClientStats struct {
 	HostAddress       string
+	RemoteAddress     string
 	Version           string
 	ClientID          string
 	Hostname          string
@@ -169,6 +170,9 @@ type ClientStats struct {
 	TLS               bool
 	Deflate           bool
 	Snappy            bool
+	Authed            bool
+	AuthIdentity      string
+	AuthIdentityUrl   string
 }
 
 func (c *ClientStats) HasUserAgent() bool {
