@@ -1275,6 +1275,28 @@ func TestClientMsgTimeout(t *testing.T) {
 		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.ID))
 }
 
+func TestBadFin(t *testing.T) {
+	options := NewNSQDOptions()
+	options.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(options)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	assert.Equal(t, err, nil)
+
+	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
+	sub(t, conn, "test_fin", "ch")
+
+	fin := &nsq.Command{[]byte("FIN"), [][]byte{[]byte("")}, nil}
+	_, err = fin.WriteTo(conn)
+	assert.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	assert.Equal(t, frameType, frameTypeError)
+	assert.Equal(t, string(data), "E_INVALID Invalid Message ID")
+}
+
 func TestClientAuth(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
