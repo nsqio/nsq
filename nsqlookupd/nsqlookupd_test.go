@@ -336,7 +336,6 @@ func TestTombstonedNodes(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	options := NewNSQLookupdOptions()
-	options.InactiveProducerTimeout = 50 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
 
@@ -346,6 +345,17 @@ func TestTombstonedNodes(t *testing.T) {
 
 	conn := mustConnectLookupd(t, tcpAddr)
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	go func() {
+		for {
+			time.Sleep(5 * time.Millisecond)
+			nsq.Ping().WriteTo(conn)
+			_, err := nsq.ReadResponse(conn)
+			if err != nil {
+				return
+			}
+		}
+	}()
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -367,4 +377,6 @@ func TestTombstonedNodes(t *testing.T) {
 	assert.Equal(t, len(producers[0].Topics), 1)
 	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
 	assert.Equal(t, producers[0].Topics[0].Tombstoned, true)
+
+	conn.Close()
 }
