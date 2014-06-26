@@ -636,7 +636,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 	err = client.Channel.FinishMessage(client.ID, *id)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_FIN_FAILED",
-			fmt.Sprintf("FIN %s failed %s", id, err.Error()))
+			fmt.Sprintf("FIN %s failed %s", *id, err.Error()))
 	}
 
 	client.FinishedMessage()
@@ -674,7 +674,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 	err = client.Channel.RequeueMessage(client.ID, *id, timeoutDuration)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_REQ_FAILED",
-			fmt.Sprintf("REQ %s failed %s", id, err.Error()))
+			fmt.Sprintf("REQ %s failed %s", *id, err.Error()))
 	}
 
 	client.RequeuedMessage()
@@ -813,7 +813,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	err = client.Channel.TouchMessage(client.ID, *id)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_TOUCH_FAILED",
-			fmt.Sprintf("TOUCH %s failed %s", id, err.Error()))
+			fmt.Sprintf("TOUCH %s failed %s", *id, err.Error()))
 	}
 
 	return nil, nil
@@ -865,8 +865,7 @@ func getMessageId(p []byte) (*MessageID, error) {
 	if len(p) != MsgIDLength {
 		return nil, errors.New("Invalid Message ID")
 	}
-	id := (*MessageID)(unsafe.Pointer(&p[0]))
-	return id, nil
+	return (*MessageID)(unsafe.Pointer(&p[0])), nil
 }
 
 func readLen(r io.Reader, tmp []byte) (int32, error) {
