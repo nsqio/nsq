@@ -304,7 +304,7 @@ func TestInactiveNodes(t *testing.T) {
 	defer log.SetOutput(os.Stdout)
 
 	options := NewNSQLookupdOptions()
-	options.InactiveProducerTimeout = 50 * time.Millisecond
+	options.InactiveProducerTimeout = 200 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
 	defer nsqlookupd.Exit()
 
@@ -325,7 +325,7 @@ func TestInactiveNodes(t *testing.T) {
 	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
 	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
 
-	time.Sleep(55 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 
 	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
 	assert.Equal(t, len(producers), 0)
