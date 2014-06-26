@@ -218,6 +218,17 @@ func TestTombstoneRecover(t *testing.T) {
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
 
+	go func() {
+		for {
+			time.Sleep(10 * time.Millisecond)
+			nsq.Ping().WriteTo(conn)
+			_, err := nsq.ReadResponse(conn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
 	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
@@ -235,13 +246,15 @@ func TestTombstoneRecover(t *testing.T) {
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
 
-	time.Sleep(55 * time.Millisecond)
+	time.Sleep(75 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
+
+	conn.Close()
 }
 
 func TestTombstoneUnregister(t *testing.T) {
