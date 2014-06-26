@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	httpprof "net/http/pprof"
+	"sync/atomic"
 
 	"github.com/bitly/nsq/util"
 )
@@ -375,7 +376,7 @@ func (s *httpServer) doDebug(req *http.Request) (interface{}, error) {
 				"tcp_port":          p.peerInfo.TcpPort,
 				"http_port":         p.peerInfo.HttpPort,
 				"version":           p.peerInfo.Version,
-				"last_update":       p.peerInfo.lastUpdate.UnixNano(),
+				"last_update":       atomic.LoadInt64(&p.peerInfo.lastUpdate),
 				"tombstoned":        p.tombstoned,
 				"tombstoned_at":     p.tombstonedAt.UnixNano(),
 			}

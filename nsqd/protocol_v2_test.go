@@ -1156,6 +1156,15 @@ func TestSampling(t *testing.T) {
 	_, err = nsq.Ready(num).WriteTo(conn)
 	assert.Equal(t, err, nil)
 
+	go func() {
+		for {
+			_, err := nsq.ReadResponse(conn)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	doneChan := make(chan int)
 	go func() {
 		for {
@@ -1276,6 +1285,9 @@ func TestClientMsgTimeout(t *testing.T) {
 }
 
 func TestBadFin(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	options := NewNSQDOptions()
 	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
