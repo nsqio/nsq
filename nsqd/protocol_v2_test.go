@@ -1285,6 +1285,9 @@ func TestClientMsgTimeout(t *testing.T) {
 }
 
 func TestBadFin(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
 	options := NewNSQDOptions()
 	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
