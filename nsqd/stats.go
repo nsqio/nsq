@@ -82,6 +82,7 @@ type ClientStats struct {
 	Deflate         bool   `json:"deflate"`
 	Snappy          bool   `json:"snappy"`
 	UserAgent       string `json:"user_agent"`
+	Authed          bool   `json:"authed,omitempty"`
 	AuthIdentity    string `json:"auth_identity,omitempty"`
 	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
 }

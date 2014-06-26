@@ -249,6 +249,7 @@ func (c *clientV2) Stats() ClientStats {
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
 		Deflate:         atomic.LoadInt32(&c.Deflate) == 1,
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
+		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityUrl,
 	}
