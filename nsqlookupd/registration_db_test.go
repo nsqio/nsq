@@ -16,9 +16,9 @@ func TestRegistrationDB(t *testing.T) {
 
 	sec30 := 30 * time.Second
 	beginningOfTime := time.Unix(1348797047, 0)
-	pi1 := &PeerInfo{"1", "remote_addr:1", "host", "b_addr", 1, 2, "v1", beginningOfTime}
-	pi2 := &PeerInfo{"2", "remote_addr:2", "host", "b_addr", 2, 3, "v1", beginningOfTime}
-	pi3 := &PeerInfo{"3", "remote_addr:3", "host", "b_addr", 3, 4, "v1", beginningOfTime}
+	pi1 := &PeerInfo{beginningOfTime.UnixNano(), "1", "remote_addr:1", "host", "b_addr", 1, 2, "v1"}
+	pi2 := &PeerInfo{beginningOfTime.UnixNano(), "2", "remote_addr:2", "host", "b_addr", 2, 3, "v1"}
+	pi3 := &PeerInfo{beginningOfTime.UnixNano(), "3", "remote_addr:3", "host", "b_addr", 3, 4, "v1"}
 	p1 := &Producer{pi1, false, beginningOfTime}
 	p2 := &Producer{pi2, false, beginningOfTime}
 	p3 := &Producer{pi3, false, beginningOfTime}
@@ -50,13 +50,13 @@ func TestRegistrationDB(t *testing.T) {
 
 	// filter by active
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 0)
-	p2.peerInfo.lastUpdate = time.Now()
+	p2.peerInfo.lastUpdate = time.Now().UnixNano()
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 	p = db.FindProducers("c", "*", "")
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 
 	// tombstoning
-	fewSecAgo := time.Now().Add(-5 * time.Second)
+	fewSecAgo := time.Now().Add(-5 * time.Second).UnixNano()
 	p1.peerInfo.lastUpdate = fewSecAgo
 	p2.peerInfo.lastUpdate = fewSecAgo
 	assert.Equal(t, len(p.FilterByActive(sec30, sec30)), 2)
