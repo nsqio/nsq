@@ -333,6 +333,7 @@ func newReaderFileLogger(topic string) (*ReaderFileLogger, error) {
 	}
 
 	cfg := nsq.NewConfig()
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
 	err = util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {
 		return nil, err
