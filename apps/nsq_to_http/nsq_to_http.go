@@ -289,6 +289,7 @@ func main() {
 	}
 
 	cfg := nsq.NewConfig()
+	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
 
 	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {

@@ -349,6 +349,8 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	cfg := nsq.NewConfig()
+	cfg.UserAgent = fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+
 
 	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {
@@ -369,6 +371,7 @@ func main() {
 	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 
 	wcfg := nsq.NewConfig()
+	cfg.UserAgent = fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
 	producers := make(map[string]*nsq.Producer)
 	for _, addr := range destNsqdTCPAddrs {
 		producer, err := nsq.NewProducer(addr, wcfg)
