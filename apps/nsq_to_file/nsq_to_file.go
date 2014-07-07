@@ -346,7 +346,7 @@ func newReaderFileLogger(topic string) (*ReaderFileLogger, error) {
 	}
 	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 
-	r.SetHandler(f)
+	r.AddHandler(f)
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQD(addrString)

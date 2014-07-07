@@ -167,7 +167,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	bufrw.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n")
 	bufrw.Flush()
 
-	r.SetHandler(sr)
+	r.AddHandler(sr)
 
 	// TODO: handle the error cases better (ie. at all :) )
 	errors := ConnectToNSQAndLookupd(r, nsqdTCPAddrs, lookupdHTTPAddrs)
