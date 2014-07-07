@@ -389,7 +389,7 @@ func main() {
 		hostPool:  hostpool.New(destNsqdTCPAddrs),
 		respChan:  make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
 	}
-	r.SetConcurrentHandlers(handler, len(destNsqdTCPAddrs))
+	r.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
 		go handler.responder()
 	}

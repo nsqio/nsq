@@ -316,7 +316,7 @@ func main() {
 		reqs:      make(Durations, 0, *statusEvery),
 		hostPool:  hostpool.New(addresses),
 	}
-	r.SetConcurrentHandlers(handler, *numPublishers)
+	r.AddConcurrentHandlers(handler, *numPublishers)
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQD(addrString)

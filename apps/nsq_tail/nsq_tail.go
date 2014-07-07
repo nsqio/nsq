@@ -101,7 +101,7 @@ func main() {
 	}
 	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 
-	r.SetHandler(&TailHandler{totalMessages: *totalMessages})
+	r.AddHandler(&TailHandler{totalMessages: *totalMessages})
 
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQD(addrString)
