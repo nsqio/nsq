@@ -119,7 +119,7 @@ func (n *NSQD) statsdLoop() {
 				var memStats runtime.MemStats
 				runtime.ReadMemStats(&memStats)
 
-		                gcPauses := recentGCPauses(memStats, int(memStats.NumGC-lastMemStats.NumGC))
+				gcPauses := recentGCPauses(memStats, int(memStats.NumGC-lastMemStats.NumGC))
 				sort.Sort(gcPauses)
 
 				statsd.Gauge("mem.heap_objects", int64(memStats.HeapObjects))
@@ -145,9 +145,9 @@ exit:
 
 func recentGCPauses(memStats runtime.MemStats, runsCaredAbout int) Uint64Slice {
 	if runsCaredAbout == 0 {
-		return []uint64{}
+		return make([]uint64, 0)
 	}
-	pauseBufSize := int(len(memStats.PauseNs))
+	pauseBufSize := len(memStats.PauseNs)
 
 	// Gets the most recent GC pauseN index
 	numGC := int(memStats.NumGC)
@@ -160,7 +160,7 @@ func recentGCPauses(memStats runtime.MemStats, runsCaredAbout int) Uint64Slice {
 	}
 
 	var gcPauses Uint64Slice
-	unwrappedIndex := mostRecentGC  - numGCRuns
+	unwrappedIndex := mostRecentGC - numGCRuns
 	if numGCRuns > pauseBufSize {
 		// doesn't matter --some GC PauseN's have been lost
 		gcPauses = make(Uint64Slice, pauseBufSize)
@@ -174,16 +174,12 @@ func recentGCPauses(memStats runtime.MemStats, runsCaredAbout int) Uint64Slice {
 		gcPauses = make(Uint64Slice, numGCRuns)
 
 		// tail of circular buffer, comes first
-		tail := ((pauseBufSize + mostRecentGC - numGCRuns) % pauseBufSize)
-		tailSize := pauseBufSize - tail
-
-		copy(gcPauses[:tailSize], memStats.PauseNs[tail:])
+		tailSize := numGCRuns - mostRecentGC - 1
+		copy(gcPauses[:tailSize], memStats.PauseNs[pauseBufSize-tailSize:])
 
 		// head of circular buffer, comes second
 		copy(gcPauses[tailSize:], memStats.PauseNs[:mostRecentGC])
-
 	}
-
 	return gcPauses
 }
 
@@ -197,4 +193,3 @@ func percentile(perc float64, arr []uint64, length int) uint64 {
 	}
 	return arr[indexOfPerc]
 }
-
