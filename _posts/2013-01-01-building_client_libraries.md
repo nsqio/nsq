@@ -25,6 +25,7 @@ languages for NSQ users.
  6. [Message Handling](#message_handling)
  7. [RDY State](#rdy_state)
  8. [Backoff](#backoff)
+ 9. [Encryption/Compression](#encryptioncompression)
 
 ## <a name="configuration">Configuration</a>
 
@@ -401,6 +402,44 @@ account *one* result per backoff timeout).
 
 ![nsq_client_flow](http://media.tumblr.com/7adbf06362cc6530153ef35b4dacf2cb/tumblr_inline_mmjev3stkE1qz4rgp.png)
 
+## Encryption/Compression
+
+NSQ supports encryption and/or compression feature negotiation via the `IDENTIFY` command. TLS is
+used for encryption. Both [Snappy][snappy] and DEFLATE are supported for compression. Snappy is
+available as a third-party library, but most languages have some native support for DEFLATE.
+
+When the `IDENTIFY` response is received and you've requested TLS via the `tls_v1` flag you'll get
+something similar to the following JSON:
+
+{% highlight json %}
+{
+    "deflate": false,
+    "deflate_level": 0,
+    "max_deflate_level": 6,
+    "max_msg_timeout": 900000,
+    "max_rdy_count": 2500,
+    "msg_timeout": 60000,
+    "sample_rate": 0,
+    "snappy": true,
+    "tls_v1": true,
+    "version": "0.2.28"
+}
+{% endhighlight %}
+
+After confirming that `tls_v1` is set to `true` (indicating that the server supports TLS), you
+initiate the TLS handshake (done, for example, in Python using the `ssl.wrap_socket` call) before
+anything else is sent or received on the wire. Immediately following a successful TLS handshake you
+must read an encrypted NSQ `OK` response.
+
+In a similar fashion, if you've enabled compression you'll look for `snappy` or `deflate` being
+`true` and then wrap the socket's read and write calls with the appropriate (de)compressor. Again,
+immediately read a compressed NSQ `OK` response.
+
+These compression features are mutually-exclusive.
+
+It's very important that you either prevent buffering until you've finished negotiating
+encryption/compression, or make sure to take care to read-to-empty as you negotiate features
+
 ## Bringing It All Together
 
 Distributed systems are fun.
@@ -428,3 +467,4 @@ libraries][client_libraries].
 [go-nsq]: https://github.com/bitly/go-nsq
 [pynsq]: https://github.com/bitly/pynsq
 [client_libraries]: {{ site.baseurl }}/clients/client_libraries.html
+[snappy]: https://code.google.com/p/snappy/

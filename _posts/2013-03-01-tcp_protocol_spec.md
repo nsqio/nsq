@@ -134,7 +134,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
     Higher values mean better compression but more CPU usage for nsqd.
 
- * **`sample_rate`** (nsqd 0.2.25+) sample messages delivered over this connection.
+ * **`sample_rate`** (nsqd 0.2.25+) deliver a percentage of all messages received to this connection.
 
     Valid range: `0 <= sample_rate <= 99` (`0` disables sampling)
 
