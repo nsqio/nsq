@@ -25,6 +25,7 @@ languages for NSQ users.
  6. [Message Handling](#message_handling)
  7. [RDY State](#rdy_state)
  8. [Backoff](#backoff)
+ 8. [Encryption/Compression](#encryptioncompression)
 
 ## <a name="configuration">Configuration</a>
 
@@ -400,6 +401,42 @@ or failure results with respect to calculating backoff duration (i.e. it should 
 account *one* result per backoff timeout).
 
 ![nsq_client_flow](http://media.tumblr.com/7adbf06362cc6530153ef35b4dacf2cb/tumblr_inline_mmjev3stkE1qz4rgp.png)
+
+## Encryption/Compression
+
+You have the ability to enable encryption and/or compression via the IDENTIFY request. TLS is used
+for encryption. Both Snappy and DEFLATE are supported for compression. 
+[Snappy](https://code.google.com/p/snappy/) is provided as a third-party library, but may be more 
+easily implemented in some languages due to spotty support for DEFLATE.
+
+When the IDENTIFY response is received and you've requested TLS, if you're set the 
+`feature_negotiation`, you'll get something similar to the following (shown in Python):
+
+{% highlight python %}
+{u'deflate': False,
+ u'deflate_level': 0,
+ u'max_deflate_level': 6,
+ u'max_msg_timeout': 900000,
+ u'max_rdy_count': 2500,
+ u'msg_timeout': 60000,
+ u'sample_rate': 0,
+ u'snappy': True,
+ u'tls_v1': True,
+ u'version': u'0.2.28'}
+ {% endhighlight %}
+
+You will process this, see that `tls_v1` is set to `True` (the affirmative boolean in Python), and
+activate TLS (done, for example, in Python using the `ssl.wrap_socket` call) before anything else is 
+sent or received on the wire. This includes compression, if you've requested it. Once you've 
+activated the encryption, you will wait for and read a properly-framed "OK" response.
+
+In a similar fashion, if you've enabled compression you'll look for `snappy` or `deflate` being
+`True` (or whatever your language's equivalent is). You will then activate the one that you've 
+chosen, and wait for a response (the same as with TLS). These compression methods are 
+mutually-exclusive. You may choose no more than one.
+
+It's very important that you either prevent buffering until you've finished negotiating
+encryption/compression, or make sure to take control of it so it doesn't sabotage your efforts.
 
 ## Bringing It All Together
 
