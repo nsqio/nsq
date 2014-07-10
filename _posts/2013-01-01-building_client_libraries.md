@@ -33,35 +33,36 @@ At a high level, our philosophy with respect to configuration is to design the s
 flexibility to support different workloads, use sane defaults that run well "out of the box", and
 minimize the number of dials.
 
-A client subscribes to a `topic` on a `channel` over a TCP connection to `nsqd` instance(s). You can
-only subscribe to one topic per connection so multiple topic consumption needs to be structured
+A consumer subscribes to a `topic` on a `channel` over a TCP connection to `nsqd` instance(s). You
+can only subscribe to one topic per connection so multiple topic consumption needs to be structured
 accordingly.
 
 Using `nsqlookupd` for discovery is optional so client libraries should support a configuration
-where a client connects *directly* to one or more `nsqd` instances or where it is configured to poll
-one or more `nsqlookupd` instances. When a client is configured to poll `nsqlookupd` the polling
-interval should be configurable. Additionally, because typical deployments of NSQ are in distributed
-environments with many producers and consumers, the client library should automatically add jitter
-based on a random % of the configured value. This will help avoid a thundering herd of connections.
-For more detail see [Discovery](#discovery).
+where a consumer connects *directly* to one or more `nsqd` instances or where it is configured to
+poll one or more `nsqlookupd` instances. When a consumer is configured to poll `nsqlookupd` the
+polling interval should be configurable. Additionally, because typical deployments of NSQ are in
+distributed environments with many producers and consumers, the client library should automatically
+add jitter based on a random % of the configured value. This will help avoid a thundering herd of
+connections. For more detail see [Discovery](#discovery).
 
-An important performance knob for clients is the number of messages it can receive before `nsqd`
+An important performance knob for consumers is the number of messages it can receive before `nsqd`
 expects a response. This pipelining facilitates buffered, batched, and asynchronous message
 handling. By convention this value is called `max_in_flight` and it effects how `RDY` state is
 managed. For more detail see [RDY State](#rdy_state).
 
-Being a system that is designed to gracefully handle failure, client libraries are expected to 
-implement retry handling for failed messages and provide options for bounding that behavior in terms
-of number of attempts per message.  For more detail see [Message Handling](#message_handling).
+Being a system that is designed to gracefully handle failure, client libraries are expected to
+implement retry handling for failed messages and provide options for bounding that behavior in
+terms of number of attempts per message. For more detail see [Message Handling](#message_handling).
 
 Relatedly, when message processing fails, the client library is expected to automatically handle
-re-queueing the message. NSQ supports sending a delay along with the `REQ` command. Client libraries
-are expected to provide options for what this delay should be set to initially (for the first
-failure) and how it should change for subsequent failures. For more detail see [Backoff](#backoff).
+re-queueing the message. NSQ supports sending a delay along with the `REQ` command. Client
+libraries are expected to provide options for what this delay should be set to initially (for the
+first failure) and how it should change for subsequent failures. For more detail see
+[Backoff](#backoff).
 
-Most importantly, the client library should support some method of configuring callback handlers for
-message processing. The signature of these callbacks should be simple, typically accepting a single
-parameter (an instance of a "message object").
+Most importantly, the client library should support some method of configuring callback handlers
+for message processing. The signature of these callbacks should be simple, typically accepting a
+single parameter (an instance of a "message object").
 
 ## <a name="discovery">Discovery</a>
 
@@ -71,12 +72,12 @@ locate producers of a given topic at runtime.
 Although optional, using `nsqlookupd` greatly reduces the amount of configuration required to
 maintain and scale a large distributed NSQ cluster.
 
-When a client uses `nsqlookupd` for discovery, the client library should manage the process of
+When a consumer uses `nsqlookupd` for discovery, the client library should manage the process of
 polling all `nsqlookupd` instances for an up-to-date set of `nsqd` producers and should manage the
 connections to those producers.
 
-Querying an `nsqlookupd` instance is straightforward. Perform an HTTP request to the lookup endpoint
-with a query parameter of the topic the client is attempting to discover (i.e.
+Querying an `nsqlookupd` instance is straightforward. Perform an HTTP request to the lookup
+endpoint with a query parameter of the topic the consumer is attempting to discover (i.e.
 `/lookup?topic=clicks`). The response format is JSON:
 
 {% highlight json %}
@@ -111,18 +112,18 @@ union the lists it received from all `nsqlookupd` queries to build the final lis
 producers to connect to. The `broadcast_address:tcp_port` combination should be used as the unique
 key for this union.
 
-A periodic timer should be used to repeatedly poll the configured `nsqlookupd` so that clients will
-automatically discover new producers. The client library should automatically initiate connections
-to all newly found `nsqd` producers.
+A periodic timer should be used to repeatedly poll the configured `nsqlookupd` so that consumers
+will automatically discover new producers. The client library should automatically initiate
+connections to all newly found `nsqd` producers.
 
 When client library execution begins it should bootstrap this polling process by kicking off an
 initial set of requests to the configured `nsqlookupd` instances.
 
 ## <a name="connection_handling">Connection Handling</a>
 
-Once a client has an `nsqd` producer to connect to (via discovery or manual configuration), it
+Once a consumer has an `nsqd` producer to connect to (via discovery or manual configuration), it
 should open a TCP connection to `broadcast_address:port`. A separate TCP connection should be made
-to each `nsqd` for each topic the client wants to consume.
+to each `nsqd` for each topic the consumer wants to subscribe to.
 
 When connecting to an `nsqd` instance, the client library should send the following data, in order:
 
@@ -137,15 +138,15 @@ When connecting to an `nsqd` instance, the client library should send the follow
 
 Client libraries should automatically handle reconnection as follows:
 
- * If the client is configured with a specific list of `nsqd` instances, reconnection should be
+ * If the consumer is configured with a specific list of `nsqd` instances, reconnection should be
    handled by delaying the retry attempt in an exponential backoff manner (i.e. try to reconnect in
    8s, 16s, 32s, etc., up to a max).
 
- * If the client is configured to discover instances via `nsqlookupd`, reconnection should be
-   handled automatically based on the polling interval (i.e. if a client disconnects from an `nsqd`,
-   the client library should *only* attempt to reconnect if that instance is discovered by a 
-   subsequent `nsqlookupd` polling round). This ensures that clients can learn about producers that 
-   are introduced to the topology *and* ones that are removed (or failed).
+ * If the consumer is configured to discover instances via `nsqlookupd`, reconnection should be
+   handled automatically based on the polling interval (i.e. if a consumer disconnects from an
+   `nsqd`, the client library should *only* attempt to reconnect if that instance is discovered by
+   a subsequent `nsqlookupd` polling round). This ensures that consumers can learn about producers
+   that are introduced to the topology *and* ones that are removed (or failed).
 
 ## <a name="feature_negotiation">Feature Negotiation</a>
 
@@ -189,7 +190,7 @@ More detail on the use of the `max_rdy_count` field is in the [RDY State](#rdy_s
 
 ## <a name="data_flow">Data Flow and Heartbeats</a>
 
-Once a client is in a subscribed state, data flow in the NSQ protocol is asynchronous. For
+Once a consumer is in a subscribed state, data flow in the NSQ protocol is asynchronous. For
 consumers, this means that in order to build truly robust and performant client libraries they
 should be structured using asynchronous network IO loops and/or "threads" (the scare quotes are used
 to represent both OS-level threads and userland threads, like coroutines).
@@ -223,13 +224,13 @@ above, makes for a more robust and stable system.
 
 The only errors that are not fatal are:
 
- * `E_FIN_FAILED` - The client tried to send a `FIN` command for an invalid message ID.
- * `E_REQ_FAILED` - The client tried to send a `REQ` command for an invalid message ID.
- * `E_TOUCH_FAILED` - The client tried to send a `TOUCH` command for an invalid message ID.
+ * `E_FIN_FAILED` - a `FIN` command for an invalid message ID
+ * `E_REQ_FAILED` - a `REQ` command for an invalid message ID
+ * `E_TOUCH_FAILED` - a `TOUCH` command for an invalid message ID
 
 Because these errors are most often timing issues, they are not considered fatal. These situations
 typically occur when a message times out on the `nsqd` side and is re-queued and delivered to
-another client. The original recipient is no longer allowed to respond on behalf of that message.
+another consumer. The original recipient is no longer allowed to respond on behalf of that message.
 
 ## <a name="message_handling">Message Handling</a>
 
@@ -244,26 +245,26 @@ seconds). There are a few possible scenarios:
  3. The handler decides that it needs more time to process the message.
  4. The in-flight timeout expires and `nsqd` automatically re-queues the message.
 
-In the first 3 cases, the client library should send the appropriate command on the client's behalf
-(`FIN`, `REQ`, and `TOUCH` respectively).
+In the first 3 cases, the client library should send the appropriate command on the consumer's
+behalf (`FIN`, `REQ`, and `TOUCH` respectively).
 
 The `FIN` command is the simplest of the bunch. It tells `nsqd` that it can safely discard the
 message. `FIN` can also be used to discard a message that you do not want to process or retry.
 
 The `REQ` command tells `nsqd` that the message should be re-queued (with an optional parameter
 specifying the amount of time to *defer* additional attempts). If the optional parameter is not
-specified by the client, the client library should automatically calculate the duration in relation
-to the number of attempts to process the message (a multiple is typically sufficient). The client
-library should discard messages that exceed the configured max attempts. When this occurs, a
+specified by the consumer, the client library should automatically calculate the duration in
+relation to the number of attempts to process the message (a multiple is typically sufficient). The
+client library should discard messages that exceed the configured max attempts. When this occurs, a
 user-supplied callback should be executed to notify and enable special handling.
 
 If the message handler requires more time than the configured message timeout, the `TOUCH` command
 can be used to reset the timer on the `nsqd` side. This can be done repeatedly until the message is
 either `FIN` or `REQ`, up to the `nsqd` producer's configured max timeout.  Client libraries should
-never *automatically* `TOUCH` on behalf of the client.
+never *automatically* `TOUCH` on behalf of the consumer.
 
 If the `nsqd` instance receives *no* response, the message will time out and be automatically
-re-queued for delivery to an available client.
+re-queued for delivery to an available consumer.
 
 Finally, a property of each message is the number of attempts. Client libraries should compare this
 value against the configured max and discard messages that have exceeded it. When a message is
@@ -273,16 +274,16 @@ default handling.
 
 ## <a name="rdy_state">RDY State</a>
 
-Because messages are *pushed* from `nsqd` to clients we needed a way to manage the flow of data in
-userland rather than relying on low-level TCP semantics. A client's `RDY` state is NSQ's flow
+Because messages are *pushed* from `nsqd` to consumers we needed a way to manage the flow of data in
+user-land rather than relying on low-level TCP semantics. A consumer's `RDY` state is NSQ's flow
 control mechanism.
 
 As outlined in the [configuration section](#configuration), a consumer is configured with a
 `max_in_flight`. This is a concurrency and performance knob, e.g. some downstream systems are able
 to more-easily batch process messages and benefit greatly from a higher `max-in-flight`.
 
-When a client connects to `nsqd` (and subscribes) it is placed in an initial `RDY` state of `0`. No
-messages will be sent to the client.
+When a consumer connects to `nsqd` (and subscribes) it is placed in an initial `RDY` state of `0`.
+No messages will be delivered.
 
 Client libraries have a few responsibilities:
 
@@ -341,19 +342,19 @@ def send_ready(reader, conn, count):
 ### 3. Producer Max RDY Count
 
 Each `nsqd` is configurable with a `--max-rdy-count` (see [feature
-negotiation](#feature_negotiation) for more information on the handshake a client can perform to
-ascertain this value). If the client sends a `RDY` count that is outside of the acceptable range its
-connection will be forcefully closed. For backwards compatibility, this value should be assumed to
-be `2500` if the `nsqd` instance does not support [feature negotiation](#feature_negotiation).
+negotiation](#feature_negotiation) for more information on the handshake a consumer can perform to
+ascertain this value). If the consumer sends a `RDY` count that is outside of the acceptable range
+its connection will be forcefully closed. For backwards compatibility, this value should be assumed
+to be `2500` if the `nsqd` instance does not support [feature negotiation](#feature_negotiation).
 
 ### 4. Message Flow Starvation
 
 Finally, the client library should provide an API method to indicate message flow starvation. It is
-insufficient for clients (in their message handlers) to simply compare the number of messages they
+insufficient for consumers (in their message handlers) to simply compare the number of messages they
 have in-flight vs. their configured `max_in_flight` in order to decide to "process a batch". There
 are two cases when this is problematic:
 
- 1. When clients configure `max_in_flight > 1`, due to variable `num_conns`, there are
+ 1. When consumers configure `max_in_flight > 1`, due to variable `num_conns`, there are
     cases where `max_in_flight` is not evenly divisible by `num_conns`. Because the contract states 
     that you should never *exceed* `max_in_flight`, you must round down, and you end up with cases 
     where the sum of all `RDY` counts is less than `max_in_flight`.
@@ -361,7 +362,7 @@ are two cases when this is problematic:
     distribution](#bootstrap_and_distribution) of `RDY` count, those active producers only have a 
     fraction of the configured `max_in_flight`.
 
-In both cases, a client will never actually receive `max_in_flight` # of messages. Therefore, the
+In both cases, a consumer will never actually receive `max_in_flight` # of messages. Therefore, the
 client library should expose a method `is_starved` that will evaluate whether *any* of the
 connections are starved, as follows:
 
@@ -451,13 +452,17 @@ some light as to how important the client's role is.
 In terms of actually implementing all of this, we treat [pynsq][pynsq] and [go-nsq][go-nsq] as our
 reference codebases. The structure of [pynsq][pynsq] can be broken down into three core components:
 
- * `Message` - a high-level message object, which exposes stateful methods for responding to the 
+ * `Message` - a high-level message object, which exposes stateful methods for responding to the
    `nsqd` producer (`FIN`, `REQ`, `TOUCH`, etc.) as well as metadata such as attempts and timestamp.
- * `Connection` - a high-level wrapper around a TCP connection to a specific `nsqd` producer, which 
+
+ * `Connection` - a high-level wrapper around a TCP connection to a specific `nsqd` producer, which
    has knowledge of in flight messages, its `RDY` state, negotiated features, and various timings.
- * `Reader` - the front-facing API a user interacts with, which handles discovery, creates 
-   connections (and subscribes), bootstraps and manages `RDY` state, parses raw incoming data, 
+
+ * `Consumer` - the front-facing API a user interacts with, which handles discovery, creates
+   connections (and subscribes), bootstraps and manages `RDY` state, parses raw incoming data,
    creates `Message` objects, and dispatches messages to handlers.
+
+ * `Producer` - the front-facing API a user interacts with, which handles publishing.
 
 We're happy to help support anyone interested in building client libraries for NSQ. We're looking
 for contributors to continue to expand our language support as well as flesh out functionality in
