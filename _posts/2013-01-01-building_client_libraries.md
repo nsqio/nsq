@@ -163,17 +163,17 @@ command, the body of which is a JSON payload:
 
 {% highlight json %}
 {
-    "short_id": "app01",
-    "long_id": "app01.bitly.net",
+    "client_id": "metrics_increment",
+    "hostname": "app01.bitly.net",
     "heartbeat_interval": 30000,
     "feature_negotiation": true
 }
 {% endhighlight %}
 
-The `feature_negotiation` field indicates that the client can *accept* a JSON payload in return. The
-`short_id` and `long_id` are arbitrary text fields that are used by `nsqd` (and `nsqadmin`) to
-identify clients. `heartbeat_interval` configures the interval between heartbeats on a per-client
-basis.
+The `feature_negotiation` field indicates that the client can *accept* a JSON payload in return.
+The `client_id` and `hostname` are arbitrary text fields that are used by `nsqd` (and `nsqadmin`)
+to identify clients. `heartbeat_interval` configures the interval between heartbeats on a
+per-client basis.
 
 The `nsqd` will respond `OK` if it does not support feature negotiation (introduced in `nsqd`
 v0.2.20+), otherwise:
