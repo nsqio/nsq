@@ -67,14 +67,14 @@ single parameter (an instance of a "message object").
 ## <a name="discovery">Discovery</a>
 
 An important component of NSQ is `nsqlookupd`, which provides a discovery service for consumers to
-locate producers of a given topic at runtime.
+locate the `nsqd` that provide a given topic at runtime.
 
 Although optional, using `nsqlookupd` greatly reduces the amount of configuration required to
 maintain and scale a large distributed NSQ cluster.
 
 When a consumer uses `nsqlookupd` for discovery, the client library should manage the process of
-polling all `nsqlookupd` instances for an up-to-date set of `nsqd` producers and should manage the
-connections to those producers.
+polling all `nsqlookupd` instances for an up-to-date set of `nsqd` providing the topic in question,
+and should manage the connections to those `nsqd`.
 
 Querying an `nsqlookupd` instance is straightforward. Perform an HTTP request to the lookup
 endpoint with a query parameter of the topic the consumer is attempting to discover (i.e.
@@ -106,24 +106,23 @@ endpoint with a query parameter of the topic the consumer is attempting to disco
 }
 {% endhighlight %}
 
-The `broadcast_address` and `tcp_port` should be used to connect to an `nsqd` producer. Because, by
-design, `nsqlookupd` instances don't coordinate their lists of producers, the client library should
-union the lists it received from all `nsqlookupd` queries to build the final list of `nsqd`
-producers to connect to. The `broadcast_address:tcp_port` combination should be used as the unique
-key for this union.
+The `broadcast_address` and `tcp_port` should be used to connect to an `nsqd`. Because, by design,
+`nsqlookupd` instances don't share or coordinate their data, the client library should union the
+lists it received from all `nsqlookupd` queries to build the final list of `nsqd` to connect to.
+The `broadcast_address:tcp_port` combination should be used as the unique key for this union.
 
 A periodic timer should be used to repeatedly poll the configured `nsqlookupd` so that consumers
-will automatically discover new producers. The client library should automatically initiate
-connections to all newly found `nsqd` producers.
+will automatically discover new `nsqd`. The client library should automatically initiate
+connections to all newly discovered instances.
 
 When client library execution begins it should bootstrap this polling process by kicking off an
 initial set of requests to the configured `nsqlookupd` instances.
 
 ## <a name="connection_handling">Connection Handling</a>
 
-Once a consumer has an `nsqd` producer to connect to (via discovery or manual configuration), it
-should open a TCP connection to `broadcast_address:port`. A separate TCP connection should be made
-to each `nsqd` for each topic the consumer wants to subscribe to.
+Once a consumer has an `nsqd` to connect to (via discovery or manual configuration), it should open
+a TCP connection to `broadcast_address:port`. A separate TCP connection should be made to each
+`nsqd` for each topic the consumer wants to subscribe to.
 
 When connecting to an `nsqd` instance, the client library should send the following data, in order:
 
@@ -145,7 +144,7 @@ Client libraries should automatically handle reconnection as follows:
  * If the consumer is configured to discover instances via `nsqlookupd`, reconnection should be
    handled automatically based on the polling interval (i.e. if a consumer disconnects from an
    `nsqd`, the client library should *only* attempt to reconnect if that instance is discovered by
-   a subsequent `nsqlookupd` polling round). This ensures that consumers can learn about producers
+   a subsequent `nsqlookupd` polling round). This ensures that consumers can learn about `nsqd`
    that are introduced to the topology *and* ones that are removed (or failed).
 
 ## <a name="feature_negotiation">Feature Negotiation</a>
@@ -237,7 +236,7 @@ another consumer. The original recipient is no longer allowed to respond on beha
 When the IO loop unpacks a data frame containing a message, it should route that message to the
 configured handler for processing.
 
-The `nsqd` producer expects to receive a reply within its configured message timeout (default: 60
+The sending `nsqd` expects to receive a reply within its configured message timeout (default: 60
 seconds). There are a few possible scenarios:
 
  1. The handler indicates that the message was processed successfully.
@@ -260,11 +259,11 @@ user-supplied callback should be executed to notify and enable special handling.
 
 If the message handler requires more time than the configured message timeout, the `TOUCH` command
 can be used to reset the timer on the `nsqd` side. This can be done repeatedly until the message is
-either `FIN` or `REQ`, up to the `nsqd` producer's configured max timeout.  Client libraries should
-never *automatically* `TOUCH` on behalf of the consumer.
+either `FIN` or `REQ`, up to the sending `nsqd`'s configured `max_msg_timeout`. Client libraries
+should never *automatically* `TOUCH` on behalf of the consumer.
 
-If the `nsqd` instance receives *no* response, the message will time out and be automatically
-re-queued for delivery to an available consumer.
+If the sending `nsqd` instance receives *no* response, the message will time out and be
+automatically re-queued for delivery to an available consumer.
 
 Finally, a property of each message is the number of attempts. Client libraries should compare this
 value against the configured max and discard messages that have exceeded it. When a message is
@@ -299,7 +298,7 @@ There are a few considerations when choosing an appropriate `RDY` count for a co
 to evenly distribute `max_in_flight`):
 
  * the # of connections is dynamic, often times not even known in advance (ie. when
-  *discovering* producers via `nsqlookupd`).
+  *discovering* `nsqd` via `nsqlookupd`).
  * `max_in_flight` may be *lower* than your number of connections
 
 To kickstart message flow a client library needs to send an *initial* `RDY` count. Because the
@@ -314,11 +313,11 @@ The client library should always attempt to evenly distribute `RDY` count across
 Typically, this is implemented as `max_in_flight / num_conns`.
 
 However, when `max_in_flight < num_conns` this simple formula isn't sufficient. In this state,
-client libraries should perform a dynamic runtime evaluation of producer "liveness" by measuring the
-duration of time since it last received a message for a connection. After a configurable expiration,
-it should *re-distribute* whatever `RDY` count is available to a new (random) set of producers. By
-doing this, you guarantee that you'll (eventually) find producers with messages. Clearly this has a
-latency impact.
+client libraries should perform a dynamic runtime evaluation of connected `nsqd` "liveness" by
+measuring the duration of time since it last received a message over a given connection. After a
+configurable expiration, it should *re-distribute* whatever `RDY` count is available to a new
+(random) set of `nsqd`. By doing this, you guarantee that you'll (eventually) find `nsqd` with
+messages. Clearly this has a latency impact.
 
 ### 2. Maintaining `max_in_flight`
 
@@ -339,7 +338,7 @@ def send_ready(reader, conn, count):
     reader.total_ready_count += count
 {% endhighlight %}
 
-### 3. Producer Max RDY Count
+### 3. `nsqd` Max RDY Count
 
 Each `nsqd` is configurable with a `--max-rdy-count` (see [feature
 negotiation](#feature_negotiation) for more information on the handshake a consumer can perform to
@@ -358,8 +357,8 @@ are two cases when this is problematic:
     cases where `max_in_flight` is not evenly divisible by `num_conns`. Because the contract states 
     that you should never *exceed* `max_in_flight`, you must round down, and you end up with cases 
     where the sum of all `RDY` counts is less than `max_in_flight`.
- 2. Consider the case where only a subset of producers have messages. Because of the expected [even 
-    distribution](#bootstrap_and_distribution) of `RDY` count, those active producers only have a 
+ 2. Consider the case where only a subset of `nsqd` have messages. Because of the expected [even 
+    distribution](#bootstrap_and_distribution) of `RDY` count, those active `nsqd` only have a 
     fraction of the configured `max_in_flight`.
 
 In both cases, a consumer will never actually receive `max_in_flight` # of messages. Therefore, the
@@ -390,7 +389,7 @@ By slowing down the rate of processing, or "backing off", the consumer allows th
 to recover from transient failure. However, this behavior should be configurable as it isn't always
 desirable, such as situations where *latency* is prioritized.
 
-Backoff should be implemented by sending `RDY 0` to the appropriate producers, stopping message
+Backoff should be implemented by sending `RDY 0` to the appropriate `nsqd`, stopping message
 flow. The duration of time to remain in this state should be calculated based on the number of
 repeated failures (exponential). Similarly, successful processing should reduce this duration until
 the reader is no longer in a backoff state.
@@ -452,11 +451,11 @@ some light as to how important the client's role is.
 In terms of actually implementing all of this, we treat [pynsq][pynsq] and [go-nsq][go-nsq] as our
 reference codebases. The structure of [pynsq][pynsq] can be broken down into three core components:
 
- * `Message` - a high-level message object, which exposes stateful methods for responding to the
-   `nsqd` producer (`FIN`, `REQ`, `TOUCH`, etc.) as well as metadata such as attempts and timestamp.
+ * `Message` - a high-level message object, which exposes stateful methods for responding to `nsqd`
+   (`FIN`, `REQ`, `TOUCH`, etc.) as well as metadata such as attempts and timestamp.
 
- * `Connection` - a high-level wrapper around a TCP connection to a specific `nsqd` producer, which
-   has knowledge of in flight messages, its `RDY` state, negotiated features, and various timings.
+ * `Connection` - a high-level wrapper around a TCP connection to a specific `nsqd`, which has
+   knowledge of in flight messages, its `RDY` state, negotiated features, and various timings.
 
  * `Consumer` - the front-facing API a user interacts with, which handles discovery, creates
    connections (and subscribes), bootstraps and manages `RDY` state, parses raw incoming data,
