@@ -192,6 +192,19 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
   </tr>
+  <tr class="success">
+    <td><a href="https://github.com/DaDDyE/ruby_nsq">ruby_nsq</a></td>
+    <td>Ruby</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
   <tr class="info">
     <td><a href="https://github.com/mreiferson/libnsq">libnsq</a></td>
     <td>C</td>
@@ -238,19 +251,6 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
     <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-  </tr>
-  <tr class="info">
-    <td><a href="https://github.com/ClarityServices/ruby_nsq">ruby_nsq</a></td>
-    <td>Ruby</td>
-    <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i></td>
-    <td></td>
-    <td><i class="fa fa-check"></i></td>
     <td></td>
     <td></td>
     <td></td>
