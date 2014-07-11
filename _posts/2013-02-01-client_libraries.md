@@ -21,7 +21,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <th>Snappy</th>
     <th>Sampling</th>
     <th>AUTH</th>
-    <th>In Prod.</th>
+    <th>Notes</th>
   </tr>
   <tr class="success">
     <td><a href="http://nsq.io/components/nsqd.html#http_api">nsqd</a></td>
@@ -34,7 +34,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i> (<strong>built-in</strong>)</td>
+    <td><strong>built-in</strong></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/bitly/go-nsq">go-nsq</a></td>
@@ -47,7 +47,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i> (<strong>official</strong>)</td>
+    <td><strong>official</strong></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/bitly/pynsq">pynsq</a></td>
@@ -60,7 +60,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i> (<strong>official</strong>)</td>
+    <td><strong>official</strong></td>
   </tr>
   <tr class="success">
       <td><a href="https://github.com/dlecocq/nsq-py">nsq-py</a></td>
@@ -73,7 +73,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
       <td></td>
       <td><i class="fa fa-check"></i></td>
       <td></td>
-      <td><i class="fa fa-check"></i></td>
+      <td></td>
   </tr>
   <tr class="success">
       <td><a href="https://github.com/wtolson/gnsq">gnsq</a></td>
@@ -86,7 +86,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
       <td><i class="fa fa-check"></i></td>
       <td><i class="fa fa-check"></i></td>
       <td></td>
-      <td><i class="fa fa-check"></i></td>
+      <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/chrisroberts/krakow">krakow</a></td>
@@ -99,7 +99,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><i class="fa fa-check"></i></td>
     <td><i class="fa fa-check"></i></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/project-fifo/ensq">ensq</a></td>
@@ -112,7 +112,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/dudleycarr/nsqjs">nsqjs</a></td>
@@ -125,7 +125,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"> (<strong>official</strong>)</i></td>
+    <td><strong>official</strong></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/segmentio/nsq.js">nsq.js</a></td>
@@ -138,7 +138,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/dustismo/TrendrrNSQClient">TrendrrNSQClient</a></td>
@@ -151,7 +151,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/domwong/nsqjava">nsqjava</a></td>
@@ -164,7 +164,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/davegardnerisme/nsqphp">nsqphp</a></td>
@@ -177,7 +177,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/brianc/node-nsqueue">node-nsqueue</a></td>
@@ -190,7 +190,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td><i class="fa fa-check"></i></td>
+    <td></td>
   </tr>
   <tr class="info">
     <td><a href="https://github.com/mreiferson/libnsq">libnsq</a></td>
@@ -203,7 +203,20 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-    <td>(<strong>official</strong>)</td>
+    <td><strong>official</strong></td>
+  </tr>
+  <tr class="info">
+    <td><a href="https://github.com/dsoprea/NsqSpinner">NsqSpinner</a></td>
+    <td>Python</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
   </tr>
   <tr class="info">
     <td><a href="https://github.com/bitly/nsq-java">nsq-java</a></td>
