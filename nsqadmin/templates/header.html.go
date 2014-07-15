@@ -8,8 +8,10 @@ func init() {
         <meta http-equiv="Content-type" content="text/html; charset=utf-8">
         <title>{{.Title}}</title>
         <!-- from http://www.bootstrapcdn.com/ -->
-        <script src="//code.jquery.com/jquery-1.10.1.min.js"></script>
-        <link rel="stylesheet" href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" type="text/css" charset="utf-8">
+
+        <script src="/static/jquery-1.8.2.min.js"></script>
+        <link rel="stylesheet" href="/static/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" type="text/css" charset="utf-8">
+
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style type="text/css">
         .red {
