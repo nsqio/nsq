@@ -336,9 +336,8 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID) error {
 	}
 	c.removeFromInFlightPQ(msg)
 
-	currentTimeout := time.Unix(0, msg.pri)
-	newTimeout := currentTimeout.Add(c.context.nsqd.options.MsgTimeout)
-	if newTimeout.Add(c.context.nsqd.options.MsgTimeout).Sub(msg.deliveryTS) >=
+	newTimeout := time.Now().Add(c.context.nsqd.options.MsgTimeout)
+	if newTimeout.Sub(msg.deliveryTS) >=
 		c.context.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
 		newTimeout = msg.deliveryTS.Add(c.context.nsqd.options.MaxMsgTimeout)
