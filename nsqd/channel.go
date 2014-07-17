@@ -632,7 +632,9 @@ func (c *Channel) inFlightWorker() {
 				break
 			}
 			atomic.AddUint64(&c.timeoutCount, 1)
+			c.RLock()
 			client, ok := c.clients[msg.clientID]
+			c.RUnlock()
 			if ok {
 				client.TimedOutMessage()
 			}
