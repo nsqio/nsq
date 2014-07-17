@@ -43,13 +43,16 @@ func (pq *inFlightPqueue) Pop() *Message {
 }
 
 func (pq *inFlightPqueue) Remove(i int) *Message {
-	n := len(*pq) - 1
-	if n != i {
-		pq.Swap(i, n)
-		pq.down(i, n)
+	n := len(*pq)
+	if n-1 != i {
+		pq.Swap(i, n-1)
+		pq.down(i, n-1)
 		pq.up(i)
 	}
-	return pq.Pop()
+	x := (*pq)[n-1]
+	x.index = -1
+	*pq = (*pq)[0 : n-1]
+	return x
 }
 
 func (pq *inFlightPqueue) PeekAndShift(max int64) (*Message, int64) {

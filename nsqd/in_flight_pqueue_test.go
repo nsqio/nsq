@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
@@ -50,19 +51,31 @@ func TestRemove(t *testing.T) {
 	c := 100
 	pq := newInFlightPqueue(c)
 
+	msgs := make(map[MessageID]*Message)
 	for i := 0; i < c; i++ {
-		v := rand.Int()
-		pq.Push(&Message{pri: int64(v)})
+		m := &Message{pri: int64(rand.Intn(100000000))}
+		copy(m.ID[:], fmt.Sprintf("%016d", m.pri))
+		msgs[m.ID] = m
+		pq.Push(m)
 	}
 
 	for i := 0; i < 10; i++ {
-		pq.Remove(rand.Intn((c - 1) - i))
+		idx := rand.Intn((c - 1) - i)
+		var fm *Message
+		for _, m := range msgs {
+			if m.index == idx {
+				fm = m
+				break
+			}
+		}
+		rm := pq.Remove(idx)
+		assert.Equal(t, fmt.Sprintf("%s", fm.ID), fmt.Sprintf("%s", rm.ID))
 	}
 
 	lastPriority := pq.Pop().pri
 	for i := 0; i < (c - 10 - 1); i++ {
 		msg := pq.Pop()
-		assert.Equal(t, lastPriority < msg.pri, true)
+		assert.Equal(t, lastPriority <= msg.pri, true)
 		lastPriority = msg.pri
 	}
 }
