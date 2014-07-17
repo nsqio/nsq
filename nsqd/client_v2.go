@@ -156,6 +156,8 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
+	log.Printf("[%s] IDENTIFY: %+v", c, data)
+
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
 	if hostname == "" {
