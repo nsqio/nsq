@@ -329,14 +329,14 @@ func (c *Channel) PutMessage(msg *Message) error {
 }
 
 // TouchMessage resets the timeout for an in-flight message
-func (c *Channel) TouchMessage(clientID int64, id MessageID) error {
+func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout time.Duration) error {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
 
-	newTimeout := time.Now().Add(c.context.nsqd.options.MsgTimeout)
+	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.context.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
