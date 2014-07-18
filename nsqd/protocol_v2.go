@@ -810,7 +810,10 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
-	err = client.Channel.TouchMessage(client.ID, *id)
+	client.RLock()
+	msgTimeout := client.MsgTimeout
+	client.RUnlock()
+	err = client.Channel.TouchMessage(client.ID, *id, msgTimeout)
 	if err != nil {
 		return nil, util.NewClientErr(err, "E_TOUCH_FAILED",
 			fmt.Sprintf("TOUCH %s failed %s", *id, err.Error()))
