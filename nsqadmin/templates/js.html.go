@@ -2,8 +2,8 @@ package templates
 
 func init() {
 	registerTemplate("js.html", `
-<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
-<script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/js/bootstrap.min.js"></script>
+<script src="/static/jquery-1.8.2.min.js"></script>
+<script src="/static/twitter-bootstrap/2.2.1/js/bootstrap.min.js"></script>
 <script>
 $('.dropdown-toggle').dropdown()
 

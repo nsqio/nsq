@@ -64,6 +64,7 @@ func NewHTTPServer(context *Context) *httpServer {
 			return ""
 		},
 	})
+
 	templates.Parse()
 
 	if context.nsqadmin.options.ProxyGraphite {
@@ -83,11 +84,20 @@ func NewHTTPServer(context *Context) *httpServer {
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+
 	if strings.HasPrefix(req.URL.Path, "/node/") {
 		s.nodeHandler(w, req)
 		return
 	} else if strings.HasPrefix(req.URL.Path, "/topic/") {
 		s.topicHandler(w, req)
+		return
+	} else if strings.HasPrefix(req.URL.Path, "/static/") {
+		if req.Method != "GET" {
+			log.Printf("ERROR: invalid %s to GET only method", req.Method)
+			http.Error(w, "INVALID_REQUEST", 500)
+		} else {
+			s.embeddedAssetHandler(w, req)
+		}
 		return
 	}
 
@@ -141,6 +151,34 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
+}
+
+func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request) {
+	var urlRegex = regexp.MustCompile(`^/static/(.+)$`)
+	matches := urlRegex.FindStringSubmatch(req.URL.Path)
+	if len(matches) == 0 {
+		log.Printf("ERROR:  No embedded asset name for url - %s", req.URL.Path)
+		http.NotFound(w, req)
+		return
+	}
+	assetName := matches[1]
+	log.Printf("INFO: Requesting embedded asset - %s", assetName)
+
+	asset, error := templates.Asset(assetName)
+	if error != nil {
+		log.Printf("ERROR: embedded asset access - %s : %s", assetName, error)
+		http.NotFound(w, req)
+		return
+	}
+	assetLen := len(asset)
+
+	if strings.HasSuffix(assetName, ".js") {
+		w.Header().Set("Content-Type", "text/javascript")
+	} else if strings.HasSuffix(assetName, ".css") {
+		w.Header().Set("Content-Type", "text/css")
+	}
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", assetLen))
+	w.Write(asset)
 }
 
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
