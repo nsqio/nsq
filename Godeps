@@ -20,7 +20,7 @@
 		{
 			"ImportPath": "github.com/bitly/go-nsq",
 			"Comment": "v1.0.0-alpha",
-			"Rev": "463df49ca3e4b7cee68cd1e2933530877050aa52"
+			"Rev": "15045438e48e3f0bb674b7aff030d09c03ba9ae3"
 		},
 		{
 			"ImportPath": "github.com/bitly/go-simplejson",
