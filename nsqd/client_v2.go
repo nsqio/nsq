@@ -53,12 +53,11 @@ type identifyEvent struct {
 
 type clientV2 struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	ReadyCount     int64
-	LastReadyCount int64
-	InFlightCount  int64
-	MessageCount   uint64
-	FinishCount    uint64
-	RequeueCount   uint64
+	ReadyCount    int64
+	InFlightCount int64
+	MessageCount  uint64
+	FinishCount   uint64
+	RequeueCount  uint64
 
 	sync.RWMutex
 
@@ -325,15 +324,14 @@ func (c *clientV2) IsReadyForMessages() bool {
 	}
 
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if c.ctx.nsqd.opts.Verbose {
-		c.ctx.nsqd.logf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
-			readyCount, lastReadyCount, inFlightCount)
+		c.ctx.nsqd.logf("[%s] state rdy: %4d inflt: %4d",
+			c, readyCount, inFlightCount)
 	}
 
-	if inFlightCount >= lastReadyCount || readyCount <= 0 {
+	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
 	}
 
@@ -342,7 +340,6 @@ func (c *clientV2) IsReadyForMessages() bool {
 
 func (c *clientV2) SetReadyCount(count int64) {
 	atomic.StoreInt64(&c.ReadyCount, count)
-	atomic.StoreInt64(&c.LastReadyCount, count)
 	c.tryUpdateReadyState()
 }
 
@@ -368,7 +365,6 @@ func (c *clientV2) Empty() {
 }
 
 func (c *clientV2) SendingMessage() {
-	atomic.AddInt64(&c.ReadyCount, -1)
 	atomic.AddInt64(&c.InFlightCount, 1)
 	atomic.AddUint64(&c.MessageCount, 1)
 }
