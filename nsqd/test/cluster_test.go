@@ -1,4 +1,4 @@
-package nsq
+package donotimport
 
 import (
 	"fmt"
