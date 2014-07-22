@@ -204,7 +204,7 @@ func TestClientTimeout(t *testing.T) {
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	options := NewNSQDOptions()
-	options.ClientTimeout = 50 * time.Millisecond
+	options.ClientTimeout = 150 * time.Millisecond
 	options.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
@@ -215,7 +215,7 @@ func TestClientTimeout(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 
 	// depending on timing there may be 1 or 2 hearbeats sent
 	// just read until we get an error
