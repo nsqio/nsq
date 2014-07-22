@@ -102,6 +102,8 @@ func main() {
 
 }
 
+// readAndPublish reads to the delim from r and publishes the bytes
+// to the map of producers.
 func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Producer) error {
 
 	line, readErr := r.ReadBytes(delim)
@@ -111,7 +113,6 @@ func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Produ
 	}
 	if len(line) > 0 {
 		for _, producer := range producers {
-			log.Println(">>>", string(line))
 			if err := producer.Publish(*topic, line); err != nil {
 				return err
 			}
