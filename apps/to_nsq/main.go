@@ -33,7 +33,7 @@ func init() {
 var logger *log.Logger
 
 func main() {
-	logger = log.New(os.Stdout, "", log.LstdFlags)
+	logger = log.New(os.Stderr, "", log.LstdFlags)
 
 	// handle stopping
 	stopChan := make(chan bool)
