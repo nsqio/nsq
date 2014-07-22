@@ -2,6 +2,66 @@
 
 ## Binaries
 
+### 0.2.29 - 2014-07-25
+
+**Upgrading from 0.2.28**: No backwards incompatible changes.
+
+This release includes a slew of new features and bug fixes, with contributions from 8
+members of the community, thanks!
+
+The most important new feature is authentication (the `AUTH` command for `nsqd`), added in #356.
+When `nsqd` is configured with an `--auth-http-address` it will require clients to send the `AUTH`
+command. The `AUTH` command body is opaque to `nsqd`, it simply passes it along to the configured
+auth daemon which responds with well formed JSON, indicating which topics/channels and properties
+on those entities are accessible to that client (rejecting the client if it accesses anything
+prohibited). For more details, see [the spec](http://nsq.io/clients/tcp_protocol_spec.html) or [the
+`nsqd` guide](http://nsq.io/components/nsqd.html#auth).
+
+Additionally, we've improved performance in a few areas. First, we refactored in-flight handling in
+`nsqd` to reduce garbage creation and improve baseline performance 6%. End-to-end processing
+latency calculations are also significantly faster, thanks to improvements in the
+[`perks`](https://github.com/bmizerany/perks/pulls/7) package.
+
+HTTP response formats have been improved (removing the redundant response wrapper) and cleaning up
+some of the endpoint namespaces. This change is backwards compatible. Clients wishing to move
+towards the new response format can either use the new endpoint names or send the following header:
+
+    Accept: application/vnd.nsq version=1.0
+
+Other changes including officially bumping the character limit for topic and channel names to 64
+(thanks @svmehta), making the `REQ` timeout limit configurable in `nsqd` (thanks @AlphaB), and
+compiling static asset dependencies into `nsqadmin` to simplify deployment (thanks @crossjam).
+
+Finally, `to_nsq` was added to the suite of bundled apps. It takes a stdin stream and publishes to
+`nsqd`, an extremely flexible solution (thanks @matryer)!
+
+As for bugs, they're mostly minor, see the pull requests referenced in the section below for
+details.
+
+New Features / Enhancements:
+
+ * #304 - apps: added `to_nsq` for piping stdin to NSQ (thanks @matryer)
+ * #406 - `nsqadmin`: embed external static asset dependencies (thanks @crossjam)
+ * #389 - apps: report app name and version via `user_agent`
+ * #378/#390 - `nsqd`: improve in-flight message handling (6% faster, GC reduction)
+ * #356/#370/#386 - `nsqd`: introduce `AUTH`
+ * #358 - increase topic/channel name max length to 64 (thanks @svmehta)
+ * #357 - remove internal `go-nsq` dependencies (GC reduction)
+ * #330/#366 - version HTTP endpoints, simplify response format
+ * #352 - `nsqd`: make `REQ` timeout limit configurable (thanks @AlphaB)
+ * #340 - `nsqd`: bump perks dependency (E2E performance improvement, see 25086e4)
+
+Bugs:
+
+ * #384 - `nsqd`: fix statsd GC time reporting
+ * #407 - `nsqd`: fix double `TOUCH` and use of client's configured msg timeout
+ * #392 - `nsqadmin`: fix HTTPS warning (thanks @juliangruber)
+ * #383 - `nsqlookupd`: fix race on last update timestamp
+ * #385 - `nsqd`: properly handle empty `FIN`
+ * #365 - `nsqd`: fix `IDENTIFY` `msg_timeout` response (thanks @visionmedia)
+ * #345 - `nsq_to_file`: set proper permissions on new directories (thanks @bschwartz)
+ * #338 - `nsqd`: fix windows diskqueue filenames (thanks @politician)
+
 ### 0.2.28 - 2014-04-28
 
 **Upgrading from 0.2.27**: No backwards incompatible changes.  We've deprecated the `short_id`

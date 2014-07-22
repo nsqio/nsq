@@ -1,5 +1,5 @@
 %define name nsq
-%define version 0.2.28
+%define version 0.2.29
 %define release 1
 %define path usr/local
 %define group Database/Applications
@@ -18,7 +18,7 @@ AutoReqProv: no
 # BuildRequires: go
 
 %description 
-nsq - realtime distributed message processing at scale
+NSQ - A realtime distributed messaging platform
 https://github.com/bitly/nsq
 
 %prep
@@ -46,3 +46,4 @@ make PREFIX=/${path} DESTDIR=$RPM_BUILD_ROOT install
 /%{path}/bin/nsq_to_nsq
 /%{path}/bin/nsq_tail
 /%{path}/bin/nsq_stat
+/%{path}/bin/to_nsq

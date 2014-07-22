@@ -21,7 +21,7 @@ Python libraries are available out of the box (as well as many other [client
 libraries][client_libraries]) and, if you're interested in building your own, there's a [protocol
 spec][protocol].
 
-The latest stable release is **[0.2.28][latest_tag]** ([ChangeLog][changelog]). We publish [binary
+The latest stable release is **[0.2.29][latest_tag]** ([ChangeLog][changelog]). We publish [binary
 releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
@@ -77,7 +77,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
 [features_guarantees]: http://nsq.io/overview/features_and_guarantees.html
-[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.2.28
+[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.2.29
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
 [jekyll]: http://jekyllrb.com/
