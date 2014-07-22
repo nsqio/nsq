@@ -29,5 +29,5 @@ cat source.txt | to_nsq -delimiter="," -topic="topic" -nsqd-tcp-address="127.0.0
 Publish three messages, in one go:
 
 ```
-echo "one|two|three" | to_nsq -delimiter="|" -topic="topic" -nsqd-tcp-address="127.0.0.1:4150"
+echo "one,two,three" | to_nsq -delimiter="," -topic="topic" -nsqd-tcp-address="127.0.0.1:4150"
 ```
