@@ -69,6 +69,8 @@ func main() {
 		fatal("Must specify at least one nsqd-tcp-address")
 	}
 
+	var fatalErr error
+
 	// scan the input
 	r := bufio.NewReader(os.Stdin)
 	delim := []byte(*delimiter)[0]
@@ -79,14 +81,15 @@ func main() {
 
 			line, readErr = r.ReadBytes(delim)
 			if readErr == nil || readErr == io.EOF {
-				if len(line) > 0 {
+				if len(line) > 0 { // trim the delimiter
 					line = line[:len(line)-1]
 				}
 				if len(line) > 0 {
 					for _, producer := range producers {
 						fmt.Println(string(line))
 						if err := producer.Publish(*topic, line); err != nil {
-							log.Fatalln(err)
+							fatalErr = err
+							stopChan <- true
 						}
 					}
 				}
@@ -95,8 +98,8 @@ func main() {
 				}
 			} else {
 				// real error
+				fatalErr = readErr
 				stopChan <- true
-				fatal(readErr)
 			}
 
 		}
@@ -106,6 +109,10 @@ func main() {
 	select {
 	case <-termChan:
 	case <-stopChan:
+	}
+
+	if fatalErr != nil {
+		fatal(fatalErr)
 	}
 
 }
