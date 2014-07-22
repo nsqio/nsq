@@ -78,9 +78,8 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 	delim := []byte(*delimiter)[0]
 	go func() {
-		var err error = nil
 		for {
-			if err = readAndPublish(r, delim, producers); err != nil {
+			if err := readAndPublish(r, delim, producers); err != nil {
 				if err != io.EOF {
 					fatalErr = err
 				}
