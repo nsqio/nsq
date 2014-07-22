@@ -12,9 +12,10 @@ NSQ_TO_FILE_SRCS = $(wildcard apps/nsq_to_file/*.go nsq/*.go util/*.go)
 NSQ_TO_HTTP_SRCS = $(wildcard apps/nsq_to_http/*.go nsq/*.go util/*.go)
 NSQ_TAIL_SRCS = $(wildcard apps/nsq_tail/*.go nsq/*.go util/*.go)
 NSQ_STAT_SRCS = $(wildcard apps/nsq_stat/*.go util/*.go util/lookupd/*.go)
+TO_NSQ_SRCS = $(wildcard apps/to_nsq/*.go util/*.go)
 
 BINARIES = nsqadmin
-APPS = nsqlookupd nsqd nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat
+APPS = nsqlookupd nsqd nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat to_nsq
 BLDDIR = build
 
 all: $(BINARIES) $(APPS)
@@ -35,6 +36,7 @@ $(BLDDIR)/apps/nsq_to_file: $(NSQ_TO_FILE_SRCS)
 $(BLDDIR)/apps/nsq_to_http: $(NSQ_TO_HTTP_SRCS)
 $(BLDDIR)/apps/nsq_tail: $(NSQ_TAIL_SRCS)
 $(BLDDIR)/apps/nsq_stat: $(NSQ_STAT_SRCS)
+$(BLDDIR)/apps/to_nsq: $(TO_NSQ_SRCS)
 
 clean:
 	rm -fr $(BLDDIR)
@@ -54,4 +56,4 @@ install: $(BINARIES) $(EXAMPLES)
 	install -m 755 $(BLDDIR)/apps/nsq_to_http ${DESTDIR}${BINDIR}/nsq_to_http
 	install -m 755 $(BLDDIR)/apps/nsq_tail ${DESTDIR}${BINDIR}/nsq_tail
 	install -m 755 $(BLDDIR)/apps/nsq_stat ${DESTDIR}${BINDIR}/nsq_stat
-
+	install -m 755 $(BLDDIR)/apps/to_nsq ${DESTDIR}${BINDIR}/to_nsq
