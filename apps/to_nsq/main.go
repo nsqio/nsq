@@ -1,5 +1,5 @@
-// This is an NSQ client that Publishes incoming messages from
-// stdin to the specified topic and channel.
+// This is an NSQ client that publishes incoming messages from
+// stdin to the specified topic.
 
 package main
 
