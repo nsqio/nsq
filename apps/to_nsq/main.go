@@ -78,33 +78,14 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 	delim := []byte(*delimiter)[0]
 	go func() {
-		var readErr error = nil
-		var line []byte
-		for readErr == nil {
-
-			line, readErr = r.ReadBytes(delim)
-			if readErr == nil || readErr == io.EOF {
-				if len(line) > 0 { // trim the delimiter
-					line = line[:len(line)-1]
+		var err error = nil
+		for err == nil {
+			if err = readAndPublish(r, delim, producers); err != nil {
+				if err != io.EOF {
+					fatalErr = err
 				}
-				if len(line) > 0 {
-					for _, producer := range producers {
-						log.Println(">>>", string(line))
-						if err := producer.Publish(*topic, line); err != nil {
-							fatalErr = err
-							stopChan <- true
-						}
-					}
-				}
-				if readErr == io.EOF {
-					stopChan <- true
-				}
-			} else {
-				// real error
-				fatalErr = readErr
-				stopChan <- true
+				stopChan <- true // stop
 			}
-
 		}
 	}()
 
@@ -118,6 +99,26 @@ func main() {
 	if fatalErr != nil {
 		fatal(false, fatalErr)
 	}
+
+}
+
+func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Producer) error {
+
+	line, readErr := r.ReadBytes(delim)
+
+	if len(line) > 0 { // trim the delimiter
+		line = line[:len(line)-1]
+	}
+	if len(line) > 0 {
+		for _, producer := range producers {
+			log.Println(">>>", string(line))
+			if err := producer.Publish(*topic, line); err != nil {
+				return err
+			}
+		}
+	}
+
+	return readErr
 
 }
 
