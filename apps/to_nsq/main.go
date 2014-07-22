@@ -19,7 +19,7 @@ import (
 
 var (
 	topic            = flag.String("topic", "", "nsq topic")
-	delimiter        = flag.String("delimiter", "\n", "what from stdin to split on")
+	delimiter        = flag.String("delimiter", "\n", "what from stdin to split on (lines by default)")
 	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	destNsqdTCPAddrs = util.StringArray{}
 	readerOpts       = util.StringArray{}
@@ -30,7 +30,10 @@ func init() {
 	flag.Var(&destNsqdTCPAddrs, "nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 }
 
+var logger *log.Logger
+
 func main() {
+	logger = log.New(os.Stdout, "", log.LstdFlags)
 
 	// handle stopping
 	stopChan := make(chan bool)
@@ -40,17 +43,17 @@ func main() {
 	// parse flags
 	flag.Parse()
 	if len(*topic) == 0 {
-		fatal("Must specify a valid topic")
+		fatal(true, "Must specify a valid topic")
 	}
 	if len(*delimiter) != 1 {
-		fatal("Delimiter must be a single byte")
+		fatal(true, "Delimiter must be a single byte")
 	}
 
 	// prepare the configuration
 	wcfg := nsq.NewConfig()
 	wcfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
 	if err := util.ParseReaderOpts(wcfg, readerOpts); err != nil {
-		fatal(err)
+		fatal(true, err)
 	}
 	wcfg.MaxInFlight = *maxInFlight
 
@@ -59,14 +62,14 @@ func main() {
 	for _, addr := range destNsqdTCPAddrs {
 		producer, err := nsq.NewProducer(addr, wcfg)
 		if err != nil {
-			fatal("failed creating producer", err)
+			fatal(true, "failed creating producer", err)
 		}
-		producer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+		producer.SetLogger(logger, nsq.LogLevelInfo)
 		producers[addr] = producer
 		defer producer.Stop()
 	}
 	if len(producers) == 0 {
-		fatal("Must specify at least one nsqd-tcp-address")
+		fatal(true, "Must specify at least one nsqd-tcp-address")
 	}
 
 	var fatalErr error
@@ -86,7 +89,7 @@ func main() {
 				}
 				if len(line) > 0 {
 					for _, producer := range producers {
-						fmt.Println(string(line))
+						log.Println(">>>", string(line))
 						if err := producer.Publish(*topic, line); err != nil {
 							fatalErr = err
 							stopChan <- true
@@ -111,16 +114,18 @@ func main() {
 	case <-stopChan:
 	}
 
+	// if a fatal error occurred - report it
 	if fatalErr != nil {
-		fatal(fatalErr)
+		fatal(false, fatalErr)
 	}
 
 }
 
 // fatal writes an error and exits
-func fatal(args ...interface{}) {
-	os.Stderr.WriteString(fmt.Sprint(args...))
-	os.Stderr.WriteString("\n")
-	flag.PrintDefaults()
+func fatal(usage bool, args ...interface{}) {
+	logger.Println(args...)
+	if usage {
+		flag.PrintDefaults()
+	}
 	os.Exit(1)
 }
