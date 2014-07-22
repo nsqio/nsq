@@ -79,12 +79,13 @@ func main() {
 	delim := []byte(*delimiter)[0]
 	go func() {
 		var err error = nil
-		for err == nil {
+		for {
 			if err = readAndPublish(r, delim, producers); err != nil {
 				if err != io.EOF {
 					fatalErr = err
 				}
 				stopChan <- true // stop
+				break
 			}
 		}
 	}()
