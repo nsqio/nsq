@@ -76,7 +76,7 @@ func main() {
 
 	// scan the input
 	r := bufio.NewReader(os.Stdin)
-	delim := []byte(*delimiter)[0]
+	delim := (*delimiter)[0]
 	go func() {
 		for {
 			if err := readAndPublish(r, delim, producers); err != nil {
