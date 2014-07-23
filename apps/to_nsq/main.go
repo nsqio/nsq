@@ -20,7 +20,6 @@ import (
 var (
 	topic            = flag.String("topic", "", "nsq topic")
 	delimiter        = flag.String("delimiter", "\n", "what from stdin to split on (lines by default)")
-	maxInFlight      = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	destNsqdTCPAddrs = util.StringArray{}
 	readerOpts       = util.StringArray{}
 )
@@ -55,7 +54,6 @@ func main() {
 	if err := util.ParseReaderOpts(wcfg, readerOpts); err != nil {
 		fatal(true, err)
 	}
-	wcfg.MaxInFlight = *maxInFlight
 
 	// make the producers
 	producers := make(map[string]*nsq.Producer)
