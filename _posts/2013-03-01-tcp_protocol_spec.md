@@ -314,6 +314,27 @@ No-op
 
 NOTE: there is no response
 
+#### AUTH
+
+If the Identify response indicates `auth_required=true` the Client must send `AUTH` before any Subscribe or Publish commands. If there is no `auth_required` from the identify response a client must not authorize.
+
+The attributes the server passes to an an auth server for authorization are: the connection remote address, tls state, and auth secret.
+
+    AUTH\n
+    [ 4-byte size in bytes ][ N-byte Auth Secret ]
+
+Response:
+
+Successfull response is a json payload describing the authorized clients Identity, an optional URL and a count of permissions which were authorized.
+
+    `{"identity":"...", "identity_url":"...", "permission_count":1}`
+
+Error Responses:
+
+    E_AUTH_FAILED - An error occurred contating an auth server
+    E_UNAUTHORIZED - No permissions found
+
+
 ### Data Format
 
 Data is streamed asynchronously to the client and framed in order to support the various reply
