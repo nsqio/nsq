@@ -316,7 +316,7 @@ NOTE: there is no response
 
 #### AUTH
 
-If the Identify response indicates `auth_required=true` the Client must send `AUTH` before any Subscribe or Publish commands. If there is no `auth_required` from the identify response a client must not authorize.
+If the `IDENTIFY` response indicates `auth_required=true` the Client must send `AUTH` before any `SUB`, `PUB` or `MPUB` commands. If there is no `auth_required` in the `IDENTIFY` response a client must not authorize.
 
 The attributes the server passes to an an auth server for authorization are: the connection remote address, tls state, and auth secret.
 
@@ -331,7 +331,7 @@ Successfull response is a json payload describing the authorized clients Identit
 
 Error Responses:
 
-    E_AUTH_FAILED - An error occurred contating an auth server
+    E_AUTH_FAILED - An error occurred contacting an auth server
     E_UNAUTHORIZED - No permissions found
 
 
