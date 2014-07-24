@@ -316,6 +316,8 @@ NOTE: there is no response
 
 #### AUTH
 
+NOTE: available in 0.2.29+
+
 If the `IDENTIFY` response indicates `auth_required=true` the Client must send `AUTH` before any `SUB`, `PUB` or `MPUB` commands. If there is no `auth_required` in the `IDENTIFY` response a client must not authorize.
 
 The attributes the server passes to an an auth server for authorization are: the connection remote address, tls state, and auth secret.
