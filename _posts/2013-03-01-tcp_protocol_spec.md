@@ -318,16 +318,22 @@ NOTE: there is no response
 
 NOTE: available in 0.2.29+
 
-If the `IDENTIFY` response indicates `auth_required=true` the Client must send `AUTH` before any `SUB`, `PUB` or `MPUB` commands. If there is no `auth_required` in the `IDENTIFY` response a client must not authorize.
+If the `IDENTIFY` response indicates `auth_required=true` the client must send `AUTH` before any
+`SUB`, `PUB` or `MPUB` commands. If `auth_required` is not present (or `false`), a client must not
+authorize.
 
-The attributes the server passes to an an auth server for authorization are: the connection remote address, tls state, and auth secret.
+When `nsqd` receives an `AUTH` command it performs an HTTP request to the configured
+`--auth-http-address` (see [AUTH][nsqd_auth]) to perform authentication. It sends client metadata
+in the form of query parameters: the connection's remote address, TLS state, and the supplied auth
+secret.
 
     AUTH\n
     [ 4-byte size in bytes ][ N-byte Auth Secret ]
 
 Response:
 
-Successful response is a json payload describing the authorized clients Identity, an optional URL and a count of permissions which were authorized.
+A successful response is a JSON payload describing the authorized clients identity, an optional URL
+and a count of permissions which were authorized.
 
     `{"identity":"...", "identity_url":"...", "permission_count":1}`
 
@@ -367,3 +373,4 @@ And finally, the message format:
 
 [pull_req_236]: https://github.com/bitly/nsq/pull/236
 [043b79ac]: https://github.com/mreiferson/nsq/commit/043b79acda5fe57056b3cc21b2ef536d5615a2c2]
+[nsqd_auth]: {{ site.baseurl }}/components/nsqd.html

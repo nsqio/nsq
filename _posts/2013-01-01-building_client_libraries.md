@@ -88,14 +88,14 @@ endpoint with a query parameter of the topic the consumer is attempting to disco
         "channels": ["archive", "science", "metrics"],
         "producers": [
             {
-                "broadcast_address": "clicksapi01.routable.domain.net", 
+                "broadcast_address": "clicksapi01.routable.domain.net",
                 "hostname": "clicksapi01.domain.net",
                 "tcp_port": 4150,
                 "http_port": 4151,
                 "version": "0.2.18"
             },
             {
-                "broadcast_address": "clicksapi02.routable.domain.net", 
+                "broadcast_address": "clicksapi02.routable.domain.net",
                 "hostname": "clicksapi02.domain.net",
                 "tcp_port": 4150,
                 "http_port": 4151,
@@ -130,8 +130,8 @@ When connecting to an `nsqd` instance, the client library should send the follow
  2. an `IDENTIFY` command (and payload) and read/verify response (see [Feature Negotiation](#feature_negotiation))
  3. a `SUB` command (specifying desired topic) and read/verify response
  4. an initial `RDY` count of 1 (see [RDY State](#rdy_state)).
- 
-(low-level details on the protocol are available in the [spec](protocol.md))
+
+(low-level details on the protocol are available in the [spec][protocol_spec])
 
 ### Reconnection
 
@@ -152,10 +152,10 @@ Client libraries should automatically handle reconnection as follows:
 The `IDENTIFY` command can be used to set `nsqd` side metadata, modify client settings,
 and negotiate features.  It satisfies two needs:
 
- 1. In certain cases a client would like to modify how `nsqd` interacts with it (such as 
-    modifying a client's heartbeat interval and enabling compression, TLS, output buffering, etc. - 
-    for a complete list see the [spec](protocol.md))
- 2. `nsqd` responds to the `IDENTIFY` command with a JSON payload that includes important server 
+ 1. In certain cases a client would like to modify how `nsqd` interacts with it (such as
+    modifying a client's heartbeat interval and enabling compression, TLS, output buffering, etc. -
+    for a complete list see the [spec][protocol_spec])
+ 2. `nsqd` responds to the `IDENTIFY` command with a JSON payload that includes important server
     side configuration values that the client should respect while interacting with the instance.
 
 After connecting, based on the user's configuration, a client library should send an `IDENTIFY`
@@ -197,11 +197,11 @@ to represent both OS-level threads and userland threads, like coroutines).
 Additionally clients are expected to respond to periodic heartbeats from the `nsqd` instances
 they're connected to. By default this happens at 30 second intervals. The client can respond with
 *any* command but, by convention, it's easiest to simply respond with a `NOP` whenever a heartbeat
-is received. See the [protocol spec](protocol.md) for specifics on how to identify heartbeats.
+is received. See the [protocol spec][protocol_spec] for specifics on how to identify heartbeats.
 
 A "thread" should be dedicated to reading data off the TCP socket, unpacking the data from the
 frame, and performing the multiplexing logic to route the data as appropriate. This is also
-conveniently the best spot to handle heartbeats.  At the lowest level, reading the protocol 
+conveniently the best spot to handle heartbeats.  At the lowest level, reading the protocol
 involves the following sequential steps:
 
  1. read 4 byte big endian uint32 size
@@ -287,7 +287,7 @@ No messages will be delivered.
 Client libraries have a few responsibilities:
 
  1. bootstrap and evenly distribute the configured `max_in_flight` to all connections.
- 2. never allow the aggregate sum of `RDY` counts for all connections (`total_rdy_count`) 
+ 2. never allow the aggregate sum of `RDY` counts for all connections (`total_rdy_count`)
     to exceed the configured `max_in_flight`.
  3. never exceed the per connection `nsqd` configured `max_rdy_count`.
  4. expose an API method to reliably indicate message flow starvation
@@ -332,7 +332,7 @@ given connection:
 def send_ready(reader, conn, count):
     if (reader.total_ready_count + count) > reader.max_in_flight:
         return
-    
+
     conn.send_ready(count)
     conn.rdy_count = count
     reader.total_ready_count += count
@@ -354,11 +354,11 @@ have in-flight vs. their configured `max_in_flight` in order to decide to "proce
 are two cases when this is problematic:
 
  1. When consumers configure `max_in_flight > 1`, due to variable `num_conns`, there are
-    cases where `max_in_flight` is not evenly divisible by `num_conns`. Because the contract states 
-    that you should never *exceed* `max_in_flight`, you must round down, and you end up with cases 
+    cases where `max_in_flight` is not evenly divisible by `num_conns`. Because the contract states
+    that you should never *exceed* `max_in_flight`, you must round down, and you end up with cases
     where the sum of all `RDY` counts is less than `max_in_flight`.
- 2. Consider the case where only a subset of `nsqd` have messages. Because of the expected [even 
-    distribution](#bootstrap_and_distribution) of `RDY` count, those active `nsqd` only have a 
+ 2. Consider the case where only a subset of `nsqd` have messages. Because of the expected [even
+    distribution](#bootstrap_and_distribution) of `RDY` count, those active `nsqd` only have a
     fraction of the configured `max_in_flight`.
 
 In both cases, a consumer will never actually receive `max_in_flight` # of messages. Therefore, the
@@ -472,3 +472,4 @@ libraries][client_libraries].
 [pynsq]: https://github.com/bitly/pynsq
 [client_libraries]: {{ site.baseurl }}/clients/client_libraries.html
 [snappy]: https://code.google.com/p/snappy/
+[protocol_spec]: {{ site.baseurl }}/clients/tcp_protocol_spec.html
