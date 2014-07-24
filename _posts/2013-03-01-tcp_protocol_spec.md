@@ -330,12 +330,12 @@ secret.
     AUTH\n
     [ 4-byte size in bytes ][ N-byte Auth Secret ]
 
-Response:
+Success Response:
 
-A successful response is a JSON payload describing the authorized clients identity, an optional URL
-and a count of permissions which were authorized.
+A JSON payload describing the authorized client's identity, an optional URL and a count of
+permissions which were authorized.
 
-    `{"identity":"...", "identity_url":"...", "permission_count":1}`
+    {"identity":"...", "identity_url":"...", "permission_count":1}
 
 Error Responses:
 
