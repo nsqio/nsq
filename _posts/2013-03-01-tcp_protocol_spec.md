@@ -322,10 +322,10 @@ If the `IDENTIFY` response indicates `auth_required=true` the client must send `
 `SUB`, `PUB` or `MPUB` commands. If `auth_required` is not present (or `false`), a client must not
 authorize.
 
-When `nsqd` receives an `AUTH` command it performs an HTTP request to the configured
-`--auth-http-address` (see [AUTH][nsqd_auth]) to perform authentication. It sends client metadata
-in the form of query parameters: the connection's remote address, TLS state, and the supplied auth
-secret.
+When `nsqd` receives an `AUTH` command it delegates responsibility to the configured
+`--auth-http-address` by performing an HTTP request with client metadata in the form of query
+parameters: the connection's remote address, TLS state, and the supplied auth secret. See
+[AUTH][nsqd_auth] for more details.
 
     AUTH\n
     [ 4-byte size in bytes ][ N-byte Auth Secret ]
