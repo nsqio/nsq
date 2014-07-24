@@ -325,7 +325,7 @@ The attributes the server passes to an an auth server for authorization are: the
 
 Response:
 
-Successfull response is a json payload describing the authorized clients Identity, an optional URL and a count of permissions which were authorized.
+Successful response is a json payload describing the authorized clients Identity, an optional URL and a count of permissions which were authorized.
 
     `{"identity":"...", "identity_url":"...", "permission_count":1}`
 
