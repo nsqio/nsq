@@ -207,7 +207,7 @@ func init() {
           <span class="label label-info">Sampled {{.SampleRate}}%</span>
           {{end}}
           {{if .TLS}}
-          <span class="label label-warning">TLS</span>
+          <span class="label label-warning" {{ if .TLSVersion }}title="{{.TLSVersion}} {{.CipherSuite}} {{.TLSNegotiatedProtocol}} mutual:{{.TLSNegotiatedProtocolIsMutual}}"{{ end }}>TLS</span>
           {{end}}
           {{if .Deflate}}
           <span class="label label-default">Delfate</span>

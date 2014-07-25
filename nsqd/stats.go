@@ -78,13 +78,18 @@ type ClientStats struct {
 	RequeueCount    uint64 `json:"requeue_count"`
 	ConnectTime     int64  `json:"connect_ts"`
 	SampleRate      int32  `json:"sample_rate"`
-	TLS             bool   `json:"tls"`
 	Deflate         bool   `json:"deflate"`
 	Snappy          bool   `json:"snappy"`
 	UserAgent       string `json:"user_agent"`
 	Authed          bool   `json:"authed,omitempty"`
 	AuthIdentity    string `json:"auth_identity,omitempty"`
 	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
+
+	TLS                           bool   `json:"tls"`
+	CipherSuite                   string `json:"tls_cipher_suite"`
+	TLSVersion                    string `json:"tls_version"`
+	TLSNegotiatedProtocol         string `json:"tls_negotiated_protocol"`
+	TLSNegotiatedProtocolIsMutual bool   `json:"tls_negotiated_protocol_is_mutual"`
 }
 
 type Topics []*Topic
