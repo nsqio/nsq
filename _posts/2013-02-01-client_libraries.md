@@ -283,6 +283,19 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
   </tr>
+  <tr class="info">
+    <td><a href="https://github.com/melo/perl-anyevent-nsq">perl-anyevent-nsq</a></td>
+    <td>Perl</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
   <tr class="warning">
     <td><a href="https://github.com/thieman/nsq-clojure">nsq-clojure</a></td>
     <td>Clojure</td>
