@@ -231,7 +231,7 @@ func (c *clientV2) Stats() ClientStats {
 		identityUrl = c.AuthState.IdentityUrl
 	}
 	c.RUnlock()
-	return ClientStats{
+	stats := ClientStats{
 		// TODO: deprecated, remove in 1.0
 		Name: name,
 
@@ -255,6 +255,71 @@ func (c *clientV2) Stats() ClientStats {
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityUrl,
 	}
+	if stats.TLS {
+		p := prettyConnectionState{c.tlsConn.ConnectionState()}
+		stats.CipherSuite = p.GetCipherSuite()
+		stats.TLSVersion = p.GetVersion()
+		stats.TLSNegotiatedProtocol = p.NegotiatedProtocol
+		stats.TLSNegotiatedProtocolIsMutual = p.NegotiatedProtocolIsMutual
+	}
+	return stats
+}
+
+// struct to convert from integers to the human readable strings
+type prettyConnectionState struct {
+	tls.ConnectionState
+}
+
+// taken from http://golang.org/src/pkg/crypto/tls/cipher_suites.go
+// to be compatible with older versions
+const (
+	local_TLS_RSA_WITH_RC4_128_SHA                uint16 = 0x0005
+	local_TLS_RSA_WITH_3DES_EDE_CBC_SHA           uint16 = 0x000a
+	local_TLS_RSA_WITH_AES_128_CBC_SHA            uint16 = 0x002f
+	local_TLS_RSA_WITH_AES_256_CBC_SHA            uint16 = 0x0035
+	local_TLS_ECDHE_ECDSA_WITH_RC4_128_SHA        uint16 = 0xc007
+	local_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA    uint16 = 0xc009
+	local_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA    uint16 = 0xc00a
+	local_TLS_ECDHE_RSA_WITH_RC4_128_SHA          uint16 = 0xc011
+	local_TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA     uint16 = 0xc012
+	local_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA      uint16 = 0xc013
+	local_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA      uint16 = 0xc014
+	local_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256   uint16 = 0xc02f
+	local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 uint16 = 0xc02b
+)
+
+func (p *prettyConnectionState) GetCipherSuite() string {
+	switch p.CipherSuite {
+	case local_TLS_RSA_WITH_RC4_128_SHA:
+		return "TLS_RSA_WITH_RC4_128_SHA"
+	case local_TLS_RSA_WITH_3DES_EDE_CBC_SHA:
+		return "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+	case local_TLS_RSA_WITH_AES_128_CBC_SHA:
+		return "TLS_RSA_WITH_AES_128_CBC_SHA"
+	case local_TLS_RSA_WITH_AES_256_CBC_SHA:
+		return "TLS_RSA_WITH_AES_256_CBC_SHA"
+	case local_TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA"
+	case local_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
+	case local_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:
+		return "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA"
+	case local_TLS_ECDHE_RSA_WITH_RC4_128_SHA:
+		return "TLS_ECDHE_RSA_WITH_RC4_128_SHA"
+	case local_TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA"
+	case local_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"
+	case local_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:
+		return "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"
+	case local_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
+		return "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+	case local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+	default:
+		return fmt.Sprintf("unkown %d", p.CipherSuite)
+	}
+	return "unknown"
 }
 
 func (c *clientV2) IsReadyForMessages() bool {

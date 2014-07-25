@@ -451,12 +451,17 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							RequeueCount:      client.Get("requeue_count").MustInt64(),
 							MessageCount:      client.Get("message_count").MustInt64(),
 							SampleRate:        int32(client.Get("sample_rate").MustInt()),
-							TLS:               client.Get("tls").MustBool(),
 							Deflate:           client.Get("deflate").MustBool(),
 							Snappy:            client.Get("snappy").MustBool(),
 							Authed:            client.Get("authed").MustBool(),
 							AuthIdentity:      client.Get("auth_identity").MustString(),
 							AuthIdentityUrl:   client.Get("auth_identity_url").MustString(),
+
+							TLS:                           client.Get("tls").MustBool(),
+							CipherSuite:                   client.Get("tls_cipher_suite").MustString(),
+							TLSVersion:                    client.Get("tls_version").MustString(),
+							TLSNegotiatedProtocol:         client.Get("tls_negotiated_protocol").MustString(),
+							TLSNegotiatedProtocolIsMutual: client.Get("tls_negotiated_protocol_is_mutual").MustBool(),
 						}
 						hostChannelStats.Clients = append(hostChannelStats.Clients, clientStats)
 						channelStats.Clients = append(channelStats.Clients, clientStats)
