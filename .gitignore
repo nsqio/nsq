@@ -11,6 +11,7 @@ apps/nsq_pubsub/nsq_pubsub
 apps/nsq_to_http/nsq_to_http
 apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
+apps/to_nsq/to_nsq
 dist
 _site
 _posts
