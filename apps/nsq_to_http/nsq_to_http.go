@@ -70,49 +70,52 @@ type Publisher interface {
 
 type PublishHandler struct {
 	Publisher
-	addresses    util.StringArray
-	counter      uint64
-	mode         int
-	hostPool     hostpool.HostPool
-	timermetrics *timermetrics.TimerMetrics
+	addresses util.StringArray
+	counter   uint64
+	mode      int
+	hostPool  hostpool.HostPool
+
+	perAddressStatus map[string]*timermetrics.TimerMetrics
+	timermetrics     *timermetrics.TimerMetrics
 }
 
 func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
-	var startTime time.Time
-
 	if *sample < 1.0 && rand.Float64() > *sample {
 		return nil
 	}
 
-	if *statusEvery > 0 {
-		startTime = time.Now()
-	}
-
+	startTime := time.Now()
 	switch ph.mode {
 	case ModeAll:
 		for _, addr := range ph.addresses {
+			st := time.Now()
 			err := ph.Publish(addr, m.Body)
 			if err != nil {
 				return err
 			}
+			ph.perAddressStatus[addr].Status(st)
 		}
 	case ModeRoundRobin:
 		idx := ph.counter % uint64(len(ph.addresses))
-		err := ph.Publish(ph.addresses[idx], m.Body)
+		addr := ph.addresses[idx]
+		err := ph.Publish(addr, m.Body)
+		ph.counter++
 		if err != nil {
 			return err
 		}
-		ph.counter++
+		ph.perAddressStatus[addr].Status(startTime)
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
-		err := ph.Publish(hostPoolResponse.Host(), m.Body)
+		addr := hostPoolResponse.Host()
+		err := ph.Publish(addr, m.Body)
 		hostPoolResponse.Mark(err)
 		if err != nil {
 			return err
 		}
+		ph.perAddressStatus[addr].Status(startTime)
 	}
-
 	ph.timermetrics.Status(startTime)
+
 	return nil
 }
 
@@ -264,12 +267,24 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
+	perAddressStatus := make(map[string]*timermetrics.TimerMetrics)
+	if len(addresses) == 1 {
+		// disable since there is only one address
+		perAddressStatus[addresses[0]] = timermetrics.NewTimerMetrics(0, "")
+	} else {
+		for _, a := range addresses {
+			perAddressStatus[a] = timermetrics.NewTimerMetrics(*statusEvery,
+				fmt.Sprintf("[%s]:", a))
+		}
+	}
+
 	handler := &PublishHandler{
-		Publisher:    publisher,
-		addresses:    addresses,
-		mode:         selectedMode,
-		hostPool:     hostpool.New(addresses),
-		timermetrics: timermetrics.NewTimerMetrics(*statusEvery, "finished messages"),
+		Publisher:        publisher,
+		addresses:        addresses,
+		mode:             selectedMode,
+		hostPool:         hostpool.New(addresses),
+		perAddressStatus: perAddressStatus,
+		timermetrics:     timermetrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 	r.AddConcurrentHandlers(handler, *numPublishers)
 

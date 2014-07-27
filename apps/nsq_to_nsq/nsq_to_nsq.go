@@ -73,12 +73,14 @@ type PublishHandler struct {
 	requireJsonValueIsNumber bool
 	requireJsonNumber        float64
 
-	timermetrics *timermetrics.TimerMetrics
+	perAddressStatus map[string]*timermetrics.TimerMetrics
+	timermetrics     *timermetrics.TimerMetrics
 }
 
 func (ph *PublishHandler) responder() {
 	var msg *nsq.Message
 	var startTime time.Time
+	var address string
 	var hostPoolResponse hostpool.HostPoolResponse
 
 	for t := range ph.respChan {
@@ -87,10 +89,12 @@ func (ph *PublishHandler) responder() {
 			msg = t.Args[0].(*nsq.Message)
 			startTime = t.Args[1].(time.Time)
 			hostPoolResponse = nil
+			address = t.Args[2].(string)
 		case ModeHostPool:
 			msg = t.Args[0].(*nsq.Message)
 			startTime = t.Args[1].(time.Time)
 			hostPoolResponse = t.Args[2].(hostpool.HostPoolResponse)
+			address = hostPoolResponse.Host()
 		}
 
 		success := t.Error == nil
@@ -109,6 +113,7 @@ func (ph *PublishHandler) responder() {
 			msg.Requeue(-1)
 		}
 
+		ph.perAddressStatus[address].Status(startTime)
 		ph.timermetrics.Status(startTime)
 	}
 }
@@ -227,8 +232,9 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	switch ph.mode {
 	case ModeRoundRobin:
 		idx := ph.counter % uint64(len(ph.addresses))
-		p := ph.producers[ph.addresses[idx]]
-		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime)
+		addr := ph.addresses[idx]
+		p := ph.producers[addr]
+		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime, addr)
 		ph.counter++
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
@@ -338,15 +344,28 @@ func main() {
 		producers[addr] = producer
 	}
 
+	perAddressStatus := make(map[string]*timermetrics.TimerMetrics)
+	if len(destNsqdTCPAddrs) == 1 {
+		// disable since there is only one address
+		perAddressStatus[destNsqdTCPAddrs[0]] = timermetrics.NewTimerMetrics(0, "")
+	} else {
+		for _, a := range destNsqdTCPAddrs {
+			perAddressStatus[a] = timermetrics.NewTimerMetrics(*statusEvery,
+				fmt.Sprintf("[%s]:", a))
+		}
+	}
+
 	handler := &PublishHandler{
-		addresses:    destNsqdTCPAddrs,
-		producers:    producers,
-		mode:         selectedMode,
-		hostPool:     hostpool.New(destNsqdTCPAddrs),
-		respChan:     make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
-		timermetrics: timermetrics.NewTimerMetrics(*statusEvery, "finished messages"),
+		addresses:        destNsqdTCPAddrs,
+		producers:        producers,
+		mode:             selectedMode,
+		hostPool:         hostpool.New(destNsqdTCPAddrs),
+		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+		perAddressStatus: perAddressStatus,
+		timermetrics:     timermetrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 	r.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
+
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
 		go handler.responder()
 	}
