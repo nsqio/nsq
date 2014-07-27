@@ -196,7 +196,7 @@ func filterMessage(jsonMsg *simplejson.Json, rawMsg []byte) ([]byte, error) {
 
 	newRawMsg, err := json.Marshal(newMsg)
 	if err != nil {
-		return nil, fmt.Errorf("unable to marshal filtered message %r", newMsg)
+		return nil, fmt.Errorf("unable to marshal filtered message %v", newMsg)
 	}
 	return newRawMsg, nil
 }
@@ -329,7 +329,7 @@ func main() {
 
 	r, err := nsq.NewConsumer(*topic, *channel, cfg)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("%s", err)
 	}
 	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 
