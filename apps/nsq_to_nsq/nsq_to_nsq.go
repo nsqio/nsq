@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -231,11 +232,11 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 
 	switch ph.mode {
 	case ModeRoundRobin:
-		idx := ph.counter % uint64(len(ph.addresses))
+		counter := atomic.AddUint64(&ph.counter, 1)
+		idx := counter % uint64(len(ph.addresses))
 		addr := ph.addresses[idx]
 		p := ph.producers[addr]
 		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime, addr)
-		ph.counter++
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
 		p := ph.producers[hostPoolResponse.Host()]

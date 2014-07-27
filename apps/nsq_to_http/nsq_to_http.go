@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -96,10 +97,10 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 			ph.perAddressStatus[addr].Status(st)
 		}
 	case ModeRoundRobin:
-		idx := ph.counter % uint64(len(ph.addresses))
+		counter := atomic.AddUint64(&ph.counter, 1)
+		idx := counter % uint64(len(ph.addresses))
 		addr := ph.addresses[idx]
 		err := ph.Publish(addr, m.Body)
-		ph.counter++
 		if err != nil {
 			return err
 		}
