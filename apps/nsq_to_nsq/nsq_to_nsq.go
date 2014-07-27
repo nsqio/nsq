@@ -281,6 +281,9 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 }
 
 func percentile(perc float64, arr []time.Duration, length int) time.Duration {
+	if length == 0 {
+		return 0
+	}
 	indexOfPerc := int(math.Ceil(((perc / 100.0) * float64(length)) + 0.5))
 	if indexOfPerc >= length {
 		indexOfPerc = length - 1
@@ -350,7 +353,6 @@ func main() {
 
 	cfg := nsq.NewConfig()
 	cfg.UserAgent = fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
-
 
 	err := util.ParseReaderOpts(cfg, readerOpts)
 	if err != nil {
