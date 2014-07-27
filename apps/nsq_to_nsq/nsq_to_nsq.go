@@ -9,10 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"os/signal"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +20,7 @@ import (
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/timermetrics"
 )
 
 const (
@@ -62,32 +61,19 @@ func init() {
 	flag.Var(&whitelistJsonFields, "whitelist-json-field", "for JSON messages: pass this field (may be given multiple times)")
 }
 
-type Durations []time.Duration
-
-func (s Durations) Len() int {
-	return len(s)
-}
-
-func (s Durations) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s Durations) Less(i, j int) bool {
-	return s[i] < s[j]
-}
-
 type PublishHandler struct {
 	addresses util.StringArray
 	producers map[string]*nsq.Producer
 	mode      int
 	counter   uint64
 	hostPool  hostpool.HostPool
-	reqs      Durations
 	respChan  chan *nsq.ProducerTransaction
 
 	requireJsonValueParsed   bool
 	requireJsonValueIsNumber bool
 	requireJsonNumber        float64
+
+	timermetrics *timermetrics.TimerMetrics
 }
 
 func (ph *PublishHandler) responder() {
@@ -123,27 +109,7 @@ func (ph *PublishHandler) responder() {
 			msg.Requeue(-1)
 		}
 
-		if *statusEvery > 0 {
-			duration := time.Now().Sub(startTime)
-			ph.reqs = append(ph.reqs, duration)
-		}
-
-		if *statusEvery > 0 && len(ph.reqs) >= *statusEvery {
-			var total time.Duration
-			for _, v := range ph.reqs {
-				total += v
-			}
-			avgMs := (total.Seconds() * 1000) / float64(len(ph.reqs))
-
-			sort.Sort(ph.reqs)
-			p95Ms := percentile(95.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
-			p99Ms := percentile(99.0, ph.reqs, len(ph.reqs)).Seconds() * 1000
-
-			log.Printf("finished %d requests - 99th: %.02fms - 95th: %.02fms - avg: %.02fms",
-				*statusEvery, p99Ms, p95Ms, avgMs)
-
-			ph.reqs = ph.reqs[:0]
-		}
+		ph.timermetrics.Status(startTime)
 	}
 }
 
@@ -280,17 +246,6 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	return nil
 }
 
-func percentile(perc float64, arr []time.Duration, length int) time.Duration {
-	if length == 0 {
-		return 0
-	}
-	indexOfPerc := int(math.Ceil(((perc / 100.0) * float64(length)) + 0.5))
-	if indexOfPerc >= length {
-		indexOfPerc = length - 1
-	}
-	return arr[indexOfPerc]
-}
-
 func hasArg(s string) bool {
 	for _, arg := range os.Args {
 		if strings.Contains(arg, s) {
@@ -384,12 +339,12 @@ func main() {
 	}
 
 	handler := &PublishHandler{
-		addresses: destNsqdTCPAddrs,
-		producers: producers,
-		mode:      selectedMode,
-		reqs:      make(Durations, 0, *statusEvery),
-		hostPool:  hostpool.New(destNsqdTCPAddrs),
-		respChan:  make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+		addresses:    destNsqdTCPAddrs,
+		producers:    producers,
+		mode:         selectedMode,
+		hostPool:     hostpool.New(destNsqdTCPAddrs),
+		respChan:     make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+		timermetrics: timermetrics.NewTimerMetrics(*statusEvery, "finished messages"),
 	}
 	r.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
@@ -399,7 +354,7 @@ func main() {
 	for _, addrString := range nsqdTCPAddrs {
 		err := r.ConnectToNSQD(addrString)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalf("%s", err)
 		}
 	}
 
@@ -407,7 +362,7 @@ func main() {
 		log.Printf("lookupd addr %s", addrString)
 		err := r.ConnectToNSQLookupd(addrString)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalf("%s", err)
 		}
 	}
 
