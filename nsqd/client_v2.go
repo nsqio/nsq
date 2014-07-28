@@ -319,6 +319,7 @@ func (p *prettyConnectionState) GetCipherSuite() string {
 	default:
 		return fmt.Sprintf("unkown %d", p.CipherSuite)
 	}
+	// this is for Go 1.0 compatability
 	return "unknown"
 }
 
