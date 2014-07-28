@@ -16,7 +16,7 @@ type Message struct {
 	ID        MessageID
 	Body      []byte
 	Timestamp int64
-	Attempts  uint16
+	Attempts  uint32
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -34,11 +34,11 @@ func NewMessage(id MessageID, body []byte) *Message {
 }
 
 func (m *Message) WriteTo(w io.Writer) (int64, error) {
-	var buf [10]byte
+	var buf [12]byte
 	var total int64
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
-	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(m.Attempts))
 
 	n, err := w.Write(buf[:])
 	total += int64(n)
@@ -65,9 +65,9 @@ func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
-	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
+	msg.Attempts = binary.BigEndian.Uint32(b[8:12])
 
-	buf := bytes.NewBuffer(b[10:])
+	buf := bytes.NewBuffer(b[12:])
 
 	_, err := io.ReadFull(buf, msg.ID[:])
 	if err != nil {
