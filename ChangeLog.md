@@ -2,6 +2,22 @@
 
 ## Binaries
 
+### 0.2.30 - 2014-07-28
+
+**Upgrading from 0.2.29**: No backwards incompatible changes.
+
+**IMPORTANT**: this is a quick bug-fix release to address a panic in `nsq_to_nsq` and
+`nsq_to_http`, see #425.
+
+New Features / Enhancements:
+
+ * #417 - `nsqadmin`/`nsqd`: expose TLS connection state
+ * #425 - `nsq_to_nsq`/`nsq_to_file`: display per-destination-address timings
+
+Bugs:
+
+ * #425 - `nsq_to_nsq`/`nsq_to_file`: fix shared mutable state panic
+
 ### 0.2.29 - 2014-07-25
 
 **Upgrading from 0.2.28**: No backwards incompatible changes.
