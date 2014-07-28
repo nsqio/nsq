@@ -29,6 +29,7 @@ type Topic struct {
 	paused    int32
 	pauseChan chan bool
 
+	options *nsqdOptions
 	context *context
 }
 
@@ -143,9 +144,6 @@ func (t *Topic) PutMessage(msg *Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	if !t.context.nsqd.IsHealthy() {
-		return errors.New("unhealthy")
-	}
 	t.incomingMsgChan <- msg
 	atomic.AddUint64(&t.messageCount, 1)
 	return nil
@@ -156,9 +154,6 @@ func (t *Topic) PutMessages(messages []*Message) error {
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
-	}
-	if !t.context.nsqd.IsHealthy() {
-		return errors.New("unhealthy")
 	}
 	for _, m := range messages {
 		t.incomingMsgChan <- m
@@ -261,9 +256,9 @@ func (t *Topic) router() {
 		default:
 			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
-				log.Printf("TOPIC(%s) ERROR: failed to write message to backend - %s",
-					t.name, err)
-				t.context.nsqd.SetHealth(err)
+				log.Printf("ERROR: failed to write message to backend - %s", err.Error())
+				// theres not really much we can do at this point, you're certainly
+				// going to lose messages...
 			}
 		}
 	}

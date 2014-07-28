@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/bitly/go-simplejson"
@@ -30,9 +29,6 @@ type NSQD struct {
 	sync.RWMutex
 
 	options *nsqdOptions
-
-	healthy int32
-	err     error
 
 	topicMap map[string]*Topic
 
@@ -88,7 +84,6 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 
 	n := &NSQD{
 		options:    options,
-		healthy:    1,
 		tcpAddr:    tcpAddr,
 		httpAddr:   httpAddr,
 		httpsAddr:  httpsAddr,
@@ -102,34 +97,6 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 	n.waitGroup.Wrap(func() { n.idPump() })
 
 	return n
-}
-
-func (n *NSQD) SetHealth(err error) {
-	n.Lock()
-	defer n.Unlock()
-	n.err = err
-	if err != nil {
-		atomic.StoreInt32(&n.healthy, 0)
-	} else {
-		atomic.StoreInt32(&n.healthy, 1)
-	}
-}
-
-func (n *NSQD) IsHealthy() bool {
-	return atomic.LoadInt32(&n.healthy) == 1
-}
-
-func (n *NSQD) GetError() error {
-	n.RLock()
-	defer n.RUnlock()
-	return n.err
-}
-
-func (n *NSQD) GetHealth() string {
-	if !n.IsHealthy() {
-		return fmt.Sprintf("NOK - %s", n.GetError())
-	}
-	return "OK"
 }
 
 func (n *NSQD) Main() {

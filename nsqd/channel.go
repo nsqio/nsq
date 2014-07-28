@@ -544,9 +544,9 @@ func (c *Channel) router() {
 		default:
 			err := writeMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
-				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
-					c.name, err)
-				c.context.nsqd.SetHealth(err)
+				log.Printf("CHANNEL(%s) ERROR: failed to write message to backend - %s", c.name, err.Error())
+				// theres not really much we can do at this point, you're certainly
+				// going to lose messages...
 			}
 		}
 	}
