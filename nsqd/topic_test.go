@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
@@ -48,6 +49,34 @@ func TestGetChannel(t *testing.T) {
 
 	assert.Equal(t, channel1, topic.channelMap["ch1"])
 	assert.Equal(t, channel2, topic.channelMap["ch2"])
+}
+
+func TestHealth(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	_, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+
+	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err := topic.PutMessage(msg)
+	assert.Equal(t, err, nil)
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = topic.PutMessages([]*Message{msg})
+	assert.Equal(t, err, nil)
+
+	nsqd.SetHealth(errors.New("broken"))
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = topic.PutMessage(msg)
+	assert.NotEqual(t, err, nil)
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = topic.PutMessages([]*Message{msg})
+	assert.NotEqual(t, err, nil)
 }
 
 func TestDeletes(t *testing.T) {
