@@ -148,7 +148,7 @@ func TestBasicV2(t *testing.T) {
 	assert.Equal(t, frameType, frameTypeMessage)
 	assert.Equal(t, msgOut.ID, msg.ID)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint32(1))
 }
 
 func TestMultipleConsumerV2(t *testing.T) {
@@ -190,11 +190,11 @@ func TestMultipleConsumerV2(t *testing.T) {
 	msgOut := <-msgChan
 	assert.Equal(t, msgOut.ID, msg.ID)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint32(1))
 	msgOut = <-msgChan
 	assert.Equal(t, msgOut.ID, msg.ID)
 	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	assert.Equal(t, msgOut.Attempts, uint32(1))
 }
 
 func TestClientTimeout(t *testing.T) {
