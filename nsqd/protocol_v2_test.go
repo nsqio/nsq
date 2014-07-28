@@ -550,7 +550,7 @@ func TestTouch(t *testing.T) {
 
 	options := NewNSQDOptions()
 	options.Verbose = true
-	options.MsgTimeout = 50 * time.Millisecond
+	options.MsgTimeout = 150 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(options)
 	defer nsqd.Exit()
 
@@ -577,12 +577,12 @@ func TestTouch(t *testing.T) {
 	assert.Equal(t, frameType, frameTypeMessage)
 	assert.Equal(t, msgOut.ID, msg.ID)
 
-	time.Sleep(25 * time.Millisecond)
+	time.Sleep(75 * time.Millisecond)
 
 	_, err = nsq.Touch(nsq.MessageID(msg.ID)).WriteTo(conn)
 	assert.Equal(t, err, nil)
 
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(75 * time.Millisecond)
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
 	assert.Equal(t, err, nil)
