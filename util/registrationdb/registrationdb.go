@@ -21,14 +21,14 @@ type Registration struct {
 type Registrations []Registration
 
 type Producer struct {
-	ID               string    `json:"-"`
-	RemoteAddress    string    `json:"-"`
-	Hostname         string    `json:"hostname"`
-	BroadcastAddress string    `json:"broadcast_address"`
-	TCPPort          int       `json:"tcp_port"`
-	HTTPPort         int       `json:"http_port"`
-	Version          string    `json:"version"`
-	LastUpdate       int64     `json:"-"`
+	ID               string `json:"-"`
+	RemoteAddress    string `json:"-"`
+	Hostname         string `json:"hostname"`
+	BroadcastAddress string `json:"broadcast_address"`
+	TCPPort          int    `json:"tcp_port"`
+	HTTPPort         int    `json:"http_port"`
+	Version          string `json:"version"`
+	LastUpdate       int64  `json:"-"`
 	tombstoned       bool
 	tombstonedAt     time.Time
 }
@@ -71,7 +71,7 @@ func (r *RegistrationDB) Debug() map[string][]map[string]interface{} {
 			m["tcp_port"] = p.TCPPort
 			m["http_port"] = p.HTTPPort
 			m["version"] = p.Version
-			m["last_update"] = p.LastUpdate
+			m["last_update"] = atomic.LoadInt64(&p.LastUpdate)
 			m["tombstoned"] = p.tombstoned
 			m["tombstoned_at"] = p.tombstonedAt.UnixNano()
 			data[key] = append(data[key], m)
@@ -195,7 +195,7 @@ func (r *RegistrationDB) TouchRegistrations(id string) {
 	for _, producers := range r.data {
 		for _, p := range producers {
 			if p.ID == id {
-				p.LastUpdate = now
+				atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
 			}
 		}
 	}
@@ -211,7 +211,7 @@ func (r *RegistrationDB) TouchRegistration(category string, key string, subkey s
 		}
 		for _, p := range producers {
 			if p.ID == id {
-				p.LastUpdate = now
+				atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
 				return true
 			}
 		}
