@@ -557,7 +557,7 @@ func memberToProducer(member serf.Member) registrationdb.Producer {
 		ID: member.Name,
 		RemoteAddress: net.JoinHostPort(member.Addr.String(),
 			strconv.Itoa(int(member.Port))),
-		LastUpdate:       time.Now(),
+		LastUpdate:       time.Now().UnixNano(),
 		BroadcastAddress: member.Tags["ba"],
 		Hostname:         member.Tags["h"],
 		TCPPort:          tcpPort,

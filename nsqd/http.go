@@ -120,9 +120,6 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
 			func() (interface{}, error) { return s.doPauseChannel(req) }))
 
-	case "/lookup":
-		s.v1LookupHandler(w, req)
-
 	default:
 		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
 	}
@@ -237,17 +234,17 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		return nil, httpError{400, "INVALID_REQUEST"}
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, httpError{400, "MISSING_ARG_TOPIC"}
+		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
 	registration := s.context.nsqd.rdb.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 {
-		return nil, httpError{404, "INVALID_TOPIC"}
+		return nil, util.HTTPError{404, "INVALID_TOPIC"}
 	}
 
 	channels := s.context.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
