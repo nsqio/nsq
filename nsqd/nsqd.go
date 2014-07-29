@@ -136,6 +136,9 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	serfConfig.Tags["role"] = "nsqd"
 	serfConfig.Tags["tp"] = strconv.Itoa(tcpAddr.Port)
 	serfConfig.Tags["hp"] = strconv.Itoa(httpAddr.Port)
+	if httpsAddr != nil {
+		serfConfig.Tags["hps"] = strconv.Itoa(httpsAddr.Port)
+	}
 	serfConfig.Tags["ba"] = options.BroadcastAddress
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
