@@ -775,16 +775,29 @@ func (n *NSQD) gossipLoop() {
 
 	regossipTicker := time.NewTicker(60 * time.Second)
 
-	num, err := n.serf.Join(n.options.SeedNodeAddresses, false)
-	if err != nil {
-		log.Printf("ERROR: failed to join serf - %s", err)
-		// TODO: retry?
+	if len(n.options.SeedNodeAddresses) > 0 {
+		for {
+			num, err := n.serf.Join(n.options.SeedNodeAddresses, false)
+			if err != nil {
+				log.Printf("ERROR: failed to join serf - %s", err)
+				select {
+				case <-time.After(15 * time.Second):
+					// keep trying
+				case <-n.exitChan:
+					goto exit
+				}
+			}
+			if num > 0 {
+				log.Printf("SERF: joined %d nodes", num)
+				break
+			}
+		}
 	}
-	log.Printf("SERF: joined %d nodes", num)
 
 	for {
 		select {
 		case <-regossipTicker.C:
+			log.Printf("SERF: re-gossiping")
 			stats := n.GetStats()
 			for _, topicStat := range stats {
 				if len(topicStat.Channels) == 0 {
@@ -835,6 +848,7 @@ func (n *NSQD) gossipLoop() {
 	}
 
 exit:
+	regossipTicker.Stop()
 	log.Printf("GOSSIP: exiting")
 }
 
