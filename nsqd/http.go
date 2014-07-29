@@ -12,6 +12,7 @@ import (
 	"net/http"
 	httpprof "net/http/pprof"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,8 +169,14 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 }
 
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
+	health := s.context.nsqd.GetHealth()
+	code := 200
+	if !s.context.nsqd.IsHealthy() {
+		code = 500
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(health)))
+	w.WriteHeader(code)
+	io.WriteString(w, health)
 }
 
 func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
@@ -486,18 +493,20 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
 	stats := s.context.nsqd.GetStats()
+	health := s.context.nsqd.GetHealth()
 
 	if !jsonFormat {
-		return s.printStats(stats), nil
+		return s.printStats(stats, health), nil
 	}
 
 	return struct {
 		Version string       `json:"version"`
+		Health  string       `json:"health"`
 		Topics  []TopicStats `json:"topics"`
-	}{util.BINARY_VERSION, stats}, nil
+	}{util.BINARY_VERSION, health, stats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats) []byte {
+func (s *httpServer) printStats(stats []TopicStats, health string) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()
@@ -506,6 +515,7 @@ func (s *httpServer) printStats(stats []TopicStats) []byte {
 		io.WriteString(w, "\nNO_TOPICS\n")
 		return buf.Bytes()
 	}
+	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
 	for _, t := range stats {
 		var pausedPrefix string
 		if t.Paused {
