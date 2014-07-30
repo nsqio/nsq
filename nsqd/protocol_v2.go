@@ -395,7 +395,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		MaxRdyCount:     p.context.nsqd.options.MaxRdyCount,
 		Version:         util.BINARY_VERSION,
 		MaxMsgTimeout:   int64(p.context.nsqd.options.MaxMsgTimeout / time.Millisecond),
-		MsgTimeout:      int64(identifyData.MsgTimeout),
+		MsgTimeout:      int64(client.MsgTimeout / time.Millisecond),
 		TLSv1:           tlsv1,
 		Deflate:         deflate,
 		DeflateLevel:    deflateLevel,
