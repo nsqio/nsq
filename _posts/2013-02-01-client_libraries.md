@@ -85,7 +85,7 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
       <td><i class="fa fa-check"></i></td>
       <td><i class="fa fa-check"></i></td>
       <td><i class="fa fa-check"></i></td>
-      <td></td>
+      <td><i class="fa fa-check"></i></td>
       <td></td>
   </tr>
   <tr class="success">
