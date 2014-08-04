@@ -59,6 +59,10 @@ func NewNSQD(options *nsqdOptions) *NSQD {
 		log.Fatalf("--max-deflate-level must be [1,9]")
 	}
 
+	if options.ID < 0 || options.ID >= 4096 {
+		log.Fatalf("--worker-id must be [0,4096)")
+	}
+
 	tcpAddr, err := net.ResolveTCPAddr("tcp", options.TCPAddress)
 	if err != nil {
 		log.Fatal(err)
