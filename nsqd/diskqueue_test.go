@@ -1,9 +1,11 @@
 package nsqd
 
 import (
+	"bufio"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -244,12 +246,52 @@ func BenchmarkDiskQueuePut(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 1024, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 1024768*100, 2500, 2*time.Second)
+	size := 1024
+	b.SetBytes(int64(size))
+	data := make([]byte, size)
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		dq.Put([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		dq.Put(data)
 	}
+}
+
+func BenchmarkDiskWrite(b *testing.B) {
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
+	f, _ := os.OpenFile(path.Join(os.TempDir(), fileName), os.O_RDWR|os.O_CREATE, 0600)
+	size := 256
+	b.SetBytes(int64(size))
+	data := make([]byte, size)
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		f.Write(data)
+	}
+}
+
+func BenchmarkDiskWriteBuffered(b *testing.B) {
+	b.StopTimer()
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
+	f, _ := os.OpenFile(path.Join(os.TempDir(), fileName), os.O_RDWR|os.O_CREATE, 0600)
+	size := 256
+	b.SetBytes(int64(size))
+	data := make([]byte, size)
+	w := bufio.NewWriterSize(f, 1024*4)
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		w.Write(data)
+		if i%1024 == 0 {
+			w.Flush()
+		}
+	}
+	w.Flush()
 }
 
 // this benchmark should be run via:
