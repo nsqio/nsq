@@ -2,19 +2,32 @@ package nsqlookupd
 
 import (
 	"fmt"
+	"net"
+	"testing"
+	"time"
 
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	lookuputil "github.com/bitly/nsq/util/lookupd"
 	"github.com/bmizerany/assert"
-
-	"io/ioutil"
-	"log"
-	"net"
-	"os"
-	"testing"
-	"time"
 )
+
+type tbLog interface {
+	Log(...interface{})
+}
+
+type testLogger struct {
+	tbLog
+}
+
+func (tl *testLogger) Output(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+
+func newTestLogger(tbl tbLog) logger {
+	return &testLogger{tbl}
+}
 
 func mustStartLookupd(options *nsqlookupdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
@@ -25,7 +38,9 @@ func mustStartLookupd(options *nsqlookupdOptions) (*net.TCPAddr, *net.TCPAddr, *
 	nsqlookupd.httpAddr = httpAddr
 	nsqlookupd.Main()
 
-	return nsqlookupd.tcpListener.Addr().(*net.TCPAddr), nsqlookupd.httpListener.Addr().(*net.TCPAddr), nsqlookupd
+	return nsqlookupd.tcpListener.Addr().(*net.TCPAddr),
+		nsqlookupd.httpListener.Addr().(*net.TCPAddr),
+		nsqlookupd
 }
 
 func mustConnectLookupd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
@@ -52,10 +67,9 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 }
 
 func TestBasicLookupd(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(NewNSQLookupdOptions())
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
@@ -64,6 +78,7 @@ func TestBasicLookupd(t *testing.T) {
 	topicName := "connectmsg"
 
 	conn := mustConnectLookupd(t, tcpAddr)
+
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
@@ -75,7 +90,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
 	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
-	log.Printf("got %v", data)
+	t.Logf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
@@ -96,7 +111,7 @@ func TestBasicLookupd(t *testing.T) {
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
 	assert.Equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
-	log.Printf("got returnedTopics %v", returnedTopics)
+	t.Logf("got returnedTopics %v", returnedTopics)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedTopics), 1)
 
@@ -108,12 +123,12 @@ func TestBasicLookupd(t *testing.T) {
 	assert.Equal(t, len(returnedChannels), 1)
 
 	returnedProducers, err = data.Get("producers").Array()
-	log.Printf("got returnedProducers %v", returnedProducers)
+	t.Logf("got returnedProducers %v", returnedProducers)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, len(returnedProducers), 1)
 	for i := range returnedProducers {
 		producer := data.Get("producers").GetIndex(i)
-		log.Printf("producer %v", producer)
+		t.Logf("producer %v", producer)
 
 		port, err := producer.Get("tcp_port").Int()
 		assert.Equal(t, err, nil)
@@ -147,10 +162,9 @@ func TestBasicLookupd(t *testing.T) {
 }
 
 func TestChannelUnregister(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(NewNSQLookupdOptions())
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
@@ -159,6 +173,8 @@ func TestChannelUnregister(t *testing.T) {
 	topicName := "channel_unregister"
 
 	conn := mustConnectLookupd(t, tcpAddr)
+	defer conn.Close()
+
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
@@ -196,18 +212,18 @@ func TestChannelUnregister(t *testing.T) {
 }
 
 func TestTombstoneRecover(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQLookupdOptions()
-	options.TombstoneLifetime = 50 * time.Millisecond
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	opts.TombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	topicName := "tombstone_recover"
 	topicName2 := topicName + "2"
 
 	conn := mustConnectLookupd(t, tcpAddr)
+	defer conn.Close()
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
@@ -217,17 +233,6 @@ func TestTombstoneRecover(t *testing.T) {
 	nsq.Register(topicName2, "channel2").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
 	assert.Equal(t, err, nil)
-
-	go func() {
-		for {
-			time.Sleep(10 * time.Millisecond)
-			nsq.Ping().WriteTo(conn)
-			_, err := nsq.ReadResponse(conn)
-			if err != nil {
-				return
-			}
-		}
-	}()
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
@@ -253,22 +258,20 @@ func TestTombstoneRecover(t *testing.T) {
 	assert.Equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	assert.Equal(t, len(producers), 1)
-
-	conn.Close()
 }
 
 func TestTombstoneUnregister(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQLookupdOptions()
-	options.TombstoneLifetime = 50 * time.Millisecond
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	opts.TombstoneLifetime = 50 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	topicName := "tombstone_unregister"
 
 	conn := mustConnectLookupd(t, tcpAddr)
+	defer conn.Close()
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
@@ -300,12 +303,10 @@ func TestTombstoneUnregister(t *testing.T) {
 }
 
 func TestInactiveNodes(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQLookupdOptions()
-	options.InactiveProducerTimeout = 200 * time.Millisecond
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	opts.InactiveProducerTimeout = 200 * time.Millisecond
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
@@ -313,6 +314,8 @@ func TestInactiveNodes(t *testing.T) {
 	topicName := "inactive_nodes"
 
 	conn := mustConnectLookupd(t, tcpAddr)
+	defer conn.Close()
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
@@ -332,11 +335,9 @@ func TestInactiveNodes(t *testing.T) {
 }
 
 func TestTombstonedNodes(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQLookupdOptions()
-	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(options)
+	opts := NewNSQLookupdOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
 	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
@@ -344,18 +345,9 @@ func TestTombstonedNodes(t *testing.T) {
 	topicName := "inactive_nodes"
 
 	conn := mustConnectLookupd(t, tcpAddr)
-	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	defer conn.Close()
 
-	go func() {
-		for {
-			time.Sleep(5 * time.Millisecond)
-			nsq.Ping().WriteTo(conn)
-			_, err := nsq.ReadResponse(conn)
-			if err != nil {
-				return
-			}
-		}
-	}()
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -377,6 +369,4 @@ func TestTombstonedNodes(t *testing.T) {
 	assert.Equal(t, len(producers[0].Topics), 1)
 	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
 	assert.Equal(t, producers[0].Topics[0].Tombstoned, true)
-
-	conn.Close()
 }

@@ -1,9 +1,6 @@
 package nsqlookupd
 
 import (
-	"io/ioutil"
-	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -11,9 +8,6 @@ import (
 )
 
 func TestRegistrationDB(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	sec30 := 30 * time.Second
 	beginningOfTime := time.Unix(1348797047, 0)
 	pi1 := &PeerInfo{beginningOfTime.UnixNano(), "1", "remote_addr:1", "host", "b_addr", 1, 2, "v1"}
