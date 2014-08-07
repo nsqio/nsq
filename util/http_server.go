@@ -1,14 +1,14 @@
 package util
 
 import (
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 )
 
-func HTTPServer(listener net.Listener, handler http.Handler, proto_name string) {
-	log.Printf("%s: listening on %s", proto_name, listener.Addr().String())
+func HTTPServer(listener net.Listener, handler http.Handler, l logger, proto string) {
+	l.Output(2, fmt.Sprintf("%s: listening on %s", proto, listener.Addr()))
 
 	server := &http.Server{
 		Handler: handler,
@@ -16,8 +16,8 @@ func HTTPServer(listener net.Listener, handler http.Handler, proto_name string) 
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-		log.Printf("ERROR: http.Serve() - %s", err.Error())
+		l.Output(2, fmt.Sprintf("ERROR: http.Serve() - %s", err))
 	}
 
-	log.Printf("%s: closing %s", proto_name, listener.Addr().String())
+	l.Output(2, fmt.Sprintf("%s: closing %s", proto, listener.Addr()))
 }
