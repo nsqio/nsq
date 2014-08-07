@@ -5,8 +5,6 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
-
-	"github.com/bmizerany/assert"
 )
 
 func TestPriorityQueue(t *testing.T) {
@@ -16,14 +14,14 @@ func TestPriorityQueue(t *testing.T) {
 	for i := 0; i < c+1; i++ {
 		pq.Push(&Message{clientID: int64(i), pri: int64(i)})
 	}
-	assert.Equal(t, len(pq), c+1)
-	assert.Equal(t, cap(pq), c*2)
+	equal(t, len(pq), c+1)
+	equal(t, cap(pq), c*2)
 
 	for i := 0; i < c+1; i++ {
 		msg := pq.Pop()
-		assert.Equal(t, msg.clientID, int64(i))
+		equal(t, msg.clientID, int64(i))
 	}
-	assert.Equal(t, cap(pq), c/4)
+	equal(t, cap(pq), c/4)
 }
 
 func TestUnsortedInsert(t *testing.T) {
@@ -36,14 +34,14 @@ func TestUnsortedInsert(t *testing.T) {
 		ints = append(ints, v)
 		pq.Push(&Message{pri: int64(v)})
 	}
-	assert.Equal(t, len(pq), c)
-	assert.Equal(t, cap(pq), c)
+	equal(t, len(pq), c)
+	equal(t, cap(pq), c)
 
 	sort.Sort(sort.IntSlice(ints))
 
 	for i := 0; i < c; i++ {
 		msg, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))
-		assert.Equal(t, msg.pri, int64(ints[i]))
+		equal(t, msg.pri, int64(ints[i]))
 	}
 }
 
@@ -69,13 +67,13 @@ func TestRemove(t *testing.T) {
 			}
 		}
 		rm := pq.Remove(idx)
-		assert.Equal(t, fmt.Sprintf("%s", fm.ID), fmt.Sprintf("%s", rm.ID))
+		equal(t, fmt.Sprintf("%s", fm.ID), fmt.Sprintf("%s", rm.ID))
 	}
 
 	lastPriority := pq.Pop().pri
 	for i := 0; i < (c - 10 - 1); i++ {
 		msg := pq.Pop()
-		assert.Equal(t, lastPriority <= msg.pri, true)
+		equal(t, lastPriority <= msg.pri, true)
 		lastPriority = msg.pri
 	}
 }

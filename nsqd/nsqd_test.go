@@ -4,13 +4,51 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/bmizerany/assert"
 )
+
+func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
+	if !condition {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d: "+msg+"\033[39m\n\n",
+			append([]interface{}{filepath.Base(file), line}, v...)...)
+		t.FailNow()
+	}
+}
+
+func ok(t *testing.T, err error) {
+	if err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d: unexpected error: %s\033[39m\n\n",
+			filepath.Base(file), line, err.Error())
+		t.FailNow()
+	}
+}
+
+func equal(t *testing.T, exp, act interface{}) {
+	if !reflect.DeepEqual(exp, act) {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+			filepath.Base(file), line, exp, act)
+		t.FailNow()
+	}
+}
+
+func nequal(t *testing.T, exp, act interface{}) {
+	if reflect.DeepEqual(exp, act) {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+			filepath.Base(file), line, exp, act)
+		t.FailNow()
+	}
+}
 
 type tbLog interface {
 	Log(...interface{})
@@ -64,12 +102,12 @@ func TestStartup(t *testing.T) {
 
 	// verify nsqd metadata shows no topics
 	err := nsqd.PersistMetadata()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	metaData, err := getMetadata(nsqd)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	topics, err := metaData.Get("topics").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(topics), 0)
+	equal(t, err, nil)
+	equal(t, len(topics), 0)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -85,7 +123,7 @@ func TestStartup(t *testing.T) {
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
 		t.Logf("read message %d", i+1)
-		assert.Equal(t, msg.Body, body)
+		equal(t, msg.Body, body)
 	}
 
 	for {
@@ -97,13 +135,13 @@ func TestStartup(t *testing.T) {
 
 	// make sure metadata shows the topic
 	metaData, err = getMetadata(nsqd)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	topics, err = metaData.Get("topics").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(topics), 1)
+	equal(t, err, nil)
+	equal(t, len(topics), 1)
 	observedTopicName, err := metaData.Get("topics").GetIndex(0).Get("name").String()
-	assert.Equal(t, observedTopicName, topicName)
-	assert.Equal(t, err, nil)
+	equal(t, observedTopicName, topicName)
+	equal(t, err, nil)
 
 	exitChan <- 1
 	<-doneExitChan
@@ -125,7 +163,7 @@ func TestStartup(t *testing.T) {
 	topic = nsqd.GetTopic(topicName)
 	// should be empty; channel should have drained everything
 	count := topic.Depth()
-	assert.Equal(t, count, int64(0))
+	equal(t, count, int64(0))
 
 	channel1 = topic.GetChannel("ch1")
 
@@ -140,12 +178,12 @@ func TestStartup(t *testing.T) {
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
 		t.Logf("read message %d", i+1)
-		assert.Equal(t, msg.Body, body)
+		equal(t, msg.Body, body)
 	}
 
 	// verify we drained things
-	assert.Equal(t, len(topic.memoryMsgChan), 0)
-	assert.Equal(t, topic.backend.Depth(), int64(0))
+	equal(t, len(topic.memoryMsgChan), 0)
+	equal(t, topic.backend.Depth(), int64(0))
 
 	exitChan <- 1
 	<-doneExitChan
@@ -178,7 +216,7 @@ func TestEphemeralChannel(t *testing.T) {
 	msg := NewMessage(<-nsqd.idChan, body)
 	topic.PutMessage(msg)
 	msg = <-ephemeralChannel.clientMsgChan
-	assert.Equal(t, msg.Body, body)
+	equal(t, msg.Body, body)
 
 	t.Logf("pulling from channel")
 	ephemeralChannel.RemoveClient(client.ID)
@@ -188,7 +226,7 @@ func TestEphemeralChannel(t *testing.T) {
 	topic.Lock()
 	numChannels := len(topic.channelMap)
 	topic.Unlock()
-	assert.Equal(t, numChannels, 0)
+	equal(t, numChannels, 0)
 
 	exitChan <- 1
 	<-doneExitChan
@@ -210,15 +248,15 @@ func TestPauseMetadata(t *testing.T) {
 	channel := topic.GetChannel("ch")
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
-	assert.Equal(t, b, false)
+	equal(t, b, false)
 
 	channel.Pause()
 
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
-	assert.Equal(t, b, true)
+	equal(t, b, true)
 
 	channel.UnPause()
 
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
-	assert.Equal(t, b, false)
+	equal(t, b, false)
 }

@@ -11,8 +11,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/bmizerany/assert"
 )
 
 func TestDiskQueue(t *testing.T) {
@@ -20,55 +18,55 @@ func TestDiskQueue(t *testing.T) {
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	dq := newDiskQueue(dqName, os.TempDir(), 1024, 2500, 2*time.Second, l)
-	assert.NotEqual(t, dq, nil)
-	assert.Equal(t, dq.Depth(), int64(0))
+	nequal(t, dq, nil)
+	equal(t, dq.Depth(), int64(0))
 
 	msg := []byte("test")
 	err := dq.Put(msg)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, dq.Depth(), int64(1))
+	equal(t, err, nil)
+	equal(t, dq.Depth(), int64(1))
 
 	msgOut := <-dq.ReadChan()
-	assert.Equal(t, msgOut, msg)
+	equal(t, msgOut, msg)
 }
 
 func TestDiskQueueRoll(t *testing.T) {
 	l := newTestLogger(t)
 	dqName := "test_disk_queue_roll" + strconv.Itoa(int(time.Now().Unix()))
 	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second, l)
-	assert.NotEqual(t, dq, nil)
-	assert.Equal(t, dq.Depth(), int64(0))
+	nequal(t, dq, nil)
+	equal(t, dq.Depth(), int64(0))
 
 	msg := []byte("aaaaaaaaaa")
 	for i := 0; i < 10; i++ {
 		err := dq.Put(msg)
-		assert.Equal(t, err, nil)
-		assert.Equal(t, dq.Depth(), int64(i+1))
+		equal(t, err, nil)
+		equal(t, dq.Depth(), int64(i+1))
 	}
 
-	assert.Equal(t, dq.(*diskQueue).writeFileNum, int64(1))
-	assert.Equal(t, dq.(*diskQueue).writePos, int64(28))
+	equal(t, dq.(*diskQueue).writeFileNum, int64(1))
+	equal(t, dq.(*diskQueue).writePos, int64(28))
 }
 
 func assertFileNotExist(t *testing.T, fn string) {
 	f, err := os.OpenFile(fn, os.O_RDONLY, 0600)
-	assert.Equal(t, f, (*os.File)(nil))
-	assert.Equal(t, os.IsNotExist(err), true)
+	equal(t, f, (*os.File)(nil))
+	equal(t, os.IsNotExist(err), true)
 }
 
 func TestDiskQueueEmpty(t *testing.T) {
 	l := newTestLogger(t)
 	dqName := "test_disk_queue_empty" + strconv.Itoa(int(time.Now().Unix()))
 	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second, l)
-	assert.NotEqual(t, dq, nil)
-	assert.Equal(t, dq.Depth(), int64(0))
+	nequal(t, dq, nil)
+	equal(t, dq.Depth(), int64(0))
 
 	msg := []byte("aaaaaaaaaa")
 
 	for i := 0; i < 100; i++ {
 		err := dq.Put(msg)
-		assert.Equal(t, err, nil)
-		assert.Equal(t, dq.Depth(), int64(i+1))
+		equal(t, err, nil)
+		equal(t, dq.Depth(), int64(i+1))
 	}
 
 	for i := 0; i < 3; i++ {
@@ -81,7 +79,7 @@ func TestDiskQueueEmpty(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	assert.Equal(t, dq.Depth(), int64(97))
+	equal(t, dq.Depth(), int64(97))
 
 	numFiles := dq.(*diskQueue).writeFileNum
 	dq.Empty()
@@ -90,16 +88,16 @@ func TestDiskQueueEmpty(t *testing.T) {
 	for i := int64(0); i <= numFiles; i++ {
 		assertFileNotExist(t, dq.(*diskQueue).fileName(i))
 	}
-	assert.Equal(t, dq.Depth(), int64(0))
-	assert.Equal(t, dq.(*diskQueue).readFileNum, dq.(*diskQueue).writeFileNum)
-	assert.Equal(t, dq.(*diskQueue).readPos, dq.(*diskQueue).writePos)
-	assert.Equal(t, dq.(*diskQueue).nextReadPos, dq.(*diskQueue).readPos)
-	assert.Equal(t, dq.(*diskQueue).nextReadFileNum, dq.(*diskQueue).readFileNum)
+	equal(t, dq.Depth(), int64(0))
+	equal(t, dq.(*diskQueue).readFileNum, dq.(*diskQueue).writeFileNum)
+	equal(t, dq.(*diskQueue).readPos, dq.(*diskQueue).writePos)
+	equal(t, dq.(*diskQueue).nextReadPos, dq.(*diskQueue).readPos)
+	equal(t, dq.(*diskQueue).nextReadFileNum, dq.(*diskQueue).readFileNum)
 
 	for i := 0; i < 100; i++ {
 		err := dq.Put(msg)
-		assert.Equal(t, err, nil)
-		assert.Equal(t, dq.Depth(), int64(i+1))
+		equal(t, err, nil)
+		equal(t, dq.Depth(), int64(i+1))
 	}
 
 	for i := 0; i < 100; i++ {
@@ -113,10 +111,10 @@ func TestDiskQueueEmpty(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	assert.Equal(t, dq.Depth(), int64(0))
-	assert.Equal(t, dq.(*diskQueue).readFileNum, dq.(*diskQueue).writeFileNum)
-	assert.Equal(t, dq.(*diskQueue).readPos, dq.(*diskQueue).writePos)
-	assert.Equal(t, dq.(*diskQueue).nextReadPos, dq.(*diskQueue).readPos)
+	equal(t, dq.Depth(), int64(0))
+	equal(t, dq.(*diskQueue).readFileNum, dq.(*diskQueue).writeFileNum)
+	equal(t, dq.(*diskQueue).readPos, dq.(*diskQueue).writePos)
+	equal(t, dq.(*diskQueue).nextReadPos, dq.(*diskQueue).readPos)
 }
 
 func TestDiskQueueCorruption(t *testing.T) {
@@ -129,14 +127,14 @@ func TestDiskQueueCorruption(t *testing.T) {
 		dq.Put(msg)
 	}
 
-	assert.Equal(t, dq.Depth(), int64(25))
+	equal(t, dq.Depth(), int64(25))
 
 	// corrupt the 2nd file
 	dqFn := dq.(*diskQueue).fileName(1)
 	os.Truncate(dqFn, 500)
 
 	for i := 0; i < 19; i++ {
-		assert.Equal(t, <-dq.ReadChan(), msg)
+		equal(t, <-dq.ReadChan(), msg)
 	}
 
 	// corrupt the 4th (current) file
@@ -145,7 +143,7 @@ func TestDiskQueueCorruption(t *testing.T) {
 
 	dq.Put(msg)
 
-	assert.Equal(t, <-dq.ReadChan(), msg)
+	equal(t, <-dq.ReadChan(), msg)
 }
 
 func TestDiskQueueTorture(t *testing.T) {
@@ -154,8 +152,8 @@ func TestDiskQueueTorture(t *testing.T) {
 	l := newTestLogger(t)
 	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
 	dq := newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second, l)
-	assert.NotEqual(t, dq, nil)
-	assert.Equal(t, dq.Depth(), int64(0))
+	nequal(t, dq, nil)
+	equal(t, dq.Depth(), int64(0))
 
 	msg := []byte("aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff")
 
@@ -195,8 +193,8 @@ func TestDiskQueueTorture(t *testing.T) {
 	t.Logf("restarting diskqueue")
 
 	dq = newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second, l)
-	assert.NotEqual(t, dq, nil)
-	assert.Equal(t, dq.Depth(), depth)
+	nequal(t, dq, nil)
+	equal(t, dq.Depth(), depth)
 
 	var read int64
 	for i := 0; i < numReaders; i++ {
@@ -207,7 +205,7 @@ func TestDiskQueueTorture(t *testing.T) {
 				time.Sleep(100000 * time.Nanosecond)
 				select {
 				case m := <-dq.ReadChan():
-					assert.Equal(t, msg, m)
+					equal(t, msg, m)
 					atomic.AddInt64(&read, 1)
 				case <-readExitChan:
 					return
@@ -228,7 +226,7 @@ func TestDiskQueueTorture(t *testing.T) {
 	close(readExitChan)
 	wg.Wait()
 
-	assert.Equal(t, read, depth)
+	equal(t, read, depth)
 
 	dq.Close()
 }

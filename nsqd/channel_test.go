@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"testing"
 	"time"
-
-	"github.com/bmizerany/assert"
 )
 
 // ensure that we can push a message through a topic and get it out of a channel
@@ -24,8 +22,8 @@ func TestPutMessage(t *testing.T) {
 	topic.PutMessage(msg)
 
 	outputMsg := <-channel1.clientMsgChan
-	assert.Equal(t, msg.ID, outputMsg.ID)
-	assert.Equal(t, msg.Body, outputMsg.Body)
+	equal(t, msg.ID, outputMsg.ID)
+	equal(t, msg.Body, outputMsg.Body)
 }
 
 // ensure that both channels get the same message
@@ -45,12 +43,12 @@ func TestPutMessage2Chan(t *testing.T) {
 	topic.PutMessage(msg)
 
 	outputMsg1 := <-channel1.clientMsgChan
-	assert.Equal(t, msg.ID, outputMsg1.ID)
-	assert.Equal(t, msg.Body, outputMsg1.Body)
+	equal(t, msg.ID, outputMsg1.ID)
+	equal(t, msg.Body, outputMsg1.Body)
 
 	outputMsg2 := <-channel2.clientMsgChan
-	assert.Equal(t, msg.ID, outputMsg2.ID)
-	assert.Equal(t, msg.Body, outputMsg2.Body)
+	equal(t, msg.ID, outputMsg2.ID)
+	equal(t, msg.Body, outputMsg2.Body)
 }
 
 func TestInFlightWorker(t *testing.T) {
@@ -74,12 +72,12 @@ func TestInFlightWorker(t *testing.T) {
 	channel.Lock()
 	inFlightMsgs := len(channel.inFlightMessages)
 	channel.Unlock()
-	assert.Equal(t, inFlightMsgs, count)
+	equal(t, inFlightMsgs, count)
 
 	channel.inFlightMutex.Lock()
 	inFlightPQMsgs := len(channel.inFlightPQ)
 	channel.inFlightMutex.Unlock()
-	assert.Equal(t, inFlightPQMsgs, count)
+	equal(t, inFlightPQMsgs, count)
 
 	// the in flight worker has a resolution of 100ms so we need to wait
 	// at least that much longer than our msgTimeout (in worst case)
@@ -88,12 +86,12 @@ func TestInFlightWorker(t *testing.T) {
 	channel.Lock()
 	inFlightMsgs = len(channel.inFlightMessages)
 	channel.Unlock()
-	assert.Equal(t, inFlightMsgs, 0)
+	equal(t, inFlightMsgs, 0)
 
 	channel.inFlightMutex.Lock()
 	inFlightPQMsgs = len(channel.inFlightPQ)
 	channel.inFlightMutex.Unlock()
-	assert.Equal(t, inFlightPQMsgs, 0)
+	equal(t, inFlightPQMsgs, 0)
 }
 
 func TestChannelEmpty(t *testing.T) {
@@ -114,18 +112,18 @@ func TestChannelEmpty(t *testing.T) {
 	}
 
 	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 100*time.Millisecond)
-	assert.Equal(t, len(channel.inFlightMessages), 24)
-	assert.Equal(t, len(channel.inFlightPQ), 24)
-	assert.Equal(t, len(channel.deferredMessages), 1)
-	assert.Equal(t, len(channel.deferredPQ), 1)
+	equal(t, len(channel.inFlightMessages), 24)
+	equal(t, len(channel.inFlightPQ), 24)
+	equal(t, len(channel.deferredMessages), 1)
+	equal(t, len(channel.deferredPQ), 1)
 
 	channel.Empty()
 
-	assert.Equal(t, len(channel.inFlightMessages), 0)
-	assert.Equal(t, len(channel.inFlightPQ), 0)
-	assert.Equal(t, len(channel.deferredMessages), 0)
-	assert.Equal(t, len(channel.deferredPQ), 0)
-	assert.Equal(t, channel.Depth(), int64(0))
+	equal(t, len(channel.inFlightMessages), 0)
+	equal(t, len(channel.inFlightPQ), 0)
+	equal(t, len(channel.deferredMessages), 0)
+	equal(t, len(channel.deferredPQ), 0)
+	equal(t, channel.Depth(), int64(0))
 }
 
 func TestChannelEmptyConsumer(t *testing.T) {
@@ -150,14 +148,14 @@ func TestChannelEmptyConsumer(t *testing.T) {
 
 	for _, cl := range channel.clients {
 		stats := cl.Stats()
-		assert.Equal(t, stats.InFlightCount, int64(25))
+		equal(t, stats.InFlightCount, int64(25))
 	}
 
 	channel.Empty()
 
 	for _, cl := range channel.clients {
 		stats := cl.Stats()
-		assert.Equal(t, stats.InFlightCount, int64(0))
+		equal(t, stats.InFlightCount, int64(0))
 	}
 
 }
