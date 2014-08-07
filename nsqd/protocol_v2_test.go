@@ -131,6 +131,7 @@ func TestBasicV2(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -167,6 +168,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	for _, i := range []string{"1", "2"} {
 		conn, err := mustConnectNSQD(tcpAddr)
 		equal(t, err, nil)
+		defer conn.Close()
 
 		identify(t, conn, nil, frameTypeResponse)
 		sub(t, conn, topicName, "ch"+i)
@@ -204,6 +206,7 @@ func TestClientTimeout(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -238,6 +241,7 @@ func TestClientHeartbeat(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -273,6 +277,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": -1,
@@ -289,6 +294,7 @@ func TestClientHeartbeatDisable(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": -1,
@@ -309,6 +315,7 @@ func TestMaxHeartbeatIntervalValid(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	hbi := int(opts.MaxHeartbeatInterval / time.Millisecond)
 	identify(t, conn, map[string]interface{}{
@@ -325,6 +332,7 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	hbi := int(opts.MaxHeartbeatInterval/time.Millisecond + 1)
 	data := identify(t, conn, map[string]interface{}{
@@ -343,6 +351,7 @@ func TestPausing(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -405,6 +414,7 @@ func TestEmptyCommand(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	_, err = conn.Write([]byte("\n\n"))
 	equal(t, err, nil)
@@ -423,6 +433,7 @@ func TestSizeLimits(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -448,6 +459,7 @@ func TestSizeLimits(t *testing.T) {
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	// PUB thats empty
 	nsq.Publish(topicName, make([]byte, 0)).WriteTo(conn)
@@ -460,6 +472,7 @@ func TestSizeLimits(t *testing.T) {
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB body that's valid
 	mpub := make([][]byte, 0)
@@ -490,6 +503,7 @@ func TestSizeLimits(t *testing.T) {
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB that's invalid (one message empty)
 	mpub = make([][]byte, 0)
@@ -508,6 +522,7 @@ func TestSizeLimits(t *testing.T) {
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB body that's invalid (one of the messages is too big)
 	mpub = make([][]byte, 0)
@@ -535,6 +550,7 @@ func TestTouch(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -579,6 +595,7 @@ func TestMaxRdyCount(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	topic := nsqd.GetTopic(topicName)
 	msg := NewMessage(<-nsqd.idChan, []byte("test body"))
@@ -621,6 +638,7 @@ func TestFatalError(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	_, err = conn.Write([]byte("ASDF\n"))
 	equal(t, err, nil)
@@ -648,6 +666,7 @@ func TestOutputBuffering(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	outputBufferSize := 256 * 1024
 	outputBufferTimeout := 500
@@ -689,6 +708,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"output_buffer_size":    512 * 1024,
@@ -710,6 +730,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data = identify(t, conn, map[string]interface{}{
 		"output_buffer_size":    0,
@@ -729,6 +750,7 @@ func TestTLS(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
@@ -770,10 +792,14 @@ func TestTLSRequired(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	subFail(t, conn, topicName, "ch")
 
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -813,6 +839,8 @@ func TestTLSAuthRequire(t *testing.T) {
 	// No Certs
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -832,6 +860,8 @@ func TestTLSAuthRequire(t *testing.T) {
 	// With Unsigned Cert
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -875,6 +905,8 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	// with no cert
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -894,6 +926,8 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	// with invalid cert
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -916,6 +950,8 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	// with valid cert
 	conn, err = mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -952,6 +988,7 @@ func TestDeflate(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"deflate": true,
@@ -986,6 +1023,7 @@ func TestSnappy(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"snappy": true,
@@ -1039,6 +1077,7 @@ func TestTLSDeflate(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1":  true,
@@ -1092,6 +1131,7 @@ func TestSampling(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"sample_rate": int32(sampleRate),
@@ -1159,6 +1199,7 @@ func TestTLSSnappy(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
@@ -1215,6 +1256,7 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"msg_timeout": 1000,
@@ -1251,6 +1293,7 @@ func TestBadFin(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
 	sub(t, conn, "test_fin", "ch")
@@ -1308,8 +1351,10 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
 	equal(t, err, nil)
+	defer conn.Close()
+
+	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
 
 	identify(t, conn, map[string]interface{}{
 		"tls_v1": false,

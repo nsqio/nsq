@@ -24,6 +24,7 @@ func TestStats(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -48,6 +49,7 @@ func TestClientAttributes(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"snappy":     true,

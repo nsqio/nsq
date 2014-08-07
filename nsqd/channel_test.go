@@ -131,7 +131,9 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
+
 	conn, _ := mustConnectNSQD(tcpAddr)
+	defer conn.Close()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
