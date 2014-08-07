@@ -3,14 +3,25 @@ package nsqlookupd
 import (
 	"fmt"
 	"net"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
 	lookuputil "github.com/bitly/nsq/util/lookupd"
-	"github.com/bmizerany/assert"
 )
+
+func equal(t *testing.T, act, exp interface{}) {
+	if !reflect.DeepEqual(exp, act) {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+			filepath.Base(file), line, exp, act)
+		t.FailNow()
+	}
+}
 
 type tbLog interface {
 	Log(...interface{})
@@ -61,9 +72,9 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	ci["version"] = version
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	_, err = nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 }
 
 func TestBasicLookupd(t *testing.T) {
@@ -73,7 +84,7 @@ func TestBasicLookupd(t *testing.T) {
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
-	assert.Equal(t, len(topics), 0)
+	equal(t, len(topics), 0)
 
 	topicName := "connectmsg"
 
@@ -85,66 +96,66 @@ func TestBasicLookupd(t *testing.T) {
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, v, []byte("OK"))
+	equal(t, err, nil)
+	equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
 	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 	t.Logf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedProducers), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 1)
 
 	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
-	assert.Equal(t, len(topics), 1)
+	equal(t, len(topics), 1)
 
 	producers := nsqlookupd.DB.FindProducers("topic", topicName, "")
-	assert.Equal(t, len(producers), 1)
+	equal(t, len(producers), 1)
 	producer := producers[0]
 
-	assert.Equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
-	assert.Equal(t, producer.peerInfo.Hostname, "ip.address")
-	assert.Equal(t, producer.peerInfo.TcpPort, tcpPort)
-	assert.Equal(t, producer.peerInfo.HttpPort, httpPort)
+	equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
+	equal(t, producer.peerInfo.Hostname, "ip.address")
+	equal(t, producer.peerInfo.TcpPort, tcpPort)
+	equal(t, producer.peerInfo.HttpPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	t.Logf("got returnedTopics %v", returnedTopics)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedTopics), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedChannels), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedChannels), 1)
 
 	returnedProducers, err = data.Get("producers").Array()
 	t.Logf("got returnedProducers %v", returnedProducers)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedProducers), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 1)
 	for i := range returnedProducers {
 		producer := data.Get("producers").GetIndex(i)
 		t.Logf("producer %v", producer)
 
 		port, err := producer.Get("tcp_port").Int()
-		assert.Equal(t, err, nil)
-		assert.Equal(t, port, tcpPort)
+		equal(t, err, nil)
+		equal(t, port, tcpPort)
 
 		port, err = producer.Get("http_port").Int()
-		assert.Equal(t, err, nil)
-		assert.Equal(t, port, httpPort)
+		equal(t, err, nil)
+		equal(t, port, httpPort)
 
 		broadcastaddress, err := producer.Get("broadcast_address").String()
-		assert.Equal(t, err, nil)
-		assert.Equal(t, broadcastaddress, "ip.address")
+		equal(t, err, nil)
+		equal(t, broadcastaddress, "ip.address")
 
 		ver, err := producer.Get("version").String()
-		assert.Equal(t, err, nil)
-		assert.Equal(t, ver, "fake-version")
+		equal(t, err, nil)
+		equal(t, ver, "fake-version")
 	}
 
 	conn.Close()
@@ -152,13 +163,13 @@ func TestBasicLookupd(t *testing.T) {
 
 	// now there should be no producers, but still topic/channel entries
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedChannels), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedChannels), 1)
 	returnedProducers, err = data.Get("producers").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedProducers), 0)
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 0)
 }
 
 func TestChannelUnregister(t *testing.T) {
@@ -168,7 +179,7 @@ func TestChannelUnregister(t *testing.T) {
 	defer nsqlookupd.Exit()
 
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
-	assert.Equal(t, len(topics), 0)
+	equal(t, len(topics), 0)
 
 	topicName := "channel_unregister"
 
@@ -181,34 +192,34 @@ func TestChannelUnregister(t *testing.T) {
 
 	nsq.Register(topicName, "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, v, []byte("OK"))
+	equal(t, err, nil)
+	equal(t, v, []byte("OK"))
 
 	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
-	assert.Equal(t, len(topics), 1)
+	equal(t, len(topics), 1)
 
 	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
-	assert.Equal(t, len(channels), 1)
+	equal(t, len(channels), 1)
 
 	nsq.UnRegister(topicName, "ch1").WriteTo(conn)
 	v, err = nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, v, []byte("OK"))
+	equal(t, err, nil)
+	equal(t, v, []byte("OK"))
 
 	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
-	assert.Equal(t, len(topics), 1)
+	equal(t, len(topics), 1)
 
 	// we should still have mention of the topic even though there is no producer
 	// (ie. we haven't *deleted* the channel, just unregistered as a producer)
 	channels = nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
-	assert.Equal(t, len(channels), 1)
+	equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	returnedProducers, err := data.Get("producers").Array()
-	assert.Equal(t, err, nil)
-	assert.Equal(t, len(returnedProducers), 1)
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 1)
 }
 
 func TestTombstoneRecover(t *testing.T) {
@@ -228,36 +239,36 @@ func TestTombstoneRecover(t *testing.T) {
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	nsq.Register(topicName2, "channel2").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
 	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
-	assert.Equal(t, len(producers), 0)
+	equal(t, len(producers), 0)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
-	assert.Equal(t, len(producers), 1)
+	equal(t, len(producers), 1)
 
 	time.Sleep(75 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
-	assert.Equal(t, len(producers), 1)
+	equal(t, len(producers), 1)
 }
 
 func TestTombstoneUnregister(t *testing.T) {
@@ -276,30 +287,30 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
 	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
-	assert.Equal(t, len(producers), 0)
+	equal(t, len(producers), 0)
 
 	nsq.UnRegister(topicName, "").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
-	assert.Equal(t, len(producers), 0)
+	equal(t, len(producers), 0)
 }
 
 func TestInactiveNodes(t *testing.T) {
@@ -320,18 +331,18 @@ func TestInactiveNodes(t *testing.T) {
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
-	assert.Equal(t, len(producers), 1)
-	assert.Equal(t, len(producers[0].Topics), 1)
-	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
-	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+	equal(t, len(producers), 1)
+	equal(t, len(producers[0].Topics), 1)
+	equal(t, producers[0].Topics[0].Topic, topicName)
+	equal(t, producers[0].Topics[0].Tombstoned, false)
 
 	time.Sleep(250 * time.Millisecond)
 
 	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
-	assert.Equal(t, len(producers), 0)
+	equal(t, len(producers), 0)
 }
 
 func TestTombstonedNodes(t *testing.T) {
@@ -351,22 +362,22 @@ func TestTombstonedNodes(t *testing.T) {
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
-	assert.Equal(t, len(producers), 1)
-	assert.Equal(t, len(producers[0].Topics), 1)
-	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
-	assert.Equal(t, producers[0].Topics[0].Tombstoned, false)
+	equal(t, len(producers), 1)
+	equal(t, len(producers[0].Topics), 1)
+	equal(t, producers[0].Topics[0].Topic, topicName)
+	equal(t, producers[0].Topics[0].Tombstoned, false)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
 	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
-	assert.Equal(t, len(producers), 1)
-	assert.Equal(t, len(producers[0].Topics), 1)
-	assert.Equal(t, producers[0].Topics[0].Topic, topicName)
-	assert.Equal(t, producers[0].Topics[0].Tombstoned, true)
+	equal(t, len(producers), 1)
+	equal(t, len(producers[0].Topics), 1)
+	equal(t, producers[0].Topics[0].Topic, topicName)
+	equal(t, producers[0].Topics[0].Tombstoned, true)
 }
