@@ -15,6 +15,8 @@ type nsqlookupdOptions struct {
 
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
+
+	Logger logger
 }
 
 func NewNSQLookupdOptions() *nsqlookupdOptions {
@@ -30,5 +32,7 @@ func NewNSQLookupdOptions() *nsqlookupdOptions {
 
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
+
+		Logger: log.New(os.Stderr, "[nsqlookupd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 }

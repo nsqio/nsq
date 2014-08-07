@@ -28,12 +28,16 @@ func NewNSQLookupd(options *nsqlookupdOptions) *NSQLookupd {
 		log.Fatal(err)
 	}
 
-	return &NSQLookupd{
+	n := &NSQLookupd{
 		options:  options,
 		tcpAddr:  tcpAddr,
 		httpAddr: httpAddr,
 		DB:       NewRegistrationDB(),
 	}
+
+	n.options.Logger.Output(2, util.Version("nsqlookupd"))
+
+	return n
 }
 
 func (l *NSQLookupd) Main() {
@@ -45,7 +49,9 @@ func (l *NSQLookupd) Main() {
 	}
 	l.tcpListener = tcpListener
 	tcpServer := &tcpServer{context: context}
-	l.waitGroup.Wrap(func() { util.TCPServer(tcpListener, tcpServer) })
+	l.waitGroup.Wrap(func() {
+		util.TCPServer(tcpListener, tcpServer, l.options.Logger)
+	})
 
 	httpListener, err := net.Listen("tcp", l.httpAddr.String())
 	if err != nil {
@@ -53,7 +59,9 @@ func (l *NSQLookupd) Main() {
 	}
 	l.httpListener = httpListener
 	httpServer := &httpServer{context: context}
-	l.waitGroup.Wrap(func() { util.HTTPServer(httpListener, httpServer, "HTTP") })
+	l.waitGroup.Wrap(func() {
+		util.HTTPServer(httpListener, httpServer, l.options.Logger, "HTTP")
+	})
 }
 
 func (l *NSQLookupd) Exit() {

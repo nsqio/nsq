@@ -58,8 +58,6 @@ func main() {
 	options.Resolve(opts, flagSet, cfg)
 	daemon := nsqlookupd.NewNSQLookupd(opts)
 
-	log.Println(util.Version("nsqlookupd"))
-
 	daemon.Main()
 	<-exitChan
 	daemon.Exit()
