@@ -1,7 +1,7 @@
 package nsqd
 
 import (
-	"log"
+	"fmt"
 	"net"
 	"time"
 
@@ -14,6 +14,7 @@ import (
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
 type lookupPeer struct {
+	l               logger
 	addr            string
 	conn            net.Conn
 	state           int32
@@ -32,8 +33,9 @@ type peerInfo struct {
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
+		l:               l,
 		addr:            addr,
 		state:           stateDisconnected,
 		connectCallback: connectCallback,
@@ -42,7 +44,7 @@ func newLookupPeer(addr string, connectCallback func(*lookupPeer)) *lookupPeer {
 
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
-	log.Printf("LOOKUP connecting to %s", lp.addr)
+	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
 		return err

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	httpprof "net/http/pprof"
@@ -20,7 +19,7 @@ import (
 )
 
 type httpServer struct {
-	context     *context
+	ctx         *context
 	tlsEnabled  bool
 	tlsRequired bool
 }
@@ -43,7 +42,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	err = s.debugRouter(w, req)
 	if err != nil {
-		log.Printf("ERROR: %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: %s", err))
 		util.ApiResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
@@ -169,9 +168,9 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 }
 
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
-	health := s.context.nsqd.GetHealth()
+	health := s.ctx.nsqd.GetHealth()
 	code := 200
-	if !s.context.nsqd.IsHealthy() {
+	if !s.ctx.nsqd.IsHealthy() {
 		code = 500
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(health)))
@@ -190,7 +189,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqParams, *Topic, string, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, nil, "", util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -199,7 +198,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqPara
 		return nil, nil, "", util.HTTPError{400, err.Error()}
 	}
 
-	topic, err := s.context.nsqd.GetExistingTopic(topicName)
+	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		return nil, nil, "", util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
@@ -210,7 +209,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqPara
 func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -224,26 +223,26 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 		return nil, nil, util.HTTPError{400, "INVALID_TOPIC"}
 	}
 
-	return reqParams, s.context.nsqd.GetTopic(topicName), nil
+	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
 }
 
 func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
-	if req.ContentLength > s.context.nsqd.options.MaxMsgSize {
+	if req.ContentLength > s.ctx.nsqd.opts.MaxMsgSize {
 		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
-	readMax := s.context.nsqd.options.MaxMsgSize + 1
+	readMax := s.ctx.nsqd.opts.MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
-		log.Printf("ERROR: /put hit max message size")
+		s.ctx.l.Output(2, "ERROR: /put hit max message size")
 		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
@@ -255,7 +254,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	msg := NewMessage(<-s.context.nsqd.idChan, body)
+	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, util.HTTPError{503, "EXITING"}
@@ -271,7 +270,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
-	if req.ContentLength > s.context.nsqd.options.MaxBodySize {
+	if req.ContentLength > s.ctx.nsqd.opts.MaxBodySize {
 		return nil, util.HTTPError{413, "BODY_TOO_BIG"}
 	}
 
@@ -283,15 +282,15 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	_, ok := reqParams["binary"]
 	if ok {
 		tmp := make([]byte, 4)
-		msgs, err = readMPUB(req.Body, tmp, s.context.nsqd.idChan,
-			s.context.nsqd.options.MaxMsgSize)
+		msgs, err = readMPUB(req.Body, tmp, s.ctx.nsqd.idChan,
+			s.ctx.nsqd.opts.MaxMsgSize)
 		if err != nil {
 			return nil, util.HTTPError{413, err.(*util.FatalClientErr).Code[2:]}
 		}
 	} else {
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
-		readMax := s.context.nsqd.options.MaxBodySize + 1
+		readMax := s.ctx.nsqd.opts.MaxBodySize + 1
 		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
 		total := 0
 		for !exit {
@@ -317,11 +316,11 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 				continue
 			}
 
-			if int64(len(block)) > s.context.nsqd.options.MaxMsgSize {
+			if int64(len(block)) > s.ctx.nsqd.opts.MaxMsgSize {
 				return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(<-s.context.nsqd.idChan, block)
+			msg := NewMessage(<-s.ctx.nsqd.idChan, block)
 			msgs = append(msgs, msg)
 		}
 	}
@@ -342,7 +341,7 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -355,7 +354,7 @@ func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 		return nil, util.HTTPError{400, "INVALID_TOPIC"}
 	}
 
-	topic, err := s.context.nsqd.GetExistingTopic(topicName)
+	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
@@ -371,7 +370,7 @@ func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -380,7 +379,7 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
-	err = s.context.nsqd.DeleteExistingTopic(topicName)
+	err = s.ctx.nsqd.DeleteExistingTopic(topicName)
 	if err != nil {
 		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
@@ -391,7 +390,7 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -400,7 +399,7 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
-	topic, err := s.context.nsqd.GetExistingTopic(topicName)
+	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
 		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
 	}
@@ -411,7 +410,7 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 		err = topic.Pause()
 	}
 	if err != nil {
-		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failure in %s - %s", req.URL.Path, err))
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
@@ -477,7 +476,7 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 		err = channel.Pause()
 	}
 	if err != nil {
-		log.Printf("ERROR: failure in %s - %s", req.URL.Path, err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failure in %s - %s", req.URL.Path, err))
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
@@ -487,13 +486,13 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err)
+		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
-	stats := s.context.nsqd.GetStats()
-	health := s.context.nsqd.GetHealth()
+	stats := s.ctx.nsqd.GetStats()
+	health := s.ctx.nsqd.GetHealth()
 
 	if !jsonFormat {
 		return s.printStats(stats, health), nil

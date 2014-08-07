@@ -25,16 +25,15 @@ import (
 
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
-	"github.com/bmizerany/assert"
 	"github.com/mreiferson/go-snappystream"
 )
 
-func mustStartNSQD(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
+func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpsAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	options.DataPath = os.TempDir()
-	nsqd := NewNSQD(options)
+	opts.DataPath = os.TempDir()
+	nsqd := NewNSQD(opts)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.httpsAddr = httpsAddr
@@ -63,25 +62,25 @@ func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f 
 	}
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, frameType, f)
+	equal(t, err, nil)
+	equal(t, frameType, f)
 	return data
 }
 
 func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
 
 func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
 	auth := &nsq.Command{[]byte("AUTH"), nil, []byte(authSecret)}
 	_, err := auth.WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	if expectSuccess != "" {
 		readValidate(t, conn, nsq.FrameTypeResponse, expectSuccess)
 	}
@@ -89,42 +88,40 @@ func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess 
 
 func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	resp, err := nsq.ReadResponse(conn)
 	frameType, _, err := nsq.UnpackResponse(resp)
-	assert.Equal(t, frameType, frameTypeError)
+	equal(t, frameType, frameTypeError)
 }
 
 func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	log.Printf("%v %s %s", frameType, data, err)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, frameType, f)
-	assert.Equal(t, string(data), d)
+	t.Logf("%v %s %s", frameType, data, err)
+	equal(t, err, nil)
+	equal(t, frameType, f)
+	equal(t, string(data), d)
 	return data
 }
 
 // test channel/topic names
 func TestChannelTopicNames(t *testing.T) {
-	assert.Equal(t, util.IsValidChannelName("test"), true)
-	assert.Equal(t, util.IsValidChannelName("test-with_period."), true)
-	assert.Equal(t, util.IsValidChannelName("test#ephemeral"), true)
-	assert.Equal(t, util.IsValidTopicName("test"), true)
-	assert.Equal(t, util.IsValidTopicName("test-with_period."), true)
-	assert.Equal(t, util.IsValidTopicName("test#ephemeral"), false)
-	assert.Equal(t, util.IsValidTopicName("test:ephemeral"), false)
+	equal(t, util.IsValidChannelName("test"), true)
+	equal(t, util.IsValidChannelName("test-with_period."), true)
+	equal(t, util.IsValidChannelName("test#ephemeral"), true)
+	equal(t, util.IsValidTopicName("test"), true)
+	equal(t, util.IsValidTopicName("test-with_period."), true)
+	equal(t, util.IsValidTopicName("test#ephemeral"), false)
+	equal(t, util.IsValidTopicName("test:ephemeral"), false)
 }
 
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.ClientTimeout = 60 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 60 * time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -133,33 +130,32 @@ func TestBasicV2(t *testing.T) {
 	topic.PutMessage(msg)
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
-	assert.Equal(t, frameType, frameTypeMessage)
-	assert.Equal(t, msgOut.ID, msg.ID)
-	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	equal(t, frameType, frameTypeMessage)
+	equal(t, msgOut.ID, msg.ID)
+	equal(t, msgOut.Body, msg.Body)
+	equal(t, msgOut.Attempts, uint16(1))
 }
 
 func TestMultipleConsumerV2(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	msgChan := make(chan *Message)
 
-	options := NewNSQDOptions()
-	options.ClientTimeout = 60 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 60 * time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
@@ -171,13 +167,14 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	for _, i := range []string{"1", "2"} {
 		conn, err := mustConnectNSQD(tcpAddr)
-		assert.Equal(t, err, nil)
+		equal(t, err, nil)
+		defer conn.Close()
 
 		identify(t, conn, nil, frameTypeResponse)
 		sub(t, conn, topicName, "ch"+i)
 
 		_, err = nsq.Ready(1).WriteTo(conn)
-		assert.Equal(t, err, nil)
+		equal(t, err, nil)
 
 		go func(c net.Conn) {
 			resp, _ := nsq.ReadResponse(c)
@@ -188,29 +185,28 @@ func TestMultipleConsumerV2(t *testing.T) {
 	}
 
 	msgOut := <-msgChan
-	assert.Equal(t, msgOut.ID, msg.ID)
-	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	equal(t, msgOut.ID, msg.ID)
+	equal(t, msgOut.Body, msg.Body)
+	equal(t, msgOut.Attempts, uint16(1))
 	msgOut = <-msgChan
-	assert.Equal(t, msgOut.ID, msg.ID)
-	assert.Equal(t, msgOut.Body, msg.Body)
-	assert.Equal(t, msgOut.Attempts, uint16(1))
+	equal(t, msgOut.ID, msg.ID)
+	equal(t, msgOut.Body, msg.Body)
+	equal(t, msgOut.Attempts, uint16(1))
 }
 
 func TestClientTimeout(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	options := NewNSQDOptions()
-	options.ClientTimeout = 150 * time.Millisecond
-	options.Verbose = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 150 * time.Millisecond
+	opts.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -235,55 +231,53 @@ done:
 }
 
 func TestClientHeartbeat(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	options := NewNSQDOptions()
-	options.ClientTimeout = 200 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 200 * time.Millisecond
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	assert.Equal(t, data, []byte("_heartbeat_"))
+	equal(t, data, []byte("_heartbeat_"))
 
 	time.Sleep(20 * time.Millisecond)
 
 	_, err = nsq.Nop().WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	// wait long enough that would have timed out (had we not sent the above cmd)
 	time.Sleep(100 * time.Millisecond)
 
 	_, err = nsq.Nop().WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 }
 
 func TestClientHeartbeatDisableSUB(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	options := NewNSQDOptions()
-	options.ClientTimeout = 200 * time.Millisecond
-	options.Verbose = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 200 * time.Millisecond
+	opts.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": -1,
@@ -292,16 +286,15 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 }
 
 func TestClientHeartbeatDisable(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.ClientTimeout = 100 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.ClientTimeout = 100 * time.Millisecond
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": -1,
@@ -310,63 +303,61 @@ func TestClientHeartbeatDisable(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	_, err = nsq.Nop().WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 }
 
 func TestMaxHeartbeatIntervalValid(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.MaxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MaxHeartbeatInterval = 300 * time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
-	hbi := int(options.MaxHeartbeatInterval / time.Millisecond)
+	hbi := int(opts.MaxHeartbeatInterval / time.Millisecond)
 	identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": hbi,
 	}, frameTypeResponse)
 }
 
 func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.MaxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MaxHeartbeatInterval = 300 * time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
-	hbi := int(options.MaxHeartbeatInterval/time.Millisecond + 1)
+	hbi := int(opts.MaxHeartbeatInterval/time.Millisecond + 1)
 	data := identify(t, conn, map[string]interface{}{
 		"heartbeat_interval": hbi,
 	}, frameTypeError)
-	assert.Equal(t, string(data), "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
+	equal(t, string(data), "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
 }
 
 func TestPausing(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	tcpAddr, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	topic := nsqd.GetTopic(topicName)
 	msg := NewMessage(<-nsqd.idChan, []byte("test body"))
@@ -377,13 +368,13 @@ func TestPausing(t *testing.T) {
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
 	msg, err = decodeMessage(data)
-	assert.Equal(t, msg.Body, []byte("test body"))
+	equal(t, msg.Body, []byte("test body"))
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	// sleep to allow the RDY state to take effect
 	time.Sleep(50 * time.Millisecond)
@@ -401,7 +392,7 @@ func TestPausing(t *testing.T) {
 	// if pausing was not working on the internal clientMsgChan read
 	time.Sleep(50 * time.Millisecond)
 	msg = <-channel.clientMsgChan
-	assert.Equal(t, msg.Body, []byte("test body2"))
+	equal(t, msg.Body, []byte("test body2"))
 
 	// unpause the channel... the client should now be pushed a message
 	channel.UnPause()
@@ -412,38 +403,37 @@ func TestPausing(t *testing.T) {
 	resp, _ = nsq.ReadResponse(conn)
 	_, data, _ = nsq.UnpackResponse(resp)
 	msg, err = decodeMessage(data)
-	assert.Equal(t, msg.Body, []byte("test body3"))
+	equal(t, msg.Body, []byte("test body3"))
 }
 
 func TestEmptyCommand(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	tcpAddr, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	_, err = conn.Write([]byte("\n\n"))
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	// if we didn't panic here we're good, see issue #120
 }
 
 func TestSizeLimits(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MaxMsgSize = 100
-	options.MaxBodySize = 1000
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxMsgSize = 100
+	opts.MaxBodySize = 1000
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -454,33 +444,35 @@ func TestSizeLimits(t *testing.T) {
 	nsq.Publish(topicName, make([]byte, 95)).WriteTo(conn)
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 	// PUB that's invalid (too big)
 	nsq.Publish(topicName, make([]byte, 105)).WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	// PUB thats empty
 	nsq.Publish(topicName, make([]byte, 0)).WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB body that's valid
 	mpub := make([][]byte, 0)
@@ -491,9 +483,9 @@ func TestSizeLimits(t *testing.T) {
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 	// MPUB body that's invalid (body too big)
 	mpub = make([][]byte, 0)
@@ -504,13 +496,14 @@ func TestSizeLimits(t *testing.T) {
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB that's invalid (one message empty)
 	mpub = make([][]byte, 0)
@@ -522,13 +515,14 @@ func TestSizeLimits(t *testing.T) {
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB invalid message(5) body size 0"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB invalid message(5) body size 0"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	// MPUB body that's invalid (one of the messages is too big)
 	mpub = make([][]byte, 0)
@@ -539,25 +533,24 @@ func TestSizeLimits(t *testing.T) {
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
 }
 
 func TestTouch(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MsgTimeout = 150 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MsgTimeout = 150 * time.Millisecond
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -568,42 +561,41 @@ func TestTouch(t *testing.T) {
 	topic.PutMessage(msg)
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
-	assert.Equal(t, frameType, frameTypeMessage)
-	assert.Equal(t, msgOut.ID, msg.ID)
+	equal(t, frameType, frameTypeMessage)
+	equal(t, msgOut.ID, msg.ID)
 
 	time.Sleep(75 * time.Millisecond)
 
 	_, err = nsq.Touch(nsq.MessageID(msg.ID)).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	time.Sleep(75 * time.Millisecond)
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
-	assert.Equal(t, channel.timeoutCount, uint64(0))
+	equal(t, channel.timeoutCount, uint64(0))
 }
 
 func TestMaxRdyCount(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MaxRdyCount = 50
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxRdyCount = 50
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_max_rdy_count" + strconv.Itoa(int(time.Now().Unix()))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	topic := nsqd.GetTopic(topicName)
 	msg := NewMessage(<-nsqd.idChan, []byte("test body"))
@@ -614,68 +606,67 @@ func TestMaxRdyCount(t *testing.T) {
 		MaxRdyCount int64 `json:"max_rdy_count"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.MaxRdyCount, int64(50))
+	equal(t, err, nil)
+	equal(t, r.MaxRdyCount, int64(50))
 	sub(t, conn, topicName, "ch")
 
-	_, err = nsq.Ready(int(options.MaxRdyCount)).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	_, err = nsq.Ready(int(opts.MaxRdyCount)).WriteTo(conn)
+	equal(t, err, nil)
 
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
-	assert.Equal(t, frameType, frameTypeMessage)
-	assert.Equal(t, msgOut.ID, msg.ID)
+	equal(t, frameType, frameTypeMessage)
+	equal(t, msgOut.ID, msg.ID)
 
-	_, err = nsq.Ready(int(options.MaxRdyCount) + 1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	_, err = nsq.Ready(int(opts.MaxRdyCount) + 1).WriteTo(conn)
+	equal(t, err, nil)
 
 	resp, err = nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err = nsq.UnpackResponse(resp)
-	assert.Equal(t, frameType, int32(1))
-	assert.Equal(t, string(data), "E_INVALID RDY count 51 out of range 0-50")
+	equal(t, frameType, int32(1))
+	equal(t, string(data), "E_INVALID RDY count 51 out of range 0-50")
 }
 
 func TestFatalError(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	tcpAddr, _, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	_, err = conn.Write([]byte("ASDF\n"))
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	assert.Equal(t, frameType, int32(1))
-	assert.Equal(t, string(data), "E_INVALID invalid command ASDF")
+	equal(t, frameType, int32(1))
+	equal(t, string(data), "E_INVALID invalid command ASDF")
 
 	_, err = nsq.ReadResponse(conn)
-	assert.NotEqual(t, err, nil)
+	nequal(t, err, nil)
 }
 
 func TestOutputBuffering(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MaxOutputBufferSize = 512 * 1024
-	options.MaxOutputBufferTimeout = time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxOutputBufferSize = 512 * 1024
+	opts.MaxOutputBufferTimeout = time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_output_buffering" + strconv.Itoa(int(time.Now().Unix()))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	outputBufferSize := 256 * 1024
 	outputBufferTimeout := 500
@@ -692,33 +683,32 @@ func TestOutputBuffering(t *testing.T) {
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(10).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, err := nsq.ReadResponse(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	end := time.Now()
 
-	assert.Equal(t, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout, true)
+	equal(t, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout, true)
 
 	frameType, data, err := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
-	assert.Equal(t, frameType, frameTypeMessage)
-	assert.Equal(t, msgOut.ID, msg.ID)
+	equal(t, frameType, frameTypeMessage)
+	equal(t, msgOut.ID, msg.ID)
 }
 
 func TestOutputBufferingValidity(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MaxOutputBufferSize = 512 * 1024
-	options.MaxOutputBufferTimeout = time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxOutputBufferSize = 512 * 1024
+	opts.MaxOutputBufferTimeout = time.Second
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"output_buffer_size":    512 * 1024,
@@ -736,29 +726,31 @@ func TestOutputBufferingValidity(t *testing.T) {
 		"output_buffer_size":    512*1024 + 1,
 		"output_buffer_timeout": 0,
 	}, frameTypeError)
-	assert.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1))
+	equal(t, string(data), fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1))
 
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data = identify(t, conn, map[string]interface{}{
 		"output_buffer_size":    0,
 		"output_buffer_timeout": 1001,
 	}, frameTypeError)
-	assert.Equal(t, string(data), "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
+	equal(t, string(data), "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid")
 }
 
 func TestTLS(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
+
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
@@ -767,8 +759,8 @@ func TestTLS(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -776,34 +768,38 @@ func TestTLS(t *testing.T) {
 	tlsConn := tls.Client(conn, tlsConfig)
 
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 func TestTLSRequired(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	options.TLSRequired = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSRequired = true
+
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_tls_required" + strconv.Itoa(int(time.Now().Unix()))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	subFail(t, conn, topicName, "ch")
 
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -811,8 +807,8 @@ func TestTLSRequired(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -820,29 +816,31 @@ func TestTLSRequired(t *testing.T) {
 	tlsConn := tls.Client(conn, tlsConfig)
 
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 func TestTLSAuthRequire(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	options.TLSClientAuthPolicy = "require"
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSClientAuthPolicy = "require"
+
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	// No Certs
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -850,18 +848,20 @@ func TestTLSAuthRequire(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
-	assert.NotEqual(t, err, nil)
+	nequal(t, err, nil)
 
 	// With Unsigned Cert
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -869,42 +869,44 @@ func TestTLSAuthRequire(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 
 	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	tlsConfig = &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	tlsConn = tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 }
 
 func TestTLSAuthRequireVerify(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	options.TLSRootCAFile = "./test/certs/ca.pem"
-	options.TLSClientAuthPolicy = "require-verify"
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSRootCAFile = "./test/certs/ca.pem"
+	opts.TLSClientAuthPolicy = "require-verify"
+
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	// with no cert
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -912,18 +914,20 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
-	assert.NotEqual(t, err, nil)
+	nequal(t, err, nil)
 
 	// with invalid cert
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -931,21 +935,23 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 	cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	tlsConfig = &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	tlsConn = tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
-	assert.NotEqual(t, err, nil)
+	nequal(t, err, nil)
 
 	// with valid cert
 	conn, err = mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	data = identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
 	}, frameTypeResponse)
@@ -953,37 +959,36 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		TLSv1 bool `json:"tls_v1"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
 	cert, err = tls.LoadX509KeyPair("./test/certs/client.pem", "./test/certs/client.key")
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 	tlsConfig = &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
 	tlsConn = tls.Client(conn, tlsConfig)
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 func TestDeflate(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.DeflateEnabled = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.DeflateEnabled = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"deflate": true,
@@ -992,15 +997,15 @@ func TestDeflate(t *testing.T) {
 		Deflate bool `json:"deflate"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.Deflate, true)
+	equal(t, err, nil)
+	equal(t, r.Deflate, true)
 
 	compressConn := flate.NewReader(conn)
 	resp, _ := nsq.ReadResponse(compressConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 type readWriter struct {
@@ -1009,17 +1014,16 @@ type readWriter struct {
 }
 
 func TestSnappy(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.SnappyEnabled = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.SnappyEnabled = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"snappy": true,
@@ -1028,15 +1032,15 @@ func TestSnappy(t *testing.T) {
 		Snappy bool `json:"snappy"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.Snappy, true)
+	equal(t, err, nil)
+	equal(t, r.Snappy, true)
 
 	compressConn := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
 	resp, _ := nsq.ReadResponse(compressConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 	msgBody := make([]byte, 128000)
 	w := snappystream.NewWriter(conn)
@@ -1047,7 +1051,7 @@ func TestSnappy(t *testing.T) {
 	sub(t, rw, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(rw)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	topic := nsqd.GetTopic(topicName)
 	msg := NewMessage(<-nsqd.idChan, msgBody)
@@ -1056,25 +1060,24 @@ func TestSnappy(t *testing.T) {
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
-	assert.Equal(t, frameType, frameTypeMessage)
-	assert.Equal(t, msgOut.ID, msg.ID)
-	assert.Equal(t, msgOut.Body, msg.Body)
+	equal(t, frameType, frameTypeMessage)
+	equal(t, msgOut.ID, msg.ID)
+	equal(t, msgOut.Body, msg.Body)
 }
 
 func TestTLSDeflate(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.DeflateEnabled = true
-	options.TLSCert = "./test/certs/cert.pem"
-	options.TLSKey = "./test/certs/key.pem"
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.DeflateEnabled = true
+	opts.TLSCert = "./test/certs/cert.pem"
+	opts.TLSKey = "./test/certs/key.pem"
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1":  true,
@@ -1085,9 +1088,9 @@ func TestTLSDeflate(t *testing.T) {
 		Deflate bool `json:"deflate"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
-	assert.Equal(t, r.Deflate, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
+	equal(t, r.Deflate, true)
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -1095,41 +1098,40 @@ func TestTLSDeflate(t *testing.T) {
 	tlsConn := tls.Client(conn, tlsConfig)
 
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 	compressConn := flate.NewReader(tlsConn)
 
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 func TestSampling(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	num := 10000
 	sampleRate := 42
 	slack := 5
 
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.MaxRdyCount = int64(num)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxRdyCount = int64(num)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"sample_rate": int32(sampleRate),
@@ -1138,8 +1140,8 @@ func TestSampling(t *testing.T) {
 		SampleRate int32 `json:"sample_rate"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.SampleRate, int32(sampleRate))
+	equal(t, err, nil)
+	equal(t, r.SampleRate, int32(sampleRate))
 
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -1154,7 +1156,7 @@ func TestSampling(t *testing.T) {
 
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(num).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	go func() {
 		for {
@@ -1181,24 +1183,23 @@ func TestSampling(t *testing.T) {
 	numInFlight := len(channel.inFlightMessages)
 	channel.Unlock()
 
-	assert.Equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
-	assert.Equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)
+	equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
+	equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)
 }
 
 func TestTLSSnappy(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.SnappyEnabled = true
-	options.TLSCert = "./test/certs/cert.pem"
-	options.TLSKey = "./test/certs/key.pem"
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.SnappyEnabled = true
+	opts.TLSCert = "./test/certs/cert.pem"
+	opts.TLSKey = "./test/certs/key.pem"
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	data := identify(t, conn, map[string]interface{}{
 		"tls_v1": true,
@@ -1209,9 +1210,9 @@ func TestTLSSnappy(t *testing.T) {
 		Snappy bool `json:"snappy"`
 	}{}
 	err = json.Unmarshal(data, &r)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, r.TLSv1, true)
-	assert.Equal(t, r.Snappy, true)
+	equal(t, err, nil)
+	equal(t, r.TLSv1, true)
+	equal(t, r.Snappy, true)
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -1219,30 +1220,28 @@ func TestTLSSnappy(t *testing.T) {
 	tlsConn := tls.Client(conn, tlsConfig)
 
 	err = tlsConn.Handshake()
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(tlsConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 
 	compressConn := snappystream.NewReader(tlsConn, snappystream.SkipVerifyChecksum)
 
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	log.Printf("frameType: %d, data: %s", frameType, data)
-	assert.Equal(t, frameType, frameTypeResponse)
-	assert.Equal(t, data, []byte("OK"))
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
 }
 
 func TestClientMsgTimeout(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
@@ -1256,7 +1255,8 @@ func TestClientMsgTimeout(t *testing.T) {
 	topic.PutMessage(NewMessage(<-nsqd.idChan, make([]byte, 100)))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{
 		"msg_timeout": 1000,
@@ -1264,55 +1264,51 @@ func TestClientMsgTimeout(t *testing.T) {
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
 	msgOut, err := decodeMessage(data)
-	assert.Equal(t, msgOut.ID, msg.ID)
-	assert.Equal(t, msgOut.Body, msg.Body)
+	equal(t, msgOut.ID, msg.ID)
+	equal(t, msgOut.Body, msg.Body)
 
 	time.Sleep(1100 * time.Millisecond)
 
 	_, err = nsq.Finish(nsq.MessageID(msgOut.ID)).WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data),
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data),
 		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.ID))
 }
 
 func TestBadFin(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
+	defer conn.Close()
 
 	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
 	sub(t, conn, "test_fin", "ch")
 
 	fin := &nsq.Command{[]byte("FIN"), [][]byte{[]byte("")}, nil}
 	_, err = fin.WriteTo(conn)
-	assert.Equal(t, err, nil)
+	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	assert.Equal(t, frameType, frameTypeError)
-	assert.Equal(t, string(data), "E_INVALID Invalid Message ID")
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), "E_INVALID Invalid Message ID")
 }
 
 func TestClientAuth(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	authResponse := `{"ttl":1, "authorizations":[]}`
 	authSecret := "testsecret"
 	authError := "E_UNAUTHORIZED AUTH No authorizations found"
@@ -1335,26 +1331,30 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	expectedAuthTls := "false"
 
 	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("in test auth handler %s", r.RequestURI)
+		t.Logf("in test auth handler %s", r.RequestURI)
 		r.ParseForm()
-		assert.Equal(t, r.Form.Get("remote_ip"), expectedAuthIp)
-		assert.Equal(t, r.Form.Get("tls"), expectedAuthTls)
-		assert.Equal(t, r.Form.Get("secret"), authSecret)
+		equal(t, r.Form.Get("remote_ip"), expectedAuthIp)
+		equal(t, r.Form.Get("tls"), expectedAuthTls)
+		equal(t, r.Form.Get("secret"), authSecret)
 		fmt.Fprint(w, authResponse)
 	}))
 	defer authd.Close()
 
-	options := NewNSQDOptions()
-	options.Verbose = true
 	addr, err := url.Parse(authd.URL)
-	assert.Equal(t, err, nil)
-	options.AuthHTTPAddresses = []string{addr.Host}
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	equal(t, err, nil)
+
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.AuthHTTPAddresses = []string{addr.Host}
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
+	equal(t, err, nil)
+	defer conn.Close()
+
 	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
-	assert.Equal(t, err, nil)
 
 	identify(t, conn, map[string]interface{}{
 		"tls_v1": false,
@@ -1373,7 +1373,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	ctx := &context{NewNSQD(NewNSQDOptions())}
+	ctx := &context{NewNSQD(NewNSQDOptions()), newTestLogger(b)}
 	p := &protocolV2{ctx}
 	c := newClientV2(0, nil, ctx)
 	params := [][]byte{[]byte("NOP")}
@@ -1389,9 +1389,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	batchSize := 200
 	batch := make([][]byte, 0)
@@ -1460,9 +1460,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -1558,9 +1558,9 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, 256)
 	b.SetBytes(int64(len(msg) * num))
 

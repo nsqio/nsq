@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path"
 	"sync"
@@ -58,11 +57,15 @@ type diskQueue struct {
 	emptyResponseChan chan error
 	exitChan          chan int
 	exitSyncChan      chan int
+
+	l logger
 }
 
 // newDiskQueue instantiates a new instance of diskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
-func newDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery int64, syncTimeout time.Duration) BackendQueue {
+func newDiskQueue(name string, dataPath string, maxBytesPerFile int64,
+	syncEvery int64, syncTimeout time.Duration,
+	l logger) BackendQueue {
 	d := diskQueue{
 		name:              name,
 		dataPath:          dataPath,
@@ -76,12 +79,14 @@ func newDiskQueue(name string, dataPath string, maxBytesPerFile int64, syncEvery
 		exitSyncChan:      make(chan int),
 		syncEvery:         syncEvery,
 		syncTimeout:       syncTimeout,
+		l:                 l,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		log.Printf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err.Error())
+		d.l.Output(2, fmt.Sprintf(
+			"ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name))
 	}
 
 	go d.ioLoop()
@@ -132,9 +137,9 @@ func (d *diskQueue) exit(deleted bool) error {
 	d.exitFlag = 1
 
 	if deleted {
-		log.Printf("DISKQUEUE(%s): deleting", d.name)
+		d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): deleting", d.name))
 	} else {
-		log.Printf("DISKQUEUE(%s): closing", d.name)
+		d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): closing", d.name))
 	}
 
 	close(d.exitChan)
@@ -164,7 +169,7 @@ func (d *diskQueue) Empty() error {
 		return errors.New("exiting")
 	}
 
-	log.Printf("DISKQUEUE(%s): emptying", d.name)
+	d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): emptying", d.name))
 
 	d.emptyChan <- 1
 	return <-d.emptyResponseChan
@@ -175,7 +180,8 @@ func (d *diskQueue) deleteAllFiles() error {
 
 	innerErr := os.Remove(d.metaDataFileName())
 	if innerErr != nil && !os.IsNotExist(innerErr) {
-		log.Printf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr.Error())
+		d.l.Output(2, fmt.Sprintf(
+			"ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr))
 		return innerErr
 	}
 
@@ -199,7 +205,8 @@ func (d *diskQueue) skipToNextRWFile() error {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
 		if innerErr != nil && !os.IsNotExist(innerErr) {
-			log.Printf("ERROR: diskqueue(%s) failed to remove data file - %s", d.name, innerErr.Error())
+			d.l.Output(2, fmt.Sprintf(
+				"ERROR: diskqueue(%s) failed to remove data file - %s", d.name, innerErr))
 			err = innerErr
 		}
 	}
@@ -228,7 +235,7 @@ func (d *diskQueue) readOne() ([]byte, error) {
 			return nil, err
 		}
 
-		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
+		d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName))
 
 		if d.readPos > 0 {
 			_, err = d.readFile.Seek(d.readPos, 0)
@@ -292,7 +299,7 @@ func (d *diskQueue) writeOne(data []byte) error {
 			return err
 		}
 
-		log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
+		d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName))
 
 		if d.writePos > 0 {
 			_, err = d.writeFile.Seek(d.writePos, 0)
@@ -336,7 +343,7 @@ func (d *diskQueue) writeOne(data []byte) error {
 		// sync every time we start writing to a new file
 		err = d.sync()
 		if err != nil {
-			log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+			d.l.Output(2, fmt.Sprintf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err))
 		}
 
 		if d.writeFile != nil {
@@ -441,9 +448,13 @@ func (d *diskQueue) checkTailCorruption(depth int64) {
 	// if depth isn't 0 something went wrong
 	if depth != 0 {
 		if depth < 0 {
-			log.Printf("ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...", d.name, depth)
+			d.l.Output(2, fmt.Sprintf(
+				"ERROR: diskqueue(%s) negative depth at tail (%d), metadata corruption, resetting 0...",
+				d.name, depth))
 		} else if depth > 0 {
-			log.Printf("ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...", d.name, depth)
+			d.l.Output(2, fmt.Sprintf(
+				"ERROR: diskqueue(%s) positive depth at tail (%d), data loss, resetting 0...",
+				d.name, depth))
 		}
 		// force set depth 0
 		atomic.StoreInt64(&d.depth, 0)
@@ -452,11 +463,15 @@ func (d *diskQueue) checkTailCorruption(depth int64) {
 
 	if d.readFileNum != d.writeFileNum || d.readPos != d.writePos {
 		if d.readFileNum > d.writeFileNum {
-			log.Printf("ERROR: diskqueue(%s) readFileNum > writeFileNum (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readFileNum, d.writeFileNum)
+			d.l.Output(2, fmt.Sprintf(
+				"ERROR: diskqueue(%s) readFileNum > writeFileNum (%d > %d), corruption, skipping to next writeFileNum and resetting 0...",
+				d.name, d.readFileNum, d.writeFileNum))
 		}
 
 		if d.readPos > d.writePos {
-			log.Printf("ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0...", d.name, d.readPos, d.writePos)
+			d.l.Output(2, fmt.Sprintf(
+				"ERROR: diskqueue(%s) readPos > writePos (%d > %d), corruption, skipping to next writeFileNum and resetting 0...",
+				d.name, d.readPos, d.writePos))
 		}
 
 		d.skipToNextRWFile()
@@ -478,7 +493,7 @@ func (d *diskQueue) moveForward() {
 		fn := d.fileName(oldReadFileNum)
 		err := os.Remove(fn)
 		if err != nil {
-			log.Printf("ERROR: failed to Remove(%s) - %s", fn, err.Error())
+			d.l.Output(2, fmt.Sprintf("ERROR: failed to Remove(%s) - %s", fn, err))
 		}
 	}
 
@@ -501,11 +516,15 @@ func (d *diskQueue) handleReadError() {
 	badFn := d.fileName(d.readFileNum)
 	badRenameFn := badFn + ".bad"
 
-	log.Printf("NOTICE: diskqueue(%s) jump to next file and saving bad file as %s", d.name, badRenameFn)
+	d.l.Output(2, fmt.Sprintf(
+		"NOTICE: diskqueue(%s) jump to next file and saving bad file as %s",
+		d.name, badRenameFn))
 
 	err := atomic_rename(badFn, badRenameFn)
 	if err != nil {
-		log.Printf("ERROR: diskqueue(%s) failed to rename bad diskqueue file %s to %s", d.name, badFn, badRenameFn)
+		d.l.Output(2, fmt.Sprintf(
+			"ERROR: diskqueue(%s) failed to rename bad diskqueue file %s to %s",
+			d.name, badFn, badRenameFn))
 	}
 
 	d.readFileNum++
@@ -544,7 +563,8 @@ func (d *diskQueue) ioLoop() {
 		if d.needSync {
 			err = d.sync()
 			if err != nil {
-				log.Printf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err.Error())
+				d.l.Output(2, fmt.Sprintf(
+					"ERROR: diskqueue(%s) failed to sync - %s", d.name, err))
 			}
 		}
 
@@ -552,8 +572,9 @@ func (d *diskQueue) ioLoop() {
 			if d.nextReadPos == d.readPos {
 				dataRead, err = d.readOne()
 				if err != nil {
-					log.Printf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
-						d.name, d.readPos, d.fileName(d.readFileNum), err.Error())
+					d.l.Output(2, fmt.Sprintf(
+						"ERROR: reading from diskqueue(%s) at %d of %s - %s",
+						d.name, d.readPos, d.fileName(d.readFileNum), err))
 					d.handleReadError()
 					continue
 				}
@@ -580,7 +601,7 @@ func (d *diskQueue) ioLoop() {
 	}
 
 exit:
-	log.Printf("DISKQUEUE(%s): closing ... ioLoop", d.name)
+	d.l.Output(2, fmt.Sprintf("DISKQUEUE(%s): closing ... ioLoop", d.name))
 	syncTicker.Stop()
 	d.exitSyncChan <- 1
 }

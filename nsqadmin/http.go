@@ -44,12 +44,12 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 }
 
 type httpServer struct {
-	context  *Context
+	ctx      *Context
 	counters map[string]map[string]int64
 	proxy    *httputil.ReverseProxy
 }
 
-func NewHTTPServer(context *Context) *httpServer {
+func NewHTTPServer(ctx *Context) *httpServer {
 	var proxy *httputil.ReverseProxy
 
 	templates.T.Funcs(template.FuncMap{
@@ -58,7 +58,7 @@ func NewHTTPServer(context *Context) *httpServer {
 		"floatToPercent": util.FloatToPercent,
 		"percSuffix":     util.PercSuffix,
 		"getNodeConsistencyClass": func(node *lookupd.Producer) string {
-			if node.IsInconsistent(len(context.nsqadmin.options.NSQLookupdHTTPAddresses)) {
+			if node.IsInconsistent(len(ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)) {
 				return "btn-warning"
 			}
 			return ""
@@ -67,17 +67,17 @@ func NewHTTPServer(context *Context) *httpServer {
 
 	templates.Parse()
 
-	if context.nsqadmin.options.ProxyGraphite {
-		url, err := url.Parse(context.nsqadmin.options.GraphiteURL)
+	if ctx.nsqadmin.opts.ProxyGraphite {
+		url, err := url.Parse(ctx.nsqadmin.opts.GraphiteURL)
 		if err != nil {
 			log.Fatalf("ERROR: failed to parse --graphite-url='%s' - %s",
-				context.nsqadmin.options.GraphiteURL, err.Error())
+				ctx.nsqadmin.opts.GraphiteURL, err.Error())
 		}
 		proxy = NewSingleHostReverseProxy(url, 20*time.Second)
 	}
 
 	return &httpServer{
-		context:  context,
+		ctx:      ctx,
 		counters: make(map[string]map[string]int64),
 		proxy:    proxy,
 	}
@@ -137,7 +137,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/graphite_data":
 		s.graphiteDataHandler(w, req)
 	case "/render":
-		if !s.context.nsqadmin.options.ProxyGraphite {
+		if !s.ctx.nsqadmin.opts.ProxyGraphite {
 			http.NotFound(w, req)
 			return
 		}
@@ -190,10 +190,10 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var topics []string
-	if len(s.context.nsqadmin.options.NSQLookupdHTTPAddresses) != 0 {
-		topics, _ = lookupd.GetLookupdTopics(s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
+		topics, _ = lookupd.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		topics, _ = lookupd.GetNSQDTopics(s.context.nsqadmin.options.NSQDHTTPAddresses)
+		topics, _ = lookupd.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
 
 	p := struct {
@@ -203,7 +203,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 		Version      string
 	}{
 		Title:        "NSQ",
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Topics:       TopicsFromStrings(topics),
 		Version:      util.BINARY_VERSION,
 	}
@@ -273,7 +273,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		HasE2eLatency    bool
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topicName),
-		GraphOptions:     NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions:     NewGraphOptions(w, req, reqParams, s.ctx),
 		Version:          util.BINARY_VERSION,
 		Topic:            topicName,
 		TopicProducers:   producers,
@@ -322,7 +322,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 		HasE2eLatency  bool
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
-		GraphOptions:   NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions:   NewGraphOptions(w, req, reqParams, s.ctx),
 		Version:        util.BINARY_VERSION,
 		Topic:          topicName,
 		Channel:        channelName,
@@ -348,12 +348,12 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	channels := make(map[string][]string)
-	allTopics, _ := lookupd.GetLookupdTopics(s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	allTopics, _ := lookupd.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	for _, topicName := range allTopics {
 		var producers []string
-		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 		if len(producers) == 0 {
-			topicChannels, _ := lookupd.GetLookupdTopicChannels(topicName, s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+			topicChannels, _ := lookupd.GetLookupdTopicChannels(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 			channels[topicName] = topicChannels
 		}
 	}
@@ -366,9 +366,9 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 		Version      string
 	}{
 		Title:        "NSQ Lookup",
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		TopicMap:     channels,
-		Lookupd:      s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		Version:      util.BINARY_VERSION,
 	}
 	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
@@ -398,7 +398,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		return
 	}
 
-	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
 			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
@@ -441,10 +441,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	if len(channelName) > 0 {
 		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
 		producerAddrs, _ := lookupd.GetLookupdTopicProducers(topicName,
-			s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
 		performVersionNegotiatedRequestsToNSQD(
-			s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 			producerAddrs,
 			"create_channel",
 			"channel/create",
@@ -483,7 +483,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	}
 
 	// tombstone the topic on all the lookupds
-	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
 			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
@@ -551,7 +551,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	producerAddrs := s.getProducers(topicName)
 
 	// remove the topic from all the lookupds
-	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
 			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
@@ -572,7 +572,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	}
 
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"delete_topic",
 		"topic/delete",
@@ -602,7 +602,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 		rd = fmt.Sprintf("/topic/%s", url.QueryEscape(topicName))
 	}
 
-	for _, addr := range s.context.nsqadmin.options.NSQLookupdHTTPAddresses {
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
 			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
@@ -627,7 +627,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 
 	producerAddrs := s.getProducers(topicName)
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"delete_channel",
 		"channel/delete",
@@ -655,7 +655,7 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 
 	producerAddrs := s.getProducers(topicName)
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"empty_topic",
 		"topic/empty",
@@ -688,7 +688,7 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 
 	producerAddrs := s.getProducers(topicName)
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		verb+"_topic",
 		"topic/"+verb,
@@ -716,7 +716,7 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 
 	producerAddrs := s.getProducers(topicName)
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"empty_channel",
 		"channel/empty",
@@ -750,7 +750,7 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 
 	producerAddrs := s.getProducers(topicName)
 	performVersionNegotiatedRequestsToNSQD(
-		s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		verb+"_channel",
 		"channel/"+verb,
@@ -780,13 +780,13 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	node := parts[0]
 
 	found := false
-	for _, n := range s.context.nsqadmin.options.NSQDHTTPAddresses {
+	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
 		if node == n {
 			found = true
 			break
 		}
 	}
-	producers, _ := lookupd.GetLookupdProducers(s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	for _, p := range producers {
 		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort) {
 			found = true
@@ -821,7 +821,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:        "NSQ Node - " + node,
 		Version:      util.BINARY_VERSION,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Node:         Node(node),
 		TopicStats:   topicStats,
 		ChannelStats: channelStats,
@@ -842,7 +842,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	producers, _ := lookupd.GetLookupdProducers(s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
 	p := struct {
 		Title        string
@@ -853,9 +853,9 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:        "NSQ Nodes",
 		Version:      util.BINARY_VERSION,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Producers:    producers,
-		Lookupd:      s.context.nsqadmin.options.NSQLookupdHTTPAddresses,
+		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 	}
 	err = templates.T.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {
@@ -889,7 +889,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:        "NSQ Message Counts",
 		Version:      util.BINARY_VERSION,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.context),
+		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Target:       counterTarget{},
 	}
 	err = templates.T.ExecuteTemplate(w, "counter.html", p)
@@ -925,7 +925,7 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	newStats := make(map[string]int64)
 	newStats["time"] = now.Unix()
 
-	producers, _ := lookupd.GetLookupdProducers(s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	addresses := make([]string, len(producers))
 	for i, p := range producers {
 		addresses[i] = p.HTTPAddress()
@@ -990,7 +990,7 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	}
 
 	query := queryFunc(target)
-	url := s.context.nsqadmin.options.GraphiteURL + query
+	url := s.ctx.nsqadmin.opts.GraphiteURL + query
 	log.Printf("GRAPHITE: %s", url)
 	response, err := graphiteGet(url)
 	if err != nil {
@@ -1032,10 +1032,10 @@ func graphiteGet(request_url string) ([]byte, error) {
 
 func (s *httpServer) getProducers(topicName string) []string {
 	var producers []string
-	if len(s.context.nsqadmin.options.NSQLookupdHTTPAddresses) != 0 {
-		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.context.nsqadmin.options.NSQLookupdHTTPAddresses)
+	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
+		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		producers, _ = lookupd.GetNSQDTopicProducers(topicName, s.context.nsqadmin.options.NSQDHTTPAddresses)
+		producers, _ = lookupd.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
 	return producers
 }

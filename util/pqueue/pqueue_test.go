@@ -3,11 +3,21 @@ package pqueue
 import (
 	"container/heap"
 	"math/rand"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"sort"
 	"testing"
-
-	"github.com/bmizerany/assert"
 )
+
+func equal(t *testing.T, act, exp interface{}) {
+	if !reflect.DeepEqual(exp, act) {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+			filepath.Base(file), line, exp, act)
+		t.FailNow()
+	}
+}
 
 func TestPriorityQueue(t *testing.T) {
 	c := 100
@@ -16,14 +26,14 @@ func TestPriorityQueue(t *testing.T) {
 	for i := 0; i < c+1; i++ {
 		heap.Push(&pq, &Item{Value: i, Priority: int64(i)})
 	}
-	assert.Equal(t, pq.Len(), c+1)
-	assert.Equal(t, cap(pq), c*2)
+	equal(t, pq.Len(), c+1)
+	equal(t, cap(pq), c*2)
 
 	for i := 0; i < c+1; i++ {
 		item := heap.Pop(&pq)
-		assert.Equal(t, item.(*Item).Value.(int), i)
+		equal(t, item.(*Item).Value.(int), i)
 	}
-	assert.Equal(t, cap(pq), c/4)
+	equal(t, cap(pq), c/4)
 }
 
 func TestUnsortedInsert(t *testing.T) {
@@ -36,14 +46,14 @@ func TestUnsortedInsert(t *testing.T) {
 		ints = append(ints, v)
 		heap.Push(&pq, &Item{Value: i, Priority: int64(v)})
 	}
-	assert.Equal(t, pq.Len(), c)
-	assert.Equal(t, cap(pq), c)
+	equal(t, pq.Len(), c)
+	equal(t, cap(pq), c)
 
 	sort.Sort(sort.IntSlice(ints))
 
 	for i := 0; i < c; i++ {
 		item, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))
-		assert.Equal(t, item.Priority, int64(ints[i]))
+		equal(t, item.Priority, int64(ints[i]))
 	}
 }
 
@@ -63,7 +73,7 @@ func TestRemove(t *testing.T) {
 	lastPriority := heap.Pop(&pq).(*Item).Priority
 	for i := 0; i < (c - 10 - 1); i++ {
 		item := heap.Pop(&pq)
-		assert.Equal(t, lastPriority < item.(*Item).Priority, true)
+		equal(t, lastPriority < item.(*Item).Priority, true)
 		lastPriority = item.(*Item).Priority
 	}
 }

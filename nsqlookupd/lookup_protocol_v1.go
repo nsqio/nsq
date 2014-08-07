@@ -17,7 +17,7 @@ import (
 )
 
 type LookupProtocolV1 struct {
-	context *Context
+	ctx *Context
 }
 
 func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
@@ -38,11 +38,11 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 		response, err := p.Exec(client, reader, params)
 		if err != nil {
-			context := ""
+			ctx := ""
 			if parentErr := err.(util.ChildErr).Parent(); parentErr != nil {
-				context = " - " + parentErr.Error()
+				ctx = " - " + parentErr.Error()
 			}
-			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), context)
+			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), ctx)
 
 			_, err = util.SendResponse(client, []byte(err.Error()))
 			if err != nil {
@@ -66,9 +66,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	log.Printf("CLIENT(%s): closing", client)
 	if client.peerInfo != nil {
-		registrations := p.context.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
+		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
 		for _, r := range registrations {
-			if removed, _ := p.context.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
 				log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -125,13 +125,13 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel}
-		if p.context.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+		if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 			log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
 		}
 	}
 	key := Registration{"topic", topic, ""}
-	if p.context.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+	if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 			client, "topic", topic, "")
 	}
@@ -151,30 +151,30 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel}
-		removed, left := p.context.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
 		if removed {
 			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
 		}
 		// for ephemeral channels, remove the channel as well if it has no producers
 		if left == 0 && strings.HasSuffix(channel, "#ephemeral") {
-			p.context.nsqlookupd.DB.RemoveRegistration(key)
+			p.ctx.nsqlookupd.DB.RemoveRegistration(key)
 		}
 	} else {
 		// no channel was specified so this is a topic unregistration
 		// remove all of the channel registrations...
 		// normally this shouldn't happen which is why we print a warning message
 		// if anything is actually removed
-		registrations := p.context.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
+		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			if removed, _ := p.context.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
 				log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
 		key := Registration{"topic", topic, ""}
-		if removed, _ := p.context.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
+		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
 			log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
 		}
@@ -222,20 +222,20 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		client, peerInfo.BroadcastAddress, peerInfo.TcpPort, peerInfo.HttpPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
-	if p.context.nsqlookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
+	if p.ctx.nsqlookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
 		log.Printf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
 	}
 
 	// build a response
 	data := make(map[string]interface{})
-	data["tcp_port"] = p.context.nsqlookupd.tcpAddr.Port
-	data["http_port"] = p.context.nsqlookupd.httpAddr.Port
+	data["tcp_port"] = p.ctx.nsqlookupd.tcpAddr.Port
+	data["http_port"] = p.ctx.nsqlookupd.httpAddr.Port
 	data["version"] = util.BINARY_VERSION
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
-	data["broadcast_address"] = p.context.nsqlookupd.options.BroadcastAddress
+	data["broadcast_address"] = p.ctx.nsqlookupd.opts.BroadcastAddress
 	data["hostname"] = hostname
 
 	response, err := json.Marshal(data)

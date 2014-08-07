@@ -62,6 +62,8 @@ type nsqdOptions struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
+
+	Logger logger
 }
 
 func NewNSQDOptions() *nsqdOptions {
@@ -102,6 +104,8 @@ func NewNSQDOptions() *nsqdOptions {
 		DeflateEnabled:  true,
 		MaxDeflateLevel: 6,
 		SnappyEnabled:   true,
+
+		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 
 	h := md5.New()

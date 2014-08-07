@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+	"os"
 	"time"
 )
 
@@ -18,6 +20,8 @@ type nsqadminOptions struct {
 	NSQDHTTPAddresses       []string `flag:"nsqd-http-address" cfg:"nsqd_http_addresses"`
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
+
+	Logger logger
 }
 
 func NewNSQAdminOptions() *nsqadminOptions {
@@ -26,5 +30,6 @@ func NewNSQAdminOptions() *nsqadminOptions {
 		UseStatsdPrefixes: true,
 		StatsdPrefix:      "nsq.%s",
 		StatsdInterval:    60 * time.Second,
+		Logger:            log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 }

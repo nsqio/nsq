@@ -9,7 +9,7 @@ import (
 )
 
 type tcpServer struct {
-	context *Context
+	ctx *Context
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
@@ -31,7 +31,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	var prot util.Protocol
 	switch protocolMagic {
 	case "  V1":
-		prot = &LookupProtocolV1{context: p.context}
+		prot = &LookupProtocolV1{ctx: p.ctx}
 	default:
 		util.SendResponse(clientConn, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
