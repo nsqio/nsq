@@ -16,11 +16,10 @@ import (
 )
 
 func TestDiskQueue(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
+	l := newTestLogger(t)
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 1024, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 1024, 2500, 2*time.Second, l)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(0))
 
@@ -34,11 +33,9 @@ func TestDiskQueue(t *testing.T) {
 }
 
 func TestDiskQueueRoll(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
+	l := newTestLogger(t)
 	dqName := "test_disk_queue_roll" + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second, l)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(0))
 
@@ -60,11 +57,9 @@ func assertFileNotExist(t *testing.T, fn string) {
 }
 
 func TestDiskQueueEmpty(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
+	l := newTestLogger(t)
 	dqName := "test_disk_queue_empty" + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 100, 2500, 2*time.Second, l)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(0))
 
@@ -125,11 +120,9 @@ func TestDiskQueueEmpty(t *testing.T) {
 }
 
 func TestDiskQueueCorruption(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
+	l := newTestLogger(t)
 	dqName := "test_disk_queue_corruption" + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 1000, 5, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 1000, 5, 2*time.Second, l)
 
 	msg := make([]byte, 123)
 	for i := 0; i < 25; i++ {
@@ -156,13 +149,11 @@ func TestDiskQueueCorruption(t *testing.T) {
 }
 
 func TestDiskQueueTorture(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	var wg sync.WaitGroup
 
+	l := newTestLogger(t)
 	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second, l)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), int64(0))
 
@@ -197,12 +188,13 @@ func TestDiskQueueTorture(t *testing.T) {
 
 	dq.Close()
 
-	log.Printf("closing writeExitChan")
+	t.Logf("closing writeExitChan")
 	close(writeExitChan)
 	wg.Wait()
 
-	log.Printf("restarting diskqueue")
-	dq = newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second)
+	t.Logf("restarting diskqueue")
+
+	dq = newDiskQueue(dqName, os.TempDir(), 262144, 2500, 2*time.Second, l)
 	assert.NotEqual(t, dq, nil)
 	assert.Equal(t, dq.Depth(), depth)
 
@@ -224,7 +216,7 @@ func TestDiskQueueTorture(t *testing.T) {
 		}()
 	}
 
-	log.Printf("waiting for depth 0")
+	t.Logf("waiting for depth 0")
 	for {
 		if dq.Depth() == 0 {
 			break
@@ -232,7 +224,7 @@ func TestDiskQueueTorture(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	log.Printf("closing readExitChan")
+	t.Logf("closing readExitChan")
 	close(readExitChan)
 	wg.Wait()
 
@@ -243,10 +235,9 @@ func TestDiskQueueTorture(t *testing.T) {
 
 func BenchmarkDiskQueuePut(b *testing.B) {
 	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
+	l := newTestLogger(b)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 1024768*100, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 1024768*100, 2500, 2*time.Second, l)
 	size := 1024
 	b.SetBytes(int64(size))
 	data := make([]byte, size)
@@ -299,10 +290,9 @@ func BenchmarkDiskWriteBuffered(b *testing.B) {
 // (so that it does not perform too many iterations)
 func BenchmarkDiskQueueGet(b *testing.B) {
 	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
+	l := newTestLogger(b)
 	dqName := "bench_disk_queue_get" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
-	dq := newDiskQueue(dqName, os.TempDir(), 1024768, 2500, 2*time.Second)
+	dq := newDiskQueue(dqName, os.TempDir(), 1024768, 2500, 2*time.Second, l)
 	for i := 0; i < b.N; i++ {
 		dq.Put([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	}

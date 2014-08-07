@@ -3,8 +3,6 @@ package nsqd
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
-	"os"
 	"path"
 	"strconv"
 	"testing"
@@ -14,35 +12,46 @@ import (
 	"github.com/bmizerany/assert"
 )
 
+type tbLog interface {
+	Log(...interface{})
+}
+
+type testLogger struct {
+	tbLog
+}
+
+func (tl *testLogger) Output(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+
+func newTestLogger(tbl tbLog) logger {
+	return &testLogger{tbl}
+}
+
 func getMetadata(n *NSQD) (*simplejson.Json, error) {
 	fn := fmt.Sprintf(path.Join(n.options.DataPath, "nsqd.%d.dat"), n.options.ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("ERROR: failed to read channel metadata from %s - %s", fn, err.Error())
-		}
 		return nil, err
 	}
 
 	js, err := simplejson.NewJson(data)
 	if err != nil {
-		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 		return nil, err
 	}
 	return js, nil
 }
 
 func TestStartup(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	iterations := 300
 	doneExitChan := make(chan int)
 
-	options := NewNSQDOptions()
-	options.MemQueueSize = 100
-	options.MaxBytesPerFile = 10240
-	_, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MemQueueSize = 100
+	opts.MaxBytesPerFile = 10240
+	_, _, nsqd := mustStartNSQD(opts)
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -69,13 +78,13 @@ func TestStartup(t *testing.T) {
 		topic.PutMessage(msg)
 	}
 
-	log.Printf("pulling from channel")
+	t.Logf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
 
-	log.Printf("read %d msgs", iterations/2)
+	t.Logf("read %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
-		log.Printf("read message %d", i+1)
+		t.Logf("read message %d", i+1)
 		assert.Equal(t, msg.Body, body)
 	}
 
@@ -101,10 +110,11 @@ func TestStartup(t *testing.T) {
 
 	// start up a new nsqd w/ the same folder
 
-	options = NewNSQDOptions()
-	options.MemQueueSize = 100
-	options.MaxBytesPerFile = 10240
-	_, _, nsqd = mustStartNSQD(options)
+	opts = NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MemQueueSize = 100
+	opts.MaxBytesPerFile = 10240
+	_, _, nsqd = mustStartNSQD(opts)
 
 	go func() {
 		<-exitChan
@@ -129,7 +139,7 @@ func TestStartup(t *testing.T) {
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
-		log.Printf("read message %d", i+1)
+		t.Logf("read message %d", i+1)
 		assert.Equal(t, msg.Body, body)
 	}
 
@@ -144,12 +154,10 @@ func TestStartup(t *testing.T) {
 func TestEphemeralChannel(t *testing.T) {
 	// a normal channel sticks around after clients disconnect; an ephemeral channel is
 	// lazily removed after the last client disconnects
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.MemQueueSize = 100
-	_, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MemQueueSize = 100
+	_, _, nsqd := mustStartNSQD(opts)
 
 	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
 	doneExitChan := make(chan int)
@@ -164,7 +172,7 @@ func TestEphemeralChannel(t *testing.T) {
 	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
-	client := newClientV2(0, nil, &context{nsqd})
+	client := newClientV2(0, nil, &context{nsqd, opts.Logger})
 	ephemeralChannel.AddClient(client.ID, client)
 
 	msg := NewMessage(<-nsqd.idChan, body)
@@ -172,7 +180,7 @@ func TestEphemeralChannel(t *testing.T) {
 	msg = <-ephemeralChannel.clientMsgChan
 	assert.Equal(t, msg.Body, body)
 
-	log.Printf("pulling from channel")
+	t.Logf("pulling from channel")
 	ephemeralChannel.RemoveClient(client.ID)
 
 	time.Sleep(50 * time.Millisecond)
@@ -193,11 +201,9 @@ func metadataForChannel(n *NSQD, topicIndex int, channelIndex int) *simplejson.J
 }
 
 func TestPauseMetadata(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	_, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
 
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)

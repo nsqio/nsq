@@ -20,10 +20,9 @@ import (
 )
 
 func TestHTTPput(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_put" + strconv.Itoa(int(time.Now().Unix()))
@@ -43,10 +42,9 @@ func TestHTTPput(t *testing.T) {
 }
 
 func TestHTTPputEmpty(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -67,10 +65,9 @@ func TestHTTPputEmpty(t *testing.T) {
 }
 
 func TestHTTPmput(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput" + strconv.Itoa(int(time.Now().Unix()))
@@ -96,10 +93,9 @@ func TestHTTPmput(t *testing.T) {
 }
 
 func TestHTTPmputEmpty(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -127,10 +123,9 @@ func TestHTTPmputEmpty(t *testing.T) {
 }
 
 func TestHTTPmputBinary(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
@@ -156,15 +151,13 @@ func TestHTTPmputBinary(t *testing.T) {
 }
 
 func TestHTTPSRequire(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	options.TLSClientAuthPolicy = "require"
-	_, httpAddr, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSClientAuthPolicy = "require"
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 
 	defer nsqd.Exit()
 
@@ -202,16 +195,14 @@ func TestHTTPSRequire(t *testing.T) {
 }
 
 func TestHTTPSRequireVerify(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.TLSCert = "./test/certs/server.pem"
-	options.TLSKey = "./test/certs/server.key"
-	options.TLSRootCAFile = "./test/certs/ca.pem"
-	options.TLSClientAuthPolicy = "require-verify"
-	_, httpAddr, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSRootCAFile = "./test/certs/ca.pem"
+	opts.TLSClientAuthPolicy = "require-verify"
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 
 	defer nsqd.Exit()
@@ -268,10 +259,9 @@ func TestHTTPSRequireVerify(t *testing.T) {
 }
 
 func TestHTTPDeprecatedTopicChannel(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_topic_channel" + strconv.Itoa(int(time.Now().Unix()))
@@ -365,10 +355,9 @@ func TestHTTPDeprecatedTopicChannel(t *testing.T) {
 }
 
 func TestHTTPTransitionTopicChannel(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	client := http.Client{}
@@ -487,10 +476,9 @@ func TestHTTPTransitionTopicChannel(t *testing.T) {
 }
 
 func TestHTTPV1TopicChannel(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	_, httpAddr, nsqd := mustStartNSQD(NewNSQDOptions())
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_http_topic_channel2" + strconv.Itoa(int(time.Now().Unix()))

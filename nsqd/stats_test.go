@@ -3,9 +3,6 @@ package nsqd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -16,11 +13,9 @@ import (
 )
 
 func TestStats(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
-	options := NewNSQDOptions()
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
@@ -35,22 +30,21 @@ func TestStats(t *testing.T) {
 	sub(t, conn, topicName, "ch")
 
 	stats := nsqd.GetStats()
+	t.Logf("stats: %+v", stats)
+
 	assert.Equal(t, len(stats), 1)
 	assert.Equal(t, len(stats[0].Channels), 1)
 	assert.Equal(t, len(stats[0].Channels[0].Clients), 1)
-	log.Printf("stats: %+v", stats)
 }
 
 func TestClientAttributes(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
-
 	userAgent := "Test User Agent"
 
-	options := NewNSQDOptions()
-	options.Verbose = true
-	options.SnappyEnabled = true
-	tcpAddr, httpAddr, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.SnappyEnabled = true
+	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
