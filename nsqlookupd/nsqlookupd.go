@@ -41,14 +41,14 @@ func NewNSQLookupd(options *nsqlookupdOptions) *NSQLookupd {
 }
 
 func (l *NSQLookupd) Main() {
-	context := &Context{l}
+	ctx := &Context{l}
 
 	tcpListener, err := net.Listen("tcp", l.tcpAddr.String())
 	if err != nil {
 		log.Fatalf("FATAL: listen (%s) failed - %s", l.tcpAddr, err.Error())
 	}
 	l.tcpListener = tcpListener
-	tcpServer := &tcpServer{context: context}
+	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		util.TCPServer(tcpListener, tcpServer, l.options.Logger)
 	})
@@ -58,7 +58,7 @@ func (l *NSQLookupd) Main() {
 		log.Fatalf("FATAL: listen (%s) failed - %s", l.httpAddr, err.Error())
 	}
 	l.httpListener = httpListener
-	httpServer := &httpServer{context: context}
+	httpServer := &httpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		util.HTTPServer(httpListener, httpServer, l.options.Logger, "HTTP")
 	})

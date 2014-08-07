@@ -45,7 +45,7 @@ type Channel struct {
 
 	topicName string
 	name      string
-	context   *context
+	ctx       *context
 
 	backend BackendQueue
 
@@ -79,24 +79,24 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, context *context,
+func NewChannel(topicName string, channelName string, ctx *context,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
 		topicName:       topicName,
 		name:            channelName,
 		incomingMsgChan: make(chan *Message, 1),
-		memoryMsgChan:   make(chan *Message, context.nsqd.options.MemQueueSize),
+		memoryMsgChan:   make(chan *Message, ctx.nsqd.options.MemQueueSize),
 		clientMsgChan:   make(chan *Message),
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
-		context:         context,
+		ctx:             ctx,
 	}
-	if len(context.nsqd.options.E2EProcessingLatencyPercentiles) > 0 {
+	if len(ctx.nsqd.options.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = util.NewQuantile(
-			context.nsqd.options.E2EProcessingLatencyWindowTime,
-			context.nsqd.options.E2EProcessingLatencyPercentiles,
+			ctx.nsqd.options.E2EProcessingLatencyWindowTime,
+			ctx.nsqd.options.E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -109,11 +109,11 @@ func NewChannel(topicName string, channelName string, context *context,
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
 		c.backend = newDiskQueue(backendName,
-			context.nsqd.options.DataPath,
-			context.nsqd.options.MaxBytesPerFile,
-			context.nsqd.options.SyncEvery,
-			context.nsqd.options.SyncTimeout,
-			context.l)
+			ctx.nsqd.options.DataPath,
+			ctx.nsqd.options.MaxBytesPerFile,
+			ctx.nsqd.options.SyncEvery,
+			ctx.nsqd.options.SyncTimeout,
+			ctx.l)
 	}
 
 	go c.messagePump()
@@ -122,13 +122,13 @@ func NewChannel(topicName string, channelName string, context *context,
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
-	go c.context.nsqd.Notify(c)
+	go c.ctx.nsqd.Notify(c)
 
 	return c
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.context.nsqd.options.MemQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.ctx.nsqd.options.MemQueueSize)/10))
 
 	c.inFlightMessages = make(map[MessageID]*Message)
 	c.deferredMessages = make(map[MessageID]*pqueue.Item)
@@ -163,13 +163,13 @@ func (c *Channel) exit(deleted bool) error {
 	}
 
 	if deleted {
-		c.context.l.Output(2, fmt.Sprintf("CHANNEL(%s): deleting", c.name))
+		c.ctx.l.Output(2, fmt.Sprintf("CHANNEL(%s): deleting", c.name))
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		go c.context.nsqd.Notify(c)
+		go c.ctx.nsqd.Notify(c)
 	} else {
-		c.context.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing", c.name))
+		c.ctx.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing", c.name))
 	}
 
 	// this forceably closes client connections
@@ -236,13 +236,13 @@ func (c *Channel) flush() error {
 	// messagePump is responsible for closing the channel it writes to
 	// this will read until its closed (exited)
 	for msg := range c.clientMsgChan {
-		c.context.l.Output(2, fmt.Sprintf(
+		c.ctx.l.Output(2, fmt.Sprintf(
 			"CHANNEL(%s): recovered buffered message from clientMsgChan", c.name))
 		writeMessageToBackend(&msgBuf, msg, c.backend)
 	}
 
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		c.context.l.Output(2, fmt.Sprintf(
+		c.ctx.l.Output(2, fmt.Sprintf(
 			"CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages)))
 	}
@@ -252,7 +252,7 @@ func (c *Channel) flush() error {
 		case msg := <-c.memoryMsgChan:
 			err := writeMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
-				c.context.l.Output(2, fmt.Sprintf(
+				c.ctx.l.Output(2, fmt.Sprintf(
 					"ERROR: failed to write message to backend - %s", err))
 			}
 		default:
@@ -264,7 +264,7 @@ finish:
 	for _, msg := range c.inFlightMessages {
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
-			c.context.l.Output(2, fmt.Sprintf(
+			c.ctx.l.Output(2, fmt.Sprintf(
 				"ERROR: failed to write message to backend - %s", err))
 		}
 	}
@@ -273,7 +273,7 @@ finish:
 		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
-			c.context.l.Output(2, fmt.Sprintf(
+			c.ctx.l.Output(2, fmt.Sprintf(
 				"ERROR: failed to write message to backend - %s", err))
 		}
 	}
@@ -310,11 +310,11 @@ func (c *Channel) doPause(pause bool) error {
 	}
 	c.RUnlock()
 
-	c.context.nsqd.Lock()
-	defer c.context.nsqd.Unlock()
+	c.ctx.nsqd.Lock()
+	defer c.ctx.nsqd.Unlock()
 	// pro-actively persist metadata so in case of process failure
 	// nsqd won't suddenly (un)pause a channel
-	return c.context.nsqd.PersistMetadata()
+	return c.ctx.nsqd.PersistMetadata()
 }
 
 func (c *Channel) IsPaused() bool {
@@ -344,9 +344,9 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
-		c.context.nsqd.options.MaxMsgTimeout {
+		c.ctx.nsqd.options.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = msg.deliveryTS.Add(c.context.nsqd.options.MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.options.MaxMsgTimeout)
 	}
 
 	msg.pri = newTimeout.UnixNano()
@@ -550,15 +550,15 @@ func (c *Channel) router() {
 		default:
 			err := writeMessageToBackend(&msgBuf, msg, c.backend)
 			if err != nil {
-				c.context.l.Output(2, fmt.Sprintf(
+				c.ctx.l.Output(2, fmt.Sprintf(
 					"CHANNEL(%s) ERROR: failed to write message to backend - %s",
 					c.name, err))
-				c.context.nsqd.SetHealth(err)
+				c.ctx.nsqd.SetHealth(err)
 			}
 		}
 	}
 
-	c.context.l.Output(2, fmt.Sprintf(
+	c.ctx.l.Output(2, fmt.Sprintf(
 		"CHANNEL(%s): closing ... router", c.name))
 }
 
@@ -585,7 +585,7 @@ func (c *Channel) messagePump() {
 		case buf = <-c.backend.ReadChan():
 			msg, err = decodeMessage(buf)
 			if err != nil {
-				c.context.l.Output(2, fmt.Sprintf(
+				c.ctx.l.Output(2, fmt.Sprintf(
 					"ERROR: failed to decode message - %s", err))
 				continue
 			}
@@ -602,7 +602,7 @@ func (c *Channel) messagePump() {
 	}
 
 exit:
-	c.context.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... messagePump", c.name))
+	c.ctx.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... messagePump", c.name))
 	close(c.clientMsgChan)
 }
 
@@ -651,7 +651,7 @@ func (c *Channel) inFlightWorker() {
 	}
 
 exit:
-	c.context.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... inFlightWorker", c.name))
+	c.ctx.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... inFlightWorker", c.name))
 	ticker.Stop()
 }
 
@@ -680,6 +680,6 @@ func (c *Channel) pqWorker(pq *pqueue.PriorityQueue, mutex *sync.Mutex, callback
 	}
 
 exit:
-	c.context.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... pqueue worker", c.name))
+	c.ctx.l.Output(2, fmt.Sprintf("CHANNEL(%s): closing ... pqueue worker", c.name))
 	ticker.Stop()
 }

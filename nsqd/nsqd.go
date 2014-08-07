@@ -143,7 +143,7 @@ func (n *NSQD) Main() {
 	var httpListener net.Listener
 	var httpsListener net.Listener
 
-	context := &context{n, n.options.Logger}
+	ctx := &context{n, n.options.Logger}
 
 	if n.options.TLSClientAuthPolicy != "" {
 		n.options.TLSRequired = true
@@ -160,7 +160,7 @@ func (n *NSQD) Main() {
 		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
 	}
 	n.tcpListener = tcpListener
-	tcpServer := &tcpServer{context: context}
+	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
 		util.TCPServer(n.tcpListener, tcpServer, n.options.Logger)
 	})
@@ -172,7 +172,7 @@ func (n *NSQD) Main() {
 		}
 		n.httpsListener = httpsListener
 		httpsServer := &httpServer{
-			context:     context,
+			ctx:         ctx,
 			tlsEnabled:  true,
 			tlsRequired: true,
 		}
@@ -186,7 +186,7 @@ func (n *NSQD) Main() {
 	}
 	n.httpListener = httpListener
 	httpServer := &httpServer{
-		context:     context,
+		ctx:         ctx,
 		tlsEnabled:  false,
 		tlsRequired: n.options.TLSRequired,
 	}

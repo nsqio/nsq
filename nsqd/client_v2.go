@@ -63,7 +63,7 @@ type clientV2 struct {
 	sync.RWMutex
 
 	ID        int64
-	context   *context
+	ctx       *context
 	UserAgent string
 
 	// original connection
@@ -110,15 +110,15 @@ type clientV2 struct {
 	AuthState  *auth.AuthState
 }
 
-func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
+func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 	var identifier string
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
 	c := &clientV2{
-		ID:      id,
-		context: context,
+		ID:  id,
+		ctx: ctx,
 
 		Conn: conn,
 
@@ -128,7 +128,7 @@ func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
 		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: 250 * time.Millisecond,
 
-		MsgTimeout: context.nsqd.options.MsgTimeout,
+		MsgTimeout: ctx.nsqd.options.MsgTimeout,
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -144,7 +144,7 @@ func newClientV2(id int64, conn net.Conn, context *context) *clientV2 {
 		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
-		HeartbeatInterval: context.nsqd.options.ClientTimeout / 2,
+		HeartbeatInterval: ctx.nsqd.options.ClientTimeout / 2,
 	}
 	c.lenSlice = c.lenBuf[:]
 	return c
@@ -155,7 +155,7 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	c.context.l.Output(2, fmt.Sprintf("[%s] IDENTIFY: %+v", c, data))
+	c.ctx.l.Output(2, fmt.Sprintf("[%s] IDENTIFY: %+v", c, data))
 
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
@@ -331,8 +331,8 @@ func (c *clientV2) IsReadyForMessages() bool {
 	lastReadyCount := atomic.LoadInt64(&c.LastReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	if c.context.nsqd.options.Verbose {
-		c.context.l.Output(2, fmt.Sprintf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
+	if c.ctx.nsqd.options.Verbose {
+		c.ctx.l.Output(2, fmt.Sprintf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
 			readyCount, lastReadyCount, inFlightCount))
 	}
 
@@ -412,7 +412,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
-		desiredInterval <= int(c.context.nsqd.options.MaxHeartbeatInterval/time.Millisecond):
+		desiredInterval <= int(c.ctx.nsqd.options.MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
 		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
@@ -430,7 +430,7 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 		size = 1
 	case desiredSize == 0:
 		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(c.context.nsqd.options.MaxOutputBufferSize):
+	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.options.MaxOutputBufferSize):
 		size = desiredSize
 	default:
 		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
@@ -460,7 +460,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case desiredTimeout >= 1 &&
-		desiredTimeout <= int(c.context.nsqd.options.MaxOutputBufferTimeout/time.Millisecond):
+		desiredTimeout <= int(c.ctx.nsqd.options.MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
 		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
@@ -485,7 +485,7 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 	case msgTimeout == 0:
 		// do nothing (use default)
 	case msgTimeout >= 1000 &&
-		msgTimeout <= int(c.context.nsqd.options.MaxMsgTimeout/time.Millisecond):
+		msgTimeout <= int(c.ctx.nsqd.options.MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
 		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
@@ -498,7 +498,7 @@ func (c *clientV2) UpgradeTLS() error {
 	c.Lock()
 	defer c.Unlock()
 
-	tlsConn := tls.Server(c.Conn, c.context.nsqd.tlsConfig)
+	tlsConn := tls.Server(c.Conn, c.ctx.nsqd.tlsConfig)
 	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
 	err := tlsConn.Handshake()
 	if err != nil {
@@ -583,7 +583,7 @@ func (c *clientV2) QueryAuthd() error {
 		tlsEnabled = "true"
 	}
 
-	authState, err := auth.QueryAnyAuthd(c.context.nsqd.options.AuthHTTPAddresses,
+	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.options.AuthHTTPAddresses,
 		remoteIp, tlsEnabled, c.AuthSecret)
 	if err != nil {
 		return err

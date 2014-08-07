@@ -114,7 +114,7 @@ func GraphIntervalForTimeframe(t string, selected bool) (*GraphInterval, error) 
 }
 
 type GraphOptions struct {
-	context           *Context
+	ctx               *Context
 	Configured        bool
 	Enabled           bool
 	GraphiteUrl       string
@@ -124,7 +124,7 @@ type GraphOptions struct {
 }
 
 func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
-	r *util.ReqParams, context *Context) *GraphOptions {
+	r *util.ReqParams, ctx *Context) *GraphOptions {
 	selectedTimeString, err := r.Get("t")
 	if err != nil && selectedTimeString == "" {
 		// get from cookie
@@ -151,14 +151,14 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
 	if err != nil {
 		g, _ = GraphIntervalForTimeframe("2h", true)
 	}
-	base := context.nsqadmin.options.GraphiteURL
-	if context.nsqadmin.options.ProxyGraphite {
+	base := ctx.nsqadmin.options.GraphiteURL
+	if ctx.nsqadmin.options.ProxyGraphite {
 		base = ""
 	}
 	o := &GraphOptions{
-		context:           context,
-		Configured:        context.nsqadmin.options.GraphiteURL != "",
-		Enabled:           g.Timeframe != "off" && context.nsqadmin.options.GraphiteURL != "",
+		ctx:               ctx,
+		Configured:        ctx.nsqadmin.options.GraphiteURL != "",
+		Enabled:           g.Timeframe != "off" && ctx.nsqadmin.options.GraphiteURL != "",
 		GraphiteUrl:       base,
 		AllGraphIntervals: DefaultGraphTimeframes(selectedTimeString),
 		GraphInterval:     g,
@@ -169,13 +169,13 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
 func (g *GraphOptions) Prefix(host string, metricType string) string {
 	prefix := ""
 	statsdHostKey := util.StatsdHostKey(host)
-	prefixWithHost := strings.Replace(g.context.nsqadmin.options.StatsdPrefix, "%s", statsdHostKey, -1)
+	prefixWithHost := strings.Replace(g.ctx.nsqadmin.options.StatsdPrefix, "%s", statsdHostKey, -1)
 	if prefixWithHost[len(prefixWithHost)-1] != '.' {
 		prefixWithHost += "."
 	}
-	if g.context.nsqadmin.options.UseStatsdPrefixes && metricType == "counter" {
+	if g.ctx.nsqadmin.options.UseStatsdPrefixes && metricType == "counter" {
 		prefix += "stats_counts."
-	} else if g.context.nsqadmin.options.UseStatsdPrefixes && metricType == "gauge" {
+	} else if g.ctx.nsqadmin.options.UseStatsdPrefixes && metricType == "gauge" {
 		prefix += "stats.gauges."
 	}
 	prefix += prefixWithHost
