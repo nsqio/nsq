@@ -13,7 +13,7 @@ import (
 	"github.com/bitly/nsq/util"
 )
 
-func equal(t *testing.T, exp, act interface{}) {
+func equal(t *testing.T, act, exp interface{}) {
 	if !reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
 		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",

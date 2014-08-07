@@ -49,8 +49,8 @@
 		},
 		{
 			"ImportPath": "github.com/mreiferson/go-snappystream",
-			"Comment": "v0.1.1",
-			"Rev": "97c96e6648e99c2ce4fe7d169aa3f7368204e04d"
+			"Comment": "v0.2.0",
+			"Rev": "307a466b220aaf34bcee2d19c605ed9e96b4bcdb"
 		}
 	]
 }

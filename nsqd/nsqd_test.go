@@ -23,16 +23,7 @@ func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
 	}
 }
 
-func ok(t *testing.T, err error) {
-	if err != nil {
-		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d: unexpected error: %s\033[39m\n\n",
-			filepath.Base(file), line, err.Error())
-		t.FailNow()
-	}
-}
-
-func equal(t *testing.T, exp, act interface{}) {
+func equal(t *testing.T, act, exp interface{}) {
 	if !reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
 		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
@@ -41,7 +32,7 @@ func equal(t *testing.T, exp, act interface{}) {
 	}
 }
 
-func nequal(t *testing.T, exp, act interface{}) {
+func nequal(t *testing.T, act, exp interface{}) {
 	if reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
 		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
