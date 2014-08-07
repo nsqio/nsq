@@ -235,7 +235,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	if err != nil {
 		log.Fatalf("ERROR: unable to get hostname %s", err.Error())
 	}
-	data["broadcast_address"] = p.ctx.nsqlookupd.options.BroadcastAddress
+	data["broadcast_address"] = p.ctx.nsqlookupd.opts.BroadcastAddress
 	data["hostname"] = hostname
 
 	response, err := json.Marshal(data)

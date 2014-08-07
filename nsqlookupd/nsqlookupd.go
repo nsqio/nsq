@@ -8,7 +8,7 @@ import (
 )
 
 type NSQLookupd struct {
-	options      *nsqlookupdOptions
+	opts         *nsqlookupdOptions
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr
 	tcpListener  net.Listener
@@ -17,25 +17,25 @@ type NSQLookupd struct {
 	DB           *RegistrationDB
 }
 
-func NewNSQLookupd(options *nsqlookupdOptions) *NSQLookupd {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", options.TCPAddress)
+func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	httpAddr, err := net.ResolveTCPAddr("tcp", options.HTTPAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	n := &NSQLookupd{
-		options:  options,
+		opts:     opts,
 		tcpAddr:  tcpAddr,
 		httpAddr: httpAddr,
 		DB:       NewRegistrationDB(),
 	}
 
-	n.options.Logger.Output(2, util.Version("nsqlookupd"))
+	n.opts.Logger.Output(2, util.Version("nsqlookupd"))
 
 	return n
 }
@@ -50,7 +50,7 @@ func (l *NSQLookupd) Main() {
 	l.tcpListener = tcpListener
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		util.TCPServer(tcpListener, tcpServer, l.options.Logger)
+		util.TCPServer(tcpListener, tcpServer, l.opts.Logger)
 	})
 
 	httpListener, err := net.Listen("tcp", l.httpAddr.String())
@@ -60,7 +60,7 @@ func (l *NSQLookupd) Main() {
 	l.httpListener = httpListener
 	httpServer := &httpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		util.HTTPServer(httpListener, httpServer, l.options.Logger, "HTTP")
+		util.HTTPServer(httpListener, httpServer, l.opts.Logger, "HTTP")
 	})
 }
 

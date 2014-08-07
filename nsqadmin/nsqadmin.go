@@ -12,34 +12,34 @@ import (
 )
 
 type NSQAdmin struct {
-	options       *nsqadminOptions
+	opts          *nsqadminOptions
 	httpAddr      *net.TCPAddr
 	httpListener  net.Listener
 	waitGroup     util.WaitGroupWrapper
 	notifications chan *AdminAction
 }
 
-func NewNSQAdmin(options *nsqadminOptions) *NSQAdmin {
-	if len(options.NSQDHTTPAddresses) == 0 && len(options.NSQLookupdHTTPAddresses) == 0 {
+func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
+	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
 		log.Fatalf("--nsqd-http-address or --lookupd-http-address required.")
 	}
 
-	if len(options.NSQDHTTPAddresses) != 0 && len(options.NSQLookupdHTTPAddresses) != 0 {
+	if len(opts.NSQDHTTPAddresses) != 0 && len(opts.NSQLookupdHTTPAddresses) != 0 {
 		log.Fatalf("use --nsqd-http-address or --lookupd-http-address not both")
 	}
 
-	httpAddr, err := net.ResolveTCPAddr("tcp", options.HTTPAddress)
+	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	n := &NSQAdmin{
-		options:       options,
+		opts:          opts,
 		httpAddr:      httpAddr,
 		notifications: make(chan *AdminAction),
 	}
 
-	n.options.Logger.Output(2, util.Version("nsqlookupd"))
+	n.opts.Logger.Output(2, util.Version("nsqlookupd"))
 
 	return n
 }
@@ -67,7 +67,7 @@ func (n *NSQAdmin) Main() {
 	n.httpListener = httpListener
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
-		util.HTTPServer(n.httpListener, httpServer, n.options.Logger, "HTTP")
+		util.HTTPServer(n.httpListener, httpServer, n.opts.Logger, "HTTP")
 	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }

@@ -36,7 +36,7 @@ func basicAuthUser(req *http.Request) string {
 
 func (s *httpServer) notifyAdminAction(actionType string, topicName string,
 	channelName string, node string, req *http.Request) {
-	if s.ctx.nsqadmin.options.NotificationHTTPEndpoint == "" {
+	if s.ctx.nsqadmin.opts.NotificationHTTPEndpoint == "" {
 		return
 	}
 	action := &AdminAction{

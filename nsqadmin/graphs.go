@@ -151,14 +151,14 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
 	if err != nil {
 		g, _ = GraphIntervalForTimeframe("2h", true)
 	}
-	base := ctx.nsqadmin.options.GraphiteURL
-	if ctx.nsqadmin.options.ProxyGraphite {
+	base := ctx.nsqadmin.opts.GraphiteURL
+	if ctx.nsqadmin.opts.ProxyGraphite {
 		base = ""
 	}
 	o := &GraphOptions{
 		ctx:               ctx,
-		Configured:        ctx.nsqadmin.options.GraphiteURL != "",
-		Enabled:           g.Timeframe != "off" && ctx.nsqadmin.options.GraphiteURL != "",
+		Configured:        ctx.nsqadmin.opts.GraphiteURL != "",
+		Enabled:           g.Timeframe != "off" && ctx.nsqadmin.opts.GraphiteURL != "",
 		GraphiteUrl:       base,
 		AllGraphIntervals: DefaultGraphTimeframes(selectedTimeString),
 		GraphInterval:     g,
@@ -169,13 +169,13 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
 func (g *GraphOptions) Prefix(host string, metricType string) string {
 	prefix := ""
 	statsdHostKey := util.StatsdHostKey(host)
-	prefixWithHost := strings.Replace(g.ctx.nsqadmin.options.StatsdPrefix, "%s", statsdHostKey, -1)
+	prefixWithHost := strings.Replace(g.ctx.nsqadmin.opts.StatsdPrefix, "%s", statsdHostKey, -1)
 	if prefixWithHost[len(prefixWithHost)-1] != '.' {
 		prefixWithHost += "."
 	}
-	if g.ctx.nsqadmin.options.UseStatsdPrefixes && metricType == "counter" {
+	if g.ctx.nsqadmin.opts.UseStatsdPrefixes && metricType == "counter" {
 		prefix += "stats_counts."
-	} else if g.ctx.nsqadmin.options.UseStatsdPrefixes && metricType == "gauge" {
+	} else if g.ctx.nsqadmin.opts.UseStatsdPrefixes && metricType == "gauge" {
 		prefix += "stats.gauges."
 	}
 	prefix += prefixWithHost

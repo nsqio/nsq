@@ -86,17 +86,17 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		topicName:       topicName,
 		name:            channelName,
 		incomingMsgChan: make(chan *Message, 1),
-		memoryMsgChan:   make(chan *Message, ctx.nsqd.options.MemQueueSize),
+		memoryMsgChan:   make(chan *Message, ctx.nsqd.opts.MemQueueSize),
 		clientMsgChan:   make(chan *Message),
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
 		deleteCallback:  deleteCallback,
 		ctx:             ctx,
 	}
-	if len(ctx.nsqd.options.E2EProcessingLatencyPercentiles) > 0 {
+	if len(ctx.nsqd.opts.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = util.NewQuantile(
-			ctx.nsqd.options.E2EProcessingLatencyWindowTime,
-			ctx.nsqd.options.E2EProcessingLatencyPercentiles,
+			ctx.nsqd.opts.E2EProcessingLatencyWindowTime,
+			ctx.nsqd.opts.E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -109,10 +109,10 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
 		c.backend = newDiskQueue(backendName,
-			ctx.nsqd.options.DataPath,
-			ctx.nsqd.options.MaxBytesPerFile,
-			ctx.nsqd.options.SyncEvery,
-			ctx.nsqd.options.SyncTimeout,
+			ctx.nsqd.opts.DataPath,
+			ctx.nsqd.opts.MaxBytesPerFile,
+			ctx.nsqd.opts.SyncEvery,
+			ctx.nsqd.opts.SyncTimeout,
 			ctx.l)
 	}
 
@@ -128,7 +128,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.ctx.nsqd.options.MemQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.ctx.nsqd.opts.MemQueueSize)/10))
 
 	c.inFlightMessages = make(map[MessageID]*Message)
 	c.deferredMessages = make(map[MessageID]*pqueue.Item)
@@ -344,9 +344,9 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
-		c.ctx.nsqd.options.MaxMsgTimeout {
+		c.ctx.nsqd.opts.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.options.MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.opts.MaxMsgTimeout)
 	}
 
 	msg.pri = newTimeout.UnixNano()

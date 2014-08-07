@@ -28,12 +28,12 @@ import (
 	"github.com/mreiferson/go-snappystream"
 )
 
-func mustStartNSQD(options *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
+func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpsAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	options.DataPath = os.TempDir()
-	nsqd := NewNSQD(options)
+	opts.DataPath = os.TempDir()
+	nsqd := NewNSQD(opts)
 	nsqd.tcpAddr = tcpAddr
 	nsqd.httpAddr = httpAddr
 	nsqd.httpsAddr = httpsAddr
@@ -1389,9 +1389,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	batchSize := 200
 	batch := make([][]byte, 0)
@@ -1460,9 +1460,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
@@ -1558,9 +1558,9 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	log.SetOutput(ioutil.Discard)
 	defer log.SetOutput(os.Stdout)
 
-	options := NewNSQDOptions()
-	options.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(options)
+	opts := NewNSQDOptions()
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, 256)
 	b.SetBytes(int64(len(msg) * num))
 
