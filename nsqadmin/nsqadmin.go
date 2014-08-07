@@ -33,11 +33,15 @@ func NewNSQAdmin(options *nsqadminOptions) *NSQAdmin {
 		log.Fatal(err)
 	}
 
-	return &NSQAdmin{
+	n := &NSQAdmin{
 		options:       options,
 		httpAddr:      httpAddr,
 		notifications: make(chan *AdminAction),
 	}
+
+	n.options.Logger.Output(2, util.Version("nsqlookupd"))
+
+	return n
 }
 
 func (n *NSQAdmin) handleAdminActions() {
@@ -62,7 +66,9 @@ func (n *NSQAdmin) Main() {
 	}
 	n.httpListener = httpListener
 	httpServer := NewHTTPServer(&Context{n})
-	n.waitGroup.Wrap(func() { util.HTTPServer(n.httpListener, httpServer, "HTTP") })
+	n.waitGroup.Wrap(func() {
+		util.HTTPServer(n.httpListener, httpServer, n.options.Logger, "HTTP")
+	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }
 

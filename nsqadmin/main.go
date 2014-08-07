@@ -73,8 +73,6 @@ func main() {
 	options.Resolve(opts, flagSet, cfg)
 	nsqadmin := NewNSQAdmin(opts)
 
-	log.Println(util.Version("nsqadmin"))
-
 	nsqadmin.Main()
 	<-exitChan
 	nsqadmin.Exit()
