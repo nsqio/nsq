@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -156,7 +155,7 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	log.Printf("[%s] IDENTIFY: %+v", c, data)
+	c.context.l.Output(2, fmt.Sprintf("[%s] IDENTIFY: %+v", c, data))
 
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
@@ -333,8 +332,8 @@ func (c *clientV2) IsReadyForMessages() bool {
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if c.context.nsqd.options.Verbose {
-		log.Printf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
-			readyCount, lastReadyCount, inFlightCount)
+		c.context.l.Output(2, fmt.Sprintf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
+			readyCount, lastReadyCount, inFlightCount))
 	}
 
 	if inFlightCount >= lastReadyCount || readyCount <= 0 {

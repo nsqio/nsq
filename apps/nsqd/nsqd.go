@@ -113,9 +113,6 @@ func main() {
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.NewNSQD(opts)
 
-	log.Println(util.Version("nsqd"))
-	log.Printf("worker id %d", opts.ID)
-
 	nsqd.LoadMetadata()
 	err := nsqd.PersistMetadata()
 	if err != nil {

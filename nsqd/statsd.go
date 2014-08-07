@@ -2,7 +2,6 @@ package nsqd
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"sort"
@@ -37,11 +36,12 @@ func (n *NSQD) statsdLoop() {
 			statsd := util.NewStatsdClient(n.options.StatsdAddress, n.options.StatsdPrefix)
 			err := statsd.CreateSocket()
 			if err != nil {
-				log.Printf("ERROR: failed to create UDP socket to statsd(%s)", statsd)
+				n.options.Logger.Output(2, fmt.Sprintf(
+					"ERROR: failed to create UDP socket to statsd(%s)", statsd))
 				continue
 			}
 
-			log.Printf("STATSD: pushing stats to %s", statsd)
+			n.options.Logger.Output(2, fmt.Sprintf("STATSD: pushing stats to %s", statsd))
 
 			stats := n.GetStats()
 			for _, topic := range stats {

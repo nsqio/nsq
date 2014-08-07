@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -74,7 +73,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		params := bytes.Split(line, separatorBytes)
 
 		if p.context.nsqd.options.Verbose {
-			log.Printf("PROTOCOL(V2): [%s] %s", client, params)
+			p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] %s", client, params))
 		}
 
 		response, err := p.Exec(client, params)
@@ -83,7 +82,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			if parentErr := err.(util.ChildErr).Parent(); parentErr != nil {
 				context = " - " + parentErr.Error()
 			}
-			log.Printf("ERROR: [%s] - %s%s", client, err.Error(), context)
+			p.context.l.Output(2, fmt.Sprintf("ERROR: [%s] - %s%s", client, err, context))
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
@@ -105,7 +104,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	log.Printf("PROTOCOL(V2): [%s] exiting ioloop", client)
+	p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] exiting ioloop", client))
 	conn.Close()
 	close(client.ExitChan)
 	if client.Channel != nil {
@@ -117,8 +116,8 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 func (p *protocolV2) SendMessage(client *clientV2, msg *Message, buf *bytes.Buffer) error {
 	if p.context.nsqd.options.Verbose {
-		log.Printf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-			msg.ID, client, msg.Body)
+		p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+			msg.ID, client, msg.Body))
 	}
 
 	buf.Reset()
@@ -312,11 +311,12 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	}
 
 exit:
-	log.Printf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] exiting messagePump", client))
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {
-		log.Printf("PROTOCOL(V2): [%s] messagePump error - %s", client, err.Error())
+		p.context.l.Output(2, fmt.Sprintf(
+			"PROTOCOL(V2): [%s] messagePump error - %s", client, err))
 	}
 }
 
@@ -351,7 +351,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if p.context.nsqd.options.Verbose {
-		log.Printf("PROTOCOL(V2): [%s] %+v", client, identifyData)
+		p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] %+v", client, identifyData))
 	}
 
 	err = client.Identify(identifyData)
@@ -414,7 +414,8 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if tlsv1 {
-		log.Printf("PROTOCOL(V2): [%s] upgrading connection to TLS", client)
+		p.context.l.Output(2, fmt.Sprintf(
+			"PROTOCOL(V2): [%s] upgrading connection to TLS", client))
 		err = client.UpgradeTLS()
 		if err != nil {
 			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -427,7 +428,8 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if snappy {
-		log.Printf("PROTOCOL(V2): [%s] upgrading connection to snappy", client)
+		p.context.l.Output(2, fmt.Sprintf(
+			"PROTOCOL(V2): [%s] upgrading connection to snappy", client))
 		err = client.UpgradeSnappy()
 		if err != nil {
 			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -440,7 +442,8 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if deflate {
-		log.Printf("PROTOCOL(V2): [%s] upgrading connection to deflate", client)
+		p.context.l.Output(2, fmt.Sprintf(
+			"PROTOCOL(V2): [%s] upgrading connection to deflate", client))
 		err = client.UpgradeDeflate(deflateLevel)
 		if err != nil {
 			return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -490,7 +493,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 
 	if err := client.Auth(string(body)); err != nil {
 		// we don't want to leak errors contacting the auth server to untrusted clients
-		log.Printf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
+		p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] Auth Failed %s", client, err))
 		return nil, util.NewFatalClientErr(err, "E_AUTH_FAILED", "AUTH failed")
 	}
 
@@ -531,7 +534,7 @@ func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName str
 		ok, err := client.IsAuthorized(topicName, channelName)
 		if err != nil {
 			// we don't want to leak errors contacting the auth server to untrusted clients
-			log.Printf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
+			p.context.l.Output(2, fmt.Sprintf("PROTOCOL(V2): [%s] Auth Failed %s", client, err))
 			return util.NewFatalClientErr(nil, "E_AUTH_FAILED", "AUTH failed")
 		}
 		if !ok {
@@ -588,7 +591,8 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 
 	if state == stateClosing {
 		// just ignore ready changes on a closing channel
-		log.Printf("PROTOCOL(V2): [%s] ignoring RDY after CLS in state ClientStateV2Closing", client)
+		p.context.l.Output(2, fmt.Sprintf(
+			"PROTOCOL(V2): [%s] ignoring RDY after CLS in state ClientStateV2Closing", client))
 		return nil, nil
 	}
 

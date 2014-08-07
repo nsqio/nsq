@@ -1,8 +1,8 @@
 package nsqd
 
 import (
+	"fmt"
 	"io"
-	"log"
 	"net"
 
 	"github.com/bitly/nsq/util"
@@ -13,7 +13,7 @@ type tcpServer struct {
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
-	log.Printf("TCP: new client(%s)", clientConn.RemoteAddr())
+	p.context.l.Output(2, fmt.Sprintf("TCP: new client(%s)", clientConn.RemoteAddr()))
 
 	// The client should initialize itself by sending a 4 byte sequence indicating
 	// the version of the protocol that it intends to communicate, this will allow us
@@ -21,12 +21,13 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
-		log.Printf("ERROR: failed to read protocol version - %s", err.Error())
+		p.context.l.Output(2, fmt.Sprintf("ERROR: failed to read protocol version - %s", err))
 		return
 	}
 	protocolMagic := string(buf)
 
-	log.Printf("CLIENT(%s): desired protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
+	p.context.l.Output(2, fmt.Sprintf(
+		"CLIENT(%s): desired protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic))
 
 	var prot util.Protocol
 	switch protocolMagic {
@@ -35,13 +36,14 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	default:
 		util.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
-		log.Printf("ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
+		p.context.l.Output(2, fmt.Sprintf(
+			"ERROR: client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic))
 		return
 	}
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		log.Printf("ERROR: client(%s) - %s", clientConn.RemoteAddr(), err.Error())
+		p.context.l.Output(2, fmt.Sprintf("ERROR: client(%s) - %s", clientConn.RemoteAddr(), err))
 		return
 	}
 }
