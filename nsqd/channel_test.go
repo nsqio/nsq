@@ -138,7 +138,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := newClientV2(0, conn, &context{nsqd, opts.Logger})
+	client := newClientV2(0, conn, &context{nsqd})
 	client.SetReadyCount(25)
 	channel.AddClient(client.ID, client)
 

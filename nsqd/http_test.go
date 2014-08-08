@@ -5,10 +5,8 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
-	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -157,7 +155,6 @@ func TestHTTPSRequire(t *testing.T) {
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
 	_, httpAddr, nsqd := mustStartNSQD(opts)
-
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_req" + strconv.Itoa(int(time.Now().Unix()))
@@ -581,9 +578,8 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 func BenchmarkHTTPput(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
 	opts := NewNSQDOptions()
+	opts.Logger = nil
 	opts.MemQueueSize = int64(b.N)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, 256)

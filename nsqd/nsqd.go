@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"path"
@@ -53,31 +52,46 @@ type NSQD struct {
 }
 
 func NewNSQD(opts *nsqdOptions) *NSQD {
-	var httpsAddr *net.TCPAddr
+	n := &NSQD{
+		opts:       opts,
+		healthy:    1,
+		topicMap:   make(map[string]*Topic),
+		idChan:     make(chan MessageID, 4096),
+		exitChan:   make(chan int),
+		notifyChan: make(chan interface{}),
+	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
-		log.Fatalf("--max-deflate-level must be [1,9]")
+		n.logf("FATAL: --max-deflate-level must be [1,9]")
+		os.Exit(1)
 	}
 
 	if opts.ID < 0 || opts.ID >= 4096 {
-		log.Fatalf("--worker-id must be [0,4096)")
+		n.logf("FATAL: --worker-id must be [0,4096)")
+		os.Exit(1)
 	}
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
 	if err != nil {
-		log.Fatal(err)
+		n.logf("FATAL: failed to resolve TCP address (%s) - %s", opts.TCPAddress, err)
+		os.Exit(1)
 	}
+	n.tcpAddr = tcpAddr
 
 	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
 	if err != nil {
-		log.Fatal(err)
+		n.logf("FATAL: failed to resolve HTTP address (%s) - %s", opts.HTTPAddress, err)
+		os.Exit(1)
 	}
+	n.httpAddr = httpAddr
 
 	if opts.HTTPSAddress != "" {
-		httpsAddr, err = net.ResolveTCPAddr("tcp", opts.HTTPSAddress)
+		httpsAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPSAddress)
 		if err != nil {
-			log.Fatal(err)
+			n.logf("FATAL: failed to resolve HTTPS address (%s) - %s", opts.HTTPSAddress, err)
+			os.Exit(1)
 		}
+		n.httpsAddr = httpsAddr
 	}
 
 	if opts.StatsdPrefix != "" {
@@ -90,25 +104,34 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		opts.StatsdPrefix = prefixWithHost
 	}
 
-	n := &NSQD{
-		opts:       opts,
-		healthy:    1,
-		tcpAddr:    tcpAddr,
-		httpAddr:   httpAddr,
-		httpsAddr:  httpsAddr,
-		topicMap:   make(map[string]*Topic),
-		idChan:     make(chan MessageID, 4096),
-		exitChan:   make(chan int),
-		notifyChan: make(chan interface{}),
-		tlsConfig:  buildTLSConfig(opts),
+	if opts.TLSClientAuthPolicy != "" {
+		opts.TLSRequired = true
 	}
+
+	tlsConfig, err := buildTLSConfig(opts)
+	if err != nil {
+		n.logf("FATAL: failed to build TLS config - %s", err)
+		os.Exit(1)
+	}
+	if tlsConfig == nil && n.opts.TLSRequired {
+		n.logf("FATAL: cannot require TLS client connections without TLS key and cert")
+		os.Exit(1)
+	}
+	n.tlsConfig = tlsConfig
 
 	n.waitGroup.Wrap(func() { n.idPump() })
 
-	n.opts.Logger.Output(2, util.Version("nsqd"))
-	n.opts.Logger.Output(2, fmt.Sprintf("ID: %d", n.opts.ID))
+	n.logf(util.Version("nsqd"))
+	n.logf("ID: %d", n.opts.ID)
 
 	return n
+}
+
+func (n *NSQD) logf(f string, args ...interface{}) {
+	if n.opts.Logger == nil {
+		return
+	}
+	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
 func (n *NSQD) SetHealth(err error) {
@@ -143,21 +166,14 @@ func (n *NSQD) Main() {
 	var httpListener net.Listener
 	var httpsListener net.Listener
 
-	ctx := &context{n, n.opts.Logger}
-
-	if n.opts.TLSClientAuthPolicy != "" {
-		n.opts.TLSRequired = true
-	}
-
-	if n.tlsConfig == nil && n.opts.TLSRequired {
-		log.Fatalf("FATAL: cannot require TLS client connections without TLS key and cert")
-	}
+	ctx := &context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
 	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", n.tcpAddr, err.Error())
+		n.logf("FATAL: listen (%s) failed - %s", n.tcpAddr, err)
+		os.Exit(1)
 	}
 	n.tcpListener = tcpListener
 	tcpServer := &tcpServer{ctx: ctx}
@@ -168,7 +184,8 @@ func (n *NSQD) Main() {
 	if n.tlsConfig != nil && n.httpsAddr != nil {
 		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
 		if err != nil {
-			log.Fatalf("FATAL: listen (%s) failed - %s", n.httpsAddr, err.Error())
+			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
+			os.Exit(1)
 		}
 		n.httpsListener = httpsListener
 		httpsServer := &httpServer{
@@ -182,7 +199,8 @@ func (n *NSQD) Main() {
 	}
 	httpListener, err = net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", n.httpAddr, err.Error())
+		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
+		os.Exit(1)
 	}
 	n.httpListener = httpListener
 	httpServer := &httpServer{
@@ -204,21 +222,20 @@ func (n *NSQD) LoadMetadata() {
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			n.opts.Logger.Output(2, fmt.Sprintf(
-				"ERROR: failed to read channel metadata from %s - %s", fn, err))
+			n.logf("ERROR: failed to read channel metadata from %s - %s", fn, err)
 		}
 		return
 	}
 
 	js, err := simplejson.NewJson(data)
 	if err != nil {
-		n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to parse metadata - %s", err))
+		n.logf("ERROR: failed to parse metadata - %s", err)
 		return
 	}
 
 	topics, err := js.Get("topics").Array()
 	if err != nil {
-		n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to parse metadata - %s", err))
+		n.logf("ERROR: failed to parse metadata - %s", err)
 		return
 	}
 
@@ -227,12 +244,11 @@ func (n *NSQD) LoadMetadata() {
 
 		topicName, err := topicJs.Get("name").String()
 		if err != nil {
-			n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to parse metadata - %s", err))
+			n.logf("ERROR: failed to parse metadata - %s", err)
 			return
 		}
 		if !util.IsValidTopicName(topicName) {
-			n.opts.Logger.Output(2, fmt.Sprintf(
-				"WARNING: skipping creation of invalid topic %s", topicName))
+			n.logf("WARNING: skipping creation of invalid topic %s", topicName)
 			continue
 		}
 		topic := n.GetTopic(topicName)
@@ -244,7 +260,7 @@ func (n *NSQD) LoadMetadata() {
 
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
-			n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to parse metadata - %s", err))
+			n.logf("ERROR: failed to parse metadata - %s", err)
 			return
 		}
 
@@ -253,12 +269,11 @@ func (n *NSQD) LoadMetadata() {
 
 			channelName, err := channelJs.Get("name").String()
 			if err != nil {
-				n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to parse metadata - %s", err))
+				n.logf("ERROR: failed to parse metadata - %s", err)
 				return
 			}
 			if !util.IsValidChannelName(channelName) {
-				n.opts.Logger.Output(2, fmt.Sprintf(
-					"WARNING: skipping creation of invalid channel %s", channelName))
+				n.logf("WARNING: skipping creation of invalid channel %s", channelName)
 				continue
 			}
 			channel := topic.GetChannel(channelName)
@@ -275,7 +290,7 @@ func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.opts.DataPath, "nsqd.%d.dat"), n.opts.ID)
-	n.opts.Logger.Output(2, fmt.Sprintf("NSQ: persisting topic/channel metadata to %s", fileName))
+	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
 	topics := make([]interface{}, 0)
@@ -345,9 +360,9 @@ func (n *NSQD) Exit() {
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
-		n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to persist metadata - %s", err))
+		n.logf("ERROR: failed to persist metadata - %s", err)
 	}
-	n.opts.Logger.Output(2, "NSQ: closing topics")
+	n.logf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
 		topic.Close()
 	}
@@ -368,10 +383,10 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, &context{n, n.opts.Logger})
+		t = NewTopic(topicName, &context{n})
 		n.topicMap[topicName] = t
 
-		n.opts.Logger.Output(2, fmt.Sprintf("TOPIC(%s): created", t.name))
+		n.logf("TOPIC(%s): created", t.name)
 
 		// release our global nsqd lock, and switch to a more granular topic lock while we init our
 		// channels from lookupd. This blocks concurrent PutMessages to this topic.
@@ -446,7 +461,7 @@ func (n *NSQD) idPump() {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {
 				// only print the error once/second
-				n.opts.Logger.Output(2, fmt.Sprintf("ERROR: %s", err))
+				n.logf("ERROR: %s", err)
 				lastError = now
 			}
 			runtime.Gosched()
@@ -460,7 +475,7 @@ func (n *NSQD) idPump() {
 	}
 
 exit:
-	n.opts.Logger.Output(2, "ID: closing")
+	n.logf("ID: closing")
 }
 
 func (n *NSQD) Notify(v interface{}) {
@@ -472,24 +487,24 @@ func (n *NSQD) Notify(v interface{}) {
 		n.Lock()
 		err := n.PersistMetadata()
 		if err != nil {
-			n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to persist metadata - %s", err))
+			n.logf("ERROR: failed to persist metadata - %s", err)
 		}
 		n.Unlock()
 	}
 }
 
-func buildTLSConfig(opts *nsqdOptions) *tls.Config {
+func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 	var tlsConfig *tls.Config
 
 	if opts.TLSCert == "" && opts.TLSKey == "" {
-		return nil
+		return nil, nil
 	}
 
 	tlsClientAuthPolicy := tls.VerifyClientCertIfGiven
 
 	cert, err := tls.LoadX509KeyPair(opts.TLSCert, opts.TLSKey)
 	if err != nil {
-		log.Fatalf("ERROR: failed to LoadX509KeyPair %s", err.Error())
+		return nil, err
 	}
 	switch opts.TLSClientAuthPolicy {
 	case "require":
@@ -509,17 +524,17 @@ func buildTLSConfig(opts *nsqdOptions) *tls.Config {
 		tlsCertPool := x509.NewCertPool()
 		ca_cert_file, err := ioutil.ReadFile(opts.TLSRootCAFile)
 		if err != nil {
-			log.Fatalf("ERROR: failed to read custom Certificate Authority file %s", err.Error())
+			return nil, err
 		}
 		if !tlsCertPool.AppendCertsFromPEM(ca_cert_file) {
-			log.Fatalf("ERROR: failed to append certificates from Certificate Authority file")
+			return nil, errors.New("failed to append certificate to pool")
 		}
 		tlsConfig.ClientCAs = tlsCertPool
 	}
 
 	tlsConfig.BuildNameToCertificate()
 
-	return tlsConfig
+	return tlsConfig, nil
 }
 
 func (n *NSQD) IsAuthEnabled() bool {

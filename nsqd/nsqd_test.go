@@ -201,7 +201,7 @@ func TestEphemeralChannel(t *testing.T) {
 	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
-	client := newClientV2(0, nil, &context{nsqd, opts.Logger})
+	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
 	msg := NewMessage(<-nsqd.idChan, body)

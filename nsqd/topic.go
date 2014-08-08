@@ -3,7 +3,6 @@ package nsqd
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -39,7 +38,7 @@ func NewTopic(topicName string, ctx *context) *Topic {
 		ctx.nsqd.opts.MaxBytesPerFile,
 		ctx.nsqd.opts.SyncEvery,
 		ctx.nsqd.opts.SyncTimeout,
-		ctx.l)
+		ctx.nsqd.opts.Logger)
 
 	t := &Topic{
 		name:              topicName,
@@ -94,7 +93,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
 		t.channelMap[channelName] = channel
-		t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): new channel(%s)", t.name, channel.name))
+		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
 	}
 	return channel, false
@@ -122,7 +121,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// not defered so that we can continue while the channel async closes
 	t.Unlock()
 
-	t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): deleting channel %s", t.name, channel.name))
+	t.ctx.nsqd.logf("TOPIC(%s): deleting channel %s", t.name, channel.name)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
@@ -199,7 +198,7 @@ func (t *Topic) messagePump() {
 		case buf = <-backendChan:
 			msg, err = decodeMessage(buf)
 			if err != nil {
-				t.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to decode message - %s", err))
+				t.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
 				continue
 			}
 		case <-t.channelUpdateChan:
@@ -242,15 +241,15 @@ func (t *Topic) messagePump() {
 			}
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				t.ctx.l.Output(2, fmt.Sprintf(
+				t.ctx.nsqd.logf(
 					"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
-					t.name, msg.ID, channel.name, err))
+					t.name, msg.ID, channel.name, err)
 			}
 		}
 	}
 
 exit:
-	t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): closing ... messagePump", t.name))
+	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.name)
 }
 
 // router handles muxing of Topic messages including
@@ -263,15 +262,15 @@ func (t *Topic) router() {
 		default:
 			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
-				t.ctx.l.Output(2, fmt.Sprintf(
+				t.ctx.nsqd.logf(
 					"TOPIC(%s) ERROR: failed to write message to backend - %s",
-					t.name, err))
+					t.name, err)
 				t.ctx.nsqd.SetHealth(err)
 			}
 		}
 	}
 
-	t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): closing ... router", t.name))
+	t.ctx.nsqd.logf("TOPIC(%s): closing ... router", t.name)
 }
 
 // Delete empties the topic and all its channels and closes
@@ -290,13 +289,13 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	if deleted {
-		t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): deleting", t.name))
+		t.ctx.nsqd.logf("TOPIC(%s): deleting", t.name)
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
 		go t.ctx.nsqd.Notify(t)
 	} else {
-		t.ctx.l.Output(2, fmt.Sprintf("TOPIC(%s): closing", t.name))
+		t.ctx.nsqd.logf("TOPIC(%s): closing", t.name)
 	}
 
 	close(t.exitChan)
@@ -326,7 +325,7 @@ func (t *Topic) exit(deleted bool) error {
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
-			t.ctx.l.Output(2, fmt.Sprintf("ERROR: channel(%s) close - %s", channel.name, err))
+			t.ctx.nsqd.logf("ERROR: channel(%s) close - %s", channel.name, err)
 		}
 	}
 
@@ -352,8 +351,9 @@ func (t *Topic) flush() error {
 	var msgBuf bytes.Buffer
 
 	if len(t.memoryMsgChan) > 0 {
-		t.ctx.l.Output(2, fmt.Sprintf(
-			"TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan)))
+		t.ctx.nsqd.logf(
+			"TOPIC(%s): flushing %d memory messages to backend",
+			t.name, len(t.memoryMsgChan))
 	}
 
 	for {
@@ -361,8 +361,8 @@ func (t *Topic) flush() error {
 		case msg := <-t.memoryMsgChan:
 			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
-				t.ctx.l.Output(2, fmt.Sprintf(
-					"ERROR: failed to write message to backend - %s", err))
+				t.ctx.nsqd.logf(
+					"ERROR: failed to write message to backend - %s", err)
 			}
 		default:
 			goto finish

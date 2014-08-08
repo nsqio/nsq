@@ -2,8 +2,6 @@ package nsqd
 
 import (
 	"bufio"
-	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"strconv"
@@ -248,8 +246,6 @@ func BenchmarkDiskQueuePut(b *testing.B) {
 
 func BenchmarkDiskWrite(b *testing.B) {
 	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
 	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	f, _ := os.OpenFile(path.Join(os.TempDir(), fileName), os.O_RDWR|os.O_CREATE, 0600)
 	size := 256
@@ -264,8 +260,6 @@ func BenchmarkDiskWrite(b *testing.B) {
 
 func BenchmarkDiskWriteBuffered(b *testing.B) {
 	b.StopTimer()
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
 	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	f, _ := os.OpenFile(path.Join(os.TempDir(), fileName), os.O_RDWR|os.O_CREATE, 0600)
 	size := 256
