@@ -75,6 +75,10 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		idChan:     make(chan MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
+
+		serfEventChan: make(chan serf.Event, 256),
+		gossipChan:    make(chan interface{}),
+		rdb:           registrationdb.New(),
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
@@ -120,16 +124,6 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		opts.StatsdPrefix = prefixWithHost
 	}
 
-	serfEventChan := make(chan serf.Event, 256)
-	serf, err := initSerf(opts, serfEventChan, tcpAddr, httpAddr, httpsAddr)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	n.serf = serf
-	n.serfEventChan = serfEventChan
-	n.gossipChan = make(chan interface{})
-	n.rdb = registrationdb.New()
-
 	if opts.TLSClientAuthPolicy != "" {
 		opts.TLSRequired = TLSRequired
 	}
@@ -144,6 +138,13 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		os.Exit(1)
 	}
 	n.tlsConfig = tlsConfig
+
+	serf, err := initSerf(opts, n.serfEventChan, n.tcpAddr, n.httpAddr, n.httpsAddr)
+	if err != nil {
+		n.logf("FATAL: failed to initialize Serf - %s", err)
+		os.Exit(1)
+	}
+	n.serf = serf
 
 	n.waitGroup.Wrap(func() { n.idPump() })
 	n.waitGroup.Wrap(func() { n.serfEventLoop() })
