@@ -207,7 +207,7 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 	}
 
 	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
-	
+
 	key := registrationdb.Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 

@@ -3,7 +3,6 @@ package nsqd
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -43,12 +42,12 @@ func initSerf(opts *nsqdOptions,
 	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr) (*serf.Serf, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	gossipAddr, err := net.ResolveTCPAddr("tcp", opts.GossipAddress)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	serfConfig := serf.DefaultConfig()
