@@ -242,13 +242,13 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
 	}
 
-	registration := s.context.nsqd.rdb.FindRegistrations("topic", topicName, "")
+	registration := s.ctx.nsqd.rdb.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 {
 		return nil, util.HTTPError{404, "INVALID_TOPIC"}
 	}
 
-	channels := s.context.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
-	producers := s.context.nsqd.rdb.FindProducers("topic", topicName, "")
+	channels := s.ctx.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := s.ctx.nsqd.rdb.FindProducers("topic", topicName, "")
 	producers = producers.FilterByActive(300*time.Second, 45*time.Second)
 	data := make(map[string]interface{})
 	data["channels"] = channels
