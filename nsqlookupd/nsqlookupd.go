@@ -1,8 +1,9 @@
 package nsqlookupd
 
 import (
-	"log"
+	"fmt"
 	"net"
+	"os"
 
 	"github.com/bitly/nsq/util"
 )
@@ -18,26 +19,35 @@ type NSQLookupd struct {
 }
 
 func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
+	n := &NSQLookupd{
+		opts: opts,
+		DB:   NewRegistrationDB(),
+	}
+
 	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
 	if err != nil {
-		log.Fatal(err)
+		n.logf("FATAL: failed to resolve TCP address (%s) - %s", opts.TCPAddress, err)
+		os.Exit(1)
 	}
+	n.tcpAddr = tcpAddr
 
 	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
 	if err != nil {
-		log.Fatal(err)
+		n.logf("FATAL: failed to resolve HTTP address (%s) - %s", opts.HTTPAddress, err)
+		os.Exit(1)
 	}
+	n.httpAddr = httpAddr
 
-	n := &NSQLookupd{
-		opts:     opts,
-		tcpAddr:  tcpAddr,
-		httpAddr: httpAddr,
-		DB:       NewRegistrationDB(),
-	}
-
-	n.opts.Logger.Output(2, util.Version("nsqlookupd"))
+	n.logf(util.Version("nsqlookupd"))
 
 	return n
+}
+
+func (n *NSQLookupd) logf(f string, args ...interface{}) {
+	if n.opts.Logger == nil {
+		return
+	}
+	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
 func (l *NSQLookupd) Main() {
@@ -45,7 +55,8 @@ func (l *NSQLookupd) Main() {
 
 	tcpListener, err := net.Listen("tcp", l.tcpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", l.tcpAddr, err.Error())
+		l.logf("FATAL: listen (%s) failed - %s", l.tcpAddr, err)
+		os.Exit(1)
 	}
 	l.tcpListener = tcpListener
 	tcpServer := &tcpServer{ctx: ctx}
@@ -55,7 +66,8 @@ func (l *NSQLookupd) Main() {
 
 	httpListener, err := net.Listen("tcp", l.httpAddr.String())
 	if err != nil {
-		log.Fatalf("FATAL: listen (%s) failed - %s", l.httpAddr, err.Error())
+		l.logf("FATAL: listen (%s) failed - %s", l.httpAddr, err)
+		os.Exit(1)
 	}
 	l.httpListener = httpListener
 	httpServer := &httpServer{ctx: ctx}
