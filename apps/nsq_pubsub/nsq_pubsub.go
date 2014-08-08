@@ -179,7 +179,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			log.Printf("got connection err %s", err.Error())
 		} else {
-			log.Printf("unexpected data on request socket (%s); closing", b)
+			log.Printf("unexpected data on request socket (%c); closing", b)
 		}
 		sr.consumer.Stop()
 	}(bufrw)

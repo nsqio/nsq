@@ -315,11 +315,8 @@ func (p *prettyConnectionState) GetCipherSuite() string {
 		return "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
 	case local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
 		return "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
-	default:
-		return fmt.Sprintf("unkown %d", p.CipherSuite)
 	}
-	// this is for Go 1.0 compatability
-	return "unknown"
+	return fmt.Sprintf("unkown %d", p.CipherSuite)
 }
 
 func (c *clientV2) IsReadyForMessages() bool {

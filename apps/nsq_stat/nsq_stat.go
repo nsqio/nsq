@@ -65,7 +65,7 @@ func statLoop(interval time.Duration, topic string, channel string,
 
 		if i%25 == 0 {
 			fmt.Printf("---------------depth---------------+--------------metadata---------------\n")
-			fmt.Printf("%7d %7s %7s %5s %5s | %7s %7s %12s %7s\n", "total", "mem", "disk", "inflt", "def", "req", "t-o", "msgs", "clients")
+			fmt.Printf("%7s %7s %7s %5s %5s | %7s %7s %12s %7s\n", "total", "mem", "disk", "inflt", "def", "req", "t-o", "msgs", "clients")
 		}
 
 		// TODO: paused

@@ -379,7 +379,7 @@ func (t *TopicDiscoverer) startTopicRouter(logger *ReaderFileLogger) {
 func (t *TopicDiscoverer) syncTopics(addrs []string) {
 	newTopics, err := lookupd.GetLookupdTopics(addrs)
 	if err != nil {
-		log.Print("ERROR: could not retrieve topic list: %s", err)
+		log.Printf("ERROR: could not retrieve topic list: %s", err)
 	}
 	for _, topic := range newTopics {
 		if _, ok := t.topics[topic]; !ok {
