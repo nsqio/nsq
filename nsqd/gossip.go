@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -37,7 +38,7 @@ func memberToProducer(member serf.Member) registrationdb.Producer {
 	}
 }
 
-func initSerf(options *nsqdOptions,
+func initSerf(opts *nsqdOptions,
 	serfEventChan chan serf.Event,
 	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr) (*serf.Serf, error) {
 	hostname, err := os.Hostname()
@@ -45,7 +46,7 @@ func initSerf(options *nsqdOptions,
 		log.Fatal(err)
 	}
 
-	gossipAddr, err := net.ResolveTCPAddr("tcp", options.GossipAddress)
+	gossipAddr, err := net.ResolveTCPAddr("tcp", opts.GossipAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,10 +59,10 @@ func initSerf(options *nsqdOptions,
 	if httpsAddr != nil {
 		serfConfig.Tags["hps"] = strconv.Itoa(httpsAddr.Port)
 	}
-	serfConfig.Tags["ba"] = options.BroadcastAddress
+	serfConfig.Tags["ba"] = opts.BroadcastAddress
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
-	serfConfig.NodeName = net.JoinHostPort(options.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
+	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
 	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
@@ -74,28 +75,35 @@ func initSerf(options *nsqdOptions,
 
 func (n *NSQD) serfMemberJoin(ev serf.Event) {
 	memberEv := ev.(serf.MemberEvent)
-	log.Printf("MEMBER EVENT: %+v - members: %+v", memberEv, memberEv.Members)
+	n.opts.Logger.Output(2, fmt.Sprintf("MEMBER EVENT: %+v - members: %+v",
+		memberEv, memberEv.Members))
 	for _, member := range memberEv.Members {
 		producer := memberToProducer(member)
 		r := registrationdb.Registration{"client", "", ""}
 		n.rdb.AddProducer(r, producer)
-		log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
+		n.opts.Logger.Output(2, fmt.Sprintf(
+			"DB: member(%s) REGISTER category:%s key:%s subkey:%s",
 			producer.ID,
 			r.Category,
 			r.Key,
-			r.SubKey)
+			r.SubKey))
 	}
 }
 
 func (n *NSQD) serfMemberFailed(ev serf.Event) {
 	memberEv := ev.(serf.MemberEvent)
-	log.Printf("MEMBER EVENT: %+v - members: %+v", memberEv, memberEv.Members)
+	n.opts.Logger.Output(2, fmt.Sprintf("MEMBER EVENT: %+v - members: %+v",
+		memberEv, memberEv.Members))
 	for _, member := range memberEv.Members {
 		registrations := n.rdb.LookupRegistrations(member.Name)
 		for _, r := range registrations {
 			if removed, _ := n.rdb.RemoveProducer(r, member.Name); removed {
-				log.Printf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
-					member.Name, r.Category, r.Key, r.SubKey)
+				n.opts.Logger.Output(2, fmt.Sprintf(
+					"DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
+					member.Name,
+					r.Category,
+					r.Key,
+					r.SubKey))
 			}
 		}
 	}
@@ -108,11 +116,11 @@ func (n *NSQD) serfUserEvent(ev serf.Event) {
 	userEv := ev.(serf.UserEvent)
 	err := json.Unmarshal(userEv.Payload, &gev)
 	if err != nil {
-		log.Printf("ERROR: failed to Unmarshal gossipEvent - %s", err)
+		n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to Unmarshal gossipEvent - %s", err))
 		return
 	}
 
-	log.Printf("gossipEvent: %+v", gev)
+	n.opts.Logger.Output(2, fmt.Sprintf("gossipEvent: %+v", gev))
 
 	found := false
 	for _, m := range n.serf.Members() {
@@ -123,8 +131,9 @@ func (n *NSQD) serfUserEvent(ev serf.Event) {
 	}
 
 	if !found {
-		log.Printf("ERROR: received gossipEvent for unknown node - %s",
-			userEv.Name)
+		n.opts.Logger.Output(2, fmt.Sprintf(
+			"ERROR: received gossipEvent for unknown node - %s",
+			userEv.Name))
 		return
 	}
 
@@ -157,18 +166,20 @@ func (n *NSQD) gossipHandleCreateEvent(operation byte,
 
 	for _, r := range registrations {
 		if n.rdb.AddProducer(r, producer) {
-			log.Printf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
+			n.opts.Logger.Output(2, fmt.Sprintf(
+				"DB: member(%s) REGISTER category:%s key:%s subkey:%s",
 				gev.Name,
 				r.Category,
 				r.Key,
-				r.SubKey)
+				r.SubKey))
 		}
 		if operation == '=' && n.rdb.TouchRegistration(r.Category, r.Key, r.SubKey, producer.ID) {
-			log.Printf("DB: member(%s) TOUCH category:%s key:%s subkey:%s",
+			n.opts.Logger.Output(2, fmt.Sprintf(
+				"DB: member(%s) TOUCH category:%s key:%s subkey:%s",
 				gev.Name,
 				r.Category,
 				r.Key,
-				r.SubKey)
+				r.SubKey))
 		}
 	}
 }
@@ -184,11 +195,12 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 
 		removed, left := n.rdb.RemoveProducer(r, producer.ID)
 		if removed {
-			log.Printf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
+			n.opts.Logger.Output(2, fmt.Sprintf(
+				"DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
 				gev.Name,
 				r.Category,
 				r.Key,
-				r.SubKey)
+				r.SubKey))
 		}
 
 		// for ephemeral channels, remove the channel as well if it has no producers
@@ -206,8 +218,12 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 	registrations := n.rdb.FindRegistrations("channel", gev.Topic, "*")
 	for _, r := range registrations {
 		if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
-			log.Printf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
-				gev.Name, r.Category, r.Key, r.SubKey)
+			n.opts.Logger.Output(2, fmt.Sprintf(
+				"WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
+				gev.Name,
+				r.Category,
+				r.Key,
+				r.SubKey))
 		}
 	}
 
@@ -217,8 +233,12 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 		SubKey:   "",
 	}
 	if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
-		log.Printf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
-			gev.Name, r.Category, r.Key, r.SubKey)
+		n.opts.Logger.Output(2, fmt.Sprintf(
+			"DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
+			gev.Name,
+			r.Category,
+			r.Key,
+			r.SubKey))
 	}
 }
 
@@ -242,7 +262,7 @@ func (n *NSQD) serfEventLoop() {
 			case serf.EventMemberUpdate:
 				// nothing
 			default:
-				log.Printf("WARNING: un-handled Serf event: %#v", ev)
+				n.opts.Logger.Output(2, fmt.Sprintf("WARNING: un-handled Serf event: %#v", ev))
 			}
 		case <-n.exitChan:
 			goto exit
@@ -250,7 +270,7 @@ func (n *NSQD) serfEventLoop() {
 	}
 
 exit:
-	log.Printf("SERF: exiting")
+	n.opts.Logger.Output(2, fmt.Sprintf("SERF: exiting"))
 }
 
 func (n *NSQD) gossip(evName string, topicName string, channelName string) error {
@@ -274,11 +294,11 @@ func (n *NSQD) gossipLoop() {
 
 	regossipTicker := time.NewTicker(60 * time.Second)
 
-	if len(n.options.SeedNodeAddresses) > 0 {
+	if len(n.opts.SeedNodeAddresses) > 0 {
 		for {
-			num, err := n.serf.Join(n.options.SeedNodeAddresses, false)
+			num, err := n.serf.Join(n.opts.SeedNodeAddresses, false)
 			if err != nil {
-				log.Printf("ERROR: failed to join serf - %s", err)
+				n.opts.Logger.Output(2, fmt.Sprintf("ERROR: failed to join serf - %s", err))
 				select {
 				case <-time.After(15 * time.Second):
 					// keep trying
@@ -287,7 +307,7 @@ func (n *NSQD) gossipLoop() {
 				}
 			}
 			if num > 0 {
-				log.Printf("SERF: joined %d nodes", num)
+				n.opts.Logger.Output(2, fmt.Sprintf("SERF: joined %d nodes", num))
 				break
 			}
 		}
@@ -296,14 +316,15 @@ func (n *NSQD) gossipLoop() {
 	for {
 		select {
 		case <-regossipTicker.C:
-			log.Printf("SERF: re-gossiping")
+			n.opts.Logger.Output(2, fmt.Sprintf("SERF: re-gossiping"))
 			stats := n.GetStats()
 			for _, topicStat := range stats {
 				if len(topicStat.Channels) == 0 {
 					// if there are no channels we just send a topic exists event
 					err := n.gossip("topic=", topicStat.TopicName, "")
 					if err != nil {
-						log.Printf("ERROR: failed to send Serf user event - %s", err)
+						n.opts.Logger.Output(2, fmt.Sprintf(
+							"ERROR: failed to send Serf user event - %s", err))
 					}
 					continue
 				}
@@ -312,7 +333,8 @@ func (n *NSQD) gossipLoop() {
 				for _, channelStat := range topicStat.Channels {
 					err := n.gossip("channel=", topicStat.TopicName, channelStat.ChannelName)
 					if err != nil {
-						log.Printf("ERROR: failed to send Serf user event - %s", err)
+						n.opts.Logger.Output(2, fmt.Sprintf(
+							"ERROR: failed to send Serf user event - %s", err))
 					}
 				}
 			}
@@ -339,7 +361,8 @@ func (n *NSQD) gossipLoop() {
 			}
 			err := n.gossip(evName, topicName, channelName)
 			if err != nil {
-				log.Printf("ERROR: failed to send Serf user event - %s", err)
+				n.opts.Logger.Output(2, fmt.Sprintf(
+					"ERROR: failed to send Serf user event - %s", err))
 			}
 		case <-n.exitChan:
 			goto exit
@@ -348,5 +371,5 @@ func (n *NSQD) gossipLoop() {
 
 exit:
 	regossipTicker.Stop()
-	log.Printf("GOSSIP: exiting")
+	n.opts.Logger.Output(2, fmt.Sprintf("GOSSIP: exiting"))
 }

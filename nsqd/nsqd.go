@@ -121,7 +121,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	}
 
 	serfEventChan := make(chan serf.Event, 256)
-	serf, err := initSerf(options, serfEventChan, tcpAddr, httpAddr, httpsAddr)
+	serf, err := initSerf(opts, serfEventChan, tcpAddr, httpAddr, httpsAddr)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
