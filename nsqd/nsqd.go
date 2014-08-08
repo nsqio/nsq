@@ -131,16 +131,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	}
 	n.tlsConfig = tlsConfig
 
-	serf, err := initSerf(opts, n.serfEventChan, n.tcpAddr, n.httpAddr, n.httpsAddr)
-	if err != nil {
-		n.logf("FATAL: failed to initialize Serf - %s", err)
-		os.Exit(1)
-	}
-	n.serf = serf
-
 	n.waitGroup.Wrap(func() { n.idPump() })
-	n.waitGroup.Wrap(func() { n.serfEventLoop() })
-	n.waitGroup.Wrap(func() { n.gossipLoop() })
 
 	n.logf(util.Version("nsqd"))
 	n.logf("ID: %d", n.opts.ID)
@@ -184,9 +175,6 @@ func (n *NSQD) GetHealth() string {
 }
 
 func (n *NSQD) Main() {
-	var httpListener net.Listener
-	var httpsListener net.Listener
-
 	ctx := &context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
@@ -203,7 +191,7 @@ func (n *NSQD) Main() {
 	})
 
 	if n.tlsConfig != nil && n.httpsAddr != nil {
-		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
+		httpsListener, err := tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
 		if err != nil {
 			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
 			os.Exit(1)
@@ -218,7 +206,7 @@ func (n *NSQD) Main() {
 			util.HTTPServer(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.httpAddr.String())
+	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
 		os.Exit(1)
@@ -236,6 +224,23 @@ func (n *NSQD) Main() {
 	if n.opts.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
+
+	var httpsAddr *net.TCPAddr
+	if n.httpsListener != nil {
+		httpsAddr = n.httpsListener.Addr().(*net.TCPAddr)
+	}
+	serf, err := initSerf(n.opts, n.serfEventChan,
+		n.tcpListener.Addr().(*net.TCPAddr),
+		n.httpListener.Addr().(*net.TCPAddr),
+		httpsAddr)
+	if err != nil {
+		n.logf("FATAL: failed to initialize Serf - %s", err)
+		os.Exit(1)
+	}
+	n.serf = serf
+
+	n.waitGroup.Wrap(func() { n.serfEventLoop() })
+	n.waitGroup.Wrap(func() { n.gossipLoop() })
 }
 
 func (n *NSQD) LoadMetadata() {
