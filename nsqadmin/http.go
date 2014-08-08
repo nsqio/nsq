@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -68,12 +67,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	templates.Parse()
 
 	if ctx.nsqadmin.opts.ProxyGraphite {
-		url, err := url.Parse(ctx.nsqadmin.opts.GraphiteURL)
-		if err != nil {
-			log.Fatalf("ERROR: failed to parse --graphite-url='%s' - %s",
-				ctx.nsqadmin.opts.GraphiteURL, err.Error())
-		}
-		proxy = NewSingleHostReverseProxy(url, 20*time.Second)
+		proxy = NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
 	}
 
 	return &httpServer{
@@ -93,7 +87,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	} else if strings.HasPrefix(req.URL.Path, "/static/") {
 		if req.Method != "GET" {
-			log.Printf("ERROR: invalid %s to GET only method", req.Method)
+			s.ctx.nsqadmin.logf("ERROR: invalid %s to GET only method", req.Method)
 			http.Error(w, "INVALID_REQUEST", 500)
 		} else {
 			s.embeddedAssetHandler(w, req)
@@ -143,7 +137,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 		s.proxy.ServeHTTP(w, req)
 	default:
-		log.Printf("ERROR: 404 %s", req.URL.Path)
+		s.ctx.nsqadmin.logf("ERROR: 404 %s", req.URL.Path)
 		http.NotFound(w, req)
 	}
 }
@@ -157,16 +151,16 @@ func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Reque
 	var urlRegex = regexp.MustCompile(`^/static/(.+)$`)
 	matches := urlRegex.FindStringSubmatch(req.URL.Path)
 	if len(matches) == 0 {
-		log.Printf("ERROR:  No embedded asset name for url - %s", req.URL.Path)
+		s.ctx.nsqadmin.logf("ERROR:  No embedded asset name for url - %s", req.URL.Path)
 		http.NotFound(w, req)
 		return
 	}
 	assetName := matches[1]
-	log.Printf("INFO: Requesting embedded asset - %s", assetName)
+	s.ctx.nsqadmin.logf("INFO: Requesting embedded asset - %s", assetName)
 
 	asset, error := templates.Asset(assetName)
 	if error != nil {
-		log.Printf("ERROR: embedded asset access - %s : %s", assetName, error)
+		s.ctx.nsqadmin.logf("ERROR: embedded asset access - %s : %s", assetName, error)
 		http.NotFound(w, req)
 		return
 	}
@@ -184,7 +178,7 @@ func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Reque
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -209,7 +203,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -239,7 +233,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -285,7 +279,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -293,7 +287,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, topicName string, channelName string) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -334,7 +328,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 
 	err = templates.T.ExecuteTemplate(w, "channel.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -342,7 +336,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -373,14 +367,14 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
 
 func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -401,7 +395,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
-			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
 
 		uri := "create_topic"
@@ -411,10 +405,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
 			uri, url.QueryEscape(topicName))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", endpoint, err)
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
 		}
 
@@ -427,10 +421,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 				addr, uri,
 				url.QueryEscape(topicName),
 				url.QueryEscape(channelName))
-			log.Printf("LOOKUPD: querying %s", endpoint)
+			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 			_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 				continue
 			}
 		}
@@ -443,7 +437,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		producerAddrs, _ := lookupd.GetLookupdTopicProducers(topicName,
 			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
-		performVersionNegotiatedRequestsToNSQD(
+		s.performVersionNegotiatedRequestsToNSQD(
 			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 			producerAddrs,
 			"create_channel",
@@ -459,7 +453,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 
 func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -486,7 +480,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
-			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
 
 		uri := "tombstone_topic_producer"
@@ -497,16 +491,16 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&node=%s",
 			addr, uri,
 			url.QueryEscape(topicName), url.QueryEscape(node))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 		}
 	}
 
 	nsqdVersion, err := lookupd.GetVersion(node)
 	if err != nil {
-		log.Printf("ERROR: failed to get nsqd %s version - %s", node, err)
+		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", node, err)
 	}
 
 	uri := "delete_topic"
@@ -517,10 +511,10 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	// delete the topic on the producer
 	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
 		uri, url.QueryEscape(topicName))
-	log.Printf("NSQD: querying %s", endpoint)
+	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
 	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 	if err != nil {
-		log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 	}
 
 	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
@@ -530,7 +524,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 
 func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -554,7 +548,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
-			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
 
 		uri := "delete_topic"
@@ -563,15 +557,15 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 		}
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
 		}
 	}
 
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"delete_topic",
@@ -585,7 +579,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 
 func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -605,7 +599,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
 		nsqlookupdVersion, err := lookupd.GetVersion(addr)
 		if err != nil {
-			log.Printf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
 
 		uri := "delete_channel"
@@ -617,16 +611,16 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 			addr, uri,
 			url.QueryEscape(topicName),
 			url.QueryEscape(channelName))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
-			log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
 		}
 	}
 
 	producerAddrs := s.getProducers(topicName)
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"delete_channel",
@@ -641,7 +635,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 
 func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -654,7 +648,7 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 	}
 
 	producerAddrs := s.getProducers(topicName)
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"empty_topic",
@@ -669,7 +663,7 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 
 func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -687,7 +681,7 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 	}
 
 	producerAddrs := s.getProducers(topicName)
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		verb+"_topic",
@@ -702,7 +696,7 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 
 func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -715,7 +709,7 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 	}
 
 	producerAddrs := s.getProducers(topicName)
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		"empty_channel",
@@ -731,7 +725,7 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 
 func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Printf("ERROR: invalid %s to POST only method", req.Method)
+		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -749,7 +743,7 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 	}
 
 	producerAddrs := s.getProducers(topicName)
-	performVersionNegotiatedRequestsToNSQD(
+	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		producerAddrs,
 		verb+"_channel",
@@ -765,7 +759,7 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -830,7 +824,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "node.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -838,7 +832,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -859,7 +853,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -877,7 +871,7 @@ func (c counterTarget) Host() string {
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
@@ -894,7 +888,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	err = templates.T.ExecuteTemplate(w, "counter.html", p)
 	if err != nil {
-		log.Printf("Template Error %s", err.Error())
+		s.ctx.nsqadmin.logf("Template Error %s", err)
 		http.Error(w, "Template Error", 500)
 	}
 }
@@ -906,7 +900,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
@@ -957,21 +951,21 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		log.Printf("ERROR: failed to parse request params - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
 
 	metric, err := reqParams.Get("metric")
 	if err != nil {
-		log.Printf("ERROR: missing metric param - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: missing metric param - %s", err)
 		http.Error(w, "MISSING_METRIC_PARAM", 500)
 		return
 	}
 
 	target, err := reqParams.Get("target")
 	if err != nil {
-		log.Printf("ERROR: missing target param - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: missing target param - %s", err)
 		http.Error(w, "MISSING_TARGET_PARAM", 500)
 		return
 	}
@@ -984,24 +978,24 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 		queryFunc = rateQuery
 		formatJsonResponseFunc = parseRateResponse
 	default:
-		log.Printf("ERROR: unknown metric value %s", metric)
+		s.ctx.nsqadmin.logf("ERROR: unknown metric value %s", metric)
 		http.Error(w, "INVALID_METRIC_PARAM", 500)
 		return
 	}
 
 	query := queryFunc(target)
 	url := s.ctx.nsqadmin.opts.GraphiteURL + query
-	log.Printf("GRAPHITE: %s", url)
+	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
 	response, err := graphiteGet(url)
 	if err != nil {
-		log.Printf("ERROR: graphite request failed %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: graphite request failed %s", err)
 		http.Error(w, "GRAPHITE_FAILED", 500)
 		return
 	}
 
 	resp, err := formatJsonResponseFunc(response)
 	if err != nil {
-		log.Printf("ERROR: response formating failed - %s", err.Error())
+		s.ctx.nsqadmin.logf("ERROR: response formating failed - %s", err)
 		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
 		return
 	}
@@ -1011,20 +1005,14 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	return
 }
 
-func graphiteGet(request_url string) ([]byte, error) {
-	response, err := http.Get(request_url)
-
-	var contents []byte
-
+func graphiteGet(url string) ([]byte, error) {
+	response, err := http.Get(url)
 	if err != nil {
-		log.Printf("ERROR: GET request to graphite failed %s", err)
 		return nil, err
 	}
-
 	defer response.Body.Close()
-	contents, err = ioutil.ReadAll(response.Body)
+	contents, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.Printf("ERROR: reading GET body failed %s", err)
 		return nil, err
 	}
 	return contents, nil
@@ -1050,7 +1038,8 @@ func producerSearch(producers []*lookupd.Producer, needle string) *lookupd.Produ
 	return nil
 }
 
-func performVersionNegotiatedRequestsToNSQD(nsqlookupdAddrs []string, nsqdAddrs []string,
+func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
+	nsqlookupdAddrs []string, nsqdAddrs []string,
 	deprecatedURI string, v1URI string, queryString string) {
 	var err error
 	// get producer structs in one set of up-front requests
@@ -1058,7 +1047,6 @@ func performVersionNegotiatedRequestsToNSQD(nsqlookupdAddrs []string, nsqdAddrs 
 	//
 	// (this returns an empty list if there are no nsqlookupd configured)
 	producers, _ := lookupd.GetLookupdProducers(nsqlookupdAddrs)
-
 	for _, addr := range nsqdAddrs {
 		var nodeVer *semver.Version
 
@@ -1071,7 +1059,7 @@ func performVersionNegotiatedRequestsToNSQD(nsqlookupdAddrs []string, nsqdAddrs 
 			// so ask it for a version directly
 			nodeVer, err = lookupd.GetVersion(addr)
 			if err != nil {
-				log.Printf("ERROR: failed to get nsqd %s version - %s", addr, err)
+				s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", addr, err)
 			}
 		}
 
@@ -1080,10 +1068,10 @@ func performVersionNegotiatedRequestsToNSQD(nsqlookupdAddrs []string, nsqdAddrs 
 		}
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
-		log.Printf("NSQD: querying %s", endpoint)
+		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
 		_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
-			log.Printf("ERROR: nsqd %s - %s", endpoint, err.Error())
+			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 			continue
 		}
 	}
