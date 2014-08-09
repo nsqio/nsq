@@ -42,7 +42,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	err = s.debugRouter(w, req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: %s", err))
+		s.ctx.nsqd.logf("ERROR: %s", err)
 		util.ApiResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
@@ -189,7 +189,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqParams, *Topic, string, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, nil, "", util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -209,7 +209,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqPara
 func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -242,7 +242,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
-		s.ctx.l.Output(2, "ERROR: /put hit max message size")
+		s.ctx.nsqd.logf("ERROR: /put hit max message size")
 		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
@@ -341,7 +341,7 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -370,7 +370,7 @@ func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -390,7 +390,7 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 
@@ -410,7 +410,7 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 		err = topic.Pause()
 	}
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failure in %s - %s", req.URL.Path, err))
+		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
@@ -476,7 +476,7 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 		err = channel.Pause()
 	}
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failure in %s - %s", req.URL.Path, err))
+		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
 		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
 	}
 
@@ -486,7 +486,7 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
-		s.ctx.l.Output(2, fmt.Sprintf("ERROR: failed to parse request params - %s", err))
+		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
 		return nil, util.HTTPError{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")

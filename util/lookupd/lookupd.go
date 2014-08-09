@@ -289,7 +289,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
 		log.Printf("NSQD: querying %s", endpoint)
 
-		go func(endpoint string) {
+		go func(endpoint, addr string) {
 			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
@@ -307,7 +307,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 					return
 				}
 			}
-		}(endpoint)
+		}(endpoint, addr)
 	}
 	wg.Wait()
 	if success == false {

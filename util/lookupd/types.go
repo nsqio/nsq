@@ -27,7 +27,7 @@ type Producer struct {
 	TcpPort          int             `json:"tcp_port"`
 	HttpPort         int             `json:"http_port"`
 	Version          string          `json:"version"`
-	VersionObj       *semver.Version `json:-`
+	VersionObj       *semver.Version `json:"-"`
 	Topics           ProducerTopics  `json:"topics"`
 	OutOfDate        bool
 }

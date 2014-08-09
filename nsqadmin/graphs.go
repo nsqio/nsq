@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -80,10 +79,7 @@ func (g *GraphInterval) UrlOption() template.URL {
 func DefaultGraphTimeframes(selected string) GraphIntervals {
 	var d GraphIntervals
 	for _, t := range []string{"1h", "2h", "12h", "24h", "48h", "168h", "off"} {
-		g, err := GraphIntervalForTimeframe(t, t == selected)
-		if err != nil {
-			log.Fatalf("error parsing duration %s", err.Error())
-		}
+		g, _ := GraphIntervalForTimeframe(t, t == selected)
 		d = append(d, g)
 	}
 	return d
@@ -228,7 +224,6 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 			scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
 			target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
 		}
-		log.Println("Adding target: ", target)
 		params.Add("target", target)
 	}
 	params.Add("colorList", color)
@@ -275,7 +270,6 @@ func rateQuery(target string) string {
 func parseRateResponse(body []byte) ([]byte, error) {
 	js, err := simplejson.NewJson([]byte(body))
 	if err != nil {
-		log.Printf("ERROR: failed to parse metadata - %s", err.Error())
 		return nil, err
 	}
 

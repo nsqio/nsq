@@ -155,7 +155,7 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	c.ctx.l.Output(2, fmt.Sprintf("[%s] IDENTIFY: %+v", c, data))
+	c.ctx.nsqd.logf("[%s] IDENTIFY: %+v", c, data)
 
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
@@ -315,11 +315,8 @@ func (p *prettyConnectionState) GetCipherSuite() string {
 		return "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
 	case local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
 		return "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
-	default:
-		return fmt.Sprintf("unkown %d", p.CipherSuite)
 	}
-	// this is for Go 1.0 compatability
-	return "unknown"
+	return fmt.Sprintf("unkown %d", p.CipherSuite)
 }
 
 func (c *clientV2) IsReadyForMessages() bool {
@@ -332,8 +329,8 @@ func (c *clientV2) IsReadyForMessages() bool {
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if c.ctx.nsqd.opts.Verbose {
-		c.ctx.l.Output(2, fmt.Sprintf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
-			readyCount, lastReadyCount, inFlightCount))
+		c.ctx.nsqd.logf("[%s] state rdy: %4d lastrdy: %4d inflt: %4d", c,
+			readyCount, lastReadyCount, inFlightCount)
 	}
 
 	if inFlightCount >= lastReadyCount || readyCount <= 0 {
