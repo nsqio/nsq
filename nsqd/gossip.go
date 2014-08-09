@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"os"
@@ -12,6 +13,21 @@ import (
 	"github.com/bitly/nsq/util/registrationdb"
 	"github.com/hashicorp/serf/serf"
 )
+
+type logWriter struct {
+	logger
+	prefix []byte
+}
+
+func (l logWriter) Write(p []byte) (int, error) {
+	if l.logger == nil {
+		return 0, nil
+	}
+	p = bytes.TrimSpace(p)
+	idx := bytes.Index(p, l.prefix)
+	l.logger.Output(2, string(p[idx:]))
+	return len(p), nil
+}
 
 type gossipEvent struct {
 	Name    string `json:"n"`
@@ -65,8 +81,10 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
+	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}
 	serfConfig.EventCh = serfEventChan
 	serfConfig.EventBuffer = 1024
+	serfConfig.LogOutput = logWriter{opts.Logger, []byte("serf:")}
 
 	return serf.Create(serfConfig)
 }
