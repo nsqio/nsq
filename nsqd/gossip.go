@@ -80,6 +80,7 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
+	serfConfig.MemberlistConfig.AdvertiseAddr = opts.BroadcastAddress
 	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
@@ -87,6 +88,7 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}
 	serfConfig.EventCh = serfEventChan
 	serfConfig.EventBuffer = 1024
+	serfConfig.ReconnectTimeout = time.Hour
 	serfConfig.LogOutput = logWriter{opts.Logger, []byte("serf:")}
 
 	return serf.Create(serfConfig)
