@@ -193,32 +193,18 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	return results
 }
 
-func (r *RegistrationDB) TouchRegistrations(id string) {
+func (r *RegistrationDB) TouchProducer(k Registration, id string) bool {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	now := time.Now()
-	for _, producers := range r.data {
-		for _, p := range producers {
-			if p.ID == id {
-				atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
-			}
-		}
+	producers, ok := r.data[k]
+	if !ok {
+		return false
 	}
-}
-
-func (r *RegistrationDB) TouchRegistration(category string, key string, subkey string, id string) bool {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-	now := time.Now()
-	for k, producers := range r.data {
-		if !k.IsMatch(category, key, subkey) {
-			continue
-		}
-		for _, p := range producers {
-			if p.ID == id {
-				atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
-				return true
-			}
+	for _, p := range producers {
+		if p.ID == id {
+			atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
+			return true
 		}
 	}
 	return false

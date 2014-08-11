@@ -175,7 +175,7 @@ func (n *NSQD) gossipHandleCreateEvent(operation byte,
 		if n.rdb.AddProducer(r, producer) {
 			n.logf("DB: member(%s) REGISTER %s", gev.Name, r)
 		}
-		if operation == '=' && n.rdb.TouchRegistration(r.Category, r.Key, r.SubKey, producer.ID) {
+		if operation == '=' && n.rdb.TouchProducer(r, producer.ID) {
 			n.logf("DB: member(%s) TOUCH %s", gev.Name, r)
 		}
 	}
