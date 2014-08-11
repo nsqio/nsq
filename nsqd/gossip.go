@@ -23,6 +23,9 @@ func (l logWriter) Write(p []byte) (int, error) {
 	if l.logger == nil {
 		return 0, nil
 	}
+	if bytes.Contains(p, []byte("DEBUG")) {
+		return 0, nil
+	}
 	p = bytes.TrimSpace(p)
 	idx := bytes.Index(p, l.prefix)
 	l.logger.Output(2, string(p[idx:]))
