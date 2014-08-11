@@ -37,10 +37,12 @@ func TestGossip(t *testing.T) {
 			seedNode = nsqd
 		}
 	}
+	// sort the ports for later comparison
 	sort.Ints(tcpPorts)
 
 	time.Sleep(250 * time.Millisecond)
 
+	// all nodes in the cluster should have registrations
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("client", "", "")
 		var actTCPPorts []int
@@ -51,5 +53,23 @@ func TestGossip(t *testing.T) {
 
 		equal(t, len(producers), num)
 		equal(t, tcpPorts, actTCPPorts)
+	}
+
+	// create a topic/channel on the first node
+	topicName := "topic1"
+	topic := nsqds[0].GetTopic(topicName)
+	topic.GetChannel("ch")
+	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
+
+	time.Sleep(250 * time.Millisecond)
+
+	for _, nsqd := range nsqds {
+		producers := nsqd.rdb.FindProducers("topic", topicName, "")
+		equal(t, len(producers), 1)
+		equal(t, producers[0].TCPPort, firstPort)
+
+		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
+		equal(t, len(producers), 1)
+		equal(t, producers[0].TCPPort, firstPort)
 	}
 }
