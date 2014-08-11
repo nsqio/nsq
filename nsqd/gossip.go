@@ -101,11 +101,7 @@ func (n *NSQD) serfMemberJoin(ev serf.Event) {
 		producer := memberToProducer(member)
 		r := registrationdb.Registration{"client", "", ""}
 		n.rdb.AddProducer(r, producer)
-		n.logf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
-			producer.ID,
-			r.Category,
-			r.Key,
-			r.SubKey)
+		n.logf("DB: member(%s) REGISTER %s", producer.ID, r)
 	}
 }
 
@@ -116,11 +112,7 @@ func (n *NSQD) serfMemberFailed(ev serf.Event) {
 		registrations := n.rdb.LookupRegistrations(member.Name)
 		for _, r := range registrations {
 			if removed, _ := n.rdb.RemoveProducer(r, member.Name); removed {
-				n.logf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
-					member.Name,
-					r.Category,
-					r.Key,
-					r.SubKey)
+				n.logf("DB: member(%s) UNREGISTER %s", member.Name, r)
 			}
 		}
 	}
@@ -181,18 +173,10 @@ func (n *NSQD) gossipHandleCreateEvent(operation byte,
 
 	for _, r := range registrations {
 		if n.rdb.AddProducer(r, producer) {
-			n.logf("DB: member(%s) REGISTER category:%s key:%s subkey:%s",
-				gev.Name,
-				r.Category,
-				r.Key,
-				r.SubKey)
+			n.logf("DB: member(%s) REGISTER %s", gev.Name, r)
 		}
 		if operation == '=' && n.rdb.TouchRegistration(r.Category, r.Key, r.SubKey, producer.ID) {
-			n.logf("DB: member(%s) TOUCH category:%s key:%s subkey:%s",
-				gev.Name,
-				r.Category,
-				r.Key,
-				r.SubKey)
+			n.logf("DB: member(%s) TOUCH %s", gev.Name, r)
 		}
 	}
 }
@@ -208,14 +192,10 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 
 		removed, left := n.rdb.RemoveProducer(r, producer.ID)
 		if removed {
-			n.logf("DB: member(%s) UNREGISTER category:%s key:%s subkey:%s",
-				gev.Name,
-				r.Category,
-				r.Key,
-				r.SubKey)
+			n.logf("DB: member(%s) UNREGISTER %s", gev.Name, r)
 		}
 
-		// for ephemeral channels, remove the channel as well if it has no producers
+		// for ephemeral channels, if it has no producers, remove the registration
 		if left == 0 && strings.HasSuffix(gev.Channel, "#ephemeral") {
 			n.rdb.RemoveRegistration(r)
 		}
@@ -223,18 +203,15 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 		return
 	}
 
-	// no channel was specified so this is a topic unregistration
-	// remove all of the channel registrations...
-	// normally this shouldn't happen which is why we print a warning message
-	// if anything is actually removed
+	// this is a topic unregistration (no channel was specified)
+
 	registrations := n.rdb.FindRegistrations("channel", gev.Topic, "*")
 	for _, r := range registrations {
+		// remove all of the channel registrations...
 		if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
-			n.logf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
-				gev.Name,
-				r.Category,
-				r.Key,
-				r.SubKey)
+			// normally this shouldn't happen which is why we print a warning message
+			// if anything is actually removed
+			n.logf("WARNING: client(%s) unexpected UNREGISTER %s", gev.Name, r)
 		}
 	}
 
@@ -244,11 +221,7 @@ func (n *NSQD) gossipHandleDeleteEvent(operation byte,
 		SubKey:   "",
 	}
 	if removed, _ := n.rdb.RemoveProducer(r, producer.ID); removed {
-		n.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
-			gev.Name,
-			r.Category,
-			r.Key,
-			r.SubKey)
+		n.logf("DB: client(%s) UNREGISTER %s", gev.Name, r)
 	}
 }
 
@@ -337,8 +310,7 @@ func (n *NSQD) gossipLoop() {
 					}
 					continue
 				}
-				// otherwise we know that by sending over a channel for a topic the topic
-				// will be accounted for as well
+				// otherwise only send a channel, implying the existence of the topic
 				for _, channelStat := range topicStat.Channels {
 					err := n.gossip("channel=", topicStat.TopicName, channelStat.ChannelName)
 					if err != nil {

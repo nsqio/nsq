@@ -18,6 +18,11 @@ type Registration struct {
 	SubKey   string
 }
 
+func (r Registration) String() string {
+	return fmt.Sprintf("category:%s key:%s subkey:%s",
+		r.Category, r.Key, r.SubKey)
+}
+
 type Registrations []Registration
 
 type Producer struct {
