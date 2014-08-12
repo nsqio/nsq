@@ -219,6 +219,19 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><strong>official</strong></td>
   </tr>
   <tr class="info">
+    <td><a href="https://github.com/wistia/nsq-ruby">nsq-ruby</a></td>
+    <td>Ruby</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr class="info">
     <td><a href="https://github.com/dsoprea/NsqSpinner">NsqSpinner</a></td>
     <td>Python</td>
     <td><i class="fa fa-check"></i></td>
