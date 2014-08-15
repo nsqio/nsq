@@ -48,12 +48,11 @@ type Channel struct {
 
 	backend BackendQueue
 
-	incomingMsgChan chan *Message
-	memoryMsgChan   chan *Message
-	clientMsgChan   chan *Message
-	exitChan        chan int
-	waitGroup       util.WaitGroupWrapper
-	exitFlag        int32
+	memoryMsgChan chan *Message
+	clientMsgChan chan *Message
+	exitChan      chan int
+	waitGroup     util.WaitGroupWrapper
+	exitFlag      int32
 
 	// state tracking
 	clients          map[int64]Consumer
@@ -82,15 +81,14 @@ func NewChannel(topicName string, channelName string, ctx *context,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
-		topicName:       topicName,
-		name:            channelName,
-		incomingMsgChan: make(chan *Message, 1),
-		memoryMsgChan:   make(chan *Message, ctx.nsqd.opts.MemQueueSize),
-		clientMsgChan:   make(chan *Message),
-		exitChan:        make(chan int),
-		clients:         make(map[int64]Consumer),
-		deleteCallback:  deleteCallback,
-		ctx:             ctx,
+		topicName:      topicName,
+		name:           channelName,
+		memoryMsgChan:  make(chan *Message, ctx.nsqd.opts.MemQueueSize),
+		clientMsgChan:  make(chan *Message),
+		exitChan:       make(chan int),
+		clients:        make(map[int64]Consumer),
+		deleteCallback: deleteCallback,
+		ctx:            ctx,
 	}
 	if len(ctx.nsqd.opts.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = util.NewQuantile(
@@ -117,7 +115,6 @@ func NewChannel(topicName string, channelName string, ctx *context,
 
 	go c.messagePump()
 
-	c.waitGroup.Wrap(func() { c.router() })
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
@@ -179,11 +176,6 @@ func (c *Channel) exit(deleted bool) error {
 	c.RUnlock()
 
 	close(c.exitChan)
-
-	// handle race condition w/ things writing into incomingMsgChan
-	c.Lock()
-	close(c.incomingMsgChan)
-	c.Unlock()
 
 	// synchronize the close of router() and pqWorkers (2)
 	c.waitGroup.Wait()
@@ -315,16 +307,35 @@ func (c *Channel) IsPaused() bool {
 	return atomic.LoadInt32(&c.paused) == 1
 }
 
-// PutMessage writes to the appropriate incoming message channel
-// (which will be routed asynchronously)
-func (c *Channel) PutMessage(msg *Message) error {
+// PutMessage writes a Message to the queue
+func (c *Channel) PutMessage(m *Message) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	c.incomingMsgChan <- msg
+	err := c.put(m)
+	if err != nil {
+		return err
+	}
 	atomic.AddUint64(&c.messageCount, 1)
+	return nil
+}
+
+func (c *Channel) put(m *Message) error {
+	select {
+	case c.memoryMsgChan <- m:
+	default:
+		// TODO: re-use this buffer
+		var b bytes.Buffer
+		err := writeMessageToBackend(&b, m, c.backend)
+		if err != nil {
+			c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
+				c.name, err)
+			c.ctx.nsqd.SetHealth(err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -440,13 +451,16 @@ func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) erro
 }
 
 // doRequeue performs the low level operations to requeue a message
-func (c *Channel) doRequeue(msg *Message) error {
+func (c *Channel) doRequeue(m *Message) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	c.incomingMsgChan <- msg
+	err := c.put(m)
+	if err != nil {
+		return err
+	}
 	atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
@@ -532,26 +546,6 @@ func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	defer c.deferredMutex.Unlock()
 
 	heap.Push(&c.deferredPQ, item)
-}
-
-// Router handles the muxing of incoming Channel messages, either writing
-// to the in-memory channel or to the backend
-func (c *Channel) router() {
-	var msgBuf bytes.Buffer
-	for msg := range c.incomingMsgChan {
-		select {
-		case c.memoryMsgChan <- msg:
-		default:
-			err := writeMessageToBackend(&msgBuf, msg, c.backend)
-			if err != nil {
-				c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
-					c.name, err)
-				c.ctx.nsqd.SetHealth(err)
-			}
-		}
-	}
-
-	c.ctx.nsqd.logf("CHANNEL(%s): closing ... router", c.name)
 }
 
 // messagePump reads messages from either memory or backend and writes
