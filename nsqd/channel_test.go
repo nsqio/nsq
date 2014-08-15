@@ -26,7 +26,7 @@ func TestPutMessage(t *testing.T) {
 	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
 
-	outputMsg := <-channel1.clientMsgChan
+	outputMsg := <-channel1.memoryMsgChan
 	equal(t, msg.ID, outputMsg.ID)
 	equal(t, msg.Body, outputMsg.Body)
 }
@@ -48,11 +48,11 @@ func TestPutMessage2Chan(t *testing.T) {
 	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
 
-	outputMsg1 := <-channel1.clientMsgChan
+	outputMsg1 := <-channel1.memoryMsgChan
 	equal(t, msg.ID, outputMsg1.ID)
 	equal(t, msg.Body, outputMsg1.Body)
 
-	outputMsg2 := <-channel2.clientMsgChan
+	outputMsg2 := <-channel2.memoryMsgChan
 	equal(t, msg.ID, outputMsg2.ID)
 	equal(t, msg.Body, outputMsg2.Body)
 }
@@ -197,12 +197,6 @@ func TestChannelHealth(t *testing.T) {
 	topic := nsqd.GetTopic("test")
 
 	channel := topic.GetChannel("channel")
-	// cause channel.messagePump to exit so we can set channel.backend without
-	// a data race. side effect is it closes clientMsgChan, and messagePump is
-	// never restarted. note this isn't the intended usage of exitChan but gets
-	// around the data race without more invasive changes to how channel.backend
-	// is set/loaded.
-	channel.exitChan <- 1
 
 	channel.backend = &errorBackendQueue{}
 
