@@ -169,9 +169,9 @@ func (t *Topic) put(m *Message) error {
 	select {
 	case t.memoryMsgChan <- m:
 	default:
-		// TODO: need to re-use this buffer
-		var b bytes.Buffer
-		err := writeMessageToBackend(&b, m, t.backend)
+		b := bufferPoolGet()
+		err := writeMessageToBackend(b, m, t.backend)
+		bufferPoolPut(b)
 		if err != nil {
 			t.ctx.nsqd.logf(
 				"TOPIC(%s) ERROR: failed to write message to backend - %s",

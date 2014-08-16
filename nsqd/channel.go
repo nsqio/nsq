@@ -326,9 +326,9 @@ func (c *Channel) put(m *Message) error {
 	select {
 	case c.memoryMsgChan <- m:
 	default:
-		// TODO: re-use this buffer
-		var b bytes.Buffer
-		err := writeMessageToBackend(&b, m, c.backend)
+		b := bufferPoolGet()
+		err := writeMessageToBackend(b, m, c.backend)
+		bufferPoolPut(b)
 		if err != nil {
 			c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
 				c.name, err)
