@@ -30,8 +30,9 @@ type NSQD struct {
 
 	opts *nsqdOptions
 
-	healthy int32
-	err     error
+	healthMtx sync.RWMutex
+	healthy   int32
+	err       error
 
 	topicMap map[string]*Topic
 
@@ -135,8 +136,8 @@ func (n *NSQD) logf(f string, args ...interface{}) {
 }
 
 func (n *NSQD) SetHealth(err error) {
-	n.Lock()
-	defer n.Unlock()
+	n.healthMtx.Lock()
+	defer n.healthMtx.Unlock()
 	n.err = err
 	if err != nil {
 		atomic.StoreInt32(&n.healthy, 0)
@@ -150,8 +151,8 @@ func (n *NSQD) IsHealthy() bool {
 }
 
 func (n *NSQD) GetError() error {
-	n.RLock()
-	defer n.RUnlock()
+	n.healthMtx.RLock()
+	defer n.healthMtx.RUnlock()
 	return n.err
 }
 

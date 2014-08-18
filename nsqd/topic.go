@@ -18,7 +18,6 @@ type Topic struct {
 	name              string
 	channelMap        map[string]*Channel
 	backend           BackendQueue
-	incomingMsgChan   chan *Message
 	memoryMsgChan     chan *Message
 	exitChan          chan int
 	channelUpdateChan chan int
@@ -44,7 +43,6 @@ func NewTopic(topicName string, ctx *context) *Topic {
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
 		backend:           diskQueue,
-		incomingMsgChan:   make(chan *Message, 1),
 		memoryMsgChan:     make(chan *Message, ctx.nsqd.opts.MemQueueSize),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
@@ -52,7 +50,6 @@ func NewTopic(topicName string, ctx *context) *Topic {
 		pauseChan:         make(chan bool),
 	}
 
-	t.waitGroup.Wrap(func() { t.router() })
 	t.waitGroup.Wrap(func() { t.messagePump() })
 
 	go t.ctx.nsqd.Notify(t)
@@ -136,33 +133,52 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	return nil
 }
 
-// PutMessage writes to the appropriate incoming message channel
-func (t *Topic) PutMessage(msg *Message) error {
+// PutMessage writes a Message to the queue
+func (t *Topic) PutMessage(m *Message) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	if !t.ctx.nsqd.IsHealthy() {
-		return errors.New("unhealthy")
+	err := t.put(m)
+	if err != nil {
+		return err
 	}
-	t.incomingMsgChan <- msg
 	atomic.AddUint64(&t.messageCount, 1)
 	return nil
 }
 
-func (t *Topic) PutMessages(messages []*Message) error {
+// PutMessages writes multiple Messages to the queue
+func (t *Topic) PutMessages(msgs []*Message) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	if !t.ctx.nsqd.IsHealthy() {
-		return errors.New("unhealthy")
+	for _, m := range msgs {
+		err := t.put(m)
+		if err != nil {
+			return err
+		}
 	}
-	for _, m := range messages {
-		t.incomingMsgChan <- m
-		atomic.AddUint64(&t.messageCount, 1)
+	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
+	return nil
+}
+
+func (t *Topic) put(m *Message) error {
+	select {
+	case t.memoryMsgChan <- m:
+	default:
+		b := bufferPoolGet()
+		err := writeMessageToBackend(b, m, t.backend)
+		bufferPoolPut(b)
+		if err != nil {
+			t.ctx.nsqd.logf(
+				"TOPIC(%s) ERROR: failed to write message to backend - %s",
+				t.name, err)
+			t.ctx.nsqd.SetHealth(err)
+			return err
+		}
 	}
 	return nil
 }
@@ -252,27 +268,6 @@ exit:
 	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.name)
 }
 
-// router handles muxing of Topic messages including
-// proxying messages to memory or backend
-func (t *Topic) router() {
-	var msgBuf bytes.Buffer
-	for msg := range t.incomingMsgChan {
-		select {
-		case t.memoryMsgChan <- msg:
-		default:
-			err := writeMessageToBackend(&msgBuf, msg, t.backend)
-			if err != nil {
-				t.ctx.nsqd.logf(
-					"TOPIC(%s) ERROR: failed to write message to backend - %s",
-					t.name, err)
-				t.ctx.nsqd.SetHealth(err)
-			}
-		}
-	}
-
-	t.ctx.nsqd.logf("TOPIC(%s): closing ... router", t.name)
-}
-
 // Delete empties the topic and all its channels and closes
 func (t *Topic) Delete() error {
 	return t.exit(true)
@@ -300,11 +295,7 @@ func (t *Topic) exit(deleted bool) error {
 
 	close(t.exitChan)
 
-	t.Lock()
-	close(t.incomingMsgChan)
-	t.Unlock()
-
-	// synchronize the close of router() and messagePump()
+	// synchronize the close of messagePump()
 	t.waitGroup.Wait()
 
 	if deleted {

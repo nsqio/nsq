@@ -81,3 +81,16 @@ func decodeMessage(b []byte) (*Message, error) {
 
 	return &msg, nil
 }
+
+func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
+	buf.Reset()
+	_, err := msg.WriteTo(buf)
+	if err != nil {
+		return err
+	}
+	err = bq.Put(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
+}

@@ -2,6 +2,9 @@ package nsqd
 
 import (
 	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"runtime"
 	"strconv"
 	"testing"
@@ -44,13 +47,24 @@ func TestGetChannel(t *testing.T) {
 	equal(t, channel2, topic.channelMap["ch2"])
 }
 
+type errorBackendQueue struct{}
+
+func (d *errorBackendQueue) Put([]byte) error      { return errors.New("never gonna happen") }
+func (d *errorBackendQueue) ReadChan() chan []byte { return nil }
+func (d *errorBackendQueue) Close() error          { return nil }
+func (d *errorBackendQueue) Delete() error         { return nil }
+func (d *errorBackendQueue) Depth() int64          { return 0 }
+func (d *errorBackendQueue) Empty() error          { return nil }
+
 func TestHealth(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
-	_, _, nsqd := mustStartNSQD(opts)
+	opts.MemQueueSize = 2
+	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopic("test")
+	topic.backend = &errorBackendQueue{}
 
 	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err := topic.PutMessage(msg)
@@ -60,8 +74,6 @@ func TestHealth(t *testing.T) {
 	err = topic.PutMessages([]*Message{msg})
 	equal(t, err, nil)
 
-	nsqd.SetHealth(errors.New("broken"))
-
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessage(msg)
 	nequal(t, err, nil)
@@ -69,6 +81,14 @@ func TestHealth(t *testing.T) {
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
 	nequal(t, err, nil)
+
+	url := fmt.Sprintf("http://%s/ping", httpAddr)
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 500)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	equal(t, string(body), "NOK - never gonna happen")
 }
 
 func TestDeletes(t *testing.T) {
