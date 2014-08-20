@@ -118,7 +118,13 @@ func (n *NSQD) statsdLoop() {
 				var memStats runtime.MemStats
 				runtime.ReadMemStats(&memStats)
 
-				gcPauses := recentGCPauses(memStats, int(memStats.NumGC-lastMemStats.NumGC))
+				// sort the GC pause array
+				length := len(memStats.PauseNs)
+				if int(memStats.NumGC) < length {
+					length = int(memStats.NumGC)
+				}
+				gcPauses := make(Uint64Slice, length)
+				copy(gcPauses, memStats.PauseNs[:length])
 				sort.Sort(gcPauses)
 
 				statsd.Gauge("mem.heap_objects", int64(memStats.HeapObjects))
@@ -140,46 +146,6 @@ func (n *NSQD) statsdLoop() {
 
 exit:
 	ticker.Stop()
-}
-
-func recentGCPauses(memStats runtime.MemStats, runsCaredAbout int) Uint64Slice {
-	if runsCaredAbout == 0 {
-		return make([]uint64, 0)
-	}
-	pauseBufSize := len(memStats.PauseNs)
-
-	// Gets the most recent GC pauseN index
-	numGC := int(memStats.NumGC)
-	mostRecentGC := numGC % pauseBufSize
-
-	// can't use min from stdlib
-	numGCRuns := runsCaredAbout
-	if runsCaredAbout > numGC {
-		numGCRuns = numGC
-	}
-
-	var gcPauses Uint64Slice
-	unwrappedIndex := mostRecentGC - numGCRuns
-	if numGCRuns > pauseBufSize {
-		// doesn't matter --some GC PauseN's have been lost
-		gcPauses = make(Uint64Slice, pauseBufSize)
-		copy(gcPauses[:], memStats.PauseNs[:])
-	} else if unwrappedIndex >= 0 {
-		// not wrapped in circular buffer
-		gcPauses = make(Uint64Slice, numGCRuns)
-		copy(gcPauses[:], memStats.PauseNs[unwrappedIndex:mostRecentGC])
-	} else {
-		// wrapped in circular buffer
-		gcPauses = make(Uint64Slice, numGCRuns)
-
-		// tail of circular buffer, comes first
-		tailSize := numGCRuns - mostRecentGC - 1
-		copy(gcPauses[:tailSize], memStats.PauseNs[pauseBufSize-tailSize:])
-
-		// head of circular buffer, comes second
-		copy(gcPauses[tailSize:], memStats.PauseNs[:mostRecentGC])
-	}
-	return gcPauses
 }
 
 func percentile(perc float64, arr []uint64, length int) uint64 {
