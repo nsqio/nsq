@@ -17,18 +17,21 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 
-	topic         = flag.String("topic", "", "nsq topic")
-	channel       = flag.String("channel", "", "nsq channel")
+	topic         = flag.String("topic", "", "NSQ topic")
+	channel       = flag.String("channel", "", "NSQ channel")
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 
-	readerOpts       = util.StringArray{}
+	consumerOpts     = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
 )
 
 func init() {
-	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Consumer (may be given multiple times)")
+	// TODO: remove, deprecated
+	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
+	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
@@ -42,11 +45,11 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 	th.messagesShown++
 	_, err := os.Stdout.Write(m.Body)
 	if err != nil {
-		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err.Error())
+		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
 	}
 	_, err = os.Stdout.WriteString("\n")
 	if err != nil {
-		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err.Error())
+		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
 	}
 	if th.totalMessages > 0 && th.messagesShown >= th.totalMessages {
 		os.Exit(0)
@@ -68,18 +71,18 @@ func main() {
 	}
 
 	if *topic == "" {
-		log.Fatalf("--topic is required")
+		log.Fatal("--topic is required")
 	}
 
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
-		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
+		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required")
 	}
 	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
+		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Don't ask for more messages than we want
 	if *totalMessages > 0 && *totalMessages < *maxInFlight {
@@ -88,42 +91,35 @@ func main() {
 
 	cfg := nsq.NewConfig()
 	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	err := util.ParseOpts(cfg, consumerOpts)
+	if err != nil {
+		log.Fatal(err)
+	}
 	cfg.MaxInFlight = *maxInFlight
 
-	err := util.ParseReaderOpts(cfg, readerOpts)
+	consumer, err := nsq.NewConsumer(*topic, *channel, cfg)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 
-	r, err := nsq.NewConsumer(*topic, *channel, cfg)
+	consumer.AddHandler(&TailHandler{totalMessages: *totalMessages})
+
+	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
 	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	r.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-
-	r.AddHandler(&TailHandler{totalMessages: *totalMessages})
-
-	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQD(addrString)
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
+		log.Fatal(err)
 	}
 
-	for _, addrString := range lookupdHTTPAddrs {
-		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToNSQLookupd(addrString)
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
+	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	for {
 		select {
-		case <-r.StopChan:
+		case <-consumer.StopChan:
 			return
 		case <-sigChan:
-			r.Stop()
+			consumer.Stop()
 		}
 	}
 }
