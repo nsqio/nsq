@@ -44,7 +44,7 @@ var (
 	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
 	contentType   = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 
-	readerOpts       = util.StringArray{}
+	consumerOpts     = util.StringArray{}
 	getAddrs         = util.StringArray{}
 	postAddrs        = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -52,13 +52,16 @@ var (
 
 	// TODO: remove, deprecated
 	roundRobin         = flag.Bool("round-robin", false, "(deprecated) use --mode=round-robin, enable round robin mode")
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --reader-opt=max_backoff_duration=X, the maximum backoff duration")
+	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --consumer-opt=max_backoff_duration,X")
 	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "(deprecated) use --sample=X, publish only a fraction of messages")
 	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "(deprecated) use --http-timeout=X, timeout for HTTP connect/read/write (each)")
 )
 
 func init() {
-	flag.Var(&readerOpts, "reader-opt", "option to passthrough to nsq.Consumer (may be given multiple times)")
+	// TODO: remove, deprecated
+	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
+	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
@@ -172,30 +175,30 @@ func main() {
 	}
 
 	if *topic == "" || *channel == "" {
-		log.Fatalf("--topic and --channel are required")
+		log.Fatal("--topic and --channel are required")
 	}
 
 	if *contentType != flag.Lookup("content-type").DefValue {
 		if len(postAddrs) == 0 {
-			log.Fatalf("--content-type only used with --post")
+			log.Fatal("--content-type only used with --post")
 		}
 		if len(*contentType) == 0 {
-			log.Fatalf("--content-type requires a value when used")
+			log.Fatal("--content-type requires a value when used")
 		}
 	}
 
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
-		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required")
+		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required")
 	}
 	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
+		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	if len(getAddrs) == 0 && len(postAddrs) == 0 {
-		log.Fatalf("--get or --post required")
+		log.Fatal("--get or --post required")
 	}
 	if len(getAddrs) > 0 && len(postAddrs) > 0 {
-		log.Fatalf("use --get or --post not both")
+		log.Fatal("use --get or --post not both")
 	}
 	if len(getAddrs) > 0 {
 		for _, get := range getAddrs {
@@ -228,7 +231,7 @@ func main() {
 	}
 
 	if *sample > 1.0 || *sample < 0.0 {
-		log.Fatalf("ERROR: --sample must be between 0.0 and 1.0")
+		log.Fatal("ERROR: --sample must be between 0.0 and 1.0")
 	}
 
 	// TODO: remove, deprecated
@@ -238,7 +241,7 @@ func main() {
 	}
 
 	termChan := make(chan os.Signal, 1)
-	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(postAddrs) > 0 {
 		publisher = &PostPublisher{}
@@ -250,22 +253,21 @@ func main() {
 
 	cfg := nsq.NewConfig()
 	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
-
-	err := util.ParseReaderOpts(cfg, readerOpts)
+	err := util.ParseOpts(cfg, consumerOpts)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 	cfg.MaxInFlight = *maxInFlight
 
 	// TODO: remove, deprecated
 	if hasArg("max-backoff-duration") {
-		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --reader-opt=max_backoff_duration=X")
+		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --consumer-opt=max_backoff_duration,X")
 		cfg.MaxBackoffDuration = *maxBackoffDuration
 	}
 
-	r, err := nsq.NewConsumer(*topic, *channel, cfg)
+	consumer, err := nsq.NewConsumer(*topic, *channel, cfg)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 
 	perAddressStatus := make(map[string]*timermetrics.TimerMetrics)
@@ -287,29 +289,24 @@ func main() {
 		perAddressStatus: perAddressStatus,
 		timermetrics:     timermetrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
-	r.AddConcurrentHandlers(handler, *numPublishers)
+	consumer.AddConcurrentHandlers(handler, *numPublishers)
 
-	for _, addrString := range nsqdTCPAddrs {
-		err := r.ConnectToNSQD(addrString)
-		if err != nil {
-			log.Fatalf("%s", err)
-		}
+	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	for _, addrString := range lookupdHTTPAddrs {
-		log.Printf("lookupd addr %s", addrString)
-		err := r.ConnectToNSQLookupd(addrString)
-		if err != nil {
-			log.Fatalf("%s", err)
-		}
+	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	for {
 		select {
-		case <-r.StopChan:
+		case <-consumer.StopChan:
 			return
 		case <-termChan:
-			r.Stop()
+			consumer.Stop()
 		}
 	}
 }
