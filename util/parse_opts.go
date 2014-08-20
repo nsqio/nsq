@@ -7,7 +7,7 @@ import (
 	"github.com/bitly/go-nsq"
 )
 
-func ParseReaderOpts(cfg *nsq.Config, opts StringArray) error {
+func ParseOpts(cfg *nsq.Config, opts StringArray) error {
 	var err error
 	for _, opt := range opts {
 		parts := strings.Split(opt, ",")
@@ -19,7 +19,7 @@ func ParseReaderOpts(cfg *nsq.Config, opts StringArray) error {
 		case 2:
 			err = cfg.Set(key, parts[1])
 		default:
-			err = errors.New("--reader-opt cannot have more than 2 parameters")
+			err = errors.New("cannot have more than 2 parameters")
 		}
 		if err != nil {
 			return err
