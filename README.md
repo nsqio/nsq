@@ -5,7 +5,7 @@
  * **Mailing List**: [nsq-users@googlegroups.com](https://groups.google.com/d/forum/nsq-users)
  * **IRC**: #nsq on freenode
  * **Docs**: [http://nsq.io][docs]
- * **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
+ * **Twitter**: [@nsqio][nsqio_twitter]
 
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.
@@ -81,3 +81,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
 [jekyll]: http://jekyllrb.com/
+[nsqio_twitter]: https://twitter.com/nsqio
