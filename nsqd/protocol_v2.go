@@ -61,6 +61,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		// ie. the returned slice is only valid until the next call to it
 		line, err = client.Reader.ReadSlice('\n')
 		if err != nil {
+			p.ctx.nsqd.logf("ERROR: [%s] - %s", client, err)
 			break
 		}
 
@@ -86,6 +87,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
+				p.ctx.nsqd.logf("ERROR: [%s] on send - %s", client, sendErr)
 				break
 			}
 
@@ -99,6 +101,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		if response != nil {
 			err = p.Send(client, frameTypeResponse, response)
 			if err != nil {
+				p.ctx.nsqd.logf("ERROR: [%s] sending response [%s] - %s", client, response, err)
 				break
 			}
 		}
