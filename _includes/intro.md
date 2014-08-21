@@ -44,7 +44,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 * **Issues**: [https://github.com/bitly/nsq/issues][github_issues]
 * **Mailing List**: [nsq-users@googlegroups.com][google_group]
 * **IRC**: #nsq on freenode
-* **Twitter**: [@imsnakes][snakes_twitter] or [@jehiah][jehiah_twitter]
+* **Twitter**: [@nsqio][nsqio_twitter]
 
 ### Issues
 
@@ -72,3 +72,4 @@ and all our [contributors][contributors].
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
+[nsqio_twitter]: https://twitter.com/nsqio
