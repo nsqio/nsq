@@ -93,12 +93,7 @@ func main() {
 		return
 	}
 
-	exitChan := make(chan int)
 	signalChan := make(chan os.Signal, 1)
-	go func() {
-		<-signalChan
-		exitChan <- 1
-	}()
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg map[string]interface{}
@@ -119,6 +114,6 @@ func main() {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
 	nsqd.Main()
-	<-exitChan
+	<-signalChan
 	nsqd.Exit()
 }
