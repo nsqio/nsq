@@ -3,15 +3,15 @@
 `nsqlookupd` is the daemon that manages topology metadata and serves client requests to
 discover the location of topics at runtime.
 
-Read the [docs](http://nsq.io/components/nsqlookupd.html)
+Read the [docs](http://nsq.io/components/nsqlookupd.html).
 
-### Installation
+### Docker
 
-1. Install [Docker](https://www.docker.io/)
+1. Pull down this image:
 
-2. Pull down this image: `docker pull nsqio/nsqlookupd`
+    docker pull nsqio/nsqlookupd
 
-### Usage
+2. Run the image:
 
     docker run --name nsqlookupd -p 4160:4160 -p 4161:4161 nsqio/nsqlookupd
 

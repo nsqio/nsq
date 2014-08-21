@@ -2,15 +2,15 @@
 
 `nsqd` is the daemon that receives, queues, and delivers messages to clients.
 
-Read the [docs](http://nsq.io/components/nsqd.html)
+Read the [docs](http://nsq.io/components/nsqd.html).
 
-### Installation
+### Docker
 
-1. Install [Docker](https://www.docker.io/)
+1. Pull down this image:
 
-2. Pull down this image: `docker pull nsqio/nsqd`
+    docker pull nsqio/nsqd
 
-### Usage
+2. Run the image:
 
     docker run --name nsqd -p 4150:4150 -p 4151:4151 \
         nsqio/nsqd \
