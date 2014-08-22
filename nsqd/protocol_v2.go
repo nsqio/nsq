@@ -87,7 +87,6 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
-				err = fmt.Errorf("failed to send error - %s %s", err, sendErr)
 				break
 			}
 
