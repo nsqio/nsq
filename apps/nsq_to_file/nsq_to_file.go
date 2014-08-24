@@ -37,6 +37,9 @@ var (
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
 
+	logTime       = flag.Bool("log-time", false, "enable time logging in each file")
+	logTimeFormat = flag.String("log-time-format", "%M-%S.000 | ", "stftime compatible format for time logging")
+
 	consumerOpts     = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
@@ -131,6 +134,9 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 		case m := <-f.logChan:
 			if f.updateFile() {
 				sync = true
+			}
+			if *logTime {
+				f.Write([]byte(time.Now().Format(*logTimeFormat)))
 			}
 			_, err := f.Write(m.Body)
 			if err != nil {
@@ -445,6 +451,10 @@ func main() {
 	if *gzipLevel < 1 || *gzipLevel > 9 {
 		log.Fatalf("invalid --gzip-level value (%d), should be 1-9", *gzipLevel)
 	}
+
+	// We need to convert the stftime format to the go format so that we don't have to perform
+	// this conversion for each written line later.
+	*logTimeFormat = strftimeToGoFormat(*logTimeFormat)
 
 	// TODO: remove, deprecated
 	if hasArg("gzip-compression") {
