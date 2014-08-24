@@ -40,7 +40,8 @@ var conversion = map[string]string{
 // what date 040305 is supposed to create when used as a 'layout' string
 // this takes standard strftime format options. For a complete list
 // of format options see http://strftime.org/
-func strftime(format string, t time.Time) string {
+
+func strftimeToGoFormat(format string) string {
 	layout := ""
 	length := len(format)
 	for i := 0; i < length; i++ {
@@ -53,5 +54,9 @@ func strftime(format string, t time.Time) string {
 		}
 		layout = layout + format[i:i+1]
 	}
-	return t.Format(layout)
+	return layout
+}
+
+func strftime(format string, t time.Time) string {
+	return t.Format(strftimeToGoFormat(format))
 }
