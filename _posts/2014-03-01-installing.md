@@ -66,8 +66,7 @@ $ ./test.sh
 
 ### Docker Containers
 
-We've published official [docker][docker] containers for [`nsqd`][docker_nsqd] and
-[`nsqlookupd`][docker_nsqlookupd].
+See [the docs][docker_docs] for deploying NSQ on [Docker][docker].
 
 [0.2.31_darwin_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz
 [0.2.31_linux_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.linux-amd64.go1.3.1.tar.gz
@@ -84,5 +83,4 @@ We've published official [docker][docker] containers for [`nsqd`][docker_nsqd] a
 [0.2.27_linux_go12]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.27.linux-amd64.go1.2.tar.gz
 
 [docker]: https://docker.io/
-[docker_nsqd]: https://index.docker.io/u/mreiferson/nsqd/
-[docker_nsqlookupd]: https://index.docker.io/u/mreiferson/nsqlookupd/
+[docker_docs]: {{ site.baseurl }}/deployment/docker.html
