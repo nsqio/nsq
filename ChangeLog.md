@@ -2,6 +2,43 @@
 
 ## Binaries
 
+### 0.2.31 - 2014-08-26
+
+**Upgrading from 0.2.30**: No backwards incompatible changes.
+
+This release includes a few key changes. First, we improved feedback and back-pressure when `nsqd`
+writes to disk. Previously this was asynchronous and would result in clients not knowing that their
+`PUB` had failed. Interestingly, this refactoring improved performance of `PUB` by 41%, by removing
+the topic's goroutine responsible for message routing in favor of `N:N` Go channel communication.
+For details see #437.
+
+@paddyforan contributed official Dockerfiles that are now built automatically via Docker Hub.
+Please begin to use (and improve these) as the various older images we had been maintaining will be
+deprecated.
+
+The utility apps deprecated the `--reader-opt` flag in favor of `--consumer-opt` and `nsq_to_nsq`
+and `to_nsq` received a `--producer-opt` flag, for configuring details of the connection publishing
+to `nsqd`. Additionally, it is now possible to configure client side TLS certificates via
+`tls_cert` and `tls_key` opts.
+
+As usual, we fixed a few minor bugs, see below for details.
+
+New Features / Enhancements:
+
+ * #422/#437 - `nsqd`: diskqueue error feedback/backpressure (thanks @boyand)
+ * #412 - official Dockerfiles for `nsqd`, `nsqlookupd`, `nsqadmin` (thanks @paddyforan)
+ * #442 - utilities: add `--consumer-opt` alias for `--reader-opt` and
+          add `--producer-opt` to `nsq_to_nsq` (also support configuration
+          of `tls_cert` and `tls_key`)
+ * #448 - `nsqd`: improve IOLoop error messages (thanks @rexposadas)
+
+Bugs:
+
+ * #440 - `nsqd`: fixed statsd GC stats reporting (thanks @jphines)
+ * #434/#435 - refactored/stabilized tests and logging
+ * #429 - `nsqd`: improve handling/documentation of `--worker-id` (thanks @bschwartz)
+ * #428 - `nsqd`: `IDENTIFY` should respond with materialized `msg_timeout` (thanks @visionmedia)
+
 ### 0.2.30 - 2014-07-28
 
 **Upgrading from 0.2.29**: No backwards incompatible changes.
