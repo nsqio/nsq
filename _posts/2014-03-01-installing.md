@@ -14,8 +14,8 @@ available for download:
 
 **Go 1.3.1**:
 
- * [nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz][0.2.31_darwin_go13]
- * [nsq-0.2.31.linux-amd64.go1.3.1.tar.gz][0.2.31_linux_go13]
+ * [nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz][0.2.31_darwin_go131]
+ * [nsq-0.2.31.linux-amd64.go1.3.1.tar.gz][0.2.31_linux_go131]
 
 **Go 1.2.2**:
 
