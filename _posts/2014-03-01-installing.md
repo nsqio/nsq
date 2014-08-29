@@ -31,6 +31,10 @@ available for download:
  * [nsq-0.2.27.darwin-amd64.go1.2.tar.gz][0.2.27_darwin_go12]
  * [nsq-0.2.27.linux-amd64.go1.2.tar.gz][0.2.27_linux_go12]
 
+### Docker
+
+See [the docs][docker_docs] for deploying NSQ with [Docker][docker].
+
 ### OSX
 
      $ brew install nsq
@@ -63,10 +67,6 @@ $ go get github.com/bitly/nsq/...
 {% highlight bash %}
 $ ./test.sh
 {% endhighlight %}
-
-### Docker Containers
-
-See [the docs][docker_docs] for deploying NSQ on [Docker][docker].
 
 [0.2.31_darwin_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz
 [0.2.31_linux_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.linux-amd64.go1.3.1.tar.gz
