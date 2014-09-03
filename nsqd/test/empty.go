@@ -1,4 +1,6 @@
-package donotimport
+// +build ignore
+
+package test
 
 // This file exists to allow this directory to be built with go build.
 // If this file didn't exist, an error would be thrown by Go 1.3+ about
