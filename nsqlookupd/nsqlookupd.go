@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
@@ -12,6 +13,7 @@ import (
 )
 
 type NSQLookupd struct {
+	sync.RWMutex
 	opts         *nsqlookupdOptions
 	tcpAddr      *net.TCPAddr
 	httpAddr     *net.TCPAddr
@@ -61,7 +63,9 @@ func (l *NSQLookupd) Main() {
 		l.logf("FATAL: listen (%s) failed - %s", l.tcpAddr, err)
 		os.Exit(1)
 	}
+	l.Lock()
 	l.tcpListener = tcpListener
+	l.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
@@ -72,11 +76,25 @@ func (l *NSQLookupd) Main() {
 		l.logf("FATAL: listen (%s) failed - %s", l.httpAddr, err)
 		os.Exit(1)
 	}
+	l.Lock()
 	l.httpListener = httpListener
+	l.Unlock()
 	httpServer := &httpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		http_api.Serve(httpListener, httpServer, l.opts.Logger, "HTTP")
 	})
+}
+
+func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {
+	l.RLock()
+	defer l.RUnlock()
+	return l.tcpListener.Addr().(*net.TCPAddr)
+}
+
+func (l *NSQLookupd) RealHTTPAddr() *net.TCPAddr {
+	l.RLock()
+	defer l.RUnlock()
+	return l.httpListener.Addr().(*net.TCPAddr)
 }
 
 func (l *NSQLookupd) Exit() {

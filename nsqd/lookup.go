@@ -26,8 +26,8 @@ func (n *NSQD) lookupLoop() {
 		lookupPeer := newLookupPeer(host, n.opts.Logger, func(lp *lookupPeer) {
 			ci := make(map[string]interface{})
 			ci["version"] = version.Binary
-			ci["tcp_port"] = n.tcpAddr.Port
-			ci["http_port"] = n.httpAddr.Port
+			ci["tcp_port"] = n.RealTCPAddr().Port
+			ci["http_port"] = n.RealHTTPAddr().Port
 			ci["hostname"] = hostname
 			ci["broadcast_address"] = n.opts.BroadcastAddress
 

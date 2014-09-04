@@ -148,6 +148,18 @@ func (n *NSQD) logf(f string, args ...interface{}) {
 	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
+func (n *NSQD) RealTCPAddr() *net.TCPAddr {
+	n.RLock()
+	defer n.RUnlock()
+	return n.tcpListener.Addr().(*net.TCPAddr)
+}
+
+func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
+	n.RLock()
+	defer n.RUnlock()
+	return n.httpListener.Addr().(*net.TCPAddr)
+}
+
 func (n *NSQD) SetHealth(err error) {
 	n.healthMtx.Lock()
 	defer n.healthMtx.Unlock()
@@ -193,7 +205,9 @@ func (n *NSQD) Main() {
 		n.logf("FATAL: listen (%s) failed - %s", n.tcpAddr, err)
 		os.Exit(1)
 	}
+	n.Lock()
 	n.tcpListener = tcpListener
+	n.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
 		protocol.TCPServer(n.tcpListener, tcpServer, n.opts.Logger)
@@ -205,7 +219,9 @@ func (n *NSQD) Main() {
 			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
 			os.Exit(1)
 		}
+		n.Lock()
 		n.httpsListener = httpsListener
+		n.Unlock()
 		httpsServer := &httpServer{
 			ctx:         ctx,
 			tlsEnabled:  true,
@@ -220,7 +236,9 @@ func (n *NSQD) Main() {
 		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
 		os.Exit(1)
 	}
+	n.Lock()
 	n.httpListener = httpListener
+	n.Unlock()
 	httpServer := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  false,
