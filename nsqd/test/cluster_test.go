@@ -1,4 +1,4 @@
-package donotimport
+package test
 
 import (
 	"fmt"
