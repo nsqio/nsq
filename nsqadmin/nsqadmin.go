@@ -92,10 +92,12 @@ func (n *NSQAdmin) handleAdminActions() {
 		}
 		httpclient := &http.Client{Transport: http_api.NewDeadlineTransport(10 * time.Second)}
 		n.logf("POSTing notification to %s", n.opts.NotificationHTTPEndpoint)
-		_, err = httpclient.Post(n.opts.NotificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
+		resp, err := httpclient.Post(n.opts.NotificationHTTPEndpoint,
+			"application/json", bytes.NewBuffer(content))
 		if err != nil {
 			n.logf("ERROR: failed to POST notification - %s", err)
 		}
+		resp.Body.Close()
 	}
 }
 
