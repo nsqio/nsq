@@ -44,7 +44,7 @@ func (n *NSQD) lookupLoop() {
 			} else {
 				err = json.Unmarshal(resp, &lp.Info)
 				if err != nil {
-					n.logf("LOOKUPD(%s): ERROR parsing response - %v", lp, resp)
+					n.logf("LOOKUPD(%s): ERROR parsing response - %s", lp, resp)
 				} else {
 					n.logf("LOOKUPD(%s): peer info %+v", lp, lp.Info)
 				}
