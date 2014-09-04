@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/bitly/nsq/internal/app"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/bitly/nsq/nsqadmin"
 	"github.com/mreiferson/go-options"
 )
 
@@ -70,9 +71,9 @@ func main() {
 		}
 	}
 
-	opts := NewNSQAdminOptions()
+	opts := nsqadmin.NewNSQAdminOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqadmin := NewNSQAdmin(opts)
+	nsqadmin := nsqadmin.NewNSQAdmin(opts)
 
 	nsqadmin.Main()
 	<-exitChan

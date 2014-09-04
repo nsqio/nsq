@@ -1,4 +1,4 @@
-package main
+package nsqadmin
 
 import (
 	"bytes"
@@ -72,7 +72,7 @@ func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
 		n.graphiteURL = url
 	}
 
-	n.logf(version.String("nsqlookupd"))
+	n.logf(version.String("nsqadmin"))
 
 	return n
 }
@@ -91,8 +91,8 @@ func (n *NSQAdmin) handleAdminActions() {
 			n.logf("ERROR: failed to serialize admin action - %s", err)
 		}
 		httpclient := &http.Client{Transport: http_api.NewDeadlineTransport(10 * time.Second)}
-		n.logf("POSTing notification to %s", *notificationHTTPEndpoint)
-		_, err = httpclient.Post(*notificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
+		n.logf("POSTing notification to %s", n.opts.NotificationHTTPEndpoint)
+		_, err = httpclient.Post(n.opts.NotificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
 		if err != nil {
 			n.logf("ERROR: failed to POST notification - %s", err)
 		}
