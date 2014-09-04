@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bitly/nsq/internal/http_api"
@@ -16,6 +17,7 @@ import (
 )
 
 type NSQAdmin struct {
+	sync.RWMutex
 	opts          *nsqadminOptions
 	httpAddr      *net.TCPAddr
 	httpListener  net.Listener
@@ -84,6 +86,12 @@ func (n *NSQAdmin) logf(f string, args ...interface{}) {
 	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
+func (n *NSQAdmin) RealHTTPAddr() *net.TCPAddr {
+	n.RLock()
+	defer n.RUnlock()
+	return n.httpListener.Addr().(*net.TCPAddr)
+}
+
 func (n *NSQAdmin) handleAdminActions() {
 	for action := range n.notifications {
 		content, err := json.Marshal(action)
@@ -107,7 +115,9 @@ func (n *NSQAdmin) Main() {
 		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
 		os.Exit(1)
 	}
+	n.Lock()
 	n.httpListener = httpListener
+	n.Unlock()
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
 		http_api.Serve(n.httpListener, httpServer, n.opts.Logger, "HTTP")
