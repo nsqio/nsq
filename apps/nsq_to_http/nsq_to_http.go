@@ -73,9 +73,11 @@ type Publisher interface {
 }
 
 type PublishHandler struct {
+	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
+	counter uint64
+
 	Publisher
 	addresses util.StringArray
-	counter   uint64
 	mode      int
 	hostPool  hostpool.HostPool
 
