@@ -41,14 +41,10 @@ func newTestLogger(tbl tbLog) logger {
 }
 
 func mustStartLookupd(opts *nsqlookupdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupd := NewNSQLookupd(opts)
-	nsqlookupd.tcpAddr = tcpAddr
-	nsqlookupd.httpAddr = httpAddr
 	nsqlookupd.Main()
-
 	return nsqlookupd.tcpListener.Addr().(*net.TCPAddr),
 		nsqlookupd.httpListener.Addr().(*net.TCPAddr),
 		nsqlookupd
