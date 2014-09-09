@@ -38,7 +38,7 @@ behavior.
   (ie. *big* endian)
 
  * Valid *topic* and *channel* names are characters `[.a-zA-Z0-9_-]` and `1 < length <= 64` 
-  (max length was 32 in nsqd prior to 0.2.28)
+  (max length was `32` prior to `nsqd` `0.2.28`)
 
 ### Commands
 
@@ -51,10 +51,10 @@ Update client metadata on the server and negotiate features
 
 NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
- * **`short_id`** (deprecated in favor of **`client_id`** as of nsqd 0.2.28+) an identifier
+ * **`short_id`** (deprecated in favor of **`client_id`** as of `nsqd` `v0.2.28+`) an identifier
                   used as a short-form descriptor (ie. short hostname)
 
- * **`long_id`** (deprecated in favor of **`hostname`** as of nsqd 0.2.28+) an identifier
+ * **`long_id`** (deprecated in favor of **`hostname`** as of `nsqd` `v0.2.28+`) an identifier
                  used as a long-form descriptor (ie. fully-qualified hostname)
 
  * **`client_id`** an identifier used to disambiguate this client (ie. something specific
@@ -62,11 +62,11 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
  * **`hostname`** the hostname where the client is deployed
 
- * **`feature_negotiation`** (nsqd 0.2.19+) bool used to indicate that the client supports
+ * **`feature_negotiation`** (`nsqd` `v0.2.19+`) bool used to indicate that the client supports
                              feature negotiation. If the server is capable, it will send back a
                              JSON payload of supported features and metadata.
 
- * **`heartbeat_interval`** (nsqd 0.2.19+) milliseconds between heartbeats.
+ * **`heartbeat_interval`** (`nsqd` `v0.2.19+`) milliseconds between heartbeats.
 
      Valid range: `1000 <= heartbeat_interval <= configured_max` (`-1` disables heartbeats)
 
@@ -74,7 +74,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
      Defaults to `--client-timeout / 2`
 
- * **`output_buffer_size`** (nsqd 0.2.21+) the size in bytes of the buffer nsqd will use when
+ * **`output_buffer_size`** (`nsqd` `v0.2.21+`) the size in bytes of the buffer nsqd will use when
                             writing to this client.
 
      Valid range: `64 <= output_buffer_size <= configured_max` (`-1` disables output buffering)
@@ -83,7 +83,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
      Defaults to `16kb`
 
- * **`output_buffer_timeout`** (nsqd 0.2.21+) the timeout after which any data that nsqd has
+ * **`output_buffer_timeout`** (`nsqd` `v0.2.21+`) the timeout after which any data that nsqd has
                                  buffered will be flushed to this client.
 
      Valid range: `1ms <= output_buffer_timeout <= configured_max` (`-1` disables timeouts)
@@ -99,7 +99,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
      runtime in a priority queue.  See the [commit message][043b79ac] in
      [pull request #236][pull_req_236] for more details.
 
- * **`tls_v1`** (nsqd 0.2.22+) enable TLS for this connection.
+ * **`tls_v1`** (`nsqd` `v0.2.22+`) enable TLS for this connection.
 
      `--tls-cert` and `--tls-key` (nsqd flags) enable TLS and configure the server certificate
 
@@ -109,7 +109,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
      The server will respond `OK` after completing the TLS handshake
 
- * **`snappy`** (nsqd 0.2.23+) enable snappy compression for this connection.
+ * **`snappy`** (`nsqd` `v0.2.23+`) enable snappy compression for this connection.
 
     `--snappy` (nsqd flag) enables support for this server side
 
@@ -118,7 +118,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
     A client cannot enable both `snappy` and `deflate`.
 
- * **`deflate`** (nsqd 0.2.23+) enable deflate compression for this connection.
+ * **`deflate`** (`nsqd` `v0.2.23+`) enable deflate compression for this connection.
 
     `--deflate` (nsqd flag) enables support for this server side
 
@@ -127,7 +127,7 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
     A client cannot enable both `snappy` and `deflate`.
 
- * **`deflate_level`** (nsqd 0.2.23+) configure the deflate compression level for this connection.
+ * **`deflate_level`** (`nsqd` `v0.2.23+`) configure the deflate compression level for this connection.
 
     `--max-deflate-level` (nsqd flag) configures the maximum allowed value
 
@@ -135,18 +135,18 @@ NOTE: this command takes a size prefixed **JSON** body, relevant fields:
 
     Higher values mean better compression but more CPU usage for nsqd.
 
- * **`sample_rate`** (nsqd 0.2.25+) deliver a percentage of all messages received to this connection.
+ * **`sample_rate`** (`nsqd` `v0.2.25+`) deliver a percentage of all messages received to this connection.
 
     Valid range: `0 <= sample_rate <= 99` (`0` disables sampling)
 
     Defaults to `0`
 
- * **`user_agent`** (nsqd 0.2.25+) a string identifying the agent for this client in
+ * **`user_agent`** (`nsqd` `v0.2.25+`) a string identifying the agent for this client in
                     the spirit of HTTP
 
     Default: `<client_library_name>/<version>`
 
- * **`msg_timeout`** (nsqd 0.2.28+) configure the server-side message timeout in milliseconds for messages
+ * **`msg_timeout`** (`nsqd` `v0.2.28+`) configure the server-side message timeout in milliseconds for messages
                      delivered to this client.
 
 Success Response:
@@ -163,7 +163,7 @@ Error Responses:
 
 #### SUB
 
-Subscribe to a specified topic/channel
+Subscribe to a topic/channel
 
     SUB <topic_name> <channel_name>\n
 
@@ -182,7 +182,7 @@ Error Responses:
 
 #### PUB
 
-Publish a message to a specified **topic**:
+Publish a message to a **topic**:
 
     PUB <topic_name>\n
     [ 4-byte size in bytes ][ N-byte binary data ]
@@ -202,9 +202,9 @@ Error Responses:
 
 #### MPUB
 
-Publish multiple messages to a specified **topic**:
+Publish multiple messages to a **topic** (atomically):
 
-NOTE: available in `0.2.16+`
+NOTE: available in `nsqd` `v0.2.16+`
 
     MPUB <topic_name>\n
     [ 4-byte body size ]
@@ -228,10 +228,9 @@ Error Responses:
 
 #### RDY
 
-Update `RDY` state (indicate you are ready to receive messages)
+Update `RDY` state (indicate you are ready to receive `N` messages)
 
-NOTE: as of `0.2.20+` nsqd has `--max-rdy-count` to configure the maximum value it will allow
-clients to send via this command.
+NOTE: as of `nsqd` `v0.2.20+` use `--max-rdy-count` to bound this value
 
     RDY <count>\n
 
@@ -262,6 +261,12 @@ Error Responses:
 
 Re-queue a message (indicate *failure* to process)
 
+The re-queued message is placed at the tail of the queue, equivalent to having just published it,
+but for various implementation specific reasons that behavior should not be explicitly relied upon
+and may change in the future.
+
+Similarly, a message that is in-flight and times out behaves identically to an explicit `REQ`.
+
     REQ <message_id> <timeout>\n
 
     <message_id> - message id as 16-byte hex string
@@ -279,7 +284,7 @@ Error Responses:
 
 Reset the timeout for an in-flight message
 
-NOTE: available in 0.2.17+
+NOTE: available in `nsqd` `v0.2.17+`
 
     TOUCH <message_id>\n
 
@@ -316,7 +321,7 @@ NOTE: there is no response
 
 #### AUTH
 
-NOTE: available in 0.2.29+
+NOTE: available in `nsqd` `v0.2.29+`
 
 If the `IDENTIFY` response indicates `auth_required=true` the client must send `AUTH` before any
 `SUB`, `PUB` or `MPUB` commands. If `auth_required` is not present (or `false`), a client must not

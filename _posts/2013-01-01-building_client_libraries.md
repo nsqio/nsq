@@ -176,7 +176,7 @@ to identify clients. `heartbeat_interval` configures the interval between heartb
 per-client basis.
 
 The `nsqd` will respond `OK` if it does not support feature negotiation (introduced in `nsqd`
-v0.2.20+), otherwise:
+`v0.2.20+`), otherwise:
 
 {% highlight json %}
 {
