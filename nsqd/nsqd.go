@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,9 +49,6 @@ type NSQD struct {
 
 	lookupPeers []*lookupPeer
 
-	tcpAddr       *net.TCPAddr
-	httpAddr      *net.TCPAddr
-	httpsAddr     *net.TCPAddr
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -85,32 +81,13 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		os.Exit(1)
 	}
 
-	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
-	if err != nil {
-		n.logf("FATAL: failed to resolve TCP address (%s) - %s", opts.TCPAddress, err)
-		os.Exit(1)
-	}
-	n.tcpAddr = tcpAddr
-
-	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
-	if err != nil {
-		n.logf("FATAL: failed to resolve HTTP address (%s) - %s", opts.HTTPAddress, err)
-		os.Exit(1)
-	}
-	n.httpAddr = httpAddr
-
-	if opts.HTTPSAddress != "" {
-		httpsAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPSAddress)
+	if opts.StatsdPrefix != "" {
+		_, port, err := net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
-			n.logf("FATAL: failed to resolve HTTPS address (%s) - %s", opts.HTTPSAddress, err)
+			n.logf("ERROR: failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 			os.Exit(1)
 		}
-		n.httpsAddr = httpsAddr
-	}
-
-	if opts.StatsdPrefix != "" {
-		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress,
-			strconv.Itoa(httpAddr.Port)))
+		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
 		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
 		if prefixWithHost[len(prefixWithHost)-1] != '.' {
 			prefixWithHost += "."
@@ -200,9 +177,9 @@ func (n *NSQD) Main() {
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 
-	tcpListener, err := net.Listen("tcp", n.tcpAddr.String())
+	tcpListener, err := net.Listen("tcp", n.opts.TCPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.tcpAddr, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.opts.TCPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -213,10 +190,10 @@ func (n *NSQD) Main() {
 		protocol.TCPServer(n.tcpListener, tcpServer, n.opts.Logger)
 	})
 
-	if n.tlsConfig != nil && n.httpsAddr != nil {
-		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
+	if n.tlsConfig != nil && n.opts.HTTPSAddress != "" {
+		httpsListener, err = tls.Listen("tcp", n.opts.HTTPSAddress, n.tlsConfig)
 		if err != nil {
-			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
+			n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPSAddress, err)
 			os.Exit(1)
 		}
 		n.Lock()
@@ -231,9 +208,9 @@ func (n *NSQD) Main() {
 			http_api.Serve(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.httpAddr.String())
+	httpListener, err = net.Listen("tcp", n.opts.HTTPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
