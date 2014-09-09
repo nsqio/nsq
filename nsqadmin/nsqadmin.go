@@ -19,7 +19,6 @@ import (
 type NSQAdmin struct {
 	sync.RWMutex
 	opts          *nsqadminOptions
-	httpAddr      *net.TCPAddr
 	httpListener  net.Listener
 	waitGroup     util.WaitGroupWrapper
 	notifications chan *AdminAction
@@ -44,13 +43,11 @@ func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
 
 	// verify that the supplied address is valid
 	verifyAddress := func(arg string, address string) *net.TCPAddr {
-
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			n.logf("FATAL: failed to resolve %s address (%s) - %s", arg, address, err)
 			os.Exit(1)
 		}
-
 		return addr
 	}
 
@@ -62,8 +59,6 @@ func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
 	for _, address := range opts.NSQDHTTPAddresses {
 		verifyAddress("--nsqd-http-address", address)
 	}
-
-	n.httpAddr = verifyAddress("HTTP", opts.HTTPAddress)
 
 	if opts.ProxyGraphite {
 		url, err := url.Parse(opts.GraphiteURL)
@@ -110,9 +105,9 @@ func (n *NSQAdmin) handleAdminActions() {
 }
 
 func (n *NSQAdmin) Main() {
-	httpListener, err := net.Listen("tcp", n.httpAddr.String())
+	httpListener, err := net.Listen("tcp", n.opts.HTTPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
