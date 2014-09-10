@@ -72,6 +72,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	// v1 endpoints
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
 	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -145,6 +146,18 @@ func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return allNodesTopicStats, nil
+}
+
+func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	addresses := make([]string, len(producers))
+	for i, p := range producers {
+		addresses[i] = p.HTTPAddress()
+	}
+	// _, channelStats, _ := s.ci.GetNSQDStats(addresses, "")
+	return struct {
+		Nodes []*clusterinfo.Producer `json:"nodes"`
+	}{producers}, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {

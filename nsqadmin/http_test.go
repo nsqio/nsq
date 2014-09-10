@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/nsq/nsqd"
 	"github.com/bitly/nsq/nsqlookupd"
 )
@@ -153,4 +155,36 @@ func TestHTTPTopicGET(t *testing.T) {
 	equal(t, js.Get("backend_depth").MustInt(), 0)
 	equal(t, js.Get("msg_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
+}
+
+func TestHTTPNodesGET(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/nodes", nsqadmin1.RealHTTPAddr())
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	hostname, _ := os.Hostname()
+
+	js, err := simplejson.NewJson(body)
+	equal(t, err, nil)
+	equal(t, len(js.Get("nodes").MustArray()), 1)
+	testNode := js.Get("nodes").GetIndex(0)
+	equal(t, testNode.Get("hostname").MustString(), hostname)
+	equal(t, testNode.Get("broadcast_address").MustString(), "127.0.0.1")
+	equal(t, testNode.Get("tcp_port").MustInt(), nsqds[0].RealTCPAddr().Port)
+	equal(t, testNode.Get("http_port").MustInt(), nsqds[0].RealHTTPAddr().Port)
+	equal(t, testNode.Get("version").MustString(), version.Binary)
+	equal(t, len(testNode.Get("topics").MustArray()), 0)
 }
