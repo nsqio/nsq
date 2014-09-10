@@ -1,6 +1,8 @@
 package nsqadmin
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -225,4 +227,51 @@ func TestHTTPChannelGET(t *testing.T) {
 	equal(t, js.Get("timeout_count").MustInt(), 0)
 	equal(t, js.Get("msg_count").MustInt(), 0)
 	equal(t, len(js.Get("clients").MustArray()), 0)
+}
+
+func TestHTTPCreateTopicPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	topicName := "test_create_topic_post" + strconv.Itoa(int(time.Now().Unix()))
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics", nsqadmin1.RealHTTPAddr())
+	body, _ := json.Marshal(map[string]interface{}{
+		"topic": topicName,
+	})
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}
+
+func TestHTTPCreateTopicChannelPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	topicName := "test_create_topic_channel_post" + strconv.Itoa(int(time.Now().Unix()))
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics", nsqadmin1.RealHTTPAddr())
+	body, _ := json.Marshal(map[string]interface{}{
+		"topic":   topicName,
+		"channel": "ch",
+	})
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
 }
