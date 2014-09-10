@@ -1,7 +1,9 @@
 package nsqadmin
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -9,8 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/protocol"
 	"github.com/blang/semver"
 	"github.com/julienschmidt/httprouter"
 )
@@ -74,6 +78,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
 	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
+	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -170,6 +175,95 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 	return struct {
 		Nodes []*clusterinfo.Producer `json:"nodes"`
 	}{producers}, nil
+}
+
+func (s *httpServer) doCreateTopicChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	topicName := js.Get("topic").MustString()
+	channelName := js.Get("channel").MustString()
+
+	err = s.createTopicChannel(req, topicName, channelName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) createTopicChannel(req *http.Request, topicName string, channelName string) error {
+	if !protocol.IsValidTopicName(topicName) {
+		return errors.New("INVALID_TOPIC")
+	}
+
+	if len(channelName) > 0 && !protocol.IsValidChannelName(channelName) {
+		return errors.New("INVALID_CHANNEL")
+	}
+
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "create_topic"
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
+			uri = "topic/create"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
+			uri, url.QueryEscape(topicName))
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
+			continue
+		}
+
+		if len(channelName) > 0 {
+			uri := "create_channel"
+			if !nsqlookupdVersion.LT(v1EndpointVersion) {
+				uri = "channel/create"
+			}
+			endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
+				addr, uri,
+				url.QueryEscape(topicName),
+				url.QueryEscape(channelName))
+			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
+			_, err := http_api.NegotiateV1("POST", endpoint, nil)
+			if err != nil {
+				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
+				continue
+			}
+		}
+	}
+
+	s.notifyAdminAction("create_topic", topicName, "", "", req)
+
+	if len(channelName) > 0 {
+		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
+		producerAddrs, _ := s.ci.GetLookupdTopicProducers(topicName,
+			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+
+		s.performVersionNegotiatedRequestsToNSQD(
+			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+			producerAddrs,
+			"create_channel",
+			"channel/create",
+			fmt.Sprintf("topic=%s&channel=%s",
+				url.QueryEscape(topicName), url.QueryEscape(channelName)))
+
+		s.notifyAdminAction("create_channel", topicName, channelName, "", req)
+	}
+
+	return nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
