@@ -79,6 +79,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
 	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
+	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -177,6 +178,28 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 	}{producers}, nil
 }
 
+func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	node := ps.ByName("node")
+
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	topicName := js.Get("topic").MustString()
+
+	err = s.tombstoneTopicNode(req, topicName, node)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
 func (s *httpServer) doCreateTopicChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -262,6 +285,61 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 
 		s.notifyAdminAction("create_channel", topicName, channelName, "", req)
 	}
+
+	return nil
+}
+
+func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, node string) error {
+	if !protocol.IsValidTopicName(topicName) {
+		return errors.New("INVALID_TOPIC")
+	}
+
+	if node == "" {
+		return errors.New("INVALID_NODE")
+	}
+
+	// tombstone the topic on all the lookupds
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "tombstone_topic_producer"
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
+			uri = "topic/tombstone"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&node=%s",
+			addr, uri,
+			url.QueryEscape(topicName), url.QueryEscape(node))
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
+		}
+	}
+
+	nsqdVersion, err := s.ci.GetVersion(node)
+	if err != nil {
+		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", node, err)
+	}
+
+	uri := "delete_topic"
+	if !nsqdVersion.LT(v1EndpointVersion) {
+		uri = "topic/delete"
+	}
+
+	// delete the topic on the producer
+	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
+		uri, url.QueryEscape(topicName))
+	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
+	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	if err != nil {
+		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
+	}
+
+	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
 
 	return nil
 }
