@@ -110,8 +110,6 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	}
 	n.tlsConfig = tlsConfig
 
-	n.waitGroup.Wrap(func() { n.idPump() })
-
 	n.logf(version.String("nsqd"))
 	n.logf("ID: %d", n.opts.ID)
 
@@ -175,8 +173,6 @@ func (n *NSQD) Main() {
 
 	ctx := &context{n}
 
-	n.waitGroup.Wrap(func() { n.lookupLoop() })
-
 	tcpListener, err := net.Listen("tcp", n.opts.TCPAddress)
 	if err != nil {
 		n.logf("FATAL: listen (%s) failed - %s", n.opts.TCPAddress, err)
@@ -225,6 +221,8 @@ func (n *NSQD) Main() {
 		http_api.Serve(n.httpListener, httpServer, n.opts.Logger, "HTTP")
 	})
 
+	n.waitGroup.Wrap(func() { n.idPump() })
+	n.waitGroup.Wrap(func() { n.lookupLoop() })
 	if n.opts.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
