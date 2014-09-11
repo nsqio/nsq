@@ -275,3 +275,26 @@ func TestHTTPCreateTopicChannelPOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
+
+func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_tombstone_topic_node_post" + strconv.Itoa(int(time.Now().Unix()))
+	nsqds[0].GetTopic(topicName)
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/nodes/%s", nsqadmin1.RealHTTPAddr(), nsqds[0].RealHTTPAddr())
+	body, _ := json.Marshal(map[string]interface{}{
+		"topic": topicName,
+	})
+	req, _ := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}
