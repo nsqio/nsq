@@ -78,6 +78,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
 	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
+	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
 	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
 	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
 
@@ -198,6 +199,52 @@ func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Reque
 		return nil, http_api.Err{500, err.Error()}
 	}
 	return nil, nil
+}
+
+func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	node := ps.ByName("node")
+
+	found := false
+	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
+		if node == n {
+			found = true
+			break
+		}
+	}
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	for _, p := range producers {
+		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort) {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
+	}
+
+	topicStats, _, _ := s.ci.GetNSQDStats([]string{node}, "")
+
+	var totalClients int64
+	var totalMessages int64
+	for _, ts := range topicStats {
+		for _, cs := range ts.Channels {
+			totalClients += int64(len(cs.Clients))
+		}
+		totalMessages += ts.MessageCount
+	}
+
+	return struct {
+		Node          Node                      `json:"node"`
+		TopicStats    []*clusterinfo.TopicStats `json:"topics"`
+		TotalMessages int64                     `json:"total_messages"`
+		TotalClients  int64                     `json:"total_clients"`
+	}{
+		Node:          Node(node),
+		TopicStats:    topicStats,
+		TotalMessages: totalMessages,
+		TotalClients:  totalClients,
+	}, nil
 }
 
 func (s *httpServer) doCreateTopicChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
