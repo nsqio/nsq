@@ -44,23 +44,20 @@ See [the docs][docker_docs] for deploying NSQ with [Docker][docker].
 #### Pre-requisites
 
  * **[golang](http://golang.org/doc/install)** (version **`1.2+`** is required)
- * **[godep](https://github.com/kr/godep)** (dependency manager)
+ * **[gpm](https://github.com/pote/gpm)** (dependency manager)
 
 #### Compiling
 
-NSQ uses **[godep](https://github.com/kr/godep)** to manage dependencies and produce reliable
-builds.  **Using `godep` is the preferred method when compiling from source.**
+NSQ uses **[gpm](https://github.com/pote/gpm)** to manage dependencies and produce reliable
+builds.  **Using `gpm` is the preferred method when compiling from source.**
 
 {% highlight bash %}
-$ godep get github.com/bitly/nsq/...
+$ gpm install
+$ go get github.com/bitly/nsq/...
 {% endhighlight %}
 
 NSQ remains `go get` compatible but it is not recommended as it is not guaranteed to
 produce reliable builds (pinned dependencies need to be satisfied manually).
-
-{% highlight bash %}
-$ go get github.com/bitly/nsq/...
-{% endhighlight %}
 
 #### Testing
 

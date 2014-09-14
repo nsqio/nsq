@@ -266,15 +266,10 @@ There are two main schools of thought:
 **Note:** This really only applies to *binary* packages as it doesn't make sense for an importable
 package to make intermediate decisions as to which version of a dependency to use.
 
-NSQ uses **[godep][godep]** to provide support for (2) above.
+NSQ uses **[gpm][gpm]** to provide support for (2) above.
 
-It works by recording your dependencies in a [`Godeps`][godeps] file, which it later uses to
-construct a `GOPATH` environment. To build, it wraps and executes the standard Go toolchain
-inside that environment. The `Godeps` file is just JSON and can be edited by hand.
-
-It even supports `go get` like semantics. For example, to produce a reliable build of NSQ:
-
-    $ godep get github.com/bitly/nsq/...
+It works by recording your dependencies in a [`Godeps`][godeps] file, which we later use to
+construct a `GOPATH` environment.
 
 ## Testing
 
@@ -441,7 +436,7 @@ occurs rather than trying to reduce chattiness at the expense of usefulness.
 [nsqadmin]: http://nsq.io/components/nsqadmin.html
 [design_doc]: http://nsq.io/overview/design.html
 [protocol_spec]: http://nsq.io/clients/tcp_protocol_spec.html
-[godep]: https://github.com/kr/godep
+[gpm]: https://github.com/pote/gpm
 [hol_blocking]: http://en.wikipedia.org/wiki/Head-of-line_blocking
 [encoding_binary]: http://golang.org/pkg/encoding/binary/
 [byte_order]: http://golang.org/pkg/encoding/binary/#ByteOrder
