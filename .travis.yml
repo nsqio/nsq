@@ -6,9 +6,9 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 script:
-  - wget "http://bitly-downloads.s3.amazonaws.com/nsq/godep.linux-$(go env GOARCH).tar.gz"
-  - tar zxvf "godep.linux-$(go env GOARCH).tar.gz"
-  - export GOPATH="$(./godep path):$GOPATH"
+  - curl -s https://raw.githubusercontent.com/pote/gpm/v1.2.3/bin/gpm > gpm
+  - chmod +x gpm
+  - ./gpm install
   - ./test.sh
 notifications:
   email: false
