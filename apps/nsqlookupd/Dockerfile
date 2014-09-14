@@ -1,6 +1,6 @@
 FROM nsqio/nsq:latest
 
-RUN cd /gopath/src/github.com/bitly/nsq/apps/nsqlookupd && godep go build .
+RUN cd /gopath/src/github.com/bitly/nsq/apps/nsqlookupd && go build .
 EXPOSE 4160
 EXPOSE 4161
 

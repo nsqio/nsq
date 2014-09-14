@@ -1,6 +1,6 @@
 FROM nsqio/nsq:latest
 
-RUN cd /gopath/src/github.com/bitly/nsq/apps/nsqd && godep go build .
+RUN cd /gopath/src/github.com/bitly/nsq/apps/nsqd && go build .
 VOLUME ["/data"]
 EXPOSE 4150
 EXPOSE 4151
