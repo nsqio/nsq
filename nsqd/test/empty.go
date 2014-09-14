@@ -1,5 +1,3 @@
-// +build ignore
-
 package test
 
 // This file exists to allow this directory to be built with go build.
