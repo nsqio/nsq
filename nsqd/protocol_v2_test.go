@@ -1270,6 +1270,9 @@ func TestClientMsgTimeout(t *testing.T) {
 	equal(t, msgOut.ID, msg.ID)
 	equal(t, msgOut.Body, msg.Body)
 
+	_, err = nsq.Ready(0).WriteTo(conn)
+	equal(t, err, nil)
+
 	time.Sleep(1100 * time.Millisecond)
 
 	_, err = nsq.Finish(nsq.MessageID(msgOut.ID)).WriteTo(conn)
