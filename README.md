@@ -7,6 +7,8 @@
  * **Docs**: [http://nsq.io][docs]
  * **Twitter**: [@nsqio][nsqio_twitter]
 
+[![Build Status](https://secure.travis-ci.org/bitly/nsq.svg?branch=master)](http://travis-ci.org/bitly/nsq)
+
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.
 
@@ -25,8 +27,6 @@ The latest stable release is **[0.2.31][latest_tag]** ([ChangeLog][changelog]). 
 releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
-
-[![Build Status](https://secure.travis-ci.org/bitly/nsq.svg?branch=master)](http://travis-ci.org/bitly/nsq)
 
 ## In Production
 
