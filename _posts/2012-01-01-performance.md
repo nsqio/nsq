@@ -5,6 +5,66 @@ category: overview
 permalink: /overview/performance.html
 ---
 
+### Distributed Performance
+
+The main repo contains a script (`bench/bench.py`) that automates a distributed benchmark on EC2.
+It bootstraps `N` nodes, some running `nsqd` and some running load-generating utilities (`PUB` and
+`SUB`), and then parses their output to provide an aggregate total.
+
+#### Setup
+
+The following runs reflect the default parameters of 6 `c3.2xlarge`, the cheapest instance type
+that supports 1gbit links. 3 nodes run an `nsqd` instance and the rest run instances of
+`bench_reader` (`SUB`) and `bench_writer` (`PUB`), to generate load depending on the benchmark mode.
+
+    $ ./bench/bench.py --access-key=... --secret-key=... --ssh-key-name=...
+    [I 140917 10:58:10 bench:102] launching 6 instances
+    [I 140917 10:58:12 bench:111] waiting for instances to launch...
+    [I 140917 10:58:12 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
+    [I 140917 10:58:18 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
+    [I 140917 10:58:23 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
+    [I 140917 10:58:29 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
+    [I 140917 10:58:37 bench:130] (1) bootstrapping ec2-54-160-145-64.compute-1.amazonaws.com (i-0a018ce1)
+    [I 140917 10:59:37 bench:130] (2) bootstrapping ec2-54-90-195-149.compute-1.amazonaws.com (i-0f018ce4)
+    [I 140917 11:00:00 bench:130] (3) bootstrapping ec2-23-22-236-55.compute-1.amazonaws.com (i-0e018ce5)
+    [I 140917 11:00:41 bench:130] (4) bootstrapping ec2-23-23-40-113.compute-1.amazonaws.com (i-0d018ce6)
+    [I 140917 11:01:10 bench:130] (5) bootstrapping ec2-54-226-180-44.compute-1.amazonaws.com (i-0c018ce7)
+    [I 140917 11:01:43 bench:130] (6) bootstrapping ec2-54-90-83-223.compute-1.amazonaws.com (i-10018cfb)
+
+#### Producer Throughput
+
+This benchmark measures *just* producer throughput, with no additional load.  The message
+size is 100 bytes and messages are distributed over 3 topics.
+
+    $ ./bench/bench.py --access-key=... --secret-key=... --ssh-key-name=... --mode=pub --msg-size=100 run
+    [I 140917 12:39:37 bench:140] launching nsqd on 3 host(s)
+    [I 140917 12:39:41 bench:163] launching 9 producer(s) on 3 host(s)
+    ...
+    [I 140917 12:40:20 bench:248] [bench_writer] 10.002133s - 197.463000mb/s - 2070549.631000ops/s - 4.830666us/op
+
+An ingress of **~2.07mm** msgs/sec, consuming an aggregate **197mb/sec** of bandwidth.
+
+#### Producer and Consumer Throughput
+
+This benchmark more accurately reflects real-world conditions by servicing both producers *and*
+consumers. Again, the message size is 100 bytes and messages are distributed over 3 topics, each
+with a *single* channel (24 clients per channel).
+
+    $ ./bench/bench.py --access-key=... --secret-key=... --ssh-key-name=... --msg-size=100 run
+    [I 140917 12:41:11 bench:140] launching nsqd on 3 host(s)
+    [I 140917 12:41:15 bench:163] launching 9 producer(s) on 3 host(s)
+    [I 140917 12:41:22 bench:186] launching 9 consumer(s) on 3 host(s)
+    ...
+    [I 140917 12:41:55 bench:248] [bench_reader] 10.252244s - 76.946000mb/s - 806838.610000ops/s - 12.706685us/op
+    [I 140917 12:41:55 bench:248] [bench_writer] 10.030503s - 80.315000mb/s - 842149.615000ops/s - 11.910594us/op
+
+At an ingress of **~842k** and egress of **~806k** msgs/sec, consuming an aggregate **156mb/sec** of
+bandwidth, we're now maxing out the CPU capacity on the `nsqd` nodes. By introducing consumers,
+`nsqd` needs to maintain per-channel in-flight accounting so the load is naturally higher.
+
+The consumer numbers are slightly lower than producers because consumers send twice the number of
+commands than producers (a `FIN` command must be sent for each message), impacting throughput.
+
 ### Single Node Performance
 
 DISCLAIMER: Please keep in mind that **NSQ** is designed to be used in a distributed fashion. Single
