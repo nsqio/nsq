@@ -20,10 +20,7 @@ that supports 1gbit links. 3 nodes run an `nsqd` instance and the rest run insta
     $ ./bench/bench.py --access-key=... --secret-key=... --ssh-key-name=...
     [I 140917 10:58:10 bench:102] launching 6 instances
     [I 140917 10:58:12 bench:111] waiting for instances to launch...
-    [I 140917 10:58:12 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
-    [I 140917 10:58:18 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
-    [I 140917 10:58:23 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
-    [I 140917 10:58:29 bench:115] ... sleeping for 5s (waiting for i-0a018ce1, i-0f018ce4, i-0e018ce5, i-0d018ce6, i-0c018ce7, i-10018cfb)
+    ...
     [I 140917 10:58:37 bench:130] (1) bootstrapping ec2-54-160-145-64.compute-1.amazonaws.com (i-0a018ce1)
     [I 140917 10:59:37 bench:130] (2) bootstrapping ec2-54-90-195-149.compute-1.amazonaws.com (i-0f018ce4)
     [I 140917 11:00:00 bench:130] (3) bootstrapping ec2-23-22-236-55.compute-1.amazonaws.com (i-0e018ce5)
@@ -40,7 +37,7 @@ size is 100 bytes and messages are distributed over 3 topics.
     [I 140917 12:39:37 bench:140] launching nsqd on 3 host(s)
     [I 140917 12:39:41 bench:163] launching 9 producer(s) on 3 host(s)
     ...
-    [I 140917 12:40:20 bench:248] [bench_writer] 10.002133s - 197.463000mb/s - 2070549.631000ops/s - 4.830666us/op
+    [I 140917 12:40:20 bench:248] [bench_writer] 10.002s - 197.463mb/s - 2070549.631ops/s - 4.830us/op
 
 An ingress of **`~2.07mm`** msgs/sec, consuming an aggregate **`197mb/s`** of bandwidth.
 
@@ -55,8 +52,8 @@ with a *single* channel (24 clients per channel).
     [I 140917 12:41:15 bench:163] launching 9 producer(s) on 3 host(s)
     [I 140917 12:41:22 bench:186] launching 9 consumer(s) on 3 host(s)
     ...
-    [I 140917 12:41:55 bench:248] [bench_reader] 10.252244s - 76.946000mb/s - 806838.610000ops/s - 12.706685us/op
-    [I 140917 12:41:55 bench:248] [bench_writer] 10.030503s - 80.315000mb/s - 842149.615000ops/s - 11.910594us/op
+    [I 140917 12:41:55 bench:248] [bench_reader] 10.252s - 76.946mb/s - 806838.610ops/s - 12.706us/op
+    [I 140917 12:41:55 bench:248] [bench_writer] 10.030s - 80.315mb/s - 842149.615ops/s - 11.910us/op
 
 At an ingress of **`~842k`** and egress of **`~806k`** msgs/s, consuming an aggregate **`156mb/s`**
 of bandwidth, we're now maxing out the CPU capacity on the `nsqd` nodes. By introducing consumers,
@@ -68,12 +65,12 @@ commands as producers (a `FIN` command must be sent for each message), impacting
 Adding another 2 nodes (one `nsqd` and one load-generating) attains over **`1mm`** msgs/s:
 
     $ ./bench/bench.py --access-key=... --secret-key=... --ssh-key-name=... --msg-size=100 run
-    [I 140916 15:41:11 bench:140] launching nsqd on 4 host(s)
-    [I 140916 15:41:15 bench:163] launching 16 producer(s) on 4 host(s)
-    [I 140916 15:41:22 bench:186] launching 16 consumer(s) on 4 host(s)
+    [I 140917 13:38:28 bench:140] launching nsqd on 4 host(s)
+    [I 140917 13:38:32 bench:163] launching 16 producer(s) on 4 host(s)
+    [I 140917 13:38:43 bench:186] launching 16 consumer(s) on 4 host(s)
     ...
-    [I 140916 15:41:29 bench:239] [bench_reader] 10.514560s - 206.496000mb/s - 1082649.021000ops/s - 9.711882us/op
-    [I 140916 15:41:29 bench:239] [bench_writer] 10.025725s - 214.287000mb/s - 1123485.953000ops/s - 8.923766us/op
+    [I 140917 13:39:12 bench:248] [bench_reader] 10.561s - 100.956mb/s - 1058624.012ops/s - 9.976us/op
+    [I 140917 13:39:12 bench:248] [bench_writer] 10.023s - 105.898mb/s - 1110408.953ops/s - 9.026us/op
 
 ### Single Node Performance
 
