@@ -26,7 +26,7 @@ releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
 
-[![Build Status](https://secure.travis-ci.org/bitly/nsq.png?branch=master)](http://travis-ci.org/bitly/nsq)
+[![Build Status](https://secure.travis-ci.org/bitly/nsq.svg?branch=master)](http://travis-ci.org/bitly/nsq)
 
 ## In Production
 
