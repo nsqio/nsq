@@ -4,26 +4,33 @@ import (
 	"bufio"
 	"flag"
 	"log"
-	"math"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bitly/go-nsq"
 )
 
 var (
-	num        = flag.Int("num", 1000000, "num messages")
+	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
 	size       = flag.Int("size", 200, "size of messages")
 	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
 	channel    = flag.String("channel", "ch", "channel to receive messages on")
+	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
+	rdy        = flag.Int("rdy", 2500, "RDY count to use")
 )
+
+var totalMsgCount int64
 
 func main() {
 	flag.Parse()
 	var wg sync.WaitGroup
+
+	log.SetPrefix("[bench_reader] ")
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)
@@ -31,10 +38,20 @@ func main() {
 	for j := 0; j < workers; j++ {
 		wg.Add(1)
 		go func(id int) {
-			subWorker(*num, workers, *tcpAddress, *topic, *channel, rdyChan, goChan, id)
+			subWorker(*runfor, workers, *tcpAddress, *topic, *channel, rdyChan, goChan, id)
 			wg.Done()
 		}(j)
 		<-rdyChan
+	}
+
+	if *deadline != "" {
+		t, err := time.Parse("2006-01-02 15:04:05", *deadline)
+		if err != nil {
+			log.Fatal(err)
+		}
+		d := t.Sub(time.Now())
+		log.Printf("sleeping until %s (%s)", t, d)
+		time.Sleep(d)
 	}
 
 	start := time.Now()
@@ -42,14 +59,15 @@ func main() {
 	wg.Wait()
 	end := time.Now()
 	duration := end.Sub(start)
+	tmc := atomic.LoadInt64(&totalMsgCount)
 	log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op",
 		duration,
-		float64(*num*(*size))/duration.Seconds()/1024/1024,
-		float64(*num)/duration.Seconds(),
-		float64(duration/time.Microsecond)/float64(*num))
+		float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
+		float64(tmc)/duration.Seconds(),
+		float64(duration/time.Microsecond)/float64(tmc))
 }
 
-func subWorker(n int, workers int, tcpAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
+func subWorker(td time.Duration, workers int, tcpAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
 	conn, err := net.DialTimeout("tcp", tcpAddr, time.Second)
 	if err != nil {
 		panic(err.Error())
@@ -62,19 +80,23 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 	cmd, _ := nsq.Identify(ci)
 	cmd.WriteTo(rw)
 	nsq.Subscribe(topic, channel).WriteTo(rw)
-	rdyCount := int(math.Min(math.Max(float64(n/workers), 1), 2500))
 	rdyChan <- 1
 	<-goChan
-	nsq.Ready(rdyCount).WriteTo(rw)
+	nsq.Ready(*rdy).WriteTo(rw)
 	rw.Flush()
 	nsq.ReadResponse(rw)
 	nsq.ReadResponse(rw)
-	num := n / workers
-	numRdy := num/rdyCount - 1
-	rdy := rdyCount
-	for i := 0; i < num; i += 1 {
+	var msgCount int64
+	go func() {
+		time.Sleep(td)
+		conn.Close()
+	}()
+	for {
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				break
+			}
 			panic(err.Error())
 		}
 		frameType, data, err := nsq.UnpackResponse(resp)
@@ -91,12 +113,10 @@ func subWorker(n int, workers int, tcpAddr string, topic string, channel string,
 			panic(err.Error())
 		}
 		nsq.Finish(msg.ID).WriteTo(rw)
-		rdy--
-		if rdy == 0 && numRdy > 0 {
-			nsq.Ready(rdyCount).WriteTo(rw)
-			rdy = rdyCount
-			numRdy--
+		msgCount++
+		if float64(msgCount%int64(*rdy)) > float64(*rdy)*0.75 {
 			rw.Flush()
 		}
 	}
+	atomic.AddInt64(&totalMsgCount, msgCount)
 }
