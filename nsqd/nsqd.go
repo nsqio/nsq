@@ -303,7 +303,7 @@ func (n *NSQD) PersistMetadata() error {
 		topic.Lock()
 		for _, channel := range topic.channelMap {
 			channel.Lock()
-			if !channel.ephemeralChannel {
+			if !channel.ephemeral {
 				channelData := make(map[string]interface{})
 				channelData["name"] = channel.name
 				channelData["paused"] = channel.IsPaused()
@@ -384,7 +384,10 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	} else {
-		t = NewTopic(topicName, &context{n})
+		deleteCallback := func(t *Topic) {
+			n.DeleteExistingTopic(t.name)
+		}
+		t = NewTopic(topicName, &context{n}, deleteCallback)
 		n.topicMap[topicName] = t
 
 		n.logf("TOPIC(%s): created", t.name)

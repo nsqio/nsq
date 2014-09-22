@@ -110,7 +110,7 @@ func TestChannelTopicNames(t *testing.T) {
 	equal(t, util.IsValidChannelName("test#ephemeral"), true)
 	equal(t, util.IsValidTopicName("test"), true)
 	equal(t, util.IsValidTopicName("test-with_period."), true)
-	equal(t, util.IsValidTopicName("test#ephemeral"), false)
+	equal(t, util.IsValidTopicName("test#ephemeral"), true)
 	equal(t, util.IsValidTopicName("test:ephemeral"), false)
 }
 

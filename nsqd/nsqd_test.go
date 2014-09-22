@@ -180,15 +180,14 @@ func TestStartup(t *testing.T) {
 	<-doneExitChan
 }
 
-func TestEphemeralChannel(t *testing.T) {
-	// a normal channel sticks around after clients disconnect; an ephemeral channel is
-	// lazily removed after the last client disconnects
+func TestEphemeralTopicsAndChannels(t *testing.T) {
+	// ephemeral topics/channels are lazily removed after the last channel/client is removed
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	_, _, nsqd := mustStartNSQD(opts)
 
-	topicName := "ephemeral_test" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "ephemeral_topic" + strconv.Itoa(int(time.Now().Unix())) + "#ephemeral"
 	doneExitChan := make(chan int)
 
 	exitChan := make(chan int)
@@ -209,7 +208,6 @@ func TestEphemeralChannel(t *testing.T) {
 	msg = <-ephemeralChannel.clientMsgChan
 	equal(t, msg.Body, body)
 
-	t.Logf("pulling from channel")
 	ephemeralChannel.RemoveClient(client.ID)
 
 	time.Sleep(50 * time.Millisecond)
@@ -218,6 +216,11 @@ func TestEphemeralChannel(t *testing.T) {
 	numChannels := len(topic.channelMap)
 	topic.Unlock()
 	equal(t, numChannels, 0)
+
+	nsqd.Lock()
+	numTopics := len(nsqd.topicMap)
+	nsqd.Unlock()
+	equal(t, numTopics, 0)
 
 	exitChan <- 1
 	<-doneExitChan
