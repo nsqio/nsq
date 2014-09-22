@@ -3,6 +3,8 @@ package nsqd
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"time"
@@ -63,6 +65,10 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
+
+	if len(b) < 26 {
+		return nil, errors.New(fmt.Sprintf("invalid message buffer size (%d)", len(b)))
+	}
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
 	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
