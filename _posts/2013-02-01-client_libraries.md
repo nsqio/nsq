@@ -63,6 +63,19 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td><strong>official</strong></td>
   </tr>
   <tr class="success">
+    <td><a href="https://github.com/dudleycarr/nsqjs">nsqjs</a></td>
+    <td>JavaScript (CoffeeScript)</td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><i class="fa fa-check"></i></td>
+    <td><strong>official</strong></td>
+  </tr>
+  <tr class="success">
       <td><a href="https://github.com/dlecocq/nsq-py">nsq-py</a></td>
       <td>Python</td>
       <td><i class="fa fa-check"></i></td>
@@ -113,19 +126,6 @@ production? Tell us about it on the [mailing list][mailing_list] or Twitter [@im
     <td></td>
     <td></td>
     <td></td>
-  </tr>
-  <tr class="success">
-    <td><a href="https://github.com/dudleycarr/nsqjs">nsqjs</a></td>
-    <td>JavaScript (CoffeeScript)</td>
-    <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i></td>
-    <td><i class="fa fa-check"></i></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td><strong>official</strong></td>
   </tr>
   <tr class="success">
     <td><a href="https://github.com/segmentio/nsq.js">nsq.js</a></td>
