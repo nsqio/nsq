@@ -85,7 +85,7 @@ goroutine for a topic or channel).
 Since the memory queue is just a go-chan, it's trivial to route messages to memory first, if
 possible, then fallback to disk:
 
-```go
+{% highlight go %}
 for msg := range c.incomingMsgChan {
 	select {
 	case c.memoryMsgChan <- msg:
@@ -96,7 +96,7 @@ for msg := range c.incomingMsgChan {
 		}
 	}
 }
-```
+{% endhighlight %}
 
 Taking advantage of Go's `select` statement allows this functionality to be expressed in just a few
 lines of code: the `default` case above only executes if `memoryMsgChan` is full.
@@ -244,8 +244,8 @@ This produces continuous output like:
     [time_on_site_ticks] depth: 0     be-depth: 0     msgs: 35717814 e2e%: 0.0ns, 0.0ns, 0.0ns
         [tail821042#ephemeral     ] depth: 0     be-depth: 0     inflt: 0    def: 0    re-q: 0     timeout: 0     msgs: 33909699 e2e%: 0.0ns, 0.0ns, 0.0ns
 
-Finally, Go 1.2 brought [measurable HTTP performance gains][go12_http_perf]. It's always nice when
-recompiling against the latest version of Go provides a free performance boost!
+Finally, each new Go release typically brings [measurable performance gains][autobench]. It's
+always nice when recompiling against the latest version of Go provides a free boost!
 
 ## Dependencies
 
@@ -350,7 +350,7 @@ perform accounting of how many goroutines are live (and provide a means to wait 
 
 To reduce the typical boilerplate, **nsqd** uses this wrapper:
 
-```go
+{% highlight go %}
 type WaitGroupWrapper struct {
 	sync.WaitGroup
 }
@@ -368,7 +368,7 @@ wg := WaitGroupWrapper{}
 wg.Wrap(func() { n.idPump() })
 ...
 wg.Wait()
-```
+{% endhighlight %}
 
 #### Exit Signaling
 
@@ -376,7 +376,7 @@ The easiest way to trigger an event in multiple child goroutines is to provide a
 that you close when ready. All pending receives on that go-chan will activate, rather than having
 to send a separate signal to each goroutine.
 
-```go
+{% highlight go %}
 func work() {
     exitChan := make(chan int)
     go task1(exitChan)
@@ -393,7 +393,7 @@ func task2(exitChan chan int) {
     <-exitChan
     log.Printf("task2 exiting")
 }
-```
+{% endhighlight %}
 
 #### Synchronizing Exit
 
@@ -459,7 +459,7 @@ occurs rather than trying to reduce chattiness at the expense of usefulness.
 [issue_5376]: https://code.google.com/p/go/issues/detail?id=5376
 [godeps]: https://github.com/bitly/nsq/blob/master/Godeps
 [runtime_time]: http://golang.org/src/pkg/runtime/time.goc?s=1684:1787#L83
-[go12_http_perf]: https://github.com/davecheney/autobench/blob/master/linux-amd64-x220-go1.1.2-vs-go1.2.txt#L156-L181
+[autobench]: https://github.com/davecheney/autobench
 [escape_an]: http://en.wikipedia.org/wiki/Escape_analysis
 [base10_convert]: https://github.com/bitly/nsq/blob/master/util/byte_base10.go#L7-L27
 [topology_patterns]: http://nsq.io/deployment/topology_patterns.html
