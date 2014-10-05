@@ -30,24 +30,26 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 ## In Production
 
-<a href="http://bitly.com"><img src="http://nsq.io/static/img/bitly_logo.png" width="84"/></a>&nbsp;&nbsp;
-<a href="http://life360.com"><img src="http://nsq.io/static/img/life360_logo.png" width="100"/></a>&nbsp;&nbsp;
-<a href="http://hailocab.com"><img src="http://nsq.io/static/img/hailo_logo.png" width="62"/></a>&nbsp;&nbsp;
-<a href="http://simplereach.com"><img src="http://nsq.io/static/img/simplereach_logo.png" width="136"/></a>&nbsp;&nbsp;
-<a href="http://moz.com"><img src="http://nsq.io/static/img/moz_logo.png" width="108"/></a>&nbsp;&nbsp;
-<a href="http://path.com"><img src="http://nsq.io/static/img/path_logo.png" width="84"/></a><br/>
-<a href="http://segment.io"><img src="http://nsq.io/static/img/segmentio_logo.png" width="50"/></a>&nbsp;&nbsp;
-<a href="http://eventful.com"><img src="http://nsq.io/static/img/eventful_logo.png" width="84"/></a>&nbsp;&nbsp;
-<a href="http://reonomy.com"><img src="http://nsq.io/static/img/reonomy_logo.png" width="84"/></a>&nbsp;&nbsp;
-<a href="https://project-fifo.net"><img src="http://nsq.io/static/img/project_fifo.png" width="97"/></a>&nbsp;&nbsp;
-<a href="http://trendrr.com"><img src="http://nsq.io/static/img/trendrr_logo.png" width="97"/></a>&nbsp;&nbsp;
-<a href="http://energyhub.com"><img src="http://nsq.io/static/img/energyhub_logo.png" width="99"/></a><br/>
-<a href="http://trypatterns.com"><img src="http://nsq.io/static/img/patterns.png" width="80"/></a>&nbsp;&nbsp;
-<a href="http://dramafever.com"><img src="http://nsq.io/static/img/dramafever.png" width="80"/></a>&nbsp;&nbsp;
-<a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="80"/></a>&nbsp;&nbsp;
-<a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="80"/></a>&nbsp;&nbsp;
-<a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="40"/></a>&nbsp;&nbsp;
-<a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="80"/></a>
+<a href="http://bitly.com"><img src="http://nsq.io/static/img/bitly_logo.png" width="84" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://life360.com"><img src="http://nsq.io/static/img/life360_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://hailocab.com"><img src="http://nsq.io/static/img/hailo_logo.png" width="62" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://simplereach.com"><img src="http://nsq.io/static/img/simplereach_logo.png" width="136" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://moz.com"><img src="http://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://path.com"><img src="http://nsq.io/static/img/path_logo.png" width="84" align="middle"/></a><br/>
+
+<a href="http://segment.io"><img src="http://nsq.io/static/img/segmentio_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://eventful.com"><img src="http://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://energyhub.com"><img src="http://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://project-fifo.net"><img src="http://nsq.io/static/img/project_fifo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://trendrr.com"><img src="http://nsq.io/static/img/trendrr_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://reonomy.com"><img src="http://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a><br/>
+
+<a href="http://dramafever.com"><img src="http://nsq.io/static/img/dramafever.png" width="120" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="50" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a>
 
 ## Documentation
 
