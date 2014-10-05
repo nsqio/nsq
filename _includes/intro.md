@@ -16,26 +16,26 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 ### In Production
 
 <center><table class="production"><tr>
-<td align="center"><a href="http://bitly.com"><img src="{{ site.baseurl }}/static/img/bitly_logo.png" width="67"/></a></td>
-<td align="center"><a href="http://life360.com"><img src="{{ site.baseurl }}/static/img/life360_logo.png" width="80"/></a></td>
-<td align="center"><a href="http://hailocab.com"><img src="{{ site.baseurl }}/static/img/hailo_logo.png" width="50"/></a></td>
-<td align="center"><a href="http://simplereach.com"><img src="{{ site.baseurl }}/static/img/simplereach_logo.png" width="108"/></a></td>
+<td align="center"><a href="http://bitly.com"><img src="{{ site.baseurl }}/static/img/bitly_logo.png" width="84"/></a></td>
+<td align="center"><a href="http://life360.com"><img src="{{ site.baseurl }}/static/img/life360_logo.png" width="100"/></a></td>
+<td align="center"><a href="http://hailocab.com"><img src="{{ site.baseurl }}/static/img/hailo_logo.png" width="62"/></a></td>
+<td align="center"><a href="http://simplereach.com"><img src="{{ site.baseurl }}/static/img/simplereach_logo.png" width="136"/></a></td>
 <td align="center"><a href="http://moz.com"><img src="{{ site.baseurl }}/static/img/moz_logo.png" width="108"/></a></td>
-<td align="center"><a href="http://path.com"><img src="{{ site.baseurl }}/static/img/path_logo.png" width="67"/></a></td>
+<td align="center"><a href="http://path.com"><img src="{{ site.baseurl }}/static/img/path_logo.png" width="84"/></a></td>
 </tr><tr>
-<td align="center"><a href="http://segment.io"><img src="{{ site.baseurl }}/static/img/segmentio_logo.png" width="50"/></a></td>
-<td align="center"><a href="http://eventful.com"><img src="{{ site.baseurl }}/static/img/eventful_logo.png" width="67"/></a></td>
-<td align="center"><a href="http://reonomy.com"><img src="{{ site.baseurl }}/static/img/reonomy_logo.png" width="67"/></a></td>
-<td align="center"><a href="https://project-fifo.net"><img src="{{ site.baseurl }}/static/img/project_fifo.png" width="77"/></a></td>
-<td align="center"><a href="http://trendrr.com"><img src="{{ site.baseurl }}/static/img/trendrr_logo.png" width="77"/></a></td>
-<td align="center"><a href="http://energyhub.com"><img src="{{ site.baseurl }}/static/img/energyhub_logo.png" width="80"/></a></td>
+<td align="center"><a href="http://segment.io"><img src="{{ site.baseurl }}/static/img/segmentio_logo.png" width="70"/></a></td>
+<td align="center"><a href="http://eventful.com"><img src="{{ site.baseurl }}/static/img/eventful_logo.png" width="95"/></a></td>
+<td align="center"><a href="http://energyhub.com"><img src="{{ site.baseurl }}/static/img/energyhub_logo.png" width="99"/></a></td>
+<td align="center"><a href="https://project-fifo.net"><img src="{{ site.baseurl }}/static/img/project_fifo.png" width="97"/></a></td>
+<td align="center"><a href="http://trendrr.com"><img src="{{ site.baseurl }}/static/img/trendrr_logo.png" width="97"/></a></td>
+<td align="center"><a href="http://reonomy.com"><img src="{{ site.baseurl }}/static/img/reonomy_logo.png" width="100"/></a></td>
 </tr><tr>
-<td align="center"><a href="http://trypatterns.com"><img src="{{ site.baseurl }}/static/img/patterns.png" width="80"/></a></td>
-<td align="center"><a href="http://dramafever.com"><img src="{{ site.baseurl }}/static/img/dramafever.png" width="80"/></a></td>
-<td align="center"><a href="http://lytics.io"><img src="{{ site.baseurl }}/static/img/lytics.png" width="80"/></a></td>
-<td align="center"><a href="http://mediaforge.com"><img src="{{ site.baseurl }}/static/img/rakuten.png" width="80"/></a></td>
-<td align="center"><a href="http://hw-ops.com"><img src="{{ site.baseurl }}/static/img/heavy_water.png" width="40"/></a></td>
-<td align="center"><a href="http://socialradar.com"><img src="{{ site.baseurl }}/static/img/socialradar_logo.png" width="80"/></a></td>
+<td align="center"><a href="http://dramafever.com"><img src="{{ site.baseurl }}/static/img/dramafever.png" width="120"/></a></td>
+<td align="center"><a href="http://hw-ops.com"><img src="{{ site.baseurl }}/static/img/heavy_water.png" width="50"/></a></td>
+<td align="center"><a href="http://lytics.io"><img src="{{ site.baseurl }}/static/img/lytics.png" width="100"/></a></td>
+<td align="center"><a href="http://mediaforge.com"><img src="{{ site.baseurl }}/static/img/rakuten.png" width="100"/></a></td>
+<td align="center"><a href="http://socialradar.com"><img src="{{ site.baseurl }}/static/img/socialradar_logo.png" width="100"/></a></td>
+<td align="center"><a href="http://wistia.com"><img src="{{ site.baseurl }}/static/img/wistia_logo.png" width="140"/></a></td>
 </tr></table></center>
 
 ### Getting Help
