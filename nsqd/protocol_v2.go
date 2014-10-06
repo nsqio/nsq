@@ -338,6 +338,11 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("IDENTIFY body too big %d > %d", bodyLen, p.ctx.nsqd.opts.MaxBodySize))
 	}
 
+	if bodyLen <= 0 {
+		return nil, util.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("IDENTIFY invalid body size %d", bodyLen))
+	}
+
 	body := make([]byte, bodyLen)
 	_, err = io.ReadFull(client.Reader, body)
 	if err != nil {
@@ -473,6 +478,11 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 	if int64(bodyLen) > p.ctx.nsqd.opts.MaxBodySize {
 		return nil, util.NewFatalClientErr(nil, "E_BAD_BODY",
 			fmt.Sprintf("AUTH body too big %d > %d", bodyLen, p.ctx.nsqd.opts.MaxBodySize))
+	}
+
+	if bodyLen <= 0 {
+		return nil, util.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("AUTH invalid body size %d", bodyLen))
 	}
 
 	body := make([]byte, bodyLen)
