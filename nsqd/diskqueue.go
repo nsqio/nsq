@@ -557,7 +557,6 @@ func (d *diskQueue) ioLoop() {
 	syncTicker := time.NewTicker(d.syncTimeout)
 
 	for {
-		count++
 		// dont sync all the time :)
 		if count == d.syncEvery {
 			count = 0
@@ -590,13 +589,19 @@ func (d *diskQueue) ioLoop() {
 		// the Go channel spec dictates that nil channel operations (read or write)
 		// in a select are skipped, we set r to d.readChan only when there is data to read
 		case r <- dataRead:
+			// moveForward sets needSync flag if a file is removed
 			d.moveForward()
 		case <-d.emptyChan:
 			d.emptyResponseChan <- d.deleteAllFiles()
+			count = 0
 		case dataWrite := <-d.writeChan:
+			count++
 			d.writeResponseChan <- d.writeOne(dataWrite)
 		case <-syncTicker.C:
-			d.needSync = true
+			if count > 0 {
+				count = 0
+				d.needSync = true
+			}
 		case <-d.exitChan:
 			goto exit
 		}
