@@ -36,6 +36,9 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://mediaforge.com"><img src="{{ site.baseurl }}/static/img/rakuten.png" width="100"/></a></td>
 <td align="center"><a href="http://socialradar.com"><img src="{{ site.baseurl }}/static/img/socialradar_logo.png" width="100"/></a></td>
 <td align="center"><a href="http://wistia.com"><img src="{{ site.baseurl }}/static/img/wistia_logo.png" width="140"/></a></td>
+</tr><tr>
+<td align="center"><a href="http://strip.com"><img src="{{ site.baseurl }}/static/img/strip_logo.png" width="140"/></a></td>
+<td align="center"><a href="http://soundest.com"><img src="{{ site.baseurl }}/static/img/soundest_logo.png" width="140"/></a></td>
 </tr></table></center>
 
 ### Getting Help
