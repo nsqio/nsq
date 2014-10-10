@@ -49,7 +49,10 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a>
+<a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a><br/>
+
+<a href="http://strip.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="140" align="middle"/></a>
 
 ## Documentation
 
