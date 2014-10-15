@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -69,7 +71,7 @@ var (
 	tlsKey              = flagSet.String("tls-key", "", "path to private key file")
 	tlsClientAuthPolicy = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
 	tlsRootCAFile       = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
-	tlsRequired         = flagSet.Bool("tls-required", false, "require TLS for client connections")
+	tlsRequired         tlsRequiredOption
 
 	// compression
 	deflateEnabled  = flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
@@ -77,10 +79,42 @@ var (
 	snappyEnabled   = flagSet.Bool("snappy", true, "enable snappy feature negotiation (client compression)")
 )
 
+type tlsRequiredOption int
+
+func (t *tlsRequiredOption) Set(s string) error {
+	s = strings.ToLower(s)
+	if s == "tcp-https" {
+		*t = nsqd.TLSRequiredExceptHTTP
+		return nil
+	}
+	required, err := strconv.ParseBool(s)
+	if required {
+		*t = nsqd.TLSRequired
+	} else {
+		*t = nsqd.TLSNotRequired
+	}
+	return err
+}
+
+func (t *tlsRequiredOption) Get() interface{} { return *t }
+
+func (t *tlsRequiredOption) String() string {
+	switch *t {
+	case nsqd.TLSRequiredExceptHTTP:
+		return "1"
+	case nsqd.TLSRequired:
+		return "2"
+	}
+	return "0"
+}
+
+func (t *tlsRequiredOption) IsBoolFlag() bool { return true }
+
 func init() {
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 	flagSet.Var(&e2eProcessingLatencyPercentiles, "e2e-processing-latency-percentile", "message processing time percentiles to keep track of (can be specified multiple times or comma separated, default none)")
 	flagSet.Var(&authHttpAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
+	flagSet.Var(&tlsRequired, "tls-required", "require TLS for client connections (true, false, tcp-https)")
 }
 
 func main() {
@@ -101,6 +135,13 @@ func main() {
 		_, err := toml.DecodeFile(*config, &cfg)
 		if err != nil {
 			log.Fatalf("ERROR: failed to load config file %s - %s", *config, err.Error())
+		}
+	}
+	if v, exists := cfg["tls_required"]; exists {
+		var tlsRequired tlsRequiredOption
+		err := tlsRequired.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			cfg["tls_required"] = tlsRequired.String()
 		}
 	}
 

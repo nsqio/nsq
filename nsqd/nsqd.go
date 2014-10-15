@@ -23,6 +23,12 @@ import (
 	"github.com/bitly/nsq/util/lookupd"
 )
 
+const (
+	TLSNotRequired = iota
+	TLSRequiredExceptHTTP
+	TLSRequired
+)
+
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
@@ -107,7 +113,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	}
 
 	if opts.TLSClientAuthPolicy != "" {
-		opts.TLSRequired = true
+		opts.TLSRequired = TLSRequired
 	}
 
 	tlsConfig, err := buildTLSConfig(opts)
@@ -115,7 +121,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		n.logf("FATAL: failed to build TLS config - %s", err)
 		os.Exit(1)
 	}
-	if tlsConfig == nil && n.opts.TLSRequired {
+	if tlsConfig == nil && n.opts.TLSRequired != TLSNotRequired {
 		n.logf("FATAL: cannot require TLS client connections without TLS key and cert")
 		os.Exit(1)
 	}
@@ -208,7 +214,7 @@ func (n *NSQD) Main() {
 	httpServer := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  false,
-		tlsRequired: n.opts.TLSRequired,
+		tlsRequired: n.opts.TLSRequired == TLSRequired,
 	}
 	n.waitGroup.Wrap(func() {
 		util.HTTPServer(n.httpListener, httpServer, n.opts.Logger, "HTTP")
