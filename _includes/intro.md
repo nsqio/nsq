@@ -39,6 +39,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 </tr><tr>
 <td align="center"><a href="http://stripe.com"><img src="{{ site.baseurl }}/static/img/stripe_logo.png" width="140"/></a></td>
 <td align="center"><a href="http://soundest.com"><img src="{{ site.baseurl }}/static/img/soundest_logo.png" width="140"/></a></td>
+<td align="center"><a href="http://docker.com"><img src="{{ site.baseurl }}/static/img/docker_logo.png" width="145"/></a></td>
 </tr></table></center>
 
 ### Getting Help
