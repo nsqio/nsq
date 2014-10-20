@@ -52,7 +52,8 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a><br/>
 
 <a href="http://stripe.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="140" align="middle"/></a>
+<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="145" align="middle"/></a>
 
 ## Documentation
 
