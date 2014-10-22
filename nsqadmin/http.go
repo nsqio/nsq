@@ -294,7 +294,13 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 
 	producers := s.getProducers(topicName)
 	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
-	channelStats := allChannelStats[channelName]
+	channelStats, ok := allChannelStats[channelName]
+
+	if !ok {
+		s.ctx.nsqadmin.logf("ERROR: channel stats do not exist")
+		http.Error(w, "INVALID_REQUEST", 500)
+		return
+	}
 
 	hasE2eLatency := channelStats.E2eProcessingLatency != nil &&
 		len(channelStats.E2eProcessingLatency.Percentiles) > 0
