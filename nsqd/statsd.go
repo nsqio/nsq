@@ -66,10 +66,10 @@ func (n *NSQD) statsdLoop() {
 				client.Incr(stat, int64(diff))
 
 				stat = fmt.Sprintf("topic.%s.depth", topic.TopicName)
-				client.Gauge(stat, topic.Depth)
+				client.Gauge(stat, int64(topic.Depth))
 
 				stat = fmt.Sprintf("topic.%s.backend_depth", topic.TopicName)
-				client.Gauge(stat, topic.BackendDepth)
+				client.Gauge(stat, int64(topic.BackendDepth))
 
 				for _, item := range topic.E2eProcessingLatency.Percentiles {
 					stat = fmt.Sprintf("topic.%s.e2e_processing_latency_%.0f", topic.TopicName, item["quantile"]*100.0)
@@ -93,10 +93,10 @@ func (n *NSQD) statsdLoop() {
 					client.Incr(stat, int64(diff))
 
 					stat = fmt.Sprintf("topic.%s.channel.%s.depth", topic.TopicName, channel.ChannelName)
-					client.Gauge(stat, channel.Depth)
+					client.Gauge(stat, int64(channel.Depth))
 
 					stat = fmt.Sprintf("topic.%s.channel.%s.backend_depth", topic.TopicName, channel.ChannelName)
-					client.Gauge(stat, channel.BackendDepth)
+					client.Gauge(stat, int64(channel.BackendDepth))
 
 					stat = fmt.Sprintf("topic.%s.channel.%s.in_flight_count", topic.TopicName, channel.ChannelName)
 					client.Gauge(stat, int64(channel.InFlightCount))

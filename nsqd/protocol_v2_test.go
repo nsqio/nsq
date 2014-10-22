@@ -130,8 +130,8 @@ func TestBasicV2(t *testing.T) {
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([][]byte{body})
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Nil(t, err)
@@ -146,9 +146,9 @@ func TestBasicV2(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
 	test.Equal(t, msg.Body, msgOut.Body)
 	test.Equal(t, uint16(1), msgOut.Attempts)
 }
@@ -165,10 +165,11 @@ func TestMultipleConsumerV2(t *testing.T) {
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
+
+	body := []byte("test body")
 	topic.GetChannel("ch1")
 	topic.GetChannel("ch2")
-	topic.PutMessage(msg)
+	topic.Pub([][]byte{body})
 
 	for _, i := range []string{"1", "2"} {
 		conn, err := mustConnectNSQD(tcpAddr)
@@ -186,19 +187,20 @@ func TestMultipleConsumerV2(t *testing.T) {
 			test.Nil(t, err)
 			_, data, err := nsq.UnpackResponse(resp)
 			test.Nil(t, err)
-			msg, err := decodeMessage(data)
+			recvdMsg, err := decodeWireMessage(data)
 			test.Nil(t, err)
-			msgChan <- msg
+			msgChan <- recvdMsg
 		}(conn)
 	}
 
 	msgOut := <-msgChan
-	test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, msg.Body, msgOut.Body)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 	test.Equal(t, uint16(1), msgOut.Attempts)
+
 	msgOut = <-msgChan
-	test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, msg.Body, msgOut.Body)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 	test.Equal(t, uint16(1), msgOut.Attempts)
 }
 
@@ -375,15 +377,15 @@ func TestPausing(t *testing.T) {
 	test.Nil(t, err)
 
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	channel := topic.GetChannel("ch")
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([][]byte{body})
 
 	// receive the first message via the client, finish it, and send new RDY
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
-	test.Equal(t, []byte("test body"), msg.Body)
+	msg, err := decodeWireMessage(data)
+	test.Equal(t, body, msg.Body)
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
 	test.Nil(t, err)
@@ -400,25 +402,25 @@ func TestPausing(t *testing.T) {
 	// sleep to allow the paused state to take effect
 	time.Sleep(50 * time.Millisecond)
 
-	msg = NewMessage(topic.GenerateID(), []byte("test body2"))
-	topic.PutMessage(msg)
+	body2 := []byte("test body2")
+	topic.Pub([][]byte{body2})
 
 	// allow the client to possibly get a message, the test would hang indefinitely
 	// if pausing was not working
 	time.Sleep(50 * time.Millisecond)
 	msg = <-channel.memoryMsgChan
-	test.Equal(t, []byte("test body2"), msg.Body)
+	test.Equal(t, body2, msg.Body)
 
 	// unpause the channel... the client should now be pushed a message
 	channel.UnPause()
 
-	msg = NewMessage(topic.GenerateID(), []byte("test body3"))
-	topic.PutMessage(msg)
+	body3 := []byte("test body3")
+	topic.Pub([][]byte{body3})
 
 	resp, _ = nsq.ReadResponse(conn)
 	_, data, _ = nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
-	test.Equal(t, []byte("test body3"), msg.Body)
+	msg, err = decodeWireMessage(data)
+	test.Equal(t, body3, msg.Body)
 }
 
 func TestEmptyCommand(t *testing.T) {
@@ -618,8 +620,8 @@ func TestTouch(t *testing.T) {
 
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([][]byte{body})
 
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
@@ -627,18 +629,19 @@ func TestTouch(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 
 	time.Sleep(75 * time.Millisecond)
 
-	_, err = nsq.Touch(nsq.MessageID(msg.ID)).WriteTo(conn)
+	_, err = nsq.Touch(nsq.MessageID(msgOut.ID)).WriteTo(conn)
 	test.Nil(t, err)
 
 	time.Sleep(75 * time.Millisecond)
 
-	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
+	_, err = nsq.Finish(nsq.MessageID(msgOut.ID)).WriteTo(conn)
 	test.Nil(t, err)
 
 	test.Equal(t, uint64(0), channel.timeoutCount)
@@ -660,8 +663,8 @@ func TestMaxRdyCount(t *testing.T) {
 	defer conn.Close()
 
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([][]byte{body})
 
 	data := identify(t, conn, nil, frameTypeResponse)
 	r := struct {
@@ -678,9 +681,10 @@ func TestMaxRdyCount(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.body)
 
 	_, err = nsq.Ready(int(opts.MaxRdyCount) + 1).WriteTo(conn)
 	test.Nil(t, err)
@@ -736,8 +740,8 @@ func TestOutputBuffering(t *testing.T) {
 	outputBufferTimeout := 500
 
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), make([]byte, outputBufferSize-1024))
-	topic.PutMessage(msg)
+	body := make([]byte, outputBufferSize-1024)
+	topic.Pub([][]byte{body})
 
 	start := time.Now()
 	data := identify(t, conn, map[string]interface{}{
@@ -763,9 +767,10 @@ func TestOutputBuffering(t *testing.T) {
 	test.Equal(t, true, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout)
 
 	frameType, data, err := nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 }
 
 func TestOutputBufferingValidity(t *testing.T) {
@@ -1120,7 +1125,7 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, frameTypeResponse, frameType)
 	test.Equal(t, []byte("OK"), data)
 
-	msgBody := make([]byte, 128000)
+	body := make([]byte, 128000)
 	w := snappy.NewWriter(conn)
 
 	rw := readWriter{compressConn, w}
@@ -1132,15 +1137,14 @@ func TestSnappy(t *testing.T) {
 	test.Nil(t, err)
 
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), msgBody)
-	topic.PutMessage(msg)
+	topic.Pub([][]byte{body})
 
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, msg.Body, msgOut.Body)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 }
 
 func TestTLSDeflate(t *testing.T) {
@@ -1226,8 +1230,8 @@ func TestSampling(t *testing.T) {
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < num; i++ {
-		msg := NewMessage(topic.GenerateID(), []byte("test body"))
-		topic.PutMessage(msg)
+		body := []byte("test body")
+		topic.Pub([][]byte{body})
 	}
 	channel := topic.GetChannel("ch")
 
@@ -1330,13 +1334,13 @@ func TestClientMsgTimeout(t *testing.T) {
 	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	ch := topic.GetChannel("ch")
-	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
-	topic.PutMessage(msg)
+	body := make([]byte, 100)
+	topic.Pub([][]byte{body})
 
 	// without this the race detector thinks there's a write
 	// to msg.Attempts that races with the read in the protocol's messagePump...
 	// it does not reflect a realistically possible condition
-	topic.PutMessage(NewMessage(topic.GenerateID(), make([]byte, 100)))
+	topic.Pub([][]byte{body})
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Nil(t, err)
@@ -1355,9 +1359,9 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msgOut, err := decodeMessage(data)
-	test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, msg.Body, msgOut.Body)
+	msgOut, err := decodeWireMessage(data)
+	// test.Equal(t, msg.ID, msgOut.ID)
+	test.Equal(t, body, msgOut.Body)
 
 	_, err = nsq.Ready(0).WriteTo(conn)
 	test.Nil(t, err)
@@ -1785,15 +1789,14 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
-	msg := make([]byte, size)
+	body := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < b.N; i++ {
-		msg := NewMessage(topic.GenerateID(), msg)
-		topic.PutMessage(msg)
+		topic.Pub([][]byte{body})
 	}
 	topic.GetChannel("ch")
-	b.SetBytes(int64(len(msg)))
+	b.SetBytes(int64(len(body)))
 	goChan := make(chan int)
 	rdyChan := make(chan int)
 	workers := runtime.GOMAXPROCS(0)
@@ -1842,7 +1845,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		if frameType != frameTypeMessage {
 			panic("got something else")
 		}
-		msg, err := decodeMessage(data)
+		msg, err := decodeWireMessage(data)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1879,8 +1882,8 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
-	msg := make([]byte, 256)
-	b.SetBytes(int64(len(msg) * num))
+	body := make([]byte, 256)
+	b.SetBytes(int64(len(body) * num))
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)
@@ -1889,8 +1892,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 		topicName := "bench_v2" + strconv.Itoa(b.N) + "_" + strconv.Itoa(i) + "_" + strconv.Itoa(int(time.Now().Unix()))
 		topic := nsqd.GetTopic(topicName)
 		for i := 0; i < b.N; i++ {
-			msg := NewMessage(topic.GenerateID(), msg)
-			topic.PutMessage(msg)
+			topic.Pub([][]byte{body})
 		}
 		topic.GetChannel("ch")
 

@@ -126,9 +126,9 @@ func (n *NSQD) lookupLoop() {
 				branch = "channel"
 				channel := val.(*Channel)
 				if channel.Exiting() == true {
-					cmd = nsq.UnRegister(channel.topicName, channel.name)
+					cmd = nsq.UnRegister(channel.topic.name, channel.name)
 				} else {
-					cmd = nsq.Register(channel.topicName, channel.name)
+					cmd = nsq.Register(channel.topic.name, channel.name)
 				}
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed

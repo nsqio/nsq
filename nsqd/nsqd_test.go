@@ -76,29 +76,24 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		msg := NewMessage(topic.GenerateID(), body)
-		topic.PutMessage(msg)
+		topic.Pub([][]byte{body})
 	}
 
 	t.Logf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
+	t.Logf("ch1 depth: %d", channel1.Depth())
 
-	t.Logf("read %d msgs", iterations/2)
+	t.Logf("reading %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
 		select {
 		case msg = <-channel1.memoryMsgChan:
 		case b := <-channel1.backend.ReadChan():
 			msg, _ = decodeMessage(b)
 		}
+		channel1.StartInFlightTimeout(msg, 0, time.Second*60)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
-	}
-
-	for {
-		if channel1.Depth() == int64(iterations/2) {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
 
 	// make sure metadata shows the topic
@@ -106,6 +101,7 @@ func TestStartup(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 1, len(m.Topics))
 	test.Equal(t, topicName, m.Topics[0].Name)
+	test.Equal(t, "ch1", m.Topics[0].Channels[0].Name)
 
 	exitChan <- 1
 	<-doneExitChan
@@ -127,13 +123,12 @@ func TestStartup(t *testing.T) {
 
 	topic = nsqd.GetTopic(topicName)
 	// should be empty; channel should have drained everything
-	count := topic.Depth()
-	test.Equal(t, int64(0), count)
+	test.Equal(t, uint64(0), topic.Depth())
 
 	channel1 = topic.GetChannel("ch1")
 
 	for {
-		if channel1.Depth() == int64(iterations/2) {
+		if channel1.Depth() == uint64(iterations/2) {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -146,13 +141,15 @@ func TestStartup(t *testing.T) {
 		case b := <-channel1.backend.ReadChan():
 			msg, _ = decodeMessage(b)
 		}
+		channel1.StartInFlightTimeout(msg, 0, time.Second*60)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
 
 	// verify we drained things
 	test.Equal(t, 0, len(topic.memoryMsgChan))
-	test.Equal(t, int64(0), topic.backend.Depth())
+	test.Equal(t, uint64(0), channel1.Depth())
 
 	exitChan <- 1
 	<-doneExitChan
@@ -182,9 +179,8 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	msg := NewMessage(topic.GenerateID(), body)
-	topic.PutMessage(msg)
-	msg = <-ephemeralChannel.memoryMsgChan
+	topic.Pub([][]byte{body})
+	msg := <-ephemeralChannel.memoryMsgChan
 	test.Equal(t, body, msg.Body)
 
 	ephemeralChannel.RemoveClient(client.ID)

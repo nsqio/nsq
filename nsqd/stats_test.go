@@ -23,8 +23,8 @@ func TestStats(t *testing.T) {
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([][]byte{body})
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	accompanyTopic := nsqd.GetTopic(accompanyTopicName)

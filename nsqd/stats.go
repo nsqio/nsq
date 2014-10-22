@@ -11,8 +11,8 @@ import (
 type TopicStats struct {
 	TopicName    string         `json:"topic_name"`
 	Channels     []ChannelStats `json:"channels"`
-	Depth        int64          `json:"depth"`
-	BackendDepth int64          `json:"backend_depth"`
+	Depth        uint64         `json:"depth"`
+	BackendDepth uint64         `json:"backend_depth"`
 	MessageCount uint64         `json:"message_count"`
 	MessageBytes uint64         `json:"message_bytes"`
 	Paused       bool           `json:"paused"`
@@ -24,8 +24,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	return TopicStats{
 		TopicName:    t.name,
 		Channels:     channels,
-		Depth:        t.Depth(),
-		BackendDepth: t.backend.Depth(),
+		Depth:        0,
+		BackendDepth: t.Depth(),
 		MessageCount: atomic.LoadUint64(&t.messageCount),
 		MessageBytes: atomic.LoadUint64(&t.messageBytes),
 		Paused:       t.IsPaused(),
@@ -36,8 +36,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 
 type ChannelStats struct {
 	ChannelName   string        `json:"channel_name"`
-	Depth         int64         `json:"depth"`
-	BackendDepth  int64         `json:"backend_depth"`
+	Depth         uint64        `json:"depth"`
+	BackendDepth  uint64        `json:"backend_depth"`
 	InFlightCount int           `json:"in_flight_count"`
 	DeferredCount int           `json:"deferred_count"`
 	MessageCount  uint64        `json:"message_count"`
@@ -60,8 +60,8 @@ func NewChannelStats(c *Channel, clients []ClientStats, clientCount int) Channel
 
 	return ChannelStats{
 		ChannelName:   c.name,
-		Depth:         c.Depth(),
-		BackendDepth:  c.backend.Depth(),
+		Depth:         0,
+		BackendDepth:  c.Depth(),
 		InFlightCount: inflight,
 		DeferredCount: deferred,
 		MessageCount:  atomic.LoadUint64(&c.messageCount),

@@ -222,9 +222,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		}
 	}
 
-	msg := NewMessage(topic.GenerateID(), body)
-	msg.deferred = deferred
-	err = topic.PutMessage(msg)
+	// TODO: (WAL) handle deferred PUB
+	err = topic.Pub([][]byte{body})
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
@@ -233,7 +232,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var msgs []*Message
+	var msgs [][]byte
 	var exit bool
 
 	// TODO: one day I'd really like to just error on chunked requests
@@ -258,7 +257,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	}
 	if binaryMode {
 		tmp := make([]byte, 4)
-		msgs, err = readMPUB(req.Body, tmp, topic,
+		msgs, err = readMPUB(req.Body, tmp,
 			s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
 		if err != nil {
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
@@ -297,12 +296,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(topic.GenerateID(), block)
-			msgs = append(msgs, msg)
+			msgs = append(msgs, block)
 		}
 	}
 
-	err = topic.PutMessages(msgs)
+	err = topic.Pub(msgs)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}

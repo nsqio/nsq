@@ -361,7 +361,6 @@ func (n *NSQD) LoadMetadata() error {
 				channel.Pause()
 			}
 		}
-		topic.Start()
 	}
 	return nil
 }
@@ -505,8 +504,6 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
 	}
 
-	// now that all channels are added, start topic messagePump
-	t.Start()
 	return t
 }
 
