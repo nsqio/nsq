@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit on failed commands
+set -e
+
 # build binary distributions for linux/amd64 and darwin/amd64
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,13 +18,13 @@ version=$(cat $DIR/util/binary_version.go | grep "const BINARY_VERSION" | awk '{
 goversion=$(go version | awk '{print $3}')
 
 echo "... running tests"
-./test.sh || exit 1
+./test.sh
 
 for os in linux darwin; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
-    GOOS=$os GOARCH=$arch CGO_ENABLED=0 make || exit 1
+    GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
     make DESTDIR=$BUILD/$TARGET PREFIX= install
     pushd $BUILD
     tar czvf $TARGET.tar.gz $TARGET
