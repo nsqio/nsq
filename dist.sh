@@ -14,7 +14,7 @@ gpm install
 
 os=$(go env GOOS)
 arch=$(go env GOARCH)
-version=$(cat $DIR/util/binary_version.go | grep "const BINARY_VERSION" | awk '{print $NF}' | sed 's/"//g')
+version=$(awk '/const BINARY_VERSION/ {print $NF}' < $DIR/util/binary_version.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
 
 echo "... running tests"
