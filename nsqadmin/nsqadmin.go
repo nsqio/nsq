@@ -38,12 +38,28 @@ func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
 		os.Exit(1)
 	}
 
-	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
-	if err != nil {
-		n.logf("FATAL: failed to resolve HTTP address (%s) - %s", opts.HTTPAddress, err)
-		os.Exit(1)
+	// verify that the supplied address is valid
+	verifyAddress := func(arg string, address string) *net.TCPAddr {
+
+		addr, err := net.ResolveTCPAddr("tcp", address)
+		if err != nil {
+			n.logf("FATAL: failed to resolve %s address (%s) - %s", arg, address, err)
+			os.Exit(1)
+		}
+
+		return addr
 	}
-	n.httpAddr = httpAddr
+
+	// require that both the hostname and port be specified
+	for _, address := range opts.NSQLookupdHTTPAddresses {
+		verifyAddress("--lookupd-http-address", address)
+	}
+
+	for _, address := range opts.NSQDHTTPAddresses {
+		verifyAddress("--nsqd-http-address", address)
+	}
+
+	n.httpAddr = verifyAddress("HTTP", opts.HTTPAddress)
 
 	if opts.ProxyGraphite {
 		url, err := url.Parse(opts.GraphiteURL)
