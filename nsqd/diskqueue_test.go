@@ -256,6 +256,7 @@ func BenchmarkDiskWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		f.Write(data)
 	}
+	f.Sync()
 }
 
 func BenchmarkDiskWriteBuffered(b *testing.B) {
@@ -275,6 +276,7 @@ func BenchmarkDiskWriteBuffered(b *testing.B) {
 		}
 	}
 	w.Flush()
+	f.Sync()
 }
 
 // this benchmark should be run via:
