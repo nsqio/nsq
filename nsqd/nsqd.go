@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"path"
@@ -323,7 +324,7 @@ func (n *NSQD) PersistMetadata() error {
 		return err
 	}
 
-	tmpFileName := fileName + ".tmp"
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
@@ -483,18 +484,20 @@ exit:
 }
 
 func (n *NSQD) Notify(v interface{}) {
-	// by selecting on exitChan we guarantee that
-	// we do not block exit, see issue #123
-	select {
-	case <-n.exitChan:
-	case n.notifyChan <- v:
-		n.Lock()
-		err := n.PersistMetadata()
-		if err != nil {
-			n.logf("ERROR: failed to persist metadata - %s", err)
+	n.waitGroup.Wrap(func() {
+		// by selecting on exitChan we guarantee that
+		// we do not block exit, see issue #123
+		select {
+		case <-n.exitChan:
+		case n.notifyChan <- v:
+			n.Lock()
+			err := n.PersistMetadata()
+			if err != nil {
+				n.logf("ERROR: failed to persist metadata - %s", err)
+			}
+			n.Unlock()
 		}
-		n.Unlock()
-	}
+	})
 }
 
 func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {

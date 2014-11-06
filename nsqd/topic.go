@@ -62,7 +62,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 
 	t.waitGroup.Wrap(func() { t.messagePump() })
 
-	go t.ctx.nsqd.Notify(t)
+	t.ctx.nsqd.Notify(t)
 
 	return t
 }
@@ -303,7 +303,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		go t.ctx.nsqd.Notify(t)
+		t.ctx.nsqd.Notify(t)
 	} else {
 		t.ctx.nsqd.logf("TOPIC(%s): closing", t.name)
 	}
