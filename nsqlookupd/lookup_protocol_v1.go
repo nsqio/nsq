@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/util/registrationdb"
 )
 
 type LookupProtocolV1 struct {
@@ -66,9 +67,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	p.ctx.nsqlookupd.logf("CLIENT(%s): closing", client)
 	if client.peerInfo != nil {
-		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
+		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.ID)
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.ID); removed {
 				p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -124,14 +125,16 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
-		if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+		key := registrationdb.Registration{"channel", topic, channel}
+		producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+		if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
 			p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
 		}
 	}
-	key := Registration{"topic", topic, ""}
-	if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
+	key := registrationdb.Registration{"topic", topic, ""}
+	producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+	if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
 		p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 			client, "topic", topic, "")
 	}
@@ -150,8 +153,8 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
-		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		key := registrationdb.Registration{"channel", topic, channel}
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.ID)
 		if removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
@@ -167,14 +170,15 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
-				p.ctx.nsqlookupd.logf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.ID); removed {
+				p.ctx.nsqlookupd.logf(
+					"WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
-		key := Registration{"topic", topic, ""}
-		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
+		key := registrationdb.Registration{"topic", topic, ""}
+		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.ID); removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
 		}
@@ -203,7 +207,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	// body is a json structure with producer information
-	peerInfo := PeerInfo{id: client.RemoteAddr().String()}
+	peerInfo := registrationdb.PeerInfo{ID: client.RemoteAddr().String()}
 	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
@@ -222,8 +226,12 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		client, peerInfo.BroadcastAddress, peerInfo.TcpPort, peerInfo.HttpPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
-	if p.ctx.nsqlookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
-		p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
+	key := registrationdb.Registration{"client", "", ""}
+	producer := &registrationdb.Producer{PeerInfo: client.peerInfo}
+	if p.ctx.nsqlookupd.DB.AddProducer(key, producer) {
+		p.ctx.nsqlookupd.logf(
+			"DB: client(%s) REGISTER category:%s key:%s subkey:%s",
+			client, "client", "", "")
 	}
 
 	// build a response

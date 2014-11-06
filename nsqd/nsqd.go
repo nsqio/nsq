@@ -20,6 +20,8 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/util"
 	"github.com/bitly/nsq/util/lookupd"
+	"github.com/bitly/nsq/util/registrationdb"
+	"github.com/hashicorp/serf/serf"
 )
 
 type NSQD struct {
@@ -46,6 +48,11 @@ type NSQD struct {
 	httpsListener net.Listener
 	tlsConfig     *tls.Config
 
+	serf          *serf.Serf
+	serfEventChan chan serf.Event
+	gossipChan    chan interface{}
+	rdb           *registrationdb.RegistrationDB
+
 	idChan     chan MessageID
 	notifyChan chan interface{}
 	exitChan   chan int
@@ -60,6 +67,10 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		idChan:     make(chan MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
+
+		serfEventChan: make(chan serf.Event, 256),
+		gossipChan:    make(chan interface{}),
+		rdb:           registrationdb.New(),
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
@@ -164,9 +175,6 @@ func (n *NSQD) GetHealth() string {
 }
 
 func (n *NSQD) Main() {
-	var httpListener net.Listener
-	var httpsListener net.Listener
-
 	ctx := &context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
@@ -183,7 +191,7 @@ func (n *NSQD) Main() {
 	})
 
 	if n.tlsConfig != nil && n.httpsAddr != nil {
-		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
+		httpsListener, err := tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
 		if err != nil {
 			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
 			os.Exit(1)
@@ -198,7 +206,7 @@ func (n *NSQD) Main() {
 			util.HTTPServer(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.httpAddr.String())
+	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
 		os.Exit(1)
@@ -216,6 +224,23 @@ func (n *NSQD) Main() {
 	if n.opts.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
+
+	var httpsAddr *net.TCPAddr
+	if n.httpsListener != nil {
+		httpsAddr = n.httpsListener.Addr().(*net.TCPAddr)
+	}
+	serf, err := initSerf(n.opts, n.serfEventChan,
+		n.tcpListener.Addr().(*net.TCPAddr),
+		n.httpListener.Addr().(*net.TCPAddr),
+		httpsAddr)
+	if err != nil {
+		n.logf("FATAL: failed to initialize Serf - %s", err)
+		os.Exit(1)
+	}
+	n.serf = serf
+
+	n.waitGroup.Wrap(func() { n.serfEventLoop() })
+	n.waitGroup.Wrap(func() { n.gossipLoop() })
 }
 
 func (n *NSQD) LoadMetadata() {
@@ -358,6 +383,10 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
+	// TODO: should only the "bootstrap" node leave?
+	// n.serf.Leave()
+	n.serf.Shutdown()
+
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
@@ -494,6 +523,11 @@ func (n *NSQD) Notify(v interface{}) {
 			n.logf("ERROR: failed to persist metadata - %s", err)
 		}
 		n.Unlock()
+	}
+
+	select {
+	case <-n.exitChan:
+	case n.gossipChan <- v:
 	}
 }
 
