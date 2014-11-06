@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -36,6 +37,7 @@ var (
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
+	topicPattern   = flag.String("topic-pattern", ".*", "Only log topics matching the following pattern")
 
 	consumerOpts     = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -373,13 +375,26 @@ func (t *TopicDiscoverer) startTopicRouter(logger *ConsumerFileLogger) {
 	<-logger.F.ExitChan
 }
 
-func (t *TopicDiscoverer) syncTopics(addrs []string) {
+func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
+	match, err := regexp.MatchString(pattern, name)
+	if err != nil {
+		return false
+	}
+
+	return match
+}
+
+func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
 	newTopics, err := lookupd.GetLookupdTopics(addrs)
 	if err != nil {
 		log.Printf("ERROR: could not retrieve topic list: %s", err)
 	}
 	for _, topic := range newTopics {
 		if _, ok := t.topics[topic]; !ok {
+			if !t.allowTopicName(pattern, topic) {
+				log.Println("Skipping topic ", topic, "as it didn't match required pattern:", pattern)
+				continue
+			}
 			logger, err := newConsumerFileLogger(topic)
 			if err != nil {
 				log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
@@ -403,13 +418,13 @@ func (t *TopicDiscoverer) hup() {
 	}
 }
 
-func (t *TopicDiscoverer) watch(addrs []string, sync bool) {
+func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string) {
 	ticker := time.Tick(*topicPollRate)
 	for {
 		select {
 		case <-ticker:
 			if sync {
-				t.syncTopics(addrs)
+				t.syncTopics(addrs, pattern)
 			}
 		case <-t.termChan:
 			t.stop()
@@ -479,6 +494,11 @@ func main() {
 	}
 
 	for _, topic := range topics {
+		if !discoverer.allowTopicName(*topicPattern, topic) {
+			log.Println("Skipping topic", topic, "as it didn't match required pattern:", *topicPattern)
+			continue
+		}
+
 		logger, err := newConsumerFileLogger(topic)
 		if err != nil {
 			log.Fatalf("ERROR: couldn't create logger for topic %s: %s", topic, err)
@@ -487,5 +507,5 @@ func main() {
 		go discoverer.startTopicRouter(logger)
 	}
 
-	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd)
+	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd, *topicPattern)
 }
