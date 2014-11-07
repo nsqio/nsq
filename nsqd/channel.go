@@ -118,7 +118,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 	c.waitGroup.Wrap(func() { c.deferredWorker() })
 	c.waitGroup.Wrap(func() { c.inFlightWorker() })
 
-	go c.ctx.nsqd.Notify(c)
+	c.ctx.nsqd.Notify(c)
 
 	return c
 }
@@ -163,7 +163,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		go c.ctx.nsqd.Notify(c)
+		c.ctx.nsqd.Notify(c)
 	} else {
 		c.ctx.nsqd.logf("CHANNEL(%s): closing", c.name)
 	}
