@@ -31,7 +31,7 @@ var (
 
 	outputDir      = flag.String("output-dir", "/tmp", "directory to write output files to")
 	datetimeFormat = flag.String("datetime-format", "%Y-%m-%d_%H", "strftime compatible format for <DATETIME> in filename format")
-	filenameFormat = flag.String("filename-format", "<TOPIC>.<HOST><GZIPREV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <DATETIME>, <GZIPREV> are replaced. <GZIPREV> is a suffix when an existing gzip file already exists)")
+	filenameFormat = flag.String("filename-format", "<TOPIC>.<HOST><GZIPREV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <PID>, <DATETIME>, <GZIPREV> are replaced. <GZIPREV> is a suffix when an existing gzip file already exists)")
 	hostIdentifier = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
@@ -306,6 +306,7 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 	}
 	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", topic, -1)
 	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
+	filenameFormat = strings.Replace(filenameFormat, "<PID>", fmt.Sprintf("%d", os.Getpid()), -1)
 	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
 		filenameFormat = filenameFormat + ".gz"
 	}
