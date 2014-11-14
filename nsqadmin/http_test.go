@@ -379,3 +379,72 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
+
+func TestHTTPPauseTopicPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_pause_topic_post" + strconv.Itoa(int(time.Now().Unix()))
+	nsqds[0].GetTopic(topicName)
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ := json.Marshal(map[string]interface{}{
+		"action": "pause",
+	})
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	body, _ = ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+
+	url = fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ = json.Marshal(map[string]interface{}{
+		"action": "unpause",
+	})
+	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err = client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}
+
+func TestHTTPPauseChannelPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_pause_channel_post" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqds[0].GetTopic(topicName)
+	topic.GetChannel("ch")
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ := json.Marshal(map[string]interface{}{
+		"action": "pause",
+	})
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	body, _ = ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+
+	url = fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ = json.Marshal(map[string]interface{}{
+		"action": "unpause",
+	})
+	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err = client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}

@@ -80,6 +80,8 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
 	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
 	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
+	router.Handle("POST", "/topics/:topic", http_api.Decorate(s.doTopicAction, log, http_api.V1))
+	router.Handle("POST", "/topics/:topic/:channel", http_api.Decorate(s.doChannelAction, log, http_api.V1))
 	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
 	router.Handle("DELETE", "/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
 	router.Handle("DELETE", "/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
@@ -484,6 +486,73 @@ func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelN
 
 	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
+	return nil
+}
+
+func (s *httpServer) doTopicAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	return nil, s.topicChannelAction(req, topicName, "")
+}
+
+func (s *httpServer) doChannelAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+	return nil, s.topicChannelAction(req, topicName, channelName)
+}
+
+func (s *httpServer) topicChannelAction(req *http.Request, topicName string, channelName string) error {
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return http_api.Err{400, err.Error()}
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return http_api.Err{400, err.Error()}
+	}
+
+	action := js.Get("action").MustString()
+
+	switch action {
+	case "pause", "unpause":
+	default:
+		return http_api.Err{400, "INVALID_ACTION"}
+	}
+
+	if channelName != "" {
+		err = s.pauseChannel(req, topicName, channelName, action)
+	} else {
+		err = s.pauseTopic(req, topicName, action)
+	}
+	if err != nil {
+		return http_api.Err{500, err.Error()}
+	}
+	return nil
+}
+
+func (s *httpServer) pauseTopic(req *http.Request, topicName string, action string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		action+"_topic",
+		"topic/"+action,
+		fmt.Sprintf("topic=%s",
+			url.QueryEscape(topicName)))
+	s.notifyAdminAction(action+"_topic", topicName, "", "", req)
+	return nil
+}
+
+func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelName string, action string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		action+"_channel",
+		"channel/"+action,
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+	s.notifyAdminAction(action+"_channel", topicName, channelName, "", req)
 	return nil
 }
 
