@@ -338,3 +338,44 @@ func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
+
+func TestHTTPDeleteTopicPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_delete_topic_post" + strconv.Itoa(int(time.Now().Unix()))
+	nsqds[0].GetTopic(topicName)
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	req, _ := http.NewRequest("DELETE", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}
+
+func TestHTTPDeleteChannelPOST(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_delete_channel_post" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqds[0].GetTopic(topicName)
+	topic.GetChannel("ch")
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	req, _ := http.NewRequest("DELETE", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}

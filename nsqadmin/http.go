@@ -81,6 +81,8 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
 	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
 	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
+	router.Handle("DELETE", "/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("DELETE", "/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -387,6 +389,100 @@ func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, nod
 	}
 
 	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
+
+	return nil
+}
+
+func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	err := s.deleteTopic(req, topicName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
+	// for topic removal, you need to get all the producers *first*
+	producerAddrs := s.getProducers(topicName)
+
+	// remove the topic from all the lookupds
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "delete_topic"
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
+			uri = "topic/delete"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
+			continue
+		}
+	}
+
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"delete_topic",
+		"topic/delete",
+		fmt.Sprintf("topic=%s", url.QueryEscape(topicName)))
+
+	s.notifyAdminAction("delete_topic", topicName, "", "", req)
+
+	return nil
+}
+
+func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+	err := s.deleteChannel(req, topicName, channelName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelName string) error {
+	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
+		}
+
+		uri := "delete_channel"
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
+			uri = "channel/delete"
+		}
+
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
+			addr, uri,
+			url.QueryEscape(topicName),
+			url.QueryEscape(channelName))
+		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
+			continue
+		}
+	}
+
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"delete_channel",
+		"channel/delete",
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+
+	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
 	return nil
 }
