@@ -10,20 +10,15 @@ permalink: /deployment/installing.html
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:
 
-#### Current Stable Release: **`v0.2.31`**
+#### Current Stable Release: **`v0.3.0`**
 
-**Go 1.3.1**:
-
- * [nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz][0.2.31_darwin_go131]
- * [nsq-0.2.31.linux-amd64.go1.3.1.tar.gz][0.2.31_linux_go131]
-
-**Go 1.2.2**:
-
- * [nsq-0.2.31.darwin-amd64.go1.2.2.tar.gz][0.2.31_darwin_go122]
- * [nsq-0.2.31.linux-amd64.go1.2.2.tar.gz][0.2.31_linux_go122]
+ * [nsq-0.3.0.darwin-amd64.go1.3.3.tar.gz][0.3.0_darwin_go133]
+ * [nsq-0.3.0.linux-amd64.go1.3.3.tar.gz][0.3.0_linux_go133]
 
 #### Older Stable Releases
 
+ * [nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz][0.2.31_darwin_go131]
+ * [nsq-0.2.31.linux-amd64.go1.3.1.tar.gz][0.2.31_linux_go131]
  * [nsq-0.2.30.darwin-amd64.go1.3.tar.gz][0.2.30_darwin_go13]
  * [nsq-0.2.30.linux-amd64.go1.3.tar.gz][0.2.30_linux_go13]
  * [nsq-0.2.28.darwin-amd64.go1.2.1.tar.gz][0.2.28_darwin_go121]
@@ -65,10 +60,11 @@ produce reliable builds (pinned dependencies need to be satisfied manually).
 $ ./test.sh
 {% endhighlight %}
 
+[0.3.0_darwin_go133]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.0.darwin-amd64.go1.3.3.tar.gz
+[0.3.0_linux_go133]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.0.linux-amd64.go1.3.3.tar.gz
+
 [0.2.31_darwin_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz
 [0.2.31_linux_go131]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.linux-amd64.go1.3.1.tar.gz
-[0.2.31_darwin_go122]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.darwin-amd64.go1.2.2.tar.gz
-[0.2.31_linux_go122]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.31.linux-amd64.go1.2.2.tar.gz
 
 [0.2.30_darwin_go13]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.30.darwin-amd64.go1.3.tar.gz
 [0.2.30_linux_go13]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.30.linux-amd64.go1.3.tar.gz
