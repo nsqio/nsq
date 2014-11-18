@@ -1,7 +1,7 @@
 code.google.com/p/snappy-go/snappy      12e4b4183793ac4b061921e7980845e750679fd0
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/bitly/go-nsq                 b575b101dfeecfc12abf5d1a85213c39561eaec9 # v1.0.1-alpha
+github.com/bitly/go-nsq                 7eb4205f84e8c3d1b7bddbf094fd6d061ca7c951 # v1.0.1
 github.com/bitly/go-simplejson          fc395a5db941cf38922b1ccbc083640cd76fe4bc # v0.5.0-alpha
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        896a539cd709f4f39d787562d1583c016ce7517e

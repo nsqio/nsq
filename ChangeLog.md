@@ -2,6 +2,50 @@
 
 ## Binaries
 
+### 0.3.0 - 2014-11-18
+
+**Upgrading from 0.2.31**: No backwards incompatible changes.
+
+This release includes a slew of bug fixes and few key feature additions.
+
+The biggest functional change is that `nsqd` no longer decrements its `RDY` count for clients. This
+means that client libraries no longer have to periodically re-send `RDY`. For some context, `nsqd`
+already provided back-pressure due to the fact that a client must respond to messages before
+receiving new ones. The decremented `RDY` count only made the implementation of the server and
+client more complex without additional benefit. Now the `RDY` command can be treated as an "on/off"
+switch. For details see #404 and the associated changes in bitly/go-nsq#83 and bitly/pynsq#98.
+
+The second biggest change (and oft-requested feature!) is `#ephemeral` topics. Their behavior
+mirrors that of channels. This feature is incredibly useful for situations where you're using
+topics to "route" messages to consumers (like RPC) or when a backlog of messages is undesirable.
+
+There are now scripts in the `bench` directory that automate the process of running a distributed
+benchmark.  This is a work-in-progress, but it already provides a closer-to-production setup and
+therefore more accurate results.  There's much work to do here!
+
+A whole bunch of bugs were fixed - notably all were 3rd-party contributions! Thanks!
+
+ * #305 - `#ephemeral` topics
+ * #404/#459 - don't decr `RDY` / send `RDY` before `FIN`/`REQ`
+ * #472 - improve `nsqd` `diskqueue` sync strategies
+ * #488 - ability to filter topics by regex in `nsq_to_file` (thanks @lxfontes)
+ * #438 - distributed pub-sub benchmark scripts
+ * #448 - better `nsqd` `IOLoop` logging (thanks @rexposadas)
+ * #458 - switch to [gpm](https://github.com/pote/gpm) for builds
+
+Bugs:
+
+ * #493 - ensure all `nsqd` `Notify()` goroutines have exited prior to shutdown (thanks @allgeek)
+ * #492 - ensure `diskqueue` syncs at end of benchmarks (thanks @Dieterbe)
+ * #490 - de-flake `TestPauseMetadata` (thanks @allgeek)
+ * #486 - require ports to be specified for daemons (thanks @jnewmano)
+ * #482 - better bash in `dist.sh` (thanks @losinggeneration)
+ * #480 - fix panic when `nsqadmin` checks stats for missing topic (thanks @jnewmano)
+ * #469 - fix panic when misbehaving client sends corrupt command (thanks @prio)
+ * #461 - fix panic when `nsqd` decodes corrupt message data (thanks @twmb)
+ * #454/#455 - fix 32-bit atomic ops in `nsq_to_nsq`/`nsq_to_http` (thanks @leshik)
+ * #451 - fix `go get` compatibility (thanks @adams-sarah)
+
 ### 0.2.31 - 2014-08-26
 
 **Upgrading from 0.2.30**: No backwards incompatible changes.

@@ -1,5 +1,5 @@
 %define name nsq
-%define version 0.2.31
+%define version 0.3.0
 %define release 1
 %define path usr/local
 %define group Database/Applications
@@ -10,7 +10,7 @@ Name:       %{name}
 Version:    %{version}
 Release:    %{release}
 Group:      %{group}
-Packager:   Matt Reiferson <mattr@bit.ly>
+Packager:   Matt Reiferson <mreiferson@gmail.com>
 License:    Apache
 BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}
 AutoReqProv: no
