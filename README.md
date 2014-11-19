@@ -51,11 +51,12 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a><br/>
 
-<a href="http://stripe.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="110" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="125" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://getweave.com"><img src="http://nsq.io/static/img/weave_logo.png" width="125" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="140" align="middle"/></a>
+<a href="http://stripe.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://getweave.com"><img src="http://nsq.io/static/img/weave_logo.png" width="94" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://digg.com"><img src="http://nsq.io/static/img/digg_logo.png" width="97" align="middle"/></a>
 
 ## Documentation
 
