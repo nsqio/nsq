@@ -42,6 +42,7 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://docker.com"><img src="{{ site.baseurl }}/static/img/docker_logo.png" width="145"/></a></td>
 <td align="center"><a href="http://getweave.com"><img src="{{ site.baseurl }}/static/img/weave_logo.png" width="110"/></a></td>
 <td align="center"><a href="http://shipwire.com"><img src="{{ site.baseurl }}/static/img/shipwire_logo.png" width="140"/></a></td>
+<td align="center"><a href="http://digg.com"><img src="{{ site.baseurl }}/static/img/digg_logo.png" width="140"/></a></td>
 </tr></table></center>
 
 ### Getting Help
