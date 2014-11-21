@@ -45,6 +45,13 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://digg.com"><img src="{{ site.baseurl }}/static/img/digg_logo.png" width="140"/></a></td>
 </tr></table></center>
 
+### On The Twitter
+
+<center>
+<a class="twitter-timeline" width="520" height="600" data-dnt="true" data-chrome="noborders noheader" href="https://twitter.com/nsqio/favorites" data-widget-id="535600226652782593">Favorite Tweets by @nsqio</a>
+<script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+"://platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);}}(document,"script","twitter-wjs");</script>
+</center>
+
 ### Getting Help
 
 * **Source**: [https://github.com/bitly/nsq][github_nsq]
