@@ -674,10 +674,17 @@ func TestOutputBuffering(t *testing.T) {
 	topic.PutMessage(msg)
 
 	start := time.Now()
-	identify(t, conn, map[string]interface{}{
+	data := identify(t, conn, map[string]interface{}{
 		"output_buffer_size":    outputBufferSize,
 		"output_buffer_timeout": outputBufferTimeout,
 	}, frameTypeResponse)
+	var decoded map[string]interface{}
+	json.Unmarshal(data, &decoded)
+	v, ok := decoded["output_buffer_size"]
+	equal(t, ok, true)
+	equal(t, int(v.(float64)), outputBufferSize)
+	v, ok = decoded["output_buffer_timeout"]
+	equal(t, int(v.(float64)), outputBufferTimeout)
 	sub(t, conn, topicName, "ch")
 
 	_, err = nsq.Ready(10).WriteTo(conn)

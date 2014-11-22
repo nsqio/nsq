@@ -386,29 +386,33 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	resp, err := json.Marshal(struct {
-		MaxRdyCount     int64  `json:"max_rdy_count"`
-		Version         string `json:"version"`
-		MaxMsgTimeout   int64  `json:"max_msg_timeout"`
-		MsgTimeout      int64  `json:"msg_timeout"`
-		TLSv1           bool   `json:"tls_v1"`
-		Deflate         bool   `json:"deflate"`
-		DeflateLevel    int    `json:"deflate_level"`
-		MaxDeflateLevel int    `json:"max_deflate_level"`
-		Snappy          bool   `json:"snappy"`
-		SampleRate      int32  `json:"sample_rate"`
-		AuthRequired    bool   `json:"auth_required"`
+		MaxRdyCount         int64  `json:"max_rdy_count"`
+		Version             string `json:"version"`
+		MaxMsgTimeout       int64  `json:"max_msg_timeout"`
+		MsgTimeout          int64  `json:"msg_timeout"`
+		TLSv1               bool   `json:"tls_v1"`
+		Deflate             bool   `json:"deflate"`
+		DeflateLevel        int    `json:"deflate_level"`
+		MaxDeflateLevel     int    `json:"max_deflate_level"`
+		Snappy              bool   `json:"snappy"`
+		SampleRate          int32  `json:"sample_rate"`
+		AuthRequired        bool   `json:"auth_required"`
+		OutputBufferSize    int    `json:"output_buffer_size"`
+		OutputBufferTimeout int64  `json:"output_buffer_timeout"`
 	}{
-		MaxRdyCount:     p.ctx.nsqd.opts.MaxRdyCount,
-		Version:         util.BINARY_VERSION,
-		MaxMsgTimeout:   int64(p.ctx.nsqd.opts.MaxMsgTimeout / time.Millisecond),
-		MsgTimeout:      int64(client.MsgTimeout / time.Millisecond),
-		TLSv1:           tlsv1,
-		Deflate:         deflate,
-		DeflateLevel:    deflateLevel,
-		MaxDeflateLevel: p.ctx.nsqd.opts.MaxDeflateLevel,
-		Snappy:          snappy,
-		SampleRate:      client.SampleRate,
-		AuthRequired:    p.ctx.nsqd.IsAuthEnabled(),
+		MaxRdyCount:         p.ctx.nsqd.opts.MaxRdyCount,
+		Version:             util.BINARY_VERSION,
+		MaxMsgTimeout:       int64(p.ctx.nsqd.opts.MaxMsgTimeout / time.Millisecond),
+		MsgTimeout:          int64(client.MsgTimeout / time.Millisecond),
+		TLSv1:               tlsv1,
+		Deflate:             deflate,
+		DeflateLevel:        deflateLevel,
+		MaxDeflateLevel:     p.ctx.nsqd.opts.MaxDeflateLevel,
+		Snappy:              snappy,
+		SampleRate:          client.SampleRate,
+		AuthRequired:        p.ctx.nsqd.IsAuthEnabled(),
+		OutputBufferSize:    client.OutputBufferSize,
+		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
 	})
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
