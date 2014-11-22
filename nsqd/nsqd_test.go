@@ -210,7 +210,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 
 	ephemeralChannel.RemoveClient(client.ID)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	topic.Lock()
 	numChannels := len(topic.channelMap)
