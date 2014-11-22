@@ -173,7 +173,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
@@ -191,7 +191,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
 	channelName := "bench"
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()

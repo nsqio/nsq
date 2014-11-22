@@ -579,7 +579,7 @@ func BenchmarkHTTPput(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, 256)

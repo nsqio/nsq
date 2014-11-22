@@ -1373,7 +1373,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	nsqd := NewNSQD(opts)
 	ctx := &context{nsqd}
 	p := &protocolV2{ctx}
@@ -1390,7 +1390,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
@@ -1460,7 +1460,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
@@ -1556,7 +1556,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	b.StopTimer()
 
 	opts := NewNSQDOptions()
-	opts.Logger = nil
+	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, 256)
