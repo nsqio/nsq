@@ -4,6 +4,8 @@ import (
 	"errors"
 )
 
+var base10fail = errors.New("failed to convert to Base10")
+
 func ByteToBase10(b []byte) (n uint64, err error) {
 	base := uint64(10)
 
@@ -16,8 +18,8 @@ func ByteToBase10(b []byte) (n uint64, err error) {
 			v = d - '0'
 		default:
 			n = 0
-			err = errors.New("failed to convert to Base10")
-			break
+			err = base10fail
+			return
 		}
 		n *= base
 		n += uint64(v)
