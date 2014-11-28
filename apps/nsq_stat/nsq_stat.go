@@ -35,8 +35,8 @@ func init() {
 
 func statLoop(interval time.Duration, topic string, channel string,
 	nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
-	i := 0
-	for {
+	var o *lookupd.ChannelStats
+	for i := 0; ; i++ {
 		var producers []string
 		var err error
 
@@ -64,12 +64,26 @@ func statLoop(interval time.Duration, topic string, channel string,
 		}
 
 		if i%25 == 0 {
-			fmt.Printf("---------------depth---------------+--------------metadata---------------\n")
-			fmt.Printf("%7s %7s %7s %5s %5s | %7s %7s %12s %7s\n", "total", "mem", "disk", "inflt", "def", "req", "t-o", "msgs", "clients")
+			fmt.Printf("%s+%s+%s\n",
+				"------rate------",
+				"----------------depth----------------",
+				"--------------metadata---------------")
+			fmt.Printf("%7s %7s | %7s %7s %7s %5s %5s | %7s %7s %12s %7s\n",
+				"ingress", "egress",
+				"total", "mem", "disk", "inflt",
+				"def", "req", "t-o", "msgs", "clients")
+		}
+
+		if o == nil {
+			o = c
+			time.Sleep(interval)
+			continue
 		}
 
 		// TODO: paused
-		fmt.Printf("%7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
+		fmt.Printf("%7d %7d | %7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
+			(c.MessageCount-o.MessageCount)/int64(interval.Seconds()),
+			(c.MessageCount-o.MessageCount-(c.Depth-o.Depth))/int64(interval.Seconds()),
 			c.Depth,
 			c.MemoryDepth,
 			c.BackendDepth,
@@ -80,9 +94,8 @@ func statLoop(interval time.Duration, topic string, channel string,
 			c.MessageCount,
 			c.ClientCount)
 
+		o = c
 		time.Sleep(interval)
-
-		i++
 	}
 }
 
