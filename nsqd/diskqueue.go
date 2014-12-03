@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path"
 	"sync"
@@ -412,7 +413,7 @@ func (d *diskQueue) persistMetaData() error {
 	var err error
 
 	fileName := d.metaDataFileName()
-	tmpFileName := fileName + ".tmp"
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 
 	// write to tmp file
 	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0600)
