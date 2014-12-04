@@ -272,7 +272,7 @@ func (f *FileLogger) updateFile() {
 	var err error
 	var fi os.FileInfo
 	for ; ; f.rev += 1 {
-		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%d", f.rev), -1)
+		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%06d", f.rev), -1)
 		openFlag := os.O_WRONLY | os.O_CREATE
 		if f.gzipEnabled {
 			openFlag |= os.O_EXCL
