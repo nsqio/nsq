@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -31,13 +32,16 @@ var (
 
 	outputDir      = flag.String("output-dir", "/tmp", "directory to write output files to")
 	datetimeFormat = flag.String("datetime-format", "%Y-%m-%d_%H", "strftime compatible format for <DATETIME> in filename format")
-	filenameFormat = flag.String("filename-format", "<TOPIC>.<HOST><GZIPREV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <DATETIME>, <GZIPREV> are replaced. <GZIPREV> is a suffix when an existing gzip file already exists)")
+	filenameFormat = flag.String("filename-format", "<TOPIC>.<HOST><REV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <PID>, <DATETIME>, <REV> are replaced. <REV> is increased when file already exists)")
 	hostIdentifier = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
 	topicPattern   = flag.String("topic-pattern", ".*", "Only log topics matching the following pattern")
+
+	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
+	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
 	consumerOpts     = util.StringArray{}
 	nsqdTCPAddrs     = util.StringArray{}
@@ -60,8 +64,8 @@ func init() {
 
 type FileLogger struct {
 	out              *os.File
+	writer           io.Writer
 	gzipWriter       *gzip.Writer
-	lastFilename     string
 	logChan          chan *nsq.Message
 	compressionLevel int
 	gzipEnabled      bool
@@ -70,6 +74,12 @@ type FileLogger struct {
 	ExitChan chan int
 	termChan chan bool
 	hupChan  chan bool
+
+	// for rotation
+	lastFilename string
+	lastOpenTime time.Time
+	filesize     int64
+	rev          uint
 }
 
 type ConsumerFileLogger struct {
@@ -131,14 +141,15 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 			}
 			sync = true
 		case m := <-f.logChan:
-			if f.updateFile() {
+			if f.needsFileRotate() {
+				f.updateFile()
 				sync = true
 			}
-			_, err := f.Write(m.Body)
+			_, err := f.writer.Write(m.Body)
 			if err != nil {
 				log.Fatalf("ERROR: writing message to disk - %s", err)
 			}
-			_, err = f.Write([]byte("\n"))
+			_, err = f.writer.Write([]byte("\n"))
 			if err != nil {
 				log.Fatalf("ERROR: writing newline to disk - %s", err)
 			}
@@ -179,6 +190,7 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 
 func (f *FileLogger) Close() {
 	if f.out != nil {
+		f.out.Sync()
 		if f.gzipWriter != nil {
 			f.gzipWriter.Close()
 		}
@@ -188,9 +200,7 @@ func (f *FileLogger) Close() {
 }
 
 func (f *FileLogger) Write(p []byte) (n int, err error) {
-	if f.gzipWriter != nil {
-		return f.gzipWriter.Write(p)
-	}
+	f.filesize += int64(len(p))
 	return f.out.Write(p)
 }
 
@@ -199,7 +209,8 @@ func (f *FileLogger) Sync() error {
 	if f.gzipWriter != nil {
 		f.gzipWriter.Close()
 		err = f.out.Sync()
-		f.gzipWriter, _ = gzip.NewWriterLevel(f.out, f.compressionLevel)
+		f.gzipWriter, _ = gzip.NewWriterLevel(f, f.compressionLevel)
+		f.writer = f.gzipWriter
 	} else {
 		err = f.out.Sync()
 	}
@@ -208,90 +219,106 @@ func (f *FileLogger) Sync() error {
 
 func (f *FileLogger) calculateCurrentFilename() string {
 	t := time.Now()
-
 	datetime := strftime(*datetimeFormat, t)
-	filename := strings.Replace(f.filenameFormat, "<DATETIME>", datetime, -1)
-	if !f.gzipEnabled {
-		filename = strings.Replace(filename, "<GZIPREV>", "", -1)
-	}
-	return filename
-
+	return strings.Replace(f.filenameFormat, "<DATETIME>", datetime, -1)
 }
 
 func (f *FileLogger) needsFileRotate() bool {
-	filename := f.calculateCurrentFilename()
-	return filename != f.lastFilename
-}
-
-func (f *FileLogger) updateFile() bool {
-	filename := f.calculateCurrentFilename()
-	maxGzipRevisions := 1000
-	if filename != f.lastFilename || f.out == nil {
-		f.Close()
-		os.MkdirAll(*outputDir, 0770)
-		var newFile *os.File
-		var err error
-		if f.gzipEnabled {
-			// for gzip files, we never append to an existing file
-			// we try to create different revisions, replacing <GZIPREV> in the filename
-			for gzipRevision := 0; gzipRevision < maxGzipRevisions; gzipRevision += 1 {
-				var revisionSuffix string
-				if gzipRevision > 0 {
-					revisionSuffix = fmt.Sprintf("-%d", gzipRevision)
-				}
-				tempFilename := strings.Replace(filename, "<GZIPREV>", revisionSuffix, -1)
-				fullPath := path.Join(*outputDir, tempFilename)
-				dir, _ := filepath.Split(fullPath)
-				if dir != "" {
-					err = os.MkdirAll(dir, 0770)
-					if err != nil {
-						log.Fatalf("ERROR: %s Unable to create %s", err, dir)
-					}
-				}
-				newFile, err = os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
-				if err != nil && os.IsExist(err) {
-					log.Printf("INFO: file already exists: %s", fullPath)
-					continue
-				}
-				if err != nil {
-					log.Fatalf("ERROR: %s Unable to open %s", err, fullPath)
-				}
-				log.Printf("opening %s", fullPath)
-				break
-			}
-			if newFile == nil {
-				log.Fatalf("ERROR: Unable to open a new gzip file after %d tries", maxGzipRevisions)
-			}
-		} else {
-			log.Printf("opening %s/%s", *outputDir, filename)
-			fullPath := path.Join(*outputDir, filename)
-			dir, _ := filepath.Split(fullPath)
-			if dir != "" {
-				err = os.MkdirAll(dir, 0770)
-				if err != nil {
-					log.Fatalf("ERROR: %s Unable to create %s", err, dir)
-				}
-			}
-			newFile, err = os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		f.out = newFile
-		f.lastFilename = filename
-		if f.gzipEnabled {
-			f.gzipWriter, _ = gzip.NewWriterLevel(newFile, f.compressionLevel)
-		}
+	if f.out == nil {
 		return true
 	}
 
+	filename := f.calculateCurrentFilename()
+	if filename != f.lastFilename {
+		log.Printf("INFO: new filename %s, need rotate", filename)
+		return true // rotate by filename
+	}
+
+	if *rotateInterval > 0 {
+		if s := time.Since(f.lastOpenTime); s > *rotateInterval {
+			log.Printf("INFO: %s since last open, need rotate", s)
+			return true // rotate by interval
+		}
+	}
+
+	if *rotateSize > 0 && f.filesize > *rotateSize {
+		log.Printf("INFO: %s current %d bytes, need rotate", f.out.Name(), f.filesize)
+		return true // rotate by size
+	}
 	return false
 }
 
+func (f *FileLogger) updateFile() {
+	filename := f.calculateCurrentFilename()
+	if filename != f.lastFilename {
+		f.rev = 0 // reset revsion to 0 if it is a new filename
+	} else {
+		f.rev += 1
+	}
+	f.lastFilename = filename
+	f.lastOpenTime = time.Now()
+
+	fullPath := path.Join(*outputDir, filename)
+	dir, _ := filepath.Split(fullPath)
+	if dir != "" {
+		err := os.MkdirAll(dir, 0770)
+		if err != nil {
+			log.Fatalf("ERROR: %s Unable to create %s", err, dir)
+		}
+	}
+
+	f.Close()
+
+	var err error
+	var fi os.FileInfo
+	for ; ; f.rev += 1 {
+		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%d", f.rev), -1)
+		openFlag := os.O_WRONLY | os.O_CREATE
+		if f.gzipEnabled {
+			openFlag |= os.O_EXCL
+		} else {
+			openFlag |= os.O_APPEND
+		}
+		f.out, err = os.OpenFile(absFilename, openFlag, 0666)
+		if err != nil {
+			if os.IsExist(err) {
+				log.Printf("INFO: file already exists: %s", absFilename)
+				continue
+			}
+			log.Fatalf("ERROR: %s Unable to open %s", err, absFilename)
+		}
+		log.Printf("INFO: opening %s", absFilename)
+		fi, err = f.out.Stat()
+		if err != nil {
+			log.Fatalf("ERROR: %s Unable to stat file %s", err, f.out.Name())
+		}
+		f.filesize = fi.Size()
+		if f.filesize == 0 {
+			break // ok, new file
+		}
+		if f.needsFileRotate() {
+			continue // next rev
+		}
+		break // ok, don't need rotate
+	}
+
+	if f.gzipEnabled {
+		f.gzipWriter, _ = gzip.NewWriterLevel(f, f.compressionLevel)
+		f.writer = f.gzipWriter
+	} else {
+		f.writer = f
+	}
+}
+
 func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
-	if gzipEnabled && strings.Index(filenameFormat, "<GZIPREV>") == -1 {
-		return nil, errors.New("missing <GZIPREV> in filenameFormat")
+	// TODO: remove, deprecated, for compat <GZIPREV>
+	filenameFormat = strings.Replace(filenameFormat, "<GZIPREV>", "<REV>", -1)
+	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 {
+		if strings.Index(filenameFormat, "<REV>") == -1 {
+			return nil, errors.New("missing <REV> in --filename-format when gzip or rotation enabled")
+		}
+	} else { // remove <REV> as we don't need it
+		filenameFormat = strings.Replace(filenameFormat, "<REV>", "", -1)
 	}
 
 	hostname, err := os.Hostname()
@@ -306,6 +333,7 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 	}
 	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", topic, -1)
 	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
+	filenameFormat = strings.Replace(filenameFormat, "<PID>", fmt.Sprintf("%d", os.Getpid()), -1)
 	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
 		filenameFormat = filenameFormat + ".gz"
 	}
