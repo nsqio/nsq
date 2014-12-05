@@ -56,7 +56,7 @@ type nsqdOptions struct {
 	TLSKey              string `flag:"tls-key"`
 	TLSClientAuthPolicy string `flag:"tls-client-auth-policy"`
 	TLSRootCAFile       string `flag:"tls-root-ca-file"`
-	TLSRequired         bool   `flag:"tls-required"`
+	TLSRequired         int    `flag:"tls-required"`
 
 	// compression
 	DeflateEnabled  bool `flag:"deflate"`

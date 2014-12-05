@@ -788,7 +788,7 @@ func TestTLSRequired(t *testing.T) {
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
-	opts.TLSRequired = true
+	opts.TLSRequired = TLSRequiredExceptHTTP
 
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
