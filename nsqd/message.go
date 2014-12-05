@@ -19,6 +19,7 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
+	Delegate  MessageDelegate
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -99,4 +100,15 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) err
 		return err
 	}
 	return nil
+}
+
+type MessageDelegate interface {
+	// OnFinish is called when FIN is received for the message
+	OnFinish(*Message)
+
+	// OnRequeue is called when REQ is received for the message
+	OnRequeue(m *Message, delay time.Duration)
+
+	// OnTouch is called when TOUCH is received for the message
+	OnTouch(*Message)
 }
