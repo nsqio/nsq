@@ -106,6 +106,9 @@ type MessageDelegate interface {
 	// OnFinish is called when FIN is received for the message
 	OnFinish(*Message)
 
+	// OnQueue is called before a message is sent to the queue
+	OnQueue(*Message)
+
 	// OnRequeue is called when REQ is received for the message
 	OnRequeue(m *Message, delay time.Duration)
 

@@ -314,6 +314,11 @@ func (c *Channel) PutMessage(m *Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
+
+	if m.Delegate != nil {
+		m.Delegate.OnQueue(m)
+	}
+
 	err := c.put(m)
 	if err != nil {
 		return err
