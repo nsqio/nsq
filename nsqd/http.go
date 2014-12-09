@@ -255,7 +255,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	msg := NewMessage(<-s.ctx.nsqd.idChan, body, Delegate)
+	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, util.HTTPError{503, "EXITING"}
@@ -321,7 +321,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 				return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(<-s.ctx.nsqd.idChan, block, Delegate)
+			msg := NewMessage(<-s.ctx.nsqd.idChan, block)
 			msgs = append(msgs, msg)
 		}
 	}
