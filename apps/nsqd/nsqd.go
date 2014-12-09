@@ -99,13 +99,7 @@ func (t *tlsRequiredOption) Set(s string) error {
 func (t *tlsRequiredOption) Get() interface{} { return *t }
 
 func (t *tlsRequiredOption) String() string {
-	switch *t {
-	case nsqd.TLSRequiredExceptHTTP:
-		return "1"
-	case nsqd.TLSRequired:
-		return "2"
-	}
-	return "0"
+	return strconv.FormatInt(int64(*t), 10)
 }
 
 func (t *tlsRequiredOption) IsBoolFlag() bool { return true }
