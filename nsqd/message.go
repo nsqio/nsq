@@ -117,5 +117,5 @@ type MessageDelegate interface {
 	OnTouch(*Message)
 }
 
-// Set this value have a delegate be called on every message create
+// Delegate is the default delegate value used when NewMessage is called. Set this value have a delegate be added to every message.
 var Delegate MessageDelegate = nil
