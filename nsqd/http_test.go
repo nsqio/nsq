@@ -171,6 +171,7 @@ func TestHTTPSRequire(t *testing.T) {
 	tlsConfig := &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
+		MinVersion:         0,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,
