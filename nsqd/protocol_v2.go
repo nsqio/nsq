@@ -752,7 +752,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	msg := NewMessage(<-p.ctx.nsqd.idChan, messageBody)
+	msg := NewMessage(<-p.ctx.nsqd.idChan, messageBody, Delegate)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, util.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -874,7 +874,7 @@ func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int
 			return nil, util.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, NewMessage(<-idChan, msgBody))
+		messages = append(messages, NewMessage(<-idChan, msgBody, Delegate))
 	}
 
 	return messages, nil

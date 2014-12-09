@@ -22,6 +22,7 @@ type httpServer struct {
 	ctx         *context
 	tlsEnabled  bool
 	tlsRequired bool
+	Delegate    MessageDelegate
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -254,7 +255,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
+	msg := NewMessage(<-s.ctx.nsqd.idChan, body, Delegate)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, util.HTTPError{503, "EXITING"}
@@ -320,7 +321,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 				return nil, util.HTTPError{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(<-s.ctx.nsqd.idChan, block)
+			msg := NewMessage(<-s.ctx.nsqd.idChan, block, Delegate)
 			msgs = append(msgs, msg)
 		}
 	}

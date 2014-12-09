@@ -267,7 +267,7 @@ func (t *Topic) messagePump() {
 			// fastpath to avoid copy if its the first channel
 			// (the topic already created the first copy)
 			if i > 0 {
-				chanMsg = NewMessage(msg.ID, msg.Body)
+				chanMsg = NewMessage(msg.ID, msg.Body, Delegate)
 				chanMsg.Timestamp = msg.Timestamp
 			}
 			err := channel.PutMessage(chanMsg)

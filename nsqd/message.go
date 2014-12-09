@@ -28,11 +28,12 @@ type Message struct {
 	index      int
 }
 
-func NewMessage(id MessageID, body []byte) *Message {
+func NewMessage(id MessageID, body []byte, delegate MessageDelegate) *Message {
 	return &Message{
 		ID:        id,
 		Body:      body,
 		Timestamp: time.Now().UnixNano(),
+		Delegate:  delegate,
 	}
 }
 
@@ -115,3 +116,6 @@ type MessageDelegate interface {
 	// OnTouch is called when TOUCH is received for the message
 	OnTouch(*Message)
 }
+
+// Set this value have a delegate be called on every message create
+var Delegate MessageDelegate = nil
