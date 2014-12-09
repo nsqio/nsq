@@ -69,7 +69,7 @@ func init() {
 
 type PublishHandler struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	counter   uint64
+	counter uint64
 
 	addresses util.StringArray
 	producers map[string]*nsq.Producer
