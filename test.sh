@@ -11,7 +11,7 @@ LOOKUPD_PID=$!
 
 # build and run nsqd configured to use our lookupd above
 NSQD_LOGFILE=$(mktemp -t nsqd.XXXXXXX)
-cmd="apps/nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/certs/cert.pem --tls-key=nsqd/test/certs/key.pem"
+cmd="apps/nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/certs/cert.pem --tls-key=nsqd/test/certs/key.pem --tls-min-version=ssl30"
 echo "building and starting $cmd"
 echo "  logging to $NSQD_LOGFILE"
 go build -o apps/nsqd/nsqd ./apps/nsqd

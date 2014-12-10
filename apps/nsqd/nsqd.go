@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -72,6 +73,7 @@ var (
 	tlsClientAuthPolicy = flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
 	tlsRootCAFile       = flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
 	tlsRequired         tlsRequiredOption
+	tlsMinVersion       tlsVersionOption
 
 	// compression
 	deflateEnabled  = flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
@@ -99,22 +101,40 @@ func (t *tlsRequiredOption) Set(s string) error {
 func (t *tlsRequiredOption) Get() interface{} { return *t }
 
 func (t *tlsRequiredOption) String() string {
-	switch *t {
-	case nsqd.TLSRequiredExceptHTTP:
-		return "1"
-	case nsqd.TLSRequired:
-		return "2"
-	}
-	return "0"
+	return strconv.FormatInt(int64(*t), 10)
 }
 
 func (t *tlsRequiredOption) IsBoolFlag() bool { return true }
+
+type tlsVersionOption uint16
+
+func (t *tlsVersionOption) Set(s string) error {
+	s = strings.ToLower(s)
+	switch s {
+	case "tls10":
+		*t = tls.VersionTLS10
+	case "tls11":
+		*t = tls.VersionTLS11
+	case "tls12":
+		*t = tls.VersionTLS12
+	default:
+		*t = tls.VersionSSL30
+	}
+	return nil
+}
+
+func (t *tlsVersionOption) Get() interface{} { return *t }
+
+func (t *tlsVersionOption) String() string {
+	return strconv.FormatInt(int64(*t), 10)
+}
 
 func init() {
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 	flagSet.Var(&e2eProcessingLatencyPercentiles, "e2e-processing-latency-percentile", "message processing time percentiles to keep track of (can be specified multiple times or comma separated, default none)")
 	flagSet.Var(&authHttpAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 	flagSet.Var(&tlsRequired, "tls-required", "require TLS for client connections (true, false, tcp-https)")
+	flagSet.Var(&tlsMinVersion, "tls-min-version", "minimum SSL/TLS version acceptable ('ssl30', 'tls10', 'tls11', or 'tls12')")
 }
 
 func main() {

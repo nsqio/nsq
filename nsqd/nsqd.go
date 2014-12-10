@@ -531,6 +531,7 @@ func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 	tlsConfig = &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tlsClientAuthPolicy,
+		MinVersion:   uint16(opts.TLSMinVersion),
 	}
 
 	if opts.TLSRootCAFile != "" {
