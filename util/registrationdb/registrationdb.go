@@ -35,6 +35,13 @@ func (r Registration) String() string {
 type Registrations []Registration
 
 type Producer struct {
+	*PeerInfo
+	tombstoned   bool
+	tombstonedAt time.Time
+}
+
+type PeerInfo struct {
+	LastUpdate       int64  `json:"-"`
 	ID               string `json:"-"`
 	RemoteAddress    string `json:"-"`
 	Hostname         string `json:"hostname"`
@@ -42,9 +49,6 @@ type Producer struct {
 	TCPPort          int    `json:"tcp_port"`
 	HTTPPort         int    `json:"http_port"`
 	Version          string `json:"version"`
-	LastUpdate       int64  `json:"-"`
-	tombstoned       bool
-	tombstonedAt     time.Time
 }
 
 type Producers []*Producer
@@ -106,7 +110,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 }
 
 // AddProducer adds a producer to a registration set.
-func (r *RegistrationDB) AddProducer(k Registration, p Producer) bool {
+func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	producers := r.data[k]
@@ -117,7 +121,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p Producer) bool {
 		}
 	}
 	if found == false {
-		r.data[k] = append(producers, &p)
+		r.data[k] = append(producers, p)
 	}
 	return !found
 }
