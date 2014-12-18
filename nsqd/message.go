@@ -108,7 +108,7 @@ type MessageDelegate interface {
 	OnFinish(*Message)
 
 	// OnQueue is called before a message is sent to the queue
-	OnQueue(*Message)
+	OnQueue(m *Message, topic string)
 
 	// OnRequeue is called when REQ is received for the message
 	OnRequeue(m *Message, delay time.Duration)

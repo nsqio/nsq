@@ -489,6 +489,10 @@ exit:
 	n.logf("ID: closing")
 }
 
+func (n *NSQD) NewID() MessageID {
+	return <-n.idChan
+}
+
 func (n *NSQD) Notify(v interface{}) {
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that

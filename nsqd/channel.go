@@ -315,10 +315,6 @@ func (c *Channel) PutMessage(m *Message) error {
 		return errors.New("exiting")
 	}
 
-	if m.Delegate != nil {
-		m.Delegate.OnQueue(m)
-	}
-
 	err := c.put(m)
 	if err != nil {
 		return err
