@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"crypto/md5"
+	"crypto/tls"
 	"hash/crc32"
 	"io"
 	"log"
@@ -57,7 +58,7 @@ type nsqdOptions struct {
 	TLSClientAuthPolicy string `flag:"tls-client-auth-policy"`
 	TLSRootCAFile       string `flag:"tls-root-ca-file"`
 	TLSRequired         int    `flag:"tls-required"`
-	TLSMinVersion       int    `flag:"tls-min-version"`
+	TLSMinVersion       uint16 `flag:"tls-min-version"`
 
 	// compression
 	DeflateEnabled  bool `flag:"deflate"`
@@ -105,6 +106,8 @@ func NewNSQDOptions() *nsqdOptions {
 		DeflateEnabled:  true,
 		MaxDeflateLevel: 6,
 		SnappyEnabled:   true,
+
+		TLSMinVersion: tls.VersionTLS10,
 
 		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}

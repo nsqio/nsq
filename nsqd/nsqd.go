@@ -531,7 +531,8 @@ func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 	tlsConfig = &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tlsClientAuthPolicy,
-		MinVersion:   uint16(opts.TLSMinVersion),
+		MinVersion:   opts.TLSMinVersion,
+		MaxVersion:   tls.VersionTLS12, // enable TLS_FALLBACK_SCSV prior to Go 1.5: https://go-review.googlesource.com/#/c/1776/
 	}
 
 	if opts.TLSRootCAFile != "" {
