@@ -4,5 +4,5 @@ github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
 github.com/bitly/go-nsq                 7eb4205f84e8c3d1b7bddbf094fd6d061ca7c951 # v1.0.1
 github.com/bitly/go-simplejson          fc395a5db941cf38922b1ccbc083640cd76fe4bc # v0.5.0-alpha
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
-github.com/mreiferson/go-options        896a539cd709f4f39d787562d1583c016ce7517e
+github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da
 github.com/mreiferson/go-snappystream   307a466b220aaf34bcee2d19c605ed9e96b4bcdb # v0.2.0

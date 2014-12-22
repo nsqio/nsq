@@ -107,6 +107,9 @@ tls_key = ""
 ## require client TLS upgrades
 tls_required = false
 
+## minimum TLS version ("ssl3.0", "tls1.0," "tls1.1", "tls1.2")
+tls_min_version = ""
+
 ## enable deflate feature negotiation (client compression)
 deflate = true
 
