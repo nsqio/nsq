@@ -43,6 +43,9 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 <td align="center"><a href="http://getweave.com"><img src="{{ site.baseurl }}/static/img/weave_logo.png" width="110"/></a></td>
 <td align="center"><a href="http://shipwire.com"><img src="{{ site.baseurl }}/static/img/shipwire_logo.png" width="140"/></a></td>
 <td align="center"><a href="http://digg.com"><img src="{{ site.baseurl }}/static/img/digg_logo.png" width="140"/></a></td>
+</tr><tr>
+<td align="center"><a href="http://scalabull.com"><img src="{{ site.baseurl }}/static/img/scalabull.png" width="110"/></a></td>
+<td align="center"><a href="http://augury.com"><img src="{{ site.baseurl }}/static/img/augury_logo.png" width="110"/></a></td>
 </tr></table></center>
 
 ### On The Twitter
