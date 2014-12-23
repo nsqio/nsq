@@ -56,7 +56,10 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://getweave.com"><img src="http://nsq.io/static/img/weave_logo.png" width="94" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://digg.com"><img src="http://nsq.io/static/img/digg_logo.png" width="97" align="middle"/></a>
+<a href="http://digg.com"><img src="http://nsq.io/static/img/digg_logo.png" width="97" align="middle"/></a><br/>
+
+<a href="http://scalabull.com"><img src="http://nsq.io/static/img/scalabull_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://augury.com"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>
 
 ## Documentation
 
