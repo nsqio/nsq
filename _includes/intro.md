@@ -46,6 +46,8 @@ there's a [protocol spec][protocol] (see [client libraries][client_libraries]).
 </tr><tr>
 <td align="center"><a href="http://scalabull.com"><img src="{{ site.baseurl }}/static/img/scalabull_logo.png" width="110"/></a></td>
 <td align="center"><a href="http://augury.com"><img src="{{ site.baseurl }}/static/img/augury_logo.png" width="110"/></a></td>
+<td align="center:"><a href="http://buzzfeed.com"><img src="{{ site.baseurl }}/static/img/buzzfeed_logo.png" width="97"/></a></td>
+<td align="center"><a href="http://eztable.com"><img src="{{ site.baseurl }}/static/img/eztable_logo.png" width="105"/></a></td>
 </tr></table></center>
 
 ### On The Twitter
