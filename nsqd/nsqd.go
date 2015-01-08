@@ -543,12 +543,10 @@ func (n *NSQD) Notify(v interface{}) {
 		}
 	})
 
-	n.waitGroup.Wrap(func() {
-		select {
-		case <-n.exitChan:
-		case n.gossipChan <- v:
-		}
-	})
+	select {
+	case <-n.exitChan:
+	case n.gossipChan <- v:
+	}
 }
 
 func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
