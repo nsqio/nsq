@@ -50,7 +50,7 @@ type NSQD struct {
 	tcpAddr       *net.TCPAddr
 	httpAddr      *net.TCPAddr
 	httpsAddr     *net.TCPAddr
-	broadcastAddr *net.TCPAddr
+	broadcastAddr net.IP
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -114,11 +114,12 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		n.httpsAddr = httpsAddr
 	}
 
-	broadcastAddr, err := net.ResolveTCPAddr("tcp", opts.BroadcastAddress)
+	broadcastAddr, err := net.ResolveTCPAddr("tcp", opts.BroadcastAddress+":0")
 	if err != nil {
 		n.logf("FATAL: failed to resolve broadcast address (%s) - %s", opts.BroadcastAddress, err)
+		os.Exit(1)
 	}
-	n.broadcastAddr = broadcastAddr
+	n.broadcastAddr = broadcastAddr.IP
 
 	if opts.StatsdPrefix != "" {
 		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(opts.BroadcastAddress,
