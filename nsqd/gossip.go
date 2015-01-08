@@ -59,7 +59,7 @@ func memberToProducer(member serf.Member) *registrationdb.Producer {
 
 func initSerf(opts *nsqdOptions,
 	serfEventChan chan serf.Event,
-	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr) (*serf.Serf, error) {
+	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr, broadcastAddr *net.TCPAddr) (*serf.Serf, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -82,9 +82,8 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
-	if opts.BroadcastAddress != "" && opts.BroadcastAddress != hostname {
-		serfConfig.MemberlistConfig.AdvertiseAddr = opts.BroadcastAddress
-	}
+
+	serfConfig.MemberlistConfig.AdvertiseAddr = broadcastAddr.IP.String()
 	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond

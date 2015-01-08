@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -51,6 +50,7 @@ type NSQD struct {
 	tcpAddr       *net.TCPAddr
 	httpAddr      *net.TCPAddr
 	httpsAddr     *net.TCPAddr
+	broadcastAddr *net.TCPAddr
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -113,6 +113,12 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		}
 		n.httpsAddr = httpsAddr
 	}
+
+	broadcastAddr, err := net.ResolveTCPAddr("tcp", opts.BroadcastAddress)
+	if err != nil {
+		n.logf("FATAL: failed to resolve broadcast address (%s) - %s", opts.BroadcastAddress, err)
+	}
+	n.broadcastAddr = broadcastAddr
 
 	if opts.StatsdPrefix != "" {
 		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(opts.BroadcastAddress,
@@ -240,7 +246,8 @@ func (n *NSQD) Main() {
 	serf, err := initSerf(n.opts, n.serfEventChan,
 		n.tcpListener.Addr().(*net.TCPAddr),
 		n.httpListener.Addr().(*net.TCPAddr),
-		httpsAddr)
+		httpsAddr,
+		n.broadcastAddr)
 	if err != nil {
 		n.logf("FATAL: failed to initialize Serf - %s", err)
 		os.Exit(1)
