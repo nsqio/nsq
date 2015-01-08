@@ -1,3 +1,10 @@
+// Package registrationdb tracks a set of producers for a various registration. Registrations
+// fall under a category, and may be distinguished with keys and subkeys.
+//
+// Examples of usage include NSQ topic, channel, and client registrations. These registrations are
+// added under separate categories, so a producer will be registered for each of these things independently.
+// This allows keeping information about things like topic existence and client existince separate while not
+// requiring additional memory to store producers multiple times.
 package registrationdb
 
 import (
@@ -12,6 +19,8 @@ type RegistrationDB struct {
 	data map[Registration]Producers
 }
 
+// Registration is a position within the registration db, under a category, and distinguisehd
+// with a key and subkey.
 type Registration struct {
 	Category string
 	Key      string
@@ -86,7 +95,7 @@ func (r *RegistrationDB) Debug() map[string][]map[string]interface{} {
 	return data
 }
 
-// add a registration key
+// AddRegistration creates an emtpy list of producers under a given registration if it does not exist.
 func (r *RegistrationDB) AddRegistration(k Registration) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -96,7 +105,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 	}
 }
 
-// add a producer to a registration
+// AddProducer adds a producer to a registration set.
 func (r *RegistrationDB) AddProducer(k Registration, p Producer) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -135,13 +144,15 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	return removed, len(cleaned)
 }
 
-// remove a Registration and all it's producers
+// remove a Registration and all its producers
 func (r *RegistrationDB) RemoveRegistration(k Registration) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	delete(r.data, k)
 }
 
+// FindRegistrations finds all the registrations (sets of producers) that match the given category, key, and subkey.
+// The key and subkey may be given as wildcards (*).
 func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string) Registrations {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -155,6 +166,8 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 	return results
 }
 
+// FindProducers finds all the producers that are registered under the given category, key, and subkey. The key
+// and subkey may be given as wildcards (*).
 func (r *RegistrationDB) FindProducers(category string, key string, subkey string) Producers {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -178,6 +191,8 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 	return results
 }
 
+// LookupRegistrations finds the list of registrations (sets of producers) that contain the producer
+// with the ID given.
 func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -193,6 +208,8 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	return results
 }
 
+// TouchProducer finds the the producer with ID id under the registration k and updates its LastUpdate to
+// the current time. If the producer was found, the function returns true.
 func (r *RegistrationDB) TouchProducer(k Registration, id string) bool {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -210,6 +227,8 @@ func (r *RegistrationDB) TouchProducer(k Registration, id string) bool {
 	return false
 }
 
+// IsMatch matches a category, key, and subkey with a registration. The key and subkey may be given
+// as wildcards (*).
 func (k Registration) IsMatch(category string, key string, subkey string) bool {
 	if category != k.Category {
 		return false
@@ -223,6 +242,7 @@ func (k Registration) IsMatch(category string, key string, subkey string) bool {
 	return true
 }
 
+// Filter returns a new list of registrations that match the given category, key, and subkey.
 func (rr Registrations) Filter(category string, key string, subkey string) Registrations {
 	output := make(Registrations, 0)
 	for _, k := range rr {
@@ -233,6 +253,7 @@ func (rr Registrations) Filter(category string, key string, subkey string) Regis
 	return output
 }
 
+// Keys returns the keys of rr as a slice of strings.
 func (rr Registrations) Keys() []string {
 	keys := make([]string, len(rr))
 	for i, k := range rr {
@@ -241,6 +262,7 @@ func (rr Registrations) Keys() []string {
 	return keys
 }
 
+// SubKeys returns the subkeys of rr as a slice of strings.
 func (rr Registrations) SubKeys() []string {
 	subkeys := make([]string, len(rr))
 	for i, k := range rr {
@@ -249,6 +271,8 @@ func (rr Registrations) SubKeys() []string {
 	return subkeys
 }
 
+// FilterByActive returns a new list of producers that include elements of pp which have been active since inactivityTimeout and have
+// not been tombstoned since tombstoneLifetime.
 func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLifetime time.Duration) Producers {
 	now := time.Now()
 	results := make(Producers, 0)
