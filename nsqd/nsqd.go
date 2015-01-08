@@ -541,7 +541,6 @@ func (n *NSQD) Notify(v interface{}) {
 			n.Unlock()
 		}
 	})
-	n.Unlock()
 
 	n.waitGroup.Wrap(func() {
 		select {
