@@ -39,19 +39,21 @@ type gossipEvent struct {
 	Rnd     int64  `json:"r"`
 }
 
-func memberToProducer(member serf.Member) registrationdb.Producer {
+func memberToProducer(member serf.Member) *registrationdb.Producer {
 	tcpPort, _ := strconv.Atoi(member.Tags["tp"])
 	httpPort, _ := strconv.Atoi(member.Tags["hp"])
-	return registrationdb.Producer{
-		ID: member.Name,
-		RemoteAddress: net.JoinHostPort(member.Addr.String(),
-			strconv.Itoa(int(member.Port))),
-		LastUpdate:       time.Now().UnixNano(),
-		BroadcastAddress: member.Tags["ba"],
-		Hostname:         member.Tags["h"],
-		TCPPort:          tcpPort,
-		HTTPPort:         httpPort,
-		Version:          member.Tags["v"],
+	return &registrationdb.Producer{
+		PeerInfo: &registrationdb.PeerInfo{
+			ID: member.Name,
+			RemoteAddress: net.JoinHostPort(member.Addr.String(),
+				strconv.Itoa(int(member.Port))),
+			LastUpdate:       time.Now().UnixNano(),
+			BroadcastAddress: member.Tags["ba"],
+			Hostname:         member.Tags["h"],
+			TCPPort:          tcpPort,
+			HTTPPort:         httpPort,
+			Version:          member.Tags["v"],
+		},
 	}
 }
 
@@ -80,7 +82,9 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
-	serfConfig.MemberlistConfig.AdvertiseAddr = opts.BroadcastAddress
+	if opts.BroadcastAddress != "" && opts.BroadcastAddress != hostname {
+		serfConfig.MemberlistConfig.AdvertiseAddr = opts.BroadcastAddress
+	}
 	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
@@ -155,7 +159,7 @@ func (n *NSQD) serfUserEvent(ev serf.Event) {
 }
 
 func (n *NSQD) gossipHandleCreateEvent(operation byte,
-	producer registrationdb.Producer, gev gossipEvent) {
+	producer *registrationdb.Producer, gev gossipEvent) {
 	var registrations []registrationdb.Registration
 
 	if gev.Channel != "" {
@@ -182,7 +186,7 @@ func (n *NSQD) gossipHandleCreateEvent(operation byte,
 }
 
 func (n *NSQD) gossipHandleDeleteEvent(operation byte,
-	producer registrationdb.Producer, gev gossipEvent) {
+	producer *registrationdb.Producer, gev gossipEvent) {
 	if gev.Channel != "" {
 		r := registrationdb.Registration{
 			Category: "channel",
