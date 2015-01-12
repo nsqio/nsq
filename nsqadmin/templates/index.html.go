@@ -21,9 +21,9 @@ func init() {
     </tr>
 {{range $t := .Topics}}
     <tr>
-        <td><a href="/topic/{{.TopicName}}">{{.TopicName}}</a></td>
-        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{$g.Sparkline $t "depth"}}"></a></td>{{end}}
-        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName}}"><img width="120" height="20" src="{{$g.Sparkline $t "message_count"}}"></a></td>{{end}}
+        <td><a href="/topic/{{.TopicName | urlquery}}">{{.TopicName}}</a></td>
+        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName | urlquery}}"><img width="120" height="20" src="{{$g.Sparkline $t "depth"}}"></a></td>{{end}}
+        {{if $g.Enabled}}<td><a href="/topic/{{.TopicName | urlquery}}"><img width="120" height="20" src="{{$g.Sparkline $t "message_count"}}"></a></td>{{end}}
         {{if $g.Enabled}}<td class="bold rate" target="{{$g.Rate $t}}"></td> {{end}}
     </tr>
 {{end}}

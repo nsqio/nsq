@@ -194,7 +194,7 @@ func init() {
 
 {{range $c := .ChannelStats}}
     <tr >
-        <th><a href="/topic/{{$c.TopicName}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
+        <th><a href="/topic/{{$c.TopicName | urlquery}}/{{$c.ChannelName | urlquery}}">{{$c.ChannelName}}</a> 
             {{if $c.Paused}}<span class="label label-important">paused</span>{{end}}
             </th>
         <td>

@@ -8,7 +8,7 @@ func init() {
 
 <ul class="breadcrumb">
   <li><a href="/">Streams</a> <span class="divider">/</span></li>
-  <li><a href="/topic/{{.Topic}}">{{.Topic}}</a> <span class="divider">/</span></li>
+  <li><a href="/topic/{{.Topic | urlquery}}">{{.Topic}}</a> <span class="divider">/</span></li>
   <li class="active">{{.Channel}}</li>
 </ul>
 

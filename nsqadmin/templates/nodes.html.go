@@ -41,7 +41,7 @@ func init() {
         {{if .Topics}}
             <span class="badge">{{.Topics | len}}</span>
             {{range .Topics}}
-            <a href="/topic/{{.Topic}}" class="label {{if .Tombstoned}}label-important{{else}}label-info{{end}}" {{if .Tombstoned}}title="this topic is currently tombstoned on this node"{{end}}>{{.Topic}}</a>
+            <a href="/topic/{{.Topic | urlquery}}" class="label {{if .Tombstoned}}label-important{{else}}label-info{{end}}" {{if .Tombstoned}}title="this topic is currently tombstoned on this node"{{end}}>{{.Topic}}</a>
             {{end}}
         {{end}}
         </td>
