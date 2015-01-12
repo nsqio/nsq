@@ -20,12 +20,14 @@ import (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version")
-	topic            = flag.String("topic", "", "NSQ topic")
-	channel          = flag.String("channel", "", "NSQ channel")
-	statusEvery      = flag.Duration("status-every", 2*time.Second, "duration of time between polling/printing output")
+	showVersion = flag.Bool("version", false, "print version")
+	topic       = flag.String("topic", "", "NSQ topic")
+	channel     = flag.String("channel", "", "NSQ channel")
+	statusEvery = flag.Duration("status-every", 2*time.Second,
+		"duration of time between polling/printing output (show stats only once if value is negative, i.e. -1s)")
 	nsqdHTTPAddrs    = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
+	onceRun          = false
 )
 
 func init() {
@@ -63,15 +65,14 @@ func statLoop(interval time.Duration, topic string, channel string,
 			log.Fatalf("ERROR: failed to find channel(%s) in stats metadata for topic(%s)", channel, topic)
 		}
 
+		if onceRun {
+			fmt.Print(statLineOnceHeader())
+			fmt.Print(statLineOnce(c))
+			os.Exit(0)
+		}
+
 		if i%25 == 0 {
-			fmt.Printf("%s+%s+%s\n",
-				"------rate------",
-				"----------------depth----------------",
-				"--------------metadata---------------")
-			fmt.Printf("%7s %7s | %7s %7s %7s %5s %5s | %7s %7s %12s %7s\n",
-				"ingress", "egress",
-				"total", "mem", "disk", "inflt",
-				"def", "req", "t-o", "msgs", "clients")
+			fmt.Print(statLineHeader())
 		}
 
 		if o == nil {
@@ -81,22 +82,62 @@ func statLoop(interval time.Duration, topic string, channel string,
 		}
 
 		// TODO: paused
-		fmt.Printf("%7d %7d | %7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
-			(c.MessageCount-o.MessageCount)/int64(interval.Seconds()),
-			(c.MessageCount-o.MessageCount-(c.Depth-o.Depth))/int64(interval.Seconds()),
-			c.Depth,
-			c.MemoryDepth,
-			c.BackendDepth,
-			c.InFlightCount,
-			c.DeferredCount,
-			c.RequeueCount,
-			c.TimeoutCount,
-			c.MessageCount,
-			c.ClientCount)
-
+		fmt.Print(statLine(o, c, interval))
 		o = c
 		time.Sleep(interval)
 	}
+}
+
+func statLineOnceHeader() (s string) {
+	s = fmt.Sprintf("%s+%s\n",
+		"----------------depth----------------",
+		"--------------metadata---------------")
+	s += fmt.Sprintf("%7s %7s %7s %5s %5s | %7s %7s %12s %7s\n",
+		"total", "mem", "disk", "inflt",
+		"def", "req", "t-o", "msgs", "clients")
+	return
+}
+
+func statLineOnce(c *lookupd.ChannelStats) string {
+	return fmt.Sprintf(
+		"%7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
+		c.Depth,
+		c.MemoryDepth,
+		c.BackendDepth,
+		c.InFlightCount,
+		c.DeferredCount,
+		c.RequeueCount,
+		c.TimeoutCount,
+		c.MessageCount,
+		c.ClientCount)
+}
+
+func statLineHeader() (s string) {
+	s = fmt.Sprintf("%s+%s+%s\n",
+		"------rate------",
+		"----------------depth----------------",
+		"--------------metadata---------------")
+	s += fmt.Sprintf("%7s %7s | %7s %7s %7s %5s %5s | %7s %7s %12s %7s\n",
+		"ingress", "egress",
+		"total", "mem", "disk", "inflt",
+		"def", "req", "t-o", "msgs", "clients")
+	return
+}
+
+func statLine(o, c *lookupd.ChannelStats, interval time.Duration) string {
+	return fmt.Sprintf(
+		"%7d %7d | %7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
+		(c.MessageCount-o.MessageCount)/int64(interval.Seconds()),
+		(c.MessageCount-o.MessageCount-(c.Depth-o.Depth))/int64(interval.Seconds()),
+		c.Depth,
+		c.MemoryDepth,
+		c.BackendDepth,
+		c.InFlightCount,
+		c.DeferredCount,
+		c.RequeueCount,
+		c.TimeoutCount,
+		c.MessageCount,
+		c.ClientCount)
 }
 
 func checkAddrs(addrs []string) error {
@@ -133,6 +174,10 @@ func main() {
 
 	if err := checkAddrs(lookupdHTTPAddrs); err != nil {
 		log.Fatalf("--lookupd-http-address error - %s", err)
+	}
+
+	if int64(*statusEvery) < 0 {
+		onceRun = true
 	}
 
 	termChan := make(chan os.Signal, 1)
