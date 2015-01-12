@@ -41,7 +41,7 @@ func init() {
             <li><form class="form-inline" style="margin:0" action="/delete_topic" method="POST">
                     <input type="hidden" name="rd" value="/lookup">
                     <input type="hidden" name="topic" value="{{$t}}">
-                    <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t}}">{{$t}}</a>
+                    <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t | urlquery}}">{{$t}}</a>
                 </form>
                 <ul>
                     {{range $channels}}
@@ -49,7 +49,7 @@ func init() {
                         <input type="hidden" name="rd" value="/lookup">
                         <input type="hidden" name="topic" value="{{$t}}">
                         <input type="hidden" name="channel" value="{{.}}">
-                        <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t}}/{{.}}">{{.}}</a>
+                        <button class="btn btn-mini btn-link red" type="submit">✘</button><a href="/topic/{{$t | urlquery}}/{{. | urlquery}}">{{.}}</a>
                     </form></li>
                     {{end}}
                 </ul>
