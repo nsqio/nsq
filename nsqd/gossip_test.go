@@ -15,11 +15,6 @@ func TestGossip(t *testing.T) {
 	var seedNode *NSQD
 	var tcpPorts []int
 
-	gossipNotifyCh := make(chan struct{})
-	gossipNotify = func() {
-		gossipNotifyCh <- struct{}{}
-	}
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		t.Fatal(err)
@@ -60,20 +55,14 @@ func TestGossip(t *testing.T) {
 	sort.Ints(tcpPorts)
 
 	// wait for convergence
-	converged := false
-	timeout := time.NewTimer(5 * time.Second)
-	for !converged {
-		select {
-		case <-timeout.C:
-			converged = true
-		case <-gossipNotifyCh:
-			converged = true
-			for _, nsqd := range nsqds {
-				producers := nsqd.rdb.FindProducers("client", "", "")
-				converged = converged && len(producers) == num
-			}
+	converge(5*time.Second, nsqds, func() bool {
+		converged := true
+		for _, nsqd := range nsqds {
+			producers := nsqd.rdb.FindProducers("client", "", "")
+			converged = converged && len(producers) == num
 		}
-	}
+		return converged
+	})
 
 	// all nodes in the cluster should have registrations
 	for _, nsqd := range nsqds {
@@ -94,7 +83,14 @@ func TestGossip(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	time.Sleep(250 * time.Millisecond)
+	converge(10*time.Second, nsqds, func() bool {
+		converged := true
+		for _, nsqd := range nsqds {
+			converged = len(nsqd.rdb.FindProducers("topic", topicName, "")) == 1 && converged
+			converged = len(nsqd.rdb.FindProducers("channel", topicName, "ch")) == 1 && converged
+		}
+		return converged
+	})
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
@@ -105,4 +101,25 @@ func TestGossip(t *testing.T) {
 		equal(t, len(producers), 1)
 		equal(t, producers[0].TCPPort, firstPort)
 	}
+}
+
+func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
+	gossipNotifyCh := make(chan struct{})
+	gossipNotify = func() {
+		gossipNotifyCh <- struct{}{}
+	}
+
+	// wait for convergence
+	converged := false
+	t := time.NewTimer(timeout)
+	for !converged {
+		select {
+		case <-t.C:
+			converged = true
+		case <-gossipNotifyCh:
+			converged = convergence()
+		}
+	}
+
+	gossipNotify = func() {}
 }
