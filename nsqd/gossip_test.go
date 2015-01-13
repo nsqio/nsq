@@ -16,7 +16,6 @@ var (
 
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
-	var seedNodeAddr *net.TCPAddr
 	var seedNode *NSQD
 	var tcpPorts []int
 
@@ -33,7 +32,7 @@ func TestGossip(t *testing.T) {
 		var nsqd *NSQD
 
 		// find an open port
-		tmpl, err := net.Listen("tcp", "0.0.0.0:0")
+		tmpl, err := net.Listen("tcp", "127.0.0.1:0")
 		equal(t, err, nil)
 		addr := tmpl.Addr().(*net.TCPAddr)
 		tmpl.Close()
@@ -43,7 +42,7 @@ func TestGossip(t *testing.T) {
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		if seedNode != nil {
-			opts.SeedNodeAddresses = []string{seedNodeAddr.String()}
+			opts.SeedNodeAddresses = []string{seedNode.broadcastAddr.String()}
 		}
 		tcpAddr, _, nsqd := mustStartNSQD(opts)
 		defer nsqd.Exit()
@@ -53,7 +52,6 @@ func TestGossip(t *testing.T) {
 
 		if seedNode == nil {
 			seedNode = nsqd
-			seedNodeAddr = addr
 		}
 	}
 	// sort the ports for later comparison

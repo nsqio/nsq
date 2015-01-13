@@ -86,6 +86,11 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
 
+	// uncomment to force all zero gossip IP
+	// gossipAddr.IP = net.IPv4(0, 0, 0, 0)
+	broadcastAddr = &*broadcastAddr
+	broadcastAddr.Port = gossipAddr.Port
+
 	opts.Logger.Output(0, fmt.Sprintf("serf: advertising: %s", broadcastAddr))
 	opts.Logger.Output(0, fmt.Sprintf("serf: binding: %s", gossipAddr))
 
