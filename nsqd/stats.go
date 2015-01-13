@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"sort"
+	"sync/atomic"
 
 	"github.com/bitly/nsq/util"
 )
@@ -52,7 +53,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		BackendDepth:  c.backend.Depth(),
 		InFlightCount: len(c.inFlightMessages),
 		DeferredCount: len(c.deferredMessages),
-		MessageCount:  c.messageCount,
+		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  c.requeueCount,
 		TimeoutCount:  c.timeoutCount,
 		Clients:       clients,

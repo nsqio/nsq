@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var gossipNotifyCh = make(chan struct{})
+
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
 	var seedNodeAddr string
@@ -18,6 +20,10 @@ func TestGossip(t *testing.T) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	gossipNotify = func() {
+		gossipNotifyCh <- struct{}{}
 	}
 
 	num := 3
@@ -32,7 +38,7 @@ func TestGossip(t *testing.T) {
 
 		opts := NewNSQDOptions()
 		opts.ID = int64(i)
-		//opts.Logger = newTestLogger(t)
+		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		if seedNode != nil {
 			sn := net.JoinHostPort(seedNodeAddr, fmt.Sprint(seedNode.serf.Memberlist().LocalNode().Port))
@@ -104,11 +110,6 @@ func TestGossip(t *testing.T) {
 }
 
 func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
-	gossipNotifyCh := make(chan struct{})
-	gossipNotify = func() {
-		gossipNotifyCh <- struct{}{}
-	}
-
 	// wait for convergence
 	converged := false
 	t := time.NewTimer(timeout)
@@ -120,6 +121,4 @@ func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
 			converged = convergence()
 		}
 	}
-
-	gossipNotify = func() {}
 }
