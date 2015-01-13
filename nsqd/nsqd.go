@@ -50,7 +50,7 @@ type NSQD struct {
 	tcpAddr       *net.TCPAddr
 	httpAddr      *net.TCPAddr
 	httpsAddr     *net.TCPAddr
-	broadcastAddr net.IP
+	broadcastAddr *net.TCPAddr
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -119,7 +119,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		n.logf("FATAL: failed to resolve broadcast address (%s) - %s", opts.BroadcastAddress, err)
 		os.Exit(1)
 	}
-	n.broadcastAddr = broadcastAddr.IP
+	n.broadcastAddr = broadcastAddr
 
 	if opts.StatsdPrefix != "" {
 		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(opts.BroadcastAddress,
@@ -399,8 +399,7 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
-	// TODO: should only the "bootstrap" node leave?
-	// n.serf.Leave()
+	n.serf.Leave()
 	n.serf.Shutdown()
 
 	n.Lock()

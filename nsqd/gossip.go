@@ -14,6 +14,8 @@ import (
 	"github.com/hashicorp/serf/serf"
 )
 
+var gossipNotify = func() {}
+
 type logWriter struct {
 	logger
 	prefix []byte
@@ -59,7 +61,7 @@ func memberToProducer(member serf.Member) *registrationdb.Producer {
 
 func initSerf(opts *nsqdOptions,
 	serfEventChan chan serf.Event,
-	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr, broadcastAddr net.IP) (*serf.Serf, error) {
+	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr, broadcastAddr *net.TCPAddr) (*serf.Serf, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -83,8 +85,9 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
 
-	serfConfig.MemberlistConfig.AdvertiseAddr = broadcastAddr.String()
-	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
+	serfConfig.MemberlistConfig.AdvertiseAddr = broadcastAddr.IP.String()
+	serfConfig.MemberlistConfig.AdvertisePort = gossipAddr.Port
+	serfConfig.MemberlistConfig.BindAddr = broadcastAddr.IP.String()
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
@@ -250,6 +253,7 @@ func (n *NSQD) serfEventLoop() {
 			default:
 				n.logf("WARNING: un-handled Serf event: %#v", ev)
 			}
+			gossipNotify()
 		case <-n.exitChan:
 			goto exit
 		}
