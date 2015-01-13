@@ -399,7 +399,6 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
-	n.serf.Leave()
 	n.serf.Shutdown()
 
 	n.Lock()
