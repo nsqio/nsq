@@ -3,16 +3,11 @@ package nsqd
 import (
 	"net"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 )
 
 var gossipNotifyCh = make(chan struct{}, 20)
-var (
-	converging     = false
-	convergingLock = &sync.Mutex{}
-)
 
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
@@ -20,10 +15,9 @@ func TestGossip(t *testing.T) {
 	var tcpPorts []int
 
 	gossipNotify = func() {
-		convergingLock.Lock()
-		defer convergingLock.Unlock()
-		if converging {
-			gossipNotifyCh <- struct{}{}
+		select {
+		case gossipNotifyCh <- struct{}{}:
+		default:
 		}
 	}
 
@@ -87,7 +81,8 @@ func TestGossip(t *testing.T) {
 
 	converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
-			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 || len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
+			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
+				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
 				return false
 			}
 		}
@@ -106,10 +101,6 @@ func TestGossip(t *testing.T) {
 }
 
 func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
-	convergingLock.Lock()
-	converging = true
-	convergingLock.Unlock()
-
 	// wait for convergence
 	converged := false
 	t := time.NewTimer(timeout)
@@ -121,8 +112,4 @@ func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
 			converged = convergence()
 		}
 	}
-
-	convergingLock.Lock()
-	converging = false
-	convergingLock.Unlock()
 }
