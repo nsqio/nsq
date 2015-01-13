@@ -1,9 +1,7 @@
 package nsqd
 
 import (
-	"fmt"
 	"net"
-	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -18,14 +16,9 @@ var (
 
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
-	var seedNodeAddr string
+	var seedNodeAddr *net.TCPAddr
 	var seedNode *NSQD
 	var tcpPorts []int
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	gossipNotify = func() {
 		convergingLock.Lock()
@@ -40,7 +33,7 @@ func TestGossip(t *testing.T) {
 		var nsqd *NSQD
 
 		// find an open port
-		tmpl, err := net.Listen("tcp", hostname+":0")
+		tmpl, err := net.Listen("tcp", "0.0.0.0:0")
 		equal(t, err, nil)
 		addr := tmpl.Addr().(*net.TCPAddr)
 		tmpl.Close()
@@ -50,8 +43,7 @@ func TestGossip(t *testing.T) {
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		if seedNode != nil {
-			sn := net.JoinHostPort(seedNodeAddr, fmt.Sprint(seedNode.serf.Memberlist().LocalNode().Port))
-			opts.SeedNodeAddresses = []string{sn}
+			opts.SeedNodeAddresses = []string{seedNodeAddr.String()}
 		}
 		tcpAddr, _, nsqd := mustStartNSQD(opts)
 		defer nsqd.Exit()
@@ -61,7 +53,7 @@ func TestGossip(t *testing.T) {
 
 		if seedNode == nil {
 			seedNode = nsqd
-			seedNodeAddr = addr.IP.String()
+			seedNodeAddr = addr
 		}
 	}
 	// sort the ports for later comparison
