@@ -52,12 +52,12 @@ func TestGossip(t *testing.T) {
 
 	// wait for convergence
 	converge(5*time.Second, nsqds, func() bool {
-		converged := true
 		for _, nsqd := range nsqds {
-			producers := nsqd.rdb.FindProducers("client", "", "")
-			converged = converged && len(producers) == num
+			if len(nsqd.rdb.FindProducers("client", "", "")) != num {
+				return false
+			}
 		}
-		return converged
+		return true
 	})
 
 	// all nodes in the cluster should have registrations
