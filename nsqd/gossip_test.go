@@ -86,12 +86,12 @@ func TestGossip(t *testing.T) {
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
 	converge(10*time.Second, nsqds, func() bool {
-		converged := true
 		for _, nsqd := range nsqds {
-			converged = len(nsqd.rdb.FindProducers("topic", topicName, "")) == 1 && converged
-			converged = len(nsqd.rdb.FindProducers("channel", topicName, "ch")) == 1 && converged
+			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 || len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
+				return false
+			}
 		}
-		return converged
+		return true
 	})
 
 	for _, nsqd := range nsqds {
