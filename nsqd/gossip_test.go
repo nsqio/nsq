@@ -5,11 +5,16 @@ import (
 	"net"
 	"os"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 )
 
-var gossipNotifyCh = make(chan struct{})
+var gossipNotifyCh = make(chan struct{}, 20)
+var (
+	converging     = false
+	convergingLock = &sync.Mutex{}
+)
 
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
@@ -23,7 +28,11 @@ func TestGossip(t *testing.T) {
 	}
 
 	gossipNotify = func() {
-		gossipNotifyCh <- struct{}{}
+		convergingLock.Lock()
+		defer convergingLock.Unlock()
+		if converging {
+			gossipNotifyCh <- struct{}{}
+		}
 	}
 
 	num := 3
@@ -110,6 +119,10 @@ func TestGossip(t *testing.T) {
 }
 
 func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
+	convergingLock.Lock()
+	converging = true
+	convergingLock.Unlock()
+
 	// wait for convergence
 	converged := false
 	t := time.NewTimer(timeout)
@@ -121,4 +134,8 @@ func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
 			converged = convergence()
 		}
 	}
+
+	convergingLock.Lock()
+	converging = false
+	convergingLock.Unlock()
 }
