@@ -54,9 +54,7 @@ func TestGossip(t *testing.T) {
 			opts.SeedNodeAddresses = []string{sn}
 		}
 		tcpAddr, _, nsqd := mustStartNSQD(opts)
-		defer func(n *NSQD) {
-			go nsqd.Exit()
-		}(nsqd)
+		defer nsqd.Exit()
 
 		nsqds = append(nsqds, nsqd)
 		tcpPorts = append(tcpPorts, tcpAddr.Port)
