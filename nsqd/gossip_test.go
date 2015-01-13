@@ -29,8 +29,6 @@ func TestGossip(t *testing.T) {
 
 	num := 3
 	for i := 0; i < num; i++ {
-		var nsqd *NSQD
-
 		// find an open port
 		tmpl, err := net.Listen("tcp", "127.0.0.1:0")
 		equal(t, err, nil)
@@ -41,6 +39,7 @@ func TestGossip(t *testing.T) {
 		opts.ID = int64(i)
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
+		opts.BroadcastAddress = addr.IP.String()
 		if seedNode != nil {
 			opts.SeedNodeAddresses = []string{seedNode.broadcastAddr.String()}
 		}

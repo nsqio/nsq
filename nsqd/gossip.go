@@ -68,7 +68,12 @@ func initSerf(opts *nsqdOptions,
 		return nil, err
 	}
 
-	gossipAddr, err := net.ResolveTCPAddr("tcp", opts.GossipAddress)
+	gossipHost, gossipPortStr, err := net.SplitHostPort(opts.GossipAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	gossipPort, err := strconv.Atoi(gossipPortStr)
 	if err != nil {
 		return nil, err
 	}
@@ -86,18 +91,14 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
 
-	// uncomment to force all zero gossip IP
-	// gossipAddr.IP = net.IPv4(0, 0, 0, 0)
-	broadcastAddr = &*broadcastAddr
-	broadcastAddr.Port = gossipAddr.Port
-
+	broadcastAddr.Port = gossipPort
 	opts.Logger.Output(0, fmt.Sprintf("serf: advertising: %s", broadcastAddr))
-	opts.Logger.Output(0, fmt.Sprintf("serf: binding: %s", gossipAddr))
+	opts.Logger.Output(0, fmt.Sprintf("serf: binding: %s:%d", gossipHost, gossipPort))
 
 	serfConfig.MemberlistConfig.AdvertiseAddr = broadcastAddr.IP.String()
-	serfConfig.MemberlistConfig.AdvertisePort = gossipAddr.Port
-	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
-	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
+	serfConfig.MemberlistConfig.AdvertisePort = gossipPort
+	serfConfig.MemberlistConfig.BindAddr = gossipHost
+	serfConfig.MemberlistConfig.BindPort = gossipPort
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
 	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}
