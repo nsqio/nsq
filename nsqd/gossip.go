@@ -3,7 +3,6 @@ package nsqd
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -62,18 +61,17 @@ func memberToProducer(member serf.Member) *registrationdb.Producer {
 
 func initSerf(opts *nsqdOptions,
 	serfEventChan chan serf.Event,
-	tcpAddr *net.TCPAddr, httpAddr *net.TCPAddr, httpsAddr *net.TCPAddr, broadcastAddr *net.TCPAddr) (*serf.Serf, error) {
+	tcpAddr *net.TCPAddr,
+	httpAddr *net.TCPAddr,
+	httpsAddr *net.TCPAddr,
+	broadcastAddr *net.TCPAddr) (*serf.Serf, error) {
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
 
-	gossipHost, gossipPortStr, err := net.SplitHostPort(opts.GossipAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	gossipPort, err := strconv.Atoi(gossipPortStr)
+	gossipAddr, err := net.ResolveTCPAddr("tcp", opts.GossipAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -90,15 +88,10 @@ func initSerf(opts *nsqdOptions,
 	serfConfig.Tags["h"] = hostname
 	serfConfig.Tags["v"] = util.BINARY_VERSION
 	serfConfig.NodeName = net.JoinHostPort(opts.BroadcastAddress, strconv.Itoa(tcpAddr.Port))
-
-	broadcastAddr.Port = gossipPort
-	opts.Logger.Output(0, fmt.Sprintf("serf: advertising: %s", broadcastAddr))
-	opts.Logger.Output(0, fmt.Sprintf("serf: binding: %s:%d", gossipHost, gossipPort))
-
 	serfConfig.MemberlistConfig.AdvertiseAddr = broadcastAddr.IP.String()
-	serfConfig.MemberlistConfig.AdvertisePort = gossipPort
-	serfConfig.MemberlistConfig.BindAddr = gossipHost
-	serfConfig.MemberlistConfig.BindPort = gossipPort
+	serfConfig.MemberlistConfig.AdvertisePort = gossipAddr.Port
+	serfConfig.MemberlistConfig.BindAddr = gossipAddr.IP.String()
+	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
 	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}

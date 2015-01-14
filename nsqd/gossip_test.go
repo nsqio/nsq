@@ -33,9 +33,9 @@ func TestGossip(t *testing.T) {
 		opts.ID = int64(i)
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
-		opts.BroadcastAddress = addr.IP.String()
+		opts.BroadcastAddress = "127.0.0.1"
 		if seedNode != nil {
-			opts.SeedNodeAddresses = []string{seedNode.broadcastAddr.String()}
+			opts.SeedNodeAddresses = []string{seedNode.opts.GossipAddress}
 		}
 		tcpAddr, _, nsqd := mustStartNSQD(opts)
 		defer nsqd.Exit()
