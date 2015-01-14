@@ -402,7 +402,9 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
-	n.serf.Shutdown()
+	if n.serf != nil {
+		n.serf.Shutdown()
+	}
 
 	n.Lock()
 	err := n.PersistMetadata()
