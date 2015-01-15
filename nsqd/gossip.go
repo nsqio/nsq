@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/serf/serf"
 )
 
-var gossipNotify = func() {}
-
 type logWriter struct {
 	logger
 	prefix []byte
@@ -256,7 +254,9 @@ func (n *NSQD) serfEventLoop() {
 			default:
 				n.logf("WARNING: un-handled Serf event: %#v", ev)
 			}
-			gossipNotify()
+			if n.opts.gossipDelegate != nil {
+				n.opts.gossipDelegate.notify()
+			}
 		case <-n.exitChan:
 			goto exit
 		}

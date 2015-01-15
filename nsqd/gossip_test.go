@@ -7,19 +7,24 @@ import (
 	"time"
 )
 
-var gossipNotifyCh = make(chan struct{}, 20)
+type gossipTester struct {
+	c chan struct{}
+}
+
+func (g gossipTester) notify() {
+	g.c <- struct{}{}
+	select {
+	case g.c <- struct{}{}:
+	default:
+	}
+}
+
+var convergenceTester = gossipTester{make(chan struct{}, 20)}
 
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
 	var seedNode *NSQD
 	var tcpPorts []int
-
-	gossipNotify = func() {
-		select {
-		case gossipNotifyCh <- struct{}{}:
-		default:
-		}
-	}
 
 	num := 3
 	for i := 0; i < num; i++ {
@@ -34,6 +39,7 @@ func TestGossip(t *testing.T) {
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
+		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
 			opts.SeedNodeAddresses = []string{seedNode.opts.GossipAddress}
 		}
@@ -108,7 +114,7 @@ func converge(timeout time.Duration, nsqds []*NSQD, convergence func() bool) {
 		select {
 		case <-t.C:
 			converged = true
-		case <-gossipNotifyCh:
+		case <-convergenceTester.c:
 			converged = convergence()
 		}
 	}
