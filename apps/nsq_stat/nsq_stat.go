@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,19 +25,38 @@ var (
 	topic            = flag.String("topic", "", "NSQ topic")
 	channel          = flag.String("channel", "", "NSQ channel")
 	statusEvery      = flag.Duration("status-every", 2*time.Second, "duration of time between polling/printing output")
+	countNum         = numValue{}
 	nsqdHTTPAddrs    = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
 )
 
+type numValue struct {
+	isSet bool
+	value int
+}
+
+func (nv *numValue) String() string { return "N" }
+
+func (nv *numValue) Set(s string) error {
+	value, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return err
+	}
+	nv.value = int(value)
+	nv.isSet = true
+	return nil
+}
+
 func init() {
 	flag.Var(&nsqdHTTPAddrs, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
+	flag.Var(&countNum, "count", "number of reports")
 }
 
 func statLoop(interval time.Duration, topic string, channel string,
 	nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
 	var o *lookupd.ChannelStats
-	for i := 0; ; i++ {
+	for i := 0; !countNum.isSet || countNum.value >= i; i++ {
 		var producers []string
 		var err error
 
@@ -97,6 +117,7 @@ func statLoop(interval time.Duration, topic string, channel string,
 		o = c
 		time.Sleep(interval)
 	}
+	os.Exit(0)
 }
 
 func checkAddrs(addrs []string) error {
@@ -118,6 +139,14 @@ func main() {
 
 	if *topic == "" || *channel == "" {
 		log.Fatal("--topic and --channel are required")
+	}
+
+	if int64(*statusEvery) <= 0 {
+		log.Fatal("--status-every should be positive")
+	}
+
+	if countNum.isSet && countNum.value <= 0 {
+		log.Fatal("--count should be positive")
 	}
 
 	if len(nsqdHTTPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
