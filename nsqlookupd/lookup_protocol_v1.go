@@ -216,14 +216,14 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	peerInfo.RemoteAddress = client.RemoteAddr().String()
 
 	// require all fields
-	if peerInfo.BroadcastAddress == "" || peerInfo.TcpPort == 0 || peerInfo.HttpPort == 0 || peerInfo.Version == "" {
+	if peerInfo.BroadcastAddress == "" || peerInfo.TCPPort == 0 || peerInfo.HTTPPort == 0 || peerInfo.Version == "" {
 		return nil, util.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
-	atomic.StoreInt64(&peerInfo.lastUpdate, time.Now().UnixNano())
+	atomic.StoreInt64(&peerInfo.LastUpdate, time.Now().UnixNano())
 
 	p.ctx.nsqlookupd.logf("CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
-		client, peerInfo.BroadcastAddress, peerInfo.TcpPort, peerInfo.HttpPort, peerInfo.Version)
+		client, peerInfo.BroadcastAddress, peerInfo.TCPPort, peerInfo.HTTPPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
 	key := registrationdb.Registration{"client", "", ""}
@@ -257,11 +257,11 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, error) {
 	if client.peerInfo != nil {
 		// we could get a PING before other commands on the same client connection
-		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.lastUpdate))
+		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.LastUpdate))
 		now := time.Now()
-		p.ctx.nsqlookupd.logf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.id,
+		p.ctx.nsqlookupd.logf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.ID,
 			now.Sub(cur))
-		atomic.StoreInt64(&client.peerInfo.lastUpdate, now.UnixNano())
+		atomic.StoreInt64(&client.peerInfo.LastUpdate, now.UnixNano())
 	}
 	return []byte("OK"), nil
 }

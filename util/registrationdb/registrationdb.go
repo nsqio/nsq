@@ -17,31 +17,36 @@ type Registration struct {
 	Key      string
 	SubKey   string
 }
+
+func (r Registration) String() string {
+	return fmt.Sprintf("category:%s key:%s subkey:%s",
+		r.Category, r.Key, r.SubKey)
+}
+
 type Registrations []Registration
 
-// TODO: do we really need separate PeerInfo and Producer types?
 type PeerInfo struct {
-	ID               string    `json:"-"`
-	RemoteAddress    string    `json:"-"`
-	Hostname         string    `json:"hostname"`
-	BroadcastAddress string    `json:"broadcast_address"`
-	TcpPort          int       `json:"tcp_port"`
-	HttpPort         int       `json:"http_port"`
-	Version          string    `json:"version"`
-	LastUpdate       int64     `json:"-"`
+	LastUpdate       int64  `json:"-"`
+	ID               string `json:"-"`
+	RemoteAddress    string `json:"-"`
+	Hostname         string `json:"hostname"`
+	BroadcastAddress string `json:"broadcast_address"`
+	TCPPort          int    `json:"tcp_port"`
+	HTTPPort         int    `json:"http_port"`
+	Version          string `json:"version"`
 }
 
 type Producer struct {
-	PeerInfo     *PeerInfo
+	*PeerInfo
 	tombstoned   bool
 	tombstonedAt time.Time
 }
 
 type Producers []*Producer
 
-func (p *Producer) String() string {
+func (p Producer) String() string {
 	return fmt.Sprintf("%s [%d, %d]",
-		p.PeerInfo.BroadcastAddress, p.PeerInfo.TcpPort, p.PeerInfo.HttpPort)
+		p.BroadcastAddress, p.TCPPort, p.HTTPPort)
 }
 
 func (p *Producer) Tombstone() {
@@ -69,13 +74,13 @@ func (r *RegistrationDB) Debug() map[string][]map[string]interface{} {
 		data[key] = make([]map[string]interface{}, 0)
 		for _, p := range producers {
 			m := make(map[string]interface{})
-			m["id"] = p.PeerInfo.ID
-			m["hostname"] = p.PeerInfo.Hostname
-			m["broadcast_address"] = p.PeerInfo.BroadcastAddress
-			m["tcp_port"] = p.PeerInfo.TcpPort
-			m["http_port"] = p.PeerInfo.HttpPort
-			m["version"] = p.PeerInfo.Version
-			m["last_update"] = p.PeerInfo.LastUpdate
+			m["id"] = p.ID
+			m["hostname"] = p.Hostname
+			m["broadcast_address"] = p.BroadcastAddress
+			m["tcp_port"] = p.TCPPort
+			m["http_port"] = p.HTTPPort
+			m["version"] = p.Version
+			m["last_update"] = atomic.LoadInt64(&p.LastUpdate)
 			m["tombstoned"] = p.tombstoned
 			m["tombstoned_at"] = p.tombstonedAt.UnixNano()
 			data[key] = append(data[key], m)
@@ -102,7 +107,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	producers := r.data[k]
 	found := false
 	for _, producer := range producers {
-		if producer.PeerInfo.ID == p.PeerInfo.ID {
+		if producer.ID == p.ID {
 			found = true
 		}
 	}
@@ -123,7 +128,7 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	removed := false
 	cleaned := make(Producers, 0)
 	for _, producer := range producers {
-		if producer.PeerInfo.ID != id {
+		if producer.ID != id {
 			cleaned = append(cleaned, producer)
 		} else {
 			removed = true
@@ -165,7 +170,7 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 		for _, producer := range producers {
 			found := false
 			for _, p := range results {
-				if producer.PeerInfo.ID == p.PeerInfo.ID {
+				if producer.ID == p.ID {
 					found = true
 				}
 			}
@@ -183,13 +188,30 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	results := make(Registrations, 0)
 	for k, producers := range r.data {
 		for _, p := range producers {
-			if p.PeerInfo.ID == id {
+			if p.ID == id {
 				results = append(results, k)
 				break
 			}
 		}
 	}
 	return results
+}
+
+func (r *RegistrationDB) TouchProducer(k Registration, id string) bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	now := time.Now()
+	producers, ok := r.data[k]
+	if !ok {
+		return false
+	}
+	for _, p := range producers {
+		if p.ID == id {
+			atomic.StoreInt64(&p.LastUpdate, now.UnixNano())
+			return true
+		}
+	}
+	return false
 }
 
 func (k Registration) IsMatch(category string, key string, subkey string) bool {
@@ -235,19 +257,11 @@ func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLif
 	now := time.Now()
 	results := make(Producers, 0)
 	for _, p := range pp {
-		cur := time.Unix(0, atomic.LoadInt64(&p.PeerInfo.LastUpdate))
+		cur := time.Unix(0, atomic.LoadInt64(&p.LastUpdate))
 		if now.Sub(cur) > inactivityTimeout || p.IsTombstoned(tombstoneLifetime) {
 			continue
 		}
 		results = append(results, p)
-	}
-	return results
-}
-
-func (pp Producers) PeerInfo() []*PeerInfo {
-	results := make([]*PeerInfo, 0)
-	for _, p := range pp {
-		results = append(results, p.PeerInfo)
 	}
 	return results
 }
