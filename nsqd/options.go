@@ -104,7 +104,6 @@ func NewOptions() *Options {
 		HTTPAddress:      "0.0.0.0:4151",
 		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
-		GossipAddress:    "0.0.0.0:7964",
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),
