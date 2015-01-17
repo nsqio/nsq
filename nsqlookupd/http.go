@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	httpprof "net/http/pprof"
-	"sync/atomic"
 
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
@@ -364,27 +363,5 @@ func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doDebug(req *http.Request) (interface{}, error) {
-	s.ctx.nsqlookupd.DB.RLock()
-	defer s.ctx.nsqlookupd.DB.RUnlock()
-
-	data := make(map[string][]map[string]interface{})
-	for r, producers := range s.ctx.nsqlookupd.DB.registrationMap {
-		key := r.Category + ":" + r.Key + ":" + r.SubKey
-		for _, p := range producers {
-			m := map[string]interface{}{
-				"id":                p.peerInfo.id,
-				"hostname":          p.peerInfo.Hostname,
-				"broadcast_address": p.peerInfo.BroadcastAddress,
-				"tcp_port":          p.peerInfo.TCPPort,
-				"http_port":         p.peerInfo.HTTPPort,
-				"version":           p.peerInfo.Version,
-				"last_update":       atomic.LoadInt64(&p.peerInfo.lastUpdate),
-				"tombstoned":        p.tombstoned,
-				"tombstoned_at":     p.tombstonedAt.UnixNano(),
-			}
-			data[key] = append(data[key], m)
-		}
-	}
-
-	return data, nil
+	return s.ctx.nsqlookupd.DB.Debug(), nil
 }
