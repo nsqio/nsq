@@ -92,7 +92,7 @@ func nsqFlagset() *flag.FlagSet {
 	lookupdTCPAddrs := util.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 
-	flagSet.String("gossip-address", "0.0.0.0:7946", "<addr>:<port> to listen on for gossip")
+	flagSet.String("gossip-address", "", "<addr>:<port> to listen on for gossip. reasonable default: 0.0.0.0:7946")
 	seedNodeAddrs := util.StringArray{}
 	flagSet.Var(&seedNodeAddrs, "seed-node-address", "TCP address of an nsqd serving as a seed node to bootstrap gossip protocol (may be given multiple times)")
 

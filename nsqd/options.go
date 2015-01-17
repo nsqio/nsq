@@ -93,8 +93,6 @@ func NewNSQDOptions() *nsqdOptions {
 		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
 
-		GossipAddress: "0.0.0.0:7964",
-
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 104857600,
 		SyncEvery:       2500,

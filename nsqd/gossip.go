@@ -265,6 +265,9 @@ exit:
 }
 
 func (n *NSQD) gossip(evName string, topicName string, channelName string) error {
+	if n.serf == nil {
+		return nil
+	}
 	gev := gossipEvent{
 		Name:    n.serf.LocalMember().Name,
 		Topic:   topicName,
@@ -279,6 +282,10 @@ func (n *NSQD) gossip(evName string, topicName string, channelName string) error
 }
 
 func (n *NSQD) gossipLoop() {
+	if n.serf == nil {
+		return
+	}
+
 	var evName string
 	var topicName string
 	var channelName string
