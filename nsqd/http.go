@@ -60,6 +60,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.V1))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.V1))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.V1))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.doLookup, log, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
@@ -180,6 +181,32 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	}
 
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
+}
+
+func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+
+	registration := s.ctx.nsqd.rdb.FindRegistrations("topic", topicName, "")
+	if len(registration) == 0 {
+		return nil, http_api.Err{404, "INVALID_TOPIC"}
+	}
+
+	channels := s.ctx.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := s.ctx.nsqd.rdb.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(300*time.Second, 45*time.Second)
+	data := make(map[string]interface{})
+	data["channels"] = channels
+	data["producers"] = producers
+
+	return data, nil
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

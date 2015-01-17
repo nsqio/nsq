@@ -17,11 +17,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/serf/serf"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/registrationdb"
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
@@ -69,6 +71,11 @@ type NSQD struct {
 
 	poolSize int
 
+	serf          *serf.Serf
+	serfEventChan chan serf.Event
+	gossipChan    chan interface{}
+	rdb           *registrationdb.RegistrationDB
+
 	notifyChan           chan interface{}
 	optsNotificationChan chan struct{}
 	exitChan             chan int
@@ -95,6 +102,9 @@ func New(opts *Options) *NSQD {
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
 		dl:                   dirlock.New(dataPath),
+		serfEventChan:        make(chan serf.Event, 256),
+		gossipChan:           make(chan interface{}),
+		rdb:                  registrationdb.New(),
 	}
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
@@ -243,6 +253,12 @@ func (n *NSQD) Main() {
 	var err error
 	ctx := &context{n}
 
+	broadcastAddr, err := net.ResolveTCPAddr("tcp", n.getOpts().BroadcastAddress+":0")
+	if err != nil {
+		n.logf(LOG_FATAL, "failed to resolve broadcast address (%s) - %s", n.getOpts().BroadcastAddress, err)
+		os.Exit(1)
+	}
+
 	n.tcpListener, err = net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
 		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().TCPAddress, err)
@@ -281,6 +297,27 @@ func (n *NSQD) Main() {
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
+
+	var httpsAddr *net.TCPAddr
+	if n.httpsListener != nil {
+		httpsAddr = n.RealHTTPSAddr()
+	}
+
+	serf, err := initSerf(
+		n.getOpts(),
+		n.serfEventChan,
+		n.RealTCPAddr(),
+		n.RealHTTPAddr(),
+		httpsAddr,
+		broadcastAddr)
+	if err != nil {
+		n.logf(LOG_FATAL, "failed to initialize Serf - %s", err)
+		os.Exit(1)
+	}
+	n.serf = serf
+
+	n.waitGroup.Wrap(func() { n.serfEventLoop() })
+	n.waitGroup.Wrap(func() { n.gossipLoop() })
 }
 
 type meta struct {
@@ -435,6 +472,10 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
+	// TODO: should only the "bootstrap" node leave?
+	// n.serf.Leave()
+	n.serf.Shutdown()
+
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
@@ -566,6 +607,13 @@ func (n *NSQD) Notify(v interface{}) {
 				n.logf(LOG_ERROR, "failed to persist metadata - %s", err)
 			}
 			n.Unlock()
+		}
+	})
+
+	n.waitGroup.Wrap(func() {
+		select {
+		case <-n.exitChan:
+		case n.gossipChan <- v:
 		}
 	})
 }
