@@ -102,8 +102,8 @@ func statLoop(interval time.Duration, topic string, channel string,
 
 		// TODO: paused
 		fmt.Printf("%7d %7d | %7d %7d %7d %5d %5d | %7d %7d %12d %7d\n",
-			(c.MessageCount-o.MessageCount)/int64(interval.Seconds()),
-			(c.MessageCount-o.MessageCount-(c.Depth-o.Depth))/int64(interval.Seconds()),
+			int64(float64(c.MessageCount-o.MessageCount)/interval.Seconds()),
+			int64(float64(c.MessageCount-o.MessageCount-(c.Depth-o.Depth))/interval.Seconds()),
 			c.Depth,
 			c.MemoryDepth,
 			c.BackendDepth,
