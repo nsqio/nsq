@@ -303,18 +303,20 @@ func (n *NSQD) Main() {
 		httpsAddr = n.RealHTTPSAddr()
 	}
 
-	serf, err := initSerf(
-		n.getOpts(),
-		n.serfEventChan,
-		n.RealTCPAddr(),
-		n.RealHTTPAddr(),
-		httpsAddr,
-		broadcastAddr)
-	if err != nil {
-		n.logf(LOG_FATAL, "failed to initialize Serf - %s", err)
-		os.Exit(1)
+	if n.getOpts().GossipAddress != "" {
+		serf, err := initSerf(
+			n.getOpts(),
+			n.serfEventChan,
+			n.RealTCPAddr(),
+			n.RealHTTPAddr(),
+			httpsAddr,
+			broadcastAddr)
+		if err != nil {
+			n.logf(LOG_FATAL, "failed to initialize Serf - %s", err)
+			os.Exit(1)
+		}
+		n.serf = serf
 	}
-	n.serf = serf
 
 	n.waitGroup.Wrap(func() { n.serfEventLoop() })
 	n.waitGroup.Wrap(func() { n.gossipLoop() })
@@ -472,9 +474,9 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
-	// TODO: should only the "bootstrap" node leave?
-	// n.serf.Leave()
-	n.serf.Shutdown()
+	if n.serf != nil {
+		n.serf.Shutdown()
+	}
 
 	n.Lock()
 	err := n.PersistMetadata()
