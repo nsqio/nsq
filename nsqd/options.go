@@ -84,7 +84,17 @@ type Options struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
+
+	gossipDelegate gossipDelegate
 }
+
+type gossipDelegate interface {
+	notify()
+}
+
+type nilGossipDelegate struct{}
+
+func (_ nilGossipDelegate) notify() {}
 
 func NewOptions() *Options {
 	hostname, err := os.Hostname()
@@ -149,5 +159,7 @@ func NewOptions() *Options {
 		SnappyEnabled:   true,
 
 		TLSMinVersion: tls.VersionTLS10,
+
+		gossipDelegate: nilGossipDelegate{},
 	}
 }
