@@ -8,3 +8,6 @@ github.com/mreiferson/go-snappystream   028eae7ab5c4c9e2d1cb4c4ca1e53259bbe7e504
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
 github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
+github.com/hashicorp/serf               5e0771b8d61bee28986087a246f7611d6bd4a87a # v0.6.3
+github.com/hashicorp/memberlist         9a1e242e454d2443df330bdd51a436d5a9058fc4
+github.com/ugorji/go/codec              006e1534301cb75b848ee452ab5d3ba8c6a70784
