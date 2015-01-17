@@ -81,6 +81,10 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doMPUB(req) }))
 
+	case "/lookup":
+		http_api.NegotiateVersionWrapper(w, req,
+			func() (interface{}, error) { return s.doLookup(req) })
+
 	case "/stats":
 		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doStats(req) })
@@ -134,6 +138,7 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 	case "/info":
 		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doInfo(req) })
+
 	case "/empty_topic":
 		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doEmptyTopic(req) })
@@ -225,6 +230,32 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	}
 
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
+}
+
+func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+
+	registration := s.ctx.nsqd.rdb.FindRegistrations("topic", topicName, "")
+	if len(registration) == 0 {
+		return nil, http_api.Err{404, "INVALID_TOPIC"}
+	}
+
+	channels := s.ctx.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := s.ctx.nsqd.rdb.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(300*time.Second, 45*time.Second)
+	data := make(map[string]interface{})
+	data["channels"] = channels
+	data["producers"] = producers
+
+	return data, nil
 }
 
 func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {

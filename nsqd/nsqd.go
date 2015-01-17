@@ -22,9 +22,11 @@ import (
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/lookupd"
 	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/registrationdb"
 	"github.com/bitly/nsq/internal/statsd"
 	"github.com/bitly/nsq/internal/util"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/hashicorp/serf/serf"
 )
 
 const (
@@ -53,10 +55,16 @@ type NSQD struct {
 	tcpAddr       *net.TCPAddr
 	httpAddr      *net.TCPAddr
 	httpsAddr     *net.TCPAddr
+	broadcastAddr *net.TCPAddr
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
 	tlsConfig     *tls.Config
+
+	serf          *serf.Serf
+	serfEventChan chan serf.Event
+	gossipChan    chan interface{}
+	rdb           *registrationdb.RegistrationDB
 
 	idChan     chan MessageID
 	notifyChan chan interface{}
@@ -73,6 +81,10 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		idChan:     make(chan MessageID, 4096),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}),
+
+		serfEventChan: make(chan serf.Event, 256),
+		gossipChan:    make(chan interface{}),
+		rdb:           registrationdb.New(),
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
@@ -107,6 +119,13 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		}
 		n.httpsAddr = httpsAddr
 	}
+
+	broadcastAddr, err := net.ResolveTCPAddr("tcp", opts.BroadcastAddress+":0")
+	if err != nil {
+		n.logf("FATAL: failed to resolve broadcast address (%s) - %s", opts.BroadcastAddress, err)
+		os.Exit(1)
+	}
+	n.broadcastAddr = broadcastAddr
 
 	if opts.StatsdPrefix != "" {
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress,
@@ -181,9 +200,6 @@ func (n *NSQD) GetStartTime() time.Time {
 }
 
 func (n *NSQD) Main() {
-	var httpListener net.Listener
-	var httpsListener net.Listener
-
 	ctx := &context{n}
 
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
@@ -200,7 +216,7 @@ func (n *NSQD) Main() {
 	})
 
 	if n.tlsConfig != nil && n.httpsAddr != nil {
-		httpsListener, err = tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
+		httpsListener, err := tls.Listen("tcp", n.httpsAddr.String(), n.tlsConfig)
 		if err != nil {
 			n.logf("FATAL: listen (%s) failed - %s", n.httpsAddr, err)
 			os.Exit(1)
@@ -215,7 +231,7 @@ func (n *NSQD) Main() {
 			http_api.Serve(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.httpAddr.String())
+	httpListener, err := net.Listen("tcp", n.httpAddr.String())
 	if err != nil {
 		n.logf("FATAL: listen (%s) failed - %s", n.httpAddr, err)
 		os.Exit(1)
@@ -233,6 +249,25 @@ func (n *NSQD) Main() {
 	if n.opts.StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
+
+	var httpsAddr *net.TCPAddr
+	if n.httpsListener != nil {
+		httpsAddr = n.httpsListener.Addr().(*net.TCPAddr)
+	}
+
+	serf, err := initSerf(n.opts, n.serfEventChan,
+		n.tcpListener.Addr().(*net.TCPAddr),
+		n.httpListener.Addr().(*net.TCPAddr),
+		httpsAddr,
+		n.broadcastAddr)
+	if err != nil {
+		n.logf("FATAL: failed to initialize Serf - %s", err)
+		os.Exit(1)
+	}
+	n.serf = serf
+
+	n.waitGroup.Wrap(func() { n.serfEventLoop() })
+	n.waitGroup.Wrap(func() { n.gossipLoop() })
 }
 
 func (n *NSQD) LoadMetadata() {
@@ -380,6 +415,10 @@ func (n *NSQD) Exit() {
 		n.httpsListener.Close()
 	}
 
+	// TODO: should only the "bootstrap" node leave?
+	// n.serf.Leave()
+	n.serf.Shutdown()
+
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
@@ -521,6 +560,13 @@ func (n *NSQD) Notify(v interface{}) {
 				n.logf("ERROR: failed to persist metadata - %s", err)
 			}
 			n.Unlock()
+		}
+	})
+
+	n.waitGroup.Wrap(func() {
+		select {
+		case <-n.exitChan:
+		case n.gossipChan <- v:
 		}
 	})
 }
