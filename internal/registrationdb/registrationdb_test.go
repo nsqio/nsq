@@ -1,9 +1,21 @@
 package registrationdb
 
 import (
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
+
+func equal(t *testing.T, act, exp interface{}) {
+	if !reflect.DeepEqual(exp, act) {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+			filepath.Base(file), line, exp, act)
+		t.FailNow()
+	}
+}
 
 func TestRegistrationDB(t *testing.T) {
 	sec30 := 30 * time.Second
@@ -16,7 +28,7 @@ func TestRegistrationDB(t *testing.T) {
 	p3 := &Producer{pi3, false, beginningOfTime}
 	p4 := &Producer{pi1, false, beginningOfTime}
 
-	db := NewRegistrationDB()
+	db := New()
 
 	// add producers
 	db.AddProducer(Registration{"c", "a", ""}, p1)
@@ -38,19 +50,19 @@ func TestRegistrationDB(t *testing.T) {
 	equal(t, len(p), 2)
 	p = db.FindProducers("c", "*", "b")
 	equal(t, len(p), 1)
-	equal(t, p[0].peerInfo.id, p2.peerInfo.id)
+	equal(t, p[0].PeerInfo.ID, p2.PeerInfo.ID)
 
 	// filter by active
 	equal(t, len(p.FilterByActive(sec30, sec30)), 0)
-	p2.peerInfo.lastUpdate = time.Now().UnixNano()
+	p2.PeerInfo.LastUpdate = time.Now().UnixNano()
 	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 	p = db.FindProducers("c", "*", "")
 	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 
 	// tombstoning
 	fewSecAgo := time.Now().Add(-5 * time.Second).UnixNano()
-	p1.peerInfo.lastUpdate = fewSecAgo
-	p2.peerInfo.lastUpdate = fewSecAgo
+	p1.PeerInfo.LastUpdate = fewSecAgo
+	p2.PeerInfo.LastUpdate = fewSecAgo
 	equal(t, len(p.FilterByActive(sec30, sec30)), 2)
 	p1.Tombstone()
 	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
@@ -70,12 +82,12 @@ func TestRegistrationDB(t *testing.T) {
 	equal(t, k[0], "b")
 
 	// removing producers
-	db.RemoveProducer(Registration{"c", "a", ""}, p1.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", ""}, p1.PeerInfo.ID)
 	p = db.FindProducers("c", "*", "*")
 	equal(t, len(p), 1)
 
-	db.RemoveProducer(Registration{"c", "a", ""}, p2.peerInfo.id)
-	db.RemoveProducer(Registration{"c", "a", "b"}, p2.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", ""}, p2.PeerInfo.ID)
+	db.RemoveProducer(Registration{"c", "a", "b"}, p2.PeerInfo.ID)
 	p = db.FindProducers("c", "*", "*")
 	equal(t, len(p), 0)
 
