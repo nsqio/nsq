@@ -30,6 +30,7 @@ func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	httpsAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+
 	opts.DataPath = os.TempDir()
 	nsqd := NewNSQD(opts)
 	nsqd.tcpAddr = tcpAddr
