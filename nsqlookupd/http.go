@@ -188,7 +188,7 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 		s.ctx.nsqlookupd.opts.TombstoneLifetime)
 	return map[string]interface{}{
 		"channels":  channels,
-		"producers": producers.PeerInfo(),
+		"producers": producers,
 	}, nil
 }
 
