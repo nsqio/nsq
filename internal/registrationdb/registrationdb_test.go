@@ -20,7 +20,7 @@ func TestRegistrationDB(t *testing.T) {
 	p3 := &Producer{pi3, false, beginningOfTime}
 	p4 := &Producer{pi1, false, beginningOfTime}
 
-	db := NewRegistrationDB()
+	db := New()
 
 	// add producers
 	db.AddProducer(Registration{"c", "a", ""}, p1)
@@ -46,11 +46,11 @@ func TestRegistrationDB(t *testing.T) {
 	p = db.FindProducers("c", "*", "b")
 	t.Logf("%s", p)
 	test.Equal(t, 1, len(p))
-	test.Equal(t, p2.peerInfo.id, p[0].peerInfo.id)
+	test.Equal(t, p2.PeerInfo.ID, p[0].PeerInfo.ID)
 
 	// filter by active
 	test.Equal(t, 0, len(p.FilterByActive(sec30, sec30)))
-	p2.peerInfo.lastUpdate = time.Now().UnixNano()
+	p2.PeerInfo.LastUpdate = time.Now().UnixNano()
 	test.Equal(t, 1, len(p.FilterByActive(sec30, sec30)))
 	p = db.FindProducers("c", "*", "")
 	t.Logf("%s", p)
@@ -58,8 +58,8 @@ func TestRegistrationDB(t *testing.T) {
 
 	// tombstoning
 	fewSecAgo := time.Now().Add(-5 * time.Second).UnixNano()
-	p1.peerInfo.lastUpdate = fewSecAgo
-	p2.peerInfo.lastUpdate = fewSecAgo
+	p1.PeerInfo.LastUpdate = fewSecAgo
+	p2.PeerInfo.LastUpdate = fewSecAgo
 	test.Equal(t, 2, len(p.FilterByActive(sec30, sec30)))
 	p1.Tombstone()
 	test.Equal(t, 1, len(p.FilterByActive(sec30, sec30)))
@@ -79,13 +79,13 @@ func TestRegistrationDB(t *testing.T) {
 	test.Equal(t, "b", k[0])
 
 	// removing producers
-	db.RemoveProducer(Registration{"c", "a", ""}, p1.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", ""}, p1.PeerInfo.ID)
 	p = db.FindProducers("c", "*", "*")
 	t.Logf("%s", p)
 	test.Equal(t, 1, len(p))
 
-	db.RemoveProducer(Registration{"c", "a", ""}, p2.peerInfo.id)
-	db.RemoveProducer(Registration{"c", "a", "b"}, p2.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", ""}, p2.PeerInfo.ID)
+	db.RemoveProducer(Registration{"c", "a", "b"}, p2.PeerInfo.ID)
 	p = db.FindProducers("c", "*", "*")
 	t.Logf("%s", p)
 	test.Equal(t, 0, len(p))
@@ -100,15 +100,15 @@ func TestRegistrationDB(t *testing.T) {
 }
 
 func fillRegDB(registrations int, producers int) *RegistrationDB {
-	regDB := NewRegistrationDB()
+	regDB := New()
 	for i := 0; i < registrations; i++ {
 		regT := Registration{"topic", "t" + strconv.Itoa(i), ""}
 		regCa := Registration{"channel", "t" + strconv.Itoa(i), "ca" + strconv.Itoa(i)}
 		regCb := Registration{"channel", "t" + strconv.Itoa(i), "cb" + strconv.Itoa(i)}
 		for j := 0; j < producers; j++ {
 			p := Producer{
-				peerInfo: &PeerInfo{
-					id: "p" + strconv.Itoa(j),
+				PeerInfo: &PeerInfo{
+					ID: "p" + strconv.Itoa(j),
 				},
 			}
 			regDB.AddProducer(regT, &p)

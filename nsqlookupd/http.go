@@ -123,7 +123,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		s.ctx.nsqlookupd.opts.TombstoneLifetime)
 	return map[string]interface{}{
 		"channels":  channels,
-		"producers": producers.PeerInfo(),
+		"producers": producers,
 	}, nil
 }
 

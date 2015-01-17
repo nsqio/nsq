@@ -102,10 +102,10 @@ func TestBasicLookupd(t *testing.T) {
 	test.Equal(t, 1, len(producers))
 	producer := producers[0]
 
-	test.Equal(t, HostAddr, producer.peerInfo.BroadcastAddress)
-	test.Equal(t, HostAddr, producer.peerInfo.Hostname)
-	test.Equal(t, TCPPort, producer.peerInfo.TCPPort)
-	test.Equal(t, HTTPPort, producer.peerInfo.HTTPPort)
+	test.Equal(t, HostAddr, producer.PeerInfo.BroadcastAddress)
+	test.Equal(t, HostAddr, producer.PeerInfo.Hostname)
+	test.Equal(t, TCPPort, producer.PeerInfo.TCPPort)
+	test.Equal(t, HTTPPort, producer.PeerInfo.HTTPPort)
 
 	tr := TopicsDoc{}
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
