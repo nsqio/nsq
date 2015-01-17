@@ -69,7 +69,17 @@ type nsqdOptions struct {
 	SnappyEnabled   bool `flag:"snappy"`
 
 	Logger logger
+
+	gossipDelegate gossipDelegate
 }
+
+type gossipDelegate interface {
+	notify()
+}
+
+type nilGossipDelegate struct{}
+
+func (_ nilGossipDelegate) notify() {}
 
 func NewNSQDOptions() *nsqdOptions {
 	hostname, err := os.Hostname()
@@ -115,6 +125,8 @@ func NewNSQDOptions() *nsqdOptions {
 		TLSMinVersion: tls.VersionTLS10,
 
 		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+
+		gossipDelegate: nilGossipDelegate{},
 	}
 
 	h := md5.New()
