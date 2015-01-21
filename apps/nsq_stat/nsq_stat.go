@@ -24,7 +24,8 @@ var (
 	showVersion      = flag.Bool("version", false, "print version")
 	topic            = flag.String("topic", "", "NSQ topic")
 	channel          = flag.String("channel", "", "NSQ channel")
-	statusEvery      = flag.Duration("status-every", 2*time.Second, "duration of time between polling/printing output")
+	statusEvery      = flag.Duration("status-every", -1, "(deprecated) duration of time between polling/printing output")
+	interval         = flag.Duration("interval", 2*time.Second, "duration of time between polling/printing output")
 	countNum         = numValue{}
 	nsqdHTTPAddrs    = util.StringArray{}
 	lookupdHTTPAddrs = util.StringArray{}
@@ -141,8 +142,13 @@ func main() {
 		log.Fatal("--topic and --channel are required")
 	}
 
-	if int64(*statusEvery) <= 0 {
-		log.Fatal("--status-every should be positive")
+	intvl := *interval
+	if *statusEvery != -1 {
+		log.Printf("--status-every is deprecated, use --interval")
+		intvl = *statusEvery
+	}
+	if int64(intvl) <= 0 {
+		log.Fatal("--interval should be positive")
 	}
 
 	if countNum.isSet && countNum.value <= 0 {
@@ -167,7 +173,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
-	go statLoop(*statusEvery, *topic, *channel, nsqdHTTPAddrs, lookupdHTTPAddrs)
+	go statLoop(intvl, *topic, *channel, nsqdHTTPAddrs, lookupdHTTPAddrs)
 
 	<-termChan
 }
