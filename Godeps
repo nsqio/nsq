@@ -6,3 +6,6 @@ github.com/bitly/go-simplejson          fc395a5db941cf38922b1ccbc083640cd76fe4bc
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da
 github.com/mreiferson/go-snappystream   307a466b220aaf34bcee2d19c605ed9e96b4bcdb # v0.2.0
+github.com/hashicorp/serf               5e0771b8d61bee28986087a246f7611d6bd4a87a # v0.6.3
+github.com/hashicorp/memberlist         9a1e242e454d2443df330bdd51a436d5a9058fc4
+github.com/ugorji/go/codec              006e1534301cb75b848ee452ab5d3ba8c6a70784
