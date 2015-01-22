@@ -2,6 +2,36 @@
 
 ## Binaries
 
+### 0.3.1 - 2015-01-21
+
+**Upgrading from 0.2.31**: No backwards incompatible changes.
+
+This release contains minor bug fixes and feature additions.
+
+There are a number of functionality improvements to the `nsq_stat` and `nsq_to_file` helper
+applications (and general support for `#ephemeral` topics, broken in `0.2.30`).
+
+Additionally, the TLS options continue to improve with support for setting `--tls-min-version` and
+a work-around for a bug relating to `TLS_FALLBACK_SCSV` ([to be fixed in Go
+1.5](https://go-review.googlesource.com/#/c/1776/)).
+
+Features:
+
+ * #527 - nsq_stat: deprecate `--status-every` in favor of `--interval`
+ * #524 - nsq_stat: add `--count` option (thanks @nordicdyno)
+ * #518 - nsqd: set defaults for `--tls-min-version` and set TLS max version to 1.2
+ * #475/#513/#518 - nsqd: `--tls-required` can be disabled for HTTP / add `--tls-min-version`
+                    (thanks @twmb)
+ * #496 - nsq_to_file: add `<PID>` to filename and rotation by size/interval (thanks @xiaost)
+ * #507 - nsq_stat: add rates (thanks @xiaost)
+ * #505 - nsqd: speed up failure path of `BytesToBase10` (thanks @iand)
+
+Bugs:
+
+ * #522 - nsqadmin: fix `#ephemeral` topic deletion issues
+ * #509 - nsqd: fix `diskqueue` atomic rename on Windows (thanks @allgeek)
+ * #479 - nsqd: return `output_buffer_*` resolved settings in `IDENTIFY` response (thanks @tj)
+
 ### 0.3.0 - 2014-11-18
 
 **Upgrading from 0.2.31**: No backwards incompatible changes.
