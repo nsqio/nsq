@@ -101,11 +101,11 @@ for msg := range c.incomingMsgChan {
 Taking advantage of Go's `select` statement allows this functionality to be expressed in just a few
 lines of code: the `default` case above only executes if `memoryMsgChan` is full.
 
-NSQ also has the concept of **ephemeral** channels. Ephemeral channels *discard* message overflow
+NSQ also has the concept of **ephemeral** topics/channels. They *discard* message overflow
 (rather than write to disk) and disappear when they no longer have clients subscribed.  This is
 a perfect use case for Go's interfaces. Topics and channels have a struct member declared
 as a `Backend` *interface* rather than a concrete type. Normal topics and channels use a
-`DiskQueue` while ephemeral channels stub in a `DummyBackendQueue`, which implements a no-op
+`DiskQueue` while ephemeral ones stub in a `DummyBackendQueue`, which implements a no-op
 `Backend`.
 
 ## Reducing GC Pressure

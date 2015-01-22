@@ -167,7 +167,7 @@ Subscribe to a topic/channel
 
     SUB <topic_name> <channel_name>\n
 
-    <topic_name> - a valid string
+    <topic_name> - a valid string (optionally having #ephemeral suffix)
     <channel_name> - a valid string (optionally having #ephemeral suffix)
 
 Success response:
@@ -187,7 +187,7 @@ Publish a message to a **topic**:
     PUB <topic_name>\n
     [ 4-byte size in bytes ][ N-byte binary data ]
 
-    <topic_name> - a valid string
+    <topic_name> - a valid string (optionally having #ephemeral suffix)
 
 Success Response:
 
@@ -212,7 +212,7 @@ NOTE: available in `nsqd` `v0.2.16+`
     [ 4-byte message #1 size ][ N-byte binary data ]
           ... (repeated <num_messages> times)
 
-    <topic_name> - a valid string
+    <topic_name> - a valid string (optionally having #ephemeral suffix)
 
 Success Response:
 
