@@ -562,7 +562,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 			uri = "topic/delete"
 		}
 
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
 		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
 		if err != nil {
