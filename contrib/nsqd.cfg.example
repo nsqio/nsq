@@ -2,7 +2,7 @@
 verbose = false
 
 ## unique identifier (int) for this worker (will default to a hash of hostname)
-# worker_id = 5150
+# id = 5150
 
 ## <addr>:<port> to listen on for TCP clients
 tcp_address = "0.0.0.0:4150"
