@@ -230,11 +230,11 @@ func main() {
 	}
 
 	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
-		log.Fatalf("--nsqd-tcp-address or --lookupd-tcp-address required.")
+		log.Fatalf("--nsqd-tcp-address or --lookupd-http-address required.")
 	}
 
 	if len(nsqdTCPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
-		log.Fatalf("use --nsqd-tcp-address or --lookupd-tcp-address not both")
+		log.Fatalf("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	httpAddr, err := net.ResolveTCPAddr("tcp", *httpAddress)
