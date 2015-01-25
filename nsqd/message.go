@@ -19,6 +19,7 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
+	Delegate  MessageDelegate
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -32,6 +33,7 @@ func NewMessage(id MessageID, body []byte) *Message {
 		ID:        id,
 		Body:      body,
 		Timestamp: time.Now().UnixNano(),
+		Delegate:  Delegate,
 	}
 }
 
@@ -100,3 +102,20 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) err
 	}
 	return nil
 }
+
+type MessageDelegate interface {
+	// OnFinish is called when FIN is received for the message
+	OnFinish(*Message)
+
+	// OnQueue is called before a message is sent to the queue
+	OnQueue(m *Message, topic string)
+
+	// OnRequeue is called when REQ is received for the message
+	OnRequeue(m *Message, delay time.Duration)
+
+	// OnTouch is called when TOUCH is received for the message
+	OnTouch(*Message)
+}
+
+// Delegate is the default delegate value used when NewMessage is called. Set this value have a delegate be added to every message.
+var Delegate MessageDelegate = nil

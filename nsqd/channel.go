@@ -314,6 +314,7 @@ func (c *Channel) PutMessage(m *Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
+
 	err := c.put(m)
 	if err != nil {
 		return err
@@ -347,6 +348,10 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 	}
 	c.removeFromInFlightPQ(msg)
 
+	if msg.Delegate != nil {
+		msg.Delegate.OnTouch(msg)
+	}
+
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.ctx.nsqd.opts.MaxMsgTimeout {
@@ -370,6 +375,9 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
+	if msg.Delegate != nil {
+		msg.Delegate.OnFinish(msg)
+	}
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
@@ -389,6 +397,10 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
+
+	if msg.Delegate != nil {
+		msg.Delegate.OnRequeue(msg, timeout)
+	}
 
 	if timeout == 0 {
 		return c.doRequeue(msg)

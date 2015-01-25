@@ -22,6 +22,7 @@ type httpServer struct {
 	ctx         *context
 	tlsEnabled  bool
 	tlsRequired bool
+	Delegate    MessageDelegate
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {

@@ -155,6 +155,11 @@ func (t *Topic) PutMessage(m *Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
+
+	if m.Delegate != nil {
+		m.Delegate.OnQueue(m, t.name)
+	}
+
 	err := t.put(m)
 	if err != nil {
 		return err
