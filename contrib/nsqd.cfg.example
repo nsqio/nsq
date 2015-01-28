@@ -21,6 +21,16 @@ nsqlookupd_tcp_addresses = [
     "127.0.0.1:4160"
 ]
 
+## publishing a port for participating in gossip cluster
+gossip_address = "0.0.0.0:7946"
+
+## how often to resend gossiped topic/channel information
+gossip_regossip_interval = "1m0s"
+
+## seeding gossip
+# gossip_seed_address = [
+#       "192.168.0.10:7946"
+# ]
 
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"
