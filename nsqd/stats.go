@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"sort"
+	"sync/atomic"
 
 	"github.com/bitly/nsq/util"
 )
@@ -23,7 +24,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Channels:     channels,
 		Depth:        t.Depth(),
 		BackendDepth: t.backend.Depth(),
-		MessageCount: t.messageCount,
+		MessageCount: atomic.LoadUint64(&t.messageCount),
 		Paused:       t.IsPaused(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().PercentileResult(),
@@ -52,9 +53,9 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		BackendDepth:  c.backend.Depth(),
 		InFlightCount: len(c.inFlightMessages),
 		DeferredCount: len(c.deferredMessages),
-		MessageCount:  c.messageCount,
-		RequeueCount:  c.requeueCount,
-		TimeoutCount:  c.timeoutCount,
+		MessageCount:  atomic.LoadUint64(&c.messageCount),
+		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
+		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
 		Clients:       clients,
 		Paused:        c.IsPaused(),
 

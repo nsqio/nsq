@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bitly/nsq/util"
+	"github.com/hashicorp/serf/serf"
 )
 
 type httpServer struct {
@@ -80,6 +81,10 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
 			func() (interface{}, error) { return s.doMPUB(req) }))
 
+	case "/lookup":
+		util.NegotiateAPIResponseWrapper(w, req,
+			func() (interface{}, error) { return s.doLookup(req) })
+
 	case "/stats":
 		util.NegotiateAPIResponseWrapper(w, req,
 			func() (interface{}, error) { return s.doStats(req) })
@@ -133,6 +138,7 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 	case "/info":
 		util.NegotiateAPIResponseWrapper(w, req,
 			func() (interface{}, error) { return s.doInfo(req) })
+
 	case "/empty_topic":
 		util.NegotiateAPIResponseWrapper(w, req,
 			func() (interface{}, error) { return s.doEmptyTopic(req) })
@@ -172,6 +178,10 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
 	code := 200
 	if !s.ctx.nsqd.IsHealthy() {
 		code = 500
+	}
+	if s.ctx.nsqd.serf != nil && (s.ctx.nsqd.serf.State() == serf.SerfAlive || len(s.ctx.nsqd.serf.Members()) < 2) {
+		code = 500
+		health = "NOK - gossip unhealthy"
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(len(health)))
 	w.WriteHeader(code)
@@ -224,6 +234,36 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	}
 
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
+}
+
+func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
+	if s.ctx.nsqd.serf == nil || s.ctx.nsqd.serf.State() != serf.SerfAlive {
+		return nil, util.HTTPError{400, "GOSSIP_NOT_ENABLED"}
+	}
+
+	reqParams, err := util.NewReqParams(req)
+	if err != nil {
+		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := reqParams.Get("topic")
+	if err != nil {
+		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+	}
+
+	registration := s.ctx.nsqd.rdb.FindRegistrations("topic", topicName, "")
+	if len(registration) == 0 {
+		return nil, util.HTTPError{404, "INVALID_TOPIC"}
+	}
+
+	channels := s.ctx.nsqd.rdb.FindRegistrations("channel", topicName, "*").SubKeys()
+	producers := s.ctx.nsqd.rdb.FindProducers("topic", topicName, "")
+	producers = producers.FilterByActive(300*time.Second, 45*time.Second)
+	data := make(map[string]interface{})
+	data["channels"] = channels
+	data["producers"] = producers
+
+	return data, nil
 }
 
 func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
@@ -494,27 +534,32 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	stats := s.ctx.nsqd.GetStats()
 	health := s.ctx.nsqd.GetHealth()
 
+	var serfStats map[string]string
+	if s.ctx.nsqd.serf != nil {
+		serfStats = s.ctx.nsqd.serf.Stats()
+	}
+
 	if !jsonFormat {
-		return s.printStats(stats, health), nil
+		return s.printStats(stats, health, serfStats), nil
 	}
 
 	return struct {
 		Version string       `json:"version"`
 		Health  string       `json:"health"`
 		Topics  []TopicStats `json:"topics"`
-	}{util.BINARY_VERSION, health, stats}, nil
+		Gossip  interface{}  `json:"gossip"`
+	}{util.BINARY_VERSION, health, stats, serfStats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, health string) []byte {
-	var buf bytes.Buffer
-	w := &buf
+func (s *httpServer) printStats(stats []TopicStats, health string, gossip map[string]string) []byte {
+	w := &bytes.Buffer{}
 	now := time.Now()
-	io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
+	fmt.Fprintf(w, "%s\n", util.Version("nsqd"))
 	if len(stats) == 0 {
-		io.WriteString(w, "\nNO_TOPICS\n")
-		return buf.Bytes()
+		w.WriteString("\nNO_TOPICS\n")
+		return w.Bytes()
 	}
-	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
+	fmt.Fprintf(w, "\nHealth: %s\n", health)
 	for _, t := range stats {
 		var pausedPrefix string
 		if t.Paused {
@@ -522,37 +567,37 @@ func (s *httpServer) printStats(stats []TopicStats, health string) []byte {
 		} else {
 			pausedPrefix = "   "
 		}
-		io.WriteString(w, fmt.Sprintf("\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
+		fmt.Fprintf(w, "\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
 			pausedPrefix,
 			t.TopicName,
 			t.Depth,
 			t.BackendDepth,
 			t.MessageCount,
-			t.E2eProcessingLatency))
+			t.E2eProcessingLatency)
 		for _, c := range t.Channels {
 			if c.Paused {
 				pausedPrefix = "   *P "
 			} else {
 				pausedPrefix = "      "
 			}
-			io.WriteString(w,
-				fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
-					pausedPrefix,
-					c.ChannelName,
-					c.Depth,
-					c.BackendDepth,
-					c.InFlightCount,
-					c.DeferredCount,
-					c.RequeueCount,
-					c.TimeoutCount,
-					c.MessageCount,
-					c.E2eProcessingLatency))
+			fmt.Fprintf(w,
+				"%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
+				pausedPrefix,
+				c.ChannelName,
+				c.Depth,
+				c.BackendDepth,
+				c.InFlightCount,
+				c.DeferredCount,
+				c.RequeueCount,
+				c.TimeoutCount,
+				c.MessageCount,
+				c.E2eProcessingLatency)
 			for _, client := range c.Clients {
 				connectTime := time.Unix(client.ConnectTime, 0)
 				// truncate to the second
 				duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
 				_, port, _ := net.SplitHostPort(client.RemoteAddress)
-				io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+				fmt.Fprintf(w, "        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 					client.Version,
 					fmt.Sprintf("%s:%s", client.Name, port),
 					client.State,
@@ -562,9 +607,17 @@ func (s *httpServer) printStats(stats []TopicStats, health string) []byte {
 					client.RequeueCount,
 					client.MessageCount,
 					duration,
-				))
+				)
 			}
 		}
 	}
-	return buf.Bytes()
+
+	if gossip != nil {
+		fmt.Fprintf(w, "\nGossip:\n")
+		for k, v := range gossip {
+			fmt.Fprintf(w, "   %s: %s\n", k, v)
+		}
+	}
+
+	return w.Bytes()
 }
