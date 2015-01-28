@@ -30,8 +30,9 @@ type Options struct {
 	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
 	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
 
-	GossipAddress     string   `flag:"gossip-address"`
-	SeedNodeAddresses []string `flag:"seed-node-address"`
+	GossipAddress          string        `flag:"gossip-address"`
+	GossipSeedAddresses    []string      `flag:"gossip-seed-address"`
+	GossipRegossipInterval time.Duration `flag:"gossip-regossip-interval"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -159,6 +160,7 @@ func NewOptions() *Options {
 
 		TLSMinVersion: tls.VersionTLS10,
 
-		gossipDelegate: nilGossipDelegate{},
+		gossipDelegate:         nilGossipDelegate{},
+		GossipRegossipInterval: 60 * time.Second,
 	}
 }
