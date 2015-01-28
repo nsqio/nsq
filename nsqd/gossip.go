@@ -290,11 +290,11 @@ func (n *NSQD) gossipLoop() {
 	var topicName string
 	var channelName string
 
-	regossipTicker := time.NewTicker(60 * time.Second)
+	regossipTicker := time.NewTicker(n.opts.GossipRegossipInterval)
 
-	if len(n.opts.SeedNodeAddresses) > 0 {
+	if len(n.opts.GossipSeedAddresses) > 0 {
 		for {
-			num, err := n.serf.Join(n.opts.SeedNodeAddresses, false)
+			num, err := n.serf.Join(n.opts.GossipSeedAddresses, false)
 			if err != nil {
 				n.logf("ERROR: failed to join serf - %s", err)
 				select {

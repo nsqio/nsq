@@ -41,7 +41,7 @@ func TestGossip(t *testing.T) {
 		opts.BroadcastAddress = "127.0.0.1"
 		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
-			opts.SeedNodeAddresses = []string{seedNode.opts.GossipAddress}
+			opts.GossipSeedAddresses = []string{seedNode.opts.GossipAddress}
 		}
 		tcpAddr, _, nsqd := mustStartNSQD(opts)
 		defer nsqd.Exit()
