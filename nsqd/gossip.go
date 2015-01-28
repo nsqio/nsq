@@ -294,7 +294,7 @@ func (n *NSQD) gossipLoop() {
 
 	if n.serf.EncryptionEnabled() {
 		err := n.rotateGossipKey()
-		n.logf("FATAL: could not rotate gossip key - %s", err)
+		n.logf(LOG_FATAL, "could not rotate gossip key - %s", err)
 		n.Exit()
 		return
 	}

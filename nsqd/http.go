@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/serf/serf"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
@@ -118,6 +119,9 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 	if !s.ctx.nsqd.IsHealthy() {
 		return nil, http_api.Err{500, health}
 	}
+	if s.ctx.nsqd.serf != nil && (s.ctx.nsqd.serf.State() == serf.SerfAlive || len(s.ctx.nsqd.serf.Members()) < 2) {
+		return nil, http_api.Err{500, "NOK - gossip unhealthy"}
+	}
 	return health, nil
 }
 
@@ -184,6 +188,10 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 }
 
 func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqd.serf == nil || s.ctx.nsqd.serf.State() != serf.SerfAlive {
+		return nil, http_api.Err{400, "GOSSIP_NOT_ENABLED"}
+	}
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -566,8 +574,14 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	ms := getMemStats()
+
+	var serfStats map[string]string
+	if s.ctx.nsqd.serf != nil {
+		serfStats = s.ctx.nsqd.serf.Stats()
+	}
+
 	if !jsonFormat {
-		return s.printStats(stats, producerStats, ms, health, startTime, uptime), nil
+		return s.printStats(stats, producerStats, ms, health, startTime, uptime, serfStats), nil
 	}
 
 	return struct {
@@ -580,7 +594,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	}{version.Binary, health, startTime.Unix(), stats, ms, producerStats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms memStats, health string, startTime time.Time, uptime time.Duration, gossip map[string]string) []byte {
 	var buf bytes.Buffer
 	w := &buf
 
@@ -685,6 +699,13 @@ func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats,
 					v.Count,
 				)
 			}
+		}
+	}
+
+	if gossip != nil {
+		fmt.Fprintf(w, "\nGossip:\n")
+		for k, v := range gossip {
+			fmt.Fprintf(w, "   %s: %s\n", k, v)
 		}
 	}
 
