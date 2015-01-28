@@ -7,6 +7,8 @@ set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p $DIR/dist
+rm -rf $DIR/dist/docker
+mkdir -p $DIR/dist/docker
 
 mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
@@ -27,8 +29,10 @@ for os in linux darwin; do
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
     make DESTDIR=$BUILD/$TARGET PREFIX= install
     pushd $BUILD
+    if [ "$os" == 'linux' ]; then cp -r $BUILD/$TARGET/bin $DIR/dist/docker/; fi
     tar czvf $TARGET.tar.gz $TARGET
     mv $TARGET.tar.gz $DIR/dist
     popd
     make clean
 done
+docker build -t nsqio/nsq:v$version .
