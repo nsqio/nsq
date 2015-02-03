@@ -21,7 +21,7 @@ import (
 	"github.com/bitly/go-hostpool"
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/timermetrics"
+	"github.com/bitly/timer_metrics"
 )
 
 const (
@@ -81,8 +81,8 @@ type PublishHandler struct {
 	mode      int
 	hostPool  hostpool.HostPool
 
-	perAddressStatus map[string]*timermetrics.TimerMetrics
-	timermetrics     *timermetrics.TimerMetrics
+	perAddressStatus map[string]*timer_metrics.TimerMetrics
+	timermetrics     *timer_metrics.TimerMetrics
 }
 
 func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
@@ -272,13 +272,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	perAddressStatus := make(map[string]*timermetrics.TimerMetrics)
+	perAddressStatus := make(map[string]*timer_metrics.TimerMetrics)
 	if len(addresses) == 1 {
 		// disable since there is only one address
-		perAddressStatus[addresses[0]] = timermetrics.NewTimerMetrics(0, "")
+		perAddressStatus[addresses[0]] = timer_metrics.NewTimerMetrics(0, "")
 	} else {
 		for _, a := range addresses {
-			perAddressStatus[a] = timermetrics.NewTimerMetrics(*statusEvery,
+			perAddressStatus[a] = timer_metrics.NewTimerMetrics(*statusEvery,
 				fmt.Sprintf("[%s]:", a))
 		}
 	}
@@ -289,7 +289,7 @@ func main() {
 		mode:             selectedMode,
 		hostPool:         hostpool.New(addresses),
 		perAddressStatus: perAddressStatus,
-		timermetrics:     timermetrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 	consumer.AddConcurrentHandlers(handler, *numPublishers)
 
