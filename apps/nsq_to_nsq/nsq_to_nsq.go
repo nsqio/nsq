@@ -21,7 +21,7 @@ import (
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/timermetrics"
+	"github.com/bitly/timer_metrics"
 )
 
 const (
@@ -81,8 +81,8 @@ type PublishHandler struct {
 	requireJsonValueIsNumber bool
 	requireJsonNumber        float64
 
-	perAddressStatus map[string]*timermetrics.TimerMetrics
-	timermetrics     *timermetrics.TimerMetrics
+	perAddressStatus map[string]*timer_metrics.TimerMetrics
+	timermetrics     *timer_metrics.TimerMetrics
 }
 
 func (ph *PublishHandler) responder() {
@@ -358,13 +358,13 @@ func main() {
 		producers[addr] = producer
 	}
 
-	perAddressStatus := make(map[string]*timermetrics.TimerMetrics)
+	perAddressStatus := make(map[string]*timer_metrics.TimerMetrics)
 	if len(destNsqdTCPAddrs) == 1 {
 		// disable since there is only one address
-		perAddressStatus[destNsqdTCPAddrs[0]] = timermetrics.NewTimerMetrics(0, "")
+		perAddressStatus[destNsqdTCPAddrs[0]] = timer_metrics.NewTimerMetrics(0, "")
 	} else {
 		for _, a := range destNsqdTCPAddrs {
-			perAddressStatus[a] = timermetrics.NewTimerMetrics(*statusEvery,
+			perAddressStatus[a] = timer_metrics.NewTimerMetrics(*statusEvery,
 				fmt.Sprintf("[%s]:", a))
 		}
 	}
@@ -376,7 +376,7 @@ func main() {
 		hostPool:         hostpool.New(destNsqdTCPAddrs),
 		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
 		perAddressStatus: perAddressStatus,
-		timermetrics:     timermetrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 	consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
 
