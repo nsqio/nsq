@@ -303,6 +303,9 @@ func (n *NSQD) PersistMetadata() error {
 	js := make(map[string]interface{})
 	topics := make([]interface{}, 0)
 	for _, topic := range n.topicMap {
+		if topic.ephemeral {
+			continue
+		}
 		topicData := make(map[string]interface{})
 		topicData["name"] = topic.name
 		topicData["paused"] = topic.IsPaused()
@@ -310,12 +313,14 @@ func (n *NSQD) PersistMetadata() error {
 		topic.Lock()
 		for _, channel := range topic.channelMap {
 			channel.Lock()
-			if !channel.ephemeral {
-				channelData := make(map[string]interface{})
-				channelData["name"] = channel.name
-				channelData["paused"] = channel.IsPaused()
-				channels = append(channels, channelData)
+			if channel.ephemeral {
+				channel.Unlock()
+				continue
 			}
+			channelData := make(map[string]interface{})
+			channelData["name"] = channel.name
+			channelData["paused"] = channel.IsPaused()
+			channels = append(channels, channelData)
 			channel.Unlock()
 		}
 		topic.Unlock()
@@ -408,6 +413,11 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		if len(n.lookupPeers) > 0 {
 			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHttpAddrs())
 			for _, channelName := range channelNames {
+				if strings.HasSuffix(channelName, "#ephemeral") {
+					// we don't want to pre-create ephemeral channels
+					// because there isn't a client connected
+					continue
+				}
 				t.getOrCreateChannel(channelName)
 			}
 		}
