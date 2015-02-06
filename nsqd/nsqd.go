@@ -413,6 +413,11 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		if len(n.lookupPeers) > 0 {
 			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHttpAddrs())
 			for _, channelName := range channelNames {
+				if strings.HasSuffix(channelName, "#ephemeral") {
+					// we don't want to pre-create ephemeral channels
+					// because there isn't a client connected
+					continue
+				}
 				t.getOrCreateChannel(channelName)
 			}
 		}
