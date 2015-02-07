@@ -1,4 +1,4 @@
-FROM nsqio/nsq:latest
+FROM nsqio/deprecated_nsq_base:latest
 
 RUN cd /gopath/src/github.com/bitly/nsq/apps/nsqd && go build .
 VOLUME ["/data"]
