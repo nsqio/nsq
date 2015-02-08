@@ -1,6 +1,18 @@
 #!/bin/bash
 
-# Exit on failed commands
+# 1. commit to bump the version and update the changelog/readme
+# 2. tag that commit
+# 3. use dist.sh to produce tar.gz for linux and darwin
+# 4. upload *.tar.gz to our bitly s3 bucket
+# 5. docker push nsqio/nsq
+# 6. push to bitly/master
+# 7. update the release metadata on github / upload the binaries there too
+# 8. update the gh-pages branch with versions / download links
+# 9. update homebrew version
+# 10. send release announcement emails
+# 11. update IRC channel topic
+# 12. tweet
+
 set -e
 
 # build binary distributions for linux/amd64 and darwin/amd64
@@ -29,10 +41,11 @@ for os in linux darwin; do
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
     make DESTDIR=$BUILD/$TARGET PREFIX= install
     pushd $BUILD
-    if [ "$os" == 'linux' ]; then cp -r $BUILD/$TARGET/bin $DIR/dist/docker/; fi
+    if [ "$os" == "linux" ]; then cp -r $BUILD/$TARGET/bin $DIR/dist/docker/; fi
     tar czvf $TARGET.tar.gz $TARGET
     mv $TARGET.tar.gz $DIR/dist
     popd
     make clean
 done
+
 docker build -t nsqio/nsq:v$version .

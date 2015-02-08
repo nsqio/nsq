@@ -2,9 +2,33 @@
 
 ## Binaries
 
+### 0.3.2 - 2015-02-08
+
+**Upgrading from 0.3.1**: Binaries contain no backwards incompatible changes however as of this
+release we've updated our official Docker images.
+
+We now provide a single Docker image [`nsqio/nsq`](https://registry.hub.docker.com/u/nsqio/nsq/)
+that includes *all* of the NSQ binaries. We did this for several reasons, primarily because the
+tagged versions in the previous incarnation were broken (and did not actually pin to a version!).
+The new image is an order of magnitude smaller, weighing in around 70mb.
+
+In addition, the impetus for this quick release is to address a slew of reconnect related bug fixes
+in the utility apps (`nsq_to_nsq`, `nsq_to_file`, etc.), for details see the [`go-nsq` `v1.0.3`
+release notes](https://github.com/bitly/go-nsq/releases/tag/v1.0.3).
+
+Features:
+
+ * #534/#539/#540 - single Dockerfile approach (thanks @paddyforan)
+
+Bugs:
+
+ * #529 - nsqadmin: fix more `#ephemeral` topic deletion issues
+ * #530 - nsqd: fix the provided sample config file (thanks @jnewmano)
+ * #538 - nsqd: fix orphaned ephemeral channels (thanks @adamsathailo)
+
 ### 0.3.1 - 2015-01-21
 
-**Upgrading from 0.2.31**: No backwards incompatible changes.
+**Upgrading from 0.3.0**: No backwards incompatible changes.
 
 This release contains minor bug fixes and feature additions.
 
