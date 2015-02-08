@@ -3,15 +3,16 @@ set -e
 
 # build and run nsqlookupd
 LOOKUP_LOGFILE=$(mktemp -t nsqlookupd.XXXXXXX)
-echo "building and starting nsqlookupd"
+cmd="apps/nsqlookupd/nsqlookupd --broadcast-address=127.0.0.1"
+echo "building and starting $cmd"
 echo "  logging to $LOOKUP_LOGFILE"
 go build -o apps/nsqlookupd/nsqlookupd ./apps/nsqlookupd/
-apps/nsqlookupd/nsqlookupd >$LOOKUP_LOGFILE 2>&1 &
+$cmd >$LOOKUP_LOGFILE 2>&1 &
 LOOKUPD_PID=$!
 
 # build and run nsqd configured to use our lookupd above
 NSQD_LOGFILE=$(mktemp -t nsqd.XXXXXXX)
-cmd="apps/nsqd/nsqd --data-path=/tmp --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/certs/cert.pem --tls-key=nsqd/test/certs/key.pem --tls-min-version=tls1.0"
+cmd="apps/nsqd/nsqd --data-path=/tmp --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:4160 --tls-cert=nsqd/test/certs/cert.pem --tls-key=nsqd/test/certs/key.pem --tls-min-version=tls1.0"
 echo "building and starting $cmd"
 echo "  logging to $NSQD_LOGFILE"
 go build -o apps/nsqd/nsqd ./apps/nsqd

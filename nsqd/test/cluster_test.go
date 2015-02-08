@@ -48,7 +48,7 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer := topicData.GetIndex(0)
 	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
 	equal(t, producer.Get("tcp_port").MustInt(), 4150)
 	equal(t, producer.Get("tombstoned").MustBool(), false)
 
@@ -58,7 +58,7 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer = topicData.GetIndex(0)
 	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
 	equal(t, producer.Get("tcp_port").MustInt(), 4150)
 	equal(t, producer.Get("tombstoned").MustBool(), false)
 
@@ -70,7 +70,7 @@ func TestNsqdToLookupd(t *testing.T) {
 
 	producer = data.Get("producers").GetIndex(0)
 	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
 	equal(t, producer.Get("tcp_port").MustInt(), 4150)
 
 	channels, _ := data.Get("channels").Array()
