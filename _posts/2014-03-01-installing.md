@@ -10,21 +10,21 @@ permalink: /deployment/installing.html
 Pre-built binaries (`nsqd`, `nsqlookupd`, `nsqadmin`, and all example apps) for linux and darwin are
 available for download:
 
-#### Current Stable Release: **`v0.3.1`**
+#### Current Stable Release: **`v0.3.2`**
 
- * [nsq-0.3.1.darwin-amd64.go1.4.1.tar.gz][0.3.1_darwin_go141]
- * [nsq-0.3.1.linux-amd64.go1.4.1.tar.gz][0.3.1_linux_go141]
+ * [nsq-0.3.2.darwin-amd64.go1.4.1.tar.gz][0.3.2_darwin_go141]
+ * [nsq-0.3.2.linux-amd64.go1.4.1.tar.gz][0.3.2_linux_go141]
 
 #### Older Stable Releases
 
+ * [nsq-0.3.1.darwin-amd64.go1.4.1.tar.gz][0.3.1_darwin_go141]
+ * [nsq-0.3.1.linux-amd64.go1.4.1.tar.gz][0.3.1_linux_go141]
  * [nsq-0.3.0.darwin-amd64.go1.3.3.tar.gz][0.3.0_darwin_go133]
  * [nsq-0.3.0.linux-amd64.go1.3.3.tar.gz][0.3.0_linux_go133]
  * [nsq-0.2.31.darwin-amd64.go1.3.1.tar.gz][0.2.31_darwin_go131]
  * [nsq-0.2.31.linux-amd64.go1.3.1.tar.gz][0.2.31_linux_go131]
  * [nsq-0.2.30.darwin-amd64.go1.3.tar.gz][0.2.30_darwin_go13]
  * [nsq-0.2.30.linux-amd64.go1.3.tar.gz][0.2.30_linux_go13]
- * [nsq-0.2.28.darwin-amd64.go1.2.1.tar.gz][0.2.28_darwin_go121]
- * [nsq-0.2.28.linux-amd64.go1.2.1.tar.gz][0.2.28_linux_go121]
 
 ### Docker
 
@@ -60,6 +60,9 @@ produce reliable builds (pinned dependencies need to be satisfied manually).
 $ ./test.sh
 {% endhighlight %}
 
+[0.3.2_darwin_go141]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.2.darwin-amd64.go1.4.1.tar.gz
+[0.3.2_linux_go141]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.2.linux-amd64.go1.4.1.tar.gz
+
 [0.3.1_darwin_go141]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.1.darwin-amd64.go1.4.1.tar.gz
 [0.3.1_linux_go141]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.3.1.linux-amd64.go1.4.1.tar.gz
 
@@ -71,9 +74,6 @@ $ ./test.sh
 
 [0.2.30_darwin_go13]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.30.darwin-amd64.go1.3.tar.gz
 [0.2.30_linux_go13]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.30.linux-amd64.go1.3.tar.gz
-
-[0.2.28_darwin_go121]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.28.darwin-amd64.go1.2.1.tar.gz
-[0.2.28_linux_go121]: https://s3.amazonaws.com/bitly-downloads/nsq/nsq-0.2.28.linux-amd64.go1.2.1.tar.gz
 
 [docker]: https://docker.io/
 [docker_docs]: {{ site.baseurl }}/deployment/docker.html
