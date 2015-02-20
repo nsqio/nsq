@@ -49,3 +49,8 @@ for os in linux darwin; do
 done
 
 docker build -t nsqio/nsq:v$version .
+if [[ ! $version == *"-"* ]]
+then
+	echo "Tagging nsqio/nsq:v${version} as the latest release.";
+	docker tag -f nsqio/nsq:v$version nsqio/nsq:latest
+fi
