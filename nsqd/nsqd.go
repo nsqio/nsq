@@ -40,6 +40,7 @@ type NSQD struct {
 	healthMtx sync.RWMutex
 	healthy   int32
 	err       error
+	startTime time.Time
 
 	topicMap map[string]*Topic
 
@@ -63,6 +64,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	n := &NSQD{
 		opts:       opts,
 		healthy:    1,
+		startTime:  time.Now(),
 		topicMap:   make(map[string]*Topic),
 		idChan:     make(chan MessageID, 4096),
 		exitChan:   make(chan int),
@@ -168,6 +170,10 @@ func (n *NSQD) GetHealth() string {
 		return fmt.Sprintf("NOK - %s", n.GetError())
 	}
 	return "OK"
+}
+
+func (n *NSQD) GetStartTime() time.Time {
+	return n.startTime
 }
 
 func (n *NSQD) Main() {

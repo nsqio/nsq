@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/util"
 )
 
 func TestHTTPput(t *testing.T) {
@@ -615,4 +616,39 @@ func BenchmarkHTTPput(b *testing.B) {
 
 	b.StopTimer()
 	nsqd.Exit()
+}
+
+func TestHTTPgetStatusJSON(t *testing.T) {
+	testTime := time.Now()
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	nsqd.startTime = testTime
+	expectedJson := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BINARY_VERSION, testTime.Unix())
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	equal(t, string(body), expectedJson)
+}
+
+func TestHTTPgetStatusText(t *testing.T) {
+	testTime := time.Now()
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	nsqd.startTime = testTime
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/stats?format=text", httpAddr)
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	nequal(t, body, nil)
 }
