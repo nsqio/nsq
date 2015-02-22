@@ -493,23 +493,28 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 	jsonFormat := formatString == "json"
 	stats := s.ctx.nsqd.GetStats()
 	health := s.ctx.nsqd.GetHealth()
+	startTime := s.ctx.nsqd.GetStartTime()
+	uptime := time.Since(startTime)
 
 	if !jsonFormat {
-		return s.printStats(stats, health), nil
+		return s.printStats(stats, health, startTime, uptime), nil
 	}
 
 	return struct {
-		Version string       `json:"version"`
-		Health  string       `json:"health"`
-		Topics  []TopicStats `json:"topics"`
-	}{util.BINARY_VERSION, health, stats}, nil
+		Version   string       `json:"version"`
+		Health    string       `json:"health"`
+		StartTime int64        `json:"start_time"`
+		Topics    []TopicStats `json:"topics"`
+	}{util.BINARY_VERSION, health, startTime.Unix(), stats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, health string) []byte {
+func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()
 	io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
+	io.WriteString(w, fmt.Sprintf("start_time %v\n", startTime.Format(time.RFC3339)))
+	io.WriteString(w, fmt.Sprintf("uptime %s\n", uptime))
 	if len(stats) == 0 {
 		io.WriteString(w, "\nNO_TOPICS\n")
 		return buf.Bytes()
