@@ -102,9 +102,9 @@ func newTopicDiscoverer() *TopicDiscoverer {
 	}
 }
 
-func (l *FileLogger) HandleMessage(m *nsq.Message) error {
+func (f *FileLogger) HandleMessage(m *nsq.Message) error {
 	m.DisableAutoResponse()
-	l.logChan <- m
+	f.logChan <- m
 	return nil
 }
 
