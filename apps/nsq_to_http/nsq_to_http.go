@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -139,7 +138,7 @@ func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -156,7 +155,7 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/flate"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -408,7 +407,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 		desiredInterval <= int(c.ctx.nsqd.opts.MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
+		return fmt.Errorf("heartbeat interval (%d) is invalid", desiredInterval)
 	}
 
 	return nil
@@ -426,7 +425,7 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.opts.MaxOutputBufferSize):
 		size = desiredSize
 	default:
-		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
+		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
 	}
 
 	if size > 0 {
@@ -456,7 +455,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		desiredTimeout <= int(c.ctx.nsqd.opts.MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
+		return fmt.Errorf("output buffer timeout (%d) is invalid", desiredTimeout)
 	}
 
 	return nil
@@ -464,7 +463,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 
 func (c *clientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
-		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
+		return fmt.Errorf("sample rate (%d) is invalid", sampleRate)
 	}
 	atomic.StoreInt32(&c.SampleRate, sampleRate)
 	return nil
@@ -481,7 +480,7 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 		msgTimeout <= int(c.ctx.nsqd.opts.MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
+		return fmt.Errorf("msg timeout (%d) is invalid", msgTimeout)
 	}
 
 	return nil

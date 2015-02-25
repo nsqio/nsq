@@ -1,7 +1,6 @@
 package nsqlookupd
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,7 +54,7 @@ func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error
 	case "/debug/pprof/threadcreate":
 		httpprof.Handler("threadcreate").ServeHTTP(w, req)
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
@@ -96,7 +95,7 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 			func() (interface{}, error) { return s.doDeleteChannel(req) }))
 
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
@@ -122,7 +121,7 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 		util.NegotiateAPIResponseWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateChannel(req) })
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
