@@ -105,7 +105,7 @@ type clientV2 struct {
 	lenSlice []byte
 
 	AuthSecret string
-	AuthState  *auth.AuthState
+	AuthState  *auth.State
 }
 
 func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
