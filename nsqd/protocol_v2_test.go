@@ -1420,7 +1420,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			for i := 0; i < num; i += 1 {
+			for i := 0; i < num; i++ {
 				cmd, _ := nsq.MultiPublish(topicName, batch)
 				_, err := cmd.WriteTo(rw)
 				if err != nil {
@@ -1517,7 +1517,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	num := n / workers
 	numRdy := num/rdyCount - 1
 	rdy := rdyCount
-	for i := 0; i < num; i += 1 {
+	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
 			panic(err.Error())

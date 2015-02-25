@@ -253,7 +253,7 @@ func (f *FileLogger) updateFile() {
 	if filename != f.lastFilename {
 		f.rev = 0 // reset revsion to 0 if it is a new filename
 	} else {
-		f.rev += 1
+		f.rev++
 	}
 	f.lastFilename = filename
 	f.lastOpenTime = time.Now()
@@ -271,7 +271,7 @@ func (f *FileLogger) updateFile() {
 
 	var err error
 	var fi os.FileInfo
-	for ; ; f.rev += 1 {
+	for ; ; f.rev++ {
 		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%06d", f.rev), -1)
 		openFlag := os.O_WRONLY | os.O_CREATE
 		if f.gzipEnabled {

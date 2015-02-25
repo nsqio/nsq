@@ -595,7 +595,7 @@ func BenchmarkHTTPput(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			num := b.N / runtime.GOMAXPROCS(0)
-			for i := 0; i < num; i += 1 {
+			for i := 0; i < num; i++ {
 				buf := bytes.NewBuffer(msg)
 				req, _ := http.NewRequest("POST", url, buf)
 				resp, err := client.Do(req)

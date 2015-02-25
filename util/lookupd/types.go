@@ -76,7 +76,7 @@ func (t *TopicStats) Add(a *TopicStats) {
 	if a.Paused {
 		t.Paused = a.Paused
 	}
-	t.numAggregates += 1
+	t.numAggregates++
 	t.E2eProcessingLatency = t.E2eProcessingLatency.Add(a.E2eProcessingLatency, t.numAggregates)
 }
 
