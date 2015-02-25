@@ -72,9 +72,9 @@ func TestHTTPmput(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
-	msgs := make([][]byte, 0)
-	for i := 0; i < 4; i++ {
-		msgs = append(msgs, msg)
+	msgs := make([][]byte, 4)
+	for i := range msgs {
+		msgs[i] = msg
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
 
@@ -100,9 +100,9 @@ func TestHTTPmputEmpty(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
-	msgs := make([][]byte, 0)
-	for i := 0; i < 4; i++ {
-		msgs = append(msgs, msg)
+	msgs := make([][]byte, 4)
+	for i := range msgs {
+		msgs[i] = msg
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
 	_, err := buf.Write([]byte("\n"))
@@ -129,9 +129,9 @@ func TestHTTPmputBinary(t *testing.T) {
 	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 
-	mpub := make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	buf := bytes.NewBuffer(cmd.Body)

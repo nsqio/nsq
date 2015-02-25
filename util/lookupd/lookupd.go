@@ -33,7 +33,7 @@ func GetVersion(addr string) (*semver.Version, error) {
 // from all the given lookupd
 func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allTopics := make([]string, 0)
+	var allTopics []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	for _, addr := range lookupdHTTPAddrs {
@@ -67,7 +67,7 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 // from all the given lookupd for the given topic
 func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allChannels := make([]string, 0)
+	var allChannels []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	for _, addr := range lookupdHTTPAddrs {
@@ -101,8 +101,8 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 // containing metadata for each node connected to given lookupds
 func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
-	allProducers := make(map[string]*Producer, 0)
-	output := make([]*Producer, 0)
+	allProducers := make(map[string]*Producer)
+	var output []*Producer
 	maxVersion, _ := semver.Parse("0.0.0")
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -202,7 +202,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 // producers for a given topic by unioning the results returned from the given lookupd
 func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allSources := make([]string, 0)
+	var allSources []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
@@ -243,7 +243,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 // GetNSQDTopics returns a []string containing all the topics
 // produced by the given nsqd
 func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
-	topics := make([]string, 0)
+	var topics []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
@@ -280,7 +280,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 // GetNSQDTopicProducers returns a []string containing the addresses of all the nsqd
 // that produce the given topic out of the given nsqd
 func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
-	addresses := make([]string, 0)
+	var addresses []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
@@ -324,7 +324,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
-	topicStatsList := make(TopicStatsList, 0)
+	var topicStatsList TopicStatsList
 	channelStatsMap := make(map[string]*ChannelStats)
 
 	success := false

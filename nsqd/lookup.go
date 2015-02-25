@@ -105,7 +105,7 @@ func (n *NSQD) lookupLoop() {
 				}
 			}
 		case lookupPeer := <-syncTopicChan:
-			commands := make([]*nsq.Command, 0)
+			var commands []*nsq.Command
 			// build all the commands first so we exit the lock(s) as fast as possible
 			n.RLock()
 			for _, topic := range n.topicMap {

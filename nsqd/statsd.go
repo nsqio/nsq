@@ -26,7 +26,7 @@ func (s Uint64Slice) Less(i, j int) bool {
 
 func (n *NSQD) statsdLoop() {
 	var lastMemStats runtime.MemStats
-	lastStats := make([]TopicStats, 0)
+	var lastStats []TopicStats
 	ticker := time.NewTicker(n.opts.StatsdInterval)
 	for {
 		select {

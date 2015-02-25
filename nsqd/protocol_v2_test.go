@@ -460,7 +460,7 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// PUB thats empty
-	nsq.Publish(topicName, make([]byte, 0)).WriteTo(conn)
+	nsq.Publish(topicName, []byte{}).WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
@@ -473,9 +473,9 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB body that's valid
-	mpub := make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -486,9 +486,9 @@ func TestSizeLimits(t *testing.T) {
 	equal(t, data, []byte("OK"))
 
 	// MPUB body that's invalid (body too big)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 11; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub = make([][]byte, 11)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -504,11 +504,11 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB that's invalid (one message empty)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub = make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
-	mpub = append(mpub, make([]byte, 0))
+	mpub = append(mpub, []byte{})
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
@@ -523,9 +523,9 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB body that's invalid (one of the messages is too big)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 101))
+	mpub = make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 101)
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -1402,9 +1402,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	batchSize := 200
-	batch := make([][]byte, 0)
-	for i := 0; i < batchSize; i++ {
-		batch = append(batch, msg)
+	batch := make([][]byte, batchSize)
+	for i := range batch {
+		batch[i] = msg
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
 	b.SetBytes(int64(len(msg)))

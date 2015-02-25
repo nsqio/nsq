@@ -233,7 +233,7 @@ func (t *Topic) messagePump() {
 				continue
 			}
 		case <-t.channelUpdateChan:
-			chans = make([]*Channel, 0)
+			chans = chans[:0]
 			t.RLock()
 			for _, c := range t.channelMap {
 				chans = append(chans, c)

@@ -307,7 +307,7 @@ func (n *NSQD) PersistMetadata() error {
 	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
-	topics := make([]interface{}, 0)
+	topics := []interface{}{}
 	for _, topic := range n.topicMap {
 		if topic.ephemeral {
 			continue
@@ -315,7 +315,7 @@ func (n *NSQD) PersistMetadata() error {
 		topicData := make(map[string]interface{})
 		topicData["name"] = topic.name
 		topicData["paused"] = topic.IsPaused()
-		channels := make([]interface{}, 0)
+		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {
 			channel.Lock()
