@@ -152,7 +152,7 @@ func (e *E2eProcessingLatencyAggregate) Host() string {
 	return e.Addr
 }
 
-func E2eProcessingLatencyAggregateFromJson(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
+func E2eProcessingLatencyAggregateFromJSON(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
 	count := j.Get("count").MustInt()
 
 	rawPercentiles := j.Get("percentiles")

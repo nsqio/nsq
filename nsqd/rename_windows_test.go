@@ -55,11 +55,11 @@ func TestConcurrentRenames(t *testing.T) {
 
 		waitGroup.Wrap(func() {
 			_, _ = <-trigger
-			err := atomic_rename(sourcePath1, targetPath)
+			err := atomicRename(sourcePath1, targetPath)
 			if err != nil {
 				t.Error(err)
 			}
-			err = atomic_rename(sourcePath2, targetPath)
+			err = atomicRename(sourcePath2, targetPath)
 			if err != nil {
 				t.Error(err)
 			}

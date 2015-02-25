@@ -1335,14 +1335,14 @@ func TestClientAuth(t *testing.T) {
 
 func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess string) {
 	var err error
-	var expectedAuthIp string
-	expectedAuthTls := "false"
+	var expectedAuthIP string
+	expectedAuthTLS := "false"
 
 	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("in test auth handler %s", r.RequestURI)
 		r.ParseForm()
-		equal(t, r.Form.Get("remote_ip"), expectedAuthIp)
-		equal(t, r.Form.Get("tls"), expectedAuthTls)
+		equal(t, r.Form.Get("remote_ip"), expectedAuthIP)
+		equal(t, r.Form.Get("tls"), expectedAuthTLS)
 		equal(t, r.Form.Get("secret"), authSecret)
 		fmt.Fprint(w, authResponse)
 	}))
@@ -1362,7 +1362,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	equal(t, err, nil)
 	defer conn.Close()
 
-	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+	expectedAuthIP, _, _ = net.SplitHostPort(conn.LocalAddr().String())
 
 	identify(t, conn, map[string]interface{}{
 		"tls_v1": false,

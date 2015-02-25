@@ -26,8 +26,8 @@ const (
 )
 
 type identifyDataV2 struct {
-	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
-	LongId  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
+	ShortID string `json:"short_id"` // TODO: deprecated, remove in 1.0
+	LongID  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
 
 	ClientID            string `json:"client_id"`
 	Hostname            string `json:"hostname"`
@@ -159,16 +159,16 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
 	if hostname == "" {
-		hostname = data.LongId
+		hostname = data.LongID
 	}
 	// TODO: for backwards compatibility, remove in 1.0
-	clientId := data.ClientID
-	if clientId == "" {
-		clientId = data.ShortId
+	clientID := data.ClientID
+	if clientID == "" {
+		clientID = data.ShortID
 	}
 
 	c.Lock()
-	c.ClientID = clientId
+	c.ClientID = clientID
 	c.Hostname = hostname
 	c.UserAgent = data.UserAgent
 	c.Unlock()
@@ -219,14 +219,14 @@ func (c *clientV2) Stats() ClientStats {
 	// TODO: deprecated, remove in 1.0
 	name := c.ClientID
 
-	clientId := c.ClientID
+	clientID := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
 	var identity string
-	var identityUrl string
+	var identityURL string
 	if c.AuthState != nil {
 		identity = c.AuthState.Identity
-		identityUrl = c.AuthState.IdentityUrl
+		identityURL = c.AuthState.IdentityURL
 	}
 	c.RUnlock()
 	stats := ClientStats{
@@ -235,7 +235,7 @@ func (c *clientV2) Stats() ClientStats {
 
 		Version:         "V2",
 		RemoteAddress:   c.RemoteAddr().String(),
-		ClientID:        clientId,
+		ClientID:        clientID,
 		Hostname:        hostname,
 		UserAgent:       userAgent,
 		State:           atomic.LoadInt32(&c.State),
@@ -251,7 +251,7 @@ func (c *clientV2) Stats() ClientStats {
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
-		AuthIdentityURL: identityUrl,
+		AuthIdentityURL: identityURL,
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -565,7 +565,7 @@ func (c *clientV2) Flush() error {
 }
 
 func (c *clientV2) QueryAuthd() error {
-	remoteIp, _, err := net.SplitHostPort(c.String())
+	remoteIP, _, err := net.SplitHostPort(c.String())
 	if err != nil {
 		return err
 	}
@@ -577,7 +577,7 @@ func (c *clientV2) QueryAuthd() error {
 	}
 
 	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.opts.AuthHTTPAddresses,
-		remoteIp, tlsEnabled, c.AuthSecret)
+		remoteIP, tlsEnabled, c.AuthSecret)
 	if err != nil {
 		return err
 	}

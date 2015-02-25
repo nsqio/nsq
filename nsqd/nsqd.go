@@ -333,7 +333,7 @@ func (n *NSQD) PersistMetadata() error {
 		topicData["channels"] = channels
 		topics = append(topics, topicData)
 	}
-	js["version"] = util.BINARY_VERSION
+	js["version"] = util.BinaryVersion
 	js["topics"] = topics
 
 	data, err := json.Marshal(&js)
@@ -355,7 +355,7 @@ func (n *NSQD) PersistMetadata() error {
 	f.Sync()
 	f.Close()
 
-	err = atomic_rename(tmpFileName, fileName)
+	err = atomicRename(tmpFileName, fileName)
 	if err != nil {
 		return err
 	}
@@ -417,7 +417,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		// if using lookupd, make a blocking call to get the topics, and immediately create them.
 		// this makes sure that any message received is buffered to the right channels
 		if len(n.lookupPeers) > 0 {
-			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHttpAddrs())
+			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHTTPAddrs())
 			for _, channelName := range channelNames {
 				if strings.HasSuffix(channelName, "#ephemeral") {
 					// we don't want to pre-create ephemeral channels
@@ -553,11 +553,11 @@ func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 
 	if opts.TLSRootCAFile != "" {
 		tlsCertPool := x509.NewCertPool()
-		ca_cert_file, err := ioutil.ReadFile(opts.TLSRootCAFile)
+		caCertFile, err := ioutil.ReadFile(opts.TLSRootCAFile)
 		if err != nil {
 			return nil, err
 		}
-		if !tlsCertPool.AppendCertsFromPEM(ca_cert_file) {
+		if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
 			return nil, errors.New("failed to append certificate to pool")
 		}
 		tlsConfig.ClientCAs = tlsCertPool

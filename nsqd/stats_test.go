@@ -70,9 +70,9 @@ func TestClientAttributes(t *testing.T) {
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))
 	sub(t, readWriter{r, w}, topicName, "ch")
 
-	testUrl := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
+	testURL := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
 
-	statsData, err := util.APIRequestNegotiateV1("GET", testUrl, nil)
+	statsData, err := util.APIRequestNegotiateV1("GET", testURL, nil)
 	equal(t, err, nil)
 
 	client := statsData.Get("topics").GetIndex(0).Get("channels").GetIndex(0).Get("clients").GetIndex(0)

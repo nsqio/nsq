@@ -45,10 +45,10 @@ var (
 	nsqdTCPAddrs        = util.StringArray{}
 	lookupdHTTPAddrs    = util.StringArray{}
 	destNsqdTCPAddrs    = util.StringArray{}
-	whitelistJsonFields = util.StringArray{}
+	whitelistJSONFields = util.StringArray{}
 
-	requireJsonField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
-	requireJsonValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
+	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
+	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
 
 	// TODO: remove, deprecated
 	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --consumer-opt=max_backoff_duration,X")
@@ -64,7 +64,7 @@ func init() {
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 
-	flag.Var(&whitelistJsonFields, "whitelist-json-field", "for JSON messages: pass this field (may be given multiple times)")
+	flag.Var(&whitelistJSONFields, "whitelist-json-field", "for JSON messages: pass this field (may be given multiple times)")
 }
 
 type PublishHandler struct {
@@ -77,9 +77,9 @@ type PublishHandler struct {
 	hostPool  hostpool.HostPool
 	respChan  chan *nsq.ProducerTransaction
 
-	requireJsonValueParsed   bool
-	requireJsonValueIsNumber bool
-	requireJsonNumber        float64
+	requireJSONValueParsed   bool
+	requireJSONValueIsNumber bool
+	requireJSONNumber        float64
 
 	perAddressStatus map[string]*timer_metrics.TimerMetrics
 	timermetrics     *timer_metrics.TimerMetrics
@@ -130,35 +130,35 @@ func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, boo
 	pass := true
 	backoff := false
 
-	if *requireJsonField == "" {
+	if *requireJSONField == "" {
 		return pass, backoff
 	}
 
-	if *requireJsonValue != "" && !ph.requireJsonValueParsed {
+	if *requireJSONValue != "" && !ph.requireJSONValueParsed {
 		// cache conversion in case needed while filtering json
 		var err error
-		ph.requireJsonNumber, err = strconv.ParseFloat(*requireJsonValue, 64)
-		ph.requireJsonValueIsNumber = (err == nil)
-		ph.requireJsonValueParsed = true
+		ph.requireJSONNumber, err = strconv.ParseFloat(*requireJSONValue, 64)
+		ph.requireJSONValueIsNumber = (err == nil)
+		ph.requireJSONValueParsed = true
 	}
 
-	jsonVal, ok := jsonMsg.CheckGet(*requireJsonField)
+	jsonVal, ok := jsonMsg.CheckGet(*requireJSONField)
 	if !ok {
 		pass = false
-		if *requireJsonValue != "" {
+		if *requireJSONValue != "" {
 			log.Printf("ERROR: missing field to check required value")
 			backoff = true
 		}
-	} else if *requireJsonValue != "" {
+	} else if *requireJSONValue != "" {
 		// if command-line argument can't convert to float, then it can't match a number
 		// if it can, also integers (up to 2^53 or so) can be compared as float64
 		if strVal, err := jsonVal.String(); err == nil {
-			if strVal != *requireJsonValue {
+			if strVal != *requireJSONValue {
 				pass = false
 			}
-		} else if ph.requireJsonValueIsNumber {
+		} else if ph.requireJSONValueIsNumber {
 			floatVal, err := jsonVal.Float64()
-			if err != nil || ph.requireJsonNumber != floatVal {
+			if err != nil || ph.requireJSONNumber != floatVal {
 				pass = false
 			}
 		} else {
@@ -172,7 +172,7 @@ func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, boo
 }
 
 func filterMessage(jsonMsg *simplejson.Json, rawMsg []byte) ([]byte, error) {
-	if len(whitelistJsonFields) == 0 {
+	if len(whitelistJSONFields) == 0 {
 		// no change
 		return rawMsg, nil
 	}
@@ -182,9 +182,9 @@ func filterMessage(jsonMsg *simplejson.Json, rawMsg []byte) ([]byte, error) {
 		return nil, errors.New("json is not an object")
 	}
 
-	newMsg := make(map[string]interface{}, len(whitelistJsonFields))
+	newMsg := make(map[string]interface{}, len(whitelistJSONFields))
 
-	for _, key := range whitelistJsonFields {
+	for _, key := range whitelistJSONFields {
 		value, ok := msg[key]
 		if ok {
 			// avoid printing int as float (go 1.0)
@@ -213,7 +213,7 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	var err error
 	msgBody := m.Body
 
-	if *requireJsonField != "" || len(whitelistJsonFields) > 0 {
+	if *requireJSONField != "" || len(whitelistJSONFields) > 0 {
 		var jsonMsg *simplejson.Json
 		jsonMsg, err = simplejson.NewJson(m.Body)
 		if err != nil {
@@ -275,7 +275,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_nsq v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_to_nsq v%s\n", util.BinaryVersion)
 		return
 	}
 
@@ -320,7 +320,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 
 	cCfg := nsq.NewConfig()
 	cCfg.UserAgent = defaultUA

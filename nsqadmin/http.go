@@ -199,7 +199,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 		Title:        "NSQ",
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Topics:       TopicsFromStrings(topics),
-		Version:      util.BINARY_VERSION,
+		Version:      util.BinaryVersion,
 	}
 	err = templates.T.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
@@ -268,7 +268,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topicName),
 		GraphOptions:     NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:          util.BINARY_VERSION,
+		Version:          util.BinaryVersion,
 		Topic:            topicName,
 		TopicProducers:   producers,
 		TopicStats:       topicStats,
@@ -323,7 +323,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
 		GraphOptions:   NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:        util.BINARY_VERSION,
+		Version:        util.BinaryVersion,
 		Topic:          topicName,
 		Channel:        channelName,
 		TopicProducers: producers,
@@ -369,7 +369,7 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		TopicMap:     channels,
 		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		Version:      util.BINARY_VERSION,
+		Version:      util.BinaryVersion,
 	}
 	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
 	if err != nil {
@@ -788,7 +788,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	for _, p := range producers {
-		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort) {
+		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort) {
 			found = true
 			break
 		}
@@ -820,7 +820,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 		NumClients   int64
 	}{
 		Title:        "NSQ Node - " + node,
-		Version:      util.BINARY_VERSION,
+		Version:      util.BinaryVersion,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Node:         Node(node),
 		TopicStats:   topicStats,
@@ -852,7 +852,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 		Lookupd      []string
 	}{
 		Title:        "NSQ Nodes",
-		Version:      util.BINARY_VERSION,
+		Version:      util.BinaryVersion,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Producers:    producers,
 		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
@@ -888,7 +888,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 		Target       counterTarget
 	}{
 		Title:        "NSQ Message Counts",
-		Version:      util.BINARY_VERSION,
+		Version:      util.BinaryVersion,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Target:       counterTarget{},
 	}
@@ -907,7 +907,7 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	reqParams, err := util.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		util.ApiResponse(w, 500, "INVALID_REQUEST", nil)
+		util.APIResponse(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -951,7 +951,7 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	data["new_messages"] = newMessages
 	data["total_messages"] = totalMessages
 	data["id"] = statsID
-	util.ApiResponse(w, 200, "OK", data)
+	util.APIResponse(w, 200, "OK", data)
 }
 
 func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
@@ -977,12 +977,12 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	}
 
 	var queryFunc func(string) string
-	var formatJsonResponseFunc func([]byte) ([]byte, error)
+	var formatJSONResponseFunc func([]byte) ([]byte, error)
 
 	switch metric {
 	case "rate":
 		queryFunc = rateQuery
-		formatJsonResponseFunc = parseRateResponse
+		formatJSONResponseFunc = parseRateResponse
 	default:
 		s.ctx.nsqadmin.logf("ERROR: unknown metric value %s", metric)
 		http.Error(w, "INVALID_METRIC_PARAM", 500)
@@ -999,7 +999,7 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	resp, err := formatJsonResponseFunc(response)
+	resp, err := formatJSONResponseFunc(response)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: response formating failed - %s", err)
 		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
@@ -1036,7 +1036,7 @@ func (s *httpServer) getProducers(topicName string) []string {
 
 func producerSearch(producers []*lookupd.Producer, needle string) *lookupd.Producer {
 	for _, producer := range producers {
-		addr := net.JoinHostPort(producer.BroadcastAddress, strconv.Itoa(producer.HttpPort))
+		addr := net.JoinHostPort(producer.BroadcastAddress, strconv.Itoa(producer.HTTPPort))
 		if needle == addr {
 			return producer
 		}

@@ -6,7 +6,7 @@ package nsqd
 // Twitter's `snowflake` https://github.com/twitter/snowflake
 
 // only minor cleanup and changes to introduce a type, combine the concept
-// of workerId + datacenterId into a single identifier, and modify the
+// of workerID + datacenterId into a single identifier, and modify the
 // behavior when sequences rollover for our specific implementation needs
 
 import (
@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	workerIdBits   = uint64(10)
+	workerIDBits   = uint64(10)
 	sequenceBits   = uint64(12)
-	workerIdShift  = sequenceBits
-	timestampShift = sequenceBits + workerIdBits
+	workerIDShift  = sequenceBits
+	timestampShift = sequenceBits + workerIDBits
 	sequenceMask   = int64(-1) ^ (int64(-1) << sequenceBits)
 
 	// Tue, 21 Mar 2006 20:50:14.000 GMT
@@ -36,7 +36,7 @@ type guidFactory struct {
 	lastTimestamp int64
 }
 
-func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
+func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
 	ts := time.Now().UnixNano() / 1e6
 
 	if ts < f.lastTimestamp {
@@ -55,7 +55,7 @@ func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
 	f.lastTimestamp = ts
 
 	id := ((ts - twepoch) << timestampShift) |
-		(workerId << workerIdShift) |
+		(workerID << workerIDShift) |
 		f.sequence
 
 	return guid(id), nil

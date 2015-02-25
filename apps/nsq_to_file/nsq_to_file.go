@@ -366,7 +366,7 @@ func newConsumerFileLogger(topic string) (*ConsumerFileLogger, error) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 	err = util.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		return nil, err
@@ -468,7 +468,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_file v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_to_file v%s\n", util.BinaryVersion)
 		return
 	}
 

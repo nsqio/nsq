@@ -26,7 +26,7 @@ type httpServer struct {
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		util.ApiResponse(w, 403, "TLS_REQUIRED", nil)
+		util.APIResponse(w, 403, "TLS_REQUIRED", nil)
 		return
 	}
 
@@ -43,7 +43,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	err = s.debugRouter(w, req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: %s", err)
-		util.ApiResponse(w, 404, "NOT_FOUND", nil)
+		util.APIResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
 
@@ -182,7 +182,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
-		Version: util.BINARY_VERSION,
+		Version: util.BinaryVersion,
 	}, nil
 }
 
@@ -505,7 +505,7 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 		Health    string       `json:"health"`
 		StartTime int64        `json:"start_time"`
 		Topics    []TopicStats `json:"topics"`
-	}{util.BINARY_VERSION, health, startTime.Unix(), stats}, nil
+	}{util.BinaryVersion, health, startTime.Unix(), stats}, nil
 }
 
 func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {

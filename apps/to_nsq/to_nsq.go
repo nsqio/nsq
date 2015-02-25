@@ -46,7 +46,7 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 
 	err := util.ParseOpts(cfg, producerOpts)
 	if err != nil {

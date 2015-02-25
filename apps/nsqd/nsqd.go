@@ -85,8 +85,8 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
 
-	authHttpAddresses := util.StringArray{}
-	flagSet.Var(&authHttpAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
+	authHTTPAddresses := util.StringArray{}
+	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 
 	flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
 	lookupdTCPAddrs := util.StringArray{}

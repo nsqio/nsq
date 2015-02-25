@@ -401,7 +401,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		OutputBufferTimeout int64  `json:"output_buffer_timeout"`
 	}{
 		MaxRdyCount:         p.ctx.nsqd.opts.MaxRdyCount,
-		Version:             util.BINARY_VERSION,
+		Version:             util.BinaryVersion,
 		MaxMsgTimeout:       int64(p.ctx.nsqd.opts.MaxMsgTimeout / time.Millisecond),
 		MsgTimeout:          int64(client.MsgTimeout / time.Millisecond),
 		TLSv1:               tlsv1,
@@ -515,11 +515,11 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 
 	resp, err := json.Marshal(struct {
 		Identity        string `json:"identity"`
-		IdentityUrl     string `json:"identity_url"`
+		IdentityURL     string `json:"identity_url"`
 		PermissionCount int    `json:"permission_count"`
 	}{
 		Identity:        client.AuthState.Identity,
-		IdentityUrl:     client.AuthState.IdentityUrl,
+		IdentityURL:     client.AuthState.IdentityURL,
 		PermissionCount: len(client.AuthState.Authorizations),
 	})
 	if err != nil {
@@ -645,7 +645,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
 	}
 
-	id, err := getMessageId(params[1])
+	id, err := getMessageID(params[1])
 	if err != nil {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
@@ -671,7 +671,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "REQ insufficient number of params")
 	}
 
-	id, err := getMessageId(params[1])
+	id, err := getMessageID(params[1])
 	if err != nil {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
@@ -822,7 +822,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
 	}
 
-	id, err := getMessageId(params[1])
+	id, err := getMessageID(params[1])
 	if err != nil {
 		return nil, util.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
@@ -881,7 +881,7 @@ func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int
 }
 
 // validate and cast the bytes on the wire to a message ID
-func getMessageId(p []byte) (*MessageID, error) {
+func getMessageID(p []byte) (*MessageID, error) {
 	if len(p) != MsgIDLength {
 		return nil, errors.New("Invalid Message ID")
 	}

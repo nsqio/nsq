@@ -29,7 +29,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	err = s.debugRouter(w, req)
 	if err != nil {
 		s.ctx.nsqlookupd.logf("ERROR: %s", err)
-		util.ApiResponse(w, 404, "NOT_FOUND", nil)
+		util.APIResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
 
@@ -136,7 +136,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
-		Version: util.BINARY_VERSION,
+		Version: util.BinaryVersion,
 	}, nil
 }
 
@@ -257,7 +257,7 @@ func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, e
 	s.ctx.nsqlookupd.logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
-		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HttpPort)
+		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
 		if thisNode == node {
 			p.Tombstone()
 		}
@@ -316,8 +316,8 @@ type node struct {
 	RemoteAddress    string   `json:"remote_address"`
 	Hostname         string   `json:"hostname"`
 	BroadcastAddress string   `json:"broadcast_address"`
-	TcpPort          int      `json:"tcp_port"`
-	HttpPort         int      `json:"http_port"`
+	TCPPort          int      `json:"tcp_port"`
+	HTTPPort         int      `json:"http_port"`
 	Version          string   `json:"version"`
 	Tombstones       []bool   `json:"tombstones"`
 	Topics           []string `json:"topics"`
@@ -347,8 +347,8 @@ func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
 			RemoteAddress:    p.peerInfo.RemoteAddress,
 			Hostname:         p.peerInfo.Hostname,
 			BroadcastAddress: p.peerInfo.BroadcastAddress,
-			TcpPort:          p.peerInfo.TcpPort,
-			HttpPort:         p.peerInfo.HttpPort,
+			TCPPort:          p.peerInfo.TCPPort,
+			HTTPPort:         p.peerInfo.HTTPPort,
 			Version:          p.peerInfo.Version,
 			Tombstones:       tombstones,
 			Topics:           topics,
@@ -372,8 +372,8 @@ func (s *httpServer) doDebug(req *http.Request) (interface{}, error) {
 				"id":                p.peerInfo.id,
 				"hostname":          p.peerInfo.Hostname,
 				"broadcast_address": p.peerInfo.BroadcastAddress,
-				"tcp_port":          p.peerInfo.TcpPort,
-				"http_port":         p.peerInfo.HttpPort,
+				"tcp_port":          p.peerInfo.TCPPort,
+				"http_port":         p.peerInfo.HTTPPort,
 				"version":           p.peerInfo.Version,
 				"last_update":       atomic.LoadInt64(&p.peerInfo.lastUpdate),
 				"tombstoned":        p.tombstoned,

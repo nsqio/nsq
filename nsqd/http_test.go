@@ -624,7 +624,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	nsqd.startTime = testTime
-	expectedJson := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BINARY_VERSION, testTime.Unix())
+	expectedJSON := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BinaryVersion, testTime.Unix())
 	defer nsqd.Exit()
 
 	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
@@ -633,7 +633,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	equal(t, resp.StatusCode, 200)
-	equal(t, string(body), expectedJson)
+	equal(t, string(body), expectedJSON)
 }
 
 func TestHTTPgetStatusText(t *testing.T) {

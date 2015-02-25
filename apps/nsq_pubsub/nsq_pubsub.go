@@ -143,7 +143,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_pubsub/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("nsq_pubsub/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 	r, err := nsq.NewConsumer(topicName, channelName, cfg)
 	if err != nil {
@@ -221,7 +221,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_pubsub v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_pubsub v%s\n", util.BinaryVersion)
 		return
 	}
 

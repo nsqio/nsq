@@ -172,8 +172,8 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					p = &Producer{
 						Hostname:         hostname,
 						BroadcastAddress: broadcastAddress,
-						TcpPort:          tcpPort,
-						HttpPort:         httpPort,
+						TCPPort:          tcpPort,
+						HTTPPort:         httpPort,
 						Version:          version,
 						VersionObj:       versionObj,
 						Topics:           topics,
@@ -357,7 +357,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 				backendDepth := t.Get("backend_depth").MustInt64()
 				channels := t.Get("channels").MustArray()
 
-				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(t.Get("e2e_processing_latency"), topicName, "", addr)
+				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(t.Get("e2e_processing_latency"), topicName, "", addr)
 
 				topicStats := &TopicStats{
 					HostAddress:  addr,
@@ -396,7 +396,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					backendDepth := c.Get("backend_depth").MustInt64()
 					clients := c.Get("clients").MustArray()
 
-					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(c.Get("e2e_processing_latency"), topicName, channelName, addr)
+					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(c.Get("e2e_processing_latency"), topicName, channelName, addr)
 
 					hostChannelStats := &ChannelStats{
 						HostAddress:   addr,
@@ -425,8 +425,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						connected := time.Unix(client.Get("connect_ts").MustInt64(), 0)
 						connectedDuration := time.Now().Sub(connected).Seconds()
 
-						clientId := client.Get("clientId").MustString()
-						if clientId == "" {
+						clientID := client.Get("clientID").MustString()
+						if clientID == "" {
 							// TODO: deprecated, remove in 1.0
 							name := client.Get("name").MustString()
 							remoteAddressParts := strings.Split(client.Get("remote_address").MustString(), ":")
@@ -434,14 +434,14 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							if len(remoteAddressParts) < 2 {
 								port = "NA"
 							}
-							clientId = fmt.Sprintf("%s:%s", name, port)
+							clientID = fmt.Sprintf("%s:%s", name, port)
 						}
 
 						clientStats := &ClientStats{
 							HostAddress:       addr,
 							RemoteAddress:     client.Get("remote_address").MustString(),
 							Version:           client.Get("version").MustString(),
-							ClientID:          clientId,
+							ClientID:          clientID,
 							Hostname:          client.Get("hostname").MustString(),
 							UserAgent:         client.Get("user_agent").MustString(),
 							ConnectedDuration: time.Duration(int64(connectedDuration)) * time.Second, // truncate to second
@@ -455,7 +455,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							Snappy:            client.Get("snappy").MustBool(),
 							Authed:            client.Get("authed").MustBool(),
 							AuthIdentity:      client.Get("auth_identity").MustString(),
-							AuthIdentityUrl:   client.Get("auth_identity_url").MustString(),
+							AuthIdentityURL:   client.Get("auth_identity_url").MustString(),
 
 							TLS:                           client.Get("tls").MustBool(),
 							CipherSuite:                   client.Get("tls_cipher_suite").MustString(),

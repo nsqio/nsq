@@ -24,8 +24,8 @@ type Producer struct {
 	RemoteAddresses  []string        `json:"remote_addresses"`
 	Hostname         string          `json:"hostname"`
 	BroadcastAddress string          `json:"broadcast_address"`
-	TcpPort          int             `json:"tcp_port"`
-	HttpPort         int             `json:"http_port"`
+	TCPPort          int             `json:"tcp_port"`
+	HTTPPort         int             `json:"http_port"`
 	Version          string          `json:"version"`
 	VersionObj       *semver.Version `json:"-"`
 	Topics           ProducerTopics  `json:"topics"`
@@ -33,11 +33,11 @@ type Producer struct {
 }
 
 func (p *Producer) HTTPAddress() string {
-	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HttpPort)
+	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort)
 }
 
 func (p *Producer) TCPAddress() string {
-	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TcpPort)
+	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TCPPort)
 }
 
 // IsInconsistent checks for cases where an unexpected number of nsqd connections are
@@ -171,7 +171,7 @@ type ClientStats struct {
 	Snappy            bool
 	Authed            bool
 	AuthIdentity      string
-	AuthIdentityUrl   string
+	AuthIdentityURL   string
 
 	TLS                           bool
 	CipherSuite                   string `json:"tls_cipher_suite"`

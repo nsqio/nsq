@@ -37,30 +37,30 @@ func NegotiateAPIResponseWrapper(w http.ResponseWriter, req *http.Request, f fun
 	data, err := f()
 	if err != nil {
 		if acceptVersion(req) == 1 {
-			V1ApiResponse(w, err.(HTTPError).Code, err)
+			V1APIResponse(w, err.(HTTPError).Code, err)
 		} else {
 			// this handler always returns 500 for backwards compatibility
-			ApiResponse(w, 500, err.Error(), nil)
+			APIResponse(w, 500, err.Error(), nil)
 		}
 		return
 	}
 	if acceptVersion(req) == 1 {
-		V1ApiResponse(w, 200, data)
+		V1APIResponse(w, 200, data)
 	} else {
-		ApiResponse(w, 200, "OK", data)
+		APIResponse(w, 200, "OK", data)
 	}
 }
 
 func V1APIResponseWrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
 	data, err := f()
 	if err != nil {
-		V1ApiResponse(w, err.(HTTPError).Code, err)
+		V1APIResponse(w, err.(HTTPError).Code, err)
 		return
 	}
-	V1ApiResponse(w, 200, data)
+	V1APIResponse(w, 200, data)
 }
 
-func ApiResponse(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
+func APIResponse(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
 	var response []byte
 	var err error
 
@@ -90,10 +90,10 @@ func ApiResponse(w http.ResponseWriter, statusCode int, statusTxt string, data i
 	w.Write(response)
 }
 
-func V1ApiResponse(w http.ResponseWriter, code int, data interface{}) {
+func V1APIResponse(w http.ResponseWriter, code int, data interface{}) {
 	var response []byte
 	var err error
-	var isJson bool
+	var isJSON bool
 
 	if code == 200 {
 		switch data.(type) {
@@ -104,7 +104,7 @@ func V1ApiResponse(w http.ResponseWriter, code int, data interface{}) {
 		case nil:
 			response = []byte{}
 		default:
-			isJson = true
+			isJSON = true
 			response, err = json.Marshal(data)
 			if err != nil {
 				code = 500
@@ -114,11 +114,11 @@ func V1ApiResponse(w http.ResponseWriter, code int, data interface{}) {
 	}
 
 	if code != 200 {
-		isJson = true
+		isJSON = true
 		response = []byte(fmt.Sprintf(`{"message":"%s"}`, data))
 	}
 
-	if isJson {
+	if isJSON {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 	w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
