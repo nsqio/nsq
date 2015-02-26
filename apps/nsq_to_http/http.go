@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/internal/util"
 )
 
 var httpclient *http.Client

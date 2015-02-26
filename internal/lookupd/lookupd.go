@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/semver"
+	"github.com/bitly/nsq/internal/semver"
+	"github.com/bitly/nsq/internal/util"
 )
 
 // GetVersion returns a semver.Version object by querying /info

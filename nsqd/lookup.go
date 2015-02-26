@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/internal/util"
 )
 
 func (n *NSQD) lookupLoop() {

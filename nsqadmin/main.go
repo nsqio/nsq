@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/internal/util"
 	"github.com/mreiferson/go-options"
 )
 

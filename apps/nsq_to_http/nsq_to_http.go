@@ -21,7 +21,7 @@ import (
 
 	"github.com/bitly/go-hostpool"
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/bitly/nsq/internal/util"
 	"github.com/bitly/timer_metrics"
 )
 
