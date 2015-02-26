@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitly/nsq/internal/lookupd"
+	"github.com/bitly/nsq/internal/semver"
+	"github.com/bitly/nsq/internal/util"
 	"github.com/bitly/nsq/nsqadmin/templates"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
-	"github.com/bitly/nsq/util/semver"
 )
 
 var v1EndpointVersion *semver.Version

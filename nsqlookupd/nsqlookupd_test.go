@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
-	lookuputil "github.com/bitly/nsq/util/lookupd"
+	lookuputil "github.com/bitly/nsq/internal/lookupd"
+	"github.com/bitly/nsq/internal/util"
 )
 
 func equal(t *testing.T, act, exp interface{}) {

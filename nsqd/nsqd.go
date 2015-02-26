@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
+	"github.com/bitly/nsq/internal/lookupd"
+	"github.com/bitly/nsq/internal/util"
 )
 
 const (
