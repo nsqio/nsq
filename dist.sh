@@ -24,7 +24,7 @@ mkdir -p $DIR/dist/docker
 
 mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
-gpm install
+GOPATH=$DIR/.godeps gpm install
 
 os=$(go env GOOS)
 arch=$(go env GOARCH)
