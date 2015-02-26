@@ -152,7 +152,7 @@ func (e *E2eProcessingLatencyAggregate) Host() string {
 	return e.Addr
 }
 
-func E2eProcessingLatencyAggregateFromJson(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
+func E2eProcessingLatencyAggregateFromJSON(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
 	count := j.Get("count").MustInt()
 
 	rawPercentiles := j.Get("percentiles")
@@ -188,38 +188,36 @@ func (e *E2eProcessingLatencyAggregate) Less(i, j int) bool {
 	return e.Percentiles[i]["percentile"] > e.Percentiles[j]["percentile"]
 }
 
-func (A *E2eProcessingLatencyAggregate) Add(B *E2eProcessingLatencyAggregate, N int) *E2eProcessingLatencyAggregate {
-	if A == nil {
-		a := *B
-		A = &a
+func (e *E2eProcessingLatencyAggregate) Add(e2 *E2eProcessingLatencyAggregate, N int) *E2eProcessingLatencyAggregate {
+	if e == nil {
+		*e = *e2
 	} else {
-		ap := A.Percentiles
-		bp := B.Percentiles
-		A.Count += B.Count
-		for _, value := range bp {
-			indexA := -1
-			for i, v := range ap {
+		p := e.Percentiles
+		e.Count += e2.Count
+		for _, value := range e2.Percentiles {
+			i := -1
+			for j, v := range p {
 				if value["quantile"] == v["quantile"] {
-					indexA = i
+					i = j
 					break
 				}
 			}
-			if indexA == -1 {
-				indexA = len(ap)
-				A.Percentiles = append(ap, make(map[string]float64))
-				ap = A.Percentiles
-				ap[indexA]["quantile"] = value["quantile"]
+			if i == -1 {
+				i = len(p)
+				e.Percentiles = append(p, make(map[string]float64))
+				p = e.Percentiles
+				p[i]["quantile"] = value["quantile"]
 			}
-			ap[indexA]["max"] = math.Max(value["max"], ap[indexA]["max"])
-			ap[indexA]["min"] = math.Min(value["max"], ap[indexA]["max"])
+			p[i]["max"] = math.Max(value["max"], p[i]["max"])
+			p[i]["min"] = math.Min(value["max"], p[i]["max"])
 
-			ap[indexA]["count"] += value["count"]
-			delta := value["average"] - ap[indexA]["average"]
-			R := delta * value["count"] / ap[indexA]["count"]
-			ap[indexA]["average"] = ap[indexA]["average"] + R
+			p[i]["count"] += value["count"]
+			delta := value["average"] - p[i]["average"]
+			R := delta * value["count"] / p[i]["count"]
+			p[i]["average"] = p[i]["average"] + R
 		}
 	}
-	sort.Sort(A)
-	A.Addr = "*"
-	return A
+	sort.Sort(e)
+	e.Addr = "*"
+	return e
 }

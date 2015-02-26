@@ -12,7 +12,7 @@ func init() {
 
 <ul class="dropdown-menu">
   {{range .GraphOptions.AllGraphIntervals}}
-    <li><a href="?{{.UrlOption}}">{{.Timeframe}}</a></li>
+    <li><a href="?{{.URLOption}}">{{.Timeframe}}</a></li>
   {{end}}
 </ul>
 

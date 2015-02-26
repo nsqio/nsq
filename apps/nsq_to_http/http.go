@@ -13,10 +13,10 @@ var userAgent string
 
 func init() {
 	httpclient = &http.Client{Transport: util.NewDeadlineTransport(*httpTimeout)}
-	userAgent = fmt.Sprintf("nsq_to_http v%s", util.BINARY_VERSION)
+	userAgent = fmt.Sprintf("nsq_to_http v%s", util.BinaryVersion)
 }
 
-func HttpGet(endpoint string) (*http.Response, error) {
+func HTTPGet(endpoint string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func HttpGet(endpoint string) (*http.Response, error) {
 	return httpclient.Do(req)
 }
 
-func HttpPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
+func HTTPPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, body)
 	if err != nil {
 		return nil, err

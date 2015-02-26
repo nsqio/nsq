@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/flate"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -26,8 +25,8 @@ const (
 )
 
 type identifyDataV2 struct {
-	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
-	LongId  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
+	ShortID string `json:"short_id"` // TODO: deprecated, remove in 1.0
+	LongID  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
 
 	ClientID            string `json:"client_id"`
 	Hostname            string `json:"hostname"`
@@ -106,7 +105,7 @@ type clientV2 struct {
 	lenSlice []byte
 
 	AuthSecret string
-	AuthState  *auth.AuthState
+	AuthState  *auth.State
 }
 
 func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
@@ -159,16 +158,16 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
 	if hostname == "" {
-		hostname = data.LongId
+		hostname = data.LongID
 	}
 	// TODO: for backwards compatibility, remove in 1.0
-	clientId := data.ClientID
-	if clientId == "" {
-		clientId = data.ShortId
+	clientID := data.ClientID
+	if clientID == "" {
+		clientID = data.ShortID
 	}
 
 	c.Lock()
-	c.ClientID = clientId
+	c.ClientID = clientID
 	c.Hostname = hostname
 	c.UserAgent = data.UserAgent
 	c.Unlock()
@@ -219,14 +218,14 @@ func (c *clientV2) Stats() ClientStats {
 	// TODO: deprecated, remove in 1.0
 	name := c.ClientID
 
-	clientId := c.ClientID
+	clientID := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
 	var identity string
-	var identityUrl string
+	var identityURL string
 	if c.AuthState != nil {
 		identity = c.AuthState.Identity
-		identityUrl = c.AuthState.IdentityUrl
+		identityURL = c.AuthState.IdentityURL
 	}
 	c.RUnlock()
 	stats := ClientStats{
@@ -235,7 +234,7 @@ func (c *clientV2) Stats() ClientStats {
 
 		Version:         "V2",
 		RemoteAddress:   c.RemoteAddr().String(),
-		ClientID:        clientId,
+		ClientID:        clientID,
 		Hostname:        hostname,
 		UserAgent:       userAgent,
 		State:           atomic.LoadInt32(&c.State),
@@ -251,7 +250,7 @@ func (c *clientV2) Stats() ClientStats {
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
-		AuthIdentityURL: identityUrl,
+		AuthIdentityURL: identityURL,
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -408,7 +407,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 		desiredInterval <= int(c.ctx.nsqd.opts.MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
+		return fmt.Errorf("heartbeat interval (%d) is invalid", desiredInterval)
 	}
 
 	return nil
@@ -426,7 +425,7 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.opts.MaxOutputBufferSize):
 		size = desiredSize
 	default:
-		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
+		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
 	}
 
 	if size > 0 {
@@ -456,7 +455,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		desiredTimeout <= int(c.ctx.nsqd.opts.MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
+		return fmt.Errorf("output buffer timeout (%d) is invalid", desiredTimeout)
 	}
 
 	return nil
@@ -464,7 +463,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 
 func (c *clientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
-		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
+		return fmt.Errorf("sample rate (%d) is invalid", sampleRate)
 	}
 	atomic.StoreInt32(&c.SampleRate, sampleRate)
 	return nil
@@ -481,7 +480,7 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 		msgTimeout <= int(c.ctx.nsqd.opts.MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
+		return fmt.Errorf("msg timeout (%d) is invalid", msgTimeout)
 	}
 
 	return nil
@@ -565,7 +564,7 @@ func (c *clientV2) Flush() error {
 }
 
 func (c *clientV2) QueryAuthd() error {
-	remoteIp, _, err := net.SplitHostPort(c.String())
+	remoteIP, _, err := net.SplitHostPort(c.String())
 	if err != nil {
 		return err
 	}
@@ -577,7 +576,7 @@ func (c *clientV2) QueryAuthd() error {
 	}
 
 	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.opts.AuthHTTPAddresses,
-		remoteIp, tlsEnabled, c.AuthSecret)
+		remoteIP, tlsEnabled, c.AuthSecret)
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,6 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,7 +25,7 @@ type httpServer struct {
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		util.ApiResponse(w, 403, "TLS_REQUIRED", nil)
+		util.APIResponse(w, 403, "TLS_REQUIRED", nil)
 		return
 	}
 
@@ -43,7 +42,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	err = s.debugRouter(w, req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: %s", err)
-		util.ApiResponse(w, 404, "NOT_FOUND", nil)
+		util.APIResponse(w, 404, "NOT_FOUND", nil)
 	}
 }
 
@@ -66,7 +65,7 @@ func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error
 	case "/debug/pprof/threadcreate":
 		httpprof.Handler("threadcreate").ServeHTTP(w, req)
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
@@ -117,7 +116,7 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 			func() (interface{}, error) { return s.doPauseChannel(req) }))
 
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
@@ -162,7 +161,7 @@ func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) 
 		util.NegotiateAPIResponseWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateChannel(req) })
 	default:
-		return errors.New(fmt.Sprintf("404 %s", req.URL.Path))
+		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
 }
@@ -182,7 +181,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
-		Version: util.BINARY_VERSION,
+		Version: util.BinaryVersion,
 	}, nil
 }
 
@@ -505,7 +504,7 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 		Health    string       `json:"health"`
 		StartTime int64        `json:"start_time"`
 		Topics    []TopicStats `json:"topics"`
-	}{util.BINARY_VERSION, health, startTime.Unix(), stats}, nil
+	}{util.BinaryVersion, health, startTime.Unix(), stats}, nil
 }
 
 func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {

@@ -307,7 +307,7 @@ func (n *NSQD) PersistMetadata() error {
 	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
-	topics := make([]interface{}, 0)
+	topics := []interface{}{}
 	for _, topic := range n.topicMap {
 		if topic.ephemeral {
 			continue
@@ -315,7 +315,7 @@ func (n *NSQD) PersistMetadata() error {
 		topicData := make(map[string]interface{})
 		topicData["name"] = topic.name
 		topicData["paused"] = topic.IsPaused()
-		channels := make([]interface{}, 0)
+		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {
 			channel.Lock()
@@ -333,7 +333,7 @@ func (n *NSQD) PersistMetadata() error {
 		topicData["channels"] = channels
 		topics = append(topics, topicData)
 	}
-	js["version"] = util.BINARY_VERSION
+	js["version"] = util.BinaryVersion
 	js["topics"] = topics
 
 	data, err := json.Marshal(&js)
@@ -355,7 +355,7 @@ func (n *NSQD) PersistMetadata() error {
 	f.Sync()
 	f.Close()
 
-	err = atomic_rename(tmpFileName, fileName)
+	err = atomicRename(tmpFileName, fileName)
 	if err != nil {
 		return err
 	}
@@ -401,44 +401,43 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	if ok {
 		n.Unlock()
 		return t
-	} else {
-		deleteCallback := func(t *Topic) {
-			n.DeleteExistingTopic(t.name)
-		}
-		t = NewTopic(topicName, &context{n}, deleteCallback)
-		n.topicMap[topicName] = t
+	}
+	deleteCallback := func(t *Topic) {
+		n.DeleteExistingTopic(t.name)
+	}
+	t = NewTopic(topicName, &context{n}, deleteCallback)
+	n.topicMap[topicName] = t
 
-		n.logf("TOPIC(%s): created", t.name)
+	n.logf("TOPIC(%s): created", t.name)
 
-		// release our global nsqd lock, and switch to a more granular topic lock while we init our
-		// channels from lookupd. This blocks concurrent PutMessages to this topic.
-		t.Lock()
-		n.Unlock()
-		// if using lookupd, make a blocking call to get the topics, and immediately create them.
-		// this makes sure that any message received is buffered to the right channels
-		if len(n.lookupPeers) > 0 {
-			channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHttpAddrs())
-			for _, channelName := range channelNames {
-				if strings.HasSuffix(channelName, "#ephemeral") {
-					// we don't want to pre-create ephemeral channels
-					// because there isn't a client connected
-					continue
-				}
-				t.getOrCreateChannel(channelName)
+	// release our global nsqd lock, and switch to a more granular topic lock while we init our
+	// channels from lookupd. This blocks concurrent PutMessages to this topic.
+	t.Lock()
+	n.Unlock()
+	// if using lookupd, make a blocking call to get the topics, and immediately create them.
+	// this makes sure that any message received is buffered to the right channels
+	if len(n.lookupPeers) > 0 {
+		channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHTTPAddrs())
+		for _, channelName := range channelNames {
+			if strings.HasSuffix(channelName, "#ephemeral") {
+				// we don't want to pre-create ephemeral channels
+				// because there isn't a client connected
+				continue
 			}
+			t.getOrCreateChannel(channelName)
 		}
-		t.Unlock()
+	}
+	t.Unlock()
 
-		// NOTE: I would prefer for this to only happen in topic.GetChannel() but we're special
-		// casing the code above so that we can control the locks such that it is impossible
-		// for a message to be written to a (new) topic while we're looking up channels
-		// from lookupd...
-		//
-		// update messagePump state
-		select {
-		case t.channelUpdateChan <- 1:
-		case <-t.exitChan:
-		}
+	// NOTE: I would prefer for this to only happen in topic.GetChannel() but we're special
+	// casing the code above so that we can control the locks such that it is impossible
+	// for a message to be written to a (new) topic while we're looking up channels
+	// from lookupd...
+	//
+	// update messagePump state
+	select {
+	case t.channelUpdateChan <- 1:
+	case <-t.exitChan:
 	}
 	return t
 }
@@ -553,11 +552,11 @@ func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 
 	if opts.TLSRootCAFile != "" {
 		tlsCertPool := x509.NewCertPool()
-		ca_cert_file, err := ioutil.ReadFile(opts.TLSRootCAFile)
+		caCertFile, err := ioutil.ReadFile(opts.TLSRootCAFile)
 		if err != nil {
 			return nil, err
 		}
-		if !tlsCertPool.AppendCertsFromPEM(ca_cert_file) {
+		if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
 			return nil, errors.New("failed to append certificate to pool")
 		}
 		tlsConfig.ClientCAs = tlsCertPool

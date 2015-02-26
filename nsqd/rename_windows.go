@@ -16,8 +16,8 @@ const (
 	MOVEFILE_REPLACE_EXISTING = 1
 )
 
-func moveFileEx(source_file, target_file *uint16, flags uint32) error {
-	ret, _, err := procMoveFileExW.Call(uintptr(unsafe.Pointer(source_file)), uintptr(unsafe.Pointer(target_file)), uintptr(flags))
+func moveFileEx(sourceFile, targetFile *uint16, flags uint32) error {
+	ret, _, err := procMoveFileExW.Call(uintptr(unsafe.Pointer(sourceFile)), uintptr(unsafe.Pointer(targetFile)), uintptr(flags))
 	if ret == 0 {
 		if err != nil {
 			return err
@@ -27,13 +27,13 @@ func moveFileEx(source_file, target_file *uint16, flags uint32) error {
 	return nil
 }
 
-func atomic_rename(source_file, target_file string) error {
-	lpReplacedFileName, err := syscall.UTF16PtrFromString(target_file)
+func atomicRename(sourceFile, targetFile string) error {
+	lpReplacedFileName, err := syscall.UTF16PtrFromString(targetFile)
 	if err != nil {
 		return err
 	}
 
-	lpReplacementFileName, err := syscall.UTF16PtrFromString(source_file)
+	lpReplacementFileName, err := syscall.UTF16PtrFromString(sourceFile)
 	if err != nil {
 		return err
 	}

@@ -134,7 +134,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_stat v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_stat v%s\n", util.BinaryVersion)
 		return
 	}
 

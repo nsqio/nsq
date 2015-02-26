@@ -115,8 +115,8 @@ func TestBasicLookupd(t *testing.T) {
 
 	equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
 	equal(t, producer.peerInfo.Hostname, "ip.address")
-	equal(t, producer.peerInfo.TcpPort, tcpPort)
-	equal(t, producer.peerInfo.HttpPort, httpPort)
+	equal(t, producer.peerInfo.TCPPort, tcpPort)
+	equal(t, producer.peerInfo.HTTPPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
 	data, err = util.APIRequestNegotiateV1("GET", endpoint, nil)

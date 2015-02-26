@@ -25,7 +25,7 @@ func (n *NSQD) lookupLoop() {
 		n.logf("LOOKUP: adding peer %s", host)
 		lookupPeer := newLookupPeer(host, n.opts.Logger, func(lp *lookupPeer) {
 			ci := make(map[string]interface{})
-			ci["version"] = util.BINARY_VERSION
+			ci["version"] = util.BinaryVersion
 			ci["tcp_port"] = n.tcpAddr.Port
 			ci["http_port"] = n.httpAddr.Port
 			ci["hostname"] = hostname
@@ -105,7 +105,7 @@ func (n *NSQD) lookupLoop() {
 				}
 			}
 		case lookupPeer := <-syncTopicChan:
-			commands := make([]*nsq.Command, 0)
+			var commands []*nsq.Command
 			// build all the commands first so we exit the lock(s) as fast as possible
 			n.RLock()
 			for _, topic := range n.topicMap {
@@ -138,14 +138,14 @@ exit:
 	n.logf("LOOKUP: closing")
 }
 
-func (n *NSQD) lookupHttpAddrs() []string {
-	var lookupHttpAddrs []string
+func (n *NSQD) lookupHTTPAddrs() []string {
+	var lookupHTTPAddrs []string
 	for _, lp := range n.lookupPeers {
 		if len(lp.Info.BroadcastAddress) <= 0 {
 			continue
 		}
-		addr := net.JoinHostPort(lp.Info.BroadcastAddress, strconv.Itoa(lp.Info.HttpPort))
-		lookupHttpAddrs = append(lookupHttpAddrs, addr)
+		addr := net.JoinHostPort(lp.Info.BroadcastAddress, strconv.Itoa(lp.Info.HTTPPort))
+		lookupHTTPAddrs = append(lookupHTTPAddrs, addr)
 	}
-	return lookupHttpAddrs
+	return lookupHTTPAddrs
 }

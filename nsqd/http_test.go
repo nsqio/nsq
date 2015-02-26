@@ -72,9 +72,9 @@ func TestHTTPmput(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
-	msgs := make([][]byte, 0)
-	for i := 0; i < 4; i++ {
-		msgs = append(msgs, msg)
+	msgs := make([][]byte, 4)
+	for i := range msgs {
+		msgs[i] = msg
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
 
@@ -100,9 +100,9 @@ func TestHTTPmputEmpty(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
-	msgs := make([][]byte, 0)
-	for i := 0; i < 4; i++ {
-		msgs = append(msgs, msg)
+	msgs := make([][]byte, 4)
+	for i := range msgs {
+		msgs[i] = msg
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
 	_, err := buf.Write([]byte("\n"))
@@ -129,9 +129,9 @@ func TestHTTPmputBinary(t *testing.T) {
 	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 
-	mpub := make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	buf := bytes.NewBuffer(cmd.Body)
@@ -595,7 +595,7 @@ func BenchmarkHTTPput(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			num := b.N / runtime.GOMAXPROCS(0)
-			for i := 0; i < num; i += 1 {
+			for i := 0; i < num; i++ {
 				buf := bytes.NewBuffer(msg)
 				req, _ := http.NewRequest("POST", url, buf)
 				resp, err := client.Do(req)
@@ -624,7 +624,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	nsqd.startTime = testTime
-	expectedJson := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BINARY_VERSION, testTime.Unix())
+	expectedJSON := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BinaryVersion, testTime.Unix())
 	defer nsqd.Exit()
 
 	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
@@ -633,7 +633,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	equal(t, resp.StatusCode, 200)
-	equal(t, string(body), expectedJson)
+	equal(t, string(body), expectedJSON)
 }
 
 func TestHTTPgetStatusText(t *testing.T) {

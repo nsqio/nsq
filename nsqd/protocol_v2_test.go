@@ -460,7 +460,7 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// PUB thats empty
-	nsq.Publish(topicName, make([]byte, 0)).WriteTo(conn)
+	nsq.Publish(topicName, []byte{}).WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
@@ -473,9 +473,9 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB body that's valid
-	mpub := make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -486,9 +486,9 @@ func TestSizeLimits(t *testing.T) {
 	equal(t, data, []byte("OK"))
 
 	// MPUB body that's invalid (body too big)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 11; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub = make([][]byte, 11)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -504,11 +504,11 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB that's invalid (one message empty)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 100))
+	mpub = make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
 	}
-	mpub = append(mpub, make([]byte, 0))
+	mpub = append(mpub, []byte{})
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
@@ -523,9 +523,9 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB body that's invalid (one of the messages is too big)
-	mpub = make([][]byte, 0)
-	for i := 0; i < 5; i++ {
-		mpub = append(mpub, make([]byte, 101))
+	mpub = make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 101)
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
@@ -1335,14 +1335,14 @@ func TestClientAuth(t *testing.T) {
 
 func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess string) {
 	var err error
-	var expectedAuthIp string
-	expectedAuthTls := "false"
+	var expectedAuthIP string
+	expectedAuthTLS := "false"
 
 	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("in test auth handler %s", r.RequestURI)
 		r.ParseForm()
-		equal(t, r.Form.Get("remote_ip"), expectedAuthIp)
-		equal(t, r.Form.Get("tls"), expectedAuthTls)
+		equal(t, r.Form.Get("remote_ip"), expectedAuthIP)
+		equal(t, r.Form.Get("tls"), expectedAuthTLS)
 		equal(t, r.Form.Get("secret"), authSecret)
 		fmt.Fprint(w, authResponse)
 	}))
@@ -1362,7 +1362,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	equal(t, err, nil)
 	defer conn.Close()
 
-	expectedAuthIp, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+	expectedAuthIP, _, _ = net.SplitHostPort(conn.LocalAddr().String())
 
 	identify(t, conn, map[string]interface{}{
 		"tls_v1": false,
@@ -1402,9 +1402,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
 	batchSize := 200
-	batch := make([][]byte, 0)
-	for i := 0; i < batchSize; i++ {
-		batch = append(batch, msg)
+	batch := make([][]byte, batchSize)
+	for i := range batch {
+		batch[i] = msg
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
 	b.SetBytes(int64(len(msg)))
@@ -1420,7 +1420,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			for i := 0; i < num; i += 1 {
+			for i := 0; i < num; i++ {
 				cmd, _ := nsq.MultiPublish(topicName, batch)
 				_, err := cmd.WriteTo(rw)
 				if err != nil {
@@ -1517,7 +1517,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	num := n / workers
 	numRdy := num/rdyCount - 1
 	rdy := rdyCount
-	for i := 0; i < num; i += 1 {
+	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
 			panic(err.Error())

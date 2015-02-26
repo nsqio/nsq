@@ -81,9 +81,9 @@ func APIRequestNegotiateV1(method string, endpoint string, body io.Reader) (*sim
 	return data.Get("data"), nil
 }
 
-// ApiRequestV1 is a helper function to perform a v1 HTTP request
+// APIRequestV1 is a helper function to perform a v1 HTTP request
 // and parse our NSQ daemon's expected response format, with deadlines.
-func ApiRequestV1(endpoint string, v interface{}) error {
+func APIRequestV1(endpoint string, v interface{}) error {
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {

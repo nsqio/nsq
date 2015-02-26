@@ -216,7 +216,7 @@ func init() {
           <span class="label label-primary">Snappy</span>
           {{end}}
           {{if .Authed}}
-          <span class="label label-success">{{if .AuthIdentityUrl}}<a href="{{.AuthIdentityUrl}}">{{end}}<i class="icon-user icon-white" title="Authed{{if .AuthIdentity}} Identity:{{.AuthIdentity}}{{end}}"></i>{{if .AuthIdentityUrl}}</a>{{end}}</span>
+          <span class="label label-success">{{if .AuthIdentityURL}}<a href="{{.AuthIdentityURL}}">{{end}}<i class="icon-user icon-white" title="Authed{{if .AuthIdentity}} Identity:{{.AuthIdentity}}{{end}}"></i>{{if .AuthIdentityURL}}</a>{{end}}</span>
           {{end}}
         </td>
         <td><a href="/node/{{.HostAddress}}">{{.HostAddress}}</a></td>

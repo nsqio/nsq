@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -131,7 +130,7 @@ type PostPublisher struct{}
 
 func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	buf := bytes.NewBuffer(msg)
-	resp, err := HttpPost(addr, buf)
+	resp, err := HTTPPost(addr, buf)
 	if err != nil {
 		return err
 	}
@@ -139,7 +138,7 @@ func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -148,7 +147,7 @@ type GetPublisher struct{}
 
 func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	endpoint := fmt.Sprintf(addr, url.QueryEscape(string(msg)))
-	resp, err := HttpGet(endpoint)
+	resp, err := HTTPGet(endpoint)
 	if err != nil {
 		return err
 	}
@@ -156,7 +155,7 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return errors.New(fmt.Sprintf("got status code %d", resp.StatusCode))
+		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -178,7 +177,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_http v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_to_http v%s\n", util.BinaryVersion)
 		return
 	}
 
@@ -260,7 +259,7 @@ func main() {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 	err := util.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		log.Fatal(err)

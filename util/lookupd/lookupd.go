@@ -33,7 +33,7 @@ func GetVersion(addr string) (*semver.Version, error) {
 // from all the given lookupd
 func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allTopics := make([]string, 0)
+	var allTopics []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	for _, addr := range lookupdHTTPAddrs {
@@ -67,7 +67,7 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 // from all the given lookupd for the given topic
 func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allChannels := make([]string, 0)
+	var allChannels []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	for _, addr := range lookupdHTTPAddrs {
@@ -101,8 +101,8 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 // containing metadata for each node connected to given lookupds
 func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
-	allProducers := make(map[string]*Producer, 0)
-	output := make([]*Producer, 0)
+	allProducers := make(map[string]*Producer)
+	var output []*Producer
 	maxVersion, _ := semver.Parse("0.0.0")
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -172,8 +172,8 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					p = &Producer{
 						Hostname:         hostname,
 						BroadcastAddress: broadcastAddress,
-						TcpPort:          tcpPort,
-						HttpPort:         httpPort,
+						TCPPort:          tcpPort,
+						HTTPPort:         httpPort,
 						Version:          version,
 						VersionObj:       versionObj,
 						Topics:           topics,
@@ -202,7 +202,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 // producers for a given topic by unioning the results returned from the given lookupd
 func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
-	allSources := make([]string, 0)
+	var allSources []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
@@ -243,7 +243,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 // GetNSQDTopics returns a []string containing all the topics
 // produced by the given nsqd
 func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
-	topics := make([]string, 0)
+	var topics []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
@@ -280,7 +280,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 // GetNSQDTopicProducers returns a []string containing the addresses of all the nsqd
 // that produce the given topic out of the given nsqd
 func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
-	addresses := make([]string, 0)
+	var addresses []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	success := false
@@ -324,7 +324,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
-	topicStatsList := make(TopicStatsList, 0)
+	var topicStatsList TopicStatsList
 	channelStatsMap := make(map[string]*ChannelStats)
 
 	success := false
@@ -357,7 +357,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 				backendDepth := t.Get("backend_depth").MustInt64()
 				channels := t.Get("channels").MustArray()
 
-				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(t.Get("e2e_processing_latency"), topicName, "", addr)
+				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(t.Get("e2e_processing_latency"), topicName, "", addr)
 
 				topicStats := &TopicStats{
 					HostAddress:  addr,
@@ -396,7 +396,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					backendDepth := c.Get("backend_depth").MustInt64()
 					clients := c.Get("clients").MustArray()
 
-					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJson(c.Get("e2e_processing_latency"), topicName, channelName, addr)
+					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(c.Get("e2e_processing_latency"), topicName, channelName, addr)
 
 					hostChannelStats := &ChannelStats{
 						HostAddress:   addr,
@@ -425,8 +425,8 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						connected := time.Unix(client.Get("connect_ts").MustInt64(), 0)
 						connectedDuration := time.Now().Sub(connected).Seconds()
 
-						clientId := client.Get("clientId").MustString()
-						if clientId == "" {
+						clientID := client.Get("clientID").MustString()
+						if clientID == "" {
 							// TODO: deprecated, remove in 1.0
 							name := client.Get("name").MustString()
 							remoteAddressParts := strings.Split(client.Get("remote_address").MustString(), ":")
@@ -434,14 +434,14 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							if len(remoteAddressParts) < 2 {
 								port = "NA"
 							}
-							clientId = fmt.Sprintf("%s:%s", name, port)
+							clientID = fmt.Sprintf("%s:%s", name, port)
 						}
 
 						clientStats := &ClientStats{
 							HostAddress:       addr,
 							RemoteAddress:     client.Get("remote_address").MustString(),
 							Version:           client.Get("version").MustString(),
-							ClientID:          clientId,
+							ClientID:          clientID,
 							Hostname:          client.Get("hostname").MustString(),
 							UserAgent:         client.Get("user_agent").MustString(),
 							ConnectedDuration: time.Duration(int64(connectedDuration)) * time.Second, // truncate to second
@@ -455,7 +455,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 							Snappy:            client.Get("snappy").MustBool(),
 							Authed:            client.Get("authed").MustBool(),
 							AuthIdentity:      client.Get("auth_identity").MustString(),
-							AuthIdentityUrl:   client.Get("auth_identity_url").MustString(),
+							AuthIdentityURL:   client.Get("auth_identity_url").MustString(),
 
 							TLS:                           client.Get("tls").MustBool(),
 							CipherSuite:                   client.Get("tls_cipher_suite").MustString(),

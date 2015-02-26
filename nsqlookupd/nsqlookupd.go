@@ -43,11 +43,11 @@ func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
 	return n
 }
 
-func (n *NSQLookupd) logf(f string, args ...interface{}) {
-	if n.opts.Logger == nil {
+func (l *NSQLookupd) logf(f string, args ...interface{}) {
+	if l.opts.Logger == nil {
 		return
 	}
-	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
+	l.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
 func (l *NSQLookupd) Main() {

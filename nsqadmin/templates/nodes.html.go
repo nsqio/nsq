@@ -25,9 +25,9 @@ func init() {
     {{range $p := .Producers }}
     <tr {{if .OutOfDate}}class="warning"{{end}}>
         <td>{{.Hostname}}</td>
-        <td><a href="/node/{{.BroadcastAddress}}:{{.HttpPort}}">{{.BroadcastAddress}}</a></td>
-        <td>{{.TcpPort}}</td>
-        <td>{{.HttpPort}}</td>
+        <td><a href="/node/{{.BroadcastAddress}}:{{.HTTPPort}}">{{.BroadcastAddress}}</a></td>
+        <td>{{.TCPPort}}</td>
+        <td>{{.HTTPPort}}</td>
         <td>{{.Version}}</td>
         {{if $ld}}
         <td>

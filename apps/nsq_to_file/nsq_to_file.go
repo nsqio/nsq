@@ -102,9 +102,9 @@ func newTopicDiscoverer() *TopicDiscoverer {
 	}
 }
 
-func (l *FileLogger) HandleMessage(m *nsq.Message) error {
+func (f *FileLogger) HandleMessage(m *nsq.Message) error {
 	m.DisableAutoResponse()
-	l.logChan <- m
+	f.logChan <- m
 	return nil
 }
 
@@ -253,7 +253,7 @@ func (f *FileLogger) updateFile() {
 	if filename != f.lastFilename {
 		f.rev = 0 // reset revsion to 0 if it is a new filename
 	} else {
-		f.rev += 1
+		f.rev++
 	}
 	f.lastFilename = filename
 	f.lastOpenTime = time.Now()
@@ -271,7 +271,7 @@ func (f *FileLogger) updateFile() {
 
 	var err error
 	var fi os.FileInfo
-	for ; ; f.rev += 1 {
+	for ; ; f.rev++ {
 		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%06d", f.rev), -1)
 		openFlag := os.O_WRONLY | os.O_CREATE
 		if f.gzipEnabled {
@@ -366,7 +366,7 @@ func newConsumerFileLogger(topic string) (*ConsumerFileLogger, error) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
 	err = util.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		return nil, err
@@ -468,7 +468,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_file v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_to_file v%s\n", util.BinaryVersion)
 		return
 	}
 

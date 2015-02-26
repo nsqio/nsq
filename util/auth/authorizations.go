@@ -17,11 +17,11 @@ type Authorization struct {
 	Permissions []string `json:"permissions"`
 }
 
-type AuthState struct {
+type State struct {
 	TTL            int             `json:"ttl"`
 	Authorizations []Authorization `json:"authorizations"`
 	Identity       string          `json:"identity"`
-	IdentityUrl    string          `json:"identity_url"`
+	IdentityURL    string          `json:"identity_url"`
 	Expires        time.Time
 }
 
@@ -60,7 +60,7 @@ func (a *Authorization) IsAllowed(topic, channel string) bool {
 	return false
 }
 
-func (a *AuthState) IsAllowed(topic, channel string) bool {
+func (a *State) IsAllowed(topic, channel string) bool {
 	for _, aa := range a.Authorizations {
 		if aa.IsAllowed(topic, channel) {
 			return true
@@ -69,16 +69,16 @@ func (a *AuthState) IsAllowed(topic, channel string) bool {
 	return false
 }
 
-func (a *AuthState) IsExpired() bool {
+func (a *State) IsExpired() bool {
 	if a.Expires.Before(time.Now()) {
 		return true
 	}
 	return false
 }
 
-func QueryAnyAuthd(authd []string, remoteIp, tlsEnabled, authSecret string) (*AuthState, error) {
+func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string) (*State, error) {
 	for _, a := range authd {
-		authState, err := QueryAuthd(a, remoteIp, tlsEnabled, authSecret)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, authSecret)
 		if err != nil {
 			log.Printf("Error: failed auth against %s %s", a, err)
 			continue
@@ -88,17 +88,17 @@ func QueryAnyAuthd(authd []string, remoteIp, tlsEnabled, authSecret string) (*Au
 	return nil, errors.New("Unable to access auth server")
 }
 
-func QueryAuthd(authd, remoteIp, tlsEnabled, authSecret string) (*AuthState, error) {
+func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) {
 
 	v := url.Values{}
-	v.Set("remote_ip", remoteIp)
+	v.Set("remote_ip", remoteIP)
 	v.Set("tls", tlsEnabled)
 	v.Set("secret", authSecret)
 
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
-	var authState AuthState
-	if err := util.ApiRequestV1(endpoint, &authState); err != nil {
+	var authState State
+	if err := util.APIRequestV1(endpoint, &authState); err != nil {
 		return nil, err
 	}
 

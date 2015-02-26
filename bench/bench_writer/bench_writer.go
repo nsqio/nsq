@@ -31,9 +31,9 @@ func main() {
 	log.SetPrefix("[bench_writer] ")
 
 	msg := make([]byte, *size)
-	batch := make([][]byte, 0)
-	for i := 0; i < *batchSize; i++ {
-		batch = append(batch, msg)
+	batch := make([][]byte, *batchSize)
+	for i := range batch {
+		batch[i] = msg
 	}
 
 	goChan := make(chan int)

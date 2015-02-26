@@ -72,7 +72,7 @@ type GraphInterval struct {
 
 type GraphIntervals []*GraphInterval
 
-func (g *GraphInterval) UrlOption() template.URL {
+func (g *GraphInterval) URLOption() template.URL {
 	return template.URL(fmt.Sprintf("t=%s", g.Timeframe))
 }
 
@@ -113,7 +113,7 @@ type GraphOptions struct {
 	ctx               *Context
 	Configured        bool
 	Enabled           bool
-	GraphiteUrl       string
+	GraphiteURL       string
 	TimeframeString   template.URL
 	AllGraphIntervals []*GraphInterval
 	GraphInterval     *GraphInterval
@@ -155,7 +155,7 @@ func NewGraphOptions(rw http.ResponseWriter, req *http.Request,
 		ctx:               ctx,
 		Configured:        ctx.nsqadmin.opts.GraphiteURL != "",
 		Enabled:           g.Timeframe != "off" && ctx.nsqadmin.opts.GraphiteURL != "",
-		GraphiteUrl:       base,
+		GraphiteURL:       base,
 		AllGraphIntervals: DefaultGraphTimeframes(selectedTimeString),
 		GraphInterval:     g,
 	}
@@ -202,7 +202,7 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
-	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
+	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteURL, params.Encode()))
 }
 
 func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
@@ -230,7 +230,7 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 
 	params.Set("from", g.GraphInterval.GraphFrom)
 	params.Set("until", g.GraphInterval.GraphUntil)
-	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteUrl, params.Encode()))
+	return template.URL(fmt.Sprintf("%s/render?%s", g.GraphiteURL, params.Encode()))
 }
 
 func (g *GraphOptions) Rate(gr GraphTarget) string {
