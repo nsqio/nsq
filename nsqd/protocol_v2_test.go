@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/protocol"
 	"github.com/mreiferson/go-snappystream"
 )
 
@@ -105,13 +105,13 @@ func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
 
 // test channel/topic names
 func TestChannelTopicNames(t *testing.T) {
-	equal(t, util.IsValidChannelName("test"), true)
-	equal(t, util.IsValidChannelName("test-with_period."), true)
-	equal(t, util.IsValidChannelName("test#ephemeral"), true)
-	equal(t, util.IsValidTopicName("test"), true)
-	equal(t, util.IsValidTopicName("test-with_period."), true)
-	equal(t, util.IsValidTopicName("test#ephemeral"), true)
-	equal(t, util.IsValidTopicName("test:ephemeral"), false)
+	equal(t, protocol.IsValidChannelName("test"), true)
+	equal(t, protocol.IsValidChannelName("test-with_period."), true)
+	equal(t, protocol.IsValidChannelName("test#ephemeral"), true)
+	equal(t, protocol.IsValidTopicName("test"), true)
+	equal(t, protocol.IsValidTopicName("test-with_period."), true)
+	equal(t, protocol.IsValidTopicName("test#ephemeral"), true)
+	equal(t, protocol.IsValidTopicName("test:ephemeral"), false)
 }
 
 // exercise the basic operations of the V2 protocol

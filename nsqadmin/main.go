@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/mreiferson/go-options"
 )
 
@@ -32,8 +33,8 @@ var (
 
 	notificationHTTPEndpoint = flagSet.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
 
-	nsqlookupdHTTPAddresses = util.StringArray{}
-	nsqdHTTPAddresses       = util.StringArray{}
+	nsqlookupdHTTPAddresses = app.StringArray{}
+	nsqdHTTPAddresses       = app.StringArray{}
 )
 
 func init() {
@@ -45,7 +46,7 @@ func main() {
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {
-		fmt.Println(util.Version("nsqadmin"))
+		fmt.Println(version.String("nsqadmin"))
 		return
 	}
 

@@ -1,20 +1,22 @@
-package util
+package http_api
 
 import (
 	"errors"
+
+	"github.com/bitly/nsq/internal/protocol"
 )
 
-type Getter interface {
+type getter interface {
 	Get(key string) (string, error)
 }
 
-func GetTopicChannelArgs(rp Getter) (string, string, error) {
+func GetTopicChannelArgs(rp getter) (string, string, error) {
 	topicName, err := rp.Get("topic")
 	if err != nil {
 		return "", "", errors.New("MISSING_ARG_TOPIC")
 	}
 
-	if !IsValidTopicName(topicName) {
+	if !protocol.IsValidTopicName(topicName) {
 		return "", "", errors.New("INVALID_ARG_TOPIC")
 	}
 
@@ -23,7 +25,7 @@ func GetTopicChannelArgs(rp Getter) (string, string, error) {
 		return "", "", errors.New("MISSING_ARG_CHANNEL")
 	}
 
-	if !IsValidChannelName(channelName) {
+	if !protocol.IsValidChannelName(channelName) {
 		return "", "", errors.New("INVALID_ARG_CHANNEL")
 	}
 

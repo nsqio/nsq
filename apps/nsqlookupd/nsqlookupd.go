@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/nsq/nsqlookupd"
 	"github.com/mreiferson/go-options"
 )
@@ -34,7 +34,7 @@ func main() {
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {
-		fmt.Println(util.Version("nsqlookupd"))
+		fmt.Println(version.String("nsqlookupd"))
 		return
 	}
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 func (n *NSQD) lookupLoop() {
@@ -25,7 +25,7 @@ func (n *NSQD) lookupLoop() {
 		n.logf("LOOKUP: adding peer %s", host)
 		lookupPeer := newLookupPeer(host, n.opts.Logger, func(lp *lookupPeer) {
 			ci := make(map[string]interface{})
-			ci["version"] = util.BinaryVersion
+			ci["version"] = version.Binary
 			ci["tcp_port"] = n.tcpAddr.Port
 			ci["http_port"] = n.httpAddr.Port
 			ci["hostname"] = hostname

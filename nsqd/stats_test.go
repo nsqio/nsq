@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/mreiferson/go-snappystream"
 )
 
@@ -72,7 +72,7 @@ func TestClientAttributes(t *testing.T) {
 
 	testURL := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
 
-	statsData, err := util.APIRequestNegotiateV1("GET", testURL, nil)
+	statsData, err := http_api.NegotiateV1("GET", testURL, nil)
 	equal(t, err, nil)
 
 	client := statsData.Get("topics").GetIndex(0).Get("channels").GetIndex(0).Get("clients").GetIndex(0)

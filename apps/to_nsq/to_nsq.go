@@ -14,15 +14,16 @@ import (
 	"syscall"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var (
 	topic     = flag.String("topic", "", "NSQ topic to publish to")
 	delimiter = flag.String("delimiter", "\n", "character to split input from stdin (defaults to '\n')")
 
-	destNsqdTCPAddrs = util.StringArray{}
-	producerOpts     = util.StringArray{}
+	destNsqdTCPAddrs = app.StringArray{}
+	producerOpts     = app.StringArray{}
 )
 
 func init() {
@@ -46,9 +47,9 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
 
-	err := util.ParseOpts(cfg, producerOpts)
+	err := app.ParseOpts(cfg, producerOpts)
 	if err != nil {
 		log.Fatal(err)
 	}

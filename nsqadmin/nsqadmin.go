@@ -10,7 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 type NSQAdmin struct {
@@ -70,7 +72,7 @@ func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
 		n.graphiteURL = url
 	}
 
-	n.logf(util.Version("nsqlookupd"))
+	n.logf(version.String("nsqlookupd"))
 
 	return n
 }
@@ -88,7 +90,7 @@ func (n *NSQAdmin) handleAdminActions() {
 		if err != nil {
 			n.logf("ERROR: failed to serialize admin action - %s", err)
 		}
-		httpclient := &http.Client{Transport: util.NewDeadlineTransport(10 * time.Second)}
+		httpclient := &http.Client{Transport: http_api.NewDeadlineTransport(10 * time.Second)}
 		n.logf("POSTing notification to %s", *notificationHTTPEndpoint)
 		_, err = httpclient.Post(*notificationHTTPEndpoint, "application/json", bytes.NewBuffer(content))
 		if err != nil {
@@ -106,7 +108,7 @@ func (n *NSQAdmin) Main() {
 	n.httpListener = httpListener
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
-		util.HTTPServer(n.httpListener, httpServer, n.opts.Logger, "HTTP")
+		http_api.Serve(n.httpListener, httpServer, n.opts.Logger, "HTTP")
 	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }

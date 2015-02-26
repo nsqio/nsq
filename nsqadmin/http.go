@@ -14,13 +14,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/lookupd"
-	"github.com/bitly/nsq/internal/semver"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/stringy"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/nsq/nsqadmin/templates"
+	"github.com/blang/semver"
 )
 
-var v1EndpointVersion *semver.Version
+var v1EndpointVersion semver.Version
 
 func init() {
 	v1EndpointVersion, _ = semver.Parse("0.2.29-alpha")
@@ -38,7 +41,7 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 	}
 	return &httputil.ReverseProxy{
 		Director:  director,
-		Transport: util.NewDeadlineTransport(timeout),
+		Transport: http_api.NewDeadlineTransport(timeout),
 	}
 }
 
@@ -52,10 +55,10 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	var proxy *httputil.ReverseProxy
 
 	templates.T.Funcs(template.FuncMap{
-		"commafy":        util.Commafy,
-		"nanotohuman":    util.NanoSecondToHuman,
-		"floatToPercent": util.FloatToPercent,
-		"percSuffix":     util.PercSuffix,
+		"commafy":        stringy.Commafy,
+		"nanotohuman":    stringy.NanoSecondToHuman,
+		"floatToPercent": stringy.FloatToPercent,
+		"percSuffix":     stringy.PercSuffix,
 		"getNodeConsistencyClass": func(node *lookupd.Producer) string {
 			if node.IsInconsistent(len(ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)) {
 				return "btn-warning"
@@ -176,7 +179,7 @@ func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Reque
 }
 
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -199,7 +202,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 		Title:        "NSQ",
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Topics:       TopicsFromStrings(topics),
-		Version:      util.BinaryVersion,
+		Version:      version.Binary,
 	}
 	err = templates.T.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
@@ -217,13 +220,13 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	parts := strings.Split(matches[1], "/")
 	topicName := parts[0]
-	if !util.IsValidTopicName(topicName) {
+	if !protocol.IsValidTopicName(topicName) {
 		http.Error(w, "INVALID_TOPIC", 500)
 		return
 	}
 	if len(parts) == 2 {
 		channelName := parts[1]
-		if !util.IsValidChannelName(channelName) {
+		if !protocol.IsValidChannelName(channelName) {
 			http.Error(w, "INVALID_CHANNEL", 500)
 		} else {
 			s.channelHandler(w, req, topicName, channelName)
@@ -231,7 +234,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -268,7 +271,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}{
 		Title:            fmt.Sprintf("NSQ %s", topicName),
 		GraphOptions:     NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:          util.BinaryVersion,
+		Version:          version.Binary,
 		Topic:            topicName,
 		TopicProducers:   producers,
 		TopicStats:       topicStats,
@@ -285,7 +288,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, topicName string, channelName string) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -323,7 +326,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 	}{
 		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
 		GraphOptions:   NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:        util.BinaryVersion,
+		Version:        version.Binary,
 		Topic:          topicName,
 		Channel:        channelName,
 		TopicProducers: producers,
@@ -340,7 +343,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 }
 
 func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -369,7 +372,7 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		TopicMap:     channels,
 		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		Version:      util.BinaryVersion,
+		Version:      version.Binary,
 	}
 	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
 	if err != nil {
@@ -384,16 +387,16 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
-	if err != nil || !util.IsValidTopicName(topicName) {
+	if err != nil || !protocol.IsValidTopicName(topicName) {
 		http.Error(w, "INVALID_TOPIC", 500)
 		return
 	}
 
 	channelName, err := reqParams.Get("channel")
-	if err != nil || (len(channelName) > 0 && !util.IsValidChannelName(channelName)) {
+	if err != nil || (len(channelName) > 0 && !protocol.IsValidChannelName(channelName)) {
 		http.Error(w, "INVALID_CHANNEL", 500)
 		return
 	}
@@ -405,14 +408,14 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		}
 
 		uri := "create_topic"
-		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
 			uri = "topic/create"
 		}
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
 			uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -420,7 +423,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 
 		if len(channelName) > 0 {
 			uri := "create_channel"
-			if !nsqlookupdVersion.Less(v1EndpointVersion) {
+			if !nsqlookupdVersion.LT(v1EndpointVersion) {
 				uri = "channel/create"
 			}
 			endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
@@ -428,7 +431,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 				url.QueryEscape(topicName),
 				url.QueryEscape(channelName))
 			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-			_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
+			_, err := http_api.NegotiateV1("POST", endpoint, nil)
 			if err != nil {
 				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 				continue
@@ -463,7 +466,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -490,7 +493,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 		}
 
 		uri := "tombstone_topic_producer"
-		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
 			uri = "topic/tombstone"
 		}
 
@@ -498,7 +501,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 			addr, uri,
 			url.QueryEscape(topicName), url.QueryEscape(node))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 		}
@@ -510,7 +513,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	}
 
 	uri := "delete_topic"
-	if !nsqdVersion.Less(v1EndpointVersion) {
+	if !nsqdVersion.LT(v1EndpointVersion) {
 		uri = "topic/delete"
 	}
 
@@ -518,7 +521,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
 		uri, url.QueryEscape(topicName))
 	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-	_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+	_, err = http_api.NegotiateV1("POST", endpoint, nil)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 	}
@@ -534,7 +537,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -558,13 +561,13 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 		}
 
 		uri := "delete_topic"
-		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
 			uri = "topic/delete"
 		}
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -589,9 +592,9 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -609,7 +612,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 		}
 
 		uri := "delete_channel"
-		if !nsqlookupdVersion.Less(v1EndpointVersion) {
+		if !nsqlookupdVersion.LT(v1EndpointVersion) {
 			uri = "channel/delete"
 		}
 
@@ -618,7 +621,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 			url.QueryEscape(topicName),
 			url.QueryEscape(channelName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = util.APIRequestNegotiateV1("POST", endpoint, nil)
+		_, err = http_api.NegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -645,7 +648,7 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -673,7 +676,7 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
@@ -706,9 +709,9 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -735,9 +738,9 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-	reqParams := &util.PostParams{req}
+	reqParams := &http_api.PostParams{req}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -763,7 +766,7 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 }
 
 func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -820,7 +823,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 		NumClients   int64
 	}{
 		Title:        "NSQ Node - " + node,
-		Version:      util.BinaryVersion,
+		Version:      version.Binary,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Node:         Node(node),
 		TopicStats:   topicStats,
@@ -836,7 +839,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -852,7 +855,7 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
 		Lookupd      []string
 	}{
 		Title:        "NSQ Nodes",
-		Version:      util.BinaryVersion,
+		Version:      version.Binary,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Producers:    producers,
 		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
@@ -875,7 +878,7 @@ func (c counterTarget) Host() string {
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -888,7 +891,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 		Target       counterTarget
 	}{
 		Title:        "NSQ Message Counts",
-		Version:      util.BinaryVersion,
+		Version:      version.Binary,
 		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
 		Target:       counterTarget{},
 	}
@@ -904,10 +907,10 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 // Subsequent requsts pass that ID and get an updated delta based on each individual channel/nsqd message count
 // That ID must be re-requested or it will be expired.
 func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		util.APIResponse(w, 500, "INVALID_REQUEST", nil)
+		http_api.Respond(w, 500, "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -951,11 +954,11 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	data["new_messages"] = newMessages
 	data["total_messages"] = totalMessages
 	data["id"] = statsID
-	util.APIResponse(w, 200, "OK", data)
+	http_api.Respond(w, 200, "OK", data)
 }
 
 func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
@@ -1054,7 +1057,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 	// (this returns an empty list if there are no nsqlookupd configured)
 	producers, _ := lookupd.GetLookupdProducers(nsqlookupdAddrs)
 	for _, addr := range nsqdAddrs {
-		var nodeVer *semver.Version
+		var nodeVer semver.Version
 
 		uri := deprecatedURI
 		producer := producerSearch(producers, addr)
@@ -1069,13 +1072,13 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 			}
 		}
 
-		if nodeVer != nil && !nodeVer.Less(v1EndpointVersion) {
+		if nodeVer.NE(semver.Version{}) && nodeVer.GTE(v1EndpointVersion) {
 			uri = v1URI
 		}
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
 		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-		_, err := util.APIRequestNegotiateV1("POST", endpoint, nil)
+		_, err := http_api.NegotiateV1("POST", endpoint, nil)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 			continue

@@ -21,7 +21,8 @@ import (
 
 	"github.com/bitly/go-hostpool"
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/timer_metrics"
 )
 
@@ -45,11 +46,11 @@ var (
 	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
 	contentType   = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 
-	consumerOpts     = util.StringArray{}
-	getAddrs         = util.StringArray{}
-	postAddrs        = util.StringArray{}
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
+	consumerOpts     = app.StringArray{}
+	getAddrs         = app.StringArray{}
+	postAddrs        = app.StringArray{}
+	nsqdTCPAddrs     = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
 
 	// TODO: remove, deprecated
 	roundRobin         = flag.Bool("round-robin", false, "(deprecated) use --mode=round-robin, enable round robin mode")
@@ -78,7 +79,7 @@ type PublishHandler struct {
 	counter uint64
 
 	Publisher
-	addresses util.StringArray
+	addresses app.StringArray
 	mode      int
 	hostPool  hostpool.HostPool
 
@@ -171,13 +172,13 @@ func hasArg(s string) bool {
 
 func main() {
 	var publisher Publisher
-	var addresses util.StringArray
+	var addresses app.StringArray
 	var selectedMode int
 
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_http v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_to_http v%s\n", version.Binary)
 		return
 	}
 
@@ -259,8 +260,8 @@ func main() {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
-	err := util.ParseOpts(cfg, consumerOpts)
+	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	err := app.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		log.Fatal(err)
 	}

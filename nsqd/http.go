@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/version"
 )
 
 type httpServer struct {
@@ -25,7 +27,7 @@ type httpServer struct {
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		util.APIResponse(w, 403, "TLS_REQUIRED", nil)
+		http_api.Respond(w, 403, "TLS_REQUIRED", nil)
 		return
 	}
 
@@ -42,7 +44,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	err = s.debugRouter(w, req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: %s", err)
-		util.APIResponse(w, 404, "NOT_FOUND", nil)
+		http_api.Respond(w, 404, "NOT_FOUND", nil)
 	}
 }
 
@@ -73,46 +75,46 @@ func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error
 func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
 	case "/pub":
-		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doPUB(req) }))
 	case "/mpub":
-		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doMPUB(req) }))
 
 	case "/stats":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doStats(req) })
 	case "/ping":
 		s.pingHandler(w, req)
 
 	case "/topic/create":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doCreateTopic(req) }))
 	case "/topic/delete":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doDeleteTopic(req) }))
 	case "/topic/empty":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doEmptyTopic(req) }))
 	case "/topic/pause":
 		fallthrough
 	case "/topic/unpause":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doPauseTopic(req) }))
 
 	case "/channel/create":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doCreateChannel(req) }))
 	case "/channel/delete":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doDeleteChannel(req) }))
 	case "/channel/empty":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doEmptyChannel(req) }))
 	case "/channel/pause":
 		fallthrough
 	case "/channel/unpause":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doPauseChannel(req) }))
 
 	default:
@@ -124,41 +126,41 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
 	case "/put":
-		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doPUB(req) }))
 	case "/mput":
-		util.NegotiateAPIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doMPUB(req) }))
 	case "/info":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doInfo(req) })
 	case "/empty_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doEmptyTopic(req) })
 	case "/delete_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doDeleteTopic(req) })
 	case "/pause_topic":
 		fallthrough
 	case "/unpause_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doPauseTopic(req) })
 	case "/empty_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doEmptyChannel(req) })
 	case "/delete_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doDeleteChannel(req) })
 	case "/pause_channel":
 		fallthrough
 	case "/unpause_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doPauseChannel(req) })
 	case "/create_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateTopic(req) })
 	case "/create_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateChannel(req) })
 	default:
 		return fmt.Errorf("404 %s", req.URL.Path)
@@ -181,25 +183,25 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
-		Version: util.BinaryVersion,
+		Version: version.Binary,
 	}, nil
 }
 
-func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*util.ReqParams, *Topic, string, error) {
-	reqParams, err := util.NewReqParams(req)
+func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, nil, "", util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, nil, "", util.HTTPError{400, err.Error()}
+		return nil, nil, "", http_api.Err{400, err.Error()}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, nil, "", util.HTTPError{404, "TOPIC_NOT_FOUND"}
+		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	return reqParams, topic, channelName, err
@@ -209,17 +211,17 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicNames, ok := reqParams["topic"]
 	if !ok {
-		return nil, nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 	topicName := topicNames[0]
 
-	if !util.IsValidTopicName(topicName) {
-		return nil, nil, util.HTTPError{400, "INVALID_TOPIC"}
+	if !protocol.IsValidTopicName(topicName) {
+		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
 
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
@@ -230,7 +232,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.ctx.nsqd.opts.MaxMsgSize {
-		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
+		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
@@ -238,14 +240,14 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	readMax := s.ctx.nsqd.opts.MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
-		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
 		s.ctx.nsqd.logf("ERROR: /put hit max message size")
-		return nil, util.HTTPError{413, "MSG_TOO_BIG"}
+		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
-		return nil, util.HTTPError{400, "MSG_EMPTY"}
+		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
 	_, topic, err := s.getTopicFromQuery(req)
@@ -256,7 +258,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		return nil, util.HTTPError{503, "EXITING"}
+		return nil, http_api.Err{503, "EXITING"}
 	}
 
 	return "OK", nil
@@ -270,7 +272,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.ctx.nsqd.opts.MaxBodySize {
-		return nil, util.HTTPError{413, "BODY_TOO_BIG"}
+		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}
 
 	reqParams, topic, err := s.getTopicFromQuery(req)
@@ -284,7 +286,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 		msgs, err = readMPUB(req.Body, tmp, s.ctx.nsqd.idChan,
 			s.ctx.nsqd.opts.MaxMsgSize)
 		if err != nil {
-			return nil, util.HTTPError{413, err.(*util.FatalClientErr).Code[2:]}
+			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
 		}
 	} else {
 		// add 1 so that it's greater than our max when we test for it
@@ -296,13 +298,13 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 			block, err := rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
-					return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+					return nil, http_api.Err{500, "INTERNAL_ERROR"}
 				}
 				exit = true
 			}
 			total += len(block)
 			if int64(total) == readMax {
-				return nil, util.HTTPError{413, "BODY_TOO_BIG"}
+				return nil, http_api.Err{413, "BODY_TOO_BIG"}
 			}
 
 			if len(block) > 0 && block[len(block)-1] == '\n' {
@@ -316,7 +318,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 			}
 
 			if int64(len(block)) > s.ctx.nsqd.opts.MaxMsgSize {
-				return nil, util.HTTPError{413, "MSG_TOO_BIG"}
+				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
 			msg := NewMessage(<-s.ctx.nsqd.idChan, block)
@@ -326,7 +328,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 
 	err = topic.PutMessages(msgs)
 	if err != nil {
-		return nil, util.HTTPError{503, "EXITING"}
+		return nil, http_api.Err{503, "EXITING"}
 	}
 
 	return "OK", nil
@@ -338,69 +340,69 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
-	if !util.IsValidTopicName(topicName) {
-		return nil, util.HTTPError{400, "INVALID_TOPIC"}
+	if !protocol.IsValidTopicName(topicName) {
+		return nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	err = topic.Empty()
 	if err != nil {
-		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
 }
 
 func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	err = s.ctx.nsqd.DeleteExistingTopic(topicName)
 	if err != nil {
-		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	return nil, nil
 }
 
 func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -410,7 +412,7 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 	}
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
-		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
@@ -433,12 +435,12 @@ func (s *httpServer) doEmptyChannel(req *http.Request) (interface{}, error) {
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	err = channel.Empty()
 	if err != nil {
-		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
@@ -452,7 +454,7 @@ func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
 
 	err = topic.DeleteExistingChannel(channelName)
 	if err != nil {
-		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	return nil, nil
@@ -466,7 +468,7 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -476,17 +478,17 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 	}
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
-		return nil, util.HTTPError{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
 }
 
 func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
 	jsonFormat := formatString == "json"
@@ -504,14 +506,14 @@ func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
 		Health    string       `json:"health"`
 		StartTime int64        `json:"start_time"`
 		Topics    []TopicStats `json:"topics"`
-	}{util.BinaryVersion, health, startTime.Unix(), stats}, nil
+	}{version.Binary, health, startTime.Unix(), stats}, nil
 }
 
 func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()
-	io.WriteString(w, fmt.Sprintf("%s\n", util.Version("nsqd")))
+	io.WriteString(w, fmt.Sprintf("%s\n", version.String("nsqd")))
 	io.WriteString(w, fmt.Sprintf("start_time %v\n", startTime.Format(time.RFC3339)))
 	io.WriteString(w, fmt.Sprintf("uptime %s\n", uptime))
 	if len(stats) == 0 {

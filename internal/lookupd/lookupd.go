@@ -12,18 +12,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitly/nsq/internal/semver"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/quantile"
+	"github.com/bitly/nsq/internal/stringy"
+	"github.com/blang/semver"
 )
 
 // GetVersion returns a semver.Version object by querying /info
-func GetVersion(addr string) (*semver.Version, error) {
+func GetVersion(addr string) (semver.Version, error) {
 	endpoint := fmt.Sprintf("http://%s/info", addr)
 	log.Printf("version negotiation %s", endpoint)
-	info, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+	info, err := http_api.NegotiateV1("GET", endpoint, nil)
 	if err != nil {
 		log.Printf("ERROR: %s - %s", endpoint, err)
-		return nil, err
+		return semver.Version{}, err
 	}
 	version := info.Get("version").MustString("unknown")
 	return semver.Parse(version)
@@ -41,7 +43,7 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -52,7 +54,7 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 			success = true
 			// {"data":{"topics":["test"]}}
 			topics, _ := data.Get("topics").StringArray()
-			allTopics = util.StringUnion(allTopics, topics)
+			allTopics = stringy.Union(allTopics, topics)
 		}(endpoint)
 	}
 	wg.Wait()
@@ -75,7 +77,7 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -86,7 +88,7 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 			success = true
 			// {"data":{"channels":["test"]}}
 			channels, _ := data.Get("channels").StringArray()
-			allChannels = util.StringUnion(allChannels, channels)
+			allChannels = stringy.Union(allChannels, channels)
 		}(endpoint)
 	}
 	wg.Wait()
@@ -112,7 +114,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
 		log.Printf("LOOKUPD: querying %s", endpoint)
 		go func(addr string, endpoint string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -165,7 +167,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 					if err != nil {
 						versionObj = maxVersion
 					}
-					if maxVersion.Less(versionObj) {
+					if maxVersion.LT(versionObj) {
 						maxVersion = versionObj
 					}
 
@@ -187,7 +189,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	}
 	wg.Wait()
 	for _, producer := range allProducers {
-		if producer.VersionObj.Less(maxVersion) {
+		if producer.VersionObj.LT(maxVersion) {
 			producer.OutOfDate = true
 		}
 	}
@@ -213,7 +215,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 		log.Printf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -229,7 +231,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 				broadcastAddress := producer.Get("broadcast_address").MustString()
 				httpPort := producer.Get("http_port").MustInt()
 				key := net.JoinHostPort(broadcastAddress, strconv.Itoa(httpPort))
-				allSources = util.StringAdd(allSources, key)
+				allSources = stringy.Add(allSources, key)
 			}
 		}(endpoint)
 	}
@@ -253,7 +255,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -265,7 +267,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 			topicList, _ := data.Get("topics").Array()
 			for i := range topicList {
 				topicInfo := data.Get("topics").GetIndex(i)
-				topics = util.StringAdd(topics, topicInfo.Get("topic_name").MustString())
+				topics = stringy.Add(topics, topicInfo.Get("topic_name").MustString())
 			}
 		}(endpoint)
 	}
@@ -290,7 +292,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint, addr string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -334,7 +336,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 		log.Printf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string, addr string) {
-			data, err := util.APIRequestNegotiateV1("GET", endpoint, nil)
+			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
@@ -357,7 +359,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 				backendDepth := t.Get("backend_depth").MustInt64()
 				channels := t.Get("channels").MustArray()
 
-				e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(t.Get("e2e_processing_latency"), topicName, "", addr)
+				e2eProcessingLatency := quantile.E2eProcessingLatencyAggregateFromJSON(t.Get("e2e_processing_latency"), topicName, "", addr)
 
 				topicStats := &TopicStats{
 					HostAddress:  addr,
@@ -396,7 +398,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					backendDepth := c.Get("backend_depth").MustInt64()
 					clients := c.Get("clients").MustArray()
 
-					e2eProcessingLatency := util.E2eProcessingLatencyAggregateFromJSON(c.Get("e2e_processing_latency"), topicName, channelName, addr)
+					e2eProcessingLatency := quantile.E2eProcessingLatencyAggregateFromJSON(c.Get("e2e_processing_latency"), topicName, channelName, addr)
 
 					hostChannelStats := &ChannelStats{
 						HostAddress:   addr,

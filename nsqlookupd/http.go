@@ -7,7 +7,9 @@ import (
 	httpprof "net/http/pprof"
 	"sync/atomic"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/version"
 )
 
 type httpServer struct {
@@ -28,14 +30,14 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	err = s.debugRouter(w, req)
 	if err != nil {
 		s.ctx.nsqlookupd.logf("ERROR: %s", err)
-		util.APIResponse(w, 404, "NOT_FOUND", nil)
+		http_api.Respond(w, 404, "NOT_FOUND", nil)
 	}
 }
 
 func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
 	case "/debug":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doDebug(req) })
 	case "/debug/pprof":
 		httpprof.Index(w, req)
@@ -65,33 +67,33 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 		s.pingHandler(w, req)
 
 	case "/lookup":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doLookup(req) })
 	case "/topics":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doTopics(req) })
 	case "/channels":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doChannels(req) })
 	case "/nodes":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doNodes(req) })
 
 	case "/topic/create":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doCreateTopic(req) }))
 	case "/topic/delete":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doDeleteTopic(req) }))
 	case "/topic/tombstone":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doTombstoneTopicProducer(req) }))
 
 	case "/channel/create":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doCreateChannel(req) }))
 	case "/channel/delete":
-		util.V1APIResponseWrapper(w, req, util.POSTRequired(req,
+		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
 			func() (interface{}, error) { return s.doDeleteChannel(req) }))
 
 	default:
@@ -103,22 +105,22 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) error {
 	switch req.URL.Path {
 	case "/info":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doInfo(req) })
 	case "/delete_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doDeleteTopic(req) })
 	case "/delete_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doDeleteChannel(req) })
 	case "/tombstone_topic_producer":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doTombstoneTopicProducer(req) })
 	case "/create_topic":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateTopic(req) })
 	case "/create_channel":
-		util.NegotiateAPIResponseWrapper(w, req,
+		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doCreateChannel(req) })
 	default:
 		return fmt.Errorf("404 %s", req.URL.Path)
@@ -135,7 +137,7 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
-		Version: util.BinaryVersion,
+		Version: version.Binary,
 	}, nil
 }
 
@@ -147,14 +149,14 @@ func (s *httpServer) doTopics(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doChannels(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
@@ -164,19 +166,19 @@ func (s *httpServer) doChannels(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	registration := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 {
-		return nil, util.HTTPError{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
@@ -190,18 +192,18 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
-	if !util.IsValidTopicName(topicName) {
-		return nil, util.HTTPError{400, "INVALID_ARG_TOPIC"}
+	if !protocol.IsValidTopicName(topicName) {
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
@@ -212,14 +214,14 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
@@ -238,19 +240,19 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
 	node, err := reqParams.Get("node")
 	if err != nil {
-		return nil, util.HTTPError{400, "MISSING_ARG_NODE"}
+		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
 	s.ctx.nsqlookupd.logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
@@ -266,14 +268,14 @@ func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, e
 }
 
 func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, util.HTTPError{400, err.Error()}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	s.ctx.nsqlookupd.logf("DB: adding channel(%s) in topic(%s)", channelName, topicName)
@@ -288,19 +290,19 @@ func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
 }
 
 func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, util.HTTPError{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, util.HTTPError{400, err.Error()}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, channelName)
 	if len(registrations) == 0 {
-		return nil, util.HTTPError{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
 	s.ctx.nsqlookupd.logf("DB: removing channel(%s) from topic(%s)", channelName, topicName)

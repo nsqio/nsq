@@ -16,8 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bitly/nsq/internal/app"
 	"github.com/bitly/nsq/internal/lookupd"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var (
@@ -27,8 +28,8 @@ var (
 	statusEvery      = flag.Duration("status-every", -1, "(deprecated) duration of time between polling/printing output")
 	interval         = flag.Duration("interval", 2*time.Second, "duration of time between polling/printing output")
 	countNum         = numValue{}
-	nsqdHTTPAddrs    = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
+	nsqdHTTPAddrs    = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
 )
 
 type numValue struct {
@@ -134,7 +135,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_stat v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_stat v%s\n", version.Binary)
 		return
 	}
 

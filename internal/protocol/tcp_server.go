@@ -1,17 +1,19 @@
-package util
+package protocol
 
 import (
 	"fmt"
 	"net"
 	"runtime"
 	"strings"
+
+	"github.com/bitly/nsq/internal/app"
 )
 
 type TCPHandler interface {
 	Handle(net.Conn)
 }
 
-func TCPServer(listener net.Listener, handler TCPHandler, l logger) {
+func TCPServer(listener net.Listener, handler TCPHandler, l app.Logger) {
 	l.Output(2, fmt.Sprintf("TCP: listening on %s", listener.Addr()))
 
 	for {

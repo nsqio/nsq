@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
 )
 
 type Authorization struct {
@@ -89,7 +89,6 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string) (*St
 }
 
 func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) {
-
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
 	v.Set("tls", tlsEnabled)
@@ -98,7 +97,7 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) 
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
 	var authState State
-	if err := util.APIRequestV1(endpoint, &authState); err != nil {
+	if err := http_api.GETV1(endpoint, &authState); err != nil {
 		return nil, err
 	}
 

@@ -20,8 +20,9 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/internal/app"
 	"github.com/bitly/nsq/internal/lookupd"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var (
@@ -43,10 +44,10 @@ var (
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
-	consumerOpts     = util.StringArray{}
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
-	topics           = util.StringArray{}
+	consumerOpts     = app.StringArray{}
+	nsqdTCPAddrs     = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
+	topics           = app.StringArray{}
 
 	// TODO: remove, deprecated
 	gzipCompression = flag.Int("gzip-compression", 3, "(deprecated) use --gzip-level, gzip compression level (1 = BestSpeed, 2 = BestCompression, 3 = DefaultCompression)")
@@ -366,8 +367,8 @@ func newConsumerFileLogger(topic string) (*ConsumerFileLogger, error) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
-	err = util.ParseOpts(cfg, consumerOpts)
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	err = app.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -468,7 +469,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_file v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_to_file v%s\n", version.Binary)
 		return
 	}
 

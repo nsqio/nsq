@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var httpclient *http.Client
 var userAgent string
 
 func init() {
-	httpclient = &http.Client{Transport: util.NewDeadlineTransport(*httpTimeout)}
-	userAgent = fmt.Sprintf("nsq_to_http v%s", util.BinaryVersion)
+	httpclient = &http.Client{Transport: http_api.NewDeadlineTransport(*httpTimeout)}
+	userAgent = fmt.Sprintf("nsq_to_http v%s", version.Binary)
 }
 
 func HTTPGet(endpoint string) (*http.Response, error) {
