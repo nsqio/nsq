@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 func TestHTTPput(t *testing.T) {
@@ -624,7 +624,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	nsqd.startTime = testTime
-	expectedJSON := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, util.BinaryVersion, testTime.Unix())
+	expectedJSON := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, version.Binary, testTime.Unix())
 	defer nsqd.Exit()
 
 	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)

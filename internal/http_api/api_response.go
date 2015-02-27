@@ -1,4 +1,4 @@
-package util
+package http_api
 
 import (
 	"encoding/json"
@@ -7,12 +7,12 @@ import (
 	"strconv"
 )
 
-type HTTPError struct {
+type Err struct {
 	Code int
 	Text string
 }
 
-func (e HTTPError) Error() string {
+func (e Err) Error() string {
 	return e.Text
 }
 
@@ -24,43 +24,43 @@ func acceptVersion(req *http.Request) int {
 	return 0
 }
 
-func POSTRequired(req *http.Request, f func() (interface{}, error)) func() (interface{}, error) {
+func RequirePOST(req *http.Request, f func() (interface{}, error)) func() (interface{}, error) {
 	if req.Method != "POST" {
 		return func() (interface{}, error) {
-			return nil, HTTPError{405, "INVALID_REQUEST"}
+			return nil, Err{405, "INVALID_REQUEST"}
 		}
 	}
 	return f
 }
 
-func NegotiateAPIResponseWrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
+func NegotiateVersionWrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
 	data, err := f()
 	if err != nil {
 		if acceptVersion(req) == 1 {
-			V1APIResponse(w, err.(HTTPError).Code, err)
+			RespondV1(w, err.(Err).Code, err)
 		} else {
 			// this handler always returns 500 for backwards compatibility
-			APIResponse(w, 500, err.Error(), nil)
+			Respond(w, 500, err.Error(), nil)
 		}
 		return
 	}
 	if acceptVersion(req) == 1 {
-		V1APIResponse(w, 200, data)
+		RespondV1(w, 200, data)
 	} else {
-		APIResponse(w, 200, "OK", data)
+		Respond(w, 200, "OK", data)
 	}
 }
 
-func V1APIResponseWrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
+func V1Wrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
 	data, err := f()
 	if err != nil {
-		V1APIResponse(w, err.(HTTPError).Code, err)
+		RespondV1(w, err.(Err).Code, err)
 		return
 	}
-	V1APIResponse(w, 200, data)
+	RespondV1(w, 200, data)
 }
 
-func APIResponse(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
+func Respond(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
 	var response []byte
 	var err error
 
@@ -90,7 +90,7 @@ func APIResponse(w http.ResponseWriter, statusCode int, statusTxt string, data i
 	w.Write(response)
 }
 
-func V1APIResponse(w http.ResponseWriter, code int, data interface{}) {
+func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var response []byte
 	var err error
 	var isJSON bool

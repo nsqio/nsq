@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var (
@@ -22,9 +23,9 @@ var (
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 
-	consumerOpts     = util.StringArray{}
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
+	consumerOpts     = app.StringArray{}
+	nsqdTCPAddrs     = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
 )
 
 func init() {
@@ -61,7 +62,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_tail v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_tail v%s\n", version.Binary)
 		return
 	}
 
@@ -90,8 +91,8 @@ func main() {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
-	err := util.ParseOpts(cfg, consumerOpts)
+	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	err := app.ParseOpts(cfg, consumerOpts)
 	if err != nil {
 		log.Fatal(err)
 	}

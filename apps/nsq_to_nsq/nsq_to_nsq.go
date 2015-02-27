@@ -20,7 +20,9 @@ import (
 	"github.com/bitly/go-hostpool"
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/timer_metrics"
 )
 
@@ -40,12 +42,12 @@ var (
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
 	mode        = flag.String("mode", "round-robin", "the upstream request mode options: round-robin (default), hostpool")
 
-	consumerOpts        = util.StringArray{}
-	producerOpts        = util.StringArray{}
-	nsqdTCPAddrs        = util.StringArray{}
-	lookupdHTTPAddrs    = util.StringArray{}
-	destNsqdTCPAddrs    = util.StringArray{}
-	whitelistJSONFields = util.StringArray{}
+	consumerOpts        = app.StringArray{}
+	producerOpts        = app.StringArray{}
+	nsqdTCPAddrs        = app.StringArray{}
+	lookupdHTTPAddrs    = app.StringArray{}
+	destNsqdTCPAddrs    = app.StringArray{}
+	whitelistJSONFields = app.StringArray{}
 
 	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
 	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
@@ -71,7 +73,7 @@ type PublishHandler struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	counter uint64
 
-	addresses util.StringArray
+	addresses app.StringArray
 	producers map[string]*nsq.Producer
 	mode      int
 	hostPool  hostpool.HostPool
@@ -275,7 +277,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_nsq v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_to_nsq v%s\n", version.Binary)
 		return
 	}
 
@@ -287,15 +289,15 @@ func main() {
 		*destTopic = *topic
 	}
 
-	if !util.IsValidTopicName(*topic) {
+	if !protocol.IsValidTopicName(*topic) {
 		log.Fatal("--topic is invalid")
 	}
 
-	if !util.IsValidTopicName(*destTopic) {
+	if !protocol.IsValidTopicName(*destTopic) {
 		log.Fatal("--destination-topic is invalid")
 	}
 
-	if !util.IsValidChannelName(*channel) {
+	if !protocol.IsValidChannelName(*channel) {
 		log.Fatal("--channel is invalid")
 	}
 
@@ -320,11 +322,11 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
+	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
 
 	cCfg := nsq.NewConfig()
 	cCfg.UserAgent = defaultUA
-	err := util.ParseOpts(cCfg, consumerOpts)
+	err := app.ParseOpts(cCfg, consumerOpts)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -339,7 +341,7 @@ func main() {
 	pCfg := nsq.NewConfig()
 	pCfg.UserAgent = defaultUA
 
-	err = util.ParseOpts(pCfg, producerOpts)
+	err = app.ParseOpts(pCfg, producerOpts)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package util
+package http_api
 
 import (
 	"encoding/json"
@@ -41,9 +41,9 @@ func NewDeadlineTransport(timeout time.Duration) *http.Transport {
 	return transport
 }
 
-// APIRequestNegotiateV1 is a helper function to perform a v1 HTTP request
+// NegotiateV1 is a helper function to perform a v1 HTTP request
 // and fallback to parsing the old backwards-compatible response format
-func APIRequestNegotiateV1(method string, endpoint string, body io.Reader) (*simplejson.Json, error) {
+func NegotiateV1(method string, endpoint string, body io.Reader) (*simplejson.Json, error) {
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
 	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
@@ -81,9 +81,9 @@ func APIRequestNegotiateV1(method string, endpoint string, body io.Reader) (*sim
 	return data.Get("data"), nil
 }
 
-// APIRequestV1 is a helper function to perform a v1 HTTP request
+// GETV1 is a helper function to perform a V1 HTTP request
 // and parse our NSQ daemon's expected response format, with deadlines.
-func APIRequestV1(endpoint string, v interface{}) error {
+func GETV1(endpoint string, v interface{}) error {
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {

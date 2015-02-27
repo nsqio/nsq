@@ -5,7 +5,10 @@ import (
 	"net"
 	"os"
 
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/protocol"
 	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 type NSQLookupd struct {
@@ -38,7 +41,7 @@ func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
 	}
 	n.httpAddr = httpAddr
 
-	n.logf(util.Version("nsqlookupd"))
+	n.logf(version.String("nsqlookupd"))
 
 	return n
 }
@@ -61,7 +64,7 @@ func (l *NSQLookupd) Main() {
 	l.tcpListener = tcpListener
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		util.TCPServer(tcpListener, tcpServer, l.opts.Logger)
+		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
 	})
 
 	httpListener, err := net.Listen("tcp", l.httpAddr.String())
@@ -72,7 +75,7 @@ func (l *NSQLookupd) Main() {
 	l.httpListener = httpListener
 	httpServer := &httpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		util.HTTPServer(httpListener, httpServer, l.opts.Logger, "HTTP")
+		http_api.Serve(httpListener, httpServer, l.opts.Logger, "HTTP")
 	})
 }
 

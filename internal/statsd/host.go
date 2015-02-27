@@ -1,9 +1,9 @@
-package util
+package statsd
 
 import (
 	"strings"
 )
 
-func StatsdHostKey(h string) string {
+func HostKey(h string) string {
 	return strings.Replace(strings.Replace(h, ".", "_", -1), ":", "_", -1)
 }

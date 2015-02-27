@@ -19,8 +19,12 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/lookupd"
+	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/statsd"
 	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/version"
 )
 
 const (
@@ -105,7 +109,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 	}
 
 	if opts.StatsdPrefix != "" {
-		statsdHostKey := util.StatsdHostKey(net.JoinHostPort(opts.BroadcastAddress,
+		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress,
 			strconv.Itoa(httpAddr.Port)))
 		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
 		if prefixWithHost[len(prefixWithHost)-1] != '.' {
@@ -131,7 +135,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 
 	n.waitGroup.Wrap(func() { n.idPump() })
 
-	n.logf(util.Version("nsqd"))
+	n.logf(version.String("nsqd"))
 	n.logf("ID: %d", n.opts.ID)
 
 	return n
@@ -192,7 +196,7 @@ func (n *NSQD) Main() {
 	n.tcpListener = tcpListener
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		util.TCPServer(n.tcpListener, tcpServer, n.opts.Logger)
+		protocol.TCPServer(n.tcpListener, tcpServer, n.opts.Logger)
 	})
 
 	if n.tlsConfig != nil && n.httpsAddr != nil {
@@ -208,7 +212,7 @@ func (n *NSQD) Main() {
 			tlsRequired: true,
 		}
 		n.waitGroup.Wrap(func() {
-			util.HTTPServer(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
+			http_api.Serve(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
 		})
 	}
 	httpListener, err = net.Listen("tcp", n.httpAddr.String())
@@ -223,7 +227,7 @@ func (n *NSQD) Main() {
 		tlsRequired: n.opts.TLSRequired == TLSRequired,
 	}
 	n.waitGroup.Wrap(func() {
-		util.HTTPServer(n.httpListener, httpServer, n.opts.Logger, "HTTP")
+		http_api.Serve(n.httpListener, httpServer, n.opts.Logger, "HTTP")
 	})
 
 	if n.opts.StatsdAddress != "" {
@@ -261,7 +265,7 @@ func (n *NSQD) LoadMetadata() {
 			n.logf("ERROR: failed to parse metadata - %s", err)
 			return
 		}
-		if !util.IsValidTopicName(topicName) {
+		if !protocol.IsValidTopicName(topicName) {
 			n.logf("WARNING: skipping creation of invalid topic %s", topicName)
 			continue
 		}
@@ -286,7 +290,7 @@ func (n *NSQD) LoadMetadata() {
 				n.logf("ERROR: failed to parse metadata - %s", err)
 				return
 			}
-			if !util.IsValidChannelName(channelName) {
+			if !protocol.IsValidChannelName(channelName) {
 				n.logf("WARNING: skipping creation of invalid channel %s", channelName)
 				continue
 			}
@@ -333,7 +337,7 @@ func (n *NSQD) PersistMetadata() error {
 		topicData["channels"] = channels
 		topics = append(topics, topicData)
 	}
-	js["version"] = util.BinaryVersion
+	js["version"] = version.Binary
 	js["topics"] = topics
 
 	data, err := json.Marshal(&js)

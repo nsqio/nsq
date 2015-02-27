@@ -33,7 +33,7 @@ go test -timeout 60s ./...
 GOMAXPROCS=4 go test -timeout 60s -race ./...
 
 # no tests, but a build is something
-for dir in nsqadmin apps/* bench/*; do
+for dir in $(find apps bench -depth 1 -type d) nsqadmin; do
     if grep -q '^package main$' $dir/*.go ; then
         echo "building $dir"
         go build -o $dir/$(basename $dir) ./$dir

@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/nsq/nsqd"
 	"github.com/mreiferson/go-options"
 )
@@ -85,11 +86,11 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
 
-	authHTTPAddresses := util.StringArray{}
+	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 
 	flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
-	lookupdTCPAddrs := util.StringArray{}
+	lookupdTCPAddrs := app.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 
 	// diskqueue options
@@ -121,7 +122,7 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement)")
 
 	// End to end percentile flags
-	e2eProcessingLatencyPercentiles := util.FloatArray{}
+	e2eProcessingLatencyPercentiles := app.FloatArray{}
 	flagSet.Var(&e2eProcessingLatencyPercentiles, "e2e-processing-latency-percentile", "message processing time percentiles to keep track of (can be specified multiple times or comma separated, default none)")
 	flagSet.Duration("e2e-processing-latency-window-time", 10*time.Minute, "calculate end to end latency quantiles for this duration of time (ie: 60s would only show quantile calculations from the past 60 seconds)")
 
@@ -181,7 +182,7 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
-		fmt.Println(util.Version("nsqd"))
+		fmt.Println(version.String("nsqd"))
 		return
 	}
 

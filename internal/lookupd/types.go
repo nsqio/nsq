@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bitly/nsq/internal/semver"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/quantile"
+	"github.com/blang/semver"
 )
 
 type ProducerTopic struct {
@@ -21,14 +21,14 @@ func (pt ProducerTopics) Swap(i, j int)      { pt[i], pt[j] = pt[j], pt[i] }
 func (pt ProducerTopics) Less(i, j int) bool { return pt[i].Topic < pt[j].Topic }
 
 type Producer struct {
-	RemoteAddresses  []string        `json:"remote_addresses"`
-	Hostname         string          `json:"hostname"`
-	BroadcastAddress string          `json:"broadcast_address"`
-	TCPPort          int             `json:"tcp_port"`
-	HTTPPort         int             `json:"http_port"`
-	Version          string          `json:"version"`
-	VersionObj       *semver.Version `json:"-"`
-	Topics           ProducerTopics  `json:"topics"`
+	RemoteAddresses  []string       `json:"remote_addresses"`
+	Hostname         string         `json:"hostname"`
+	BroadcastAddress string         `json:"broadcast_address"`
+	TCPPort          int            `json:"tcp_port"`
+	HTTPPort         int            `json:"http_port"`
+	Version          string         `json:"version"`
+	VersionObj       semver.Version `json:"-"`
+	Topics           ProducerTopics `json:"topics"`
 	OutOfDate        bool
 }
 
@@ -59,7 +59,7 @@ type TopicStats struct {
 	Channels     []*ChannelStats
 	Paused       bool
 
-	E2eProcessingLatency *util.E2eProcessingLatencyAggregate
+	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate
 	numAggregates        int
 }
 
@@ -115,7 +115,7 @@ type ChannelStats struct {
 	Clients       []*ClientStats
 	Paused        bool
 
-	E2eProcessingLatency *util.E2eProcessingLatencyAggregate
+	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate
 }
 
 func (c *ChannelStats) Add(a *ChannelStats) {

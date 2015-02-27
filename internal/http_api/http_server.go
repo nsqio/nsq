@@ -1,13 +1,15 @@
-package util
+package http_api
 
 import (
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/bitly/nsq/internal/app"
 )
 
-func HTTPServer(listener net.Listener, handler http.Handler, l logger, proto string) {
+func Serve(listener net.Listener, handler http.Handler, l app.Logger, proto string) {
 	l.Output(2, fmt.Sprintf("%s: listening on %s", proto, listener.Addr()))
 
 	server := &http.Server{

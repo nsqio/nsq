@@ -1,4 +1,4 @@
-package util
+package statsd
 
 import (
 	"errors"
@@ -7,24 +7,24 @@ import (
 	"time"
 )
 
-type StatsdClient struct {
+type Client struct {
 	conn   net.Conn
 	addr   string
 	prefix string
 }
 
-func NewStatsdClient(addr string, prefix string) *StatsdClient {
-	return &StatsdClient{
+func NewClient(addr string, prefix string) *Client {
+	return &Client{
 		addr:   addr,
 		prefix: prefix,
 	}
 }
 
-func (c *StatsdClient) String() string {
+func (c *Client) String() string {
 	return c.addr
 }
 
-func (c *StatsdClient) CreateSocket() error {
+func (c *Client) CreateSocket() error {
 	conn, err := net.DialTimeout("udp", c.addr, time.Second)
 	if err != nil {
 		return err
@@ -33,27 +33,27 @@ func (c *StatsdClient) CreateSocket() error {
 	return nil
 }
 
-func (c *StatsdClient) Close() error {
+func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *StatsdClient) Incr(stat string, count int64) error {
+func (c *Client) Incr(stat string, count int64) error {
 	return c.send(stat, "%d|c", count)
 }
 
-func (c *StatsdClient) Decr(stat string, count int64) error {
+func (c *Client) Decr(stat string, count int64) error {
 	return c.send(stat, "%d|c", -count)
 }
 
-func (c *StatsdClient) Timing(stat string, delta int64) error {
+func (c *Client) Timing(stat string, delta int64) error {
 	return c.send(stat, "%d|ms", delta)
 }
 
-func (c *StatsdClient) Gauge(stat string, value int64) error {
+func (c *Client) Gauge(stat string, value int64) error {
 	return c.send(stat, "%d|g", value)
 }
 
-func (c *StatsdClient) send(stat string, format string, value int64) error {
+func (c *Client) send(stat string, format string, value int64) error {
 	if c.conn == nil {
 		return errors.New("not connected")
 	}

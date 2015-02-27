@@ -7,3 +7,4 @@ github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da
 github.com/mreiferson/go-snappystream   307a466b220aaf34bcee2d19c605ed9e96b4bcdb # v0.2.0
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
+github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2

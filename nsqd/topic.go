@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bitly/nsq/internal/quantile"
 	"github.com/bitly/nsq/internal/util"
 )
 
@@ -379,14 +380,14 @@ finish:
 	return nil
 }
 
-func (t *Topic) AggregateChannelE2eProcessingLatency() *util.Quantile {
-	var latencyStream *util.Quantile
+func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
+	var latencyStream *quantile.Quantile
 	for _, c := range t.channelMap {
 		if c.e2eProcessingLatencyStream == nil {
 			continue
 		}
 		if latencyStream == nil {
-			latencyStream = util.NewQuantile(
+			latencyStream = quantile.New(
 				t.ctx.nsqd.opts.E2EProcessingLatencyWindowTime,
 				t.ctx.nsqd.opts.E2EProcessingLatencyPercentiles)
 		}

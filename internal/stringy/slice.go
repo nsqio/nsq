@@ -1,6 +1,6 @@
-package util
+package stringy
 
-func StringAdd(s []string, a string) []string {
+func Add(s []string, a string) []string {
 	for _, existing := range s {
 		if a == existing {
 			return s
@@ -10,7 +10,7 @@ func StringAdd(s []string, a string) []string {
 
 }
 
-func StringUnion(s []string, a []string) []string {
+func Union(s []string, a []string) []string {
 	for _, entry := range a {
 		found := false
 		for _, existing := range s {

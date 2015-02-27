@@ -17,15 +17,17 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/app"
+	"github.com/bitly/nsq/internal/http_api"
+	"github.com/bitly/nsq/internal/version"
 )
 
 var (
 	showVersion      = flag.Bool("version", false, "print version string")
 	httpAddress      = flag.String("http-address", "0.0.0.0:8080", "<addr>:<port> to listen on for HTTP clients")
 	maxInFlight      = flag.Int("max-in-flight", 100, "max number of messages to allow in flight")
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
+	nsqdTCPAddrs     = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
 )
 
 func init() {
@@ -119,13 +121,13 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	reqParams, err := util.NewReqParams(req)
+	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	topicName, channelName, err := util.GetTopicChannelArgs(reqParams)
+	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -143,7 +145,7 @@ func (s *StreamServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_pubsub/%s go-nsq/%s", util.BinaryVersion, nsq.VERSION)
+	cfg.UserAgent = fmt.Sprintf("nsq_pubsub/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 	r, err := nsq.NewConsumer(topicName, channelName, cfg)
 	if err != nil {
@@ -221,7 +223,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_pubsub v%s\n", util.BinaryVersion)
+		fmt.Printf("nsq_pubsub v%s\n", version.Binary)
 		return
 	}
 

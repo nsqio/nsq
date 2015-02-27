@@ -4,7 +4,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/bitly/nsq/internal/protocol"
 )
 
 type tcpServer struct {
@@ -28,12 +28,12 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	p.ctx.nsqd.logf("CLIENT(%s): desired protocol magic '%s'",
 		clientConn.RemoteAddr(), protocolMagic)
 
-	var prot util.Protocol
+	var prot protocol.Protocol
 	switch protocolMagic {
 	case "  V2":
 		prot = &protocolV2{ctx: p.ctx}
 	default:
-		util.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
+		protocol.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
 		p.ctx.nsqd.logf("ERROR: client(%s) bad protocol magic '%s'",
 			clientConn.RemoteAddr(), protocolMagic)

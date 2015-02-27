@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bitly/nsq/internal/pqueue"
+	"github.com/bitly/nsq/internal/quantile"
 	"github.com/bitly/nsq/internal/util"
 )
 
@@ -62,7 +63,7 @@ type Channel struct {
 	deleter        sync.Once
 
 	// Stats tracking
-	e2eProcessingLatencyStream *util.Quantile
+	e2eProcessingLatencyStream *quantile.Quantile
 
 	// TODO: these can be DRYd up
 	deferredMessages map[MessageID]*pqueue.Item
@@ -91,7 +92,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		ctx:            ctx,
 	}
 	if len(ctx.nsqd.opts.E2EProcessingLatencyPercentiles) > 0 {
-		c.e2eProcessingLatencyStream = util.NewQuantile(
+		c.e2eProcessingLatencyStream = quantile.New(
 			ctx.nsqd.opts.E2EProcessingLatencyWindowTime,
 			ctx.nsqd.opts.E2EProcessingLatencyPercentiles,
 		)

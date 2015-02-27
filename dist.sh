@@ -24,11 +24,11 @@ mkdir -p $DIR/dist/docker
 
 mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
-gpm install
+GOPATH=$DIR/.godeps gpm install
 
 os=$(go env GOOS)
 arch=$(go env GOARCH)
-version=$(awk '/const BinaryVersion/ {print $NF}' < $DIR/util/binary_version.go | sed 's/"//g')
+version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
 
 echo "... running tests"
@@ -49,8 +49,7 @@ for os in linux darwin; do
 done
 
 docker build -t nsqio/nsq:v$version .
-if [[ ! $version == *"-"* ]]
-then
-	echo "Tagging nsqio/nsq:v${version} as the latest release.";
-	docker tag -f nsqio/nsq:v$version nsqio/nsq:latest
+if [[ ! $version == *"-"* ]]; then
+    echo "Tagging nsqio/nsq:v$version as the latest release."
+    docker tag -f nsqio/nsq:v$version nsqio/nsq:latest
 fi
