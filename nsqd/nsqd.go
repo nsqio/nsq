@@ -118,7 +118,7 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		opts.StatsdPrefix = prefixWithHost
 	}
 
-	if opts.TLSClientAuthPolicy != "" {
+	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
 		opts.TLSRequired = TLSRequired
 	}
 
