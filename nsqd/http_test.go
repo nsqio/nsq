@@ -256,6 +256,36 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	equal(t, topic.Depth(), int64(1))
 }
 
+func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.TLSCert = "./test/certs/server.pem"
+	opts.TLSKey = "./test/certs/server.key"
+	opts.TLSRootCAFile = "./test/certs/ca.pem"
+	opts.TLSClientAuthPolicy = "require-verify"
+	opts.TLSRequired = TLSRequiredExceptHTTP
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+
+	defer nsqd.Exit()
+
+	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	// no cert
+	buf := bytes.NewBuffer([]byte("test message"))
+	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	equal(t, string(body), "OK")
+
+	time.Sleep(5 * time.Millisecond)
+
+	equal(t, topic.Depth(), int64(1))
+}
+
 func TestHTTPDeprecatedTopicChannel(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
