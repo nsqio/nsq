@@ -62,7 +62,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		// ie. the returned slice is only valid until the next call to it
 		line, err = client.Reader.ReadSlice('\n')
 		if err != nil {
-			err = fmt.Errorf("failed to read command - %s", err)
+			if atomic.LoadInt32(&client.State) == stateClosing {
+				err = nil
+			} else {
+				err = fmt.Errorf("failed to read command - %s", err)
+			}
 			break
 		}
 
