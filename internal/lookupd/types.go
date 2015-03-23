@@ -60,7 +60,6 @@ type TopicStats struct {
 	Paused       bool
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate
-	numAggregates        int
 }
 
 func (t *TopicStats) Add(a *TopicStats) {
@@ -76,8 +75,10 @@ func (t *TopicStats) Add(a *TopicStats) {
 	if a.Paused {
 		t.Paused = a.Paused
 	}
-	t.numAggregates++
-	t.E2eProcessingLatency = t.E2eProcessingLatency.Add(a.E2eProcessingLatency, t.numAggregates)
+	if t.E2eProcessingLatency == nil {
+		t.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{}
+	}
+	t.E2eProcessingLatency.Add(a.E2eProcessingLatency)
 }
 
 func (t *TopicStats) Target(key string) ([]string, string) {
@@ -132,7 +133,10 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 		c.Paused = a.Paused
 	}
 	c.HostStats = append(c.HostStats, a)
-	c.E2eProcessingLatency = c.E2eProcessingLatency.Add(a.E2eProcessingLatency, len(c.HostStats))
+	if c.E2eProcessingLatency == nil {
+		c.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{}
+	}
+	c.E2eProcessingLatency.Add(a.E2eProcessingLatency)
 	sort.Sort(ChannelStatsByHost{c.HostStats})
 }
 
