@@ -40,7 +40,7 @@ var (
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	numPublishers = flag.Int("n", 100, "number of concurrent publishers")
-	mode          = flag.String("mode", "round-robin", "the upstream request mode options: multicast, round-robin, hostpool")
+	mode          = flag.String("mode", "hostpool", "the upstream request mode options: multicast, round-robin, hostpool (default), epsilon-greedy")
 	sample        = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
 	httpTimeout   = flag.Duration("http-timeout", 20*time.Second, "timeout for HTTP connect/read/write (each)")
 	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
@@ -222,7 +222,7 @@ func main() {
 		selectedMode = ModeAll
 	case "round-robin":
 		selectedMode = ModeRoundRobin
-	case "hostpool":
+	case "hostpool", "epsilon-greedy":
 		selectedMode = ModeHostPool
 	}
 
@@ -289,11 +289,16 @@ func main() {
 		}
 	}
 
+	hostPool := hostpool.New(addresses)
+	if *mode == "epsilon-greedy" {
+		hostPool = hostpool.NewEpsilonGreedy(addresses, 0, &hostpool.LinearEpsilonValueCalculator{})
+	}
+
 	handler := &PublishHandler{
 		Publisher:        publisher,
 		addresses:        addresses,
 		mode:             selectedMode,
-		hostPool:         hostpool.New(addresses),
+		hostPool:         hostPool,
 		perAddressStatus: perAddressStatus,
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}

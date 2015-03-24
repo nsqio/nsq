@@ -40,7 +40,7 @@ var (
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
-	mode        = flag.String("mode", "round-robin", "the upstream request mode options: round-robin (default), hostpool")
+	mode        = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
 
 	consumerOpts        = app.StringArray{}
 	producerOpts        = app.StringArray{}
@@ -315,7 +315,7 @@ func main() {
 	switch *mode {
 	case "round-robin":
 		selectedMode = ModeRoundRobin
-	case "hostpool":
+	case "hostpool", "epsilon-greedy":
 		selectedMode = ModeHostPool
 	}
 
@@ -371,11 +371,16 @@ func main() {
 		}
 	}
 
+	hostPool := hostpool.New(destNsqdTCPAddrs)
+	if *mode == "epsilon-greedy" {
+		hostPool = hostpool.NewEpsilonGreedy(destNsqdTCPAddrs, 0, &hostpool.LinearEpsilonValueCalculator{})
+	}
+
 	handler := &PublishHandler{
 		addresses:        destNsqdTCPAddrs,
 		producers:        producers,
 		mode:             selectedMode,
-		hostPool:         hostpool.New(destNsqdTCPAddrs),
+		hostPool:         hostPool,
 		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
 		perAddressStatus: perAddressStatus,
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
