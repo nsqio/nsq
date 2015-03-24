@@ -74,36 +74,32 @@ func (e *E2eProcessingLatencyAggregate) Less(i, j int) bool {
 	return e.Percentiles[i]["percentile"] > e.Percentiles[j]["percentile"]
 }
 
-func (e *E2eProcessingLatencyAggregate) Add(e2 *E2eProcessingLatencyAggregate, N int) *E2eProcessingLatencyAggregate {
-	if e == nil {
-		*e = *e2
-	} else {
-		p := e.Percentiles
-		e.Count += e2.Count
-		for _, value := range e2.Percentiles {
-			i := -1
-			for j, v := range p {
-				if value["quantile"] == v["quantile"] {
-					i = j
-					break
-				}
+// Add merges e2 into e by averaging the percentiles
+func (e *E2eProcessingLatencyAggregate) Add(e2 *E2eProcessingLatencyAggregate) {
+	e.Addr = "*"
+	p := e.Percentiles
+	e.Count += e2.Count
+	for _, value := range e2.Percentiles {
+		i := -1
+		for j, v := range p {
+			if value["quantile"] == v["quantile"] {
+				i = j
+				break
 			}
-			if i == -1 {
-				i = len(p)
-				e.Percentiles = append(p, make(map[string]float64))
-				p = e.Percentiles
-				p[i]["quantile"] = value["quantile"]
-			}
-			p[i]["max"] = math.Max(value["max"], p[i]["max"])
-			p[i]["min"] = math.Min(value["max"], p[i]["max"])
-
-			p[i]["count"] += value["count"]
-			delta := value["average"] - p[i]["average"]
-			R := delta * value["count"] / p[i]["count"]
-			p[i]["average"] = p[i]["average"] + R
 		}
+		if i == -1 {
+			i = len(p)
+			e.Percentiles = append(p, make(map[string]float64))
+			p = e.Percentiles
+			p[i]["quantile"] = value["quantile"]
+		}
+		p[i]["max"] = math.Max(value["max"], p[i]["max"])
+		p[i]["min"] = math.Min(value["max"], p[i]["max"])
+
+		p[i]["count"] += value["count"]
+		delta := value["average"] - p[i]["average"]
+		R := delta * value["count"] / p[i]["count"]
+		p[i]["average"] = p[i]["average"] + R
 	}
 	sort.Sort(e)
-	e.Addr = "*"
-	return e
 }
