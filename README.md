@@ -61,7 +61,8 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://scalabull.com"><img src="http://nsq.io/static/img/scalabull_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://augury.com"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://buzzfeed.com"><img src="http://nsq.io/static/img/buzzfeed_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>
+<a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.dotabuff.com"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>
 
 ## Documentation
 
