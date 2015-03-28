@@ -69,6 +69,10 @@ func NewHTTPServer(ctx *Context) *httpServer {
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
+	// v1 endpoints
+	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
+
+	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log, http_api.PlainText))
@@ -86,6 +90,46 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return "OK", nil
+}
+
+func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	var topics []string
+	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
+		topics, _ = s.ci.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	} else {
+		topics, _ = s.ci.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	}
+
+	inactive, _ := reqParams.Get("inactive")
+	if inactive == "true" {
+		topicChannelMap := make(map[string][]string)
+		if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) == 0 {
+			goto respond
+		}
+		for _, topicName := range topics {
+			var producers []string
+			producers, _ = s.ci.GetLookupdTopicProducers(
+				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+			if len(producers) == 0 {
+				topicChannels, _ := s.ci.GetLookupdTopicChannels(
+					topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+				topicChannelMap[topicName] = topicChannels
+			}
+		}
+	respond:
+		return struct {
+			Topics map[string][]string `json:"topics"`
+		}{topicChannelMap}, nil
+	}
+
+	return struct {
+		Topics []string `json:"topics"`
+	}{topics}, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
