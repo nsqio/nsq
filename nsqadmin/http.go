@@ -1,4 +1,4 @@
-package main
+package nsqadmin
 
 import (
 	"fmt"
@@ -979,20 +979,13 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var queryFunc func(string) string
-	var formatJSONResponseFunc func([]byte) ([]byte, error)
-
-	switch metric {
-	case "rate":
-		queryFunc = rateQuery
-		formatJSONResponseFunc = parseRateResponse
-	default:
+	if metric != "rate" {
 		s.ctx.nsqadmin.logf("ERROR: unknown metric value %s", metric)
 		http.Error(w, "INVALID_METRIC_PARAM", 500)
 		return
 	}
 
-	query := queryFunc(target)
+	query := rateQuery(target, s.ctx.nsqadmin.opts.StatsdInterval)
 	url := s.ctx.nsqadmin.opts.GraphiteURL + query
 	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
 	response, err := graphiteGet(url)
@@ -1002,7 +995,7 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	resp, err := formatJSONResponseFunc(response)
+	resp, err := parseRateResponse(response, s.ctx.nsqadmin.opts.StatsdInterval)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: response formating failed - %s", err)
 		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)

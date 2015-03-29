@@ -3,9 +3,11 @@ package templates
 import (
 	"html/template"
 	"log"
+	"sync"
 )
 
 var sources map[string]string
+var parser sync.Once
 var T *template.Template
 
 func init() {
@@ -24,10 +26,12 @@ func registerTemplate(name string, source string) {
 }
 
 func Parse() {
-	for name, source := range sources {
-		_, err := T.New(name).Parse(source)
-		if err != nil {
-			log.Fatalf("ERROR: failed to parse template %s - %s", name, err)
+	parser.Do(func() {
+		for name, source := range sources {
+			_, err := T.New(name).Parse(source)
+			if err != nil {
+				log.Fatalf("ERROR: failed to parse template %s - %s", name, err)
+			}
 		}
-	}
+	})
 }

@@ -229,8 +229,8 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 
 	// build a response
 	data := make(map[string]interface{})
-	data["tcp_port"] = p.ctx.nsqlookupd.tcpAddr.Port
-	data["http_port"] = p.ctx.nsqlookupd.httpAddr.Port
+	data["tcp_port"] = p.ctx.nsqlookupd.RealTCPAddr().Port
+	data["http_port"] = p.ctx.nsqlookupd.RealHTTPAddr().Port
 	data["version"] = version.Binary
 	hostname, err := os.Hostname()
 	if err != nil {

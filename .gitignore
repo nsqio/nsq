@@ -2,7 +2,7 @@
 build
 apps/nsqlookupd/nsqlookupd
 apps/nsqd/nsqd
-nsqadmin/nsqadmin
+apps/nsqadmin/nsqadmin
 bench/bench_reader/bench_reader
 bench/bench_writer/bench_writer
 bench/bench_channels/bench_channels

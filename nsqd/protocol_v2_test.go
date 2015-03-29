@@ -27,16 +27,15 @@ import (
 )
 
 func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	httpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	httpsAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.HTTPSAddress = "127.0.0.1:0"
 	opts.DataPath = os.TempDir()
 	nsqd := NewNSQD(opts)
-	nsqd.tcpAddr = tcpAddr
-	nsqd.httpAddr = httpAddr
-	nsqd.httpsAddr = httpsAddr
 	nsqd.Main()
-	return nsqd.tcpListener.Addr().(*net.TCPAddr), nsqd.httpListener.Addr().(*net.TCPAddr), nsqd
+	return nsqd.tcpListener.Addr().(*net.TCPAddr),
+		nsqd.httpListener.Addr().(*net.TCPAddr),
+		nsqd
 }
 
 func mustConnectNSQD(tcpAddr *net.TCPAddr) (net.Conn, error) {

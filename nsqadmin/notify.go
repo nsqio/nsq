@@ -1,4 +1,4 @@
-package main
+package nsqadmin
 
 import (
 	"encoding/base64"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
@@ -12,9 +13,8 @@ import (
 )
 
 type NSQLookupd struct {
+	sync.RWMutex
 	opts         *nsqlookupdOptions
-	tcpAddr      *net.TCPAddr
-	httpAddr     *net.TCPAddr
 	tcpListener  net.Listener
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
@@ -26,23 +26,7 @@ func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
 		opts: opts,
 		DB:   NewRegistrationDB(),
 	}
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.TCPAddress)
-	if err != nil {
-		n.logf("FATAL: failed to resolve TCP address (%s) - %s", opts.TCPAddress, err)
-		os.Exit(1)
-	}
-	n.tcpAddr = tcpAddr
-
-	httpAddr, err := net.ResolveTCPAddr("tcp", opts.HTTPAddress)
-	if err != nil {
-		n.logf("FATAL: failed to resolve HTTP address (%s) - %s", opts.HTTPAddress, err)
-		os.Exit(1)
-	}
-	n.httpAddr = httpAddr
-
 	n.logf(version.String("nsqlookupd"))
-
 	return n
 }
 
@@ -56,27 +40,43 @@ func (l *NSQLookupd) logf(f string, args ...interface{}) {
 func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
 
-	tcpListener, err := net.Listen("tcp", l.tcpAddr.String())
+	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.tcpAddr, err)
+		l.logf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
 		os.Exit(1)
 	}
+	l.Lock()
 	l.tcpListener = tcpListener
+	l.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
 	})
 
-	httpListener, err := net.Listen("tcp", l.httpAddr.String())
+	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.httpAddr, err)
+		l.logf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
+	l.Lock()
 	l.httpListener = httpListener
+	l.Unlock()
 	httpServer := &httpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
 		http_api.Serve(httpListener, httpServer, l.opts.Logger, "HTTP")
 	})
+}
+
+func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {
+	l.RLock()
+	defer l.RUnlock()
+	return l.tcpListener.Addr().(*net.TCPAddr)
+}
+
+func (l *NSQLookupd) RealHTTPAddr() *net.TCPAddr {
+	l.RLock()
+	defer l.RUnlock()
+	return l.httpListener.Addr().(*net.TCPAddr)
 }
 
 func (l *NSQLookupd) Exit() {

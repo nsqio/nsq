@@ -1,4 +1,4 @@
-package main
+package nsqadmin
 
 import (
 	"encoding/json"
@@ -193,7 +193,7 @@ func (g *GraphOptions) Sparkline(gr GraphTarget, key string) template.URL {
 	params.Set("lineMode", "connected")
 	params.Set("drawNullAsZero", "false")
 
-	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
+	interval := fmt.Sprintf("%dsec", g.ctx.nsqadmin.opts.StatsdInterval/time.Second)
 	targets, color := gr.Target(key)
 	for _, target := range targets {
 		target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
@@ -216,13 +216,13 @@ func (g *GraphOptions) LargeGraph(gr GraphTarget, key string) template.URL {
 	params.Set("lineMode", "connected")
 	params.Set("drawNullAsZero", "false")
 
-	interval := fmt.Sprintf("%dsec", *statsdInterval/time.Second)
+	interval := fmt.Sprintf("%dsec", g.ctx.nsqadmin.opts.StatsdInterval/time.Second)
 	targets, color := gr.Target(key)
 	for _, target := range targets {
 		target = fmt.Sprintf(target, g.Prefix(gr.Host(), metricType(key)))
 		target = fmt.Sprintf(`summarize(%s,"%s","avg")`, target, interval)
 		if metricType(key) == "counter" {
-			scale := fmt.Sprintf("%.04f", 1/float64(*statsdInterval/time.Second))
+			scale := fmt.Sprintf("%.04f", 1/float64(g.ctx.nsqadmin.opts.StatsdInterval/time.Second))
 			target = fmt.Sprintf(`scale(%s,%s)`, target, scale)
 		}
 		params.Add("target", target)
@@ -257,18 +257,18 @@ func metricType(key string) string {
 	}[key]
 }
 
-func rateQuery(target string) string {
+func rateQuery(target string, statsdInterval time.Duration) string {
 	params := url.Values{}
-	fromInterval := fmt.Sprintf("-%dsec", *statsdInterval*2/time.Second)
+	fromInterval := fmt.Sprintf("-%dsec", statsdInterval*2/time.Second)
 	params.Set("from", fromInterval)
-	untilInterval := fmt.Sprintf("-%dsec", *statsdInterval/time.Second)
+	untilInterval := fmt.Sprintf("-%dsec", statsdInterval/time.Second)
 	params.Set("until", untilInterval)
 	params.Set("format", "json")
 	params.Set("target", target)
 	return fmt.Sprintf("/render?%s", params.Encode())
 }
 
-func parseRateResponse(body []byte) ([]byte, error) {
+func parseRateResponse(body []byte, statsdInterval time.Duration) ([]byte, error) {
 	js, err := simplejson.NewJson([]byte(body))
 	if err != nil {
 		return nil, err
@@ -284,7 +284,7 @@ func parseRateResponse(body []byte) ([]byte, error) {
 	if rate < 0 {
 		rateStr = "N/A"
 	} else {
-		rateDivisor := *statsdInterval / time.Second
+		rateDivisor := statsdInterval / time.Second
 		rateStr = fmt.Sprintf("%.2f", rate/float64(rateDivisor))
 	}
 	return json.Marshal(map[string]string{"datapoint": rateStr})

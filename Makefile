@@ -3,16 +3,16 @@ DESTDIR=
 GOFLAGS=
 BINDIR=${PREFIX}/bin
 
-NSQD_SRCS = $(wildcard apps/nsqd/*.go nsqd/*.go nsq/*.go util/*.go util/pqueue/*.go)
-NSQLOOKUPD_SRCS = $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go nsq/*.go util/*.go)
-NSQADMIN_SRCS = $(wildcard nsqadmin/*.go nsqadmin/templates/*.go util/*.go)
-NSQ_PUBSUB_SRCS = $(wildcard apps/nsq_pubsub/*.go nsq/*.go util/*.go)
-NSQ_TO_NSQ_SRCS = $(wildcard apps/nsq_to_nsq/*.go nsq/*.go util/*.go)
-NSQ_TO_FILE_SRCS = $(wildcard apps/nsq_to_file/*.go nsq/*.go util/*.go)
-NSQ_TO_HTTP_SRCS = $(wildcard apps/nsq_to_http/*.go nsq/*.go util/*.go)
-NSQ_TAIL_SRCS = $(wildcard apps/nsq_tail/*.go nsq/*.go util/*.go)
-NSQ_STAT_SRCS = $(wildcard apps/nsq_stat/*.go util/*.go util/lookupd/*.go)
-TO_NSQ_SRCS = $(wildcard apps/to_nsq/*.go util/*.go)
+NSQD_SRCS = $(wildcard apps/nsqd/*.go nsqd/*.go nsq/*.go internal/*/*.go)
+NSQLOOKUPD_SRCS = $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go nsq/*.go internal/*/*.go)
+NSQADMIN_SRCS = $(wildcard apps/nsqadmin/*.go nsqadmin/*.go nsqadmin/templates/*.go internal/*/*.go)
+NSQ_PUBSUB_SRCS = $(wildcard apps/nsq_pubsub/*.go nsq/*.go internal/*/*.go)
+NSQ_TO_NSQ_SRCS = $(wildcard apps/nsq_to_nsq/*.go nsq/*.go internal/*/*.go)
+NSQ_TO_FILE_SRCS = $(wildcard apps/nsq_to_file/*.go nsq/*.go internal/*/*.go)
+NSQ_TO_HTTP_SRCS = $(wildcard apps/nsq_to_http/*.go nsq/*.go internal/*/*.go)
+NSQ_TAIL_SRCS = $(wildcard apps/nsq_tail/*.go nsq/*.go internal/*/*.go)
+NSQ_STAT_SRCS = $(wildcard apps/nsq_stat/*.go internal/*/*.go)
+TO_NSQ_SRCS = $(wildcard apps/to_nsq/*.go internal/*/*.go)
 
 BINARIES = nsqadmin
 APPS = nsqlookupd nsqd nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat to_nsq
