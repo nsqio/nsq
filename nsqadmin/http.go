@@ -515,15 +515,21 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 
 	switch action {
 	case "pause", "unpause":
+		if channelName != "" {
+			err = s.pauseChannel(req, topicName, channelName, action)
+		} else {
+			err = s.pauseTopic(req, topicName, action)
+		}
+	case "empty":
+		if channelName != "" {
+			err = s.emptyChannel(req, topicName, channelName)
+		} else {
+			err = s.emptyTopic(req, topicName)
+		}
 	default:
 		return http_api.Err{400, "INVALID_ACTION"}
 	}
 
-	if channelName != "" {
-		err = s.pauseChannel(req, topicName, channelName, action)
-	} else {
-		err = s.pauseTopic(req, topicName, action)
-	}
 	if err != nil {
 		return http_api.Err{500, err.Error()}
 	}
@@ -553,6 +559,32 @@ func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelNa
 		fmt.Sprintf("topic=%s&channel=%s",
 			url.QueryEscape(topicName), url.QueryEscape(channelName)))
 	s.notifyAdminAction(action+"_channel", topicName, channelName, "", req)
+	return nil
+}
+
+func (s *httpServer) emptyTopic(req *http.Request, topicName string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"empty_topic",
+		"topic/empty",
+		fmt.Sprintf("topic=%s",
+			url.QueryEscape(topicName)))
+	s.notifyAdminAction("empty_topic", topicName, "", "", req)
+	return nil
+}
+
+func (s *httpServer) emptyChannel(req *http.Request, topicName string, channelName string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		"empty_channel",
+		"channel/empty",
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+	s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
 	return nil
 }
 
