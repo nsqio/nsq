@@ -86,6 +86,10 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doLookup(req) })
 
+	case "/topics":
+		http_api.NegotiateVersionWrapper(w, req,
+			func() (interface{}, error) { return s.doTopics(req) })
+
 	case "/stats":
 		http_api.NegotiateVersionWrapper(w, req,
 			func() (interface{}, error) { return s.doStats(req) })
@@ -265,6 +269,13 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 	data["producers"] = producers
 
 	return data, nil
+}
+
+func (s *httpServer) doTopics(req *http.Request) (interface{}, error) {
+	topics := s.ctx.nsqd.rdb.FindRegistrations("topic", "*", "").Keys()
+	return map[string]interface{}{
+		"topics": topics,
+	}, nil
 }
 
 func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
