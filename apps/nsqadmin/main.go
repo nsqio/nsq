@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/internal/app"
-	"github.com/bitly/nsq/internal/version"
-	"github.com/bitly/nsq/nsqadmin"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/version"
+	"github.com/nsqio/nsq/nsqadmin"
 	"github.com/mreiferson/go-options"
 )
 

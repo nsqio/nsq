@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bitly/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/app"
 )
 
 type logWriter struct {

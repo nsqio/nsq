@@ -1,1 +1,1 @@
-**pynsq** has moved to https://github.com/bitly/pynsq
+**pynsq** has moved to https://github.com/nsqio/pynsq

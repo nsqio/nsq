@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/internal/clusterinfo"
-	"github.com/bitly/nsq/internal/http_api"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/http_api"
 )
 
 func equal(t *testing.T, act, exp interface{}) {
