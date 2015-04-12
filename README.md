@@ -68,14 +68,6 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 Online documentation is available at [http://nsq.io][docs]
 
-Offline documentation requires [jekyll][jekyll]:
-
-```bash
-$ gem install jekyll
-$ git checkout gh-pages
-$ jekyll serve --safe --baseurl ''
-```
-
 ## Authors
 
 NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) and Jehiah Czebotar
