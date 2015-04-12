@@ -23,7 +23,7 @@ Python libraries are available out of the box (as well as many other [client
 libraries][client_libraries]) and, if you're interested in building your own, there's a [protocol
 spec][protocol].
 
-The latest stable release is **[0.3.2][latest_tag]** ([ChangeLog][changelog]). We publish [binary
+The latest stable release is **[0.3.3][latest_tag]** ([ChangeLog][changelog]). We publish [binary
 releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
@@ -64,10 +64,6 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://www.dotabuff.com"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>
 
-## Documentation
-
-Online documentation is available at [http://nsq.io][docs]
-
 ## Authors
 
 NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) and Jehiah Czebotar
@@ -84,8 +80,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
 [features_guarantees]: http://nsq.io/overview/features_and_guarantees.html
-[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.3.2
+[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.3.3
 [contributors]: https://github.com/bitly/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
-[jekyll]: http://jekyllrb.com/
 [nsqio_twitter]: https://twitter.com/nsqio
