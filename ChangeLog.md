@@ -2,6 +2,35 @@
 
 ## Binaries
 
+### 0.3.3 - 2015-04-10
+
+**Upgrading from 0.3.2**: Binaries contain no backwards incompatible changes.
+
+This release is primarily a bug fix release after cleaning up and reorganizing the codebase.
+`nsqadmin` is now importable, which paves the way for completing #323. The bundled utilities
+received a few feature additions and bug fixes (mostly from bug fixes on the `go-nsq` side).
+
+Features:
+
+ * #569 - `nsqadmin`: re-org into importable package
+ * #562 - `nsq_to_{nsq,http}`: add `epsilon-greedy` mode (thanks @twmb)
+ * #547 - `nsqd`: adds `start_time` to `/stats` (thanks @ShawnSpooner)
+ * #544 - `nsq_to_http`: accept any `200` response as success (thanks @mikedewar)
+ * #548 - `nsq_to_http`: read entire request body (thanks @imgix)
+ * #552/#554/#555/#556/#561 - code cleanup and `/internal` package re-org (thanks @cespare)
+
+Bugs:
+
+ * #573 - `nsqd`: don't persist metadata upon startup (thanks @xiaost)
+ * #560 - `nsqd`: do not print `EOF` error when client closes cleanly (thanks @twmb)
+ * #557 - `nsqd`: fix `--tls-required=tcp-https` with `--tls-client-auth-policy` (thanks @twmb)
+ * #545 - enable shell expansion in official Docker image (thanks @paddyforan)
+
+NOTE: the bundled utilities are built against [`go-nsq` `v1.0.4`][go-nsq_104] and include all of
+those features/fixes.
+
+[go-nsq_104]: https://github.com/bitly/go-nsq/releases/tag/v1.0.4
+
 ### 0.3.2 - 2015-02-08
 
 **Upgrading from 0.3.1**: Binaries contain no backwards incompatible changes however as of this
