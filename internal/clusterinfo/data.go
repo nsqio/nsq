@@ -7,9 +7,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/stringy"
 	"github.com/blang/semver"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/stringy"
 )
 
 type logger interface {

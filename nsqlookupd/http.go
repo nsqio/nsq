@@ -6,9 +6,9 @@ import (
 	"net/http/pprof"
 	"sync/atomic"
 
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/protocol"
-	"github.com/bitly/nsq/internal/version"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
 )
 

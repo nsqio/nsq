@@ -33,5 +33,5 @@ nsqd: fixed bug in protocol_v2
 ## Submitting Changes
 
 * push your changes to your branch in your fork of the repository
-* submit a pull request against bitly's repository
+* submit a pull request against nsqio's repository
 * comment in the pull request when you're ready for the changes to be reviewed: `"ready for review"`

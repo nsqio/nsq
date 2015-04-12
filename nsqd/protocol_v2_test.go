@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/protocol"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/mreiferson/go-snappystream"
 )
 

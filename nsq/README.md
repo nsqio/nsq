@@ -1,1 +1,1 @@
-**go-nsq** has moved to https://github.com/bitly/go-nsq
+**go-nsq** has moved to https://github.com/nsqio/go-nsq

@@ -18,12 +18,13 @@ import (
 	"time"
 
 	"github.com/bitly/go-hostpool"
-	"github.com/bitly/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/internal/app"
-	"github.com/bitly/nsq/internal/protocol"
-	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/timer_metrics"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/version"
+	
 )
 
 const (
@@ -272,8 +273,8 @@ func main() {
 
 	// TODO: remove, deprecated
 	flag.Var(&nsq.ConfigFlag{cCfg}, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
-	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 
 	flag.Parse()
 

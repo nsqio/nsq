@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/internal/clusterinfo"
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/protocol"
-	"github.com/bitly/nsq/internal/statsd"
-	"github.com/bitly/nsq/internal/util"
-	"github.com/bitly/nsq/internal/version"
+	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/statsd"
+	"github.com/nsqio/nsq/internal/util"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 const (

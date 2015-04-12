@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bitly/nsq/internal/app"
-	"github.com/bitly/nsq/internal/clusterinfo"
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/version"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var (

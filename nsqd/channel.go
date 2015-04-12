@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitly/nsq/internal/pqueue"
-	"github.com/bitly/nsq/internal/quantile"
+	"github.com/nsqio/nsq/internal/pqueue"
+	"github.com/nsqio/nsq/internal/quantile"
 )
 
 type Consumer interface {

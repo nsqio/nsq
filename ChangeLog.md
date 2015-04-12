@@ -48,7 +48,7 @@ Bugs:
 NOTE: the bundled utilities are built against [`go-nsq` `v1.0.4`][go-nsq_104] and include all of
 those features/fixes.
 
-[go-nsq_104]: https://github.com/bitly/go-nsq/releases/tag/v1.0.4
+[go-nsq_104]: https://github.com/nsqio/go-nsq/releases/tag/v1.0.4
 
 ### 0.3.2 - 2015-02-08
 
@@ -62,7 +62,7 @@ The new image is an order of magnitude smaller, weighing in around 70mb.
 
 In addition, the impetus for this quick release is to address a slew of reconnect related bug fixes
 in the utility apps (`nsq_to_nsq`, `nsq_to_file`, etc.), for details see the [`go-nsq` `v1.0.3`
-release notes](https://github.com/bitly/go-nsq/releases/tag/v1.0.3).
+release notes](https://github.com/nsqio/go-nsq/releases/tag/v1.0.3).
 
 Features:
 
@@ -115,7 +115,7 @@ means that client libraries no longer have to periodically re-send `RDY`. For so
 already provided back-pressure due to the fact that a client must respond to messages before
 receiving new ones. The decremented `RDY` count only made the implementation of the server and
 client more complex without additional benefit. Now the `RDY` command can be treated as an "on/off"
-switch. For details see #404 and the associated changes in bitly/go-nsq#83 and bitly/pynsq#98.
+switch. For details see #404 and the associated changes in nsqio/go-nsq#83 and nsqio/pynsq#98.
 
 The second biggest change (and oft-requested feature!) is `#ephemeral` topics. Their behavior
 mirrors that of channels. This feature is incredibly useful for situations where you're using
@@ -280,7 +280,7 @@ client certificate policy via `--tls-client-auth-policy` (`require` or `require-
 This can be used as a form of client authentication.
 
 Additionally, `nsqd` is now structured such that it is importable in other Go applications
-via `github.com/bitly/nsq/nsqd`, thanks to @kzvezdarov.
+via `github.com/nsqio/nsq/nsqd`, thanks to @kzvezdarov.
 
 Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or 
 optionally archive *all* discovered topics (by specifying no `--topic` params
@@ -291,7 +291,7 @@ New Features / Enhancements:
  * #334 - `nsq_to_file` can archive many topics (thanks @paddyforan)
  * #327 - add `nsqd` TLS client certificate verification policy, ability
           to require TLS, and HTTPS support (thanks @chrisroberts)
- * #325 - make `nsqd` importable (`github.com/bitly/nsq/nsqd`) (thanks @kzvezdarov)
+ * #325 - make `nsqd` importable (`github.com/nsqio/nsq/nsqd`) (thanks @kzvezdarov)
  * #321 - improve `IDENTIFY` options (replace `short_id` and `long_id` with
           `client_id` and `hostname`)
  * #319 - allow path separator in `nsq_to_file` filenames (thanks @jsocol)
@@ -299,7 +299,7 @@ New Features / Enhancements:
 
 Bug Fixes:
 
- * bitly/go-nsq#19 and bitly/go-nsq#29 - fix deadlocks on `nsq.Reader` connection close/exit, this
+ * nsqio/go-nsq#19 and nsqio/go-nsq#29 - fix deadlocks on `nsq.Reader` connection close/exit, this
                                          impacts the utilities packaged with the NSQ binary
                                          distribution such as `nsq_to_file`, `nsq_to_http`,
                                          `nsq_to_nsq` and `nsq_tail`.
@@ -416,7 +416,7 @@ New Features / Enhancements:
 **Upgrading from 0.2.22**: No backwards incompatible changes.
 
 We now use [godep](https://github.com/kr/godep) in order to achieve reproducible builds with pinned
-dependencies.  If you're on go1.1+ you can now just use `godep get github.com/bitly/nsq/...`.
+dependencies.  If you're on go1.1+ you can now just use `godep get github.com/nsqio/nsq/...`.
 
 This release includes `nsqd` protocol compression feature negotiation.
 [Snappy](https://code.google.com/p/snappy/) and [Deflate](http://en.wikipedia.org/wiki/DEFLATE) are
@@ -723,8 +723,8 @@ removed in a future release.
 
 ## go-nsq Client Library
 
- * #264 moved **go-nsq** to its own [repository](https://github.com/bitly/go-nsq)
+ * #264 moved **go-nsq** to its own [repository](https://github.com/nsqio/go-nsq)
 
 ## pynsq Python Client Library
 
- * #88 moved **pynsq** to its own [repository](https://github.com/bitly/pynsq)
+ * #88 moved **pynsq** to its own [repository](https://github.com/nsqio/pynsq)

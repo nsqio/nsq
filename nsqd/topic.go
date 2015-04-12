@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/bitly/nsq/internal/quantile"
-	"github.com/bitly/nsq/internal/util"
+	"github.com/nsqio/nsq/internal/quantile"
+	"github.com/nsqio/nsq/internal/util"
 )
 
 type Topic struct {
