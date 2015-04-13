@@ -11,9 +11,9 @@ fi
 
 EMAIL=$1
 
-rm -rf certs
-mkdir certs
-cd certs
+rm -rf tmp 
+mkdir tmp
+cd tmp
 
 echo "make CA"
 PRIVKEY="test"
@@ -35,5 +35,6 @@ openssl x509 -req -days 365 -in client.req -CA ca.pem -CAkey ca.key -passin pass
 
 openssl x509 -extfile ../openssl.conf -extensions ssl_client -req -days 365 -in client.req -CA ca.pem -CAkey ca.key -passin pass:$PRIVKEY -out client.pem
 
-mv certs/* .
-rmdir certs
+cd ..
+mv tmp/* certs
+rm -rf tmp
