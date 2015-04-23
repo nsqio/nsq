@@ -94,11 +94,15 @@ func TestStartup(t *testing.T) {
 	// verify nsqd metadata shows no topics
 	err := nsqd.PersistMetadata()
 	equal(t, err, nil)
+	nsqd.setFlag(flagLoading, true)
+	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
 	metaData, err := getMetadata(nsqd)
 	equal(t, err, nil)
 	topics, err := metaData.Get("topics").Array()
 	equal(t, err, nil)
 	equal(t, len(topics), 0)
+	nsqd.DeleteExistingTopic(topicName)
+	nsqd.setFlag(flagLoading, false)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -246,12 +250,18 @@ func TestPauseMetadata(t *testing.T) {
 	equal(t, b, false)
 
 	channel.Pause()
+	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	equal(t, b, false)
 
+	nsqd.PersistMetadata()
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, true)
 
 	channel.UnPause()
+	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	equal(t, b, true)
 
+	nsqd.PersistMetadata()
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
 }
