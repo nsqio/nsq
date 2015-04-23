@@ -32,6 +32,11 @@ const (
 	TLSRequired
 )
 
+const (
+	flagHealthy = 1 << iota
+	flagLoading
+)
+
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
@@ -40,8 +45,8 @@ type NSQD struct {
 
 	opts *nsqdOptions
 
-	healthMtx sync.RWMutex
-	healthy   int32
+	flag      int32
+	errMtx    sync.RWMutex
 	err       error
 	startTime time.Time
 
@@ -63,7 +68,7 @@ type NSQD struct {
 func NewNSQD(opts *nsqdOptions) *NSQD {
 	n := &NSQD{
 		opts:       opts,
-		healthy:    1,
+		flag:       flagHealthy,
 		startTime:  time.Now(),
 		topicMap:   make(map[string]*Topic),
 		idChan:     make(chan MessageID, 4096),
@@ -135,24 +140,43 @@ func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
 	return n.httpListener.Addr().(*net.TCPAddr)
 }
 
+func (n *NSQD) setFlag(f int32, b bool) {
+	for {
+		old := atomic.LoadInt32(&n.flag)
+		newFlag := old
+		if b {
+			newFlag |= f
+		} else {
+			newFlag &= ^f
+		}
+		if atomic.CompareAndSwapInt32(&n.flag, old, newFlag) {
+			return
+		}
+	}
+}
+
+func (n *NSQD) getFlag(f int32) bool {
+	return f&atomic.LoadInt32(&n.flag) != 0
+}
+
 func (n *NSQD) SetHealth(err error) {
-	n.healthMtx.Lock()
-	defer n.healthMtx.Unlock()
+	n.errMtx.Lock()
+	defer n.errMtx.Unlock()
 	n.err = err
 	if err != nil {
-		atomic.StoreInt32(&n.healthy, 0)
+		n.setFlag(flagHealthy, false)
 	} else {
-		atomic.StoreInt32(&n.healthy, 1)
+		n.setFlag(flagHealthy, true)
 	}
 }
 
 func (n *NSQD) IsHealthy() bool {
-	return atomic.LoadInt32(&n.healthy) == 1
+	return n.getFlag(flagHealthy)
 }
 
 func (n *NSQD) GetError() error {
-	n.healthMtx.RLock()
-	defer n.healthMtx.RUnlock()
+	n.errMtx.RLock()
+	defer n.errMtx.RUnlock()
 	return n.err
 }
 
@@ -229,6 +253,8 @@ func (n *NSQD) Main() {
 }
 
 func (n *NSQD) LoadMetadata() {
+	n.setFlag(flagLoading, true)
+	defer n.setFlag(flagLoading, false)
 	fn := fmt.Sprintf(path.Join(n.opts.DataPath, "nsqd.%d.dat"), n.opts.ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
@@ -502,12 +528,19 @@ exit:
 }
 
 func (n *NSQD) Notify(v interface{}) {
+	// since the in-memory metadata is incomplete,
+	// should not persist metadata while loading it.
+	// nsqd will call `PersistMetadata` it after loading
+	persist := !n.getFlag(flagLoading)
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123
 		select {
 		case <-n.exitChan:
 		case n.notifyChan <- v:
+			if !persist {
+				return
+			}
 			n.Lock()
 			err := n.PersistMetadata()
 			if err != nil {

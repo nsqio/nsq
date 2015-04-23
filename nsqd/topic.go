@@ -413,11 +413,6 @@ func (t *Topic) doPause(pause bool) error {
 
 	select {
 	case t.pauseChan <- pause:
-		t.ctx.nsqd.Lock()
-		defer t.ctx.nsqd.Unlock()
-		// pro-actively persist metadata so in case of process failure
-		// nsqd won't suddenly (un)pause a topic
-		return t.ctx.nsqd.PersistMetadata()
 	case <-t.exitChan:
 	}
 
