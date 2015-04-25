@@ -242,9 +242,13 @@ func TestPauseMetadata(t *testing.T) {
 	_, _, nsqd := mustStartNSQD(opts)
 	defer nsqd.Exit()
 
+	// avoid concurrency issue of async PersistMetadata() calls
+	nsqd.setFlag(flagLoading, true)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
+	nsqd.setFlag(flagLoading, false)
+	nsqd.PersistMetadata()
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
