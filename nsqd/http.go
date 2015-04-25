@@ -415,6 +415,11 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
+	// pro-actively persist metadata so in case of process failure
+	// nsqd won't suddenly (un)pause a topic
+	s.ctx.nsqd.Lock()
+	s.ctx.nsqd.PersistMetadata()
+	s.ctx.nsqd.Unlock()
 	return nil, nil
 }
 
@@ -481,6 +486,11 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
+	// pro-actively persist metadata so in case of process failure
+	// nsqd won't suddenly (un)pause a channel
+	s.ctx.nsqd.Lock()
+	s.ctx.nsqd.PersistMetadata()
+	s.ctx.nsqd.Unlock()
 	return nil, nil
 }
 

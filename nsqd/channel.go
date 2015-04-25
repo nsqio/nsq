@@ -296,12 +296,7 @@ func (c *Channel) doPause(pause bool) error {
 		}
 	}
 	c.RUnlock()
-
-	c.ctx.nsqd.Lock()
-	defer c.ctx.nsqd.Unlock()
-	// pro-actively persist metadata so in case of process failure
-	// nsqd won't suddenly (un)pause a channel
-	return c.ctx.nsqd.PersistMetadata()
+	return nil
 }
 
 func (c *Channel) IsPaused() bool {
