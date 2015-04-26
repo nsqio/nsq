@@ -2,7 +2,7 @@
 
 ## Binaries
 
-### 0.3.3 - 2015-04-10
+### 0.3.3 - 2015-04-26
 
 **Upgrading from 0.3.2**: Binaries contain no backwards incompatible changes.
 
