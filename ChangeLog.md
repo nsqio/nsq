@@ -2,9 +2,19 @@
 
 ## Binaries
 
+### 0.3.4 - 2015-04-26
+
+**Upgrading from 0.3.3**: Binaries contain no backwards incompatible changes.
+
+**IMPORTANT**: this is a quick bug-fix release to fix the outdated `go-nsq` dependency in `v0.3.3`
+for the bundled utilities (see 6e8504e).
+
 ### 0.3.3 - 2015-04-26
 
 **Upgrading from 0.3.2**: Binaries contain no backwards incompatible changes.
+
+**WARNING**: please upgrade to `v0.3.4` to address the outdated `go-nsq` dependency for the
+bundled utilities.
 
 This release is primarily a bug fix release after cleaning up and reorganizing the codebase.
 `nsqadmin` is now importable, which paves the way for completing #323. The bundled utilities
