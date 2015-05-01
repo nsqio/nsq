@@ -270,6 +270,11 @@ func (t *Topic) messagePump() {
 			if i > 0 {
 				chanMsg = NewMessage(msg.ID, msg.Body)
 				chanMsg.Timestamp = msg.Timestamp
+				chanMsg.deferred = msg.deferred
+			}
+			if chanMsg.deferred != 0 {
+				channel.StartDeferredTimeout(chanMsg, chanMsg.deferred)
+				continue
 			}
 			err := channel.PutMessage(chanMsg)
 			if err != nil {

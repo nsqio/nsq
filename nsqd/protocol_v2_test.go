@@ -553,6 +553,46 @@ func TestSizeLimits(t *testing.T) {
 	equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
 }
 
+func TestDPUB(t *testing.T) {
+	opts := NewNSQDOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	equal(t, err, nil)
+	defer conn.Close()
+
+	topicName := "test_dpub_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	// valid
+	nsq.DeferredPublish(topicName, time.Second, make([]byte, 100)).WriteTo(conn)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeResponse)
+	equal(t, data, []byte("OK"))
+
+	ch := nsqd.GetTopic(topicName).GetChannel("ch")
+	ch.Lock()
+	numDef := len(ch.deferredMessages)
+	ch.Unlock()
+	equal(t, numDef, 1)
+
+	// duration out of range
+	nsq.DeferredPublish(topicName, opts.MaxReqTimeout+100*time.Millisecond, make([]byte, 100)).WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	equal(t, frameType, frameTypeError)
+	equal(t, string(data), fmt.Sprintf("E_INVALID DPUB timeout 3600100 out of range 0-3600000"))
+}
+
 func TestTouch(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
