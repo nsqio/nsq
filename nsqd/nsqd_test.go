@@ -3,6 +3,7 @@ package nsqd
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -81,6 +82,9 @@ func TestStartup(t *testing.T) {
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
 	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+
+	origDataPath := opts.DataPath
 
 	topicName := "nsqd_test" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -147,6 +151,7 @@ func TestStartup(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
+	opts.DataPath = origDataPath
 	_, _, nsqd = mustStartNSQD(opts)
 
 	go func() {
@@ -190,6 +195,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 
 	topicName := "ephemeral_topic" + strconv.Itoa(int(time.Now().Unix())) + "#ephemeral"
 	doneExitChan := make(chan int)
@@ -240,6 +246,7 @@ func TestPauseMetadata(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	// avoid concurrency issue of async PersistMetadata() calls

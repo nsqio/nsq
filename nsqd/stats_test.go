@@ -3,6 +3,7 @@ package nsqd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ func TestStats(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
@@ -45,6 +47,7 @@ func TestClientAttributes(t *testing.T) {
 	opts.Verbose = true
 	opts.SnappyEnabled = true
 	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	conn, err := mustConnectNSQD(tcpAddr)
