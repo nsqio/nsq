@@ -1436,7 +1436,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
-	batchSize := 200
+	batchSize := int(opts.MaxBodySize) / size
 	batch := make([][]byte, batchSize)
 	for i := range batch {
 		batch[i] = msg
