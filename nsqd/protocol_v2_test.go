@@ -1400,7 +1400,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	msg := make([]byte, size)
-	batchSize := 200
+	batchSize := int(opts.MaxBodySize) / size
 	batch := make([][]byte, batchSize)
 	for i := range batch {
 		batch[i] = msg
