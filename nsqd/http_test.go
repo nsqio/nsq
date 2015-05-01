@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -21,6 +22,7 @@ func TestHTTPput(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_put" + strconv.Itoa(int(time.Now().Unix()))
@@ -43,6 +45,7 @@ func TestHTTPputEmpty(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -66,6 +69,7 @@ func TestHTTPmput(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput" + strconv.Itoa(int(time.Now().Unix()))
@@ -94,6 +98,7 @@ func TestHTTPmputEmpty(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_empty" + strconv.Itoa(int(time.Now().Unix()))
@@ -124,6 +129,7 @@ func TestHTTPmputBinary(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
@@ -156,6 +162,7 @@ func TestHTTPSRequire(t *testing.T) {
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_req" + strconv.Itoa(int(time.Now().Unix()))
@@ -201,10 +208,10 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
 	opts.TLSClientAuthPolicy = "require-verify"
 	_, httpAddr, nsqd := mustStartNSQD(opts)
-	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
-
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
+	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 	topicName := "test_http_put_req_verf" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 
@@ -266,7 +273,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	opts.TLSClientAuthPolicy = "require-verify"
 	opts.TLSRequired = TLSRequiredExceptHTTP
 	_, httpAddr, nsqd := mustStartNSQD(opts)
-
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
@@ -290,6 +297,7 @@ func TestHTTPDeprecatedTopicChannel(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_topic_channel" + strconv.Itoa(int(time.Now().Unix()))
@@ -386,6 +394,7 @@ func TestHTTPTransitionTopicChannel(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	client := http.Client{}
@@ -507,6 +516,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_http_topic_channel2" + strconv.Itoa(int(time.Now().Unix()))
@@ -614,6 +624,7 @@ func BenchmarkHTTPput(b *testing.B) {
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, 256)
 	topicName := "bench_http_put" + strconv.Itoa(int(time.Now().Unix()))
 	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
@@ -653,9 +664,11 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
 	nsqd.startTime = testTime
 	expectedJSON := fmt.Sprintf(`{"status_code":200,"status_txt":"OK","data":{"version":"%v","health":"OK","start_time":%v,"topics":[]}}`, version.Binary, testTime.Unix())
-	defer nsqd.Exit()
 
 	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
 	resp, err := http.Get(url)
@@ -671,8 +684,10 @@ func TestHTTPgetStatusText(t *testing.T) {
 	opts := NewNSQDOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
-	nsqd.startTime = testTime
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
+
+	nsqd.startTime = testTime
 
 	url := fmt.Sprintf("http://%s/stats?format=text", httpAddr)
 	resp, err := http.Get(url)
