@@ -1,6 +1,6 @@
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/bitly/go-nsq                 22a8bd48c443ec23bb559675b6df8284bbbdab29 # v1.0.4
+github.com/bitly/go-nsq                 4271cd1529a78175e327570894988cc2cb21228f # v1.0.5-alpha
 github.com/bitly/go-simplejson          fc395a5db941cf38922b1ccbc083640cd76fe4bc # v0.5.0-alpha
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da

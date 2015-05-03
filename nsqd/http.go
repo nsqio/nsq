@@ -243,19 +243,31 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
-		s.ctx.nsqd.logf("ERROR: /put hit max message size")
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
-	_, topic, err := s.getTopicFromQuery(req)
+	reqParams, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
 
+	var deferred time.Duration
+	if ds, ok := reqParams["defer"]; ok {
+		di, err := strconv.ParseInt(ds[0], 10, 64)
+		if err != nil {
+			return nil, http_api.Err{400, "INVALID_DEFER"}
+		}
+		deferred = time.Duration(di) * time.Millisecond
+		if deferred < 0 || deferred > s.ctx.nsqd.opts.MaxReqTimeout {
+			return nil, http_api.Err{400, "INVALID_DEFER"}
+		}
+	}
+
 	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
+	msg.deferred = deferred
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
