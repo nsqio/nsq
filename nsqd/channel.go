@@ -219,7 +219,7 @@ func (c *Channel) flush() error {
 	var msgBuf bytes.Buffer
 
 	// messagePump is responsible for closing the channel it writes to
-	// this will read until its closed (exited)
+	// this will read until it's closed (exited)
 	for msg := range c.clientMsgChan {
 		c.ctx.nsqd.logf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
 		writeMessageToBackend(&msgBuf, msg, c.backend)
@@ -537,11 +537,8 @@ func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	heap.Push(&c.deferredPQ, item)
 }
 
-// messagePump reads messages from either memory or backend and writes
-// to the client output go channel
-//
-// it is also performs in-flight accounting and initiates the auto-requeue
-// goroutine
+// messagePump reads messages from either memory or backend and sends
+// messages to clients over a go chan
 func (c *Channel) messagePump() {
 	var msg *Message
 	var buf []byte
