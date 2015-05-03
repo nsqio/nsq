@@ -82,7 +82,7 @@ func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string)
 }
 
 func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
-	auth := &nsq.Command{[]byte("AUTH"), nil, []byte(authSecret)}
+	auth, _ := nsq.Auth(authSecret)
 	_, err := auth.WriteTo(conn)
 	equal(t, err, nil)
 	if expectSuccess != "" {
@@ -1380,7 +1380,8 @@ func TestBadFin(t *testing.T) {
 	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
 	sub(t, conn, "test_fin", "ch")
 
-	fin := &nsq.Command{[]byte("FIN"), [][]byte{[]byte("")}, nil}
+	fin := nsq.Finish(nsq.MessageID{})
+	fin.Params[0] = []byte("")
 	_, err = fin.WriteTo(conn)
 	equal(t, err, nil)
 
