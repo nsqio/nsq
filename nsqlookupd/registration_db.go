@@ -113,9 +113,20 @@ func (r *RegistrationDB) RemoveRegistration(k Registration) {
 	delete(r.registrationMap, k)
 }
 
+func (r *RegistrationDB) needFilter(key string, subkey string) bool {
+	return key == "*" || subkey == "*"
+}
+
 func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string) Registrations {
 	r.RLock()
 	defer r.RUnlock()
+	if !r.needFilter(key, subkey) {
+		k := Registration{category, key, subkey}
+		if _, ok := r.registrationMap[k]; ok {
+			return Registrations{k}
+		}
+		return Registrations{}
+	}
 	results := Registrations{}
 	for k := range r.registrationMap {
 		if !k.IsMatch(category, key, subkey) {
@@ -129,6 +140,11 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 func (r *RegistrationDB) FindProducers(category string, key string, subkey string) Producers {
 	r.RLock()
 	defer r.RUnlock()
+	if !r.needFilter(key, subkey) {
+		k := Registration{category, key, subkey}
+		return r.registrationMap[k]
+	}
+
 	results := Producers{}
 	for k, producers := range r.registrationMap {
 		if !k.IsMatch(category, key, subkey) {
