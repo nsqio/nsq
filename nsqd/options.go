@@ -80,7 +80,13 @@ func NewNSQDOptions() *nsqdOptions {
 		log.Fatal(err)
 	}
 
-	o := &nsqdOptions{
+	h := md5.New()
+	io.WriteString(h, hostname)
+	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
+
+	return &nsqdOptions{
+		ID: defaultID,
+
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
 		HTTPSAddress:     "0.0.0.0:4152",
@@ -123,10 +129,4 @@ func NewNSQDOptions() *nsqdOptions {
 
 		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
-
-	h := md5.New()
-	io.WriteString(h, hostname)
-	o.ID = int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
-
-	return o
 }
