@@ -83,8 +83,8 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		os.Exit(1)
 	}
 
-	if opts.ID < 0 || opts.ID >= 4096 {
-		n.logf("FATAL: --worker-id must be [0,4096)")
+	if opts.ID < 0 || opts.ID >= 1024 {
+		n.logf("FATAL: --worker-id must be [0,1024)")
 		os.Exit(1)
 	}
 
