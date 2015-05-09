@@ -578,6 +578,8 @@ func TestDPUB(t *testing.T) {
 	equal(t, frameType, frameTypeResponse)
 	equal(t, data, []byte("OK"))
 
+	time.Sleep(25 * time.Millisecond)
+
 	ch := nsqd.GetTopic(topicName).GetChannel("ch")
 	ch.Lock()
 	numDef := len(ch.deferredMessages)
