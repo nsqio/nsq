@@ -28,12 +28,14 @@ const (
 
 var ErrTimeBackwards = errors.New("time has gone backwards")
 var ErrSequenceExpired = errors.New("sequence expired")
+var ErrIDBackwards = errors.New("ID went backward")
 
 type guid int64
 
 type guidFactory struct {
 	sequence      int64
 	lastTimestamp int64
+	lastID        guid
 }
 
 func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
@@ -54,11 +56,17 @@ func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
 
 	f.lastTimestamp = ts
 
-	id := ((ts - twepoch) << timestampShift) |
+	id := guid(((ts - twepoch) << timestampShift) |
 		(workerID << workerIDShift) |
-		f.sequence
+		f.sequence)
 
-	return guid(id), nil
+	if id <= f.lastID {
+		return 0, ErrIDBackwards
+	}
+
+	f.lastID = id
+
+	return id, nil
 }
 
 func (g guid) Hex() MessageID {
