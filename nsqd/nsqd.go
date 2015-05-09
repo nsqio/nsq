@@ -506,7 +506,7 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 
 func (n *NSQD) idPump() {
 	factory := &guidFactory{}
-	lastError := time.Now()
+	lastError := time.Unix(0, 0)
 	for {
 		id, err := factory.NewGUID(n.opts.ID)
 		if err != nil {
