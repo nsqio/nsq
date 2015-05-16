@@ -44,21 +44,20 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://trendrr.com"><img src="http://nsq.io/static/img/trendrr_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://reonomy.com"><img src="http://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a><br/>
 
-<a href="http://dramafever.com"><img src="http://nsq.io/static/img/dramafever.png" width="120" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="50" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a><br/>
-
 <a href="http://stripe.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
+
 <a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://getweave.com"><img src="http://nsq.io/static/img/weave_logo.png" width="94" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://digg.com"><img src="http://nsq.io/static/img/digg_logo.png" width="97" align="middle"/></a><br/>
-
 <a href="http://scalabull.com"><img src="http://nsq.io/static/img/scalabull_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+
 <a href="http://augury.com"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://buzzfeed.com"><img src="http://nsq.io/static/img/buzzfeed_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
