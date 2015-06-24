@@ -37,7 +37,7 @@ var (
 	hostIdentifier = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
-	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
+	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writing empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
 	topicPattern   = flag.String("topic-pattern", ".*", "Only log topics matching the following pattern")
 
