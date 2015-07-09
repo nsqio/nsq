@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -22,7 +23,7 @@ func TestDiskQueue(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1024, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 1024, 4, 1<<10, 2500, 2*time.Second, l)
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
@@ -43,11 +44,12 @@ func TestDiskQueueRoll(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 100, 2500, 2*time.Second, l)
+	msg := bytes.Repeat([]byte{0}, 10)
+	ml := int64(len(msg))
+	dq := newDiskQueue(dqName, tmpDir, 9*(ml+4), int32(ml), 1<<10, 2500, 2*time.Second, l)
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
-	msg := []byte("aaaaaaaaaa")
 	for i := 0; i < 10; i++ {
 		err := dq.Put(msg)
 		equal(t, err, nil)
@@ -55,7 +57,7 @@ func TestDiskQueueRoll(t *testing.T) {
 	}
 
 	equal(t, dq.(*diskQueue).writeFileNum, int64(1))
-	equal(t, dq.(*diskQueue).writePos, int64(28))
+	equal(t, dq.(*diskQueue).writePos, int64(0))
 }
 
 func assertFileNotExist(t *testing.T, fn string) {
@@ -72,11 +74,10 @@ func TestDiskQueueEmpty(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 100, 2500, 2*time.Second, l)
+	msg := bytes.Repeat([]byte{0}, 10)
+	dq := newDiskQueue(dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, l)
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
-
-	msg := []byte("aaaaaaaaaa")
 
 	for i := 0; i < 100; i++ {
 		err := dq.Put(msg)
@@ -140,9 +141,10 @@ func TestDiskQueueCorruption(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1000, 5, 2*time.Second, l)
+	// require a non-zero message length for the corrupt (len 0) test below
+	dq := newDiskQueue(dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, l)
 
-	msg := make([]byte, 123)
+	msg := make([]byte, 123) // 127 bytes per message, 8 (1016 bytes) messages per file
 	for i := 0; i < 25; i++ {
 		dq.Put(msg)
 	}
@@ -151,9 +153,9 @@ func TestDiskQueueCorruption(t *testing.T) {
 
 	// corrupt the 2nd file
 	dqFn := dq.(*diskQueue).fileName(1)
-	os.Truncate(dqFn, 500)
+	os.Truncate(dqFn, 500) // 3 valid messages, 5 corrupted
 
-	for i := 0; i < 19; i++ {
+	for i := 0; i < 19; i++ { // 1 message leftover in 4th file
 		equal(t, <-dq.ReadChan(), msg)
 	}
 
@@ -161,6 +163,15 @@ func TestDiskQueueCorruption(t *testing.T) {
 	dqFn = dq.(*diskQueue).fileName(3)
 	os.Truncate(dqFn, 100)
 
+	dq.Put(msg) // in 5th file
+
+	equal(t, <-dq.ReadChan(), msg)
+
+	// write a corrupt (len 0) message at the 5th (current) file
+	dq.(*diskQueue).writeFile.Write([]byte{0, 0, 0, 0})
+
+	// force a new 6th file - put into 5th, then readOne errors, then put into 6th
+	dq.Put(msg)
 	dq.Put(msg)
 
 	equal(t, <-dq.ReadChan(), msg)
@@ -176,7 +187,7 @@ func TestDiskQueueTorture(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 262144, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 262144, 0, 1<<10, 2500, 2*time.Second, l)
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
@@ -217,7 +228,7 @@ func TestDiskQueueTorture(t *testing.T) {
 
 	t.Logf("restarting diskqueue")
 
-	dq = newDiskQueue(dqName, tmpDir, 262144, 2500, 2*time.Second, l)
+	dq = newDiskQueue(dqName, tmpDir, 262144, 0, 1<<10, 2500, 2*time.Second, l)
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), depth)
 
@@ -265,7 +276,7 @@ func BenchmarkDiskQueuePut(b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1024768*100, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 1024768*100, 0, 1<<10, 2500, 2*time.Second, l)
 	size := 1024
 	b.SetBytes(int64(size))
 	data := make([]byte, size)
@@ -333,7 +344,7 @@ func BenchmarkDiskQueueGet(b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1024768, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
 	for i := 0; i < b.N; i++ {
 		dq.Put([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	}
