@@ -32,7 +32,9 @@ type diskQueue struct {
 	// instantiation time metadata
 	name            string
 	dataPath        string
-	maxBytesPerFile int64         // currently this cannot change once created
+	maxBytesPerFile int64 // currently this cannot change once created
+	minMsgSize      int32
+	maxMsgSize      int32
 	syncEvery       int64         // number of writes per fsync
 	syncTimeout     time.Duration // duration of time per fsync
 	exitFlag        int32
@@ -65,12 +67,15 @@ type diskQueue struct {
 // newDiskQueue instantiates a new instance of diskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueue(name string, dataPath string, maxBytesPerFile int64,
+	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64, syncTimeout time.Duration,
 	logger logger) BackendQueue {
 	d := diskQueue{
 		name:              name,
 		dataPath:          dataPath,
 		maxBytesPerFile:   maxBytesPerFile,
+		minMsgSize:        minMsgSize,
+		maxMsgSize:        maxMsgSize,
 		readChan:          make(chan []byte),
 		writeChan:         make(chan []byte),
 		writeResponseChan: make(chan error),
@@ -261,6 +266,14 @@ func (d *diskQueue) readOne() ([]byte, error) {
 		return nil, err
 	}
 
+	if msgSize < d.minMsgSize || msgSize > d.maxMsgSize {
+		// this file is corrupt and we have no reasonable guarantee on
+		// where a new message should begin
+		d.readFile.Close()
+		d.readFile = nil
+		return nil, fmt.Errorf("invalid message read size (%d)", msgSize)
+	}
+
 	readBuf := make([]byte, msgSize)
 	_, err = io.ReadFull(d.reader, readBuf)
 	if err != nil {
@@ -316,10 +329,14 @@ func (d *diskQueue) writeOne(data []byte) error {
 		}
 	}
 
-	dataLen := len(data)
+	dataLen := int32(len(data))
+
+	if dataLen < d.minMsgSize || dataLen > d.maxMsgSize {
+		return fmt.Errorf("invalid message write size (%d)", dataLen)
+	}
 
 	d.writeBuf.Reset()
-	err = binary.Write(&d.writeBuf, binary.BigEndian, int32(dataLen))
+	err = binary.Write(&d.writeBuf, binary.BigEndian, dataLen)
 	if err != nil {
 		return err
 	}
