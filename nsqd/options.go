@@ -93,7 +93,7 @@ func NewNSQDOptions() *nsqdOptions {
 		BroadcastAddress: hostname,
 
 		MemQueueSize:    10000,
-		MaxBytesPerFile: 104857600,
+		MaxBytesPerFile: 100 * 1024 * 1024,
 		SyncEvery:       2500,
 		SyncTimeout:     2 * time.Second,
 
@@ -105,8 +105,8 @@ func NewNSQDOptions() *nsqdOptions {
 
 		MsgTimeout:    60 * time.Second,
 		MaxMsgTimeout: 15 * time.Minute,
-		MaxMsgSize:    1024768,
-		MaxBodySize:   5 * 1024768,
+		MaxMsgSize:    1024 * 1024,
+		MaxBodySize:   5 * 1024 * 1024,
 		MaxReqTimeout: 1 * time.Hour,
 		ClientTimeout: 60 * time.Second,
 
