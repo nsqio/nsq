@@ -19,7 +19,7 @@ import (
 )
 
 func TestHTTPput(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -42,7 +42,7 @@ func TestHTTPput(t *testing.T) {
 }
 
 func TestHTTPputEmpty(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -66,7 +66,7 @@ func TestHTTPputEmpty(t *testing.T) {
 }
 
 func TestHTTPmput(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -95,7 +95,7 @@ func TestHTTPmput(t *testing.T) {
 }
 
 func TestHTTPmputEmpty(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -126,7 +126,7 @@ func TestHTTPmputEmpty(t *testing.T) {
 }
 
 func TestHTTPmputBinary(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -155,7 +155,7 @@ func TestHTTPmputBinary(t *testing.T) {
 }
 
 func TestHTTPpubDefer(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -182,7 +182,7 @@ func TestHTTPpubDefer(t *testing.T) {
 }
 
 func TestHTTPSRequire(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -227,7 +227,7 @@ func TestHTTPSRequire(t *testing.T) {
 }
 
 func TestHTTPSRequireVerify(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -291,7 +291,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 }
 
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -321,7 +321,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 }
 
 func TestHTTPDeprecatedTopicChannel(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -418,7 +418,7 @@ func TestHTTPDeprecatedTopicChannel(t *testing.T) {
 }
 
 func TestHTTPTransitionTopicChannel(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -540,7 +540,7 @@ func TestHTTPTransitionTopicChannel(t *testing.T) {
 }
 
 func TestHTTPV1TopicChannel(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -647,7 +647,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 func BenchmarkHTTPput(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
@@ -688,7 +688,7 @@ func BenchmarkHTTPput(b *testing.B) {
 
 func TestHTTPgetStatusJSON(t *testing.T) {
 	testTime := time.Now()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -708,7 +708,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 
 func TestHTTPgetStatusText(t *testing.T) {
 	testTime := time.Now()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

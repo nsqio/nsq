@@ -13,7 +13,7 @@ import (
 )
 
 func TestGetTopic(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -32,7 +32,7 @@ func TestGetTopic(t *testing.T) {
 }
 
 func TestGetChannel(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -60,7 +60,7 @@ func (d *errorBackendQueue) Depth() int64          { return 0 }
 func (d *errorBackendQueue) Empty() error          { return nil }
 
 func TestHealth(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 2
 	_, httpAddr, nsqd := mustStartNSQD(opts)
@@ -96,7 +96,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestDeletes(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -121,7 +121,7 @@ func TestDeletes(t *testing.T) {
 }
 
 func TestDeleteLast(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -144,7 +144,7 @@ func TestDeleteLast(t *testing.T) {
 }
 
 func TestPause(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -179,7 +179,7 @@ func TestPause(t *testing.T) {
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
@@ -198,7 +198,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	b.StopTimer()
 	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
 	channelName := "bench"
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)

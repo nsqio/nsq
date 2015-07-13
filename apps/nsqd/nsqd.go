@@ -199,9 +199,9 @@ func main() {
 	}
 	cfg.Validate()
 
-	opts := nsqd.NewNSQDOptions()
+	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqd := nsqd.NewNSQD(opts)
+	nsqd := nsqd.New(opts)
 
 	nsqd.LoadMetadata()
 	err := nsqd.PersistMetadata()

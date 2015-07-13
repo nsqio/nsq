@@ -14,14 +14,14 @@ import (
 
 type NSQLookupd struct {
 	sync.RWMutex
-	opts         *nsqlookupdOptions
+	opts         *Options
 	tcpListener  net.Listener
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
 }
 
-func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
+func New(opts *Options) *NSQLookupd {
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),

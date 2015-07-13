@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type nsqlookupdOptions struct {
+type Options struct {
 	Verbose bool `flag:"verbose"`
 
 	TCPAddress       string `flag:"tcp-address"`
@@ -19,13 +19,13 @@ type nsqlookupdOptions struct {
 	Logger logger
 }
 
-func NewNSQLookupdOptions() *nsqlookupdOptions {
+func NewOptions() *Options {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return &nsqlookupdOptions{
+	return &Options{
 		TCPAddress:       "0.0.0.0:4160",
 		HTTPAddress:      "0.0.0.0:4161",
 		BroadcastAddress: hostname,
