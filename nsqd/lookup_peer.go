@@ -73,7 +73,10 @@ func (lp *lookupPeer) Write(data []byte) (int, error) {
 // Close implements the io.Closer interface
 func (lp *lookupPeer) Close() error {
 	lp.state = stateDisconnected
-	return lp.conn.Close()
+	if lp.conn != nil {
+		return lp.conn.Close()
+	}
+	return nil
 }
 
 // Command performs a round-trip for the specified Command.
