@@ -43,7 +43,7 @@ type NSQD struct {
 
 	sync.RWMutex
 
-	opts *nsqdOptions
+	opts atomic.Value
 
 	flag      int32
 	errMtx    sync.RWMutex
@@ -61,22 +61,25 @@ type NSQD struct {
 
 	poolSize int
 
-	idChan     chan MessageID
-	notifyChan chan interface{}
-	exitChan   chan int
-	waitGroup  util.WaitGroupWrapper
+	idChan               chan MessageID
+	notifyChan           chan interface{}
+	optsNotificationChan chan struct{}
+	exitChan             chan int
+
+	waitGroup util.WaitGroupWrapper
 }
 
 func NewNSQD(opts *nsqdOptions) *NSQD {
 	n := &NSQD{
-		opts:       opts,
-		flag:       flagHealthy,
-		startTime:  time.Now(),
-		topicMap:   make(map[string]*Topic),
-		idChan:     make(chan MessageID, 4096),
-		exitChan:   make(chan int),
-		notifyChan: make(chan interface{}),
+		flag:                 flagHealthy,
+		startTime:            time.Now(),
+		topicMap:             make(map[string]*Topic),
+		idChan:               make(chan MessageID, 4096),
+		exitChan:             make(chan int),
+		notifyChan:           make(chan interface{}),
+		optsNotificationChan: make(chan struct{}, 1),
 	}
+	n.swapOpts(opts)
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
 		n.logf("FATAL: --max-deflate-level must be [1,9]")
@@ -111,23 +114,38 @@ func NewNSQD(opts *nsqdOptions) *NSQD {
 		n.logf("FATAL: failed to build TLS config - %s", err)
 		os.Exit(1)
 	}
-	if tlsConfig == nil && n.opts.TLSRequired != TLSNotRequired {
+	if tlsConfig == nil && opts.TLSRequired != TLSNotRequired {
 		n.logf("FATAL: cannot require TLS client connections without TLS key and cert")
 		os.Exit(1)
 	}
 	n.tlsConfig = tlsConfig
 
 	n.logf(version.String("nsqd"))
-	n.logf("ID: %d", n.opts.ID)
+	n.logf("ID: %d", opts.ID)
 
 	return n
 }
 
 func (n *NSQD) logf(f string, args ...interface{}) {
-	if n.opts.Logger == nil {
+	if n.getOpts().Logger == nil {
 		return
 	}
-	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
+	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+}
+
+func (n *NSQD) getOpts() *nsqdOptions {
+	return n.opts.Load().(*nsqdOptions)
+}
+
+func (n *NSQD) swapOpts(opts *nsqdOptions) {
+	n.opts.Store(opts)
+}
+
+func (n *NSQD) triggerOptsNotification() {
+	select {
+	case n.optsNotificationChan <- struct{}{}:
+	default:
+	}
 }
 
 func (n *NSQD) RealTCPAddr() *net.TCPAddr {
@@ -199,9 +217,9 @@ func (n *NSQD) Main() {
 
 	ctx := &context{n}
 
-	tcpListener, err := net.Listen("tcp", n.opts.TCPAddress)
+	tcpListener, err := net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.opts.TCPAddress, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.getOpts().TCPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -209,13 +227,13 @@ func (n *NSQD) Main() {
 	n.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.opts.Logger)
+		protocol.TCPServer(n.tcpListener, tcpServer, n.getOpts().Logger)
 	})
 
-	if n.tlsConfig != nil && n.opts.HTTPSAddress != "" {
-		httpsListener, err = tls.Listen("tcp", n.opts.HTTPSAddress, n.tlsConfig)
+	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
+		httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
 		if err != nil {
-			n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPSAddress, err)
+			n.logf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
 			os.Exit(1)
 		}
 		n.Lock()
@@ -227,12 +245,12 @@ func (n *NSQD) Main() {
 			tlsRequired: true,
 		}
 		n.waitGroup.Wrap(func() {
-			http_api.Serve(n.httpsListener, httpsServer, n.opts.Logger, "HTTPS")
+			http_api.Serve(n.httpsListener, httpsServer, n.getOpts().Logger, "HTTPS")
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.opts.HTTPAddress)
+	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPAddress, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -241,16 +259,16 @@ func (n *NSQD) Main() {
 	httpServer := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  false,
-		tlsRequired: n.opts.TLSRequired == TLSRequired,
+		tlsRequired: n.getOpts().TLSRequired == TLSRequired,
 	}
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, n.opts.Logger, "HTTP")
+		http_api.Serve(n.httpListener, httpServer, n.getOpts().Logger, "HTTP")
 	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })
 	n.waitGroup.Wrap(func() { n.idPump() })
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
-	if n.opts.StatsdAddress != "" {
+	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
 }
@@ -258,7 +276,7 @@ func (n *NSQD) Main() {
 func (n *NSQD) LoadMetadata() {
 	n.setFlag(flagLoading, true)
 	defer n.setFlag(flagLoading, false)
-	fn := fmt.Sprintf(path.Join(n.opts.DataPath, "nsqd.%d.dat"), n.opts.ID)
+	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -329,7 +347,7 @@ func (n *NSQD) LoadMetadata() {
 func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
-	fileName := fmt.Sprintf(path.Join(n.opts.DataPath, "nsqd.%d.dat"), n.opts.ID)
+	fileName := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
 	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
@@ -507,8 +525,9 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 func (n *NSQD) idPump() {
 	factory := &guidFactory{}
 	lastError := time.Unix(0, 0)
+	workerID := n.getOpts().ID
 	for {
-		id, err := factory.NewGUID(n.opts.ID)
+		id, err := factory.NewGUID(workerID)
 		if err != nil {
 			now := time.Now()
 			if now.Sub(lastError) > time.Second {
@@ -577,8 +596,8 @@ func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, c
 	idealPoolSize := int(float64(num) * 0.25)
 	if idealPoolSize < 1 {
 		idealPoolSize = 1
-	} else if idealPoolSize > n.opts.QueueScanWorkerPoolMax {
-		idealPoolSize = n.opts.QueueScanWorkerPoolMax
+	} else if idealPoolSize > n.getOpts().QueueScanWorkerPoolMax {
+		idealPoolSize = n.getOpts().QueueScanWorkerPoolMax
 	}
 	for {
 		if idealPoolSize == n.poolSize {
@@ -632,12 +651,12 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 // If QueueScanDirtyPercent (default: 25%) of the selected channels were dirty,
 // the loop continues without sleep.
 func (n *NSQD) queueScanLoop() {
-	workCh := make(chan *Channel, n.opts.QueueScanSelectionCount)
-	responseCh := make(chan bool, n.opts.QueueScanSelectionCount)
+	workCh := make(chan *Channel, n.getOpts().QueueScanSelectionCount)
+	responseCh := make(chan bool, n.getOpts().QueueScanSelectionCount)
 	closeCh := make(chan int)
 
-	workTicker := time.NewTicker(n.opts.QueueScanInterval)
-	refreshTicker := time.NewTicker(n.opts.QueueScanRefreshInterval)
+	workTicker := time.NewTicker(n.getOpts().QueueScanInterval)
+	refreshTicker := time.NewTicker(n.getOpts().QueueScanRefreshInterval)
 
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
@@ -656,7 +675,7 @@ func (n *NSQD) queueScanLoop() {
 			goto exit
 		}
 
-		num := n.opts.QueueScanSelectionCount
+		num := n.getOpts().QueueScanSelectionCount
 		if num > len(channels) {
 			num = len(channels)
 		}
@@ -673,7 +692,7 @@ func (n *NSQD) queueScanLoop() {
 			}
 		}
 
-		if float64(numDirty)/float64(num) > n.opts.QueueScanDirtyPercent {
+		if float64(numDirty)/float64(num) > n.getOpts().QueueScanDirtyPercent {
 			goto loop
 		}
 	}
@@ -732,5 +751,5 @@ func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
 }
 
 func (n *NSQD) IsAuthEnabled() bool {
-	return len(n.opts.AuthHTTPAddresses) != 0
+	return len(n.getOpts().AuthHTTPAddresses) != 0
 }

@@ -60,7 +60,7 @@ func newTestLogger(tbl tbLog) logger {
 }
 
 func getMetadata(n *NSQD) (*simplejson.Json, error) {
-	fn := fmt.Sprintf(path.Join(n.opts.DataPath, "nsqd.%d.dat"), n.opts.ID)
+	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err

@@ -231,13 +231,13 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
-	if req.ContentLength > s.ctx.nsqd.opts.MaxMsgSize {
+	if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
-	readMax := s.ctx.nsqd.opts.MaxMsgSize + 1
+	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
@@ -261,7 +261,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
 		deferred = time.Duration(di) * time.Millisecond
-		if deferred < 0 || deferred > s.ctx.nsqd.opts.MaxReqTimeout {
+		if deferred < 0 || deferred > s.ctx.nsqd.getOpts().MaxReqTimeout {
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
 	}
@@ -283,7 +283,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
-	if req.ContentLength > s.ctx.nsqd.opts.MaxBodySize {
+	if req.ContentLength > s.ctx.nsqd.getOpts().MaxBodySize {
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}
 
@@ -296,14 +296,14 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	if ok {
 		tmp := make([]byte, 4)
 		msgs, err = readMPUB(req.Body, tmp, s.ctx.nsqd.idChan,
-			s.ctx.nsqd.opts.MaxMsgSize)
+			s.ctx.nsqd.getOpts().MaxMsgSize)
 		if err != nil {
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
 		}
 	} else {
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
-		readMax := s.ctx.nsqd.opts.MaxBodySize + 1
+		readMax := s.ctx.nsqd.getOpts().MaxBodySize + 1
 		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
 		total := 0
 		for !exit {
@@ -329,7 +329,7 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 				continue
 			}
 
-			if int64(len(block)) > s.ctx.nsqd.opts.MaxMsgSize {
+			if int64(len(block)) > s.ctx.nsqd.getOpts().MaxMsgSize {
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 

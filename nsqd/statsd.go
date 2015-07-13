@@ -27,13 +27,13 @@ func (s Uint64Slice) Less(i, j int) bool {
 func (n *NSQD) statsdLoop() {
 	var lastMemStats runtime.MemStats
 	var lastStats []TopicStats
-	ticker := time.NewTicker(n.opts.StatsdInterval)
+	ticker := time.NewTicker(n.getOpts().StatsdInterval)
 	for {
 		select {
 		case <-n.exitChan:
 			goto exit
 		case <-ticker.C:
-			client := statsd.NewClient(n.opts.StatsdAddress, n.opts.StatsdPrefix)
+			client := statsd.NewClient(n.getOpts().StatsdAddress, n.getOpts().StatsdPrefix)
 			err := client.CreateSocket()
 			if err != nil {
 				n.logf("ERROR: failed to create UDP socket to statsd(%s)", client)
@@ -114,7 +114,7 @@ func (n *NSQD) statsdLoop() {
 			}
 			lastStats = stats
 
-			if n.opts.StatsdMemStats {
+			if n.getOpts().StatsdMemStats {
 				var memStats runtime.MemStats
 				runtime.ReadMemStats(&memStats)
 
