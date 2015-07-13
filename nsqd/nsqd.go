@@ -69,7 +69,7 @@ type NSQD struct {
 	waitGroup util.WaitGroupWrapper
 }
 
-func NewNSQD(opts *nsqdOptions) *NSQD {
+func New(opts *Options) *NSQD {
 	n := &NSQD{
 		flag:                 flagHealthy,
 		startTime:            time.Now(),
@@ -133,11 +133,11 @@ func (n *NSQD) logf(f string, args ...interface{}) {
 	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
-func (n *NSQD) getOpts() *nsqdOptions {
-	return n.opts.Load().(*nsqdOptions)
+func (n *NSQD) getOpts() *Options {
+	return n.opts.Load().(*Options)
 }
 
-func (n *NSQD) swapOpts(opts *nsqdOptions) {
+func (n *NSQD) swapOpts(opts *Options) {
 	n.opts.Store(opts)
 }
 
@@ -708,7 +708,7 @@ exit:
 	refreshTicker.Stop()
 }
 
-func buildTLSConfig(opts *nsqdOptions) (*tls.Config, error) {
+func buildTLSConfig(opts *Options) (*tls.Config, error) {
 	var tlsConfig *tls.Config
 
 	if opts.TLSCert == "" && opts.TLSKey == "" {

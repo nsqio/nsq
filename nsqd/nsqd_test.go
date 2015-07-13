@@ -77,7 +77,7 @@ func TestStartup(t *testing.T) {
 	iterations := 300
 	doneExitChan := make(chan int)
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
@@ -147,7 +147,7 @@ func TestStartup(t *testing.T) {
 
 	// start up a new nsqd w/ the same folder
 
-	opts = NewNSQDOptions()
+	opts = NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
@@ -191,7 +191,7 @@ func TestStartup(t *testing.T) {
 
 func TestEphemeralTopicsAndChannels(t *testing.T) {
 	// ephemeral topics/channels are lazily removed after the last channel/client is removed
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	_, _, nsqd := mustStartNSQD(opts)
@@ -243,7 +243,7 @@ func metadataForChannel(n *NSQD, topicIndex int, channelIndex int) *simplejson.J
 }
 
 func TestPauseMetadata(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

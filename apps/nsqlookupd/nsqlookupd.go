@@ -49,9 +49,9 @@ func main() {
 		}
 	}
 
-	opts := nsqlookupd.NewNSQLookupdOptions()
+	opts := nsqlookupd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
-	daemon := nsqlookupd.NewNSQLookupd(opts)
+	daemon := nsqlookupd.New(opts)
 
 	daemon.Main()
 	<-signalChan
