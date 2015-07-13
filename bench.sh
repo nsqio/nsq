@@ -37,6 +37,12 @@ popd >/dev/null
 
 echo -n "PUB: "
 bench/bench_writer/bench_writer --size=$messageSize --batch-size=$batchSize 2>&1
+
+curl -s -o cpu.pprof http://127.0.0.1:4151/debug/pprof/profile &
+pprof_pid=$!
+
 echo -n "SUB: "
-bench/bench_reader/bench_reader --size=$messageSize --channel=ch 2>&1 &
-wait $!
+bench/bench_reader/bench_reader --size=$messageSize --channel=ch 2>&1
+
+echo "waiting for pprof..."
+wait $pprof_pid
