@@ -1475,12 +1475,12 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewNSQDOptions()
+	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
-	batchSize := int(opts.MaxBodySize) / size
 	batch := make([][]byte, batchSize)
 	for i := range batch {
 		batch[i] = msg
