@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const MsgIDLength = 16
+const (
+	MsgIDLength       = 16
+	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
+)
 
 type MessageID [MsgIDLength]byte
 
@@ -66,7 +69,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
 
-	if len(b) < 26 {
+	if len(b) < minValidMsgLength {
 		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 	}
 

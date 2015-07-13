@@ -56,6 +56,8 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		t.backend = newDiskQueue(topicName,
 			ctx.nsqd.opts.DataPath,
 			ctx.nsqd.opts.MaxBytesPerFile,
+			int32(minValidMsgLength),
+			int32(ctx.nsqd.opts.MaxMsgSize),
 			ctx.nsqd.opts.SyncEvery,
 			ctx.nsqd.opts.SyncTimeout,
 			ctx.nsqd.opts.Logger)
