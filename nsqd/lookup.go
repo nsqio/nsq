@@ -12,8 +12,45 @@ import (
 	"github.com/bitly/nsq/internal/version"
 )
 
+func connectCallback(n *NSQD, hostname string, syncTopicChan chan *lookupPeer) func(*lookupPeer) {
+	return func(lp *lookupPeer) {
+		ci := make(map[string]interface{})
+		ci["version"] = version.Binary
+		ci["tcp_port"] = n.RealTCPAddr().Port
+		ci["http_port"] = n.RealHTTPAddr().Port
+		ci["hostname"] = hostname
+		ci["broadcast_address"] = n.getOpts().BroadcastAddress
+
+		cmd, err := nsq.Identify(ci)
+		if err != nil {
+			lp.Close()
+			return
+		}
+		resp, err := lp.Command(cmd)
+		if err != nil {
+			n.logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
+		} else if bytes.Equal(resp, []byte("E_INVALID")) {
+			n.logf("LOOKUPD(%s): lookupd returned %s", lp, resp)
+		} else {
+			err = json.Unmarshal(resp, &lp.Info)
+			if err != nil {
+				n.logf("LOOKUPD(%s): ERROR parsing response - %s", lp, resp)
+			} else {
+				n.logf("LOOKUPD(%s): peer info %+v", lp, lp.Info)
+			}
+		}
+
+		go func() {
+			syncTopicChan <- lp
+		}()
+	}
+}
+
 func (n *NSQD) lookupLoop() {
+	var lookupPeers []*lookupPeer
+	var lookupAddrs []string
 	syncTopicChan := make(chan *lookupPeer)
+	connect := true
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -21,50 +58,29 @@ func (n *NSQD) lookupLoop() {
 		os.Exit(1)
 	}
 
-	for _, host := range n.opts.NSQLookupdTCPAddresses {
-		n.logf("LOOKUP: adding peer %s", host)
-		lookupPeer := newLookupPeer(host, n.opts.Logger, func(lp *lookupPeer) {
-			ci := make(map[string]interface{})
-			ci["version"] = version.Binary
-			ci["tcp_port"] = n.RealTCPAddr().Port
-			ci["http_port"] = n.RealHTTPAddr().Port
-			ci["hostname"] = hostname
-			ci["broadcast_address"] = n.opts.BroadcastAddress
-
-			cmd, err := nsq.Identify(ci)
-			if err != nil {
-				lp.Close()
-				return
-			}
-			resp, err := lp.Command(cmd)
-			if err != nil {
-				n.logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
-			} else if bytes.Equal(resp, []byte("E_INVALID")) {
-				n.logf("LOOKUPD(%s): lookupd returned %s", lp, resp)
-			} else {
-				err = json.Unmarshal(resp, &lp.Info)
-				if err != nil {
-					n.logf("LOOKUPD(%s): ERROR parsing response - %s", lp, resp)
-				} else {
-					n.logf("LOOKUPD(%s): peer info %+v", lp, lp.Info)
-				}
-			}
-
-			go func() {
-				syncTopicChan <- lp
-			}()
-		})
-		lookupPeer.Command(nil) // start the connection
-		n.lookupPeers = append(n.lookupPeers, lookupPeer)
-	}
-
 	// for announcements, lookupd determines the host automatically
 	ticker := time.Tick(15 * time.Second)
 	for {
+		if connect {
+			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
+				if in(host, lookupAddrs) {
+					continue
+				}
+				n.logf("LOOKUP(%s): adding peer", host)
+				lookupPeer := newLookupPeer(host, n.getOpts().Logger,
+					connectCallback(n, hostname, syncTopicChan))
+				lookupPeer.Command(nil) // start the connection
+				lookupPeers = append(lookupPeers, lookupPeer)
+				lookupAddrs = append(lookupAddrs, host)
+			}
+			n.lookupPeers.Store(lookupPeers)
+			connect = false
+		}
+
 		select {
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
-			for _, lookupPeer := range n.lookupPeers {
+			for _, lookupPeer := range lookupPeers {
 				n.logf("LOOKUPD(%s): sending heartbeat", lookupPeer)
 				cmd := nsq.Ping()
 				_, err := lookupPeer.Command(cmd)
@@ -97,7 +113,7 @@ func (n *NSQD) lookupLoop() {
 				}
 			}
 
-			for _, lookupPeer := range n.lookupPeers {
+			for _, lookupPeer := range lookupPeers {
 				n.logf("LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
@@ -129,6 +145,21 @@ func (n *NSQD) lookupLoop() {
 					break
 				}
 			}
+		case <-n.optsNotificationChan:
+			var tmpPeers []*lookupPeer
+			var tmpAddrs []string
+			for _, lp := range lookupPeers {
+				if in(lp.addr, n.getOpts().NSQLookupdTCPAddresses) {
+					tmpPeers = append(tmpPeers, lp)
+					tmpAddrs = append(tmpAddrs, lp.addr)
+					continue
+				}
+				n.logf("LOOKUP(%s): removing peer", lp)
+				lp.Close()
+			}
+			lookupPeers = tmpPeers
+			lookupAddrs = tmpAddrs
+			connect = true
 		case <-n.exitChan:
 			goto exit
 		}
@@ -138,9 +169,22 @@ exit:
 	n.logf("LOOKUP: closing")
 }
 
-func (n *NSQD) lookupHTTPAddrs() []string {
+func in(s string, lst []string) bool {
+	for _, v := range lst {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *NSQD) lookupdHTTPAddrs() []string {
 	var lookupHTTPAddrs []string
-	for _, lp := range n.lookupPeers {
+	lookupPeers := n.lookupPeers.Load()
+	if lookupPeers == nil {
+		return nil
+	}
+	for _, lp := range lookupPeers.([]*lookupPeer) {
 		if len(lp.Info.BroadcastAddress) <= 0 {
 			continue
 		}

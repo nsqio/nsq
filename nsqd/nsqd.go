@@ -52,7 +52,7 @@ type NSQD struct {
 
 	topicMap map[string]*Topic
 
-	lookupPeers []*lookupPeer
+	lookupPeers atomic.Value
 
 	tcpListener   net.Listener
 	httpListener  net.Listener
@@ -441,6 +441,7 @@ func (n *NSQD) Exit() {
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.Lock()
+
 	t, ok := n.topicMap[topicName]
 	if ok {
 		n.Unlock()
@@ -458,10 +459,12 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	// channels from lookupd. This blocks concurrent PutMessages to this topic.
 	t.Lock()
 	n.Unlock()
+
 	// if using lookupd, make a blocking call to get the topics, and immediately create them.
 	// this makes sure that any message received is buffered to the right channels
-	if len(n.lookupPeers) > 0 {
-		channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, n.lookupHTTPAddrs())
+	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
+	if len(lookupdHTTPAddrs) > 0 {
+		channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
 		for _, channelName := range channelNames {
 			if strings.HasSuffix(channelName, "#ephemeral") {
 				// we don't want to pre-create ephemeral channels
@@ -471,6 +474,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 			t.getOrCreateChannel(channelName)
 		}
 	}
+
 	t.Unlock()
 
 	// NOTE: I would prefer for this to only happen in topic.GetChannel() but we're special
