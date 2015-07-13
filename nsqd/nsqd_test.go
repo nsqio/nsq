@@ -3,6 +3,7 @@ package nsqd
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/nsqlookupd"
 )
 
 func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
@@ -275,4 +277,57 @@ func TestPauseMetadata(t *testing.T) {
 	nsqd.PersistMetadata()
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
+}
+
+func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	lookupd := nsqlookupd.New(opts)
+	lookupd.Main()
+	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
+}
+
+func TestReconfigure(t *testing.T) {
+	lopts := nsqlookupd.NewOptions()
+	lopts.Logger = newTestLogger(t)
+	_, _, lookupd1 := mustStartNSQLookupd(lopts)
+	defer lookupd1.Exit()
+	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	defer lookupd2.Exit()
+	_, _, lookupd3 := mustStartNSQLookupd(lopts)
+	defer lookupd3.Exit()
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	time.Sleep(50 * time.Millisecond)
+
+	newOpts := *opts
+	newOpts.NSQLookupdTCPAddresses = []string{lookupd1.RealTCPAddr().String()}
+	nsqd.swapOpts(&newOpts)
+	nsqd.triggerOptsNotification()
+	equal(t, len(nsqd.getOpts().NSQLookupdTCPAddresses), 1)
+
+	time.Sleep(50 * time.Millisecond)
+
+	numLookupPeers := len(nsqd.lookupPeers.Load().([]*lookupPeer))
+	equal(t, numLookupPeers, 1)
+
+	newOpts = *opts
+	newOpts.NSQLookupdTCPAddresses = []string{lookupd2.RealTCPAddr().String(), lookupd3.RealTCPAddr().String()}
+	nsqd.swapOpts(&newOpts)
+	nsqd.triggerOptsNotification()
+	equal(t, len(nsqd.getOpts().NSQLookupdTCPAddresses), 2)
+
+	time.Sleep(50 * time.Millisecond)
+
+	var lookupPeers []string
+	for _, lp := range nsqd.lookupPeers.Load().([]*lookupPeer) {
+		lookupPeers = append(lookupPeers, lp.addr)
+	}
+	equal(t, len(lookupPeers), 2)
+	equal(t, lookupPeers, newOpts.NSQLookupdTCPAddresses)
 }
