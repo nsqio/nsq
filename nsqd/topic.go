@@ -41,7 +41,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 	t := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
-		memoryMsgChan:     make(chan *Message, ctx.nsqd.opts.MemQueueSize),
+		memoryMsgChan:     make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
 		ctx:               ctx,
@@ -54,13 +54,13 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		t.backend = newDummyBackendQueue()
 	} else {
 		t.backend = newDiskQueue(topicName,
-			ctx.nsqd.opts.DataPath,
-			ctx.nsqd.opts.MaxBytesPerFile,
+			ctx.nsqd.getOpts().DataPath,
+			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
-			int32(ctx.nsqd.opts.MaxMsgSize),
-			ctx.nsqd.opts.SyncEvery,
-			ctx.nsqd.opts.SyncTimeout,
-			ctx.nsqd.opts.Logger)
+			int32(ctx.nsqd.getOpts().MaxMsgSize),
+			ctx.nsqd.getOpts().SyncEvery,
+			ctx.nsqd.getOpts().SyncTimeout,
+			ctx.nsqd.getOpts().Logger)
 	}
 
 	t.waitGroup.Wrap(func() { t.messagePump() })
@@ -395,8 +395,8 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 		}
 		if latencyStream == nil {
 			latencyStream = quantile.New(
-				t.ctx.nsqd.opts.E2EProcessingLatencyWindowTime,
-				t.ctx.nsqd.opts.E2EProcessingLatencyPercentiles)
+				t.ctx.nsqd.getOpts().E2EProcessingLatencyWindowTime,
+				t.ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles)
 		}
 		latencyStream.Merge(c.e2eProcessingLatencyStream)
 	}
