@@ -3,6 +3,7 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +11,8 @@ import (
 	"net/http"
 	httpprof "net/http/pprof"
 	"net/url"
+	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -118,6 +121,10 @@ func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
 			func() (interface{}, error) { return s.doPauseChannel(req) }))
 
 	default:
+		if strings.HasPrefix(req.URL.Path, "/config/") {
+			http_api.V1Wrapper(w, req, func() (interface{}, error) { return s.doConfig(req) })
+			return nil
+		}
 		return fmt.Errorf("404 %s", req.URL.Path)
 	}
 	return nil
@@ -595,4 +602,72 @@ func (s *httpServer) printStats(stats []TopicStats, health string, startTime tim
 		}
 	}
 	return buf.Bytes()
+}
+
+func (s *httpServer) doConfig(req *http.Request) (interface{}, error) {
+	var urlRegex = regexp.MustCompile(`^/config/([a-z0-9_]+)$`)
+	matches := urlRegex.FindStringSubmatch(req.URL.Path)
+	if len(matches) == 0 {
+		return nil, http_api.Err{400, "INVALID_OPTION"}
+	}
+	opt := matches[1]
+
+	if req.Method == "PUT" {
+		// add 1 so that it's greater than our max when we test for it
+		// (LimitReader returns a "fake" EOF)
+		readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
+		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+		if err != nil {
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+		if int64(len(body)) == readMax || len(body) == 0 {
+			return nil, http_api.Err{413, "INVALID_VALUE"}
+		}
+
+		opts := *s.ctx.nsqd.getOpts()
+		switch opt {
+		case "nsqlookupd_tcp_addresses":
+			err := json.Unmarshal(body, &opts.NSQLookupdTCPAddresses)
+			if err != nil {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+		case "verbose":
+			err := json.Unmarshal(body, &opts.Verbose)
+			if err != nil {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+		default:
+			return nil, http_api.Err{400, "INVALID_OPTION"}
+		}
+		s.ctx.nsqd.swapOpts(&opts)
+		s.ctx.nsqd.triggerOptsNotification()
+	}
+
+	v, ok := getOptByCfgName(s.ctx.nsqd.getOpts(), opt)
+	if !ok {
+		return nil, http_api.Err{400, "INVALID_OPTION"}
+	}
+
+	return v, nil
+}
+
+func getOptByCfgName(opts interface{}, name string) (interface{}, bool) {
+	val := reflect.ValueOf(opts).Elem()
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		flagName := field.Tag.Get("flag")
+		cfgName := field.Tag.Get("cfg")
+		if flagName == "" {
+			continue
+		}
+		if cfgName == "" {
+			cfgName = strings.Replace(flagName, "-", "_", -1)
+		}
+		if name != cfgName {
+			continue
+		}
+		return val.FieldByName(field.Name).Interface(), true
+	}
+	return nil, false
 }
