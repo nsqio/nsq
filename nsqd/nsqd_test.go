@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/nsqlookupd"
 )
 
@@ -330,4 +331,96 @@ func TestReconfigure(t *testing.T) {
 	}
 	equal(t, len(lookupPeers), 2)
 	equal(t, lookupPeers, newOpts.NSQLookupdTCPAddresses)
+}
+
+func TestCluster(t *testing.T) {
+	lopts := nsqlookupd.NewOptions()
+	lopts.Logger = newTestLogger(t)
+	lopts.BroadcastAddress = "127.0.0.1"
+	_, _, lookupd := mustStartNSQLookupd(lopts)
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.NSQLookupdTCPAddresses = []string{lookupd.RealTCPAddr().String()}
+	opts.BroadcastAddress = "127.0.0.1"
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "cluster_test" + strconv.Itoa(int(time.Now().Unix()))
+
+	hostname, err := os.Hostname()
+	equal(t, err, nil)
+
+	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
+	_, err = http_api.NegotiateV1("POST", url, nil)
+	equal(t, err, nil)
+
+	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
+	_, err = http_api.NegotiateV1("POST", url, nil)
+	equal(t, err, nil)
+
+	// allow some time for nsqd to push info to nsqlookupd
+	time.Sleep(350 * time.Millisecond)
+
+	data, err := http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr()), nil)
+	equal(t, err, nil)
+
+	topicData := data.Get("topic:" + topicName + ":")
+	producers, _ := topicData.Array()
+	equal(t, len(producers), 1)
+
+	producer := topicData.GetIndex(0)
+	equal(t, producer.Get("hostname").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
+	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
+	equal(t, producer.Get("tombstoned").MustBool(), false)
+
+	channelData := data.Get("channel:" + topicName + ":ch")
+	producers, _ = channelData.Array()
+	equal(t, len(producers), 1)
+
+	producer = topicData.GetIndex(0)
+	equal(t, producer.Get("hostname").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
+	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
+	equal(t, producer.Get("tombstoned").MustBool(), false)
+
+	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName), nil)
+	equal(t, err, nil)
+
+	producers, _ = data.Get("producers").Array()
+	equal(t, len(producers), 1)
+
+	producer = data.Get("producers").GetIndex(0)
+	equal(t, producer.Get("hostname").MustString(), hostname)
+	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
+	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
+
+	channels, _ := data.Get("channels").Array()
+	equal(t, len(channels), 1)
+
+	channel := channels[0].(string)
+	equal(t, channel, "ch")
+
+	data, err = http_api.NegotiateV1("POST", fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName), nil)
+	equal(t, err, nil)
+
+	// allow some time for nsqd to push info to nsqlookupd
+	time.Sleep(350 * time.Millisecond)
+
+	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName), nil)
+	equal(t, err, nil)
+
+	producers, _ = data.Get("producers").Array()
+	equal(t, len(producers), 0)
+
+	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr()), nil)
+	equal(t, err, nil)
+
+	producers, _ = data.Get("topic:" + topicName + ":").Array()
+	equal(t, len(producers), 0)
+
+	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
+	equal(t, len(producers), 0)
 }
