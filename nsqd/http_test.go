@@ -16,6 +16,7 @@ import (
 
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/bitly/nsq/nsqlookupd"
 )
 
 func TestHTTPput(t *testing.T) {
@@ -723,4 +724,39 @@ func TestHTTPgetStatusText(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	equal(t, resp.StatusCode, 200)
 	nequal(t, body, nil)
+}
+
+func TestHTTPconfig(t *testing.T) {
+	lopts := nsqlookupd.NewOptions()
+	lopts.Logger = newTestLogger(t)
+	_, _, lookupd1 := mustStartNSQLookupd(lopts)
+	defer lookupd1.Exit()
+	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	defer lookupd2.Exit()
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/config/nsqlookupd_tcp_addresses", httpAddr)
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	equal(t, string(body), "[]")
+
+	client := http.Client{}
+	addrs := fmt.Sprintf(`["%s","%s"]`, lookupd1.RealTCPAddr().String(), lookupd2.RealTCPAddr().String())
+	url = fmt.Sprintf("http://%s/config/nsqlookupd_tcp_addresses", httpAddr)
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(addrs)))
+	equal(t, err, nil)
+	resp, err = client.Do(req)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	equal(t, string(body), addrs)
 }
