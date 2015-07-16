@@ -92,6 +92,9 @@ func NewOptions() *Options {
 		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
 
+		NSQLookupdTCPAddresses: make([]string, 0),
+		AuthHTTPAddresses:      make([]string, 0),
+
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 100 * 1024 * 1024,
 		SyncEvery:       2500,
