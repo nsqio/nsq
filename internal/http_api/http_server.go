@@ -9,7 +9,7 @@ import (
 	"github.com/bitly/nsq/internal/app"
 )
 
-func Serve(listener net.Listener, handler http.Handler, l app.Logger, proto string) {
+func Serve(listener net.Listener, handler http.Handler, proto string, l app.Logger) {
 	l.Output(2, fmt.Sprintf("%s: listening on %s", proto, listener.Addr()))
 
 	server := &http.Server{

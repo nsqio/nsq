@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/julienschmidt/httprouter"
 )
+
+type APIHandler func(http.ResponseWriter, *http.Request, httprouter.Params) (interface{}, error)
 
 type Err struct {
 	Code int
@@ -24,40 +28,35 @@ func acceptVersion(req *http.Request) int {
 	return 0
 }
 
-func RequirePOST(req *http.Request, f func() (interface{}, error)) func() (interface{}, error) {
-	if req.Method != "POST" {
-		return func() (interface{}, error) {
-			return nil, Err{405, "INVALID_REQUEST"}
+func NegotiateVersion(f APIHandler) httprouter.Handle {
+	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		data, err := f(w, req, ps)
+		if err != nil {
+			if acceptVersion(req) == 1 {
+				RespondV1(w, err.(Err).Code, err)
+			} else {
+				// this handler always returns 500 for backwards compatibility
+				Respond(w, 500, err.Error(), nil)
+			}
+			return
 		}
-	}
-	return f
-}
-
-func NegotiateVersionWrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
-	data, err := f()
-	if err != nil {
 		if acceptVersion(req) == 1 {
-			RespondV1(w, err.(Err).Code, err)
+			RespondV1(w, 200, data)
 		} else {
-			// this handler always returns 500 for backwards compatibility
-			Respond(w, 500, err.Error(), nil)
+			Respond(w, 200, "OK", data)
 		}
-		return
-	}
-	if acceptVersion(req) == 1 {
-		RespondV1(w, 200, data)
-	} else {
-		Respond(w, 200, "OK", data)
 	}
 }
 
-func V1Wrapper(w http.ResponseWriter, req *http.Request, f func() (interface{}, error)) {
-	data, err := f()
-	if err != nil {
-		RespondV1(w, err.(Err).Code, err)
-		return
+func V1(f APIHandler) httprouter.Handle {
+	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		data, err := f(w, req, ps)
+		if err != nil {
+			RespondV1(w, err.(Err).Code, err)
+			return
+		}
+		RespondV1(w, 200, data)
 	}
-	RespondV1(w, 200, data)
 }
 
 func Respond(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {

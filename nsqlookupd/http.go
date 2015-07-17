@@ -4,136 +4,79 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	httpprof "net/http/pprof"
+	"net/http/pprof"
 	"sync/atomic"
 
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/julienschmidt/httprouter"
 )
 
 type httpServer struct {
-	ctx *Context
+	ctx    *Context
+	router http.Handler
+}
+
+func newHTTPServer(ctx *Context) *httpServer {
+	router := httprouter.New()
+	router.HandleMethodNotAllowed = true
+	s := &httpServer{
+		ctx:    ctx,
+		router: router,
+	}
+
+	// v1 negotiate
+	router.Handle("GET", "/ping", s.pingHandler)
+	router.Handle("GET", "/debug", http_api.NegotiateVersion(s.doDebug))
+	router.Handle("GET", "/lookup", http_api.NegotiateVersion(s.doLookup))
+	router.Handle("GET", "/topics", http_api.NegotiateVersion(s.doTopics))
+	router.Handle("GET", "/channels", http_api.NegotiateVersion(s.doChannels))
+	router.Handle("GET", "/nodes", http_api.NegotiateVersion(s.doNodes))
+
+	// only v1
+	router.Handle("POST", "/topic/create", http_api.V1(s.doCreateTopic))
+	router.Handle("POST", "/topic/delete", http_api.V1(s.doDeleteTopic))
+	router.Handle("POST", "/channel/create", http_api.V1(s.doCreateChannel))
+	router.Handle("POST", "/channel/delete", http_api.V1(s.doDeleteChannel))
+	router.Handle("POST", "/topic/tombstone", http_api.V1(s.doTombstoneTopicProducer))
+
+	// deprecated, v1 negotiate
+	router.Handle("GET", "/info", http_api.NegotiateVersion(s.doInfo))
+	router.Handle("POST", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
+	router.Handle("POST", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
+	router.Handle("POST", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
+	router.Handle("POST", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
+	router.Handle("POST", "/tombstone_topic_producer", http_api.NegotiateVersion(s.doTombstoneTopicProducer))
+	router.Handle("GET", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
+	router.Handle("GET", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
+	router.Handle("GET", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
+	router.Handle("GET", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
+	router.Handle("GET", "/tombstone_topic_producer", http_api.NegotiateVersion(s.doTombstoneTopicProducer))
+
+	// debug
+	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
+	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
+	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
+	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
+	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
+	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
+	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
+	return s
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	err := s.v1Router(w, req)
-	if err == nil {
-		return
-	}
-
-	err = s.deprecatedRouter(w, req)
-	if err == nil {
-		return
-	}
-
-	err = s.debugRouter(w, req)
-	if err != nil {
-		s.ctx.nsqlookupd.logf("ERROR: %s", err)
-		http_api.Respond(w, 404, "NOT_FOUND", nil)
-	}
+	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/debug":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doDebug(req) })
-	case "/debug/pprof":
-		httpprof.Index(w, req)
-	case "/debug/pprof/cmdline":
-		httpprof.Cmdline(w, req)
-	case "/debug/pprof/symbol":
-		httpprof.Symbol(w, req)
-	case "/debug/pprof/heap":
-		httpprof.Handler("heap").ServeHTTP(w, req)
-	case "/debug/pprof/goroutine":
-		httpprof.Handler("goroutine").ServeHTTP(w, req)
-	case "/debug/pprof/profile":
-		httpprof.Profile(w, req)
-	case "/debug/pprof/block":
-		httpprof.Handler("block").ServeHTTP(w, req)
-	case "/debug/pprof/threadcreate":
-		httpprof.Handler("threadcreate").ServeHTTP(w, req)
-	default:
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/ping":
-		s.pingHandler(w, req)
-
-	case "/lookup":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doLookup(req) })
-	case "/topics":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doTopics(req) })
-	case "/channels":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doChannels(req) })
-	case "/nodes":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doNodes(req) })
-
-	case "/topic/create":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doCreateTopic(req) }))
-	case "/topic/delete":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doDeleteTopic(req) }))
-	case "/topic/tombstone":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doTombstoneTopicProducer(req) }))
-
-	case "/channel/create":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doCreateChannel(req) }))
-	case "/channel/delete":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doDeleteChannel(req) }))
-
-	default:
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/info":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doInfo(req) })
-	case "/delete_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doDeleteTopic(req) })
-	case "/delete_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doDeleteChannel(req) })
-	case "/tombstone_topic_producer":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doTombstoneTopicProducer(req) })
-	case "/create_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doCreateTopic(req) })
-	case "/create_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doCreateChannel(req) })
-	default:
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
 }
 
-func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
+func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
@@ -141,14 +84,14 @@ func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
 	}, nil
 }
 
-func (s *httpServer) doTopics(req *http.Request) (interface{}, error) {
+func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topics := s.ctx.nsqlookupd.DB.FindRegistrations("topic", "*", "").Keys()
 	return map[string]interface{}{
 		"topics": topics,
 	}, nil
 }
 
-func (s *httpServer) doChannels(req *http.Request) (interface{}, error) {
+func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -165,7 +108,7 @@ func (s *httpServer) doChannels(req *http.Request) (interface{}, error) {
 	}, nil
 }
 
-func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
+func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -191,7 +134,7 @@ func (s *httpServer) doLookup(req *http.Request) (interface{}, error) {
 	}, nil
 }
 
-func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -213,7 +156,7 @@ func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -239,7 +182,7 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, error) {
+func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -267,7 +210,7 @@ func (s *httpServer) doTombstoneTopicProducer(req *http.Request) (interface{}, e
 	return nil, nil
 }
 
-func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -289,7 +232,7 @@ func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -324,7 +267,7 @@ type node struct {
 	Topics           []string `json:"topics"`
 }
 
-func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
+func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// dont filter out tombstoned nodes
 	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
@@ -361,7 +304,7 @@ func (s *httpServer) doNodes(req *http.Request) (interface{}, error) {
 	}, nil
 }
 
-func (s *httpServer) doDebug(req *http.Request) (interface{}, error) {
+func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	s.ctx.nsqlookupd.DB.RLock()
 	defer s.ctx.nsqlookupd.DB.RUnlock()
 

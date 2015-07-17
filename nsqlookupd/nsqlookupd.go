@@ -61,9 +61,9 @@ func (l *NSQLookupd) Main() {
 	l.Lock()
 	l.httpListener = httpListener
 	l.Unlock()
-	httpServer := &httpServer{ctx: ctx}
+	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, l.opts.Logger, "HTTP")
+		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
 	})
 }
 

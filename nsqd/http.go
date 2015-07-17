@@ -9,10 +9,9 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	httpprof "net/http/pprof"
+	"net/http/pprof"
 	"net/url"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +19,82 @@ import (
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/julienschmidt/httprouter"
 )
 
 type httpServer struct {
 	ctx         *context
 	tlsEnabled  bool
 	tlsRequired bool
+	router      http.Handler
+}
+
+func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer {
+	router := httprouter.New()
+	router.HandleMethodNotAllowed = true
+	s := &httpServer{
+		ctx:         ctx,
+		tlsEnabled:  tlsEnabled,
+		tlsRequired: tlsRequired,
+		router:      router,
+	}
+
+	// v1 negotiate
+	router.Handle("POST", "/pub", http_api.NegotiateVersion(s.doPUB))
+	router.Handle("POST", "/mpub", http_api.NegotiateVersion(s.doMPUB))
+	router.Handle("GET", "/stats", http_api.NegotiateVersion(s.doStats))
+	router.Handle("GET", "/ping", s.pingHandler)
+
+	// only v1
+	router.Handle("POST", "/topic/create", http_api.V1(s.doCreateTopic))
+	router.Handle("POST", "/topic/delete", http_api.V1(s.doDeleteTopic))
+	router.Handle("POST", "/topic/empty", http_api.V1(s.doEmptyTopic))
+	router.Handle("POST", "/topic/pause", http_api.V1(s.doPauseTopic))
+	router.Handle("POST", "/topic/unpause", http_api.V1(s.doPauseTopic))
+	router.Handle("POST", "/channel/create", http_api.V1(s.doCreateChannel))
+	router.Handle("POST", "/channel/delete", http_api.V1(s.doDeleteChannel))
+	router.Handle("POST", "/channel/empty", http_api.V1(s.doEmptyChannel))
+	router.Handle("POST", "/channel/pause", http_api.V1(s.doPauseChannel))
+	router.Handle("POST", "/channel/unpause", http_api.V1(s.doPauseChannel))
+	router.Handle("GET", "/config/:opt", http_api.V1(s.doConfig))
+	router.Handle("PUT", "/config/:opt", http_api.V1(s.doConfig))
+
+	// deprecated, v1 negotiate
+	router.Handle("POST", "/put", http_api.NegotiateVersion(s.doPUB))
+	router.Handle("POST", "/mput", http_api.NegotiateVersion(s.doMPUB))
+	router.Handle("GET", "/info", http_api.NegotiateVersion(s.doInfo))
+	router.Handle("POST", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
+	router.Handle("POST", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
+	router.Handle("POST", "/empty_topic", http_api.NegotiateVersion(s.doEmptyTopic))
+	router.Handle("POST", "/pause_topic", http_api.NegotiateVersion(s.doPauseTopic))
+	router.Handle("POST", "/unpause_topic", http_api.NegotiateVersion(s.doPauseTopic))
+	router.Handle("POST", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
+	router.Handle("POST", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
+	router.Handle("POST", "/empty_channel", http_api.NegotiateVersion(s.doEmptyChannel))
+	router.Handle("POST", "/pause_channel", http_api.NegotiateVersion(s.doPauseChannel))
+	router.Handle("POST", "/unpause_channel", http_api.NegotiateVersion(s.doPauseChannel))
+	router.Handle("GET", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
+	router.Handle("GET", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
+	router.Handle("GET", "/empty_topic", http_api.NegotiateVersion(s.doEmptyTopic))
+	router.Handle("GET", "/pause_topic", http_api.NegotiateVersion(s.doPauseTopic))
+	router.Handle("GET", "/unpause_topic", http_api.NegotiateVersion(s.doPauseTopic))
+	router.Handle("GET", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
+	router.Handle("GET", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
+	router.Handle("GET", "/empty_channel", http_api.NegotiateVersion(s.doEmptyChannel))
+	router.Handle("GET", "/pause_channel", http_api.NegotiateVersion(s.doPauseChannel))
+	router.Handle("GET", "/unpause_channel", http_api.NegotiateVersion(s.doPauseChannel))
+
+	// debug
+	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
+	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
+	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
+	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
+	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
+	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
+	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
+	return s
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -33,149 +102,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http_api.Respond(w, 403, "TLS_REQUIRED", nil)
 		return
 	}
-
-	err := s.v1Router(w, req)
-	if err == nil {
-		return
-	}
-
-	err = s.deprecatedRouter(w, req)
-	if err == nil {
-		return
-	}
-
-	err = s.debugRouter(w, req)
-	if err != nil {
-		s.ctx.nsqd.logf("ERROR: %s", err)
-		http_api.Respond(w, 404, "NOT_FOUND", nil)
-	}
+	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) debugRouter(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/debug/pprof":
-		httpprof.Index(w, req)
-	case "/debug/pprof/cmdline":
-		httpprof.Cmdline(w, req)
-	case "/debug/pprof/symbol":
-		httpprof.Symbol(w, req)
-	case "/debug/pprof/heap":
-		httpprof.Handler("heap").ServeHTTP(w, req)
-	case "/debug/pprof/goroutine":
-		httpprof.Handler("goroutine").ServeHTTP(w, req)
-	case "/debug/pprof/profile":
-		httpprof.Profile(w, req)
-	case "/debug/pprof/block":
-		httpprof.Handler("block").ServeHTTP(w, req)
-	case "/debug/pprof/threadcreate":
-		httpprof.Handler("threadcreate").ServeHTTP(w, req)
-	default:
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) v1Router(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/pub":
-		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doPUB(req) }))
-	case "/mpub":
-		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doMPUB(req) }))
-
-	case "/stats":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doStats(req) })
-	case "/ping":
-		s.pingHandler(w, req)
-
-	case "/topic/create":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doCreateTopic(req) }))
-	case "/topic/delete":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doDeleteTopic(req) }))
-	case "/topic/empty":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doEmptyTopic(req) }))
-	case "/topic/pause":
-		fallthrough
-	case "/topic/unpause":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doPauseTopic(req) }))
-
-	case "/channel/create":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doCreateChannel(req) }))
-	case "/channel/delete":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doDeleteChannel(req) }))
-	case "/channel/empty":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doEmptyChannel(req) }))
-	case "/channel/pause":
-		fallthrough
-	case "/channel/unpause":
-		http_api.V1Wrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doPauseChannel(req) }))
-
-	default:
-		if strings.HasPrefix(req.URL.Path, "/config/") {
-			http_api.V1Wrapper(w, req, func() (interface{}, error) { return s.doConfig(req) })
-			return nil
-		}
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) deprecatedRouter(w http.ResponseWriter, req *http.Request) error {
-	switch req.URL.Path {
-	case "/put":
-		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doPUB(req) }))
-	case "/mput":
-		http_api.NegotiateVersionWrapper(w, req, http_api.RequirePOST(req,
-			func() (interface{}, error) { return s.doMPUB(req) }))
-	case "/info":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doInfo(req) })
-	case "/empty_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doEmptyTopic(req) })
-	case "/delete_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doDeleteTopic(req) })
-	case "/pause_topic":
-		fallthrough
-	case "/unpause_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doPauseTopic(req) })
-	case "/empty_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doEmptyChannel(req) })
-	case "/delete_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doDeleteChannel(req) })
-	case "/pause_channel":
-		fallthrough
-	case "/unpause_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doPauseChannel(req) })
-	case "/create_topic":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doCreateTopic(req) })
-	case "/create_channel":
-		http_api.NegotiateVersionWrapper(w, req,
-			func() (interface{}, error) { return s.doCreateChannel(req) })
-	default:
-		return fmt.Errorf("404 %s", req.URL.Path)
-	}
-	return nil
-}
-
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	health := s.ctx.nsqd.GetHealth()
 	code := 200
 	if !s.ctx.nsqd.IsHealthy() {
@@ -186,7 +116,7 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, health)
 }
 
-func (s *httpServer) doInfo(req *http.Request) (interface{}, error) {
+func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return struct {
 		Version string `json:"version"`
 	}{
@@ -234,7 +164,7 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
 }
 
-func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
+func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
@@ -283,7 +213,7 @@ func (s *httpServer) doPUB(req *http.Request) (interface{}, error) {
 	return "OK", nil
 }
 
-func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
+func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var msgs []*Message
 	var exit bool
 
@@ -353,12 +283,12 @@ func (s *httpServer) doMPUB(req *http.Request) (interface{}, error) {
 	return "OK", nil
 }
 
-func (s *httpServer) doCreateTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, _, err := s.getTopicFromQuery(req)
 	return nil, err
 }
 
-func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
@@ -387,7 +317,7 @@ func (s *httpServer) doEmptyTopic(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
@@ -407,7 +337,7 @@ func (s *httpServer) doDeleteTopic(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
+func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
@@ -442,7 +372,7 @@ func (s *httpServer) doPauseTopic(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
@@ -451,7 +381,7 @@ func (s *httpServer) doCreateChannel(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doEmptyChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
@@ -470,7 +400,7 @@ func (s *httpServer) doEmptyChannel(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
@@ -484,7 +414,7 @@ func (s *httpServer) doDeleteChannel(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
+func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
@@ -513,7 +443,7 @@ func (s *httpServer) doPauseChannel(req *http.Request) (interface{}, error) {
 	return nil, nil
 }
 
-func (s *httpServer) doStats(req *http.Request) (interface{}, error) {
+func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
@@ -604,13 +534,8 @@ func (s *httpServer) printStats(stats []TopicStats, health string, startTime tim
 	return buf.Bytes()
 }
 
-func (s *httpServer) doConfig(req *http.Request) (interface{}, error) {
-	var urlRegex = regexp.MustCompile(`^/config/([a-z0-9_]+)$`)
-	matches := urlRegex.FindStringSubmatch(req.URL.Path)
-	if len(matches) == 0 {
-		return nil, http_api.Err{400, "INVALID_OPTION"}
-	}
-	opt := matches[1]
+func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	opt := ps.ByName("opt")
 
 	if req.Method == "PUT" {
 		// add 1 so that it's greater than our max when we test for it
