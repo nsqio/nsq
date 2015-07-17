@@ -239,13 +239,9 @@ func (n *NSQD) Main() {
 		n.Lock()
 		n.httpsListener = httpsListener
 		n.Unlock()
-		httpsServer := &httpServer{
-			ctx:         ctx,
-			tlsEnabled:  true,
-			tlsRequired: true,
-		}
+		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
-			http_api.Serve(n.httpsListener, httpsServer, n.getOpts().Logger, "HTTPS")
+			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.getOpts().Logger)
 		})
 	}
 	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
@@ -256,13 +252,9 @@ func (n *NSQD) Main() {
 	n.Lock()
 	n.httpListener = httpListener
 	n.Unlock()
-	httpServer := &httpServer{
-		ctx:         ctx,
-		tlsEnabled:  false,
-		tlsRequired: n.getOpts().TLSRequired == TLSRequired,
-	}
+	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, n.getOpts().Logger, "HTTP")
+		http_api.Serve(n.httpListener, httpServer, "HTTP", n.getOpts().Logger)
 	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })

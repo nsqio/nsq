@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/bitly/nsq/internal/version"
 	"github.com/bitly/nsq/nsqadmin/templates"
 	"github.com/blang/semver"
+	"github.com/julienschmidt/httprouter"
 )
 
 var v1EndpointVersion semver.Version
@@ -49,6 +49,7 @@ type httpServer struct {
 	ctx      *Context
 	counters map[string]map[string]int64
 	proxy    *httputil.ReverseProxy
+	router   http.Handler
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
@@ -73,92 +74,57 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		proxy = NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
 	}
 
-	return &httpServer{
+	router := httprouter.New()
+	router.HandleMethodNotAllowed = true
+	s := &httpServer{
 		ctx:      ctx,
 		counters: make(map[string]map[string]int64),
 		proxy:    proxy,
+		router:   router,
 	}
+
+	router.Handle("GET", "/ping", s.pingHandler)
+
+	router.Handle("GET", "/", s.indexHandler)
+	router.Handle("GET", "/nodes", s.nodesHandler)
+	router.Handle("GET", "/node/:node", s.nodeHandler)
+	router.Handle("GET", "/topic/:topic", s.topicHandler)
+	router.Handle("GET", "/topic/:topic/:channel", s.channelHandler)
+	router.Handle("GET", "/static/:asset", s.embeddedAssetHandler)
+	router.Handle("GET", "/counter", s.counterHandler)
+	router.Handle("GET", "/counter/data", s.counterDataHandler)
+	router.Handle("GET", "/lookup", s.lookupHandler)
+	router.Handle("GET", "/graphite_data", s.graphiteDataHandler)
+
+	router.Handle("POST", "/tombstone_topic_producer", s.tombstoneTopicProducerHandler)
+	router.Handle("POST", "/empty_topic", s.emptyTopicHandler)
+	router.Handle("POST", "/delete_topic", s.deleteTopicHandler)
+	router.Handle("POST", "/pause_topic", s.pauseTopicHandler)
+	router.Handle("POST", "/unpause_topic", s.pauseTopicHandler)
+	router.Handle("POST", "/empty_channel", s.emptyChannelHandler)
+	router.Handle("POST", "/delete_channel", s.deleteChannelHandler)
+	router.Handle("POST", "/pause_channel", s.pauseChannelHandler)
+	router.Handle("POST", "/unpause_channel", s.pauseChannelHandler)
+	router.Handle("POST", "/create_topic_channel", s.createTopicChannelHandler)
+
+	if s.ctx.nsqadmin.opts.ProxyGraphite {
+		router.Handler("GET", "/render", s.proxy)
+	}
+
+	return s
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
-	if strings.HasPrefix(req.URL.Path, "/node/") {
-		s.nodeHandler(w, req)
-		return
-	} else if strings.HasPrefix(req.URL.Path, "/topic/") {
-		s.topicHandler(w, req)
-		return
-	} else if strings.HasPrefix(req.URL.Path, "/static/") {
-		if req.Method != "GET" {
-			s.ctx.nsqadmin.logf("ERROR: invalid %s to GET only method", req.Method)
-			http.Error(w, "INVALID_REQUEST", 500)
-		} else {
-			s.embeddedAssetHandler(w, req)
-		}
-		return
-	}
-
-	switch req.URL.Path {
-	case "/":
-		s.indexHandler(w, req)
-	case "/ping":
-		s.pingHandler(w, req)
-	case "/nodes":
-		s.nodesHandler(w, req)
-	case "/tombstone_topic_producer":
-		s.tombstoneTopicProducerHandler(w, req)
-	case "/empty_topic":
-		s.emptyTopicHandler(w, req)
-	case "/delete_topic":
-		s.deleteTopicHandler(w, req)
-	case "/pause_topic":
-		s.pauseTopicHandler(w, req)
-	case "/unpause_topic":
-		s.pauseTopicHandler(w, req)
-	case "/delete_channel":
-		s.deleteChannelHandler(w, req)
-	case "/empty_channel":
-		s.emptyChannelHandler(w, req)
-	case "/pause_channel":
-		s.pauseChannelHandler(w, req)
-	case "/unpause_channel":
-		s.pauseChannelHandler(w, req)
-	case "/counter/data":
-		s.counterDataHandler(w, req)
-	case "/counter":
-		s.counterHandler(w, req)
-	case "/lookup":
-		s.lookupHandler(w, req)
-	case "/create_topic_channel":
-		s.createTopicChannelHandler(w, req)
-	case "/graphite_data":
-		s.graphiteDataHandler(w, req)
-	case "/render":
-		if !s.ctx.nsqadmin.opts.ProxyGraphite {
-			http.NotFound(w, req)
-			return
-		}
-		s.proxy.ServeHTTP(w, req)
-	default:
-		s.ctx.nsqadmin.logf("ERROR: 404 %s", req.URL.Path)
-		http.NotFound(w, req)
-	}
+	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Length", "2")
 	io.WriteString(w, "OK")
 }
 
-func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request) {
-	var urlRegex = regexp.MustCompile(`^/static/(.+)$`)
-	matches := urlRegex.FindStringSubmatch(req.URL.Path)
-	if len(matches) == 0 {
-		s.ctx.nsqadmin.logf("ERROR:  No embedded asset name for url - %s", req.URL.Path)
-		http.NotFound(w, req)
-		return
-	}
-	assetName := matches[1]
+func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	assetName := ps.ByName("asset")
 	s.ctx.nsqadmin.logf("INFO: Requesting embedded asset - %s", assetName)
 
 	asset, error := templates.Asset(assetName)
@@ -178,7 +144,7 @@ func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Reque
 	w.Write(asset)
 }
 
-func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -211,28 +177,8 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
-	var urlRegex = regexp.MustCompile(`^/topic/(.*)$`)
-	matches := urlRegex.FindStringSubmatch(req.URL.Path)
-	if len(matches) == 0 {
-		http.Error(w, "INVALID_TOPIC", 500)
-		return
-	}
-	parts := strings.Split(matches[1], "/")
-	topicName := parts[0]
-	if !protocol.IsValidTopicName(topicName) {
-		http.Error(w, "INVALID_TOPIC", 500)
-		return
-	}
-	if len(parts) == 2 {
-		channelName := parts[1]
-		if !protocol.IsValidChannelName(channelName) {
-			http.Error(w, "INVALID_CHANNEL", 500)
-		} else {
-			s.channelHandler(w, req, topicName, channelName)
-		}
-		return
-	}
+func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	topicName := ps.ByName("topic")
 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
@@ -287,7 +233,10 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, topicName string, channelName string) {
+func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -342,7 +291,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, to
 	}
 }
 
-func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -381,12 +330,7 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
@@ -460,12 +404,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	http.Redirect(w, req, "/lookup", 302)
 }
 
-func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
@@ -531,12 +470,7 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	http.Redirect(w, req, rd, 302)
 }
 
-func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
@@ -586,12 +520,7 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	http.Redirect(w, req, rd, 302)
 }
 
-func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
@@ -642,12 +571,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 	http.Redirect(w, req, rd, 302)
 }
 
-func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
@@ -670,12 +594,7 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request)
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
 }
 
-func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
@@ -703,12 +622,7 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request)
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
 }
 
-func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
@@ -732,12 +646,7 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 		url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
-func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "POST" {
-		s.ctx.nsqadmin.logf("ERROR: invalid %s to POST only method", req.Method)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
-	}
+func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
@@ -765,22 +674,15 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
 }
 
-func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	node := ps.ByName("node")
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
 		http.Error(w, "INVALID_REQUEST", 500)
 		return
 	}
-
-	var urlRegex = regexp.MustCompile(`^/node/(.*)$`)
-	matches := urlRegex.FindStringSubmatch(req.URL.Path)
-	if len(matches) == 0 {
-		http.Error(w, "INVALID_NODE", 500)
-		return
-	}
-	parts := strings.Split(matches[1], "/")
-	node := parts[0]
 
 	found := false
 	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
@@ -838,7 +740,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -877,7 +779,7 @@ func (c counterTarget) Host() string {
 	return "*"
 }
 
-func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -906,7 +808,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request) {
 // The initial request is the number of messages processed since each nsqd started up.
 // Subsequent requsts pass that ID and get an updated delta based on each individual channel/nsqd message count
 // That ID must be re-requested or it will be expired.
-func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
@@ -957,7 +859,7 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	http_api.Respond(w, 200, "OK", data)
 }
 
-func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request) {
+func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
