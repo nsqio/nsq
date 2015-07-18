@@ -57,7 +57,7 @@ func TestGossip(t *testing.T) {
 	sort.Ints(tcpPorts)
 
 	// wait for convergence
-	converge(5*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(5*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("client", "", "")) != num {
 				return false
@@ -65,6 +65,7 @@ func TestGossip(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	// all nodes in the cluster should have registrations
 	for _, nsqd := range nsqds {
@@ -85,7 +86,7 @@ func TestGossip(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -94,6 +95,7 @@ func TestGossip(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
@@ -127,6 +129,10 @@ func TestGossipResync(t *testing.T) {
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
+		opts.GossipReapInterval = 200 * time.Millisecond
+		opts.GossipReconnectTimeout = 100 * time.Millisecond
+		opts.GossipSuspicionMult = 1
+		opts.GossipProbeInterval = 100 * time.Millisecond
 		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
 			opts.GossipSeedAddresses = []string{seedNode.getOpts().GossipAddress}
@@ -150,7 +156,7 @@ func TestGossipResync(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -159,6 +165,7 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
@@ -175,7 +182,7 @@ func TestGossipResync(t *testing.T) {
 	stillAlive := nsqds[:num-1]
 
 	// check that other nodes see it as closed
-	converge(10*time.Second, stillAlive, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, stillAlive, convergenceTester.c, func() bool {
 		for _, nsqd := range stillAlive {
 			if len(nsqd.serf.Members()) != len(stillAlive) {
 				return false
@@ -183,6 +190,7 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	// restart stopped node
 	_, _, nsqd := mustStartNSQD(nsqds[num-1].getOpts())
@@ -190,7 +198,7 @@ func TestGossipResync(t *testing.T) {
 	nsqds[num-1] = nsqd
 
 	// check that other nodes see it as back open
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.serf.Members()) != len(nsqds) {
 				return false
@@ -198,9 +206,10 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	// check that all nodes see the restarted first node
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -209,6 +218,7 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	// we should have producers for the topic/channel back now
 	for _, nsqd := range nsqds {
@@ -266,7 +276,7 @@ func TestRegossip(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -275,6 +285,7 @@ func TestRegossip(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
@@ -294,7 +305,7 @@ func TestRegossip(t *testing.T) {
 	}
 
 	// wait for regossip
-	converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -303,6 +314,7 @@ func TestRegossip(t *testing.T) {
 		}
 		return true
 	})
+	equal(t, converged, true)
 
 	// we should have producers for the topic/channel back now on all nodes
 	for _, nsqd := range nsqds {
@@ -316,16 +328,17 @@ func TestRegossip(t *testing.T) {
 	}
 }
 
-func converge(timeout time.Duration, nsqds []*NSQD, notifyChan chan struct{}, isConverged func() bool) {
-	// wait for convergence
-	converged := false
-	t := time.NewTimer(timeout)
-	for !converged {
+func converge(timeout time.Duration, nsqds []*NSQD, notifyChan chan struct{}, isConverged func() bool) bool {
+	for {
 		select {
-		case <-t.C:
-			converged = true
+		case <-time.After(timeout):
+			return false
 		case <-notifyChan:
-			converged = isConverged()
+			if isConverged() {
+				goto exit
+			}
 		}
 	}
+exit:
+	return true
 }
