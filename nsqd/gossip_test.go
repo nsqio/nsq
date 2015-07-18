@@ -7,24 +7,10 @@ import (
 	"time"
 )
 
-type gossipTester struct {
-	c chan struct{}
-}
-
-func (g gossipTester) notify() {
-	g.c <- struct{}{}
-	select {
-	case g.c <- struct{}{}:
-	default:
-	}
-}
-
 func TestGossip(t *testing.T) {
 	var nsqds []*NSQD
 	var seedNode *NSQD
 	var tcpPorts []int
-
-	convergenceTester := gossipTester{make(chan struct{}, 20)}
 
 	num := 3
 	for i := 0; i < num; i++ {
@@ -39,7 +25,6 @@ func TestGossip(t *testing.T) {
 		opts.Logger = newTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
-		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
 			opts.GossipSeedAddresses = []string{seedNode.getOpts().GossipAddress}
 		}
@@ -57,7 +42,7 @@ func TestGossip(t *testing.T) {
 	sort.Ints(tcpPorts)
 
 	// wait for convergence
-	converged := converge(5*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(5*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("client", "", "")) != num {
 				return false
@@ -86,7 +71,7 @@ func TestGossip(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -114,8 +99,6 @@ func TestGossipResync(t *testing.T) {
 	var seedNode *NSQD
 	var tcpPorts []int
 
-	convergenceTester := gossipTester{make(chan struct{}, 20)}
-
 	num := 3
 	for i := 0; i < num; i++ {
 		// find an open port
@@ -133,7 +116,6 @@ func TestGossipResync(t *testing.T) {
 		opts.GossipReconnectTimeout = 100 * time.Millisecond
 		opts.GossipSuspicionMult = 1
 		opts.GossipProbeInterval = 100 * time.Millisecond
-		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
 			opts.GossipSeedAddresses = []string{seedNode.getOpts().GossipAddress}
 		}
@@ -156,7 +138,7 @@ func TestGossipResync(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converged := converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -182,7 +164,7 @@ func TestGossipResync(t *testing.T) {
 	stillAlive := nsqds[:num-1]
 
 	// check that other nodes see it as closed
-	converged = converge(10*time.Second, stillAlive, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, stillAlive, func() bool {
 		for _, nsqd := range stillAlive {
 			if len(nsqd.serf.Members()) != len(stillAlive) {
 				return false
@@ -198,7 +180,7 @@ func TestGossipResync(t *testing.T) {
 	nsqds[num-1] = nsqd
 
 	// check that other nodes see it as back open
-	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.serf.Members()) != len(nsqds) {
 				return false
@@ -209,7 +191,7 @@ func TestGossipResync(t *testing.T) {
 	equal(t, converged, true)
 
 	// check that all nodes see the restarted first node
-	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -237,8 +219,6 @@ func TestRegossip(t *testing.T) {
 	var seedNode *NSQD
 	var tcpPorts []int
 
-	convergenceTester := gossipTester{make(chan struct{}, 20)}
-
 	num := 3
 	for i := 0; i < num; i++ {
 		// find an open port
@@ -253,7 +233,6 @@ func TestRegossip(t *testing.T) {
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
 		opts.GossipRegossipInterval = 1 * time.Second
-		opts.gossipDelegate = convergenceTester
 		if seedNode != nil {
 			opts.GossipSeedAddresses = []string{seedNode.getOpts().GossipAddress}
 		}
@@ -276,7 +255,7 @@ func TestRegossip(t *testing.T) {
 	topic.GetChannel("ch")
 	firstPort := nsqds[0].tcpListener.Addr().(*net.TCPAddr).Port
 
-	converged := converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged := converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -305,7 +284,7 @@ func TestRegossip(t *testing.T) {
 	}
 
 	// wait for regossip
-	converged = converge(10*time.Second, nsqds, convergenceTester.c, func() bool {
+	converged = converge(10*time.Second, nsqds, func() bool {
 		for _, nsqd := range nsqds {
 			if len(nsqd.rdb.FindProducers("topic", topicName, "")) != 1 ||
 				len(nsqd.rdb.FindProducers("channel", topicName, "ch")) != 1 {
@@ -328,12 +307,12 @@ func TestRegossip(t *testing.T) {
 	}
 }
 
-func converge(timeout time.Duration, nsqds []*NSQD, notifyChan chan struct{}, isConverged func() bool) bool {
+func converge(timeout time.Duration, nsqds []*NSQD, isConverged func() bool) bool {
 	for {
 		select {
 		case <-time.After(timeout):
 			return false
-		case <-notifyChan:
+		case <-time.After(10 * time.Millisecond):
 			if isConverged() {
 				goto exit
 			}
