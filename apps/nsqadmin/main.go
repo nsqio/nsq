@@ -71,9 +71,9 @@ func main() {
 		}
 	}
 
-	opts := nsqadmin.NewNSQAdminOptions()
+	opts := nsqadmin.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqadmin := nsqadmin.NewNSQAdmin(opts)
+	nsqadmin := nsqadmin.New(opts)
 
 	nsqadmin.Main()
 	<-exitChan

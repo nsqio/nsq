@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type nsqadminOptions struct {
+type Options struct {
 	HTTPAddress string `flag:"http-address"`
 
 	GraphiteURL   string `flag:"graphite-url"`
@@ -24,8 +24,8 @@ type nsqadminOptions struct {
 	Logger logger
 }
 
-func NewNSQAdminOptions() *nsqadminOptions {
-	return &nsqadminOptions{
+func NewOptions() *Options {
+	return &Options{
 		HTTPAddress:       "0.0.0.0:4171",
 		UseStatsdPrefixes: true,
 		StatsdPrefix:      "nsq.%s",
