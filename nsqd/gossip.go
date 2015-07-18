@@ -261,9 +261,6 @@ func (n *NSQD) serfEventLoop() {
 			default:
 				n.logf("WARNING: un-handled Serf event: %#v", ev)
 			}
-			if n.getOpts().gossipDelegate != nil {
-				n.getOpts().gossipDelegate.notify()
-			}
 		case <-n.exitChan:
 			goto exit
 		}
