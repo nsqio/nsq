@@ -2,6 +2,8 @@ package nsqd
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"os"
@@ -62,7 +64,8 @@ func initSerf(opts *Options,
 	tcpAddr *net.TCPAddr,
 	httpAddr *net.TCPAddr,
 	httpsAddr *net.TCPAddr,
-	broadcastAddr *net.TCPAddr) (*serf.Serf, error) {
+	broadcastAddr *net.TCPAddr,
+	key []byte) (*serf.Serf, error) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -93,6 +96,9 @@ func initSerf(opts *Options,
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
 	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}
+	if len(key) != 0 {
+		serfConfig.MemberlistConfig.SecretKey = key
+	}
 	serfConfig.EventCh = serfEventChan
 	serfConfig.EventBuffer = 1024
 	serfConfig.ReconnectTimeout = time.Hour
@@ -286,6 +292,13 @@ func (n *NSQD) gossipLoop() {
 	var topicName string
 	var channelName string
 
+	if n.serf.EncryptionEnabled() {
+		err := n.rotateGossipKey()
+		n.logf("FATAL: could not rotate gossip key - %s", err)
+		n.Exit()
+		return
+	}
+
 	regossipTicker := time.NewTicker(n.getOpts().GossipRegossipInterval)
 
 	if len(n.getOpts().GossipSeedAddresses) > 0 {
@@ -362,4 +375,35 @@ func (n *NSQD) gossipLoop() {
 exit:
 	regossipTicker.Stop()
 	n.logf("GOSSIP: exiting")
+}
+
+func (n *NSQD) initialGossipKey() []byte {
+	var key []byte
+	if n.tlsConfig != nil && len(n.tlsConfig.Certificates) > 0 {
+		key = n.tlsConfig.Certificates[0].Leaf.Signature
+	}
+	if n.gossipKey == nil {
+		n.gossipKey = key
+	}
+	return key
+}
+
+func (n *NSQD) rotateGossipKey() error {
+	if n.gossipKey == nil {
+		return nil
+	}
+
+	key := make([]byte, 32)
+	_, err := rand.Reader.Read(key)
+	strKey := base64.StdEncoding.EncodeToString(key)
+	_, err = n.serf.KeyManager().InstallKey(strKey)
+	if err != nil {
+		return err
+	}
+	_, err = n.serf.KeyManager().UseKey(strKey)
+	if err != nil {
+		return err
+	}
+	_, err = n.serf.KeyManager().RemoveKey(string(n.gossipKey))
+	return err
 }
