@@ -24,6 +24,10 @@ type Options struct {
 	GossipAddress          string        `flag:"gossip-address"`
 	GossipSeedAddresses    []string      `flag:"gossip-seed-address"`
 	GossipRegossipInterval time.Duration `flag:"gossip-regossip-interval"`
+	GossipProbeInterval    time.Duration
+	GossipSuspicionMult    int
+	GossipReapInterval     time.Duration
+	GossipReconnectTimeout time.Duration
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -148,5 +152,9 @@ func NewOptions() *Options {
 
 		gossipDelegate:         nilGossipDelegate{},
 		GossipRegossipInterval: 60 * time.Second,
+		GossipProbeInterval:    1 * time.Second,
+		GossipSuspicionMult:    5,
+		GossipReapInterval:     15 * time.Second,
+		GossipReconnectTimeout: 1 * time.Hour,
 	}
 }

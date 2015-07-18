@@ -95,13 +95,16 @@ func initSerf(opts *Options,
 	serfConfig.MemberlistConfig.BindPort = gossipAddr.Port
 	serfConfig.MemberlistConfig.GossipInterval = 100 * time.Millisecond
 	serfConfig.MemberlistConfig.GossipNodes = 5
+	serfConfig.MemberlistConfig.ProbeInterval = opts.GossipProbeInterval
+	serfConfig.MemberlistConfig.SuspicionMult = opts.GossipSuspicionMult
 	serfConfig.MemberlistConfig.LogOutput = logWriter{opts.Logger, []byte("memberlist:")}
 	if len(key) != 0 {
 		serfConfig.MemberlistConfig.SecretKey = key
 	}
 	serfConfig.EventCh = serfEventChan
 	serfConfig.EventBuffer = 1024
-	serfConfig.ReconnectTimeout = time.Hour
+	serfConfig.ReapInterval = opts.GossipReapInterval
+	serfConfig.ReconnectTimeout = opts.GossipReconnectTimeout
 	serfConfig.LogOutput = logWriter{opts.Logger, []byte("serf:")}
 
 	return serf.Create(serfConfig)
