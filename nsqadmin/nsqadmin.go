@@ -18,14 +18,14 @@ import (
 
 type NSQAdmin struct {
 	sync.RWMutex
-	opts          *nsqadminOptions
+	opts          *Options
 	httpListener  net.Listener
 	waitGroup     util.WaitGroupWrapper
 	notifications chan *AdminAction
 	graphiteURL   *url.URL
 }
 
-func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
+func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
 		opts:          opts,
 		notifications: make(chan *AdminAction),
