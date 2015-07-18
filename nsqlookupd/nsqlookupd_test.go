@@ -40,14 +40,12 @@ func newTestLogger(tbl tbLog) logger {
 	return &testLogger{tbl}
 }
 
-func mustStartLookupd(opts *nsqlookupdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
+func mustStartLookupd(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
-	nsqlookupd := NewNSQLookupd(opts)
+	nsqlookupd := New(opts)
 	nsqlookupd.Main()
-	return nsqlookupd.tcpListener.Addr().(*net.TCPAddr),
-		nsqlookupd.httpListener.Addr().(*net.TCPAddr),
-		nsqlookupd
+	return nsqlookupd.RealTCPAddr(), nsqlookupd.RealHTTPAddr(), nsqlookupd
 }
 
 func mustConnectLookupd(t *testing.T, tcpAddr *net.TCPAddr) net.Conn {
@@ -74,7 +72,7 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 }
 
 func TestBasicLookupd(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
@@ -169,7 +167,7 @@ func TestBasicLookupd(t *testing.T) {
 }
 
 func TestChannelUnregister(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
@@ -219,7 +217,7 @@ func TestChannelUnregister(t *testing.T) {
 }
 
 func TestTombstoneRecover(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.TombstoneLifetime = 50 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
@@ -268,7 +266,7 @@ func TestTombstoneRecover(t *testing.T) {
 }
 
 func TestTombstoneUnregister(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.TombstoneLifetime = 50 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
@@ -310,7 +308,7 @@ func TestTombstoneUnregister(t *testing.T) {
 }
 
 func TestInactiveNodes(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.InactiveProducerTimeout = 200 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
@@ -342,7 +340,7 @@ func TestInactiveNodes(t *testing.T) {
 }
 
 func TestTombstonedNodes(t *testing.T) {
-	opts := NewNSQLookupdOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()

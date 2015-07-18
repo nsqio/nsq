@@ -9,7 +9,7 @@ import (
 
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -30,7 +30,7 @@ func TestPutMessage(t *testing.T) {
 
 // ensure that both channels get the same message
 func TestPutMessage2Chan(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -57,7 +57,7 @@ func TestPutMessage2Chan(t *testing.T) {
 func TestInFlightWorker(t *testing.T) {
 	count := 250
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MsgTimeout = 100 * time.Millisecond
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
@@ -100,7 +100,7 @@ func TestInFlightWorker(t *testing.T) {
 }
 
 func TestChannelEmpty(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -133,7 +133,7 @@ func TestChannelEmpty(t *testing.T) {
 }
 
 func TestChannelEmptyConsumer(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

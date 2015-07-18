@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type nsqdOptions struct {
+type Options struct {
 	// basic options
 	ID                     int64    `flag:"worker-id" cfg:"id"`
 	Verbose                bool     `flag:"verbose"`
@@ -74,7 +74,7 @@ type nsqdOptions struct {
 	Logger logger
 }
 
-func NewNSQDOptions() *nsqdOptions {
+func NewOptions() *Options {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatal(err)
@@ -84,13 +84,16 @@ func NewNSQDOptions() *nsqdOptions {
 	io.WriteString(h, hostname)
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
-	return &nsqdOptions{
+	return &Options{
 		ID: defaultID,
 
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
 		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
+
+		NSQLookupdTCPAddresses: make([]string, 0),
+		AuthHTTPAddresses:      make([]string, 0),
 
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 100 * 1024 * 1024,

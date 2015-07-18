@@ -22,9 +22,9 @@ func TestConfigFlagParsing(t *testing.T) {
 	toml.DecodeReader(f, &cfg)
 	cfg.Validate()
 
-	opts := nsqd.NewNSQDOptions()
+	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqd.NewNSQD(opts)
+	nsqd.New(opts)
 
 	if opts.TLSMinVersion != tls.VersionTLS10 {
 		t.Errorf("min %#v not expected %#v", opts.TLSMinVersion, tls.VersionTLS10)

@@ -13,7 +13,7 @@ import (
 )
 
 func TestStats(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -42,7 +42,7 @@ func TestStats(t *testing.T) {
 func TestClientAttributes(t *testing.T) {
 	userAgent := "Test User Agent"
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.SnappyEnabled = true

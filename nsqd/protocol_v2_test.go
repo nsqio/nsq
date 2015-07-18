@@ -27,7 +27,7 @@ import (
 	"github.com/mreiferson/go-snappystream"
 )
 
-func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
+func mustStartNSQD(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
 	opts.HTTPSAddress = "127.0.0.1:0"
@@ -38,11 +38,9 @@ func mustStartNSQD(opts *nsqdOptions) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 		}
 		opts.DataPath = tmpDir
 	}
-	nsqd := NewNSQD(opts)
+	nsqd := New(opts)
 	nsqd.Main()
-	return nsqd.tcpListener.Addr().(*net.TCPAddr),
-		nsqd.httpListener.Addr().(*net.TCPAddr),
-		nsqd
+	return nsqd.RealTCPAddr(), nsqd.RealHTTPAddr(), nsqd
 }
 
 func mustConnectNSQD(tcpAddr *net.TCPAddr) (net.Conn, error) {
@@ -122,7 +120,7 @@ func TestChannelTopicNames(t *testing.T) {
 
 // exercise the basic operations of the V2 protocol
 func TestBasicV2(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 60 * time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -157,7 +155,7 @@ func TestBasicV2(t *testing.T) {
 func TestMultipleConsumerV2(t *testing.T) {
 	msgChan := make(chan *Message)
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 60 * time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -203,7 +201,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 func TestClientTimeout(t *testing.T) {
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 150 * time.Millisecond
 	opts.Verbose = true
@@ -240,7 +238,7 @@ done:
 func TestClientHeartbeat(t *testing.T) {
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 200 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -276,7 +274,7 @@ func TestClientHeartbeat(t *testing.T) {
 func TestClientHeartbeatDisableSUB(t *testing.T) {
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 200 * time.Millisecond
 	opts.Verbose = true
@@ -295,7 +293,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 }
 
 func TestClientHeartbeatDisable(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 100 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -317,7 +315,7 @@ func TestClientHeartbeatDisable(t *testing.T) {
 }
 
 func TestMaxHeartbeatIntervalValid(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MaxHeartbeatInterval = 300 * time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -335,7 +333,7 @@ func TestMaxHeartbeatIntervalValid(t *testing.T) {
 }
 
 func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.MaxHeartbeatInterval = 300 * time.Second
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -356,7 +354,7 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 func TestPausing(t *testing.T) {
 	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -420,7 +418,7 @@ func TestPausing(t *testing.T) {
 }
 
 func TestEmptyCommand(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -437,7 +435,7 @@ func TestEmptyCommand(t *testing.T) {
 }
 
 func TestSizeLimits(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MaxMsgSize = 100
@@ -554,7 +552,7 @@ func TestSizeLimits(t *testing.T) {
 }
 
 func TestDPUB(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -596,7 +594,7 @@ func TestDPUB(t *testing.T) {
 }
 
 func TestTouch(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MsgTimeout = 150 * time.Millisecond
@@ -642,7 +640,7 @@ func TestTouch(t *testing.T) {
 }
 
 func TestMaxRdyCount(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MaxRdyCount = 50
@@ -690,7 +688,7 @@ func TestMaxRdyCount(t *testing.T) {
 }
 
 func TestFatalError(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -714,7 +712,7 @@ func TestFatalError(t *testing.T) {
 }
 
 func TestOutputBuffering(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MaxOutputBufferSize = 512 * 1024
@@ -766,7 +764,7 @@ func TestOutputBuffering(t *testing.T) {
 }
 
 func TestOutputBufferingValidity(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MaxOutputBufferSize = 512 * 1024
@@ -809,7 +807,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 }
 
 func TestTLS(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -848,7 +846,7 @@ func TestTLS(t *testing.T) {
 }
 
 func TestTLSRequired(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -897,7 +895,7 @@ func TestTLSRequired(t *testing.T) {
 }
 
 func TestTLSAuthRequire(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -963,7 +961,7 @@ func TestTLSAuthRequire(t *testing.T) {
 }
 
 func TestTLSAuthRequireVerify(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.TLSCert = "./test/certs/server.pem"
@@ -1052,7 +1050,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 }
 
 func TestDeflate(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.DeflateEnabled = true
@@ -1088,7 +1086,7 @@ type readWriter struct {
 }
 
 func TestSnappy(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.SnappyEnabled = true
@@ -1141,7 +1139,7 @@ func TestSnappy(t *testing.T) {
 }
 
 func TestTLSDeflate(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.DeflateEnabled = true
@@ -1198,7 +1196,7 @@ func TestSampling(t *testing.T) {
 	sampleRate := 42
 	slack := 5
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.MaxRdyCount = int64(num)
@@ -1265,7 +1263,7 @@ func TestSampling(t *testing.T) {
 }
 
 func TestTLSSnappy(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.SnappyEnabled = true
@@ -1316,7 +1314,7 @@ func TestTLSSnappy(t *testing.T) {
 }
 
 func TestClientMsgTimeout(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
@@ -1368,7 +1366,7 @@ func TestClientMsgTimeout(t *testing.T) {
 }
 
 func TestBadFin(t *testing.T) {
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -1428,7 +1426,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	addr, err := url.Parse(authd.URL)
 	equal(t, err, nil)
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 	opts.AuthHTTPAddresses = []string{addr.Host}
@@ -1457,9 +1455,9 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
-	nsqd := NewNSQD(opts)
+	nsqd := New(opts)
 	ctx := &context{nsqd}
 	p := &protocolV2{ctx}
 	c := newClientV2(0, nil, ctx)
@@ -1474,7 +1472,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
@@ -1545,7 +1543,7 @@ func BenchmarkProtocolV2Pub1m(b *testing.B)   { benchmarkProtocolV2Pub(b, 1024*1
 func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -1642,7 +1640,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 
-	opts := NewNSQDOptions()
+	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)

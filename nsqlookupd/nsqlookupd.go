@@ -14,14 +14,14 @@ import (
 
 type NSQLookupd struct {
 	sync.RWMutex
-	opts         *nsqlookupdOptions
+	opts         *Options
 	tcpListener  net.Listener
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
 }
 
-func NewNSQLookupd(opts *nsqlookupdOptions) *NSQLookupd {
+func New(opts *Options) *NSQLookupd {
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
@@ -61,9 +61,9 @@ func (l *NSQLookupd) Main() {
 	l.Lock()
 	l.httpListener = httpListener
 	l.Unlock()
-	httpServer := &httpServer{ctx: ctx}
+	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, l.opts.Logger, "HTTP")
+		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
 	})
 }
 
