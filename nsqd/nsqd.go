@@ -74,6 +74,7 @@ type NSQD struct {
 	serf          *serf.Serf
 	serfEventChan chan serf.Event
 	gossipChan    chan interface{}
+	gossipKey     []byte
 	rdb           *registrationdb.RegistrationDB
 
 	notifyChan           chan interface{}
@@ -310,7 +311,9 @@ func (n *NSQD) Main() {
 			n.RealTCPAddr(),
 			n.RealHTTPAddr(),
 			httpsAddr,
-			broadcastAddr)
+			broadcastAddr,
+			n.initialGossipKey(),
+		)
 		if err != nil {
 			n.logf(LOG_FATAL, "failed to initialize Serf - %s", err)
 			os.Exit(1)
