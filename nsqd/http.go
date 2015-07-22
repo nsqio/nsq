@@ -450,11 +450,38 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
+	topicName, _ := reqParams.Get("topic")
+	channelName, _ := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
+
 	stats := s.ctx.nsqd.GetStats()
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)
+
+	// If we WERE given a topic-name, remove stats for all the other topics:
+	if len(topicName) > 0 {
+		// Find the desired-topic-index:
+		for _, topicStats := range stats {
+			if topicStats.TopicName == topicName {
+				// If we WERE given a channel-name, remove stats for all the other channels:
+				if len(channelName) > 0 {
+					// Find the desired-channel:
+					for _, channelStats := range topicStats.Channels {
+						if channelStats.ChannelName == channelName {
+							topicStats.Channels = []ChannelStats{channelStats}
+							// We've got the channel we were looking for:
+							break
+						}
+					}
+				}
+
+				// We've got the topic we were looking for:
+				stats = []TopicStats{topicStats}
+				break
+			}
+		}
+	}
 
 	if !jsonFormat {
 		return s.printStats(stats, health, startTime, uptime), nil
