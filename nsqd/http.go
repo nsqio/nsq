@@ -30,8 +30,13 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer {
+	log := http_api.Log(ctx.nsqd.getOpts().Logger)
+
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqd.getOpts().Logger)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqd.getOpts().Logger)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqd.getOpts().Logger)
 	s := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  tlsEnabled,
@@ -39,50 +44,51 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 		router:      router,
 	}
 
+	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+
 	// v1 negotiate
-	router.Handle("POST", "/pub", http_api.NegotiateVersion(s.doPUB))
-	router.Handle("POST", "/mpub", http_api.NegotiateVersion(s.doMPUB))
-	router.Handle("GET", "/stats", http_api.NegotiateVersion(s.doStats))
-	router.Handle("GET", "/ping", s.pingHandler)
+	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
+	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
+	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
 
 	// only v1
-	router.Handle("POST", "/topic/create", http_api.V1(s.doCreateTopic))
-	router.Handle("POST", "/topic/delete", http_api.V1(s.doDeleteTopic))
-	router.Handle("POST", "/topic/empty", http_api.V1(s.doEmptyTopic))
-	router.Handle("POST", "/topic/pause", http_api.V1(s.doPauseTopic))
-	router.Handle("POST", "/topic/unpause", http_api.V1(s.doPauseTopic))
-	router.Handle("POST", "/channel/create", http_api.V1(s.doCreateChannel))
-	router.Handle("POST", "/channel/delete", http_api.V1(s.doDeleteChannel))
-	router.Handle("POST", "/channel/empty", http_api.V1(s.doEmptyChannel))
-	router.Handle("POST", "/channel/pause", http_api.V1(s.doPauseChannel))
-	router.Handle("POST", "/channel/unpause", http_api.V1(s.doPauseChannel))
-	router.Handle("GET", "/config/:opt", http_api.V1(s.doConfig))
-	router.Handle("PUT", "/config/:opt", http_api.V1(s.doConfig))
+	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
+	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
+	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
 	// deprecated, v1 negotiate
-	router.Handle("POST", "/put", http_api.NegotiateVersion(s.doPUB))
-	router.Handle("POST", "/mput", http_api.NegotiateVersion(s.doMPUB))
-	router.Handle("GET", "/info", http_api.NegotiateVersion(s.doInfo))
-	router.Handle("POST", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
-	router.Handle("POST", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
-	router.Handle("POST", "/empty_topic", http_api.NegotiateVersion(s.doEmptyTopic))
-	router.Handle("POST", "/pause_topic", http_api.NegotiateVersion(s.doPauseTopic))
-	router.Handle("POST", "/unpause_topic", http_api.NegotiateVersion(s.doPauseTopic))
-	router.Handle("POST", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
-	router.Handle("POST", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
-	router.Handle("POST", "/empty_channel", http_api.NegotiateVersion(s.doEmptyChannel))
-	router.Handle("POST", "/pause_channel", http_api.NegotiateVersion(s.doPauseChannel))
-	router.Handle("POST", "/unpause_channel", http_api.NegotiateVersion(s.doPauseChannel))
-	router.Handle("GET", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
-	router.Handle("GET", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
-	router.Handle("GET", "/empty_topic", http_api.NegotiateVersion(s.doEmptyTopic))
-	router.Handle("GET", "/pause_topic", http_api.NegotiateVersion(s.doPauseTopic))
-	router.Handle("GET", "/unpause_topic", http_api.NegotiateVersion(s.doPauseTopic))
-	router.Handle("GET", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
-	router.Handle("GET", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
-	router.Handle("GET", "/empty_channel", http_api.NegotiateVersion(s.doEmptyChannel))
-	router.Handle("GET", "/pause_channel", http_api.NegotiateVersion(s.doPauseChannel))
-	router.Handle("GET", "/unpause_channel", http_api.NegotiateVersion(s.doPauseChannel))
+	router.Handle("POST", "/put", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
+	router.Handle("POST", "/mput", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
+	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/empty_topic", http_api.Decorate(s.doEmptyTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/pause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/empty_channel", http_api.Decorate(s.doEmptyChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/pause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/empty_topic", http_api.Decorate(s.doEmptyTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/pause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/unpause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/empty_channel", http_api.Decorate(s.doEmptyChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/pause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/unpause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
@@ -105,15 +111,12 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	health := s.ctx.nsqd.GetHealth()
-	code := 200
 	if !s.ctx.nsqd.IsHealthy() {
-		code = 500
+		return nil, http_api.Err{500, health}
 	}
-	w.Header().Set("Content-Length", strconv.Itoa(len(health)))
-	w.WriteHeader(code)
-	io.WriteString(w, health)
+	return health, nil
 }
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
