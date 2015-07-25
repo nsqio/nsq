@@ -2,7 +2,6 @@ package nsqlookupd
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/pprof"
 	"sync/atomic"
@@ -19,40 +18,46 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *Context) *httpServer {
+	log := http_api.Log(ctx.nsqlookupd.opts.Logger)
+
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqlookupd.opts.Logger)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqlookupd.opts.Logger)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqlookupd.opts.Logger)
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,
 	}
 
+	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+
 	// v1 negotiate
-	router.Handle("GET", "/ping", s.pingHandler)
-	router.Handle("GET", "/debug", http_api.NegotiateVersion(s.doDebug))
-	router.Handle("GET", "/lookup", http_api.NegotiateVersion(s.doLookup))
-	router.Handle("GET", "/topics", http_api.NegotiateVersion(s.doTopics))
-	router.Handle("GET", "/channels", http_api.NegotiateVersion(s.doChannels))
-	router.Handle("GET", "/nodes", http_api.NegotiateVersion(s.doNodes))
+	router.Handle("GET", "/debug", http_api.Decorate(s.doDebug, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.doLookup, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
 
 	// only v1
-	router.Handle("POST", "/topic/create", http_api.V1(s.doCreateTopic))
-	router.Handle("POST", "/topic/delete", http_api.V1(s.doDeleteTopic))
-	router.Handle("POST", "/channel/create", http_api.V1(s.doCreateChannel))
-	router.Handle("POST", "/channel/delete", http_api.V1(s.doDeleteChannel))
-	router.Handle("POST", "/topic/tombstone", http_api.V1(s.doTombstoneTopicProducer))
+	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("POST", "/topic/tombstone", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.V1))
 
 	// deprecated, v1 negotiate
-	router.Handle("GET", "/info", http_api.NegotiateVersion(s.doInfo))
-	router.Handle("POST", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
-	router.Handle("POST", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
-	router.Handle("POST", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
-	router.Handle("POST", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
-	router.Handle("POST", "/tombstone_topic_producer", http_api.NegotiateVersion(s.doTombstoneTopicProducer))
-	router.Handle("GET", "/create_topic", http_api.NegotiateVersion(s.doCreateTopic))
-	router.Handle("GET", "/delete_topic", http_api.NegotiateVersion(s.doDeleteTopic))
-	router.Handle("GET", "/create_channel", http_api.NegotiateVersion(s.doCreateChannel))
-	router.Handle("GET", "/delete_channel", http_api.NegotiateVersion(s.doDeleteChannel))
-	router.Handle("GET", "/tombstone_topic_producer", http_api.NegotiateVersion(s.doTombstoneTopicProducer))
+	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/tombstone_topic_producer", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.NegotiateVersion))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
@@ -71,9 +76,8 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return "OK", nil
 }
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
