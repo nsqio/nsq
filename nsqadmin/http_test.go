@@ -188,3 +188,41 @@ func TestHTTPNodesGET(t *testing.T) {
 	equal(t, testNode.Get("version").MustString(), version.Binary)
 	equal(t, len(testNode.Get("topics").MustArray()), 0)
 }
+
+func TestHTTPChannelGET(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_channel_get" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqds[0].GetTopic(topicName)
+	topic.GetChannel("ch")
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	js, err := simplejson.NewJson(body)
+	equal(t, err, nil)
+	equal(t, js.Get("topic_name").MustString(), topicName)
+	equal(t, js.Get("name").MustString(), "ch")
+	equal(t, js.Get("depth").MustInt(), 0)
+	equal(t, js.Get("memory_depth").MustInt(), 0)
+	equal(t, js.Get("backend_depth").MustInt(), 0)
+	equal(t, js.Get("msg_count").MustInt(), 0)
+	equal(t, js.Get("paused").MustBool(), false)
+	equal(t, js.Get("in_flight_count").MustInt(), 0)
+	equal(t, js.Get("defer_count").MustInt(), 0)
+	equal(t, js.Get("requeue_count").MustInt(), 0)
+	equal(t, js.Get("timeout_count").MustInt(), 0)
+	equal(t, js.Get("msg_count").MustInt(), 0)
+	equal(t, len(js.Get("clients").MustArray()), 0)
+}
