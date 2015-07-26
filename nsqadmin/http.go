@@ -72,6 +72,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	// v1 endpoints
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
 	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
+	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
 
 	// deprecated endpoints
@@ -146,6 +147,17 @@ func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return allNodesTopicStats, nil
+}
+
+func (s *httpServer) doChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+
+	producers := s.getProducers(topicName)
+	_, allChannelStats, _ := s.ci.GetNSQDStats(producers, topicName)
+	channelStats := allChannelStats[channelName]
+
+	return channelStats, nil
 }
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
