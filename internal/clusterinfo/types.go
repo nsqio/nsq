@@ -1,4 +1,4 @@
-package lookupd
+package clusterinfo
 
 import (
 	"fmt"

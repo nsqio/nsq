@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/blang/semver"
 	"github.com/julienschmidt/httprouter"
@@ -41,6 +42,7 @@ type httpServer struct {
 	counters map[string]map[string]int64
 	proxy    *httputil.ReverseProxy
 	router   http.Handler
+	ci       *clusterinfo.ClusterInfo
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
@@ -62,6 +64,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		counters: make(map[string]map[string]int64),
 		proxy:    proxy,
 		router:   router,
+		ci:       clusterinfo.New(ctx.nsqadmin.opts.Logger),
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
