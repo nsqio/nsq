@@ -123,3 +123,34 @@ func TestHTTPTopicsGET(t *testing.T) {
 	equal(t, len(js.Get("topics").MustArray()), 1)
 	equal(t, js.Get("topics").GetIndex(0).MustString(), topicName)
 }
+
+func TestHTTPTopicGET(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_topic_get" + strconv.Itoa(int(time.Now().Unix()))
+	nsqds[0].GetTopic(topicName)
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	js, err := simplejson.NewJson(body)
+	equal(t, err, nil)
+	t.Logf("%s", body)
+	equal(t, js.Get("name").MustString(), topicName)
+	equal(t, js.Get("depth").MustInt(), 0)
+	equal(t, js.Get("memory_depth").MustInt(), 0)
+	equal(t, js.Get("backend_depth").MustInt(), 0)
+	equal(t, js.Get("msg_count").MustInt(), 0)
+	equal(t, js.Get("paused").MustBool(), false)
+}
