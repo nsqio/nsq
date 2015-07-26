@@ -29,7 +29,7 @@ type Producer struct {
 	Version          string         `json:"version"`
 	VersionObj       semver.Version `json:"-"`
 	Topics           ProducerTopics `json:"topics"`
-	OutOfDate        bool
+	OutOfDate        bool           `json:"out_of_date"`
 }
 
 func (p *Producer) HTTPAddress() string {
@@ -48,35 +48,47 @@ func (p *Producer) IsInconsistent(numLookupd int) bool {
 }
 
 type TopicStats struct {
-	HostAddress  string
-	TopicName    string
-	Depth        int64
-	MemoryDepth  int64
-	BackendDepth int64
-	MessageCount int64
-	ChannelCount int
-	Aggregate    bool
-	Channels     []*ChannelStats
-	Paused       bool
+	Node         string          `json:"node"`
+	TopicName    string          `json:"name"`
+	Depth        int64           `json:"depth"`
+	MemoryDepth  int64           `json:"memory_depth"`
+	BackendDepth int64           `json:"backend_depth"`
+	MessageCount int64           `json:"msg_count"`
+	NodeStats    []*TopicStats   `json:"nodes"`
+	Channels     []*ChannelStats `json:"channels"`
+	Paused       bool            `json:"paused"`
 
-	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate
+	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
 
 func (t *TopicStats) Add(a *TopicStats) {
-	t.Aggregate = true
-	t.TopicName = a.TopicName
+	t.Node = "*"
 	t.Depth += a.Depth
 	t.MemoryDepth += a.MemoryDepth
 	t.BackendDepth += a.BackendDepth
 	t.MessageCount += a.MessageCount
-	if a.ChannelCount > t.ChannelCount {
-		t.ChannelCount = a.ChannelCount
-	}
 	if a.Paused {
 		t.Paused = a.Paused
 	}
+	found := false
+	for _, aChannelStats := range a.Channels {
+		for _, channelStats := range t.Channels {
+			if aChannelStats.ChannelName == channelStats.ChannelName {
+				found = true
+				channelStats.Add(aChannelStats)
+			}
+		}
+		if !found {
+			t.Channels = append(t.Channels, aChannelStats)
+		}
+	}
+	t.NodeStats = append(t.NodeStats, a)
+	sort.Sort(TopicStatsByHost{t.NodeStats})
 	if t.E2eProcessingLatency == nil {
-		t.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{}
+		t.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{
+			Addr:  t.Node,
+			Topic: t.TopicName,
+		}
 	}
 	t.E2eProcessingLatency.Add(a.E2eProcessingLatency)
 }
@@ -91,35 +103,35 @@ func (t *TopicStats) Target(key string) ([]string, string) {
 }
 
 func (t *TopicStats) Host() string {
-	h := t.HostAddress
-	if t.Aggregate {
-		h = "*"
+	if len(t.NodeStats) > 0 {
+		return "*"
 	}
-	return h
+	return t.Node
 }
 
 type ChannelStats struct {
-	HostAddress   string
-	TopicName     string
-	ChannelName   string
-	Depth         int64
-	MemoryDepth   int64
-	BackendDepth  int64
-	InFlightCount int64
-	DeferredCount int64
-	RequeueCount  int64
-	TimeoutCount  int64
-	MessageCount  int64
-	ClientCount   int
-	Selected      bool
-	HostStats     []*ChannelStats
-	Clients       []*ClientStats
-	Paused        bool
+	Node          string          `json:"node"`
+	TopicName     string          `json:"topic_name"`
+	ChannelName   string          `json:"name"`
+	Depth         int64           `json:"depth"`
+	MemoryDepth   int64           `json:"memory_depth"`
+	BackendDepth  int64           `json:"backend_depth"`
+	InFlightCount int64           `json:"in_flight_count"`
+	DeferredCount int64           `json:"defer_count"`
+	RequeueCount  int64           `json:"requeue_count"`
+	TimeoutCount  int64           `json:"timeout_count"`
+	MessageCount  int64           `json:"msg_count"`
+	ClientCount   int             `json:"-"`
+	Selected      bool            `json:"-"`
+	NodeStats     []*ChannelStats `json:"nodes"`
+	Clients       []*ClientStats  `json:"clients"`
+	Paused        bool            `json:"paused"`
 
-	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate
+	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
 
 func (c *ChannelStats) Add(a *ChannelStats) {
+	c.Node = "*"
 	c.Depth += a.Depth
 	c.MemoryDepth += a.MemoryDepth
 	c.BackendDepth += a.BackendDepth
@@ -132,12 +144,16 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 	if a.Paused {
 		c.Paused = a.Paused
 	}
-	c.HostStats = append(c.HostStats, a)
+	c.NodeStats = append(c.NodeStats, a)
+	sort.Sort(ChannelStatsByHost{c.NodeStats})
 	if c.E2eProcessingLatency == nil {
-		c.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{}
+		c.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{
+			Addr:    c.Node,
+			Topic:   c.TopicName,
+			Channel: c.ChannelName,
+		}
 	}
 	c.E2eProcessingLatency.Add(a.E2eProcessingLatency)
-	sort.Sort(ChannelStatsByHost{c.HostStats})
 }
 
 func (c *ChannelStats) Target(key string) ([]string, string) {
@@ -150,32 +166,31 @@ func (c *ChannelStats) Target(key string) ([]string, string) {
 }
 
 func (c *ChannelStats) Host() string {
-	h := "*"
-	if len(c.HostStats) == 0 {
-		h = c.HostAddress
+	if len(c.NodeStats) > 0 {
+		return "*"
 	}
-	return h
+	return c.Node
 }
 
 type ClientStats struct {
-	HostAddress       string
-	RemoteAddress     string
-	Version           string
-	ClientID          string
-	Hostname          string
-	UserAgent         string
-	ConnectedDuration time.Duration
-	InFlightCount     int
-	ReadyCount        int
-	FinishCount       int64
-	RequeueCount      int64
-	MessageCount      int64
-	SampleRate        int32
-	Deflate           bool
-	Snappy            bool
-	Authed            bool
-	AuthIdentity      string
-	AuthIdentityURL   string
+	Node              string        `json:"node"`
+	RemoteAddress     string        `json:"remote_address"`
+	Version           string        `json:"version"`
+	ClientID          string        `json:"client_id"`
+	Hostname          string        `json:"hostname"`
+	UserAgent         string        `json:"user_agent"`
+	ConnectedDuration time.Duration `json:"connected"`
+	InFlightCount     int           `json:"in_flight_count"`
+	ReadyCount        int           `json:"ready_count"`
+	FinishCount       int64         `json:"finish_count"`
+	RequeueCount      int64         `json:"requeue_count"`
+	MessageCount      int64         `json:"message_count"`
+	SampleRate        int32         `json:"sample_rate"`
+	Deflate           bool          `json:"deflate"`
+	Snappy            bool          `json:"snappy"`
+	Authed            bool          `json:"authed"`
+	AuthIdentity      string        `json:"auth_identity"`
+	AuthIdentityURL   string        `json:"auth_identity_url"`
 
 	TLS                           bool
 	CipherSuite                   string `json:"tls_cipher_suite"`
@@ -220,16 +235,16 @@ func (t ProducerList) Len() int          { return len(t) }
 func (t ProducerList) Swap(i, j int)     { t[i], t[j] = t[j], t[i] }
 
 func (c ChannelStatsByHost) Less(i, j int) bool {
-	return c.ChannelStatsList[i].HostAddress < c.ChannelStatsList[j].HostAddress
+	return c.ChannelStatsList[i].Node < c.ChannelStatsList[j].Node
 }
 func (c ClientsByHost) Less(i, j int) bool {
 	if c.ClientStatsList[i].ClientID == c.ClientStatsList[j].ClientID {
-		return c.ClientStatsList[i].HostAddress < c.ClientStatsList[j].HostAddress
+		return c.ClientStatsList[i].Node < c.ClientStatsList[j].Node
 	}
 	return c.ClientStatsList[i].ClientID < c.ClientStatsList[j].ClientID
 }
 func (c TopicStatsByHost) Less(i, j int) bool {
-	return c.TopicStatsList[i].HostAddress < c.TopicStatsList[j].HostAddress
+	return c.TopicStatsList[i].Node < c.TopicStatsList[j].Node
 }
 func (c ProducersByHost) Less(i, j int) bool {
 	return c.ProducerList[i].BroadcastAddress < c.ProducerList[j].BroadcastAddress

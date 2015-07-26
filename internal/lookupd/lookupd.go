@@ -362,13 +362,12 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 				e2eProcessingLatency := quantile.E2eProcessingLatencyAggregateFromJSON(t.Get("e2e_processing_latency"), topicName, "", addr)
 
 				topicStats := &TopicStats{
-					HostAddress:  addr,
+					Node:         addr,
 					TopicName:    topicName,
 					Depth:        depth,
 					BackendDepth: backendDepth,
 					MemoryDepth:  depth - backendDepth,
 					MessageCount: t.Get("message_count").MustInt64(),
-					ChannelCount: len(channels),
 					Paused:       t.Get("paused").MustBool(),
 
 					E2eProcessingLatency: e2eProcessingLatency,
@@ -387,7 +386,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					channelStats, ok := channelStatsMap[key]
 					if !ok {
 						channelStats = &ChannelStats{
-							HostAddress: addr,
+							Node:        addr,
 							TopicName:   topicName,
 							ChannelName: channelName,
 						}
@@ -401,7 +400,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					e2eProcessingLatency := quantile.E2eProcessingLatencyAggregateFromJSON(c.Get("e2e_processing_latency"), topicName, channelName, addr)
 
 					hostChannelStats := &ChannelStats{
-						HostAddress:   addr,
+						Node:          addr,
 						TopicName:     topicName,
 						ChannelName:   channelName,
 						Depth:         depth,
@@ -440,7 +439,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 						}
 
 						clientStats := &ClientStats{
-							HostAddress:       addr,
+							Node:              addr,
 							RemoteAddress:     client.Get("remote_address").MustString(),
 							Version:           client.Get("version").MustString(),
 							ClientID:          clientID,
@@ -471,7 +470,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 					sort.Sort(ClientsByHost{hostChannelStats.Clients})
 					sort.Sort(ClientsByHost{channelStats.Clients})
 
-					topicStats.Channels = append(topicStats.Channels, hostChannelStats)
+					topicStats.Channels = append(topicStats.Channels, channelStats)
 				}
 			}
 			sort.Sort(TopicStatsByHost{topicStatsList})

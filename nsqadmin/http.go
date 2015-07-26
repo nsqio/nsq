@@ -188,7 +188,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 	producers := s.getProducers(topicName)
 	topicStats, channelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 
-	globalTopicStats := &lookupd.TopicStats{HostAddress: "Total"}
+	globalTopicStats := &lookupd.TopicStats{Node: "*"}
 	for _, t := range topicStats {
 		globalTopicStats.Add(t)
 	}
@@ -252,8 +252,8 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 		len(channelStats.E2eProcessingLatency.Percentiles) > 0
 
 	var firstHost *lookupd.ChannelStats
-	if len(channelStats.HostStats) > 0 {
-		firstHost = channelStats.HostStats[0]
+	if len(channelStats.NodeStats) > 0 {
+		firstHost = channelStats.NodeStats[0]
 	}
 
 	p := struct {
@@ -826,8 +826,8 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	var newMessages int64
 	var totalMessages int64
 	for _, channelStats := range channelStats {
-		for _, hostChannelStats := range channelStats.HostStats {
-			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.HostAddress)
+		for _, hostChannelStats := range channelStats.NodeStats {
+			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.Node)
 			d, ok := stats[key]
 			if ok && d <= hostChannelStats.MessageCount {
 				newMessages += (hostChannelStats.MessageCount - d)
