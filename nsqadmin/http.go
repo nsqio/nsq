@@ -71,6 +71,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 
 	// v1 endpoints
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
+	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -130,6 +131,20 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 	return struct {
 		Topics []string `json:"topics"`
 	}{topics}, nil
+}
+
+func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+
+	producers := s.getProducers(topicName)
+	topicStats, _, _ := s.ci.GetNSQDStats(producers, topicName)
+
+	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
+	for _, t := range topicStats {
+		allNodesTopicStats.Add(t)
+	}
+
+	return allNodesTopicStats, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
