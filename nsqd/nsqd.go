@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/lookupd"
 	"github.com/bitly/nsq/internal/protocol"
 	"github.com/bitly/nsq/internal/statsd"
 	"github.com/bitly/nsq/internal/util"
@@ -65,8 +65,9 @@ type NSQD struct {
 	notifyChan           chan interface{}
 	optsNotificationChan chan struct{}
 	exitChan             chan int
+	waitGroup            util.WaitGroupWrapper
 
-	waitGroup util.WaitGroupWrapper
+	ci *clusterinfo.ClusterInfo
 }
 
 func New(opts *Options) *NSQD {
@@ -78,6 +79,7 @@ func New(opts *Options) *NSQD {
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
+		ci:                   clusterinfo.New(opts.Logger),
 	}
 	n.swapOpts(opts)
 
@@ -456,7 +458,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	// this makes sure that any message received is buffered to the right channels
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
-		channelNames, _ := lookupd.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		channelNames, _ := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
 		for _, channelName := range channelNames {
 			if strings.HasSuffix(channelName, "#ephemeral") {
 				// we don't want to pre-create ephemeral channels

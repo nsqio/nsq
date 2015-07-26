@@ -1,9 +1,8 @@
-package lookupd
+package clusterinfo
 
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"sort"
@@ -18,13 +17,32 @@ import (
 	"github.com/blang/semver"
 )
 
+type logger interface {
+	Output(maxdepth int, s string) error
+}
+
+type ClusterInfo struct {
+	log logger
+}
+
+func New(log logger) *ClusterInfo {
+	return &ClusterInfo{log}
+}
+
+func (c *ClusterInfo) logf(f string, args ...interface{}) {
+	if c.log == nil {
+		return
+	}
+	c.log.Output(2, fmt.Sprintf(f, args...))
+}
+
 // GetVersion returns a semver.Version object by querying /info
-func GetVersion(addr string) (semver.Version, error) {
+func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	endpoint := fmt.Sprintf("http://%s/info", addr)
-	log.Printf("version negotiation %s", endpoint)
+	c.logf("version negotiation %s", endpoint)
 	info, err := http_api.NegotiateV1("GET", endpoint, nil)
 	if err != nil {
-		log.Printf("ERROR: %s - %s", endpoint, err)
+		c.logf("ERROR: %s - %s", endpoint, err)
 		return semver.Version{}, err
 	}
 	version := info.Get("version").MustString("unknown")
@@ -33,7 +51,7 @@ func GetVersion(addr string) (semver.Version, error) {
 
 // GetLookupdTopics returns a []string containing a union of all the topics
 // from all the given lookupd
-func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	var allTopics []string
 	var lock sync.Mutex
@@ -41,14 +59,14 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/topics", addr)
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		c.logf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -67,7 +85,7 @@ func GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
 
 // GetLookupdTopicChannels returns a []string containing a union of the channels
 // from all the given lookupd for the given topic
-func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	var allChannels []string
 	var lock sync.Mutex
@@ -75,14 +93,14 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		c.logf("LOOKUPD: querying %s", endpoint)
 		go func(endpoint string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -101,7 +119,7 @@ func GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string,
 
 // GetLookupdProducers returns a slice of pointers to Producer structs
 // containing metadata for each node connected to given lookupds
-func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
+func (c *ClusterInfo) GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	success := false
 	allProducers := make(map[string]*Producer)
 	var output []*Producer
@@ -112,14 +130,14 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 	for _, addr := range lookupdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/nodes", addr)
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		c.logf("LOOKUPD: querying %s", endpoint)
 		go func(addr string, endpoint string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
 			lock.Lock()
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -202,7 +220,7 @@ func GetLookupdProducers(lookupdHTTPAddrs []string) ([]*Producer, error) {
 
 // GetLookupdTopicProducers returns a []string of the broadcast_address:http_port of all the
 // producers for a given topic by unioning the results returned from the given lookupd
-func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	success := false
 	var allSources []string
 	var lock sync.Mutex
@@ -212,7 +230,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 		wg.Add(1)
 
 		endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", addr, url.QueryEscape(topic))
-		log.Printf("LOOKUPD: querying %s", endpoint)
+		c.logf("LOOKUPD: querying %s", endpoint)
 
 		go func(endpoint string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
@@ -220,7 +238,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -244,7 +262,7 @@ func GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) ([]string
 
 // GetNSQDTopics returns a []string containing all the topics
 // produced by the given nsqd
-func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	var topics []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -252,7 +270,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
-		log.Printf("NSQD: querying %s", endpoint)
+		c.logf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
@@ -260,7 +278,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -281,7 +299,7 @@ func GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 
 // GetNSQDTopicProducers returns a []string containing the addresses of all the nsqd
 // that produce the given topic out of the given nsqd
-func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, error) {
 	var addresses []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -289,7 +307,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
-		log.Printf("NSQD: querying %s", endpoint)
+		c.logf("NSQD: querying %s", endpoint)
 
 		go func(endpoint, addr string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
@@ -297,7 +315,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 			defer lock.Unlock()
 			defer wg.Done()
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true
@@ -322,7 +340,7 @@ func GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string) ([]string, erro
 //
 // if selectedTopic is empty, this will return stats for *all* topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
-func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, map[string]*ChannelStats, error) {
+func (c *ClusterInfo) GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, map[string]*ChannelStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 
@@ -333,7 +351,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 	for _, addr := range nsqdHTTPAddrs {
 		wg.Add(1)
 		endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
-		log.Printf("NSQD: querying %s", endpoint)
+		c.logf("NSQD: querying %s", endpoint)
 
 		go func(endpoint string, addr string) {
 			data, err := http_api.NegotiateV1("GET", endpoint, nil)
@@ -342,7 +360,7 @@ func GetNSQDStats(nsqdHTTPAddrs []string, selectedTopic string) ([]*TopicStats, 
 			defer wg.Done()
 
 			if err != nil {
-				log.Printf("ERROR: lookupd %s - %s", endpoint, err.Error())
+				c.logf("ERROR: lookupd %s - %s", endpoint, err.Error())
 				return
 			}
 			success = true

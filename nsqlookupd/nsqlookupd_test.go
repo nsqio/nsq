@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
-	lookuputil "github.com/bitly/nsq/internal/lookupd"
 )
 
 func equal(t *testing.T, act, exp interface{}) {
@@ -327,7 +327,7 @@ func TestInactiveNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -335,7 +335,7 @@ func TestInactiveNodes(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 0)
 }
 
@@ -358,7 +358,7 @@ func TestTombstonedNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -369,7 +369,7 @@ func TestTombstonedNodes(t *testing.T) {
 	_, err = http_api.NegotiateV1("POST", endpoint, nil)
 	equal(t, err, nil)
 
-	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
