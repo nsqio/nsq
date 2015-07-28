@@ -3,11 +3,14 @@ package nsqadmin
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strconv"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/protocol"
+	"github.com/bitly/nsq/internal/version"
 	"github.com/blang/semver"
 	"github.com/julienschmidt/httprouter"
 )
@@ -42,20 +46,12 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 }
 
 type httpServer struct {
-	ctx      *Context
-	counters map[string]map[string]int64
-	proxy    *httputil.ReverseProxy
-	router   http.Handler
-	ci       *clusterinfo.ClusterInfo
+	ctx    *Context
+	router http.Handler
+	ci     *clusterinfo.ClusterInfo
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
-	var proxy *httputil.ReverseProxy
-
-	if ctx.nsqadmin.opts.ProxyGraphite {
-		proxy = NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
-	}
-
 	log := http_api.Log(ctx.nsqadmin.opts.Logger)
 
 	router := httprouter.New()
@@ -64,37 +60,43 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.opts.Logger)
 	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.opts.Logger)
 	s := &httpServer{
-		ctx:      ctx,
-		counters: make(map[string]map[string]int64),
-		proxy:    proxy,
-		router:   router,
-		ci:       clusterinfo.New(ctx.nsqadmin.opts.Logger),
+		ctx:    ctx,
+		router: router,
+		ci:     clusterinfo.New(ctx.nsqadmin.opts.Logger),
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	// v1 endpoints
-	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
-	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
-	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
-	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
-	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
-	router.Handle("POST", "/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
-	router.Handle("POST", "/topics/:topic", http_api.Decorate(s.doTopicAction, log, http_api.V1))
-	router.Handle("POST", "/topics/:topic/:channel", http_api.Decorate(s.doChannelAction, log, http_api.V1))
-	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
-	router.Handle("DELETE", "/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
-	router.Handle("DELETE", "/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
-	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
-	router.Handle("GET", "/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
-
-	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", "/topics", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
 
+	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	if s.ctx.nsqadmin.opts.ProxyGraphite {
-		router.Handler("GET", "/render", s.proxy)
+		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
+		router.Handler("GET", "/render", proxy)
 	}
+
+	// v1 endpoints
+	router.Handle("GET", "/api/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
+	router.Handle("GET", "/api/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
+	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
+	router.Handle("POST", "/api/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.doTopicAction, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannelAction, log, http_api.V1))
+	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
+	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 
 	return s
 }
@@ -105,6 +107,63 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return "OK", nil
+}
+
+func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	asset, _ := Asset("index.html")
+	t, _ := template.New("index").Parse(string(asset))
+
+	w.Header().Set("Content-Type", "text/html")
+	t.Execute(w, struct {
+		Version        string
+		ProxyGraphite  bool
+		GraphEnabled   bool
+		GraphiteURL    string
+		StatsdInterval int
+		StatsdPrefix   string
+		NSQLookupd     []string
+	}{
+		Version:        version.Binary,
+		ProxyGraphite:  s.ctx.nsqadmin.opts.ProxyGraphite,
+		GraphEnabled:   s.ctx.nsqadmin.opts.GraphiteURL != "",
+		GraphiteURL:    s.ctx.nsqadmin.opts.GraphiteURL,
+		StatsdInterval: int(s.ctx.nsqadmin.opts.StatsdInterval / time.Second),
+		StatsdPrefix:   s.ctx.nsqadmin.opts.StatsdPrefix,
+		NSQLookupd:     s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+	})
+
+	return nil, nil
+}
+
+func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	assetName := ps.ByName("asset")
+
+	asset, err := Asset(assetName)
+	if err != nil {
+		return nil, http_api.Err{404, "NOT_FOUND"}
+	}
+
+	ext := path.Ext(assetName)
+	ct := mime.TypeByExtension(ext)
+	if ct == "" {
+		switch ext {
+		case ".svg":
+			ct = "image/svg+xml"
+		case ".woff":
+			ct = "application/font-woff"
+		case ".ttf":
+			ct = "application/font-sfnt"
+		case ".eot":
+			ct = "application/vnd.ms-fontobject"
+		case ".woff2":
+			ct = "application/font-woff2"
+		}
+	}
+	if ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+
+	return string(asset), nil
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -151,7 +210,10 @@ func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httpro
 	topicName := ps.ByName("topic")
 
 	producers := s.getProducers(topicName)
-	topicStats, _, _ := s.ci.GetNSQDStats(producers, topicName)
+	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
 
 	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
 	for _, t := range topicStats {
@@ -178,7 +240,6 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 	for i, p := range producers {
 		addresses[i] = p.HTTPAddress()
 	}
-	// _, channelStats, _ := s.ci.GetNSQDStats(addresses, "")
 	return struct {
 		Nodes []*clusterinfo.Producer `json:"nodes"`
 	}{producers}, nil
@@ -240,12 +301,12 @@ func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprou
 	}
 
 	return struct {
-		Node          Node                      `json:"node"`
+		Node          string                    `json:"node"`
 		TopicStats    []*clusterinfo.TopicStats `json:"topics"`
 		TotalMessages int64                     `json:"total_messages"`
 		TotalClients  int64                     `json:"total_clients"`
 	}{
-		Node:          Node(node),
+		Node:          node,
 		TopicStats:    topicStats,
 		TotalMessages: totalMessages,
 		TotalClients:  totalClients,
@@ -296,7 +357,7 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
 			uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -312,7 +373,7 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 				url.QueryEscape(topicName),
 				url.QueryEscape(channelName))
 			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-			_, err := http_api.NegotiateV1("POST", endpoint, nil)
+			err := http_api.POSTV1(endpoint)
 			if err != nil {
 				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 				continue
@@ -366,7 +427,7 @@ func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, nod
 			addr, uri,
 			url.QueryEscape(topicName), url.QueryEscape(node))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 		}
@@ -386,7 +447,7 @@ func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, nod
 	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
 		uri, url.QueryEscape(topicName))
 	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	err = http_api.POSTV1(endpoint)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 	}
@@ -423,7 +484,7 @@ func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -469,7 +530,7 @@ func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelN
 			url.QueryEscape(topicName),
 			url.QueryEscape(channelName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -640,35 +701,37 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{404, "INVALID_ARG_TARGET"}
 	}
 
-	query := rateQuery(target, s.ctx.nsqadmin.opts.StatsdInterval)
+	params := url.Values{}
+	params.Set("from", fmt.Sprintf("-%dsec", s.ctx.nsqadmin.opts.StatsdInterval*2/time.Second))
+	params.Set("until", fmt.Sprintf("-%dsec", s.ctx.nsqadmin.opts.StatsdInterval/time.Second))
+	params.Set("format", "json")
+	params.Set("target", target)
+	query := fmt.Sprintf("/render?%s", params.Encode())
 	url := s.ctx.nsqadmin.opts.GraphiteURL + query
+
 	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
-	response, err := graphiteGet(url)
+
+	var response []struct {
+		Target     string       `json:"target"`
+		DataPoints [][]*float64 `json:"datapoints"`
+	}
+	err = http_api.GETV1(url, &response)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
-	resp, err := parseRateResponse(response, s.ctx.nsqadmin.opts.StatsdInterval)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: response formatting failed - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+	var rateStr string
+	rate := *response[0].DataPoints[0][0]
+	if rate < 0 {
+		rateStr = "N/A"
+	} else {
+		rateDivisor := s.ctx.nsqadmin.opts.StatsdInterval / time.Second
+		rateStr = fmt.Sprintf("%.2f", rate/float64(rateDivisor))
 	}
-
-	return resp, nil
-}
-
-func graphiteGet(url string) ([]byte, error) {
-	response, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	return contents, nil
+	return struct {
+		Rate string `json:"rate"`
+	}{rateStr}, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
@@ -722,7 +785,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
 		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-		_, err := http_api.NegotiateV1("POST", endpoint, nil)
+		err := http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 			continue

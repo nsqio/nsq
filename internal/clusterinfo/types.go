@@ -1,8 +1,10 @@
 package clusterinfo
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bitly/nsq/internal/quantile"
@@ -22,6 +24,7 @@ func (pt ProducerTopics) Less(i, j int) bool { return pt[i].Topic < pt[j].Topic 
 
 type Producer struct {
 	RemoteAddresses  []string       `json:"remote_addresses"`
+	RemoteAddress    string         `json:"remote_address"`
 	Hostname         string         `json:"hostname"`
 	BroadcastAddress string         `json:"broadcast_address"`
 	TCPPort          int            `json:"tcp_port"`
@@ -30,6 +33,46 @@ type Producer struct {
 	VersionObj       semver.Version `json:"-"`
 	Topics           ProducerTopics `json:"topics"`
 	OutOfDate        bool           `json:"out_of_date"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler and postprocesses of ProducerTopics and VersionObj
+func (p *Producer) UnmarshalJSON(b []byte) (err error) {
+	var r struct {
+		RemoteAddress    string   `json:"remote_address"`
+		Hostname         string   `json:"hostname"`
+		BroadcastAddress string   `json:"broadcast_address"`
+		TCPPort          int      `json:"tcp_port"`
+		HTTPPort         int      `json:"http_port"`
+		Version          string   `json:"version"`
+		Topics           []string `json:"topics"`
+		Tombstoned       []bool   `json:"tombstones"`
+	}
+	if err = json.Unmarshal(b, &r); err != nil {
+		return
+	}
+	*p = Producer{
+		RemoteAddress:    r.RemoteAddress,
+		Hostname:         r.Hostname,
+		BroadcastAddress: r.BroadcastAddress,
+		TCPPort:          r.TCPPort,
+		HTTPPort:         r.HTTPPort,
+		Version:          r.Version,
+	}
+	for i, t := range r.Topics {
+		p.Topics = append(p.Topics, ProducerTopic{Topic: t, Tombstoned: r.Tombstoned[i]})
+	}
+	p.VersionObj, err = semver.Parse(p.Version)
+	if err != nil {
+		p.VersionObj, err = semver.Parse("0.0.0")
+	}
+	return
+}
+
+func (p *Producer) Address() string {
+	if p.RemoteAddress == "" {
+		return "N/A"
+	}
+	return p.RemoteAddress
 }
 
 func (p *Producer) HTTPAddress() string {
@@ -49,11 +92,11 @@ func (p *Producer) IsInconsistent(numLookupd int) bool {
 
 type TopicStats struct {
 	Node         string          `json:"node"`
-	TopicName    string          `json:"name"`
+	TopicName    string          `json:"topic_name"`
 	Depth        int64           `json:"depth"`
 	MemoryDepth  int64           `json:"memory_depth"`
 	BackendDepth int64           `json:"backend_depth"`
-	MessageCount int64           `json:"msg_count"`
+	MessageCount int64           `json:"message_count"`
 	NodeStats    []*TopicStats   `json:"nodes"`
 	Channels     []*ChannelStats `json:"channels"`
 	Paused       bool            `json:"paused"`
@@ -93,26 +136,10 @@ func (t *TopicStats) Add(a *TopicStats) {
 	t.E2eProcessingLatency.Add(a.E2eProcessingLatency)
 }
 
-func (t *TopicStats) Target(key string) ([]string, string) {
-	color := "blue"
-	if key == "depth" || key == "deferred_count" {
-		color = "red"
-	}
-	target := fmt.Sprintf("sumSeries(%%stopic.%s.%s)", t.TopicName, key)
-	return []string{target}, color
-}
-
-func (t *TopicStats) Host() string {
-	if len(t.NodeStats) > 0 {
-		return "*"
-	}
-	return t.Node
-}
-
 type ChannelStats struct {
 	Node          string          `json:"node"`
 	TopicName     string          `json:"topic_name"`
-	ChannelName   string          `json:"name"`
+	ChannelName   string          `json:"channel_name"`
 	Depth         int64           `json:"depth"`
 	MemoryDepth   int64           `json:"memory_depth"`
 	BackendDepth  int64           `json:"backend_depth"`
@@ -120,7 +147,7 @@ type ChannelStats struct {
 	DeferredCount int64           `json:"defer_count"`
 	RequeueCount  int64           `json:"requeue_count"`
 	TimeoutCount  int64           `json:"timeout_count"`
-	MessageCount  int64           `json:"msg_count"`
+	MessageCount  int64           `json:"message_count"`
 	ClientCount   int             `json:"-"`
 	Selected      bool            `json:"-"`
 	NodeStats     []*ChannelStats `json:"nodes"`
@@ -156,29 +183,15 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 	c.E2eProcessingLatency.Add(a.E2eProcessingLatency)
 }
 
-func (c *ChannelStats) Target(key string) ([]string, string) {
-	color := "blue"
-	if key == "depth" || key == "deferred_count" {
-		color = "red"
-	}
-	target := fmt.Sprintf("sumSeries(%%stopic.%s.channel.%s.%s)", c.TopicName, c.ChannelName, key)
-	return []string{target}, color
-}
-
-func (c *ChannelStats) Host() string {
-	if len(c.NodeStats) > 0 {
-		return "*"
-	}
-	return c.Node
-}
-
 type ClientStats struct {
 	Node              string        `json:"node"`
 	RemoteAddress     string        `json:"remote_address"`
+	Name              string        `json:"name"` // TODO: deprecated, remove in 1.0
 	Version           string        `json:"version"`
 	ClientID          string        `json:"client_id"`
 	Hostname          string        `json:"hostname"`
 	UserAgent         string        `json:"user_agent"`
+	ConnectTs         int64         `json:"connect_ts"`
 	ConnectedDuration time.Duration `json:"connected"`
 	InFlightCount     int           `json:"in_flight_count"`
 	ReadyCount        int           `json:"ready_count"`
@@ -192,11 +205,33 @@ type ClientStats struct {
 	AuthIdentity      string        `json:"auth_identity"`
 	AuthIdentityURL   string        `json:"auth_identity_url"`
 
-	TLS                           bool
+	TLS                           bool   `json:"tls"`
 	CipherSuite                   string `json:"tls_cipher_suite"`
 	TLSVersion                    string `json:"tls_version"`
 	TLSNegotiatedProtocol         string `json:"tls_negotiated_protocol"`
 	TLSNegotiatedProtocolIsMutual bool   `json:"tls_negotiated_protocol_is_mutual"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler and postprocesses ConnectedDuration
+func (s *ClientStats) UnmarshalJSON(b []byte) (err error) {
+	type locaClientStats ClientStats // re-typed to prevent recursion from json.Unmarshal
+	var ss locaClientStats
+	if err = json.Unmarshal(b, &ss); err != nil {
+		return
+	}
+	*s = ClientStats(ss)
+	s.ConnectedDuration = time.Now().Truncate(time.Second).Sub(time.Unix(s.ConnectTs, 0))
+
+	if s.ClientID == "" {
+		// TODO: deprecated, remove in 1.0
+		remoteAddressParts := strings.Split(s.RemoteAddress, ":")
+		port := remoteAddressParts[len(remoteAddressParts)-1]
+		if len(remoteAddressParts) < 2 {
+			port = "NA"
+		}
+		s.ClientID = fmt.Sprintf("%s:%s", s.Name, port)
+	}
+	return
 }
 
 func (c *ClientStats) HasUserAgent() bool {
