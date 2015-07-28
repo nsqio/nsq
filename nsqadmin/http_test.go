@@ -115,7 +115,7 @@ func TestHTTPTopicsGET(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics", nsqadmin1.RealHTTPAddr())
+	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -141,7 +141,7 @@ func TestHTTPTopicGET(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -152,11 +152,11 @@ func TestHTTPTopicGET(t *testing.T) {
 	js, err := simplejson.NewJson(body)
 	equal(t, err, nil)
 	t.Logf("%s", body)
-	equal(t, js.Get("name").MustString(), topicName)
+	equal(t, js.Get("topic_name").MustString(), topicName)
 	equal(t, js.Get("depth").MustInt(), 0)
 	equal(t, js.Get("memory_depth").MustInt(), 0)
 	equal(t, js.Get("backend_depth").MustInt(), 0)
-	equal(t, js.Get("msg_count").MustInt(), 0)
+	equal(t, js.Get("message_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
 }
 
@@ -170,7 +170,7 @@ func TestHTTPNodesGET(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/nodes", nsqadmin1.RealHTTPAddr())
+	url := fmt.Sprintf("http://%s/api/nodes", nsqadmin1.RealHTTPAddr())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -205,7 +205,7 @@ func TestHTTPChannelGET(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -216,17 +216,16 @@ func TestHTTPChannelGET(t *testing.T) {
 	js, err := simplejson.NewJson(body)
 	equal(t, err, nil)
 	equal(t, js.Get("topic_name").MustString(), topicName)
-	equal(t, js.Get("name").MustString(), "ch")
+	equal(t, js.Get("channel_name").MustString(), "ch")
 	equal(t, js.Get("depth").MustInt(), 0)
 	equal(t, js.Get("memory_depth").MustInt(), 0)
 	equal(t, js.Get("backend_depth").MustInt(), 0)
-	equal(t, js.Get("msg_count").MustInt(), 0)
+	equal(t, js.Get("message_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
 	equal(t, js.Get("in_flight_count").MustInt(), 0)
 	equal(t, js.Get("defer_count").MustInt(), 0)
 	equal(t, js.Get("requeue_count").MustInt(), 0)
 	equal(t, js.Get("timeout_count").MustInt(), 0)
-	equal(t, js.Get("msg_count").MustInt(), 0)
 	equal(t, len(js.Get("clients").MustArray()), 0)
 }
 
@@ -243,7 +242,7 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/nodes/%s", nsqadmin1.RealHTTPAddr(),
+	url := fmt.Sprintf("http://%s/api/nodes/%s", nsqadmin1.RealHTTPAddr(),
 		nsqds[0].RealHTTPAddr().String())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
@@ -257,17 +256,16 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	equal(t, js.Get("node").MustString(), nsqds[0].RealHTTPAddr().String())
 	equal(t, len(js.Get("topics").MustArray()), 1)
 	testTopic := js.Get("topics").GetIndex(0)
-	equal(t, testTopic.Get("name").MustString(), topicName)
+	equal(t, testTopic.Get("topic_name").MustString(), topicName)
 	equal(t, testTopic.Get("depth").MustInt(), 0)
 	equal(t, testTopic.Get("memory_depth").MustInt(), 0)
 	equal(t, testTopic.Get("backend_depth").MustInt(), 0)
-	equal(t, testTopic.Get("msg_count").MustInt(), 0)
+	equal(t, testTopic.Get("message_count").MustInt(), 0)
 	equal(t, testTopic.Get("paused").MustBool(), false)
 	equal(t, testTopic.Get("in_flight_count").MustInt(), 0)
 	equal(t, testTopic.Get("defer_count").MustInt(), 0)
 	equal(t, testTopic.Get("requeue_count").MustInt(), 0)
 	equal(t, testTopic.Get("timeout_count").MustInt(), 0)
-	equal(t, testTopic.Get("msg_count").MustInt(), 0)
 }
 
 func TestHTTPCreateTopicPOST(t *testing.T) {
@@ -282,7 +280,7 @@ func TestHTTPCreateTopicPOST(t *testing.T) {
 	topicName := "test_create_topic_post" + strconv.Itoa(int(time.Now().Unix()))
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics", nsqadmin1.RealHTTPAddr())
+	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	body, _ := json.Marshal(map[string]interface{}{
 		"topic": topicName,
 	})
@@ -305,7 +303,7 @@ func TestHTTPCreateTopicChannelPOST(t *testing.T) {
 	topicName := "test_create_topic_channel_post" + strconv.Itoa(int(time.Now().Unix()))
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics", nsqadmin1.RealHTTPAddr())
+	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	body, _ := json.Marshal(map[string]interface{}{
 		"topic":   topicName,
 		"channel": "ch",
@@ -329,7 +327,7 @@ func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/nodes/%s", nsqadmin1.RealHTTPAddr(), nsqds[0].RealHTTPAddr())
+	url := fmt.Sprintf("http://%s/api/nodes/%s", nsqadmin1.RealHTTPAddr(), nsqds[0].RealHTTPAddr())
 	body, _ := json.Marshal(map[string]interface{}{
 		"topic": topicName,
 	})
@@ -352,7 +350,7 @@ func TestHTTPDeleteTopicPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -373,7 +371,7 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
@@ -393,7 +391,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ := json.Marshal(map[string]interface{}{
 		"action": "pause",
 	})
@@ -404,7 +402,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 
-	url = fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	url = fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ = json.Marshal(map[string]interface{}{
 		"action": "unpause",
 	})
@@ -428,7 +426,7 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ := json.Marshal(map[string]interface{}{
 		"action": "pause",
 	})
@@ -439,7 +437,7 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 
-	url = fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	url = fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ = json.Marshal(map[string]interface{}{
 		"action": "unpause",
 	})
@@ -464,7 +462,7 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ := json.Marshal(map[string]interface{}{
 		"action": "empty",
 	})
@@ -493,7 +491,7 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
-	url := fmt.Sprintf("http://%s/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	body, _ := json.Marshal(map[string]interface{}{
 		"action": "empty",
 	})
