@@ -95,8 +95,11 @@ func (e *E2eProcessingLatencyAggregate) Add(e2 *E2eProcessingLatencyAggregate) {
 		}
 		p[i]["max"] = math.Max(value["max"], p[i]["max"])
 		p[i]["min"] = math.Min(value["max"], p[i]["max"])
-
 		p[i]["count"] += value["count"]
+		if p[i]["count"] == 0 {
+			p[i]["average"] = 0
+			continue
+		}
 		delta := value["average"] - p[i]["average"]
 		R := delta * value["count"] / p[i]["count"]
 		p[i]["average"] = p[i]["average"] + R
