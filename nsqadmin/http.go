@@ -85,6 +85,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("DELETE", "/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
 	router.Handle("DELETE", "/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
 	router.Handle("DELETE", "/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
@@ -586,6 +587,41 @@ func (s *httpServer) emptyChannel(req *http.Request, topicName string, channelNa
 			url.QueryEscape(topicName), url.QueryEscape(channelName)))
 	s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
 	return nil
+}
+
+type counterStats struct {
+	Node         string `json:"node"`
+	TopicName    string `json:"topic_name"`
+	ChannelName  string `json:"channel_name"`
+	MessageCount int64  `json:"message_count"`
+}
+
+func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	stats := make(map[string]*counterStats)
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	addresses := make([]string, len(producers))
+	for i, p := range producers {
+		addresses[i] = p.HTTPAddress()
+	}
+	_, channelStats, _ := s.ci.GetNSQDStats(addresses, "")
+
+	for _, channelStats := range channelStats {
+		for _, hostChannelStats := range channelStats.NodeStats {
+			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.Node)
+			s, ok := stats[key]
+			if !ok {
+				s = &counterStats{
+					Node:        hostChannelStats.Node,
+					TopicName:   channelStats.TopicName,
+					ChannelName: channelStats.ChannelName,
+				}
+				stats[key] = s
+			}
+			s.MessageCount += hostChannelStats.MessageCount
+		}
+	}
+
+	return stats, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
