@@ -86,11 +86,11 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("DELETE", "/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
 	router.Handle("DELETE", "/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
+	router.Handle("GET", "/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 
 	// deprecated endpoints
 	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
-	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log, http_api.PlainText))
 
 	if s.ctx.nsqadmin.opts.ProxyGraphite {
 		router.Handler("GET", "/render", s.proxy)
@@ -622,6 +622,53 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	return stats, nil
+}
+
+func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	metric, err := reqParams.Get("metric")
+	if err != nil || metric != "rate" {
+		return nil, http_api.Err{404, "INVALID_ARG_METRIC"}
+	}
+
+	target, err := reqParams.Get("target")
+	if err != nil {
+		return nil, http_api.Err{404, "INVALID_ARG_TARGET"}
+	}
+
+	query := rateQuery(target, s.ctx.nsqadmin.opts.StatsdInterval)
+	url := s.ctx.nsqadmin.opts.GraphiteURL + query
+	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
+	response, err := graphiteGet(url)
+	if err != nil {
+		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+	}
+
+	resp, err := parseRateResponse(response, s.ctx.nsqadmin.opts.StatsdInterval)
+	if err != nil {
+		s.ctx.nsqadmin.logf("ERROR: response formatting failed - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+	}
+
+	return resp, nil
+}
+
+func graphiteGet(url string) ([]byte, error) {
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	return contents, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
