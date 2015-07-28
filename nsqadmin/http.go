@@ -3,7 +3,6 @@ package nsqadmin
 import (
 	"fmt"
 	"html/template"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -74,8 +73,13 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		proxy = NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
 	}
 
+	log := http_api.Log(ctx.nsqadmin.opts.Logger)
+
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqadmin.opts.Logger)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.opts.Logger)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.opts.Logger)
 	s := &httpServer{
 		ctx:      ctx,
 		counters: make(map[string]map[string]int64),
@@ -83,29 +87,29 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		router:   router,
 	}
 
-	router.Handle("GET", "/ping", s.pingHandler)
+	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	router.Handle("GET", "/", s.indexHandler)
-	router.Handle("GET", "/nodes", s.nodesHandler)
-	router.Handle("GET", "/node/:node", s.nodeHandler)
-	router.Handle("GET", "/topic/:topic", s.topicHandler)
-	router.Handle("GET", "/topic/:topic/:channel", s.channelHandler)
-	router.Handle("GET", "/static/:asset", s.embeddedAssetHandler)
-	router.Handle("GET", "/counter", s.counterHandler)
-	router.Handle("GET", "/counter/data", s.counterDataHandler)
-	router.Handle("GET", "/lookup", s.lookupHandler)
-	router.Handle("GET", "/graphite_data", s.graphiteDataHandler)
+	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.nodesHandler, log))
+	router.Handle("GET", "/node/:node", http_api.Decorate(s.nodeHandler, log))
+	router.Handle("GET", "/topic/:topic", http_api.Decorate(s.topicHandler, log))
+	router.Handle("GET", "/topic/:topic/:channel", http_api.Decorate(s.channelHandler, log))
+	router.Handle("GET", "/static/:asset", http_api.Decorate(s.embeddedAssetHandler, log))
+	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log))
+	router.Handle("GET", "/counter/data", http_api.Decorate(s.counterDataHandler, log))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.lookupHandler, log))
+	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log))
 
-	router.Handle("POST", "/tombstone_topic_producer", s.tombstoneTopicProducerHandler)
-	router.Handle("POST", "/empty_topic", s.emptyTopicHandler)
-	router.Handle("POST", "/delete_topic", s.deleteTopicHandler)
-	router.Handle("POST", "/pause_topic", s.pauseTopicHandler)
-	router.Handle("POST", "/unpause_topic", s.pauseTopicHandler)
-	router.Handle("POST", "/empty_channel", s.emptyChannelHandler)
-	router.Handle("POST", "/delete_channel", s.deleteChannelHandler)
-	router.Handle("POST", "/pause_channel", s.pauseChannelHandler)
-	router.Handle("POST", "/unpause_channel", s.pauseChannelHandler)
-	router.Handle("POST", "/create_topic_channel", s.createTopicChannelHandler)
+	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.tombstoneTopicProducerHandler, log))
+	router.Handle("POST", "/empty_topic", http_api.Decorate(s.emptyTopicHandler, log))
+	router.Handle("POST", "/delete_topic", http_api.Decorate(s.deleteTopicHandler, log))
+	router.Handle("POST", "/pause_topic", http_api.Decorate(s.pauseTopicHandler, log))
+	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.pauseTopicHandler, log))
+	router.Handle("POST", "/empty_channel", http_api.Decorate(s.emptyChannelHandler, log))
+	router.Handle("POST", "/delete_channel", http_api.Decorate(s.deleteChannelHandler, log))
+	router.Handle("POST", "/pause_channel", http_api.Decorate(s.pauseChannelHandler, log))
+	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.pauseChannelHandler, log))
+	router.Handle("POST", "/create_topic_channel", http_api.Decorate(s.createTopicChannelHandler, log))
 
 	if s.ctx.nsqadmin.opts.ProxyGraphite {
 		router.Handler("GET", "/render", s.proxy)
@@ -118,38 +122,31 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	s.router.ServeHTTP(w, req)
 }
 
-func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Length", "2")
-	io.WriteString(w, "OK")
+func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return "OK", nil
 }
 
-func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	assetName := ps.ByName("asset")
-	s.ctx.nsqadmin.logf("INFO: Requesting embedded asset - %s", assetName)
 
 	asset, error := templates.Asset(assetName)
 	if error != nil {
-		s.ctx.nsqadmin.logf("ERROR: embedded asset access - %s : %s", assetName, error)
-		http.NotFound(w, req)
-		return
+		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
-	assetLen := len(asset)
 
 	if strings.HasSuffix(assetName, ".js") {
 		w.Header().Set("Content-Type", "text/javascript")
 	} else if strings.HasSuffix(assetName, ".css") {
 		w.Header().Set("Content-Type", "text/css")
 	}
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", assetLen))
-	w.Write(asset)
+
+	return asset, nil
 }
 
-func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	var topics []string
@@ -172,19 +169,18 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 	}
 	err = templates.T.ExecuteTemplate(w, "index.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
-func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	producers := s.getProducers(topicName)
@@ -228,30 +224,26 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 	}
 	err = templates.T.ExecuteTemplate(w, "topic.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
-func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	producers := s.getProducers(topicName)
 	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
 	channelStats, ok := allChannelStats[channelName]
-
 	if !ok {
-		s.ctx.nsqadmin.logf("ERROR: channel stats do not exist")
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
 
 	hasE2eLatency := channelStats.E2eProcessingLatency != nil &&
@@ -286,17 +278,16 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 
 	err = templates.T.ExecuteTemplate(w, "channel.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
-func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	channels := make(map[string][]string)
@@ -325,24 +316,23 @@ func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request, ps 
 	}
 	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
-func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil || !protocol.IsValidTopicName(topicName) {
-		http.Error(w, "INVALID_TOPIC", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	channelName, err := reqParams.Get("channel")
 	if err != nil || (len(channelName) > 0 && !protocol.IsValidChannelName(channelName)) {
-		http.Error(w, "INVALID_CHANNEL", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_CHANNEL"}
 	}
 
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
@@ -402,21 +392,20 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 
 	http.Redirect(w, req, "/lookup", 302)
+	return nil, nil
 }
 
-func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		http.Error(w, "MISSING_ARG_TOPIC", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	node, err := reqParams.Get("node")
 	if err != nil {
-		http.Error(w, "MISSING_ARG_NODE", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_NODE"}
 	}
 
 	rd, _ := reqParams.Get("rd")
@@ -468,15 +457,15 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
 
 	http.Redirect(w, req, rd, 302)
+	return nil, nil
 }
 
-func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		http.Error(w, "MISSING_ARG_TOPIC", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	rd, _ := reqParams.Get("rd")
@@ -518,15 +507,15 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	s.notifyAdminAction("delete_topic", topicName, "", "", req)
 
 	http.Redirect(w, req, rd, 302)
+	return nil, nil
 }
 
-func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	rd, _ := reqParams.Get("rd")
@@ -569,15 +558,15 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
 	http.Redirect(w, req, rd, 302)
+	return nil, nil
 }
 
-func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		http.Error(w, "MISSING_ARG_TOPIC", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	producerAddrs := s.getProducers(topicName)
@@ -592,15 +581,15 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request,
 	s.notifyAdminAction("empty_topic", topicName, "", "", req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+	return nil, nil
 }
 
-func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		http.Error(w, "MISSING_ARG_TOPIC", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
 	verb := "pause"
@@ -620,15 +609,15 @@ func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request,
 	s.notifyAdminAction(verb+"_topic", topicName, "", "", req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
+	return nil, nil
 }
 
-func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	producerAddrs := s.getProducers(topicName)
@@ -644,15 +633,15 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s",
 		url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
+	return nil, nil
 }
 
-func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams := &http_api.PostParams{req}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	verb := "pause"
@@ -672,16 +661,15 @@ func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Reques
 	s.notifyAdminAction(verb+"_channel", topicName, channelName, "", req)
 
 	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
+	return nil, nil
 }
 
-func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	node := ps.ByName("node")
 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	found := false
@@ -699,8 +687,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 		}
 	}
 	if !found {
-		http.Error(w, "INVALID_NODE", 500)
-		return
+		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
 
 	topicStats, channelStats, _ := lookupd.GetNSQDStats([]string{node}, "")
@@ -735,17 +722,16 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 	}
 	err = templates.T.ExecuteTemplate(w, "node.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
-func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
@@ -764,9 +750,10 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps h
 	}
 	err = templates.T.ExecuteTemplate(w, "nodes.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
 type counterTarget struct{}
@@ -779,12 +766,10 @@ func (c counterTarget) Host() string {
 	return "*"
 }
 
-func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	p := struct {
 		Title        string
@@ -799,21 +784,20 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 	err = templates.T.ExecuteTemplate(w, "counter.html", p)
 	if err != nil {
-		s.ctx.nsqadmin.logf("Template Error %s", err)
-		http.Error(w, "Template Error", 500)
+		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	return nil, nil
 }
 
 // this endpoint works by giving out an ID that maps to a stats dictionary
 // The initial request is the number of messages processed since each nsqd started up.
 // Subsequent requsts pass that ID and get an updated delta based on each individual channel/nsqd message count
 // That ID must be re-requested or it will be expired.
-func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http_api.Respond(w, 500, "INVALID_REQUEST", nil)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	statsID, _ := reqParams.Get("id")
@@ -852,39 +836,27 @@ func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request
 	}
 	s.counters[statsID] = newStats
 
-	data := make(map[string]interface{})
-	data["new_messages"] = newMessages
-	data["total_messages"] = totalMessages
-	data["id"] = statsID
-	http_api.Respond(w, 200, "OK", data)
+	return struct {
+		NewMessages   int64  `json:"new_messages"`
+		TotalMessages int64  `json:"total_messages"`
+		ID            string `json:"id"`
+	}{newMessages, totalMessages, statsID}, nil
 }
 
-func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to parse request params - %s", err)
-		http.Error(w, "INVALID_REQUEST", 500)
-		return
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
 	metric, err := reqParams.Get("metric")
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: missing metric param - %s", err)
-		http.Error(w, "MISSING_METRIC_PARAM", 500)
-		return
+	if err != nil || metric != "rate" {
+		return nil, http_api.Err{404, "INVALID_ARG_METRIC"}
 	}
 
 	target, err := reqParams.Get("target")
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: missing target param - %s", err)
-		http.Error(w, "MISSING_TARGET_PARAM", 500)
-		return
-	}
-
-	if metric != "rate" {
-		s.ctx.nsqadmin.logf("ERROR: unknown metric value %s", metric)
-		http.Error(w, "INVALID_METRIC_PARAM", 500)
-		return
+		return nil, http_api.Err{404, "INVALID_ARG_TARGET"}
 	}
 
 	query := rateQuery(target, s.ctx.nsqadmin.opts.StatsdInterval)
@@ -892,21 +864,18 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
 	response, err := graphiteGet(url)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: graphite request failed %s", err)
-		http.Error(w, "GRAPHITE_FAILED", 500)
-		return
+		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	resp, err := parseRateResponse(response, s.ctx.nsqadmin.opts.StatsdInterval)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: response formating failed - %s", err)
-		http.Error(w, "INVALID_GRAPHITE_RESPONSE", 500)
-		return
+		s.ctx.nsqadmin.logf("ERROR: response formatting failed - %s", err)
+		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(resp)
-	return
+	return resp, nil
 }
 
 func graphiteGet(url string) ([]byte, error) {
