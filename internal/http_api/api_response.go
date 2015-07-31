@@ -41,10 +41,18 @@ func PlainText(f APIHandler) APIHandler {
 			code = err.(Err).Code
 			data = err.Error()
 		}
-		response := data.(string)
-		w.Header().Set("Content-Length", strconv.Itoa(len(response)))
-		w.WriteHeader(code)
-		io.WriteString(w, response)
+		switch d := data.(type) {
+		case string:
+			w.Header().Set("Content-Length", strconv.Itoa(len(d)))
+			w.WriteHeader(code)
+			io.WriteString(w, d)
+		case []byte:
+			w.Header().Set("Content-Length", strconv.Itoa(len(d)))
+			w.WriteHeader(code)
+			w.Write(d)
+		default:
+			panic(fmt.Sprintf("unknown response type %T", data))
+		}
 		return nil, nil
 	}
 }
