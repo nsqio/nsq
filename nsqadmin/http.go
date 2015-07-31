@@ -89,27 +89,27 @@ func NewHTTPServer(ctx *Context) *httpServer {
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/nodes", http_api.Decorate(s.nodesHandler, log))
-	router.Handle("GET", "/node/:node", http_api.Decorate(s.nodeHandler, log))
-	router.Handle("GET", "/topic/:topic", http_api.Decorate(s.topicHandler, log))
-	router.Handle("GET", "/topic/:topic/:channel", http_api.Decorate(s.channelHandler, log))
-	router.Handle("GET", "/static/:asset", http_api.Decorate(s.embeddedAssetHandler, log))
-	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log))
-	router.Handle("GET", "/counter/data", http_api.Decorate(s.counterDataHandler, log))
-	router.Handle("GET", "/lookup", http_api.Decorate(s.lookupHandler, log))
-	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log))
+	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log, http_api.PlainText))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.nodesHandler, log, http_api.PlainText))
+	router.Handle("GET", "/node/:node", http_api.Decorate(s.nodeHandler, log, http_api.PlainText))
+	router.Handle("GET", "/topic/:topic", http_api.Decorate(s.topicHandler, log, http_api.PlainText))
+	router.Handle("GET", "/topic/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.PlainText))
+	router.Handle("GET", "/static/:asset", http_api.Decorate(s.embeddedAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.PlainText))
+	router.Handle("GET", "/counter/data", http_api.Decorate(s.counterDataHandler, log, http_api.PlainText))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.lookupHandler, log, http_api.PlainText))
+	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log, http_api.PlainText))
 
-	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.tombstoneTopicProducerHandler, log))
-	router.Handle("POST", "/empty_topic", http_api.Decorate(s.emptyTopicHandler, log))
-	router.Handle("POST", "/delete_topic", http_api.Decorate(s.deleteTopicHandler, log))
-	router.Handle("POST", "/pause_topic", http_api.Decorate(s.pauseTopicHandler, log))
-	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.pauseTopicHandler, log))
-	router.Handle("POST", "/empty_channel", http_api.Decorate(s.emptyChannelHandler, log))
-	router.Handle("POST", "/delete_channel", http_api.Decorate(s.deleteChannelHandler, log))
-	router.Handle("POST", "/pause_channel", http_api.Decorate(s.pauseChannelHandler, log))
-	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.pauseChannelHandler, log))
-	router.Handle("POST", "/create_topic_channel", http_api.Decorate(s.createTopicChannelHandler, log))
+	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.tombstoneTopicProducerHandler, log, http_api.PlainText))
+	router.Handle("POST", "/empty_topic", http_api.Decorate(s.emptyTopicHandler, log, http_api.PlainText))
+	router.Handle("POST", "/delete_topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.PlainText))
+	router.Handle("POST", "/pause_topic", http_api.Decorate(s.pauseTopicHandler, log, http_api.PlainText))
+	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.pauseTopicHandler, log, http_api.PlainText))
+	router.Handle("POST", "/empty_channel", http_api.Decorate(s.emptyChannelHandler, log, http_api.PlainText))
+	router.Handle("POST", "/delete_channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.PlainText))
+	router.Handle("POST", "/pause_channel", http_api.Decorate(s.pauseChannelHandler, log, http_api.PlainText))
+	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.pauseChannelHandler, log, http_api.PlainText))
+	router.Handle("POST", "/create_topic_channel", http_api.Decorate(s.createTopicChannelHandler, log, http_api.PlainText))
 
 	if s.ctx.nsqadmin.opts.ProxyGraphite {
 		router.Handler("GET", "/render", s.proxy)
@@ -139,7 +139,6 @@ func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Reque
 	} else if strings.HasSuffix(assetName, ".css") {
 		w.Header().Set("Content-Type", "text/css")
 	}
-
 	return asset, nil
 }
 
