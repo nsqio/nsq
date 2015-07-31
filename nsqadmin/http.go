@@ -94,7 +94,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/node/:node", http_api.Decorate(s.nodeHandler, log, http_api.PlainText))
 	router.Handle("GET", "/topic/:topic", http_api.Decorate(s.topicHandler, log, http_api.PlainText))
 	router.Handle("GET", "/topic/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.PlainText))
-	router.Handle("GET", "/static/:asset", http_api.Decorate(s.embeddedAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", "/static/*asset", http_api.Decorate(s.embeddedAssetHandler, log, http_api.PlainText))
 	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.PlainText))
 	router.Handle("GET", "/counter/data", http_api.Decorate(s.counterDataHandler, log, http_api.PlainText))
 	router.Handle("GET", "/lookup", http_api.Decorate(s.lookupHandler, log, http_api.PlainText))
@@ -128,6 +128,9 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 
 func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	assetName := ps.ByName("asset")
+	if strings.HasPrefix(assetName, "/") {
+		assetName = assetName[1:]
+	}
 
 	asset, error := templates.Asset(assetName)
 	if error != nil {
