@@ -341,13 +341,9 @@ func (d *diskQueue) writeOne(data []byte) error {
 		return err
 	}
 
-	_, err = d.writeBuf.Write(data)
-	if err != nil {
-		return err
-	}
-
-	// only write to the file once
-	_, err = d.writeFile.Write(d.writeBuf.Bytes())
+	// use multireader to avoid data copy
+	mr := io.MultiReader(&d.writeBuf, bytes.NewReader(data))
+	_, err = io.Copy(d.writeFile, mr)
 	if err != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
