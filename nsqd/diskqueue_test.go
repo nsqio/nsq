@@ -345,8 +345,10 @@ func BenchmarkDiskQueueGet(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
+	data := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	b.SetBytes(int64(len(data)))
 	for i := 0; i < b.N; i++ {
-		dq.Put([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		dq.Put(data)
 	}
 	b.StartTimer()
 
