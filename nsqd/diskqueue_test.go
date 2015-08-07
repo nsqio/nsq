@@ -24,6 +24,7 @@ func TestDiskQueue(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueue(dqName, tmpDir, 1024, 4, 1<<10, 2500, 2*time.Second, l)
+	defer dq.Close()
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
@@ -47,6 +48,7 @@ func TestDiskQueueRoll(t *testing.T) {
 	msg := bytes.Repeat([]byte{0}, 10)
 	ml := int64(len(msg))
 	dq := newDiskQueue(dqName, tmpDir, 9*(ml+4), int32(ml), 1<<10, 2500, 2*time.Second, l)
+	defer dq.Close()
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
@@ -76,6 +78,7 @@ func TestDiskQueueEmpty(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	msg := bytes.Repeat([]byte{0}, 10)
 	dq := newDiskQueue(dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, l)
+	defer dq.Close()
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), int64(0))
 
@@ -143,6 +146,7 @@ func TestDiskQueueCorruption(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	// require a non-zero message length for the corrupt (len 0) test below
 	dq := newDiskQueue(dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, l)
+	defer dq.Close()
 
 	msg := make([]byte, 123) // 127 bytes per message, 8 (1016 bytes) messages per file
 	for i := 0; i < 25; i++ {
@@ -229,6 +233,7 @@ func TestDiskQueueTorture(t *testing.T) {
 	t.Logf("restarting diskqueue")
 
 	dq = newDiskQueue(dqName, tmpDir, 262144, 0, 1<<10, 2500, 2*time.Second, l)
+	defer dq.Close()
 	nequal(t, dq, nil)
 	equal(t, dq.Depth(), depth)
 
@@ -263,8 +268,6 @@ func TestDiskQueueTorture(t *testing.T) {
 	wg.Wait()
 
 	equal(t, read, depth)
-
-	dq.Close()
 }
 
 func BenchmarkDiskQueuePut16(b *testing.B) {
@@ -303,13 +306,17 @@ func benchmarkDiskQueuePut(size int64, b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1024768*100, 0, 1<<10, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 1024768*100, 0, 1<<20, 2500, 2*time.Second, l)
+	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		dq.Put(data)
+		err := dq.Put(data)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -451,6 +458,7 @@ func benchmarkDiskQueueGet(size int64, b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
+	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
 	for i := 0; i < b.N; i++ {
