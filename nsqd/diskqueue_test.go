@@ -267,7 +267,34 @@ func TestDiskQueueTorture(t *testing.T) {
 	dq.Close()
 }
 
-func BenchmarkDiskQueuePut(b *testing.B) {
+func BenchmarkDiskQueuePut16(b *testing.B) {
+	benchmarkDiskQueuePut(16, b)
+}
+func BenchmarkDiskQueuePut64(b *testing.B) {
+	benchmarkDiskQueuePut(64, b)
+}
+func BenchmarkDiskQueuePut256(b *testing.B) {
+	benchmarkDiskQueuePut(256, b)
+}
+func BenchmarkDiskQueuePut1024(b *testing.B) {
+	benchmarkDiskQueuePut(1024, b)
+}
+func BenchmarkDiskQueuePut4096(b *testing.B) {
+	benchmarkDiskQueuePut(4096, b)
+}
+func BenchmarkDiskQueuePut16384(b *testing.B) {
+	benchmarkDiskQueuePut(16384, b)
+}
+func BenchmarkDiskQueuePut65536(b *testing.B) {
+	benchmarkDiskQueuePut(65536, b)
+}
+func BenchmarkDiskQueuePut262144(b *testing.B) {
+	benchmarkDiskQueuePut(262144, b)
+}
+func BenchmarkDiskQueuePut1048576(b *testing.B) {
+	benchmarkDiskQueuePut(1048576, b)
+}
+func benchmarkDiskQueuePut(size int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
@@ -277,8 +304,7 @@ func BenchmarkDiskQueuePut(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueue(dqName, tmpDir, 1024768*100, 0, 1<<10, 2500, 2*time.Second, l)
-	size := 1024
-	b.SetBytes(int64(size))
+	b.SetBytes(size)
 	data := make([]byte, size)
 	b.StartTimer()
 
@@ -287,7 +313,34 @@ func BenchmarkDiskQueuePut(b *testing.B) {
 	}
 }
 
-func BenchmarkDiskWrite(b *testing.B) {
+func BenchmarkDiskWrite16(b *testing.B) {
+	benchmarkDiskWrite(16, b)
+}
+func BenchmarkDiskWrite64(b *testing.B) {
+	benchmarkDiskWrite(64, b)
+}
+func BenchmarkDiskWrite256(b *testing.B) {
+	benchmarkDiskWrite(256, b)
+}
+func BenchmarkDiskWrite1024(b *testing.B) {
+	benchmarkDiskWrite(1024, b)
+}
+func BenchmarkDiskWrite4096(b *testing.B) {
+	benchmarkDiskWrite(4096, b)
+}
+func BenchmarkDiskWrite16384(b *testing.B) {
+	benchmarkDiskWrite(16384, b)
+}
+func BenchmarkDiskWrite65536(b *testing.B) {
+	benchmarkDiskWrite(65536, b)
+}
+func BenchmarkDiskWrite262144(b *testing.B) {
+	benchmarkDiskWrite(262144, b)
+}
+func BenchmarkDiskWrite1048576(b *testing.B) {
+	benchmarkDiskWrite(1048576, b)
+}
+func benchmarkDiskWrite(size int64, b *testing.B) {
 	b.StopTimer()
 	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -296,8 +349,7 @@ func BenchmarkDiskWrite(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	f, _ := os.OpenFile(path.Join(tmpDir, fileName), os.O_RDWR|os.O_CREATE, 0600)
-	size := 256
-	b.SetBytes(int64(size))
+	b.SetBytes(size)
 	data := make([]byte, size)
 	b.StartTimer()
 
@@ -307,7 +359,34 @@ func BenchmarkDiskWrite(b *testing.B) {
 	f.Sync()
 }
 
-func BenchmarkDiskWriteBuffered(b *testing.B) {
+func BenchmarkDiskWriteBuffered16(b *testing.B) {
+	benchmarkDiskWriteBuffered(16, b)
+}
+func BenchmarkDiskWriteBuffered64(b *testing.B) {
+	benchmarkDiskWriteBuffered(64, b)
+}
+func BenchmarkDiskWriteBuffered256(b *testing.B) {
+	benchmarkDiskWriteBuffered(256, b)
+}
+func BenchmarkDiskWriteBuffered1024(b *testing.B) {
+	benchmarkDiskWriteBuffered(1024, b)
+}
+func BenchmarkDiskWriteBuffered4096(b *testing.B) {
+	benchmarkDiskWriteBuffered(4096, b)
+}
+func BenchmarkDiskWriteBuffered16384(b *testing.B) {
+	benchmarkDiskWriteBuffered(16384, b)
+}
+func BenchmarkDiskWriteBuffered65536(b *testing.B) {
+	benchmarkDiskWriteBuffered(65536, b)
+}
+func BenchmarkDiskWriteBuffered262144(b *testing.B) {
+	benchmarkDiskWriteBuffered(262144, b)
+}
+func BenchmarkDiskWriteBuffered1048576(b *testing.B) {
+	benchmarkDiskWriteBuffered(1048576, b)
+}
+func benchmarkDiskWriteBuffered(size int64, b *testing.B) {
 	b.StopTimer()
 	fileName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -316,8 +395,7 @@ func BenchmarkDiskWriteBuffered(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	f, _ := os.OpenFile(path.Join(tmpDir, fileName), os.O_RDWR|os.O_CREATE, 0600)
-	size := 256
-	b.SetBytes(int64(size))
+	b.SetBytes(size)
 	data := make([]byte, size)
 	w := bufio.NewWriterSize(f, 1024*4)
 	b.StartTimer()
@@ -335,7 +413,35 @@ func BenchmarkDiskWriteBuffered(b *testing.B) {
 // you might want to run this like
 // $ go test -bench=DiskQueueGet -benchtime 0.1s
 // too avoid doing too many iterations.
-func BenchmarkDiskQueueGet(b *testing.B) {
+func BenchmarkDiskQueueGet16(b *testing.B) {
+	benchmarkDiskQueueGet(16, b)
+}
+func BenchmarkDiskQueueGet64(b *testing.B) {
+	benchmarkDiskQueueGet(64, b)
+}
+func BenchmarkDiskQueueGet256(b *testing.B) {
+	benchmarkDiskQueueGet(256, b)
+}
+func BenchmarkDiskQueueGet1024(b *testing.B) {
+	benchmarkDiskQueueGet(1024, b)
+}
+func BenchmarkDiskQueueGet4096(b *testing.B) {
+	benchmarkDiskQueueGet(4096, b)
+}
+func BenchmarkDiskQueueGet16384(b *testing.B) {
+	benchmarkDiskQueueGet(16384, b)
+}
+func BenchmarkDiskQueueGet65536(b *testing.B) {
+	benchmarkDiskQueueGet(65536, b)
+}
+func BenchmarkDiskQueueGet262144(b *testing.B) {
+	benchmarkDiskQueueGet(262144, b)
+}
+func BenchmarkDiskQueueGet1048576(b *testing.B) {
+	benchmarkDiskQueueGet(1048576, b)
+}
+
+func benchmarkDiskQueueGet(size int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	dqName := "bench_disk_queue_get" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
@@ -345,8 +451,8 @@ func BenchmarkDiskQueueGet(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
-	data := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	b.SetBytes(int64(len(data)))
+	b.SetBytes(size)
+	data := make([]byte, size)
 	for i := 0; i < b.N; i++ {
 		dq.Put(data)
 	}
