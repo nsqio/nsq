@@ -332,9 +332,9 @@ func BenchmarkDiskWriteBuffered(b *testing.B) {
 	f.Sync()
 }
 
-// this benchmark should be run via:
-//    $ go test -test.bench 'DiskQueueGet' -test.benchtime 0.1
-// (so that it does not perform too many iterations)
+// you might want to run this like
+// $ go test -bench=DiskQueueGet -benchtime 0.1s
+// too avoid doing too many iterations.
 func BenchmarkDiskQueueGet(b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
