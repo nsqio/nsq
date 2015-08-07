@@ -1,23 +1,24 @@
 package nsqadmin
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/lookupd"
 	"github.com/bitly/nsq/internal/protocol"
-	"github.com/bitly/nsq/internal/stringy"
 	"github.com/bitly/nsq/internal/version"
-	"github.com/bitly/nsq/nsqadmin/templates"
 	"github.com/blang/semver"
 	"github.com/julienschmidt/httprouter"
 )
@@ -45,34 +46,12 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 }
 
 type httpServer struct {
-	ctx      *Context
-	counters map[string]map[string]int64
-	proxy    *httputil.ReverseProxy
-	router   http.Handler
+	ctx    *Context
+	router http.Handler
+	ci     *clusterinfo.ClusterInfo
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
-	var proxy *httputil.ReverseProxy
-
-	templates.T.Funcs(template.FuncMap{
-		"commafy":        stringy.Commafy,
-		"nanotohuman":    stringy.NanoSecondToHuman,
-		"floatToPercent": stringy.FloatToPercent,
-		"percSuffix":     stringy.PercSuffix,
-		"getNodeConsistencyClass": func(node *lookupd.Producer) string {
-			if node.IsInconsistent(len(ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)) {
-				return "btn-warning"
-			}
-			return ""
-		},
-	})
-
-	templates.Parse()
-
-	if ctx.nsqadmin.opts.ProxyGraphite {
-		proxy = NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
-	}
-
 	log := http_api.Log(ctx.nsqadmin.opts.Logger)
 
 	router := httprouter.New()
@@ -81,39 +60,43 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.opts.Logger)
 	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.opts.Logger)
 	s := &httpServer{
-		ctx:      ctx,
-		counters: make(map[string]map[string]int64),
-		proxy:    proxy,
-		router:   router,
+		ctx:    ctx,
+		router: router,
+		ci:     clusterinfo.New(ctx.nsqadmin.opts.Logger),
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log, http_api.PlainText))
-	router.Handle("GET", "/nodes", http_api.Decorate(s.nodesHandler, log, http_api.PlainText))
-	router.Handle("GET", "/node/:node", http_api.Decorate(s.nodeHandler, log, http_api.PlainText))
-	router.Handle("GET", "/topic/:topic", http_api.Decorate(s.topicHandler, log, http_api.PlainText))
-	router.Handle("GET", "/topic/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.PlainText))
-	router.Handle("GET", "/static/*asset", http_api.Decorate(s.embeddedAssetHandler, log, http_api.PlainText))
-	router.Handle("GET", "/counter", http_api.Decorate(s.counterHandler, log, http_api.PlainText))
-	router.Handle("GET", "/counter/data", http_api.Decorate(s.counterDataHandler, log, http_api.PlainText))
-	router.Handle("GET", "/lookup", http_api.Decorate(s.lookupHandler, log, http_api.PlainText))
-	router.Handle("GET", "/graphite_data", http_api.Decorate(s.graphiteDataHandler, log, http_api.PlainText))
+	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/topics", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/nodes", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
 
-	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.tombstoneTopicProducerHandler, log, http_api.PlainText))
-	router.Handle("POST", "/empty_topic", http_api.Decorate(s.emptyTopicHandler, log, http_api.PlainText))
-	router.Handle("POST", "/delete_topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.PlainText))
-	router.Handle("POST", "/pause_topic", http_api.Decorate(s.pauseTopicHandler, log, http_api.PlainText))
-	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.pauseTopicHandler, log, http_api.PlainText))
-	router.Handle("POST", "/empty_channel", http_api.Decorate(s.emptyChannelHandler, log, http_api.PlainText))
-	router.Handle("POST", "/delete_channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.PlainText))
-	router.Handle("POST", "/pause_channel", http_api.Decorate(s.pauseChannelHandler, log, http_api.PlainText))
-	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.pauseChannelHandler, log, http_api.PlainText))
-	router.Handle("POST", "/create_topic_channel", http_api.Decorate(s.createTopicChannelHandler, log, http_api.PlainText))
-
+	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	if s.ctx.nsqadmin.opts.ProxyGraphite {
-		router.Handler("GET", "/render", s.proxy)
+		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
+		router.Handler("GET", "/render", proxy)
 	}
+
+	// v1 endpoints
+	router.Handle("GET", "/api/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
+	router.Handle("GET", "/api/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
+	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
+	router.Handle("POST", "/api/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.doTopicAction, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannelAction, log, http_api.V1))
+	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
+	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 
 	return s
 }
@@ -126,219 +109,242 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 	return "OK", nil
 }
 
-func (s *httpServer) embeddedAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	assetName := ps.ByName("asset")
-	if strings.HasPrefix(assetName, "/") {
-		assetName = assetName[1:]
-	}
+func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	asset, _ := Asset("index.html")
+	t, _ := template.New("index").Parse(string(asset))
 
-	asset, error := templates.Asset(assetName)
-	if error != nil {
+	w.Header().Set("Content-Type", "text/html")
+	t.Execute(w, struct {
+		Version        string
+		ProxyGraphite  bool
+		GraphEnabled   bool
+		GraphiteURL    string
+		StatsdInterval int
+		StatsdPrefix   string
+		NSQLookupd     []string
+	}{
+		Version:        version.Binary,
+		ProxyGraphite:  s.ctx.nsqadmin.opts.ProxyGraphite,
+		GraphEnabled:   s.ctx.nsqadmin.opts.GraphiteURL != "",
+		GraphiteURL:    s.ctx.nsqadmin.opts.GraphiteURL,
+		StatsdInterval: int(s.ctx.nsqadmin.opts.StatsdInterval / time.Second),
+		StatsdPrefix:   s.ctx.nsqadmin.opts.StatsdPrefix,
+		NSQLookupd:     s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+	})
+
+	return nil, nil
+}
+
+func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	assetName := ps.ByName("asset")
+
+	asset, err := Asset(assetName)
+	if err != nil {
 		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
 
-	if strings.HasSuffix(assetName, ".js") {
-		w.Header().Set("Content-Type", "text/javascript")
-	} else if strings.HasSuffix(assetName, ".css") {
-		w.Header().Set("Content-Type", "text/css")
+	ext := path.Ext(assetName)
+	ct := mime.TypeByExtension(ext)
+	if ct == "" {
+		switch ext {
+		case ".svg":
+			ct = "image/svg+xml"
+		case ".woff":
+			ct = "application/font-woff"
+		case ".ttf":
+			ct = "application/font-sfnt"
+		case ".eot":
+			ct = "application/vnd.ms-fontobject"
+		case ".woff2":
+			ct = "application/font-woff2"
+		}
 	}
-	return asset, nil
+	if ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+
+	return string(asset), nil
 }
 
-func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	var topics []string
 	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		topics, _ = lookupd.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+		topics, _ = s.ci.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		topics, _ = lookupd.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+		topics, _ = s.ci.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
 
-	p := struct {
-		Title        string
-		GraphOptions *GraphOptions
-		Topics       Topics
-		Version      string
-	}{
-		Title:        "NSQ",
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
-		Topics:       TopicsFromStrings(topics),
-		Version:      version.Binary,
+	inactive, _ := reqParams.Get("inactive")
+	if inactive == "true" {
+		topicChannelMap := make(map[string][]string)
+		if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) == 0 {
+			goto respond
+		}
+		for _, topicName := range topics {
+			var producers []string
+			producers, _ = s.ci.GetLookupdTopicProducers(
+				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+			if len(producers) == 0 {
+				topicChannels, _ := s.ci.GetLookupdTopicChannels(
+					topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+				topicChannelMap[topicName] = topicChannels
+			}
+		}
+	respond:
+		return struct {
+			Topics map[string][]string `json:"topics"`
+		}{topicChannelMap}, nil
 	}
-	err = templates.T.ExecuteTemplate(w, "index.html", p)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-	return nil, nil
+
+	return struct {
+		Topics []string `json:"topics"`
+	}{topics}, nil
 }
 
-func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
 	producers := s.getProducers(topicName)
-	topicStats, channelStats, _ := lookupd.GetNSQDStats(producers, topicName)
-
-	globalTopicStats := &lookupd.TopicStats{HostAddress: "Total"}
-	for _, t := range topicStats {
-		globalTopicStats.Add(t)
-	}
-
-	hasE2eLatency := globalTopicStats.E2eProcessingLatency != nil &&
-		len(globalTopicStats.E2eProcessingLatency.Percentiles) > 0
-
-	var firstTopic *lookupd.TopicStats
-	if len(topicStats) > 0 {
-		firstTopic = topicStats[0]
-	}
-
-	p := struct {
-		Title            string
-		GraphOptions     *GraphOptions
-		Version          string
-		Topic            string
-		TopicProducers   []string
-		TopicStats       []*lookupd.TopicStats
-		FirstTopic       *lookupd.TopicStats
-		GlobalTopicStats *lookupd.TopicStats
-		ChannelStats     map[string]*lookupd.ChannelStats
-		HasE2eLatency    bool
-	}{
-		Title:            fmt.Sprintf("NSQ %s", topicName),
-		GraphOptions:     NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:          version.Binary,
-		Topic:            topicName,
-		TopicProducers:   producers,
-		TopicStats:       topicStats,
-		FirstTopic:       firstTopic,
-		GlobalTopicStats: globalTopicStats,
-		ChannelStats:     channelStats,
-		HasE2eLatency:    hasE2eLatency,
-	}
-	err = templates.T.ExecuteTemplate(w, "topic.html", p)
+	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{400, err.Error()}
 	}
-	return nil, nil
+
+	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
+	for _, t := range topicStats {
+		allNodesTopicStats.Add(t)
+	}
+
+	return allNodesTopicStats, nil
 }
 
-func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) doChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
 
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
 	producers := s.getProducers(topicName)
-	_, allChannelStats, _ := lookupd.GetNSQDStats(producers, topicName)
-	channelStats, ok := allChannelStats[channelName]
-	if !ok {
-		return nil, http_api.Err{404, "NOT_FOUND"}
+	_, allChannelStats, _ := s.ci.GetNSQDStats(producers, topicName)
+	channelStats := allChannelStats[channelName]
+
+	return channelStats, nil
+}
+
+func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	addresses := make([]string, len(producers))
+	for i, p := range producers {
+		addresses[i] = p.HTTPAddress()
 	}
+	return struct {
+		Nodes []*clusterinfo.Producer `json:"nodes"`
+	}{producers}, nil
+}
 
-	hasE2eLatency := channelStats.E2eProcessingLatency != nil &&
-		len(channelStats.E2eProcessingLatency.Percentiles) > 0
+func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	node := ps.ByName("node")
 
-	var firstHost *lookupd.ChannelStats
-	if len(channelStats.HostStats) > 0 {
-		firstHost = channelStats.HostStats[0]
-	}
-
-	p := struct {
-		Title          string
-		GraphOptions   *GraphOptions
-		Version        string
-		Topic          string
-		Channel        string
-		TopicProducers []string
-		ChannelStats   *lookupd.ChannelStats
-		FirstHost      *lookupd.ChannelStats
-		HasE2eLatency  bool
-	}{
-		Title:          fmt.Sprintf("NSQ %s / %s", topicName, channelName),
-		GraphOptions:   NewGraphOptions(w, req, reqParams, s.ctx),
-		Version:        version.Binary,
-		Topic:          topicName,
-		Channel:        channelName,
-		TopicProducers: producers,
-		ChannelStats:   channelStats,
-		FirstHost:      firstHost,
-		HasE2eLatency:  hasE2eLatency,
-	}
-
-	err = templates.T.ExecuteTemplate(w, "channel.html", p)
+	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	topicName := js.Get("topic").MustString()
+
+	err = s.tombstoneTopicNode(req, topicName, node)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
 	}
 	return nil, nil
 }
 
-func (s *httpServer) lookupHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
+func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	node := ps.ByName("node")
 
-	channels := make(map[string][]string)
-	allTopics, _ := lookupd.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	for _, topicName := range allTopics {
-		var producers []string
-		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-		if len(producers) == 0 {
-			topicChannels, _ := lookupd.GetLookupdTopicChannels(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-			channels[topicName] = topicChannels
+	found := false
+	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
+		if node == n {
+			found = true
+			break
+		}
+	}
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	for _, p := range producers {
+		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort) {
+			found = true
+			break
 		}
 	}
 
-	p := struct {
-		Title        string
-		GraphOptions *GraphOptions
-		TopicMap     map[string][]string
-		Lookupd      []string
-		Version      string
-	}{
-		Title:        "NSQ Lookup",
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
-		TopicMap:     channels,
-		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		Version:      version.Binary,
+	if !found {
+		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
 	}
-	err = templates.T.ExecuteTemplate(w, "lookup.html", p)
+
+	topicStats, _, _ := s.ci.GetNSQDStats([]string{node}, "")
+
+	var totalClients int64
+	var totalMessages int64
+	for _, ts := range topicStats {
+		for _, cs := range ts.Channels {
+			totalClients += int64(len(cs.Clients))
+		}
+		totalMessages += ts.MessageCount
+	}
+
+	return struct {
+		Node          string                    `json:"node"`
+		TopicStats    []*clusterinfo.TopicStats `json:"topics"`
+		TotalMessages int64                     `json:"total_messages"`
+		TotalClients  int64                     `json:"total_clients"`
+	}{
+		Node:          node,
+		TopicStats:    topicStats,
+		TotalMessages: totalMessages,
+		TotalClients:  totalClients,
+	}, nil
+}
+
+func (s *httpServer) doCreateTopicChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	topicName := js.Get("topic").MustString()
+	channelName := js.Get("channel").MustString()
+
+	err = s.createTopicChannel(req, topicName, channelName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
 	}
 	return nil, nil
 }
 
-func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil || !protocol.IsValidTopicName(topicName) {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
+func (s *httpServer) createTopicChannel(req *http.Request, topicName string, channelName string) error {
+	if !protocol.IsValidTopicName(topicName) {
+		return errors.New("INVALID_TOPIC")
 	}
 
-	channelName, err := reqParams.Get("channel")
-	if err != nil || (len(channelName) > 0 && !protocol.IsValidChannelName(channelName)) {
-		return nil, http_api.Err{400, "INVALID_ARG_CHANNEL"}
+	if len(channelName) > 0 && !protocol.IsValidChannelName(channelName) {
+		return errors.New("INVALID_CHANNEL")
 	}
 
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
@@ -351,7 +357,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
 			uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -367,7 +373,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 				url.QueryEscape(topicName),
 				url.QueryEscape(channelName))
 			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-			_, err := http_api.NegotiateV1("POST", endpoint, nil)
+			err := http_api.POSTV1(endpoint)
 			if err != nil {
 				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 				continue
@@ -379,7 +385,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 
 	if len(channelName) > 0 {
 		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
-		producerAddrs, _ := lookupd.GetLookupdTopicProducers(topicName,
+		producerAddrs, _ := s.ci.GetLookupdTopicProducers(topicName,
 			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
 		s.performVersionNegotiatedRequestsToNSQD(
@@ -393,31 +399,21 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		s.notifyAdminAction("create_channel", topicName, channelName, "", req)
 	}
 
-	http.Redirect(w, req, "/lookup", 302)
-	return nil, nil
+	return nil
 }
 
-func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
+func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, node string) error {
+	if !protocol.IsValidTopicName(topicName) {
+		return errors.New("INVALID_TOPIC")
 	}
 
-	node, err := reqParams.Get("node")
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_ARG_NODE"}
-	}
-
-	rd, _ := reqParams.Get("rd")
-	if !strings.HasPrefix(rd, "/") {
-		rd = "/"
+	if node == "" {
+		return errors.New("INVALID_NODE")
 	}
 
 	// tombstone the topic on all the lookupds
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
@@ -431,13 +427,13 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 			addr, uri,
 			url.QueryEscape(topicName), url.QueryEscape(node))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 		}
 	}
 
-	nsqdVersion, err := lookupd.GetVersion(node)
+	nsqdVersion, err := s.ci.GetVersion(node)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", node, err)
 	}
@@ -451,36 +447,32 @@ func (s *httpServer) tombstoneTopicProducerHandler(w http.ResponseWriter, req *h
 	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
 		uri, url.QueryEscape(topicName))
 	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	err = http_api.POSTV1(endpoint)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 	}
 
 	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
 
-	http.Redirect(w, req, rd, 302)
+	return nil
+}
+
+func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	err := s.deleteTopic(req, topicName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
 	return nil, nil
 }
 
-func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
-	}
-
-	rd, _ := reqParams.Get("rd")
-	if !strings.HasPrefix(rd, "/") {
-		rd = "/"
-	}
-
+func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
 	// for topic removal, you need to get all the producers *first*
 	producerAddrs := s.getProducers(topicName)
 
 	// remove the topic from all the lookupds
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
@@ -490,9 +482,9 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 			uri = "topic/delete"
 		}
 
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, url.QueryEscape(topicName))
+		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -508,25 +500,22 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 
 	s.notifyAdminAction("delete_topic", topicName, "", "", req)
 
-	http.Redirect(w, req, rd, 302)
+	return nil
+}
+
+func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+	err := s.deleteChannel(req, topicName, channelName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
 	return nil, nil
 }
 
-func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-
-	rd, _ := reqParams.Get("rd")
-	if !strings.HasPrefix(rd, "/") {
-		rd = fmt.Sprintf("/topic/%s", url.QueryEscape(topicName))
-	}
-
+func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelName string) error {
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := lookupd.GetVersion(addr)
+		nsqlookupdVersion, err := s.ci.GetVersion(addr)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
 		}
@@ -541,7 +530,7 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 			url.QueryEscape(topicName),
 			url.QueryEscape(channelName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		_, err = http_api.NegotiateV1("POST", endpoint, nil)
+		err = http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -559,18 +548,83 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 
 	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
-	http.Redirect(w, req, rd, 302)
-	return nil, nil
+	return nil
 }
 
-func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
+func (s *httpServer) doTopicAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	return nil, s.topicChannelAction(req, topicName, "")
+}
 
-	topicName, err := reqParams.Get("topic")
+func (s *httpServer) doChannelAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	topicName := ps.ByName("topic")
+	channelName := ps.ByName("channel")
+	return nil, s.topicChannelAction(req, topicName, channelName)
+}
+
+func (s *httpServer) topicChannelAction(req *http.Request, topicName string, channelName string) error {
+	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
+		return http_api.Err{400, err.Error()}
 	}
 
+	js, err := simplejson.NewJson(data)
+	if err != nil {
+		return http_api.Err{400, err.Error()}
+	}
+
+	action := js.Get("action").MustString()
+
+	switch action {
+	case "pause", "unpause":
+		if channelName != "" {
+			err = s.pauseChannel(req, topicName, channelName, action)
+		} else {
+			err = s.pauseTopic(req, topicName, action)
+		}
+	case "empty":
+		if channelName != "" {
+			err = s.emptyChannel(req, topicName, channelName)
+		} else {
+			err = s.emptyTopic(req, topicName)
+		}
+	default:
+		return http_api.Err{400, "INVALID_ACTION"}
+	}
+
+	if err != nil {
+		return http_api.Err{500, err.Error()}
+	}
+	return nil
+}
+
+func (s *httpServer) pauseTopic(req *http.Request, topicName string, action string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		action+"_topic",
+		"topic/"+action,
+		fmt.Sprintf("topic=%s",
+			url.QueryEscape(topicName)))
+	s.notifyAdminAction(action+"_topic", topicName, "", "", req)
+	return nil
+}
+
+func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelName string, action string) error {
+	producerAddrs := s.getProducers(topicName)
+	s.performVersionNegotiatedRequestsToNSQD(
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		producerAddrs,
+		action+"_channel",
+		"channel/"+action,
+		fmt.Sprintf("topic=%s&channel=%s",
+			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+	s.notifyAdminAction(action+"_channel", topicName, channelName, "", req)
+	return nil
+}
+
+func (s *httpServer) emptyTopic(req *http.Request, topicName string) error {
 	producerAddrs := s.getProducers(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
@@ -579,49 +633,11 @@ func (s *httpServer) emptyTopicHandler(w http.ResponseWriter, req *http.Request,
 		"topic/empty",
 		fmt.Sprintf("topic=%s",
 			url.QueryEscape(topicName)))
-
 	s.notifyAdminAction("empty_topic", topicName, "", "", req)
-
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
-	return nil, nil
+	return nil
 }
 
-func (s *httpServer) pauseTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
-	}
-
-	verb := "pause"
-	if strings.Contains(req.URL.Path, "unpause") {
-		verb = "unpause"
-	}
-
-	producerAddrs := s.getProducers(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
-		verb+"_topic",
-		"topic/"+verb,
-		fmt.Sprintf("topic=%s",
-			url.QueryEscape(topicName)))
-
-	s.notifyAdminAction(verb+"_topic", topicName, "", "", req)
-
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s", url.QueryEscape(topicName)), 302)
-	return nil, nil
-}
-
-func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-
+func (s *httpServer) emptyChannel(req *http.Request, topicName string, channelName string) error {
 	producerAddrs := s.getProducers(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
@@ -630,222 +646,46 @@ func (s *httpServer) emptyChannelHandler(w http.ResponseWriter, req *http.Reques
 		"channel/empty",
 		fmt.Sprintf("topic=%s&channel=%s",
 			url.QueryEscape(topicName), url.QueryEscape(channelName)))
-
 	s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
-
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s",
-		url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
-	return nil, nil
+	return nil
 }
 
-func (s *httpServer) pauseChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams := &http_api.PostParams{req}
-
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-
-	verb := "pause"
-	if strings.Contains(req.URL.Path, "unpause") {
-		verb = "unpause"
-	}
-
-	producerAddrs := s.getProducers(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
-		verb+"_channel",
-		"channel/"+verb,
-		fmt.Sprintf("topic=%s&channel=%s",
-			url.QueryEscape(topicName), url.QueryEscape(channelName)))
-
-	s.notifyAdminAction(verb+"_channel", topicName, channelName, "", req)
-
-	http.Redirect(w, req, fmt.Sprintf("/topic/%s/%s", url.QueryEscape(topicName), url.QueryEscape(channelName)), 302)
-	return nil, nil
-}
-
-func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	node := ps.ByName("node")
-
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	found := false
-	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
-		if node == n {
-			found = true
-			break
-		}
-	}
-	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	for _, p := range producers {
-		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return nil, http_api.Err{404, "NOT_FOUND"}
-	}
-
-	topicStats, channelStats, _ := lookupd.GetNSQDStats([]string{node}, "")
-
-	numClients := int64(0)
-	numMessages := int64(0)
-	for _, ts := range topicStats {
-		for _, cs := range ts.Channels {
-			numClients += int64(len(cs.Clients))
-		}
-		numMessages += ts.MessageCount
-	}
-
-	p := struct {
-		Title        string
-		Version      string
-		GraphOptions *GraphOptions
-		Node         Node
-		TopicStats   []*lookupd.TopicStats
-		ChannelStats map[string]*lookupd.ChannelStats
-		NumMessages  int64
-		NumClients   int64
-	}{
-		Title:        "NSQ Node - " + node,
-		Version:      version.Binary,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
-		Node:         Node(node),
-		TopicStats:   topicStats,
-		ChannelStats: channelStats,
-		NumMessages:  numMessages,
-		NumClients:   numClients,
-	}
-	err = templates.T.ExecuteTemplate(w, "node.html", p)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-	return nil, nil
-}
-
-func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-
-	p := struct {
-		Title        string
-		Version      string
-		GraphOptions *GraphOptions
-		Producers    []*lookupd.Producer
-		Lookupd      []string
-	}{
-		Title:        "NSQ Nodes",
-		Version:      version.Binary,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
-		Producers:    producers,
-		Lookupd:      s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-	}
-	err = templates.T.ExecuteTemplate(w, "nodes.html", p)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-	return nil, nil
-}
-
-type counterTarget struct{}
-
-func (c counterTarget) Target(key string) ([]string, string) {
-	return []string{fmt.Sprintf("sumSeries(%%stopic.*.channel.*.%s)", key)}, "green"
-}
-
-func (c counterTarget) Host() string {
-	return "*"
+type counterStats struct {
+	Node         string `json:"node"`
+	TopicName    string `json:"topic_name"`
+	ChannelName  string `json:"channel_name"`
+	MessageCount int64  `json:"message_count"`
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-	p := struct {
-		Title        string
-		Version      string
-		GraphOptions *GraphOptions
-		Target       counterTarget
-	}{
-		Title:        "NSQ Message Counts",
-		Version:      version.Binary,
-		GraphOptions: NewGraphOptions(w, req, reqParams, s.ctx),
-		Target:       counterTarget{},
-	}
-	err = templates.T.ExecuteTemplate(w, "counter.html", p)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: executing template - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-	return nil, nil
-}
-
-// this endpoint works by giving out an ID that maps to a stats dictionary
-// The initial request is the number of messages processed since each nsqd started up.
-// Subsequent requsts pass that ID and get an updated delta based on each individual channel/nsqd message count
-// That ID must be re-requested or it will be expired.
-func (s *httpServer) counterDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	statsID, _ := reqParams.Get("id")
-	now := time.Now()
-	if statsID == "" {
-		// make a new one
-		statsID = fmt.Sprintf("%d.%d", now.Unix(), now.UnixNano())
-	}
-
-	stats, ok := s.counters[statsID]
-	if !ok {
-		stats = make(map[string]int64)
-	}
-	newStats := make(map[string]int64)
-	newStats["time"] = now.Unix()
-
-	producers, _ := lookupd.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	stats := make(map[string]*counterStats)
+	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	addresses := make([]string, len(producers))
 	for i, p := range producers {
 		addresses[i] = p.HTTPAddress()
 	}
-	_, channelStats, _ := lookupd.GetNSQDStats(addresses, "")
+	_, channelStats, _ := s.ci.GetNSQDStats(addresses, "")
 
-	var newMessages int64
-	var totalMessages int64
 	for _, channelStats := range channelStats {
-		for _, hostChannelStats := range channelStats.HostStats {
-			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.HostAddress)
-			d, ok := stats[key]
-			if ok && d <= hostChannelStats.MessageCount {
-				newMessages += (hostChannelStats.MessageCount - d)
+		for _, hostChannelStats := range channelStats.NodeStats {
+			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.Node)
+			s, ok := stats[key]
+			if !ok {
+				s = &counterStats{
+					Node:        hostChannelStats.Node,
+					TopicName:   channelStats.TopicName,
+					ChannelName: channelStats.ChannelName,
+				}
+				stats[key] = s
 			}
-			totalMessages += hostChannelStats.MessageCount
-			newStats[key] = hostChannelStats.MessageCount
+			s.MessageCount += hostChannelStats.MessageCount
 		}
 	}
-	s.counters[statsID] = newStats
 
-	return struct {
-		NewMessages   int64  `json:"new_messages"`
-		TotalMessages int64  `json:"total_messages"`
-		ID            string `json:"id"`
-	}{newMessages, totalMessages, statsID}, nil
+	return stats, nil
 }
 
-func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -861,49 +701,50 @@ func (s *httpServer) graphiteDataHandler(w http.ResponseWriter, req *http.Reques
 		return nil, http_api.Err{404, "INVALID_ARG_TARGET"}
 	}
 
-	query := rateQuery(target, s.ctx.nsqadmin.opts.StatsdInterval)
+	params := url.Values{}
+	params.Set("from", fmt.Sprintf("-%dsec", s.ctx.nsqadmin.opts.StatsdInterval*2/time.Second))
+	params.Set("until", fmt.Sprintf("-%dsec", s.ctx.nsqadmin.opts.StatsdInterval/time.Second))
+	params.Set("format", "json")
+	params.Set("target", target)
+	query := fmt.Sprintf("/render?%s", params.Encode())
 	url := s.ctx.nsqadmin.opts.GraphiteURL + query
+
 	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
-	response, err := graphiteGet(url)
+
+	var response []struct {
+		Target     string       `json:"target"`
+		DataPoints [][]*float64 `json:"datapoints"`
+	}
+	err = http_api.GETV1(url, &response)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
-	resp, err := parseRateResponse(response, s.ctx.nsqadmin.opts.StatsdInterval)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: response formatting failed - %s", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+	var rateStr string
+	rate := *response[0].DataPoints[0][0]
+	if rate < 0 {
+		rateStr = "N/A"
+	} else {
+		rateDivisor := s.ctx.nsqadmin.opts.StatsdInterval / time.Second
+		rateStr = fmt.Sprintf("%.2f", rate/float64(rateDivisor))
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	return resp, nil
-}
-
-func graphiteGet(url string) ([]byte, error) {
-	response, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-	return contents, nil
+	return struct {
+		Rate string `json:"rate"`
+	}{rateStr}, nil
 }
 
 func (s *httpServer) getProducers(topicName string) []string {
 	var producers []string
 	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		producers, _ = lookupd.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+		producers, _ = s.ci.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		producers, _ = lookupd.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+		producers, _ = s.ci.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
 	return producers
 }
 
-func producerSearch(producers []*lookupd.Producer, needle string) *lookupd.Producer {
+func producerSearch(producers []*clusterinfo.Producer, needle string) *clusterinfo.Producer {
 	for _, producer := range producers {
 		addr := net.JoinHostPort(producer.BroadcastAddress, strconv.Itoa(producer.HTTPPort))
 		if needle == addr {
@@ -921,7 +762,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 	// so we can negotiate versions
 	//
 	// (this returns an empty list if there are no nsqlookupd configured)
-	producers, _ := lookupd.GetLookupdProducers(nsqlookupdAddrs)
+	producers, _ := s.ci.GetLookupdProducers(nsqlookupdAddrs)
 	for _, addr := range nsqdAddrs {
 		var nodeVer semver.Version
 
@@ -932,7 +773,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 		} else {
 			// we couldn't find the node in our list
 			// so ask it for a version directly
-			nodeVer, err = lookupd.GetVersion(addr)
+			nodeVer, err = s.ci.GetVersion(addr)
 			if err != nil {
 				s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", addr, err)
 			}
@@ -944,7 +785,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
 		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-		_, err := http_api.NegotiateV1("POST", endpoint, nil)
+		err := http_api.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 			continue

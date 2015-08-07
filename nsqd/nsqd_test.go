@@ -76,6 +76,14 @@ func getMetadata(n *NSQD) (*simplejson.Json, error) {
 	return js, nil
 }
 
+func API(endpoint string) (data *simplejson.Json, err error) {
+	d := make(map[string]interface{})
+	err = http_api.NegotiateV1(endpoint, &d)
+	data = simplejson.New()
+	data.SetPath(nil, d)
+	return
+}
+
 func TestStartup(t *testing.T) {
 	iterations := 300
 	doneExitChan := make(chan int)
@@ -353,17 +361,18 @@ func TestCluster(t *testing.T) {
 	equal(t, err, nil)
 
 	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	_, err = http_api.NegotiateV1("POST", url, nil)
+	err = http_api.POSTV1(url)
 	equal(t, err, nil)
 
 	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
-	_, err = http_api.NegotiateV1("POST", url, nil)
+	err = http_api.POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err := http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr()), nil)
+	endpoint := fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr())
+	data, err := API(endpoint)
 	equal(t, err, nil)
 
 	topicData := data.Get("topic:" + topicName + ":")
@@ -386,8 +395,8 @@ func TestCluster(t *testing.T) {
 	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
 	equal(t, producer.Get("tombstoned").MustBool(), false)
 
-	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName), nil)
-	equal(t, err, nil)
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
+	data, err = API(endpoint)
 
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 1)
@@ -403,19 +412,24 @@ func TestCluster(t *testing.T) {
 	channel := channels[0].(string)
 	equal(t, channel, "ch")
 
-	data, err = http_api.NegotiateV1("POST", fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName), nil)
+	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName)
+	err = http_api.POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 
-	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName), nil)
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
+	data, err = API(endpoint)
+
 	equal(t, err, nil)
 
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 0)
 
-	data, err = http_api.NegotiateV1("GET", fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr()), nil)
+	endpoint = fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr())
+	data, err = API(endpoint)
+
 	equal(t, err, nil)
 
 	producers, _ = data.Get("topic:" + topicName + ":").Array()

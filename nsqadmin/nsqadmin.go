@@ -18,14 +18,14 @@ import (
 
 type NSQAdmin struct {
 	sync.RWMutex
-	opts          *nsqadminOptions
+	opts          *Options
 	httpListener  net.Listener
 	waitGroup     util.WaitGroupWrapper
 	notifications chan *AdminAction
 	graphiteURL   *url.URL
 }
 
-func NewNSQAdmin(opts *nsqadminOptions) *NSQAdmin {
+func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
 		opts:          opts,
 		notifications: make(chan *AdminAction),
@@ -115,7 +115,7 @@ func (n *NSQAdmin) Main() {
 	n.Unlock()
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, "HTTP", n.opts.Logger)
+		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.opts.Logger)
 	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }

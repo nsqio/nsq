@@ -3,13 +3,10 @@ package http_api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
-
-	"github.com/bitly/go-simplejson"
 )
 
 type deadlinedConn struct {
@@ -43,42 +40,52 @@ func NewDeadlineTransport(timeout time.Duration) *http.Transport {
 
 // NegotiateV1 is a helper function to perform a v1 HTTP request
 // and fallback to parsing the old backwards-compatible response format
-func NegotiateV1(method string, endpoint string, body io.Reader) (*simplejson.Json, error) {
+// storing the result in the value pointed to by v.
+func NegotiateV1(endpoint string, v interface{}) error {
+	// TODO: deprecated, remove in 1.0 (replace calls with GETV1)
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
-	req, err := http.NewRequest(method, endpoint, body)
+	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
 
 	resp, err := httpclient.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("got response %s %q", resp.Status, respBody)
+		return fmt.Errorf("got response %s %q", resp.Status, respBody)
 	}
 
 	if len(respBody) == 0 {
 		respBody = []byte("{}")
 	}
 
-	data, err := simplejson.NewJson(respBody)
-	if err != nil {
-		return nil, err
+	// unwrap pre-1.0 api response
+	if resp.Header.Get("X-NSQ-Content-Type") != "nsq; version=1.0" {
+		var u struct {
+			StatusCode int64           `json:"status_code"`
+			Data       json.RawMessage `json:"data"`
+		}
+		err := json.Unmarshal(respBody, u)
+		if err != nil {
+			return err
+		}
+		if u.StatusCode != 200 {
+			return fmt.Errorf("got 200 response, but api status code of %d", u.StatusCode)
+		}
+		respBody = u.Data
 	}
 
-	if resp.Header.Get("X-NSQ-Content-Type") == "nsq; version=1.0" {
-		return data, nil
-	}
-	return data.Get("data"), nil
+	return json.Unmarshal(respBody, v)
 }
 
 // GETV1 is a helper function to perform a V1 HTTP request
@@ -110,5 +117,32 @@ func GETV1(endpoint string, v interface{}) error {
 		return err
 	}
 
+	return nil
+}
+
+// PostV1 is a helper function to perform a V1 HTTP request
+// and parse our NSQ daemon's expected response format, with deadlines.
+func POSTV1(endpoint string) error {
+	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
+	req, err := http.NewRequest("POST", endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+
+	resp, err := httpclient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("got response %s %q", resp.Status, body)
+	}
 	return nil
 }

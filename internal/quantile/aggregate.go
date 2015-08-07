@@ -1,7 +1,6 @@
 package quantile
 
 import (
-	"fmt"
 	"math"
 	"sort"
 
@@ -14,28 +13,6 @@ type E2eProcessingLatencyAggregate struct {
 	Topic       string               `json:"topic"`
 	Channel     string               `json:"channel"`
 	Addr        string               `json:"host"`
-}
-
-func (e *E2eProcessingLatencyAggregate) Target(key string) ([]string, string) {
-	targets := make([]string, 0, len(e.Percentiles))
-	var target string
-	for _, percentile := range e.Percentiles {
-		if e.Channel != "" {
-			target = fmt.Sprintf(`%%stopic.%s.channel.%s.%s_%.0f`, e.Topic, e.Channel, key, percentile["quantile"]*100.0)
-		} else {
-			target = fmt.Sprintf(`%%stopic.%s.%s_%.0f`, e.Topic, key, percentile["quantile"]*100.0)
-		}
-		if e.Addr == "*" {
-			target = fmt.Sprintf(`averageSeries(%s)`, target)
-		}
-		target = fmt.Sprintf(`scale(%s,0.000001)`, target)
-		targets = append(targets, target)
-	}
-	return targets, ""
-}
-
-func (e *E2eProcessingLatencyAggregate) Host() string {
-	return e.Addr
 }
 
 func E2eProcessingLatencyAggregateFromJSON(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
@@ -95,8 +72,11 @@ func (e *E2eProcessingLatencyAggregate) Add(e2 *E2eProcessingLatencyAggregate) {
 		}
 		p[i]["max"] = math.Max(value["max"], p[i]["max"])
 		p[i]["min"] = math.Min(value["max"], p[i]["max"])
-
 		p[i]["count"] += value["count"]
+		if p[i]["count"] == 0 {
+			p[i]["average"] = 0
+			continue
+		}
 		delta := value["average"] - p[i]["average"]
 		R := delta * value["count"] / p[i]["count"]
 		p[i]["average"] = p[i]["average"] + R

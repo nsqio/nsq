@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/bitly/go-simplejson"
+	"github.com/bitly/nsq/internal/clusterinfo"
 	"github.com/bitly/nsq/internal/http_api"
-	lookuputil "github.com/bitly/nsq/internal/lookupd"
 )
 
 func equal(t *testing.T, act, exp interface{}) {
@@ -71,6 +72,14 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	equal(t, err, nil)
 }
 
+func API(endpoint string) (data *simplejson.Json, err error) {
+	d := make(map[string]interface{})
+	err = http_api.NegotiateV1(endpoint, &d)
+	data = simplejson.New()
+	data.SetPath(nil, d)
+	return
+}
+
 func TestBasicLookupd(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -94,7 +103,8 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, v, []byte("OK"))
 
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	data, err := http_api.NegotiateV1("GET", endpoint, nil)
+	data, err := API(endpoint)
+
 	t.Logf("got %v", data)
 	returnedProducers, err := data.Get("producers").Array()
 	equal(t, err, nil)
@@ -113,7 +123,8 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, producer.peerInfo.HTTPPort, httpPort)
 
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
+
 	equal(t, err, nil)
 	returnedTopics, err := data.Get("topics").Array()
 	t.Logf("got returnedTopics %v", returnedTopics)
@@ -121,7 +132,8 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, len(returnedTopics), 1)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
+
 	equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	equal(t, err, nil)
@@ -156,7 +168,8 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
+
 	equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	equal(t, err, nil)
@@ -209,7 +222,7 @@ func TestChannelUnregister(t *testing.T) {
 	equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := http_api.NegotiateV1("GET", endpoint, nil)
+	data, err := API(endpoint)
 	equal(t, err, nil)
 	returnedProducers, err := data.Get("producers").Array()
 	equal(t, err, nil)
@@ -241,17 +254,17 @@ func TestTombstoneRecover(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	err = http_api.POSTV1(endpoint)
 	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := http_api.NegotiateV1("GET", endpoint, nil)
+	data, err := API(endpoint)
 	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	equal(t, len(producers), 0)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
 	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 1)
@@ -259,7 +272,7 @@ func TestTombstoneRecover(t *testing.T) {
 	time.Sleep(75 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
 	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 1)
@@ -285,11 +298,11 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	err = http_api.POSTV1(endpoint)
 	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err := http_api.NegotiateV1("GET", endpoint, nil)
+	data, err := API(endpoint)
 	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
 	equal(t, len(producers), 0)
@@ -301,7 +314,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	data, err = http_api.NegotiateV1("GET", endpoint, nil)
+	data, err = API(endpoint)
 	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 0)
@@ -327,7 +340,7 @@ func TestInactiveNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -335,7 +348,7 @@ func TestInactiveNodes(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 0)
 }
 
@@ -358,7 +371,7 @@ func TestTombstonedNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -366,10 +379,10 @@ func TestTombstonedNodes(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	_, err = http_api.NegotiateV1("POST", endpoint, nil)
+	err = http_api.POSTV1(endpoint)
 	equal(t, err, nil)
 
-	producers, _ = lookuputil.GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/bitly/nsq/internal/app"
@@ -43,11 +42,9 @@ func PlainText(f APIHandler) APIHandler {
 		}
 		switch d := data.(type) {
 		case string:
-			w.Header().Set("Content-Length", strconv.Itoa(len(d)))
 			w.WriteHeader(code)
 			io.WriteString(w, d)
 		case []byte:
-			w.Header().Set("Content-Length", strconv.Itoa(len(d)))
 			w.WriteHeader(code)
 			w.Write(d)
 		default:
@@ -115,7 +112,6 @@ func Respond(w http.ResponseWriter, statusCode int, statusTxt string, data inter
 		}
 	}
 
-	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.WriteHeader(statusCode)
 	w.Write(response)
 }
@@ -152,7 +148,6 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 	w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
-	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
 	w.WriteHeader(code)
 	w.Write(response)
 }

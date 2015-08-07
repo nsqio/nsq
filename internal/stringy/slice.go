@@ -25,3 +25,19 @@ func Union(s []string, a []string) []string {
 	}
 	return s
 }
+
+func Uniq(s []string) (r []string) {
+	for _, entry := range s {
+		found := false
+		for _, existing := range r {
+			if existing == entry {
+				found = true
+				break
+			}
+		}
+		if !found {
+			r = append(r, entry)
+		}
+	}
+	return
+}
