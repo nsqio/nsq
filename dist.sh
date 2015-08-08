@@ -18,10 +18,14 @@ set -e
 # build binary distributions for linux/amd64 and darwin/amd64
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p $DIR/dist
-rm -rf $DIR/dist/docker
+if [ -e $DIR/dist/docker ]; then
+    rm -rf $DIR/dist/docker
+fi
 mkdir -p $DIR/dist/docker
 
+if [ -e $DIR/.godeps ]; then
+    rm -rf $DIR/.godeps
+fi
 mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
 GOPATH=$DIR/.godeps gpm install
