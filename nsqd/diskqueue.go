@@ -637,9 +637,5 @@ func (d *diskQueue) WriteMsg(buf *bytes.Buffer, msg *Message) error {
 	if err != nil {
 		return err
 	}
-	err = d.Put(buf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
+	return d.Put(buf.Bytes())
 }
