@@ -223,12 +223,7 @@ func (p *program) Start() error {
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)
-
-	err := nsqd.LoadMetadata()
-	if err != nil {
-		log.Fatalf("ERROR: %s", err.Error())
-	}
-	err = nsqd.PersistMetadata()
+	err := nsqd.PersistMetadata()
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}

@@ -167,6 +167,12 @@ func New(opts *Options) *NSQD {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	err = n.LoadMetadata()
+	if err != nil {
+		n.logf("FATAL: failed to load metadata - %s", err)
+		os.Exit(1)
+	}
+
 	return n
 }
 
