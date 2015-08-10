@@ -24,6 +24,7 @@ import (
 	"github.com/bitly/nsq/internal/statsd"
 	"github.com/bitly/nsq/internal/util"
 	"github.com/bitly/nsq/internal/version"
+	"github.com/bitly/nsq/nsqd/guid"
 )
 
 const (
@@ -519,7 +520,7 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 }
 
 func (n *NSQD) idPump() {
-	factory := &guidFactory{}
+	factory := &guid.GuidFactory{}
 	lastError := time.Unix(0, 0)
 	workerID := n.getOpts().ID
 	for {
@@ -535,7 +536,7 @@ func (n *NSQD) idPump() {
 			continue
 		}
 		select {
-		case n.idChan <- id.Hex():
+		case n.idChan <- NewMessageID(id):
 		case <-n.exitChan:
 			goto exit
 		}

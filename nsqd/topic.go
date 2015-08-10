@@ -188,7 +188,7 @@ func (t *Topic) put(m *Message) error {
 	case t.memoryMsgChan <- m:
 	default:
 		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, t.backend)
+		err := t.backend.WriteMsg(b, m)
 		bufferPoolPut(b)
 		if err != nil {
 			t.ctx.nsqd.logf(
@@ -373,7 +373,7 @@ func (t *Topic) flush() error {
 	for {
 		select {
 		case msg := <-t.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, t.backend)
+			err := t.backend.WriteMsg(&msgBuf, msg)
 			if err != nil {
 				t.ctx.nsqd.logf(
 					"ERROR: failed to write message to backend - %s", err)

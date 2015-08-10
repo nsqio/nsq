@@ -630,3 +630,16 @@ exit:
 	syncTicker.Stop()
 	d.exitSyncChan <- 1
 }
+
+func (d *diskQueue) WriteMsg(buf *bytes.Buffer, msg *Message) error {
+	buf.Reset()
+	_, err := msg.WriteTo(buf)
+	if err != nil {
+		return err
+	}
+	err = d.Put(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
+}

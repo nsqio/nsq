@@ -1,5 +1,9 @@
 package nsqd
 
+import (
+	"bytes"
+)
+
 type dummyBackendQueue struct {
 	readChan chan []byte
 }
@@ -29,5 +33,9 @@ func (d *dummyBackendQueue) Depth() int64 {
 }
 
 func (d *dummyBackendQueue) Empty() error {
+	return nil
+}
+
+func (d *dummyBackendQueue) WriteMsg(buf *bytes.Buffer, msg *Message) error {
 	return nil
 }

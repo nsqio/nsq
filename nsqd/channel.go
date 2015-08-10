@@ -224,7 +224,7 @@ func (c *Channel) flush() error {
 	// this will read until it's closed (exited)
 	for msg := range c.clientMsgChan {
 		c.ctx.nsqd.logf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		writeMessageToBackend(&msgBuf, msg, c.backend)
+		c.backend.WriteMsg(&msgBuf, msg)
 	}
 
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
@@ -235,7 +235,7 @@ func (c *Channel) flush() error {
 	for {
 		select {
 		case msg := <-c.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, c.backend)
+			err := c.backend.WriteMsg(&msgBuf, msg)
 			if err != nil {
 				c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
 			}
@@ -246,7 +246,7 @@ func (c *Channel) flush() error {
 
 finish:
 	for _, msg := range c.inFlightMessages {
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := c.backend.WriteMsg(&msgBuf, msg)
 		if err != nil {
 			c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
 		}
@@ -254,7 +254,7 @@ finish:
 
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*Message)
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := c.backend.WriteMsg(&msgBuf, msg)
 		if err != nil {
 			c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
 		}
@@ -318,7 +318,7 @@ func (c *Channel) put(m *Message) error {
 	case c.memoryMsgChan <- m:
 	default:
 		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, c.backend)
+		err := c.backend.WriteMsg(b, m)
 		bufferPoolPut(b)
 		if err != nil {
 			c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
