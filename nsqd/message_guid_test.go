@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"github.com/bitly/nsq/nsqd/guid"
 	"testing"
 	"unsafe"
 )
@@ -23,12 +24,12 @@ func BenchmarkGUIDUnsafe(b *testing.B) {
 }
 
 func BenchmarkGUID(b *testing.B) {
-	factory := &guidFactory{}
+	factory := &guid.GuidFactory{}
 	for i := 0; i < b.N; i++ {
 		guid, err := factory.NewGUID(0)
 		if err != nil {
 			continue
 		}
-		guid.Hex()
+		NewMessageID(guid)
 	}
 }

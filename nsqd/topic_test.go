@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -52,12 +53,13 @@ func TestGetChannel(t *testing.T) {
 
 type errorBackendQueue struct{}
 
-func (d *errorBackendQueue) Put([]byte) error      { return errors.New("never gonna happen") }
-func (d *errorBackendQueue) ReadChan() chan []byte { return nil }
-func (d *errorBackendQueue) Close() error          { return nil }
-func (d *errorBackendQueue) Delete() error         { return nil }
-func (d *errorBackendQueue) Depth() int64          { return 0 }
-func (d *errorBackendQueue) Empty() error          { return nil }
+func (d *errorBackendQueue) Put([]byte) error                               { return errors.New("never gonna happen") }
+func (d *errorBackendQueue) ReadChan() chan []byte                          { return nil }
+func (d *errorBackendQueue) Close() error                                   { return nil }
+func (d *errorBackendQueue) Delete() error                                  { return nil }
+func (d *errorBackendQueue) Depth() int64                                   { return 0 }
+func (d *errorBackendQueue) Empty() error                                   { return nil }
+func (d *errorBackendQueue) WriteMsg(buf *bytes.Buffer, msg *Message) error { return nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()

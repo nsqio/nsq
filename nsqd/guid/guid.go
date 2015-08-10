@@ -1,4 +1,4 @@
-package nsqd
+package guid
 
 // the core algorithm here was borrowed from:
 // Blake Mizerany's `noeqd` https://github.com/bmizerany/noeqd
@@ -10,7 +10,6 @@ package nsqd
 // behavior when sequences rollover for our specific implementation needs
 
 import (
-	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -30,15 +29,15 @@ var ErrTimeBackwards = errors.New("time has gone backwards")
 var ErrSequenceExpired = errors.New("sequence expired")
 var ErrIDBackwards = errors.New("ID went backward")
 
-type guid int64
+type Guid int64
 
-type guidFactory struct {
+type GuidFactory struct {
 	sequence      int64
 	lastTimestamp int64
-	lastID        guid
+	lastID        Guid
 }
 
-func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
+func (f *GuidFactory) NewGUID(workerID int64) (Guid, error) {
 	ts := time.Now().UnixNano() / 1e6
 
 	if ts < f.lastTimestamp {
@@ -56,7 +55,7 @@ func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
 
 	f.lastTimestamp = ts
 
-	id := guid(((ts - twepoch) << timestampShift) |
+	id := Guid(((ts - twepoch) << timestampShift) |
 		(workerID << workerIDShift) |
 		f.sequence)
 
@@ -67,21 +66,4 @@ func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
 	f.lastID = id
 
 	return id, nil
-}
-
-func (g guid) Hex() MessageID {
-	var h MessageID
-	var b [8]byte
-
-	b[0] = byte(g >> 56)
-	b[1] = byte(g >> 48)
-	b[2] = byte(g >> 40)
-	b[3] = byte(g >> 32)
-	b[4] = byte(g >> 24)
-	b[5] = byte(g >> 16)
-	b[6] = byte(g >> 8)
-	b[7] = byte(g)
-
-	hex.Encode(h[:], b[:])
-	return h
 }

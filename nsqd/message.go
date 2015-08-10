@@ -3,10 +3,13 @@ package nsqd
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"time"
+
+	"github.com/bitly/nsq/nsqd/guid"
 )
 
 const (
@@ -15,6 +18,23 @@ const (
 )
 
 type MessageID [MsgIDLength]byte
+
+func NewMessageID(g guid.Guid) MessageID {
+	var h MessageID
+	var b [8]byte
+
+	b[0] = byte(g >> 56)
+	b[1] = byte(g >> 48)
+	b[2] = byte(g >> 40)
+	b[3] = byte(g >> 32)
+	b[4] = byte(g >> 24)
+	b[5] = byte(g >> 16)
+	b[6] = byte(g >> 8)
+	b[7] = byte(g)
+
+	hex.Encode(h[:], b[:])
+	return h
+}
 
 type Message struct {
 	ID        MessageID
@@ -89,17 +109,4 @@ func decodeMessage(b []byte) (*Message, error) {
 	}
 
 	return &msg, nil
-}
-
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
-	buf.Reset()
-	_, err := msg.WriteTo(buf)
-	if err != nil {
-		return err
-	}
-	err = bq.Put(buf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
 }

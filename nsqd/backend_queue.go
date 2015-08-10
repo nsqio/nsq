@@ -1,5 +1,7 @@
 package nsqd
 
+import "bytes"
+
 // BackendQueue represents the behavior for the secondary message
 // storage system
 type BackendQueue interface {
@@ -9,4 +11,5 @@ type BackendQueue interface {
 	Delete() error
 	Depth() int64
 	Empty() error
+	WriteMsg(buf *bytes.Buffer, msg *Message) error
 }
