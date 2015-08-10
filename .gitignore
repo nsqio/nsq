@@ -20,6 +20,8 @@ dist
 _site
 _posts
 *.dat
+*.map
+cpu.pprof
 
 # Go.gitignore
 
