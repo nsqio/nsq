@@ -14,12 +14,6 @@ import (
 	"github.com/nsqio/nsq/internal/stringy"
 )
 
-var v1EndpointVersion semver.Version
-
-func init() {
-	v1EndpointVersion, _ = semver.Parse("0.2.29-alpha")
-}
-
 type PartialErr interface {
 	error
 	Errors() []error
@@ -68,7 +62,7 @@ func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	var resp struct {
 		Version string `json:'version'`
 	}
-	err := c.client.NegotiateV1(endpoint, &resp)
+	err := c.client.GETV1(endpoint, &resp)
 	if err != nil {
 		return semver.Version{}, err
 	}
@@ -99,7 +93,7 @@ func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, err
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -148,7 +142,7 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []s
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -199,7 +193,7 @@ func (c *ClusterInfo) GetLookupdProducers(lookupdHTTPAddrs []string) (Producers,
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -266,7 +260,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -320,7 +314,7 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -379,7 +373,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (Producers, error
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var infoResp infoRespType
-			err := c.client.NegotiateV1(endpoint, &infoResp)
+			err := c.client.GETV1(endpoint, &infoResp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -391,7 +385,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (Producers, error
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var statsResp statsRespType
-			err = c.client.NegotiateV1(endpoint, &statsResp)
+			err = c.client.GETV1(endpoint, &statsResp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -464,7 +458,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var statsResp statsRespType
-			err := c.client.NegotiateV1(endpoint, &statsResp)
+			err := c.client.GETV1(endpoint, &statsResp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -483,7 +477,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 					c.logf("CI: querying nsqd %s", endpoint)
 
 					var infoResp infoRespType
-					err := c.client.NegotiateV1(endpoint, &infoResp)
+					err := c.client.GETV1(endpoint, &infoResp)
 					if err != nil {
 						lock.Lock()
 						errs = append(errs, err)
@@ -562,7 +556,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var resp respType
-			err := c.client.NegotiateV1(endpoint, &resp)
+			err := c.client.GETV1(endpoint, &resp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)
@@ -628,7 +622,7 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 
 	// tombstone the topic on all the lookupds
 	qs := fmt.Sprintf("topic=%s&node=%s", url.QueryEscape(topic), url.QueryEscape(node))
-	err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "tombstone_topic_producer", "topic/tombstone", qs)
+	err := c.nsqlookupdPOST(lookupdHTTPAddrs, "topic/tombstone", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -648,7 +642,7 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 
 	// delete the topic on the producer
 	qs = fmt.Sprintf("topic=%s", url.QueryEscape(topic))
-	err = c.versionPivotProducers(producers, "delete_topic", "topic/delete", qs)
+	err = c.producersPOST(producers, "topic/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -668,7 +662,7 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 
 	// create the topic on all the nsqlookupd
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
-	err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "create_topic", "topic/create", qs)
+	err := c.nsqlookupdPOST(lookupdHTTPAddrs, "topic/create", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -681,7 +675,7 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
 
 		// create the channel on all the nsqlookupd
-		err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "create_channel", "channel/create", qs)
+		err := c.nsqlookupdPOST(lookupdHTTPAddrs, "channel/create", qs)
 		if err != nil {
 			pe, ok := err.(PartialErr)
 			if !ok {
@@ -699,7 +693,7 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 			}
 			errs = append(errs, pe.Errors()...)
 		}
-		err = c.versionPivotProducers(producers, "create_channel", "channel/create", qs)
+		err = c.producersPOST(producers, "channel/create", qs)
 		if err != nil {
 			pe, ok := err.(PartialErr)
 			if !ok {
@@ -731,7 +725,7 @@ func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, n
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
 
 	// remove the topic from all the nsqlookupd
-	err = c.versionPivotNSQLookupd(lookupdHTTPAddrs, "delete_topic", "topic/delete", qs)
+	err = c.nsqlookupdPOST(lookupdHTTPAddrs, "topic/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -741,7 +735,7 @@ func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, n
 	}
 
 	// remove the topic from all the nsqd that produce this topic
-	err = c.versionPivotProducers(producers, "delete_topic", "topic/delete", qs)
+	err = c.producersPOST(producers, "topic/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -771,7 +765,7 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
 
 	// remove the channel from all the nsqlookupd
-	err = c.versionPivotNSQLookupd(lookupdHTTPAddrs, "delete_channel", "channel/delete", qs)
+	err = c.nsqlookupdPOST(lookupdHTTPAddrs, "channel/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -781,7 +775,7 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 	}
 
 	// remove the channel from all the nsqd that produce this topic
-	err = c.versionPivotProducers(producers, "delete_channel", "channel/delete", qs)
+	err = c.producersPOST(producers, "channel/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -798,35 +792,35 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 
 func (c *ClusterInfo) PauseTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "pause_topic", "topic/pause", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "topic/pause", qs)
 }
 
 func (c *ClusterInfo) UnPauseTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "unpause_topic", "topic/unpause", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "topic/unpause", qs)
 }
 
 func (c *ClusterInfo) PauseChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "pause_channel", "channel/pause", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "channel/pause", qs)
 }
 
 func (c *ClusterInfo) UnPauseChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "unpause_channel", "channel/unpause", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "channel/unpause", qs)
 }
 
 func (c *ClusterInfo) EmptyTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "empty_topic", "topic/empty", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "topic/empty", qs)
 }
 
 func (c *ClusterInfo) EmptyChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "empty_channel", "channel/empty", qs)
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "channel/empty", qs)
 }
 
-func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string, deprecatedURI string, v1URI string, qs string) error {
+func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string, uri string, qs string) error {
 	var errs []error
 
 	producers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
@@ -838,7 +832,7 @@ func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, 
 		errs = append(errs, pe.Errors()...)
 	}
 
-	err = c.versionPivotProducers(producers, deprecatedURI, v1URI, qs)
+	err = c.producersPOST(producers, uri, qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -867,50 +861,32 @@ func (c *ClusterInfo) GetTopicProducers(topicName string, lookupdHTTPAddrs []str
 	return c.GetNSQDTopicProducers(topicName, nsqdHTTPAddrs)
 }
 
-func (c *ClusterInfo) versionPivotNSQLookupd(addrs []string, deprecatedURI string, v1URI string, qs string) error {
+func (c *ClusterInfo) nsqlookupdPOST(addrs []string, uri string, qs string) error {
 	var errs []error
-
 	for _, addr := range addrs {
-		nodeVer, _ := c.GetVersion(addr)
-
-		uri := deprecatedURI
-		if nodeVer.NE(semver.Version{}) && nodeVer.GTE(v1EndpointVersion) {
-			uri = v1URI
-		}
-
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, qs)
 		c.logf("CI: querying nsqlookupd %s", endpoint)
 		err := c.client.POSTV1(endpoint)
 		if err != nil {
 			errs = append(errs, err)
-			continue
 		}
 	}
-
 	if len(errs) > 0 {
 		return ErrList(errs)
 	}
 	return nil
 }
 
-func (c *ClusterInfo) versionPivotProducers(pl Producers, deprecatedURI string, v1URI string, qs string) error {
+func (c *ClusterInfo) producersPOST(pl Producers, uri string, qs string) error {
 	var errs []error
-
 	for _, p := range pl {
-		uri := deprecatedURI
-		if p.VersionObj.NE(semver.Version{}) && p.VersionObj.GTE(v1EndpointVersion) {
-			uri = v1URI
-		}
-
 		endpoint := fmt.Sprintf("http://%s/%s?%s", p.HTTPAddress(), uri, qs)
 		c.logf("CI: querying nsqd %s", endpoint)
 		err := c.client.POSTV1(endpoint)
 		if err != nil {
 			errs = append(errs, err)
-			continue
 		}
 	}
-
 	if len(errs) > 0 {
 		return ErrList(errs)
 	}

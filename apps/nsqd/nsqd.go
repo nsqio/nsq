@@ -105,8 +105,6 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Duration("max-msg-timeout", opts.MaxMsgTimeout, "maximum duration before a message will timeout")
 	flagSet.Int64("max-msg-size", opts.MaxMsgSize, "maximum size of a single message in bytes")
 	flagSet.Duration("max-req-timeout", opts.MaxReqTimeout, "maximum requeuing timeout for a message")
-	// remove, deprecated
-	flagSet.Int64("max-message-size", opts.MaxMsgSize, "(deprecated use --max-msg-size) maximum size of a single message in bytes")
 	flagSet.Int64("max-body-size", opts.MaxBodySize, "maximum size of a single command body")
 
 	// client overridable configuration options

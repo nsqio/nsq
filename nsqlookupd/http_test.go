@@ -15,22 +15,12 @@ import (
 	"github.com/nsqio/nsq/nsqd"
 )
 
-type Version struct {
-	Version string `json:"version"`
-}
-
 type InfoDoc struct {
-	Code   int      `json:"status_code"`
-	Status string   `json:"status_txt"`
-	Data   *Version `json:"data"`
+	Version string `json:"version"`
 }
 
 type ChannelsDoc struct {
 	Channels []interface{} `json:"channels"`
-}
-
-type OldErrMessage struct {
-	Message string `json:"status_txt"`
 }
 
 type ErrMessage struct {
@@ -117,7 +107,7 @@ func TestInfo(t *testing.T) {
 	info := InfoDoc{}
 	err = json.Unmarshal(body, &info)
 	test.Nil(t, err)
-	test.Equal(t, version.Binary, info.Data.Version)
+	test.Equal(t, version.Binary, info.Version)
 }
 
 func TestCreateTopic(t *testing.T) {
@@ -237,30 +227,14 @@ func TestGetChannels(t *testing.T) {
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/channels", nsqlookupd1.RealHTTPAddr())
 
-	oem := OldErrMessage{}
-	// pre-version 1
-	req, _ := http.NewRequest("GET", url, nil)
-	resp, err := client.Do(req)
-	test.Nil(t, err)
-	test.Equal(t, 500, resp.StatusCode)
-	test.Equal(t, "Internal Server Error", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &oem)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_TOPIC", oem.Message)
-
-	// version 1
 	em := ErrMessage{}
-	req, _ = http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)

@@ -97,7 +97,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	pr := ProducersDoc{}
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 
 	t.Logf("got %v", pr)
@@ -117,7 +117,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	tr := TopicsDoc{}
 	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &tr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &tr)
 	test.Nil(t, err)
 
 	t.Logf("got %v", tr)
@@ -125,7 +125,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	lr := LookupDoc{}
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &lr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &lr)
 	test.Nil(t, err)
 
 	t.Logf("got %v", lr)
@@ -142,7 +142,7 @@ func TestBasicLookupd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// now there should be no producers, but still topic/channel entries
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &lr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &lr)
 	test.Nil(t, err)
 
 	test.Equal(t, 1, len(lr.Channels))
@@ -191,7 +191,7 @@ func TestChannelUnregister(t *testing.T) {
 
 	pr := ProducersDoc{}
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	t.Logf("got %v", pr)
 	test.Equal(t, 1, len(pr.Producers))
@@ -228,19 +228,19 @@ func TestTombstoneRecover(t *testing.T) {
 	pr := ProducersDoc{}
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(pr.Producers))
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	test.Equal(t, 1, len(pr.Producers))
 
 	time.Sleep(75 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	test.Equal(t, 1, len(pr.Producers))
 }
@@ -271,7 +271,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	pr := ProducersDoc{}
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(pr.Producers))
 
@@ -282,7 +282,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	time.Sleep(55 * time.Millisecond)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).NegotiateV1(endpoint, &pr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(pr.Producers))
 }
