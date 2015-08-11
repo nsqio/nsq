@@ -48,9 +48,6 @@ var (
 
 	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
 	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
-
-	// TODO: remove, deprecated
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --consumer-opt=max_backoff_duration,X")
 )
 
 func init() {
@@ -270,8 +267,6 @@ func main() {
 	cCfg := nsq.NewConfig()
 	pCfg := nsq.NewConfig()
 
-	// TODO: remove, deprecated
-	flag.Var(&nsq.ConfigFlag{cCfg}, "reader-opt", "(deprecated) use --consumer-opt")
 	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 
@@ -327,12 +322,6 @@ func main() {
 
 	cCfg.UserAgent = defaultUA
 	cCfg.MaxInFlight = *maxInFlight
-
-	// TODO: remove, deprecated
-	if hasArg("max-backoff-duration") {
-		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --consumer-opt=max_backoff_duration,X")
-		cCfg.MaxBackoffDuration = *maxBackoffDuration
-	}
 
 	consumer, err := nsq.NewConsumer(*topic, *channel, cCfg)
 	if err != nil {

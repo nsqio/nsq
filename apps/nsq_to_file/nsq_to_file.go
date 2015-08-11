@@ -51,9 +51,6 @@ var (
 	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 	topics           = app.StringArray{}
-
-	// TODO: remove, deprecated
-	gzipCompression = flag.Int("gzip-compression", 3, "(deprecated) use --gzip-level, gzip compression level (1 = BestSpeed, 2 = BestCompression, 3 = DefaultCompression)")
 )
 
 func init() {
@@ -313,13 +310,12 @@ func (f *FileLogger) updateFile() {
 }
 
 func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
-	// TODO: remove, deprecated, for compat <GZIPREV>
-	filenameFormat = strings.Replace(filenameFormat, "<GZIPREV>", "<REV>", -1)
 	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 {
 		if strings.Index(filenameFormat, "<REV>") == -1 {
 			return nil, errors.New("missing <REV> in --filename-format when gzip or rotation enabled")
 		}
-	} else { // remove <REV> as we don't need it
+	} else {
+		// remove <REV> as we don't need it
 		filenameFormat = strings.Replace(filenameFormat, "<REV>", "", -1)
 	}
 
@@ -467,10 +463,7 @@ func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string,
 func main() {
 	cfg := nsq.NewConfig()
 
-	// TODO: remove, deprecated
-	flag.Var(&nsq.ConfigFlag{cfg}, "reader-opt", "(deprecated) use --consumer-opt")
 	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
-
 	flag.Parse()
 
 	if *showVersion {
@@ -505,20 +498,6 @@ func main() {
 		log.Fatalf("invalid --gzip-level value (%d), should be 1-9", *gzipLevel)
 	}
 
-	// TODO: remove, deprecated
-	if hasArg("gzip-compression") {
-		log.Printf("WARNING: --gzip-compression is deprecated in favor of --gzip-level")
-		switch *gzipCompression {
-		case 1:
-			*gzipLevel = gzip.BestSpeed
-		case 2:
-			*gzipLevel = gzip.BestCompression
-		case 3:
-			*gzipLevel = gzip.DefaultCompression
-		default:
-			log.Fatalf("invalid --gzip-compression value (%d), should be 1,2,3", *gzipCompression)
-		}
-	}
 
 	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight

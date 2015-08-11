@@ -40,10 +40,8 @@ var (
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	numPublishers = flag.Int("n", 100, "number of concurrent publishers")
-	mode          = flag.String("mode", "hostpool", "the upstream request mode options: multicast, round-robin, hostpool (default), epsilon-greedy")
+	mode          = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
 	sample        = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
-	// TODO: remove; deprecated in favor of http-client-connect-timeout, http-client-request-timeout
-	httpTimeout        = flag.Duration("http-timeout", 20*time.Second, "timeout for HTTP connect/read/write (each)")
 	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
 	httpRequestTimeout = flag.Duration("http-client-request-timeout", 20*time.Second, "timeout for HTTP request")
 	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
@@ -53,12 +51,6 @@ var (
 	postAddrs        = app.StringArray{}
 	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
-
-	// TODO: remove, deprecated
-	roundRobin         = flag.Bool("round-robin", false, "(deprecated) use --mode=round-robin, enable round robin mode")
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --consumer-opt=max_backoff_duration,X")
-	throttleFraction   = flag.Float64("throttle-fraction", 1.0, "(deprecated) use --sample=X, publish only a fraction of messages")
-	httpTimeoutMs      = flag.Int("http-timeout-ms", 20000, "(deprecated) use --http-timeout=X, timeout for HTTP connect/read/write (each)")
 )
 
 func init() {
@@ -170,15 +162,13 @@ func hasArg(s string) bool {
 }
 
 func main() {
-	cfg := nsq.NewConfig()
-	// TODO: remove, deprecated
-	flag.Var(&nsq.ConfigFlag{cfg}, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
-
 	var publisher Publisher
 	var addresses app.StringArray
 	var selectedMode int
 
+	cfg := nsq.NewConfig()
+
+	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
 	flag.Parse()
 
 	if *showVersion {
@@ -221,42 +211,14 @@ func main() {
 	}
 
 	switch *mode {
-	case "multicast":
-		log.Printf("WARNING: multicast mode is deprecated in favor of using separate nsq_to_http on different channels (and will be dropped in a future release)")
-		selectedMode = ModeAll
 	case "round-robin":
 		selectedMode = ModeRoundRobin
 	case "hostpool", "epsilon-greedy":
 		selectedMode = ModeHostPool
 	}
 
-	// TODO: remove, deprecated
-	if hasArg("--round-robin") {
-		log.Printf("WARNING: --round-robin is deprecated in favor of --mode=round-robin")
-		selectedMode = ModeRoundRobin
-	}
-
-	// TODO: remove, deprecated
-	if hasArg("throttle-fraction") {
-		log.Printf("WARNING: --throttle-fraction is deprecatedin favor of --sample=X")
-		*sample = *throttleFraction
-	}
-
 	if *sample > 1.0 || *sample < 0.0 {
 		log.Fatal("ERROR: --sample must be between 0.0 and 1.0")
-	}
-
-	// TODO: remove, deprecated
-	if hasArg("http-timeout-ms") {
-		log.Printf("WARNING: --http-timeout-ms is deprecated in favor of --http-timeout=X")
-		*httpTimeout = time.Duration(*httpTimeoutMs) * time.Millisecond
-	}
-
-	// TODO: remove, deprecated
-	if hasArg("http-timeout") {
-		log.Printf("WARNING: --http-timeout is deprecated in favor of --http-client-connect-timeout=X and --http-client-request-timeout=Y")
-		*httpConnectTimeout = *httpTimeout
-		*httpRequestTimeout = *httpTimeout
 	}
 
 	termChan := make(chan os.Signal, 1)
@@ -272,12 +234,6 @@ func main() {
 
 	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
-
-	// TODO: remove, deprecated
-	if hasArg("max-backoff-duration") {
-		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --consumer-opt=max_backoff_duration,X")
-		cfg.MaxBackoffDuration = *maxBackoffDuration
-	}
 
 	consumer, err := nsq.NewConsumer(*topic, *channel, cfg)
 	if err != nil {

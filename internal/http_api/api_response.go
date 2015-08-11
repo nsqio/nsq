@@ -54,27 +54,6 @@ func PlainText(f APIHandler) APIHandler {
 	}
 }
 
-func NegotiateVersion(f APIHandler) APIHandler {
-	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-		data, err := f(w, req, ps)
-		if err != nil {
-			if acceptVersion(req) == 1 {
-				RespondV1(w, err.(Err).Code, err)
-			} else {
-				// this handler always returns 500 for backwards compatibility
-				Respond(w, 500, err.Error(), nil)
-			}
-			return nil, nil
-		}
-		if acceptVersion(req) == 1 {
-			RespondV1(w, 200, data)
-		} else {
-			Respond(w, 200, "OK", data)
-		}
-		return nil, nil
-	}
-}
-
 func V1(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 		data, err := f(w, req, ps)
@@ -85,35 +64,6 @@ func V1(f APIHandler) APIHandler {
 		RespondV1(w, 200, data)
 		return nil, nil
 	}
-}
-
-func Respond(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
-	var response []byte
-	var err error
-
-	switch data.(type) {
-	case string:
-		response = []byte(data.(string))
-	case []byte:
-		response = data.([]byte)
-	default:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		response, err = json.Marshal(struct {
-			StatusCode int         `json:"status_code"`
-			StatusTxt  string      `json:"status_txt"`
-			Data       interface{} `json:"data"`
-		}{
-			statusCode,
-			statusTxt,
-			data,
-		})
-		if err != nil {
-			response = []byte(fmt.Sprintf(`{"status_code":500, "status_txt":"%s", "data":null}`, err))
-		}
-	}
-
-	w.WriteHeader(statusCode)
-	w.Write(response)
 }
 
 func RespondV1(w http.ResponseWriter, code int, data interface{}) {

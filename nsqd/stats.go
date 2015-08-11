@@ -64,9 +64,6 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 }
 
 type ClientStats struct {
-	// TODO: deprecated, remove in 1.0
-	Name string `json:"name"`
-
 	ClientID        string `json:"client_id"`
 	Hostname        string `json:"hostname"`
 	Version         string `json:"version"`

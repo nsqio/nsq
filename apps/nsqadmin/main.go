@@ -23,7 +23,6 @@ var (
 	showVersion = flagSet.Bool("version", false, "print version string")
 
 	httpAddress = flagSet.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
-	templateDir = flagSet.String("template-dir", "", "path to templates directory")
 
 	graphiteURL   = flagSet.String("graphite-url", "", "graphite HTTP address")
 	proxyGraphite = flagSet.Bool("proxy-graphite", false, "proxy HTTP requests to graphite")
@@ -59,10 +58,6 @@ func main() {
 	if *showVersion {
 		fmt.Println(version.String("nsqadmin"))
 		return
-	}
-
-	if *templateDir != "" {
-		log.Printf("WARNING: --template-dir is deprecated and will be removed in the next release (templates are now compiled into the binary)")
 	}
 
 	exitChan := make(chan int)
