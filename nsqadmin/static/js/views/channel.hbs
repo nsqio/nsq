@@ -166,7 +166,7 @@
         <table class="table table-bordered table-condensed">
             <tr>
                 <th>Client Host</th>
-                <th>Protocol</th>
+                <th>User-Agent</th>
                 <th>Attributes</th>
                 <th>NSQd Host</th>
                 <th>In-Flight</th>
@@ -179,7 +179,7 @@
             {{#each clients}}
             <tr>
                 <td title="{{remote_address}}">{{client_id}}</td>
-                <td>{{version}} {{#if user_agent.length}}({{user_agent}}){{/if}}</td>
+                <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
                 <td>
                     {{#if sample_rate}}
                         <span class="label label-info">Sampled {{sample_rate}}%</span>
