@@ -178,7 +178,7 @@
             </tr>
             {{#each clients}}
             <tr>
-                <td title="{{remote_address}}">{{client_id}}</td>
+                <td title="{{remote_address}}">{{hostname_port}}{{#if client_id}} ({{client_id}}){{/if}}</td>
                 <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
                 <td>
                     {{#if sample_rate}}

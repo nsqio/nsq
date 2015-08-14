@@ -120,21 +120,22 @@
         <tr>
             <th></th>
             <th>Client Host</th>
-            <th>Protocol</th>
+            <th>User-Agent</th>
+            <th></th>
             <th>Attributes</th>
-            <th>NSQd Host</th>
             <th>In-Flight</th>
             <th>Ready Count</th>
-            <th>Finished</th>
             <th>Requeued</th>
+            <th>Finished</th>
             <th>Messages</th>
             <th>Connected</th>
         </tr>
         {{#each clients}}
         <tr>
             <td></td>
-            <td title="{{remote_address}}">{{client_id}}</td>
-            <td>{{version}} {{#if user_agent.length}}({{user_agent}}){{/if}}</td>
+            <td>{{hostname}}{{#if client_id}} ({{client_id}}){{/if}} {{remote_address}}</td>
+            <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+            <td></td>
             <td>
                 {{#if sample_rate}}
                     <span class="label label-info">Sampled {{sample_rate}}%</span>
@@ -156,11 +157,10 @@
                     </span>
                 {{/if}}
             </td>
-            <td>{{node}}</td>
             <td>{{commafy in_flight_count}}</td>
             <td>{{commafy ready_count}}</td>
-            <td>{{commafy finish_count}}</td>
             <td>{{commafy requeue_count}}</td>
+            <td>{{commafy finish_count}}</td>
             <td>{{commafy message_count}}</td>
             <td>{{nanotohuman connected}}</td>
         </tr>
