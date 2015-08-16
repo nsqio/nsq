@@ -97,9 +97,5 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) err
 	if err != nil {
 		return err
 	}
-	err = bq.Put(buf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
+	return bq.Put(buf.Bytes())
 }
