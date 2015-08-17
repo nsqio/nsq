@@ -22,7 +22,7 @@ const (
 	timestampShift = sequenceBits + workerIDBits
 	sequenceMask   = int64(-1) ^ (int64(-1) << sequenceBits)
 
-	// Tue, 21 Mar 2006 20:50:14.000 GMT
+	// Thu Nov  4 01:42:54 UTC 2010
 	twepoch = int64(1288834974657)
 )
 
