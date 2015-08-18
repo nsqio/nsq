@@ -19,12 +19,12 @@ AutoReqProv: no
 
 %description 
 NSQ - A realtime distributed messaging platform
-https://github.com/bitly/nsq
+https://github.com/absolute8511/nsq
 
 %prep
 mkdir -p $RPM_BUILD_DIR/%{name}-%{version}-%{release}
 cd $RPM_BUILD_DIR/%{name}-%{version}-%{release}
-git clone git@github.com:bitly/nsq.git
+git clone git@github.com:absolute8511/nsq.git
 
 %build
 cd $RPM_BUILD_DIR/%{name}-%{version}-%{release}/nsq

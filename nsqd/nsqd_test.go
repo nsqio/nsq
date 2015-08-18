@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/bitly/go-simplejson"
 	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/nsqlookupd"
 )
 
 func assert(t *testing.T, condition bool, msg string, v ...interface{}) {

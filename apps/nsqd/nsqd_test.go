@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/nsqd"
+	"github.com/absolute8511/nsq/nsqd"
 	"github.com/mreiferson/go-options"
 )
 
