@@ -44,7 +44,6 @@ var (
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
-	consumerOpts     = app.StringArray{}
 	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 	topics           = app.StringArray{}
@@ -54,10 +53,6 @@ var (
 )
 
 func init() {
-	// TODO: remove, deprecated
-	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
-
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 	flag.Var(&topics, "topic", "nsq topic (may be given multiple times)")
@@ -93,13 +88,15 @@ type TopicDiscoverer struct {
 	termChan chan os.Signal
 	hupChan  chan os.Signal
 	wg       sync.WaitGroup
+	cfg      *nsq.Config
 }
 
-func newTopicDiscoverer() *TopicDiscoverer {
+func newTopicDiscoverer(cfg *nsq.Config) *TopicDiscoverer {
 	return &TopicDiscoverer{
 		topics:   make(map[string]*ConsumerFileLogger),
 		termChan: make(chan os.Signal),
 		hupChan:  make(chan os.Signal),
+		cfg:      cfg,
 	}
 }
 
@@ -360,19 +357,11 @@ func hasArg(s string) bool {
 	return false
 }
 
-func newConsumerFileLogger(topic string) (*ConsumerFileLogger, error) {
+func newConsumerFileLogger(topic string, cfg *nsq.Config) (*ConsumerFileLogger, error) {
 	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
 	if err != nil {
 		return nil, err
 	}
-
-	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
-	err = app.ParseOpts(cfg, consumerOpts)
-	if err != nil {
-		return nil, err
-	}
-	cfg.MaxInFlight = *maxInFlight
 
 	consumer, err := nsq.NewConsumer(topic, *channel, cfg)
 	if err != nil {
@@ -424,7 +413,7 @@ func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
 				log.Println("Skipping topic ", topic, "as it didn't match required pattern:", pattern)
 				continue
 			}
-			logger, err := newConsumerFileLogger(topic)
+			logger, err := newConsumerFileLogger(topic, t.cfg)
 			if err != nil {
 				log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
 				continue
@@ -466,6 +455,12 @@ func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string) {
 }
 
 func main() {
+	cfg := nsq.NewConfig()
+
+	// TODO: remove, deprecated
+	flag.Var(&nsq.ConfigFlag{cfg}, "reader-opt", "(deprecated) use --consumer-opt")
+	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	flag.Parse()
 
 	if *showVersion {
@@ -505,7 +500,10 @@ func main() {
 		}
 	}
 
-	discoverer := newTopicDiscoverer()
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	cfg.MaxInFlight = *maxInFlight
+
+	discoverer := newTopicDiscoverer(cfg)
 
 	signal.Notify(discoverer.hupChan, syscall.SIGHUP)
 	signal.Notify(discoverer.termChan, syscall.SIGINT, syscall.SIGTERM)
@@ -528,7 +526,7 @@ func main() {
 			continue
 		}
 
-		logger, err := newConsumerFileLogger(topic)
+		logger, err := newConsumerFileLogger(topic, cfg)
 		if err != nil {
 			log.Fatalf("ERROR: couldn't create logger for topic %s: %s", topic, err)
 		}

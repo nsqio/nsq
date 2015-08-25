@@ -46,7 +46,6 @@ var (
 	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
 	contentType   = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 
-	consumerOpts     = app.StringArray{}
 	getAddrs         = app.StringArray{}
 	postAddrs        = app.StringArray{}
 	nsqdTCPAddrs     = app.StringArray{}
@@ -60,9 +59,6 @@ var (
 )
 
 func init() {
-	// TODO: remove, deprecated
-	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
 
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
@@ -171,6 +167,11 @@ func hasArg(s string) bool {
 }
 
 func main() {
+	cfg := nsq.NewConfig()
+	// TODO: remove, deprecated
+	flag.Var(&nsq.ConfigFlag{cfg}, "reader-opt", "(deprecated) use --consumer-opt")
+	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	var publisher Publisher
 	var addresses app.StringArray
 	var selectedMode int
@@ -259,12 +260,7 @@ func main() {
 		addresses = getAddrs
 	}
 
-	cfg := nsq.NewConfig()
 	cfg.UserAgent = fmt.Sprintf("nsq_to_http/%s go-nsq/%s", version.Binary, nsq.VERSION)
-	err := app.ParseOpts(cfg, consumerOpts)
-	if err != nil {
-		log.Fatal(err)
-	}
 	cfg.MaxInFlight = *maxInFlight
 
 	// TODO: remove, deprecated

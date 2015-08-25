@@ -42,8 +42,6 @@ var (
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
 	mode        = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
 
-	consumerOpts        = app.StringArray{}
-	producerOpts        = app.StringArray{}
 	nsqdTCPAddrs        = app.StringArray{}
 	lookupdHTTPAddrs    = app.StringArray{}
 	destNsqdTCPAddrs    = app.StringArray{}
@@ -57,11 +55,6 @@ var (
 )
 
 func init() {
-	// TODO: remove, deprecated
-	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
-	flag.Var(&producerOpts, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
-
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -274,6 +267,14 @@ func hasArg(s string) bool {
 func main() {
 	var selectedMode int
 
+	cCfg := nsq.NewConfig()
+	pCfg := nsq.NewConfig()
+
+	// TODO: remove, deprecated
+	flag.Var(&nsq.ConfigFlag{cCfg}, "reader-opt", "(deprecated) use --consumer-opt")
+	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	flag.Parse()
 
 	if *showVersion {
@@ -324,12 +325,7 @@ func main() {
 
 	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
 
-	cCfg := nsq.NewConfig()
 	cCfg.UserAgent = defaultUA
-	err := app.ParseOpts(cCfg, consumerOpts)
-	if err != nil {
-		log.Fatal(err)
-	}
 	cCfg.MaxInFlight = *maxInFlight
 
 	// TODO: remove, deprecated
@@ -338,18 +334,12 @@ func main() {
 		cCfg.MaxBackoffDuration = *maxBackoffDuration
 	}
 
-	pCfg := nsq.NewConfig()
-	pCfg.UserAgent = defaultUA
-
-	err = app.ParseOpts(pCfg, producerOpts)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	consumer, err := nsq.NewConsumer(*topic, *channel, cCfg)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	pCfg.UserAgent = defaultUA
 
 	producers := make(map[string]*nsq.Producer)
 	for _, addr := range destNsqdTCPAddrs {
