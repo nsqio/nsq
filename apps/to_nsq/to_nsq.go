@@ -23,15 +23,16 @@ var (
 	delimiter = flag.String("delimiter", "\n", "character to split input from stdin (defaults to '\n')")
 
 	destNsqdTCPAddrs = app.StringArray{}
-	producerOpts     = app.StringArray{}
 )
 
 func init() {
-	flag.Var(&producerOpts, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
 	flag.Var(&destNsqdTCPAddrs, "nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 }
 
 func main() {
+	cfg := nsq.NewConfig()
+	flag.Var(&nsq.ConfigFlag{cfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
+
 	flag.Parse()
 
 	if len(*topic) == 0 {
@@ -46,13 +47,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	cfg := nsq.NewConfig()
 	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
-
-	err := app.ParseOpts(cfg, producerOpts)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// make the producers
 	producers := make(map[string]*nsq.Producer)
