@@ -6,12 +6,10 @@ import (
 	"html/template"
 	"io/ioutil"
 	"mime"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"path"
-	"strconv"
 	"time"
 
 	"github.com/bitly/go-simplejson"
@@ -186,10 +184,9 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 			goto respond
 		}
 		for _, topicName := range topics {
-			var producers []string
-			producers, _ = s.ci.GetLookupdTopicProducers(
+			producerList, _ := s.ci.GetLookupdTopicProducers(
 				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-			if len(producers) == 0 {
+			if len(producerList) == 0 {
 				topicChannels, _ := s.ci.GetLookupdTopicChannels(
 					topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 				topicChannelMap[topicName] = topicChannels
@@ -209,8 +206,8 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 
-	producers := s.getProducers(topicName)
-	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
+	producerList := s.getTopicProducerList(topicName)
+	topicStats, _, err := s.ci.GetNSQDStats(producerList, topicName)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
@@ -227,22 +224,18 @@ func (s *httpServer) doChannel(w http.ResponseWriter, req *http.Request, ps http
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
 
-	producers := s.getProducers(topicName)
-	_, allChannelStats, _ := s.ci.GetNSQDStats(producers, topicName)
+	producerList := s.getTopicProducerList(topicName)
+	_, allChannelStats, _ := s.ci.GetNSQDStats(producerList, topicName)
 	channelStats := allChannelStats[channelName]
 
 	return channelStats, nil
 }
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	addresses := make([]string, len(producers))
-	for i, p := range producers {
-		addresses[i] = p.HTTPAddress()
-	}
+	producerList := s.getProducerList()
 	return struct {
-		Nodes []*clusterinfo.Producer `json:"nodes"`
-	}{producers}, nil
+		Nodes clusterinfo.ProducerList `json:"nodes"`
+	}{producerList}, nil
 }
 
 func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -270,26 +263,13 @@ func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Reque
 func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	node := ps.ByName("node")
 
-	found := false
-	for _, n := range s.ctx.nsqadmin.opts.NSQDHTTPAddresses {
-		if node == n {
-			found = true
-			break
-		}
-	}
-	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	for _, p := range producers {
-		if node == fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort) {
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	producerList := s.getProducerList()
+	producer := producerList.Search(node)
+	if producer == nil {
 		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
 	}
 
-	topicStats, _, _ := s.ci.GetNSQDStats([]string{node}, "")
+	topicStats, _, _ := s.ci.GetNSQDStats(clusterinfo.ProducerList{producer}, "")
 
 	var totalClients int64
 	var totalMessages int64
@@ -385,12 +365,12 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 
 	if len(channelName) > 0 {
 		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
-		producerAddrs, _ := s.ci.GetLookupdTopicProducers(topicName,
+		producerList, _ := s.ci.GetLookupdTopicProducers(topicName,
 			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 
 		s.performVersionNegotiatedRequestsToNSQD(
 			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-			producerAddrs,
+			producerList.HTTPAddrs(),
 			"create_channel",
 			"channel/create",
 			fmt.Sprintf("topic=%s&channel=%s",
@@ -468,7 +448,7 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 
 func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
 	// for topic removal, you need to get all the producers *first*
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 
 	// remove the topic from all the lookupds
 	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
@@ -493,7 +473,7 @@ func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
 
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		"delete_topic",
 		"topic/delete",
 		fmt.Sprintf("topic=%s", url.QueryEscape(topicName)))
@@ -537,10 +517,10 @@ func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelN
 		}
 	}
 
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		"delete_channel",
 		"channel/delete",
 		fmt.Sprintf("topic=%s&channel=%s",
@@ -599,10 +579,10 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 }
 
 func (s *httpServer) pauseTopic(req *http.Request, topicName string, action string) error {
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		action+"_topic",
 		"topic/"+action,
 		fmt.Sprintf("topic=%s",
@@ -612,10 +592,10 @@ func (s *httpServer) pauseTopic(req *http.Request, topicName string, action stri
 }
 
 func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelName string, action string) error {
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		action+"_channel",
 		"channel/"+action,
 		fmt.Sprintf("topic=%s&channel=%s",
@@ -625,10 +605,10 @@ func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelNa
 }
 
 func (s *httpServer) emptyTopic(req *http.Request, topicName string) error {
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		"empty_topic",
 		"topic/empty",
 		fmt.Sprintf("topic=%s",
@@ -638,10 +618,10 @@ func (s *httpServer) emptyTopic(req *http.Request, topicName string) error {
 }
 
 func (s *httpServer) emptyChannel(req *http.Request, topicName string, channelName string) error {
-	producerAddrs := s.getProducers(topicName)
+	producerList := s.getTopicProducerList(topicName)
 	s.performVersionNegotiatedRequestsToNSQD(
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerAddrs,
+		producerList.HTTPAddrs(),
 		"empty_channel",
 		"channel/empty",
 		fmt.Sprintf("topic=%s&channel=%s",
@@ -659,13 +639,8 @@ type counterStats struct {
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	stats := make(map[string]*counterStats)
-	producers, _ := s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	addresses := make([]string, len(producers))
-	for i, p := range producers {
-		addresses[i] = p.HTTPAddress()
-	}
-	_, channelStats, _ := s.ci.GetNSQDStats(addresses, "")
-
+	producerList := s.getProducerList()
+	_, channelStats, _ := s.ci.GetNSQDStats(producerList, "")
 	for _, channelStats := range channelStats {
 		for _, hostChannelStats := range channelStats.NodeStats {
 			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.Node)
@@ -681,7 +656,6 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 			s.MessageCount += hostChannelStats.MessageCount
 		}
 	}
-
 	return stats, nil
 }
 
@@ -734,24 +708,24 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 	}{rateStr}, nil
 }
 
-func (s *httpServer) getProducers(topicName string) []string {
-	var producers []string
+func (s *httpServer) getProducerList() clusterinfo.ProducerList {
+	var producerList clusterinfo.ProducerList
 	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		producers, _ = s.ci.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+		producerList, _ = s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		producers, _ = s.ci.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+		producerList, _ = s.ci.GetNSQDProducers(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
-	return producers
+	return producerList
 }
 
-func producerSearch(producers []*clusterinfo.Producer, needle string) *clusterinfo.Producer {
-	for _, producer := range producers {
-		addr := net.JoinHostPort(producer.BroadcastAddress, strconv.Itoa(producer.HTTPPort))
-		if needle == addr {
-			return producer
-		}
+func (s *httpServer) getTopicProducerList(topicName string) clusterinfo.ProducerList {
+	var producerList clusterinfo.ProducerList
+	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
+		producerList, _ = s.ci.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	} else {
+		producerList, _ = s.ci.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	}
-	return nil
+	return producerList
 }
 
 func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
@@ -762,12 +736,12 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 	// so we can negotiate versions
 	//
 	// (this returns an empty list if there are no nsqlookupd configured)
-	producers, _ := s.ci.GetLookupdProducers(nsqlookupdAddrs)
+	producerList, _ := s.ci.GetLookupdProducers(nsqlookupdAddrs)
 	for _, addr := range nsqdAddrs {
 		var nodeVer semver.Version
 
 		uri := deprecatedURI
-		producer := producerSearch(producers, addr)
+		producer := producerList.Search(addr)
 		if producer != nil {
 			nodeVer = producer.VersionObj
 		} else {
