@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -120,10 +121,24 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
 	return struct {
-		Version string `json:"version"`
+		Version          string `json:"version"`
+		BroadcastAddress string `json:"broadcast_address"`
+		Hostname         string `json:"hostname"`
+		HTTPPort         int    `json:"http_port"`
+		TCPPort          int    `json:"tcp_port"`
+		StartTime        int64  `json:"start_time"`
 	}{
-		Version: version.Binary,
+		Version:          version.Binary,
+		BroadcastAddress: s.ctx.nsqd.getOpts().BroadcastAddress,
+		Hostname:         hostname,
+		TCPPort:          s.ctx.nsqd.RealTCPAddr().Port,
+		HTTPPort:         s.ctx.nsqd.RealHTTPAddr().Port,
+		StartTime:        s.ctx.nsqd.GetStartTime().Unix(),
 	}, nil
 }
 
