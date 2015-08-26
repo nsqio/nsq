@@ -36,7 +36,7 @@ type Producer struct {
 }
 
 // UnmarshalJSON implements json.Unmarshaler and postprocesses of ProducerTopics and VersionObj
-func (p *Producer) UnmarshalJSON(b []byte) (err error) {
+func (p *Producer) UnmarshalJSON(b []byte) error {
 	var r struct {
 		RemoteAddress    string   `json:"remote_address"`
 		Hostname         string   `json:"hostname"`
@@ -47,8 +47,8 @@ func (p *Producer) UnmarshalJSON(b []byte) (err error) {
 		Topics           []string `json:"topics"`
 		Tombstoned       []bool   `json:"tombstones"`
 	}
-	if err = json.Unmarshal(b, &r); err != nil {
-		return
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
 	}
 	*p = Producer{
 		RemoteAddress:    r.RemoteAddress,
@@ -61,11 +61,12 @@ func (p *Producer) UnmarshalJSON(b []byte) (err error) {
 	for i, t := range r.Topics {
 		p.Topics = append(p.Topics, ProducerTopic{Topic: t, Tombstoned: r.Tombstoned[i]})
 	}
-	p.VersionObj, err = semver.Parse(p.Version)
+	version, err := semver.Parse(p.Version)
 	if err != nil {
-		p.VersionObj, err = semver.Parse("0.0.0")
+		version, _ = semver.Parse("0.0.0")
 	}
-	return
+	p.VersionObj = version
+	return nil
 }
 
 func (p *Producer) Address() string {
@@ -92,6 +93,7 @@ func (p *Producer) IsInconsistent(numLookupd int) bool {
 
 type TopicStats struct {
 	Node         string          `json:"node"`
+	Hostname     string          `json:"hostname"`
 	TopicName    string          `json:"topic_name"`
 	Depth        int64           `json:"depth"`
 	MemoryDepth  int64           `json:"memory_depth"`
@@ -138,6 +140,7 @@ func (t *TopicStats) Add(a *TopicStats) {
 
 type ChannelStats struct {
 	Node          string          `json:"node"`
+	Hostname      string          `json:"hostname"`
 	TopicName     string          `json:"topic_name"`
 	ChannelName   string          `json:"channel_name"`
 	Depth         int64           `json:"depth"`
@@ -213,11 +216,11 @@ type ClientStats struct {
 }
 
 // UnmarshalJSON implements json.Unmarshaler and postprocesses ConnectedDuration
-func (s *ClientStats) UnmarshalJSON(b []byte) (err error) {
+func (s *ClientStats) UnmarshalJSON(b []byte) error {
 	type locaClientStats ClientStats // re-typed to prevent recursion from json.Unmarshal
 	var ss locaClientStats
-	if err = json.Unmarshal(b, &ss); err != nil {
-		return
+	if err := json.Unmarshal(b, &ss); err != nil {
+		return err
 	}
 	*s = ClientStats(ss)
 	s.ConnectedDuration = time.Now().Truncate(time.Second).Sub(time.Unix(s.ConnectTs, 0))
@@ -231,7 +234,7 @@ func (s *ClientStats) UnmarshalJSON(b []byte) (err error) {
 		}
 		s.ClientID = fmt.Sprintf("%s:%s", s.Name, port)
 	}
-	return
+	return nil
 }
 
 func (c *ClientStats) HasUserAgent() bool {
@@ -243,44 +246,73 @@ func (c *ClientStats) HasSampleRate() bool {
 }
 
 type ChannelStatsList []*ChannelStats
+
+func (c ChannelStatsList) Len() int      { return len(c) }
+func (c ChannelStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+
 type ChannelStatsByHost struct {
 	ChannelStatsList
 }
 
-type ClientStatsList []*ClientStats
-type ClientsByHost struct {
-	ClientStatsList
-}
-type TopicStatsList []*TopicStats
-type TopicStatsByHost struct {
-	TopicStatsList
-}
-type ProducerList []*Producer
-type ProducersByHost struct {
-	ProducerList
-}
-
-func (c ChannelStatsList) Len() int      { return len(c) }
-func (c ChannelStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
-func (c ClientStatsList) Len() int       { return len(c) }
-func (c ClientStatsList) Swap(i, j int)  { c[i], c[j] = c[j], c[i] }
-func (t TopicStatsList) Len() int        { return len(t) }
-func (t TopicStatsList) Swap(i, j int)   { t[i], t[j] = t[j], t[i] }
-func (t ProducerList) Len() int          { return len(t) }
-func (t ProducerList) Swap(i, j int)     { t[i], t[j] = t[j], t[i] }
-
 func (c ChannelStatsByHost) Less(i, j int) bool {
 	return c.ChannelStatsList[i].Node < c.ChannelStatsList[j].Node
 }
+
+type ClientStatsList []*ClientStats
+
+func (c ClientStatsList) Len() int      { return len(c) }
+func (c ClientStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+
+type ClientsByHost struct {
+	ClientStatsList
+}
+
 func (c ClientsByHost) Less(i, j int) bool {
 	if c.ClientStatsList[i].ClientID == c.ClientStatsList[j].ClientID {
 		return c.ClientStatsList[i].Node < c.ClientStatsList[j].Node
 	}
 	return c.ClientStatsList[i].ClientID < c.ClientStatsList[j].ClientID
 }
+
+type TopicStatsList []*TopicStats
+
+func (t TopicStatsList) Len() int      { return len(t) }
+func (t TopicStatsList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+type TopicStatsByHost struct {
+	TopicStatsList
+}
+
 func (c TopicStatsByHost) Less(i, j int) bool {
 	return c.TopicStatsList[i].Node < c.TopicStatsList[j].Node
 }
+
+type ProducerList []*Producer
+
+func (t ProducerList) Len() int      { return len(t) }
+func (t ProducerList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+func (t ProducerList) HTTPAddrs() []string {
+	var addrs []string
+	for _, p := range t {
+		addrs = append(addrs, p.HTTPAddress())
+	}
+	return addrs
+}
+
+func (t ProducerList) Search(needle string) *Producer {
+	for _, producer := range t {
+		if needle == producer.HTTPAddress() {
+			return producer
+		}
+	}
+	return nil
+}
+
+type ProducersByHost struct {
+	ProducerList
+}
+
 func (c ProducersByHost) Less(i, j int) bool {
-	return c.ProducerList[i].BroadcastAddress < c.ProducerList[j].BroadcastAddress
+	return c.ProducerList[i].Hostname < c.ProducerList[j].Hostname
 }

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -60,23 +59,19 @@ func statLoop(interval time.Duration, topic string, channel string,
 	ci := clusterinfo.New(nil)
 	var o *clusterinfo.ChannelStats
 	for i := 0; !countNum.isSet || countNum.value >= i; i++ {
-		var producers []string
+		var producerList clusterinfo.ProducerList
 		var err error
 
-		log.SetOutput(ioutil.Discard)
 		if len(lookupdHTTPAddrs) != 0 {
-			producers, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
+			producerList, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
 		} else {
-			producers, err = ci.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
+			producerList, err = ci.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
 		}
-		log.SetOutput(os.Stdout)
 		if err != nil {
 			log.Fatalf("ERROR: failed to get topic producers - %s", err)
 		}
 
-		log.SetOutput(ioutil.Discard)
-		_, allChannelStats, err := ci.GetNSQDStats(producers, topic)
-		log.SetOutput(os.Stdout)
+		_, allChannelStats, err := ci.GetNSQDStats(producerList, topic)
 		if err != nil {
 			log.Fatalf("ERROR: failed to get nsqd stats - %s", err)
 		}
