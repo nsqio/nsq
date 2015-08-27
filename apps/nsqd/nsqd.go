@@ -128,9 +128,9 @@ func nsqFlagset() *flag.FlagSet {
 
 	// TLS config
 	flagSet.String("tls-cert", "", "path to certificate file")
-	flagSet.String("tls-key", "", "path to private key file")
+	flagSet.String("tls-key", "", "path to key file")
 	flagSet.String("tls-client-auth-policy", "", "client certificate auth policy ('require' or 'require-verify')")
-	flagSet.String("tls-root-ca-file", "", "path to private certificate authority pem")
+	flagSet.String("tls-root-ca-file", "", "path to certificate authority file")
 	var tlsRequired tlsRequiredOption
 	var tlsMinVersion tlsVersionOption
 	flagSet.Var(&tlsRequired, "tls-required", "require TLS for client connections (true, false, tcp-https)")
@@ -175,7 +175,6 @@ func (cfg config) Validate() {
 }
 
 func main() {
-
 	flagSet := nsqFlagset()
 	flagSet.Parse(os.Args[1:])
 
