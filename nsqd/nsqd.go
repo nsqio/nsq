@@ -162,6 +162,12 @@ func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
 	return n.httpListener.Addr().(*net.TCPAddr)
 }
 
+func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
+	n.RLock()
+	defer n.RUnlock()
+	return n.httpsListener.Addr().(*net.TCPAddr)
+}
+
 func (n *NSQD) setFlag(f int32, b bool) {
 	for {
 		old := atomic.LoadInt32(&n.flag)
