@@ -106,7 +106,9 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		http_api.Respond(w, 403, "TLS_REQUIRED", nil)
+		resp := fmt.Sprintf(`{"message": "TLS_REQUIRED", "https_port": %d}`,
+			s.ctx.nsqd.RealHTTPSAddr().Port)
+		http_api.Respond(w, 403, "", resp)
 		return
 	}
 	s.router.ServeHTTP(w, req)
