@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -92,6 +95,8 @@ func NegotiateV1(endpoint string, v interface{}) error {
 // and parse our NSQ daemon's expected response format, with deadlines.
 func GETV1(endpoint string, v interface{}) error {
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
+
+retry:
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return err
@@ -110,6 +115,13 @@ func GETV1(endpoint string, v interface{}) error {
 		return err
 	}
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
+			endpoint, err = httpsEndpoint(endpoint, body)
+			if err != nil {
+				return err
+			}
+			goto retry
+		}
 		return fmt.Errorf("got response %s %q", resp.Status, body)
 	}
 	err = json.Unmarshal(body, &v)
@@ -124,6 +136,8 @@ func GETV1(endpoint string, v interface{}) error {
 // and parse our NSQ daemon's expected response format, with deadlines.
 func POSTV1(endpoint string) error {
 	httpclient := &http.Client{Transport: NewDeadlineTransport(2 * time.Second)}
+
+retry:
 	req, err := http.NewRequest("POST", endpoint, nil)
 	if err != nil {
 		return err
@@ -142,7 +156,39 @@ func POSTV1(endpoint string) error {
 		return err
 	}
 	if resp.StatusCode != 200 {
+		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
+			endpoint, err = httpsEndpoint(endpoint, body)
+			if err != nil {
+				return err
+			}
+			goto retry
+		}
 		return fmt.Errorf("got response %s %q", resp.Status, body)
 	}
+
 	return nil
+}
+
+func httpsEndpoint(endpoint string, body []byte) (string, error) {
+	var forbiddenResp struct {
+		HTTPSPort int `json:"https_port"`
+	}
+	err := json.Unmarshal(body, &forbiddenResp)
+	if err != nil {
+		return "", err
+	}
+
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	host, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return "", err
+	}
+
+	u.Scheme = "https"
+	u.Host = net.JoinHostPort(host, strconv.Itoa(forbiddenResp.HTTPSPort))
+	return u.String(), nil
 }
