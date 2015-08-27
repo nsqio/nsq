@@ -62,7 +62,12 @@
         {{#each nodes}}
         <tr>
             <td>
-                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/nodes/{{node}}">{{node}}</a>
+                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                {{#if show_broadcast_address}}
+                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{else}}
+                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>{{commafy depth}}</td>
