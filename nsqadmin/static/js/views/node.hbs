@@ -133,7 +133,7 @@
         {{#each clients}}
         <tr>
             <td></td>
-            <td>{{hostname}}{{#if client_id}} ({{client_id}}){{/if}} {{remote_address}}</td>
+            <td title="{{remote_address}}">{{hostname}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
             <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
             <td></td>
             <td>
