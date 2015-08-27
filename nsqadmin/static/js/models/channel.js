@@ -1,3 +1,5 @@
+var _ = require('underscore');
+
 var AppState = require('../app_state');
 var Backbone = require('backbone');
 
@@ -14,24 +16,33 @@ var Channel = Backbone.Model.extend({
             encodeURIComponent(this.get('name')));
     },
 
-    initialize: function() {
-      this.on('change:clients', this.calculateHostnamePort);
-    },
+    parse: function(response) {
+        response['nodes'] = _.map(response['nodes'] || [], function(node) {
+            var nodeParts = node['node'].split(':');
+            var port = nodeParts.pop();
+            var address = nodeParts.join(':');
+            var hostname = node['hostname'];
+            node['show_broadcast_address'] = hostname.toLowerCase() !== address.toLowerCase();
+            node['hostname_port'] = hostname + ':' + port;
+            return node;
+        });
 
-    calculateHostnamePort: function() {
-        this.get("clients").forEach(function(client){
-            var client_id = client["client_id"];
-            var hostname = client["hostname"];
-            var remote_address = client["remote_address"];
-  
+        response['clients'] = _.map(response['clients'] || [], function(client) {
+            var clientId = client['client_id'];
+            var hostname = client['hostname'];
+            var shortHostname = hostname.split('.')[0];
+
             // ignore client_id if it's duplicative
-            if (client_id === hostname.split(".")[0] || client_id === hostname) {
-                client["client_id"] = "";
-            }
+            client['show_client_id'] = (clientId.toLowerCase() !== shortHostname.toLowerCase()
+                                        && clientId.toLowerCase() !== hostname.toLowerCase());
 
-            var port = remote_address.split(":").pop()
-            client['hostname_port'] =  hostname + ":" + port;
-        })
+            var port = client['remote_address'].split(':').pop();
+            client['hostname_port'] =  hostname + ':' + port;
+
+            return client;
+        });
+
+        return response;
     }
 });
 
