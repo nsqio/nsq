@@ -46,11 +46,14 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 type httpServer struct {
 	ctx    *Context
 	router http.Handler
+	client *http_api.Client
 	ci     *clusterinfo.ClusterInfo
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
 	log := http_api.Log(ctx.nsqadmin.opts.Logger)
+
+	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
@@ -60,7 +63,8 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,
-		ci:     clusterinfo.New(ctx.nsqadmin.opts.Logger),
+		client: client,
+		ci:     clusterinfo.New(ctx.nsqadmin.opts.Logger, client),
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
@@ -337,7 +341,7 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
 			uri, url.QueryEscape(topicName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = http_api.POSTV1(endpoint)
+		err = s.client.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -353,7 +357,7 @@ func (s *httpServer) createTopicChannel(req *http.Request, topicName string, cha
 				url.QueryEscape(topicName),
 				url.QueryEscape(channelName))
 			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-			err := http_api.POSTV1(endpoint)
+			err := s.client.POSTV1(endpoint)
 			if err != nil {
 				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 				continue
@@ -407,7 +411,7 @@ func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, nod
 			addr, uri,
 			url.QueryEscape(topicName), url.QueryEscape(node))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = http_api.POSTV1(endpoint)
+		err = s.client.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 		}
@@ -427,7 +431,7 @@ func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, nod
 	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
 		uri, url.QueryEscape(topicName))
 	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-	err = http_api.POSTV1(endpoint)
+	err = s.client.POSTV1(endpoint)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 	}
@@ -464,7 +468,7 @@ func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
 
 		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = http_api.POSTV1(endpoint)
+		err = s.client.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -510,7 +514,7 @@ func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelN
 			url.QueryEscape(topicName),
 			url.QueryEscape(channelName))
 		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = http_api.POSTV1(endpoint)
+		err = s.client.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
 			continue
@@ -689,7 +693,7 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 		Target     string       `json:"target"`
 		DataPoints [][]*float64 `json:"datapoints"`
 	}
-	err = http_api.GETV1(url, &response)
+	err = s.client.GETV1(url, &response)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
@@ -759,7 +763,7 @@ func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
 		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-		err := http_api.POSTV1(endpoint)
+		err := s.client.POSTV1(endpoint)
 		if err != nil {
 			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
 			continue

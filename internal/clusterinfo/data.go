@@ -17,11 +17,15 @@ type logger interface {
 }
 
 type ClusterInfo struct {
-	log logger
+	log    logger
+	client *http_api.Client
 }
 
-func New(log logger) *ClusterInfo {
-	return &ClusterInfo{log}
+func New(log logger, client *http_api.Client) *ClusterInfo {
+	return &ClusterInfo{
+		log:    log,
+		client: client,
+	}
 }
 
 func (c *ClusterInfo) logf(f string, args ...interface{}) {
@@ -38,7 +42,7 @@ func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	var resp struct {
 		Version string `json:'version'`
 	}
-	err := http_api.NegotiateV1(endpoint, &resp)
+	err := c.client.NegotiateV1(endpoint, &resp)
 	if err != nil {
 		c.logf("ERROR: %s - %s", endpoint, err)
 		return semver.Version{}, err
@@ -69,7 +73,7 @@ func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, err
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			if err != nil {
 				c.logf("ERROR: lookupd %s - %s", endpoint, err)
 				return
@@ -112,7 +116,7 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []s
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			lock.Lock()
 			defer lock.Unlock()
 			if err != nil {
@@ -156,7 +160,7 @@ func (c *ClusterInfo) GetLookupdProducers(lookupdHTTPAddrs []string) (ProducerLi
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			if err != nil {
 				c.logf("ERROR: lookupd %s - %s", endpoint, err)
 				return
@@ -216,7 +220,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			if err != nil {
 				c.logf("ERROR: lookupd %s - %s", endpoint, err)
 				return
@@ -257,7 +261,7 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			if err != nil {
 				c.logf("ERROR: lookupd %s - %s", endpoint, err)
 				return
@@ -312,7 +316,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (ProducerList, er
 			c.logf("NSQD: querying %s", endpoint)
 
 			var infoResp infoRespType
-			err := http_api.NegotiateV1(endpoint, &infoResp)
+			err := c.client.NegotiateV1(endpoint, &infoResp)
 			if err != nil {
 				c.logf("ERROR: nsqd %s - %s", endpoint, err)
 				return
@@ -322,7 +326,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (ProducerList, er
 			c.logf("NSQD: querying %s", endpoint)
 
 			var statsResp statsRespType
-			err = http_api.NegotiateV1(endpoint, &statsResp)
+			err = c.client.NegotiateV1(endpoint, &statsResp)
 			if err != nil {
 				c.logf("ERROR: nsqd %s - %s", endpoint, err)
 				return
@@ -391,7 +395,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 			c.logf("NSQD: querying %s", endpoint)
 
 			var statsResp statsRespType
-			err := http_api.NegotiateV1(endpoint, &statsResp)
+			err := c.client.NegotiateV1(endpoint, &statsResp)
 			if err != nil {
 				c.logf("ERROR: nsqd %s - %s", endpoint, err)
 				return
@@ -412,7 +416,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 					c.logf("NSQD: querying %s", endpoint)
 
 					var infoResp infoRespType
-					err := http_api.NegotiateV1(endpoint, &infoResp)
+					err := c.client.NegotiateV1(endpoint, &infoResp)
 					if err != nil {
 						c.logf("ERROR: nsqd %s - %s", endpoint, err)
 						return
@@ -472,7 +476,7 @@ func (c *ClusterInfo) GetNSQDStats(producerList ProducerList, selectedTopic stri
 			defer wg.Done()
 
 			var resp respType
-			err := http_api.NegotiateV1(endpoint, &resp)
+			err := c.client.NegotiateV1(endpoint, &resp)
 			if err != nil {
 				c.logf("ERROR: lookupd %s - %s", endpoint, err)
 				return

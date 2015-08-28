@@ -17,6 +17,7 @@ import (
 
 	"github.com/bitly/nsq/internal/app"
 	"github.com/bitly/nsq/internal/clusterinfo"
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/version"
 )
 
@@ -56,7 +57,7 @@ func init() {
 
 func statLoop(interval time.Duration, topic string, channel string,
 	nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
-	ci := clusterinfo.New(nil)
+	ci := clusterinfo.New(nil, http_api.NewClient(nil))
 	var o *clusterinfo.ChannelStats
 	for i := 0; !countNum.isSet || countNum.value >= i; i++ {
 		var producerList clusterinfo.ProducerList
