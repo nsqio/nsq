@@ -79,7 +79,7 @@ func New(opts *Options) *NSQD {
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
-		ci:                   clusterinfo.New(opts.Logger),
+		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil)),
 	}
 	n.swapOpts(opts)
 

@@ -74,7 +74,7 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 
 func API(endpoint string) (data *simplejson.Json, err error) {
 	d := make(map[string]interface{})
-	err = http_api.NegotiateV1(endpoint, &d)
+	err = http_api.NewClient(nil).NegotiateV1(endpoint, &d)
 	data = simplejson.New()
 	data.SetPath(nil, d)
 	return
@@ -254,7 +254,7 @@ func TestTombstoneRecover(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.POSTV1(endpoint)
+	err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
@@ -298,7 +298,7 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.POSTV1(endpoint)
+	err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
@@ -340,7 +340,9 @@ func TestInactiveNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
+	ci := clusterinfo.New(nil, http_api.NewClient(nil))
+
+	producers, _ := ci.GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -348,7 +350,7 @@ func TestInactiveNodes(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = ci.GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 0)
 }
 
@@ -371,7 +373,9 @@ func TestTombstonedNodes(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	producers, _ := clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
+	ci := clusterinfo.New(nil, http_api.NewClient(nil))
+
+	producers, _ := ci.GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
@@ -379,10 +383,10 @@ func TestTombstonedNodes(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.POSTV1(endpoint)
+	err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
-	producers, _ = clusterinfo.New(nil).GetLookupdProducers(lookupdHTTPAddrs)
+	producers, _ = ci.GetLookupdProducers(lookupdHTTPAddrs)
 	equal(t, len(producers), 1)
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
