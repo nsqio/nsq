@@ -34,6 +34,11 @@ var (
 
 	notificationHTTPEndpoint = flagSet.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
 
+	httpClientTLSInsecureSkipVerify = flagSet.Bool("http-client-tls-insecure-skip-verify", false, "configure the HTTP client to skip verification of TLS certificates")
+	httpClientTLSRootCAFile         = flagSet.String("http-client-tls-root-ca-file", "", "path to CA file for the HTTP client")
+	httpClientTLSCert               = flagSet.String("http-client-tls-cert", "", "path to certificate file for the HTTP client")
+	httpClientTLSKey                = flagSet.String("http-client-tls-key", "", "path to key file for the HTTP client")
+
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
 )

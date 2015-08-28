@@ -78,7 +78,7 @@ func getMetadata(n *NSQD) (*simplejson.Json, error) {
 
 func API(endpoint string) (data *simplejson.Json, err error) {
 	d := make(map[string]interface{})
-	err = http_api.NegotiateV1(endpoint, &d)
+	err = http_api.NewClient(nil).NegotiateV1(endpoint, &d)
 	data = simplejson.New()
 	data.SetPath(nil, d)
 	return
@@ -361,11 +361,11 @@ func TestCluster(t *testing.T) {
 	equal(t, err, nil)
 
 	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
@@ -413,7 +413,7 @@ func TestCluster(t *testing.T) {
 	equal(t, channel, "ch")
 
 	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd

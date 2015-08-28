@@ -79,7 +79,7 @@ func New(opts *Options) *NSQD {
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
-		ci:                   clusterinfo.New(opts.Logger),
+		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil)),
 	}
 	n.swapOpts(opts)
 
@@ -160,6 +160,12 @@ func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
 	n.RLock()
 	defer n.RUnlock()
 	return n.httpListener.Addr().(*net.TCPAddr)
+}
+
+func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
+	n.RLock()
+	defer n.RUnlock()
+	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
 func (n *NSQD) setFlag(f int32, b bool) {

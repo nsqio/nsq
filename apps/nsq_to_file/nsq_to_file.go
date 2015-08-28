@@ -22,6 +22,7 @@ import (
 	"github.com/bitly/go-nsq"
 	"github.com/bitly/nsq/internal/app"
 	"github.com/bitly/nsq/internal/clusterinfo"
+	"github.com/bitly/nsq/internal/http_api"
 	"github.com/bitly/nsq/internal/version"
 )
 
@@ -403,7 +404,7 @@ func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
 }
 
 func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
-	newTopics, err := clusterinfo.New(nil).GetLookupdTopics(addrs)
+	newTopics, err := clusterinfo.New(nil, http_api.NewClient(nil)).GetLookupdTopics(addrs)
 	if err != nil {
 		log.Printf("ERROR: could not retrieve topic list: %s", err)
 	}
@@ -514,7 +515,7 @@ func main() {
 		}
 		topicsFromNSQLookupd = true
 		var err error
-		topics, err = clusterinfo.New(nil).GetLookupdTopics(lookupdHTTPAddrs)
+		topics, err = clusterinfo.New(nil, http_api.NewClient(nil)).GetLookupdTopics(lookupdHTTPAddrs)
 		if err != nil {
 			log.Fatalf("ERROR: could not retrieve topic list: %s", err)
 		}

@@ -97,7 +97,8 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) 
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
 	var authState State
-	if err := http_api.GETV1(endpoint, &authState); err != nil {
+	client := http_api.NewClient(nil)
+	if err := client.GETV1(endpoint, &authState); err != nil {
 		return nil, err
 	}
 
