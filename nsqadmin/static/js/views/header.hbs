@@ -17,8 +17,9 @@
                 <li><a class="link" href="/lookup">Lookup</a></li>
                 {{#if graph_enabled}}
                 <li class="dropdown">
-                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">{{graph_interval}} <span class="caret"></span></a>
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-picture white"></span> {{graph_interval}} <span class="caret"></span></a>
                     <ul class="dropdown-menu">
+                      <li class="dropdown-header">Graph Timeframe</li>
                     {{#each graph_intervals}}
                         <li><a href="javascript:;">{{this}}</a></li>
                     {{/each}}
