@@ -60,19 +60,19 @@ func statLoop(interval time.Duration, topic string, channel string,
 	ci := clusterinfo.New(nil, http_api.NewClient(nil))
 	var o *clusterinfo.ChannelStats
 	for i := 0; !countNum.isSet || countNum.value >= i; i++ {
-		var producerList clusterinfo.ProducerList
+		var producers clusterinfo.Producers
 		var err error
 
 		if len(lookupdHTTPAddrs) != 0 {
-			producerList, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
+			producers, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
 		} else {
-			producerList, err = ci.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
+			producers, err = ci.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
 		}
 		if err != nil {
 			log.Fatalf("ERROR: failed to get topic producers - %s", err)
 		}
 
-		_, allChannelStats, err := ci.GetNSQDStats(producerList, topic)
+		_, allChannelStats, err := ci.GetNSQDStats(producers, topic)
 		if err != nil {
 			log.Fatalf("ERROR: failed to get nsqd stats - %s", err)
 		}

@@ -287,12 +287,12 @@ func (c TopicStatsByHost) Less(i, j int) bool {
 	return c.TopicStatsList[i].Node < c.TopicStatsList[j].Node
 }
 
-type ProducerList []*Producer
+type Producers []*Producer
 
-func (t ProducerList) Len() int      { return len(t) }
-func (t ProducerList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+func (t Producers) Len() int      { return len(t) }
+func (t Producers) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 
-func (t ProducerList) HTTPAddrs() []string {
+func (t Producers) HTTPAddrs() []string {
 	var addrs []string
 	for _, p := range t {
 		addrs = append(addrs, p.HTTPAddress())
@@ -300,7 +300,7 @@ func (t ProducerList) HTTPAddrs() []string {
 	return addrs
 }
 
-func (t ProducerList) Search(needle string) *Producer {
+func (t Producers) Search(needle string) *Producer {
 	for _, producer := range t {
 		if needle == producer.HTTPAddress() {
 			return producer
@@ -310,9 +310,9 @@ func (t ProducerList) Search(needle string) *Producer {
 }
 
 type ProducersByHost struct {
-	ProducerList
+	Producers
 }
 
 func (c ProducersByHost) Less(i, j int) bool {
-	return c.ProducerList[i].Hostname < c.ProducerList[j].Hostname
+	return c.Producers[i].Hostname < c.Producers[j].Hostname
 }
