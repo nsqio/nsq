@@ -1,4 +1,4 @@
-<p align="center"><img src="http://nsq.io/static/img/nsq.png"/></p>
+<p align="center"><img src="http://nsq.io/static/img/nsq_blue.png"/></p>
 
  * **Source**: [https://github.com/nsqio/nsq][github]
  * **Issues**: [https://github.com/nsqio/nsq/issues][issues]
@@ -70,6 +70,8 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 ([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of
 [bitly][bitly] and all our [contributors][contributors].
 
+Logo created by Wolasi Konu [@kisalow][wolasi_twitter].
+
 [docs]: http://nsq.io/
 [github]: https://github.com/nsqio/nsq
 [issues]: https://github.com/nsqio/nsq/issues
@@ -84,3 +86,4 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 [contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
 [nsqio_twitter]: https://twitter.com/nsqio
+[wolasi_twitter]: https://twitter.com/kisalow
