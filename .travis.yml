@@ -1,6 +1,7 @@
 language: go
 go:
   - 1.4.2
+  - 1.5
 env:
   - GOARCH=amd64
   - GOARCH=386
