@@ -29,8 +29,8 @@ var CounterView = BaseView.extend({
         this.looping = false;
         this.targetPollInterval = 10000;
         this.currentNum = -1;
+        this.interval = 100;
         this.updateStats();
-        this.startLoop(100);
     },
 
     startLoop: function(i) {
@@ -40,6 +40,10 @@ var CounterView = BaseView.extend({
 
     updateStats: function() {
         $.get(AppState.url('/counter')).done(function(data) {
+            if (this.removed) {
+                return;
+            }
+
             var num = _.reduce(data, function(n, v) {
                 return n + v['message_count'];
             }, 0);
@@ -66,10 +70,14 @@ var CounterView = BaseView.extend({
 
             $('#fetcherror').hide();
         }.bind(this)).fail(function() {
+            if (this.removed) {
+                return;
+            }
+
             clearTimeout(this.animator);
             this.animator = null;
 
-            this.startLoop(this.interval);
+            this.startLoop(10000);
 
             $('#fetcherror').show().text('ERROR: unable to fetch stats, retrying in ' +
                 (this.interval / 1000) + 's');
