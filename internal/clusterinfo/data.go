@@ -554,6 +554,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 			for _, topic := range resp.Topics {
 				topic.Node = addr
 				topic.Hostname = p.Hostname
+				topic.MemoryDepth = topic.Depth - topic.BackendDepth
 				if selectedTopic != "" && topic.TopicName != selectedTopic {
 					continue
 				}
@@ -563,6 +564,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 					channel.Node = addr
 					channel.Hostname = p.Hostname
 					channel.TopicName = topic.TopicName
+					channel.MemoryDepth = channel.Depth - channel.BackendDepth
 					key := channel.ChannelName
 					if selectedTopic == "" {
 						key = fmt.Sprintf("%s:%s", topic.TopicName, channel.ChannelName)
