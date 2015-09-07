@@ -145,8 +145,9 @@ gulp.task('help', taskListing);
 
 gulp.task('sync-static-assets', function() {
     return gulp.src([
-      path.join(ROOT, 'html/**'),
-      path.join(ROOT, 'fonts/**')
+        path.join(ROOT, 'html/**'),
+        path.join(ROOT, 'fonts/**'),
+        path.join(ROOT, 'img/**')
     ]).pipe(gulp.dest(path.join(ROOT, 'build')));
 });
 
