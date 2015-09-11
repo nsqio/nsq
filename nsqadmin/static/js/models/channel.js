@@ -37,7 +37,7 @@ var Channel = Backbone.Model.extend({
                                         && clientId.toLowerCase() !== hostname.toLowerCase());
 
             var port = client['remote_address'].split(':').pop();
-            client['hostname_port'] =  hostname + ':' + port;
+            client['hostname_port'] = hostname + ':' + port;
 
             return client;
         });

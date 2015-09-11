@@ -2,6 +2,7 @@ var _ = require('underscore');
 var $ = require('jquery');
 
 var AppState = require('../app_state');
+var Pubsub = require('../lib/pubsub');
 var BaseView = require('./base');
 
 var Topic = require('../models/topic');

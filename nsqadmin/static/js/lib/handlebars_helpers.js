@@ -180,7 +180,8 @@ Handlebars.registerHelper('commafy', function(n) {
 });
 
 Handlebars.registerHelper('nanotohuman', function(n) {
-    var s = "";
+    var s = '';
+    var v;
     if (n >= 3600000000000) {
         v = Math.floor(n / 3600000000000);
         n = n % 3600000000000;
