@@ -4,6 +4,7 @@ window.jQuery = $;
 var bootstrap = require('bootstrap'); //eslint-disable-line no-unused-vars
 var bootbox = require('bootbox');
 
+var AppState = require('../app_state');
 var Pubsub = require('../lib/pubsub');
 var Router = require('../router');
 
@@ -17,7 +18,7 @@ var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
 
-var Node = require('../models/node');
+var Node = require('../models/node'); //eslint-disable-line no-undef
 var Topic = require('../models/topic');
 var Channel = require('../models/channel');
 
