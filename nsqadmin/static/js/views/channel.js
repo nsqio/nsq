@@ -21,11 +21,13 @@ var ChannelView = BaseView.extend({
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
         this.listenTo(AppState, 'change:graph_interval', this.render);
-        this.model.fetch().done(function() {
-            this.template = require('./channel.hbs');
-            this.render();
-            Pubsub.trigger('view:ready');
-        }.bind(this));
+        this.model.fetch()
+            .done(function(data) {
+                this.template = require('./channel.hbs');
+                this.render({'message': data['message']});
+            }.bind(this))
+            .fail(this.handleViewError.bind(this))
+            .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));
     },
 
     channelAction: function(e) {
@@ -40,17 +42,15 @@ var ChannelView = BaseView.extend({
                 return;
             }
             if (action === 'delete') {
-                $.ajax(this.model.url(), {
-                    'method': 'DELETE'
-                }).done(function() {
-                    window.location = '/topics/' + encodeURIComponent(this.model.get('topic'));
-                });
+                $.ajax(this.model.url(), {'method': 'DELETE'})
+                    .done(function() {
+                        window.location = '/topics/' + encodeURIComponent(this.model.get('topic'));
+                    })
+                    .fail(this.handleAJAXError.bind(this));
             } else {
-                $.post(this.model.url(), JSON.stringify({
-                    'action': action
-                })).done(function() {
-                    window.location.reload(true);
-                });
+                $.post(this.model.url(), JSON.stringify({'action': action}))
+                    .done(function() { window.location.reload(true); })
+                    .fail(this.handleAJAXError.bind(this));
             }
         }.bind(this));
     }
