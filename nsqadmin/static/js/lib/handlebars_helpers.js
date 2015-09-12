@@ -179,6 +179,11 @@ Handlebars.registerHelper('commafy', function(n) {
     return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 });
 
+function round(num, places) {
+    var multiplier = Math.pow(10, places);
+    return Math.round(num * multiplier) / multiplier;
+}
+
 Handlebars.registerHelper('nanotohuman', function(n) {
     var s = '';
     var v;
@@ -193,13 +198,13 @@ Handlebars.registerHelper('nanotohuman', function(n) {
         s = v + 'm';
     }
     if (n >= 1000000000) {
-        n = n / 1000000000;
+        n = round(n / 1000000000, 2);
         s += n + 's';
     } else if (n >= 1000000) {
-        n = n / 1000000;
+        n = round(n / 1000000, 2);
         s += n + 'ms';
     } else if (n >= 1000) {
-        n = n / 1000;
+        n = round(n / 1000, 2);
         s += n + 'us';
     } else {
         s = n + 'ns';
