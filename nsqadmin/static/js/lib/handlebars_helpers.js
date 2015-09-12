@@ -267,3 +267,6 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
 Handlebars.registerHelper('rate', function(typ, node, ns1, ns2) {
     return genTargets(typ, node, ns1, ns2, 'message_count')[0];
 });
+
+Handlebars.registerPartial('error', require('../views/error.hbs'));
+Handlebars.registerPartial('warning', require('../views/warning.hbs'));

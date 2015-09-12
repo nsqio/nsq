@@ -44,7 +44,7 @@ var CounterView = BaseView.extend({
                 return;
             }
 
-            var num = _.reduce(data, function(n, v) {
+            var num = _.reduce(data['stats'], function(n, v) {
                 return n + v['message_count'];
             }, 0);
 
@@ -68,8 +68,12 @@ var CounterView = BaseView.extend({
             }
             this.startLoop(newInterval);
 
-            $('#fetcherror').hide();
-        }.bind(this)).fail(function() {
+            $('#warning, #error').hide();
+            if (data['message'] !== '') {
+                $('#warning .alert').text(data['message']);
+                $('#warning').show();
+            }
+        }.bind(this)).fail(function(jqXHR) {
             if (this.removed) {
                 return;
             }
@@ -79,8 +83,7 @@ var CounterView = BaseView.extend({
 
             this.startLoop(10000);
 
-            $('#fetcherror').show().text('ERROR: unable to fetch stats, retrying in ' +
-                (this.interval / 1000) + 's');
+            this.handleAJAXError(jqXHR);
         }.bind(this));
 
         if ($('#big_graph').length) {
