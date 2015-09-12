@@ -184,6 +184,8 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 		}
 	}
 	c.E2eProcessingLatency.Add(a.E2eProcessingLatency)
+	c.Clients = append(c.Clients, a.Clients...)
+	sort.Sort(ClientsByHost{c.Clients})
 }
 
 type ClientStats struct {
@@ -255,7 +257,7 @@ type ChannelStatsByHost struct {
 }
 
 func (c ChannelStatsByHost) Less(i, j int) bool {
-	return c.ChannelStatsList[i].Node < c.ChannelStatsList[j].Node
+	return c.ChannelStatsList[i].Hostname < c.ChannelStatsList[j].Hostname
 }
 
 type ClientStatsList []*ClientStats
@@ -268,10 +270,7 @@ type ClientsByHost struct {
 }
 
 func (c ClientsByHost) Less(i, j int) bool {
-	if c.ClientStatsList[i].ClientID == c.ClientStatsList[j].ClientID {
-		return c.ClientStatsList[i].Node < c.ClientStatsList[j].Node
-	}
-	return c.ClientStatsList[i].ClientID < c.ClientStatsList[j].ClientID
+	return c.ClientStatsList[i].Hostname < c.ClientStatsList[j].Hostname
 }
 
 type TopicStatsList []*TopicStats
@@ -284,7 +283,7 @@ type TopicStatsByHost struct {
 }
 
 func (c TopicStatsByHost) Less(i, j int) bool {
-	return c.TopicStatsList[i].Node < c.TopicStatsList[j].Node
+	return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
 }
 
 type Producers []*Producer

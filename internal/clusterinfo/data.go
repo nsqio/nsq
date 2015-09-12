@@ -580,7 +580,6 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 						c.Node = addr
 					}
 					channelStats.Add(channel)
-					channelStats.Clients = append(channelStats.Clients, channel.Clients...)
 				}
 			}
 		}(p)
