@@ -2,6 +2,34 @@
 
 ## Binaries
 
+### 0.3.6-alpha
+
+**Upgrading from 0.3.5**: Binaries contain no backwards incompatible changes.
+
+Features:
+
+ * #323/#631/#632/#642/#421 - `nsqadmin`: convert to API and single-page app
+ * #293 - `nsqd`: add deferred pub (`DPUB`)
+ * #577 - `nsqd`: drop per-channel queue workers in favor of centralized queue GC
+ * #584 - `nsqlookupd`: improve registration DB performance (thanks @xiaost)
+ * #601 - `nsqd`: HTTP endpoints to dynamically configure `nsqlookupd` peers
+ * #608 - `nsqd`: support for filtering `/stats` to topic/channel (thanks @chrusty)
+ * #601/#610/#612/#641 - improved HTTP internal routing / log HTTP requests
+ * #628 - `nsqd`: clarify help text for `--e2e-processing-latency-percentile`
+ * #640 - switch `--{consumer,producer}-opt` to `nsq.ConfigFlag`
+
+Bugs:
+
+ * #421 - `nsqadmin`: display upstream/partial errors
+ * #396 - `nsqdamin`/`nsqd`: support for `--tls-required`
+ * #558 - don't overwrite docker root FS
+ * #582 - `nsqd`: ignore benign EOF errors
+ * #587 - `nsqd`: GUID error handling / catch errors if GUID goes backwards (thanks @mpe)
+ * #586 - `nsqd`: fix valid range for `--worker-id`
+ * #550/#602/#617/#618/#619/#620/#622 - `nsqd`: fix benchmarks (thanks @Dieterbe)
+ * #553 - cleanup test dirs
+ * #600 - `nsqd`: enforce diskqueue min/max message size (thanks @twmb)
+
 ### 0.3.5 - 2015-04-26
 
 **Upgrading from 0.3.3**: Binaries contain no backwards incompatible changes.
