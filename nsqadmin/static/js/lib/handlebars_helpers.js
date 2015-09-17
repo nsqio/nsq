@@ -179,8 +179,14 @@ Handlebars.registerHelper('commafy', function(n) {
     return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 });
 
+function round(num, places) {
+    var multiplier = Math.pow(10, places);
+    return Math.round(num * multiplier) / multiplier;
+}
+
 Handlebars.registerHelper('nanotohuman', function(n) {
-    var s = "";
+    var s = '';
+    var v;
     if (n >= 3600000000000) {
         v = Math.floor(n / 3600000000000);
         n = n % 3600000000000;
@@ -192,13 +198,13 @@ Handlebars.registerHelper('nanotohuman', function(n) {
         s = v + 'm';
     }
     if (n >= 1000000000) {
-        n = n / 1000000000;
+        n = round(n / 1000000000, 2);
         s += n + 's';
     } else if (n >= 1000000) {
-        n = n / 1000000;
+        n = round(n / 1000000, 2);
         s += n + 'ms';
     } else if (n >= 1000) {
-        n = n / 1000;
+        n = round(n / 1000, 2);
         s += n + 'us';
     } else {
         s = n + 'ns';
@@ -261,3 +267,6 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
 Handlebars.registerHelper('rate', function(typ, node, ns1, ns2) {
     return genTargets(typ, node, ns1, ns2, 'message_count')[0];
 });
+
+Handlebars.registerPartial('error', require('../views/error.hbs'));
+Handlebars.registerPartial('warning', require('../views/warning.hbs'));

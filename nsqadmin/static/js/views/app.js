@@ -4,6 +4,7 @@ window.jQuery = $;
 var bootstrap = require('bootstrap'); //eslint-disable-line no-unused-vars
 var bootbox = require('bootbox');
 
+var AppState = require('../app_state');
 var Pubsub = require('../lib/pubsub');
 var Router = require('../router');
 
@@ -17,7 +18,7 @@ var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
 
-var Node = require('../models/node');
+var Node = require('../models/node'); //eslint-disable-line no-undef
 var Topic = require('../models/topic');
 var Channel = require('../models/channel');
 
@@ -43,13 +44,14 @@ var AppView = BaseView.extend({
         this.listenTo(Pubsub, 'counter:show', this.showCounter);
 
         this.listenTo(Pubsub, 'view:ready', function() {
-            $('.rate').each(function() {
+            $('.rate').each(function(i, el) {
+                var $el = $(el);
                 $.get(AppState.url('/graphite'), {
-                    'metric': 'rate',
-                    'target': $(this).attr('target')
-                }).done(function(data) {
-                    $(this).html(data['rate']);
-                }.bind(this));
+                        'metric': 'rate',
+                        'target': $el.attr('target')
+                    })
+                    .done(function(data) { $el.html(data['rate']); })
+                    .fail(function() { $el.html('ERROR'); });
             });
         });
 
@@ -133,10 +135,10 @@ var AppView = BaseView.extend({
             var node = new Node({
                 'name': nodeName
             });
-            node.tombstoneTopic(topicName).done(function() {
-                window.location.reload(true);
-            });
-        });
+            node.tombstoneTopic(topicName)
+                .done(function() { window.location.reload(true); })
+                .fail(this.handleAJAXError.bind(this));
+        }.bind(this));
     }
 });
 

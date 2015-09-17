@@ -20,11 +20,13 @@ var NodesView = BaseView.extend({
         BaseView.prototype.initialize.apply(this, arguments);
         this.listenTo(AppState, 'change:graph_interval', this.render);
         this.collection = new Nodes();
-        this.collection.fetch().done(function() {
-            this.template = require('./nodes.hbs');
-            this.render();
-            Pubsub.trigger('view:ready');
-        }.bind(this));
+        this.collection.fetch()
+            .done(function(data) {
+                this.template = require('./nodes.hbs');
+                this.render({'message': data['message']});
+            }.bind(this))
+            .fail(this.handleViewError.bind(this))
+            .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));
     },
 
     onClickConnCount: function(e) {

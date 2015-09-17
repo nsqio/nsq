@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>nsqadmin</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/bootstrap.min.css">
     <link rel="stylesheet" href="/static/base.css">
     <meta http-equiv="Content-type" content="text/html; charset=utf-8">
@@ -13,7 +14,7 @@
     <div id="container"></div>
 
     <script type="text/javascript">
-        var USER_AGENT = 'nsqadmin';
+        var USER_AGENT = 'nsqadmin/v{{.Version}}';
         var VERSION = '{{.Version}}';
         var GRAPHITE_URL = '{{if .ProxyGraphite}}{{else}}{{.GraphiteURL}}{{end}}';
         var GRAPH_ENABLED = {{if .GraphEnabled}}true{{else}}false{{end}};

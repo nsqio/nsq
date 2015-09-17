@@ -184,6 +184,8 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 		}
 	}
 	c.E2eProcessingLatency.Add(a.E2eProcessingLatency)
+	c.Clients = append(c.Clients, a.Clients...)
+	sort.Sort(ClientsByHost{c.Clients})
 }
 
 type ClientStats struct {
@@ -255,7 +257,7 @@ type ChannelStatsByHost struct {
 }
 
 func (c ChannelStatsByHost) Less(i, j int) bool {
-	return c.ChannelStatsList[i].Node < c.ChannelStatsList[j].Node
+	return c.ChannelStatsList[i].Hostname < c.ChannelStatsList[j].Hostname
 }
 
 type ClientStatsList []*ClientStats
@@ -268,10 +270,7 @@ type ClientsByHost struct {
 }
 
 func (c ClientsByHost) Less(i, j int) bool {
-	if c.ClientStatsList[i].ClientID == c.ClientStatsList[j].ClientID {
-		return c.ClientStatsList[i].Node < c.ClientStatsList[j].Node
-	}
-	return c.ClientStatsList[i].ClientID < c.ClientStatsList[j].ClientID
+	return c.ClientStatsList[i].Hostname < c.ClientStatsList[j].Hostname
 }
 
 type TopicStatsList []*TopicStats
@@ -284,15 +283,15 @@ type TopicStatsByHost struct {
 }
 
 func (c TopicStatsByHost) Less(i, j int) bool {
-	return c.TopicStatsList[i].Node < c.TopicStatsList[j].Node
+	return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
 }
 
-type ProducerList []*Producer
+type Producers []*Producer
 
-func (t ProducerList) Len() int      { return len(t) }
-func (t ProducerList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+func (t Producers) Len() int      { return len(t) }
+func (t Producers) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 
-func (t ProducerList) HTTPAddrs() []string {
+func (t Producers) HTTPAddrs() []string {
 	var addrs []string
 	for _, p := range t {
 		addrs = append(addrs, p.HTTPAddress())
@@ -300,7 +299,7 @@ func (t ProducerList) HTTPAddrs() []string {
 	return addrs
 }
 
-func (t ProducerList) Search(needle string) *Producer {
+func (t Producers) Search(needle string) *Producer {
 	for _, producer := range t {
 		if needle == producer.HTTPAddress() {
 			return producer
@@ -310,9 +309,9 @@ func (t ProducerList) Search(needle string) *Producer {
 }
 
 type ProducersByHost struct {
-	ProducerList
+	Producers
 }
 
 func (c ProducersByHost) Less(i, j int) bool {
-	return c.ProducerList[i].Hostname < c.ProducerList[j].Hostname
+	return c.Producers[i].Hostname < c.Producers[j].Hostname
 }

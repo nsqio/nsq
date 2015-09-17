@@ -1,7 +1,10 @@
+var $ = require('jquery');
 var _ = require('underscore');
 var Backbone = require('backbone');
 
 var AppState = require('../app_state');
+
+var errorTemplate = require('./error.hbs');
 
 var BaseView = Backbone.View.extend({
     constructor: function(options) {
@@ -50,11 +53,12 @@ var BaseView = Backbone.View.extend({
             'version': AppState.get('VERSION')
         };
         if (this.model) {
-            return _.extend(ctx, this.model.toJSON());
+            ctx = _.extend(ctx, this.model.toJSON());
         } else if (this.collection) {
-            return _.extend(ctx, {'collection': this.collection.toJSON()});
-        } else if (data) {
-            return _.extend(ctx, data);
+            ctx = _.extend(ctx, {'collection': this.collection.toJSON()});
+        }
+        if (data) {
+            ctx = _.extend(ctx, data);
         }
         return ctx;
     },
@@ -83,6 +87,30 @@ var BaseView = Backbone.View.extend({
         this.removed = true;
         this.removeSubviews();
         Backbone.View.prototype.remove.apply(this, arguments);
+    },
+
+    parseErrorMessage: function(jqXHR) {
+        var msg = 'ERROR: failed to connect to nsqadmin';
+        if (jqXHR.readyState === 4) {
+            try {
+                var parsed = JSON.parse(jqXHR.responseText);
+                msg = parsed['message'];
+            } catch(err) {
+                msg = 'ERROR: failed to decode JSON - ' + err.message;
+            }
+        }
+        return msg;
+    },
+
+    handleAJAXError: function(jqXHR) {
+        $('#warning, #error').hide();
+        $('#error .alert').text(this.parseErrorMessage(jqXHR));
+        $('#error').show();
+    },
+
+    handleViewError: function(jqXHR) {
+        this.removeSubviews();
+        this.$el.html(errorTemplate({'message': this.parseErrorMessage(jqXHR)}));
     }
 });
 

@@ -1,10 +1,9 @@
 package quantile
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
-
-	"github.com/bitly/go-simplejson"
 )
 
 type E2eProcessingLatencyAggregate struct {
@@ -15,32 +14,33 @@ type E2eProcessingLatencyAggregate struct {
 	Addr        string               `json:"host"`
 }
 
-func E2eProcessingLatencyAggregateFromJSON(j *simplejson.Json, topic, channel, host string) *E2eProcessingLatencyAggregate {
-	count := j.Get("count").MustInt()
-
-	rawPercentiles := j.Get("percentiles")
-	numPercentiles := len(rawPercentiles.MustArray())
-	percentiles := make([]map[string]float64, numPercentiles)
-
-	for i := 0; i < numPercentiles; i++ {
-		v := rawPercentiles.GetIndex(i)
-		n := v.Get("value").MustFloat64()
-		q := v.Get("quantile").MustFloat64()
-		percentiles[i] = make(map[string]float64)
-		percentiles[i]["min"] = n
-		percentiles[i]["max"] = n
-		percentiles[i]["average"] = n
-		percentiles[i]["quantile"] = q
-		percentiles[i]["count"] = float64(count)
+func (e *E2eProcessingLatencyAggregate) UnmarshalJSON(b []byte) error {
+	var resp struct {
+		Count       int                  `json:"count"`
+		Percentiles []map[string]float64 `json:"percentiles"`
+		Topic       string               `json:"topic"`
+		Channel     string               `json:"channel"`
+		Addr        string               `json:"host"`
+	}
+	err := json.Unmarshal(b, &resp)
+	if err != nil {
+		return err
 	}
 
-	return &E2eProcessingLatencyAggregate{
-		Count:       count,
-		Percentiles: percentiles,
-		Topic:       topic,
-		Channel:     channel,
-		Addr:        host,
+	for _, p := range resp.Percentiles {
+		p["min"] = p["value"]
+		p["max"] = p["value"]
+		p["average"] = p["value"]
+		p["count"] = float64(resp.Count)
 	}
+
+	e.Count = resp.Count
+	e.Percentiles = resp.Percentiles
+	e.Topic = resp.Topic
+	e.Channel = resp.Channel
+	e.Addr = resp.Addr
+
+	return nil
 }
 
 func (e *E2eProcessingLatencyAggregate) Len() int { return len(e.Percentiles) }

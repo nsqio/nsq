@@ -1,3 +1,6 @@
+{{> warning}}
+{{> error}}
+
 <ol class="breadcrumb">
   <li><a class="link" href="/">Streams</a>
   <li class="active">{{name}}</li>
@@ -151,7 +154,7 @@
         <table class="table table-bordered table-condensed">
             {{#if e2e_processing_latency.percentiles.length}}
             <tr>
-                <th colspan="{{#if graph_active}}9{{else}}8{{/if}}"></th>
+                <th colspan="{{#if graph_active}}10{{else}}9{{/if}}"></th>
                 <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
             </tr>
             {{/if}}

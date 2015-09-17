@@ -1,19 +1,17 @@
 package nsqadmin
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
-	"github.com/bitly/go-simplejson"
-	"github.com/blang/semver"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -21,10 +19,11 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
-var v1EndpointVersion semver.Version
-
-func init() {
-	v1EndpointVersion, _ = semver.Parse("0.2.29-alpha")
+func maybeWarnMsg(msgs []string) string {
+	if len(msgs) > 0 {
+		return "WARNING: " + strings.Join(msgs, "; ")
+	}
+	return ""
 }
 
 // this is similar to httputil.NewSingleHostReverseProxy except it passes along basic auth
@@ -86,17 +85,17 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	}
 
 	// v1 endpoints
-	router.Handle("GET", "/api/topics", http_api.Decorate(s.doTopics, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.doTopic, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannel, log, http_api.V1))
-	router.Handle("GET", "/api/nodes", http_api.Decorate(s.doNodes, log, http_api.V1))
-	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.doNode, log, http_api.V1))
-	router.Handle("POST", "/api/topics", http_api.Decorate(s.doCreateTopicChannel, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.doTopicAction, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.doChannelAction, log, http_api.V1))
-	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.doTombstoneTopicNode, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("GET", "/api/topics", http_api.Decorate(s.topicsHandler, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.topicHandler, log, http_api.V1))
+	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
+	router.Handle("GET", "/api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
+	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
+	router.Handle("POST", "/api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
+	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
+	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.tombstoneNodeForTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
 	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
 	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 
@@ -168,7 +167,9 @@ func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request
 	return string(asset), nil
 }
 
-func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
@@ -176,9 +177,18 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 
 	var topics []string
 	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		topics, _ = s.ci.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+		topics, err = s.ci.GetLookupdTopics(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	} else {
-		topics, _ = s.ci.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+		topics, err = s.ci.GetNSQDTopics(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	}
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get topics - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
 	}
 
 	inactive, _ := reqParams.Get("inactive")
@@ -188,9 +198,9 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 			goto respond
 		}
 		for _, topicName := range topics {
-			producerList, _ := s.ci.GetLookupdTopicProducers(
+			producers, _ := s.ci.GetLookupdTopicProducers(
 				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-			if len(producerList) == 0 {
+			if len(producers) == 0 {
 				topicChannels, _ := s.ci.GetLookupdTopicChannels(
 					topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 				topicChannelMap[topicName] = topicChannels
@@ -198,22 +208,43 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 		}
 	respond:
 		return struct {
-			Topics map[string][]string `json:"topics"`
-		}{topicChannelMap}, nil
+			Topics  map[string][]string `json:"topics"`
+			Message string              `json:"message"`
+		}{topicChannelMap, maybeWarnMsg(messages)}, nil
 	}
 
 	return struct {
-		Topics []string `json:"topics"`
-	}{topics}, nil
+		Topics  []string `json:"topics"`
+		Message string   `json:"message"`
+	}{topics, maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
 	topicName := ps.ByName("topic")
 
-	producerList := s.getTopicProducerList(topicName)
-	topicStats, _, err := s.ci.GetNSQDStats(producerList, topicName)
+	producers, err := s.ci.GetTopicProducers(topicName,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get topic producers - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get topic metadata - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
 	}
 
 	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
@@ -221,59 +252,93 @@ func (s *httpServer) doTopic(w http.ResponseWriter, req *http.Request, ps httpro
 		allNodesTopicStats.Add(t)
 	}
 
-	return allNodesTopicStats, nil
+	return struct {
+		*clusterinfo.TopicStats
+		Message string `json:"message"`
+	}{allNodesTopicStats, maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
 
-	producerList := s.getTopicProducerList(topicName)
-	_, allChannelStats, _ := s.ci.GetNSQDStats(producerList, topicName)
-	channelStats := allChannelStats[channelName]
+	producers, err := s.ci.GetTopicProducers(topicName,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get topic producers - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get channel metadata - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
 
-	return channelStats, nil
-}
-
-func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	producerList := s.getProducerList()
 	return struct {
-		Nodes clusterinfo.ProducerList `json:"nodes"`
-	}{producerList}, nil
+		*clusterinfo.ChannelStats
+		Message string `json:"message"`
+	}{allChannelStats[channelName], maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doTombstoneTopicNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	node := ps.ByName("node")
+func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
 
-	data, err := ioutil.ReadAll(req.Body)
+	producers, err := s.ci.GetProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nodes - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
 	}
 
-	js, err := simplejson.NewJson(data)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-
-	topicName := js.Get("topic").MustString()
-
-	err = s.tombstoneTopicNode(req, topicName, node)
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-	return nil, nil
+	return struct {
+		Nodes   clusterinfo.Producers `json:"nodes"`
+		Message string                `json:"message"`
+	}{producers, maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
 	node := ps.ByName("node")
 
-	producerList := s.getProducerList()
-	producer := producerList.Search(node)
+	producers, err := s.ci.GetProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get producers - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
+	producer := producers.Search(node)
 	if producer == nil {
 		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
 	}
 
-	topicStats, _, _ := s.ci.GetNSQDStats(clusterinfo.ProducerList{producer}, "")
+	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "")
+	if err != nil {
+		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
+		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+	}
 
 	var totalClients int64
 	var totalMessages int64
@@ -289,349 +354,227 @@ func (s *httpServer) doNode(w http.ResponseWriter, req *http.Request, ps httprou
 		TopicStats    []*clusterinfo.TopicStats `json:"topics"`
 		TotalMessages int64                     `json:"total_messages"`
 		TotalClients  int64                     `json:"total_clients"`
+		Message       string                    `json:"message"`
 	}{
 		Node:          node,
 		TopicStats:    topicStats,
 		TotalMessages: totalMessages,
 		TotalClients:  totalClients,
+		Message:       maybeWarnMsg(messages),
 	}, nil
 }
 
-func (s *httpServer) doCreateTopicChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	data, err := ioutil.ReadAll(req.Body)
+func (s *httpServer) tombstoneNodeForTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
+	node := ps.ByName("node")
+
+	var body struct {
+		Topic string `json:"topic"`
+	}
+	err := json.NewDecoder(req.Body).Decode(&body)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_BODY"}
+	}
+
+	if !protocol.IsValidTopicName(body.Topic) {
+		return nil, http_api.Err{400, "INVALID_TOPIC"}
+	}
+
+	err = s.ci.TombstoneNodeForTopic(body.Topic, node,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to tombstone node for topic - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
+	s.notifyAdminAction("tombstone_topic_producer", body.Topic, "", node, req)
+
+	return struct {
+		Message string `json:"message"`
+	}{maybeWarnMsg(messages)}, nil
+}
+
+func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
+	var body struct {
+		Topic   string `json:"topic"`
+		Channel string `json:"channel"`
+	}
+	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
 
-	js, err := simplejson.NewJson(data)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+	if !protocol.IsValidTopicName(body.Topic) {
+		return nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
 
-	topicName := js.Get("topic").MustString()
-	channelName := js.Get("channel").MustString()
-
-	err = s.createTopicChannel(req, topicName, channelName)
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
+	if len(body.Channel) > 0 && !protocol.IsValidChannelName(body.Channel) {
+		return nil, http_api.Err{400, "INVALID_CHANNEL"}
 	}
-	return nil, nil
+
+	err = s.ci.CreateTopicChannel(body.Topic, body.Channel,
+		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to create topic/channel - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
+	s.notifyAdminAction("create_topic", body.Topic, "", "", req)
+	if len(body.Channel) > 0 {
+		s.notifyAdminAction("create_channel", body.Topic, body.Channel, "", req)
+	}
+
+	return struct {
+		Message string `json:"message"`
+	}{maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) createTopicChannel(req *http.Request, topicName string, channelName string) error {
-	if !protocol.IsValidTopicName(topicName) {
-		return errors.New("INVALID_TOPIC")
-	}
+func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
 
-	if len(channelName) > 0 && !protocol.IsValidChannelName(channelName) {
-		return errors.New("INVALID_CHANNEL")
-	}
-
-	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := s.ci.GetVersion(addr)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
-		}
-
-		uri := "create_topic"
-		if !nsqlookupdVersion.LT(v1EndpointVersion) {
-			uri = "topic/create"
-		}
-
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr,
-			uri, url.QueryEscape(topicName))
-		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = s.client.POSTV1(endpoint)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
-			continue
-		}
-
-		if len(channelName) > 0 {
-			uri := "create_channel"
-			if !nsqlookupdVersion.LT(v1EndpointVersion) {
-				uri = "channel/create"
-			}
-			endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
-				addr, uri,
-				url.QueryEscape(topicName),
-				url.QueryEscape(channelName))
-			s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-			err := s.client.POSTV1(endpoint)
-			if err != nil {
-				s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
-				continue
-			}
-		}
-	}
-
-	s.notifyAdminAction("create_topic", topicName, "", "", req)
-
-	if len(channelName) > 0 {
-		// TODO: we can remove this when we push new channel information from nsqlookupd -> nsqd
-		producerList, _ := s.ci.GetLookupdTopicProducers(topicName,
-			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-
-		s.performVersionNegotiatedRequestsToNSQD(
-			s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-			producerList.HTTPAddrs(),
-			"create_channel",
-			"channel/create",
-			fmt.Sprintf("topic=%s&channel=%s",
-				url.QueryEscape(topicName), url.QueryEscape(channelName)))
-
-		s.notifyAdminAction("create_channel", topicName, channelName, "", req)
-	}
-
-	return nil
-}
-
-func (s *httpServer) tombstoneTopicNode(req *http.Request, topicName string, node string) error {
-	if !protocol.IsValidTopicName(topicName) {
-		return errors.New("INVALID_TOPIC")
-	}
-
-	if node == "" {
-		return errors.New("INVALID_NODE")
-	}
-
-	// tombstone the topic on all the lookupds
-	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := s.ci.GetVersion(addr)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
-		}
-
-		uri := "tombstone_topic_producer"
-		if !nsqlookupdVersion.LT(v1EndpointVersion) {
-			uri = "topic/tombstone"
-		}
-
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&node=%s",
-			addr, uri,
-			url.QueryEscape(topicName), url.QueryEscape(node))
-		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = s.client.POSTV1(endpoint)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
-		}
-	}
-
-	nsqdVersion, err := s.ci.GetVersion(node)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", node, err)
-	}
-
-	uri := "delete_topic"
-	if !nsqdVersion.LT(v1EndpointVersion) {
-		uri = "topic/delete"
-	}
-
-	// delete the topic on the producer
-	endpoint := fmt.Sprintf("http://%s/%s?topic=%s", node,
-		uri, url.QueryEscape(topicName))
-	s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-	err = s.client.POSTV1(endpoint)
-	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
-	}
-
-	s.notifyAdminAction("tombstone_topic_producer", topicName, "", node, req)
-
-	return nil
-}
-
-func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
-	err := s.deleteTopic(req, topicName)
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-	return nil, nil
-}
 
-func (s *httpServer) deleteTopic(req *http.Request, topicName string) error {
-	// for topic removal, you need to get all the producers *first*
-	producerList := s.getTopicProducerList(topicName)
-
-	// remove the topic from all the lookupds
-	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := s.ci.GetVersion(addr)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
-		}
-
-		uri := "delete_topic"
-		if !nsqlookupdVersion.LT(v1EndpointVersion) {
-			uri = "topic/delete"
-		}
-
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s", addr, uri, topicName)
-		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = s.client.POSTV1(endpoint)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
-			continue
-		}
-	}
-
-	s.performVersionNegotiatedRequestsToNSQD(
+	err := s.ci.DeleteTopic(topicName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		"delete_topic",
-		"topic/delete",
-		fmt.Sprintf("topic=%s", url.QueryEscape(topicName)))
+		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to delete topic - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
 
 	s.notifyAdminAction("delete_topic", topicName, "", "", req)
 
-	return nil
+	return struct {
+		Message string `json:"message"`
+	}{maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
-	err := s.deleteChannel(req, topicName, channelName)
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-	return nil, nil
-}
 
-func (s *httpServer) deleteChannel(req *http.Request, topicName string, channelName string) error {
-	for _, addr := range s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses {
-		nsqlookupdVersion, err := s.ci.GetVersion(addr)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nsqlookupd %s version - %s", addr, err)
-		}
-
-		uri := "delete_channel"
-		if !nsqlookupdVersion.LT(v1EndpointVersion) {
-			uri = "channel/delete"
-		}
-
-		endpoint := fmt.Sprintf("http://%s/%s?topic=%s&channel=%s",
-			addr, uri,
-			url.QueryEscape(topicName),
-			url.QueryEscape(channelName))
-		s.ctx.nsqadmin.logf("LOOKUPD: querying %s", endpoint)
-		err = s.client.POSTV1(endpoint)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: lookupd %s - %s", endpoint, err)
-			continue
-		}
-	}
-
-	producerList := s.getTopicProducerList(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
+	err := s.ci.DeleteChannel(topicName, channelName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		"delete_channel",
-		"channel/delete",
-		fmt.Sprintf("topic=%s&channel=%s",
-			url.QueryEscape(topicName), url.QueryEscape(channelName)))
+		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to delete channel - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
 
 	s.notifyAdminAction("delete_channel", topicName, channelName, "", req)
 
-	return nil
+	return struct {
+		Message string `json:"message"`
+	}{maybeWarnMsg(messages)}, nil
 }
 
-func (s *httpServer) doTopicAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) topicActionHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
-	return nil, s.topicChannelAction(req, topicName, "")
+	return s.topicChannelAction(req, topicName, "")
 }
 
-func (s *httpServer) doChannelAction(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func (s *httpServer) channelActionHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
-	return nil, s.topicChannelAction(req, topicName, channelName)
+	return s.topicChannelAction(req, topicName, channelName)
 }
 
-func (s *httpServer) topicChannelAction(req *http.Request, topicName string, channelName string) error {
-	data, err := ioutil.ReadAll(req.Body)
+func (s *httpServer) topicChannelAction(req *http.Request, topicName string, channelName string) (interface{}, error) {
+	var messages []string
+
+	var body struct {
+		Action string `json:"action"`
+	}
+	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
-		return http_api.Err{400, err.Error()}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
-	js, err := simplejson.NewJson(data)
-	if err != nil {
-		return http_api.Err{400, err.Error()}
-	}
-
-	action := js.Get("action").MustString()
-
-	switch action {
-	case "pause", "unpause":
+	switch body.Action {
+	case "pause":
 		if channelName != "" {
-			err = s.pauseChannel(req, topicName, channelName, action)
+			err = s.ci.PauseChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("pause_channel", topicName, channelName, "", req)
 		} else {
-			err = s.pauseTopic(req, topicName, action)
+			err = s.ci.PauseTopic(topicName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("pause_topic", topicName, "", "", req)
+		}
+	case "unpause":
+		if channelName != "" {
+			err = s.ci.UnPauseChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("unpause_channel", topicName, channelName, "", req)
+		} else {
+			err = s.ci.UnPauseTopic(topicName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("unpause_topic", topicName, "", "", req)
 		}
 	case "empty":
 		if channelName != "" {
-			err = s.emptyChannel(req, topicName, channelName)
+			err = s.ci.EmptyChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
 		} else {
-			err = s.emptyTopic(req, topicName)
+			err = s.ci.EmptyTopic(topicName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("empty_topic", topicName, "", "", req)
 		}
 	default:
-		return http_api.Err{400, "INVALID_ACTION"}
+		return nil, http_api.Err{400, "INVALID_ACTION"}
 	}
 
 	if err != nil {
-		return http_api.Err{500, err.Error()}
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to %s topic/channel - %s", body.Action, err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
 	}
-	return nil
-}
 
-func (s *httpServer) pauseTopic(req *http.Request, topicName string, action string) error {
-	producerList := s.getTopicProducerList(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		action+"_topic",
-		"topic/"+action,
-		fmt.Sprintf("topic=%s",
-			url.QueryEscape(topicName)))
-	s.notifyAdminAction(action+"_topic", topicName, "", "", req)
-	return nil
-}
-
-func (s *httpServer) pauseChannel(req *http.Request, topicName string, channelName string, action string) error {
-	producerList := s.getTopicProducerList(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		action+"_channel",
-		"channel/"+action,
-		fmt.Sprintf("topic=%s&channel=%s",
-			url.QueryEscape(topicName), url.QueryEscape(channelName)))
-	s.notifyAdminAction(action+"_channel", topicName, channelName, "", req)
-	return nil
-}
-
-func (s *httpServer) emptyTopic(req *http.Request, topicName string) error {
-	producerList := s.getTopicProducerList(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		"empty_topic",
-		"topic/empty",
-		fmt.Sprintf("topic=%s",
-			url.QueryEscape(topicName)))
-	s.notifyAdminAction("empty_topic", topicName, "", "", req)
-	return nil
-}
-
-func (s *httpServer) emptyChannel(req *http.Request, topicName string, channelName string) error {
-	producerList := s.getTopicProducerList(topicName)
-	s.performVersionNegotiatedRequestsToNSQD(
-		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-		producerList.HTTPAddrs(),
-		"empty_channel",
-		"channel/empty",
-		fmt.Sprintf("topic=%s&channel=%s",
-			url.QueryEscape(topicName), url.QueryEscape(channelName)))
-	s.notifyAdminAction("empty_channel", topicName, channelName, "", req)
-	return nil
+	return struct {
+		Message string `json:"message"`
+	}{maybeWarnMsg(messages)}, nil
 }
 
 type counterStats struct {
@@ -642,9 +585,30 @@ type counterStats struct {
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
 	stats := make(map[string]*counterStats)
-	producerList := s.getProducerList()
-	_, channelStats, _ := s.ci.GetNSQDStats(producerList, "")
+
+	producers, err := s.ci.GetProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get counter producer list - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+	_, channelStats, err := s.ci.GetNSQDStats(producers, "")
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
 	for _, channelStats := range channelStats {
 		for _, hostChannelStats := range channelStats.NodeStats {
 			key := fmt.Sprintf("%s:%s:%s", channelStats.TopicName, channelStats.ChannelName, hostChannelStats.Node)
@@ -660,7 +624,11 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 			s.MessageCount += hostChannelStats.MessageCount
 		}
 	}
-	return stats, nil
+
+	return struct {
+		Stats   map[string]*counterStats `json:"stats"`
+		Message string                   `json:"message"`
+	}{stats, maybeWarnMsg(messages)}, nil
 }
 
 func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -671,12 +639,12 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 
 	metric, err := reqParams.Get("metric")
 	if err != nil || metric != "rate" {
-		return nil, http_api.Err{404, "INVALID_ARG_METRIC"}
+		return nil, http_api.Err{400, "INVALID_ARG_METRIC"}
 	}
 
 	target, err := reqParams.Get("target")
 	if err != nil {
-		return nil, http_api.Err{404, "INVALID_ARG_TARGET"}
+		return nil, http_api.Err{400, "INVALID_ARG_TARGET"}
 	}
 
 	params := url.Values{}
@@ -710,63 +678,4 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 	return struct {
 		Rate string `json:"rate"`
 	}{rateStr}, nil
-}
-
-func (s *httpServer) getProducerList() clusterinfo.ProducerList {
-	var producerList clusterinfo.ProducerList
-	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		producerList, _ = s.ci.GetLookupdProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	} else {
-		producerList, _ = s.ci.GetNSQDProducers(s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
-	}
-	return producerList
-}
-
-func (s *httpServer) getTopicProducerList(topicName string) clusterinfo.ProducerList {
-	var producerList clusterinfo.ProducerList
-	if len(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses) != 0 {
-		producerList, _ = s.ci.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
-	} else {
-		producerList, _ = s.ci.GetNSQDTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
-	}
-	return producerList
-}
-
-func (s *httpServer) performVersionNegotiatedRequestsToNSQD(
-	nsqlookupdAddrs []string, nsqdAddrs []string,
-	deprecatedURI string, v1URI string, queryString string) {
-	var err error
-	// get producer structs in one set of up-front requests
-	// so we can negotiate versions
-	//
-	// (this returns an empty list if there are no nsqlookupd configured)
-	producerList, _ := s.ci.GetLookupdProducers(nsqlookupdAddrs)
-	for _, addr := range nsqdAddrs {
-		var nodeVer semver.Version
-
-		uri := deprecatedURI
-		producer := producerList.Search(addr)
-		if producer != nil {
-			nodeVer = producer.VersionObj
-		} else {
-			// we couldn't find the node in our list
-			// so ask it for a version directly
-			nodeVer, err = s.ci.GetVersion(addr)
-			if err != nil {
-				s.ctx.nsqadmin.logf("ERROR: failed to get nsqd %s version - %s", addr, err)
-			}
-		}
-
-		if nodeVer.NE(semver.Version{}) && nodeVer.GTE(v1EndpointVersion) {
-			uri = v1URI
-		}
-
-		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, queryString)
-		s.ctx.nsqadmin.logf("NSQD: querying %s", endpoint)
-		err := s.client.POSTV1(endpoint)
-		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: nsqd %s - %s", endpoint, err)
-			continue
-		}
-	}
 }

@@ -2,6 +2,7 @@ var _ = require('underscore');
 var $ = require('jquery');
 
 var AppState = require('../app_state');
+var Pubsub = require('../lib/pubsub');
 var BaseView = require('./base');
 
 var Topic = require('../models/topic');
@@ -20,14 +21,18 @@ var LookupView = BaseView.extend({
 
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
-        $.ajax(AppState.url('/topics?inactive=true')).done(function(data) {
-            this.template = require('./lookup.hbs');
-            this.render({
-                'topics': _.map(data['topics'], function(v, k) {
-                    return {'name': k, 'channels': v};
-                })
-            });
-        }.bind(this));
+        $.ajax(AppState.url('/topics?inactive=true'))
+            .done(function(data) {
+                this.template = require('./lookup.hbs');
+                this.render({
+                    'topics': _.map(data['topics'], function(v, k) {
+                        return {'name': k, 'channels': v};
+                    }),
+                    'message': data['message']
+                });
+            }.bind(this))
+            .fail(this.handleViewError.bind(this))
+            .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));
     },
 
     onCreateTopicChannel: function(e) {
@@ -39,11 +44,11 @@ var LookupView = BaseView.extend({
             return;
         }
         $.post(AppState.url('/topics'), JSON.stringify({
-            'topic': topic,
-            'channel': channel
-        })).done(function() {
-            window.location.reload(true);
-        });
+                'topic': topic,
+                'channel': channel
+            }))
+            .done(function() { window.location.reload(true); })
+            .fail(this.handleAJAXError.bind(this));
     },
 
     onDeleteTopic: function(e) {
@@ -52,11 +57,9 @@ var LookupView = BaseView.extend({
         var topic = new Topic({
             'name': $(e.target).data('topic')
         });
-        topic.destroy({
-            'dataType': 'text'
-        }).done(function() {
-            window.location.reload(true);
-        });
+        topic.destroy({'dataType': 'text'})
+            .done(function() { window.location.reload(true); })
+            .fail(this.handleAJAXError.bind(this));
     },
 
     onDeleteChannel: function(e) {
@@ -66,11 +69,9 @@ var LookupView = BaseView.extend({
             'topic': $(e.target).data('topic'),
             'name': $(e.target).data('channel')
         });
-        channel.destroy({
-            'dataType': 'text'
-        }).done(function() {
-            window.location.reload(true);
-        });
+        channel.destroy({'dataType': 'text'})
+            .done(function() { window.location.reload(true); })
+            .fail(this.handleAJAXError.bind(this));
     }
 });
 

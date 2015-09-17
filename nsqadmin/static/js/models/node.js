@@ -1,9 +1,7 @@
-var $ = require('jquery');
-
 var AppState = require('../app_state');
 var Backbone = require('backbone');
 
-var Node = Backbone.Model.extend({
+var Node = Backbone.Model.extend({ //eslint-disable-line no-undef
     idAttribute: 'name',
 
     constructor: function Node() {
