@@ -275,7 +275,15 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 
 			lock.Lock()
 			defer lock.Unlock()
-			producers = append(producers, resp.Producers...)
+			for _, p := range resp.Producers {
+				for _, pp := range producers {
+					if p.HTTPAddress() == pp.HTTPAddress() {
+						goto skip
+					}
+				}
+				producers = append(producers, p)
+			skip:
+			}
 		}(addr)
 	}
 	wg.Wait()
