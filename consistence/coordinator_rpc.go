@@ -51,69 +51,6 @@ func StartNsqdCoordinatorRpcServer(coord *NsqdCoordinator, port string) error {
 	return nil
 }
 
-func (self *NsqdCoordinator) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	// set the topic as not writable.
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
-		if tp, ok := t[rpcTopicReq.Partition]; ok {
-			tp.disableWrite = false
-			return nil
-		}
-	}
-
-	*ret = true
-	return ErrMissingTopic
-}
-
-func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-
-	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
-		if tp, ok := t[rpcTopicReq.Partition]; ok {
-			tp.disableWrite = true
-			return nil
-		}
-	}
-	*ret = true
-	return ErrMissingTopic
-}
-
-func (self *NsqdCoordinator) GetLastCommitLogId(topicInfo TopicLeadershipInfo, logid *int) error {
-	*logid = 0
-	return nil
-}
-
-func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
-	if topic == "" {
-		// all topic status
-	}
-	// the status of specific topic
-	return nil
-}
-
-func (self *NsqdCoordinator) GetNsqdLoadFactors(empty string, lf *NsqdNodeLoadFactor) error {
-	// load factor based on the data consumed and the data storage for per CPU
-	return nil
-}
-
-func (self *NsqdCoordinator) AddCatchupToTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (self *NsqdCoordinator) AddChannelForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (self *NsqdCoordinator) CheckLookupForWrite(lookupEpoch int) error {
 	if lookupEpoch < self.lookupLeader.Epoch {
 		glog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
@@ -172,6 +109,9 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 		topicData[rpcTopicReq.Partition] = &TopicSummaryData{disableWrite: true}
 		rpcTopicReq.DisableWrite = true
 	}
+	// channels and catchup should only be modified in the separate rpc method.
+	rpcTopicReq.Channels = topicData[rpcTopicReq.Partition].topicInfo.Channels
+	rpcTopicReq.CatchupList = topicData[rpcTopicReq.Partition].topicInfo.CatchupList
 	topicData[rpcTopicReq.Partition].topicInfo = rpcTopicReq.TopicLeadershipInfo
 	self.updateLocalTopic(rpcTopicReq.TopicLeadershipInfo)
 	if rpcTopicReq.Leader == self.coordID {
@@ -196,6 +136,83 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 		glog.Infof("Not a topic related to me.")
 	}
 	return nil
+}
+
+func (self *NsqdCoordinator) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	// set the topic as not writable.
+	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		return err
+	}
+	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
+		if tp, ok := t[rpcTopicReq.Partition]; ok {
+			tp.disableWrite = false
+			return nil
+		}
+	}
+
+	*ret = true
+	return ErrMissingTopic
+}
+
+func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		return err
+	}
+
+	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
+		if tp, ok := t[rpcTopicReq.Partition]; ok {
+			tp.disableWrite = true
+			return nil
+		}
+	}
+	*ret = true
+	return ErrMissingTopic
+}
+
+func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
+	if topic == "" {
+		// all topic status
+	}
+	// the status of specific topic
+	return nil
+}
+
+func (self *NsqdCoordinator) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		return err
+	}
+	t, ok := self.topicsData[rpcTopicReq.Name]
+	if !ok {
+		return ErrMissingTopic
+	}
+	tp, ok := t[rpcTopicReq.Partition]
+	if !ok {
+		return ErrMissingTopic
+	}
+
+	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
+	if FindSlice(tp.topicInfo.CatchupList, self.coordID) != -1 {
+		self.catchupFromLeader(tp.topicInfo)
+	}
+
+	return nil
+}
+
+func (self *NsqdCoordinator) UpdateChannelsForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		return err
+	}
+	t, ok := self.topicsData[rpcTopicReq.Name]
+	if !ok {
+		return ErrMissingTopic
+	}
+	tp, ok := t[rpcTopicReq.Partition]
+	if !ok {
+		return ErrMissingTopic
+	}
+	tp.topicInfo.Channels = rpcTopicReq.Channels
+	err := self.updateLocalTopicChannels(tp.topicInfo)
+	return err
 }
 
 type RpcTopicData struct {
@@ -260,8 +277,8 @@ func (self *NsqdCoordinator) UpdateChannelOffset(info RpcChannelOffsetArg, ret *
 	}
 	// update local channel offset
 	*ret = true
-	self.updateChannelOffsetLocal(info.TopicName, info.TopicPartition, info.Channel, info.ChannelOffset)
-	return nil
+	err = self.updateChannelOffsetLocal(info.TopicName, info.TopicPartition, info.Channel, info.ChannelOffset)
+	return err
 }
 
 // receive from leader
@@ -274,6 +291,11 @@ func (self *NsqdCoordinator) PubMessage(info RpcPubMessage, ret *bool) error {
 	err = self.pubMessageOnSlave(info.TopicName, info.TopicPartition, info.LogList, info.TopicMessages)
 	*ret = true
 	return err
+}
+
+func (self *NsqdCoordinator) GetLastCommitLogId(topicInfo TopicLeadershipInfo, logid *int) error {
+	*logid = 0
+	return nil
 }
 
 func (self *NsqdCoordinator) CommitLog(info RpcCommitLog, ret *bool) error {

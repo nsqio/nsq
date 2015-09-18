@@ -120,6 +120,9 @@ func (self *NsqdCoordinator) getCommitLogFromLeader(topicInfo TopicLeadershipInf
 
 func (self *NsqdCoordinator) compareCommitLogWithLeader(topicInfo TopicLeadershipInfo, startFrom int64, logs []CommitLogData) (int64, error) {
 	leaderlogs, err := self.getCommitLogFromLeader(topicInfo, startFrom, len(logs))
+	if err != nil {
+		return -1, err
+	}
 	if len(leaderlogs) != len(logs) {
 	}
 	return -1, nil
@@ -318,6 +321,9 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 		}
 	}
 	if successNum > topicInfo.Replica/2 {
+		if successNum != len(topicInfo.ISR) {
+			glog.Infof("some nodes in isr is not synced with consume offset.")
+		}
 		return nil
 	}
 	return ErrWriteQuorumFailed
@@ -353,6 +359,6 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo TopicLeadershipInfo) err
 	return nil
 }
 
-func (self *NsqdCoordinator) createLocalTopicChannel(topicInfo TopicLeadershipInfo) error {
+func (self *NsqdCoordinator) updateLocalTopicChannels(topicInfo TopicLeadershipInfo) error {
 	return nil
 }

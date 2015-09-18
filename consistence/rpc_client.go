@@ -54,7 +54,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicLeadershipInfo, leaderSession *TopicLeaderSession) error {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicLeaderSession = leaderSession
+	rpcInfo.TopicLeaderSession = *leaderSession
 	rpcInfo.TopicName = topicInfo.Name
 	rpcInfo.TopicPartition = topicInfo.Partition
 	rpcInfo.TopicEpoch = leaderSession.topicEpoch
@@ -87,16 +87,26 @@ func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicLeadersh
 	return self.CallWithRetry("NsqdCoordinator.DisableTopicWrite", rpcInfo, &ret)
 }
 
-func (self *NsqdRpcClient) GetLastCommitLogId(topicInfo *TopicLeadershipInfo) (int, error) {
-	logid := 0
-	err := self.CallWithRetry("NsqdCoordinator.GetLastCommitLogId", topicInfo, &logid)
-	return logid, err
-}
-
 func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) {
 	var stat NodeTopicStats
 	err := self.CallWithRetry("NsqdCoordinator.GetTopicStats", topic, &stat)
 	return &stat, err
+}
+
+func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicLeadershipInfo) error {
+	var rpcReq RpcAdminTopicInfo
+	rpcReq.TopicLeadershipInfo = *info
+	rpcReq.LookupdEpoch = epoch
+	ret := false
+	return self.CallWithRetry("NsqdCoordinator.UpdateCatchupForTopic", rpcReq, &ret)
+}
+
+func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicLeadershipInfo) error {
+	var rpcReq RpcAdminTopicInfo
+	rpcReq.TopicLeadershipInfo = *info
+	rpcReq.LookupdEpoch = epoch
+	ret := false
+	return self.CallWithRetry("NsqdCoordinator.UpdateChannelsForTopic", rpcReq, &ret)
 }
 
 func (self *NsqdRpcClient) UpdateChannelOffset(info *TopicLeadershipInfo, channel string, offset ConsumerChanOffset) error {
@@ -121,6 +131,12 @@ func (self *NsqdRpcClient) PubMessage(info *TopicLeadershipInfo, loglist []Commi
 	ret := false
 	err := self.CallWithRetry("NsqdCoordinator.PubMessage", pubData, &ret)
 	return err
+}
+
+func (self *NsqdRpcClient) GetLastCommitLogId(topicInfo *TopicLeadershipInfo) (int, error) {
+	logid := 0
+	err := self.CallWithRetry("NsqdCoordinator.GetLastCommitLogId", topicInfo, &logid)
+	return logid, err
 }
 
 func (self *NsqdRpcClient) CommitLog(info *TopicLeadershipInfo, logid int64, msgid string) error {

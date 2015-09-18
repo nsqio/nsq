@@ -186,10 +186,11 @@ type NSQLookupdCoordinator struct {
 
 func NewNSQLookupdCoordinator(id string) *NSQLookupdCoordinator {
 	return &NSQLookupdCoordinator{
-		masterKey:  "nsqlookupd-master-key",
-		coordID:    id,
-		leadership: &FakeNsqlookupLeadership{},
-		nsqdNodes:  make(map[string]NsqdNodeInfo),
+		masterKey:      "nsqlookupd-master-key",
+		coordID:        id,
+		leadership:     &FakeNsqlookupLeadership{},
+		nsqdNodes:      make(map[string]NsqdNodeInfo),
+		nsqdRpcClients: make(map[string]*NsqdRpcClient),
 	}
 }
 
@@ -449,10 +450,6 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo TopicLead
 	}
 	// choose another leader in ISR list, and add new node to ISR
 	// list.
-	// check if this is admin operation, if it is admin op, we can
-	// just ignore this to wait admin operation.
-	failed := 0
-	commitIdList := make(map[int]int)
 	newestReplicas := make([]string, 0)
 	newestLogId := 0
 	for _, replica := range topicInfo.ISR {
@@ -476,6 +473,9 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo TopicLead
 	minLF := 100.0
 	for _, replica := range newestReplicas {
 		stat, err := self.getNsqdTopicStat(self.nsqdNodes[replica])
+		if err != nil {
+			continue
+		}
 		_, lf := stat.GetNodeLeaderLoadFactor()
 		if lf < minLF {
 			newLeader = replica
@@ -789,7 +789,9 @@ func (self *NSQLookupdCoordinator) balanceTopicData(leaderID string, epoch int) 
 
 			avgLoad := 0.0
 			minLoad := 0.0
+			_ = minLoad
 			maxLoad := 0.0
+			_ = maxLoad
 			// if max load is 4 times more than avg load, we need move some
 			// leader from max to min load node one by one.
 			// if min load is 4 times less than avg load, we can move some
@@ -816,7 +818,7 @@ func (self *NSQLookupdCoordinator) AllocTopicLeaderAndISR(replica int) (string, 
 	}
 	nodeTopicStats := make([]NodeTopicStats, 0, len(self.nsqdNodes))
 	var minLeaderStat *NodeTopicStats
-	for nid, nodeInfo := range self.nsqdNodes {
+	for _, nodeInfo := range self.nsqdNodes {
 		stats, err := self.getNsqdTopicStat(nodeInfo)
 		if err != nil {
 			continue
@@ -926,7 +928,7 @@ func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, ch
 	for _, v := range topicInfo.Channels {
 		if v == channel {
 			glog.Infof("channel already exist: %v", channel)
-			self.notifyNsqdForTopic(*topicInfo)
+			self.notifyNsqdUpdateChannels(topicInfo)
 			return nil
 		}
 	}
@@ -936,43 +938,9 @@ func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, ch
 		return err
 	}
 	topicInfo.Channels = append(topicInfo.Channels, channel)
-	self.notifyNsqdForTopic(*topicInfo)
-	return nil
-
-}
-
-func (self *NSQLookupdCoordinator) notifyTopicLeaderSession(topic string, partition int, leaderSession *TopicLeaderSession) error {
-	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
-	if err != nil {
-		glog.Infof("failed get topic info : %v", err)
-		return err
-	}
-	glog.Infof("notify topic leader session to nsqd nodes: %v-%v, %v", topic, partition, leaderSession.leaderNode.GetId())
-	err = self.doNotifyToTopicISRNodes(*topicInfo, func(nid string) error {
-		return self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nid, topicInfo, leaderSession)
-	})
-
-	return err
-}
-
-func (self *NSQLookupdCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo, leaderSession *TopicLeaderSession) error {
-	err := self.nsqdRpcClients[nid].NotifyTopicLeaderSession(epoch, topicInfo, leaderSession)
-	return err
-}
-
-func (self *NSQLookupdCoordinator) sendTopicInfoToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo) error {
-	err := self.nsqdRpcClients[nid].UpdateTopicInfo(epoch, topicInfo)
-	return err
-}
-
-func (self *NSQLookupdCoordinator) addCatchupToTopicOnNsqd(epoch int, nid string, topicInfo TopicLeadershipInfo) error {
+	self.notifyNsqdUpdateChannels(topicInfo)
 	return nil
 }
-
-func (self *NSQLookupdCoordinator) addChannelForTopicOnNsqd(epoch int, nid string, topicInfo TopicLeadershipInfo) error {
-	return nil
-}
-
 func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo TopicLeadershipInfo, notifyRpcFunc func(string) error) error {
 	node := self.nsqdNodes[topicInfo.Leader]
 	err := RetryWithTimeout(func() error {
@@ -994,8 +962,30 @@ func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo TopicLeader
 	return nil
 }
 
+func (self *NSQLookupdCoordinator) notifyTopicLeaderSession(topic string, partition int, leaderSession *TopicLeaderSession) error {
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("failed get topic info : %v", err)
+		return err
+	}
+	glog.Infof("notify topic leader session to nsqd nodes: %v-%v, %v", topic, partition, leaderSession.leaderNode.GetId())
+	err = self.doNotifyToTopicISRNodes(*topicInfo, func(nid string) error {
+		return self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nid, topicInfo, leaderSession)
+	})
+
+	return err
+}
+
+func (self *NSQLookupdCoordinator) notifyNsqdUpdateChannels(topicInfo *TopicLeadershipInfo) error {
+	err := self.doNotifyToTopicISRNodes(*topicInfo, func(nid string) error {
+		return self.sendUpdateChannelsToNsqd(self.leaderNode.Epoch, nid, topicInfo)
+	})
+
+	return err
+}
+
 func (self *NSQLookupdCoordinator) notifyNsqdForTopic(topicInfo TopicLeadershipInfo) {
-	err := self.doNotifyToTopicISRNodes(topicInfo, func(nid string) error {
+	self.doNotifyToTopicISRNodes(topicInfo, func(nid string) error {
 		return self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nid, &topicInfo)
 	})
 
@@ -1006,10 +996,29 @@ func (self *NSQLookupdCoordinator) notifyNsqdForTopic(topicInfo TopicLeadershipI
 			continue
 		}
 		err := RetryWithTimeout(func() error {
-			return self.addCatchupToTopicOnNsqd(self.leaderNode.Epoch, node.GetId(), topicInfo)
+			return self.sendUpdateCatchupToNsqd(self.leaderNode.Epoch, node.GetId(), &topicInfo)
 		})
 		if err != nil {
 			glog.Infof("notify to nsqd catchup node %v for topic %v failed.", node, topicInfo)
 		}
 	}
+}
+
+func (self *NSQLookupdCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo, leaderSession *TopicLeaderSession) error {
+	err := self.nsqdRpcClients[nid].NotifyTopicLeaderSession(epoch, topicInfo, leaderSession)
+	return err
+}
+
+func (self *NSQLookupdCoordinator) sendTopicInfoToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo) error {
+	err := self.nsqdRpcClients[nid].UpdateTopicInfo(epoch, topicInfo)
+	return err
+}
+
+func (self *NSQLookupdCoordinator) sendUpdateCatchupToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo) error {
+	return nil
+}
+
+func (self *NSQLookupdCoordinator) sendUpdateChannelsToNsqd(epoch int, nid string, topicInfo *TopicLeadershipInfo) error {
+	err := self.nsqdRpcClients[nid].UpdateChannelsForTopic(epoch, topicInfo)
+	return err
 }
