@@ -147,7 +147,7 @@ type ChannelStats struct {
 	MemoryDepth   int64           `json:"memory_depth"`
 	BackendDepth  int64           `json:"backend_depth"`
 	InFlightCount int64           `json:"in_flight_count"`
-	DeferredCount int64           `json:"defer_count"`
+	DeferredCount int64           `json:"deferred_count"`
 	RequeueCount  int64           `json:"requeue_count"`
 	TimeoutCount  int64           `json:"timeout_count"`
 	MessageCount  int64           `json:"message_count"`
