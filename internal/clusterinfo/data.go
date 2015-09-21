@@ -3,8 +3,10 @@ package clusterinfo
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -493,6 +495,15 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 					version, err := semver.Parse(infoResp.Version)
 					if err != nil {
 						version, _ = semver.Parse("0.0.0")
+					}
+
+					// if BroadcastAddress/HTTPPort are missing, use the values from `addr` for
+					// backwards compatibility
+
+					if infoResp.BroadcastAddress == "" {
+						var p string
+						infoResp.BroadcastAddress, p, _ = net.SplitHostPort(addr)
+						infoResp.HTTPPort, _ = strconv.Atoi(p)
 					}
 
 					lock.Lock()
