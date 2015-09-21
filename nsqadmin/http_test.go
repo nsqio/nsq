@@ -223,7 +223,7 @@ func TestHTTPChannelGET(t *testing.T) {
 	equal(t, js.Get("message_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
 	equal(t, js.Get("in_flight_count").MustInt(), 0)
-	equal(t, js.Get("defer_count").MustInt(), 0)
+	equal(t, js.Get("deferred_count").MustInt(), 0)
 	equal(t, js.Get("requeue_count").MustInt(), 0)
 	equal(t, js.Get("timeout_count").MustInt(), 0)
 	equal(t, len(js.Get("clients").MustArray()), 0)
@@ -263,7 +263,7 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	equal(t, testTopic.Get("message_count").MustInt(), 0)
 	equal(t, testTopic.Get("paused").MustBool(), false)
 	equal(t, testTopic.Get("in_flight_count").MustInt(), 0)
-	equal(t, testTopic.Get("defer_count").MustInt(), 0)
+	equal(t, testTopic.Get("deferred_count").MustInt(), 0)
 	equal(t, testTopic.Get("requeue_count").MustInt(), 0)
 	equal(t, testTopic.Get("timeout_count").MustInt(), 0)
 }
