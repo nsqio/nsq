@@ -38,10 +38,6 @@ var metricType = function(key) {
 };
 /* eslint-enable key-spacing */
 
-var startForTimeframe = function(t) {
-    return '-' + (parseInt(t.substring(0, t.length - 1), 10) * 60) + 'min';
-};
-
 var genColorList = function(typ, key) {
     if (typ === 'topic' || typ === 'channel') {
         if (key === 'depth' || key === 'deferred_count') {
@@ -226,7 +222,7 @@ Handlebars.registerHelper('sparkline', function(typ, node, ns1, ns2, key) {
         'yMin': '0',
         'lineMode': 'connected',
         'drawNullAsZero': 'false',
-        'from': startForTimeframe(AppState.get('graph_interval')),
+        'from': '-' + AppState.get('graph_interval'),
         'until': '-1min'
     };
 
@@ -248,7 +244,7 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
         'yMin': '0',
         'lineMode': 'connected',
         'drawNullAsZero': 'false',
-        'from': startForTimeframe(AppState.get('graph_interval')),
+        'from': '-' + AppState.get('graph_interval'),
         'until': '-1min'
     };
 
