@@ -12,7 +12,7 @@ var statsdPrefix = function(host, metricType) {
         prefix += '.';
     }
     if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'counter') {
-        prefix = 'stats_counts.' + prefix;
+        prefix = 'stats.counters.' + prefix;
     } else if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'gauge') {
         prefix = 'stats.gauges.' + prefix;
     }
