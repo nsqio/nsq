@@ -504,6 +504,9 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 						infoResp.BroadcastAddress, p, _ = net.SplitHostPort(addr)
 						infoResp.HTTPPort, _ = strconv.Atoi(p)
 					}
+					if infoResp.Hostname == "" {
+						infoResp.Hostname, _, _ = net.SplitHostPort(addr)
+					}
 
 					lock.Lock()
 					producers = append(producers, &Producer{
