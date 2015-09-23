@@ -1,7 +1,6 @@
 package clusterinfo
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -116,7 +115,7 @@ func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, err
 	wg.Wait()
 
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqlookupd")
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
 
 	topics = stringy.Uniq(topics)
@@ -165,7 +164,7 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []s
 	wg.Wait()
 
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqlookupd")
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
 
 	channels = stringy.Uniq(channels)
@@ -230,7 +229,7 @@ func (c *ClusterInfo) GetLookupdProducers(lookupdHTTPAddrs []string) (Producers,
 	wg.Wait()
 
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqlookupd")
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
 
 	for _, producer := range producersByAddr {
@@ -291,7 +290,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 	wg.Wait()
 
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqlookupd")
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
 	if len(errs) > 0 {
 		return producers, ErrList(errs)
@@ -339,7 +338,7 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	wg.Wait()
 
 	if len(errs) == len(nsqdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqd")
+		return nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 
 	sort.Strings(topics)
@@ -426,7 +425,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (Producers, error
 	wg.Wait()
 
 	if len(errs) == len(nsqdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqd")
+		return nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 	if len(errs) > 0 {
 		return producers, ErrList(errs)
@@ -505,6 +504,9 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 						infoResp.BroadcastAddress, p, _ = net.SplitHostPort(addr)
 						infoResp.HTTPPort, _ = strconv.Atoi(p)
 					}
+					if infoResp.Hostname == "" {
+						infoResp.Hostname, _, _ = net.SplitHostPort(addr)
+					}
 
 					lock.Lock()
 					producers = append(producers, &Producer{
@@ -526,7 +528,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 	wg.Wait()
 
 	if len(errs) == len(nsqdHTTPAddrs) {
-		return nil, errors.New("failed to query any nsqd")
+		return nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 	if len(errs) > 0 {
 		return producers, ErrList(errs)
@@ -608,7 +610,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 	wg.Wait()
 
 	if len(errs) == len(producers) {
-		return nil, nil, errors.New("failed to query any nsqd")
+		return nil, nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 
 	sort.Sort(TopicStatsByHost{topicStatsList})
