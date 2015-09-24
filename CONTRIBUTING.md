@@ -2,6 +2,10 @@
 
 Thanks for your interest in contributing to NSQ!
 
+## Code of Conduct
+
+Help us keep NSQ open and inclusive. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Getting Started
 
 * make sure you have a [GitHub account](https://github.com/signup/free)
