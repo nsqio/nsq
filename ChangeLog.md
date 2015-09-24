@@ -2,13 +2,35 @@
 
 ## Binaries
 
-### 0.3.6-alpha
+### 0.3.6 - 2015-09-24
 
 **Upgrading from 0.3.5**: Binaries contain no backwards incompatible changes.
 
+We've adopted the [Contributor Covenant 1.2 Code of Conduct](CODE_OF_CONDUCT.md) (#593). Help us
+keep NSQ open and inclusive by reading and following this document.
+
+We closed a few longstanding issues related to `nsqadmin`, namely (#323, et al.) converting it to
+an API and single-page app (so that it is _much_ easier to develop), displaying fine-grained errors
+(#421, #657), and enabling support for `--tls-required` configurations (#396).
+
+For `nsqd`, we added support for deferred publishing aka `DPUB` (#293), which allows a producer to
+specify a duration of time to delay initial delivery of the message. We also addressed performance
+issues relating to large numbers of topics/channels (#577) by removing some per-channel goroutines
+in favor of a centralized, periodic, garbage collection approach.
+
+In order to provide more flexibility when deploying NSQ in dynamically orchestrated topologies,
+`nsqd` now supports the ability to configure `nsqlookupd` peers at runtime via HTTP (#601),
+eliminating the need to restart the daemon.
+
+As part of the large `nsqadmin` refactoring, we took the opportunity to cleanup the internals for
+_all_ of the daemon's HTTP code paths (#601, #610, #612, #641) as well as improving the test suite
+so that it doesn't leave around temporary files (#553).
+
 Features:
 
- * #323/#631/#632/#642/#421 - `nsqadmin`: convert to API and single-page app
+ * #593 - add code of conduct
+ * #323/#631/#632/#642/#421/#649/#650/#651/#652/#654 - `nsqadmin`: convert to API / single-page app
+ * #653 - `nsqadmin`: expand notification context
  * #293 - `nsqd`: add deferred pub (`DPUB`)
  * #577 - `nsqd`: drop per-channel queue workers in favor of centralized queue GC
  * #584 - `nsqlookupd`: improve registration DB performance (thanks @xiaost)
@@ -20,7 +42,8 @@ Features:
 
 Bugs:
 
- * #421 - `nsqadmin`: display upstream/partial errors
+ * #656 - `nsqadmin`: update `statsd` prefix to `stats.counters`
+ * #421/#657 - `nsqadmin`: display upstream/partial errors
  * #396 - `nsqdamin`/`nsqd`: support for `--tls-required`
  * #558 - don't overwrite docker root FS
  * #582 - `nsqd`: ignore benign EOF errors
@@ -310,7 +333,7 @@ This can be used as a form of client authentication.
 Additionally, `nsqd` is now structured such that it is importable in other Go applications
 via `github.com/nsqio/nsq/nsqd`, thanks to @kzvezdarov.
 
-Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or 
+Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or
 optionally archive *all* discovered topics (by specifying no `--topic` params
 and using `--lookupd-http-address`).
 
