@@ -67,6 +67,10 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 <a href="https://groupme.com"><img src="http://nsq.io/static/img/groupme_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 
+## Code of Conduct
+
+Help us keep NSQ open and inclusive. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Authors
 
 NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) and Jehiah Czebotar
