@@ -116,21 +116,27 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 
 	w.Header().Set("Content-Type", "text/html")
 	t.Execute(w, struct {
-		Version        string
-		ProxyGraphite  bool
-		GraphEnabled   bool
-		GraphiteURL    string
-		StatsdInterval int
-		StatsdPrefix   string
-		NSQLookupd     []string
+		Version             string
+		ProxyGraphite       bool
+		GraphEnabled        bool
+		GraphiteURL         string
+		StatsdInterval      int
+		UseStatsdPrefixes   bool
+		StatsdCounterFormat string
+		StatsdGaugeFormat   string
+		StatsdPrefix        string
+		NSQLookupd          []string
 	}{
-		Version:        version.Binary,
-		ProxyGraphite:  s.ctx.nsqadmin.opts.ProxyGraphite,
-		GraphEnabled:   s.ctx.nsqadmin.opts.GraphiteURL != "",
-		GraphiteURL:    s.ctx.nsqadmin.opts.GraphiteURL,
-		StatsdInterval: int(s.ctx.nsqadmin.opts.StatsdInterval / time.Second),
-		StatsdPrefix:   s.ctx.nsqadmin.opts.StatsdPrefix,
-		NSQLookupd:     s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		Version:             version.Binary,
+		ProxyGraphite:       s.ctx.nsqadmin.opts.ProxyGraphite,
+		GraphEnabled:        s.ctx.nsqadmin.opts.GraphiteURL != "",
+		GraphiteURL:         s.ctx.nsqadmin.opts.GraphiteURL,
+		StatsdInterval:      int(s.ctx.nsqadmin.opts.StatsdInterval / time.Second),
+		UseStatsdPrefixes:   s.ctx.nsqadmin.opts.UseStatsdPrefixes,
+		StatsdCounterFormat: s.ctx.nsqadmin.opts.StatsdCounterFormat,
+		StatsdGaugeFormat:   s.ctx.nsqadmin.opts.StatsdGaugeFormat,
+		StatsdPrefix:        s.ctx.nsqadmin.opts.StatsdPrefix,
+		NSQLookupd:          s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 	})
 
 	return nil, nil

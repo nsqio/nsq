@@ -18,6 +18,9 @@
         var VERSION = '{{.Version}}';
         var GRAPHITE_URL = '{{if .ProxyGraphite}}{{else}}{{.GraphiteURL}}{{end}}';
         var GRAPH_ENABLED = {{if .GraphEnabled}}true{{else}}false{{end}};
+        var USE_STATSD_PREFIXES = {{if .UseStatsdPrefixes}}true{{else}}false{{end}};
+        var STATSD_COUNTER_FORMAT = '{{.StatsdCounterFormat}}';
+        var STATSD_GAUGE_FORMAT = '{{.StatsdGaugeFormat}}';
         var STATSD_INTERVAL = {{.StatsdInterval}};
         var STATSD_PREFIX = '{{.StatsdPrefix}}';
         var NSQLOOKUPD = [{{range .NSQLookupd}}'{{.}}',{{end}}];

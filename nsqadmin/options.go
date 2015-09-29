@@ -12,9 +12,12 @@ type Options struct {
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`
 
-	UseStatsdPrefixes bool          `flag:"use-statsd-prefixes"`
-	StatsdPrefix      string        `flag:"statsd-prefix"`
-	StatsdInterval    time.Duration `flag:"statsd-interval"`
+	UseStatsdPrefixes   bool   `flag:"use-statsd-prefixes"`
+	StatsdPrefix        string `flag:"statsd-prefix"`
+	StatsdCounterFormat string `flag:"statsd-counter-format"`
+	StatsdGaugeFormat   string `flag:"statsd-gauge-format"`
+
+	StatsdInterval time.Duration `flag:"statsd-interval"`
 
 	NSQLookupdHTTPAddresses []string `flag:"lookupd-http-address" cfg:"nsqlookupd_http_addresses"`
 	NSQDHTTPAddresses       []string `flag:"nsqd-http-address" cfg:"nsqd_http_addresses"`
@@ -31,10 +34,12 @@ type Options struct {
 
 func NewOptions() *Options {
 	return &Options{
-		HTTPAddress:       "0.0.0.0:4171",
-		UseStatsdPrefixes: true,
-		StatsdPrefix:      "nsq.%s",
-		StatsdInterval:    60 * time.Second,
-		Logger:            log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+		HTTPAddress:         "0.0.0.0:4171",
+		UseStatsdPrefixes:   true,
+		StatsdPrefix:        "nsq.%s",
+		StatsdCounterFormat: "stats.counters.%s.count",
+		StatsdGaugeFormat:   "stats.gauges.%s",
+		StatsdInterval:      60 * time.Second,
+		Logger:              log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 }

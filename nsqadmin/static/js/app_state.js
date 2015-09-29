@@ -8,6 +8,9 @@ var AppState = Backbone.Model.extend({
             'GRAPHITE_URL': GRAPHITE_URL,
             'GRAPH_ENABLED': GRAPH_ENABLED,
             'STATSD_INTERVAL': STATSD_INTERVAL,
+            'USE_STATSD_PREFIXES': USE_STATSD_PREFIXES,
+            'STATSD_COUNTER_FORMAT': STATSD_COUNTER_FORMAT,
+            'STATSD_GAUGE_FORMAT': STATSD_GAUGE_FORMAT,
             'STATSD_PREFIX': STATSD_PREFIX,
             'NSQLOOKUPD': NSQLOOKUPD,
             'graph_interval': '2h'
