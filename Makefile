@@ -23,7 +23,6 @@ $(BLDDIR)/%:
 	@mkdir -p $(dir $@)
 	go build ${GOFLAGS} -o $(abspath $@) ./$*
 
-$(BINARIES): %: $(BLDDIR)/%
 $(APPS): %: $(BLDDIR)/apps/%
 
 $(BLDDIR)/apps/nsqd: $(NSQD_SRCS)
@@ -41,10 +40,9 @@ clean:
 	rm -fr $(BLDDIR)
 
 .PHONY: install clean all
-.PHONY: $(BINARIES)
 .PHONY: $(APPS)
 
-install: $(BINARIES) $(EXAMPLES)
+install: $(APPS)
 	install -m 755 -d ${DESTDIR}${BINDIR}
 	install -m 755 $(BLDDIR)/apps/nsqlookupd ${DESTDIR}${BINDIR}/nsqlookupd
 	install -m 755 $(BLDDIR)/apps/nsqd ${DESTDIR}${BINDIR}/nsqd
