@@ -21,38 +21,36 @@ all: $(APPS)
 
 $(BLDDIR)/%:
 	@mkdir -p $(dir $@)
-	go build ${GOFLAGS} -o $(abspath $@) ./$*
+	go build ${GOFLAGS} -o $@ ./apps/$*
 
-$(BINARIES): %: $(BLDDIR)/%
-$(APPS): %: $(BLDDIR)/apps/%
+$(APPS): %: $(BLDDIR)/%
 
-$(BLDDIR)/apps/nsqd: $(NSQD_SRCS)
-$(BLDDIR)/apps/nsqlookupd: $(NSQLOOKUPD_SRCS)
-$(BLDDIR)/apps/nsqadmin: $(NSQADMIN_SRCS)
-$(BLDDIR)/apps/nsq_pubsub: $(NSQ_PUBSUB_SRCS)
-$(BLDDIR)/apps/nsq_to_nsq: $(NSQ_TO_NSQ_SRCS)
-$(BLDDIR)/apps/nsq_to_file: $(NSQ_TO_FILE_SRCS)
-$(BLDDIR)/apps/nsq_to_http: $(NSQ_TO_HTTP_SRCS)
-$(BLDDIR)/apps/nsq_tail: $(NSQ_TAIL_SRCS)
-$(BLDDIR)/apps/nsq_stat: $(NSQ_STAT_SRCS)
-$(BLDDIR)/apps/to_nsq: $(TO_NSQ_SRCS)
+$(BLDDIR)/nsqd:        $(NSQD_SRCS)
+$(BLDDIR)/nsqlookupd:  $(NSQLOOKUPD_SRCS)
+$(BLDDIR)/nsqadmin:    $(NSQADMIN_SRCS)
+$(BLDDIR)/nsq_pubsub:  $(NSQ_PUBSUB_SRCS)
+$(BLDDIR)/nsq_to_nsq:  $(NSQ_TO_NSQ_SRCS)
+$(BLDDIR)/nsq_to_file: $(NSQ_TO_FILE_SRCS)
+$(BLDDIR)/nsq_to_http: $(NSQ_TO_HTTP_SRCS)
+$(BLDDIR)/nsq_tail:    $(NSQ_TAIL_SRCS)
+$(BLDDIR)/nsq_stat:    $(NSQ_STAT_SRCS)
+$(BLDDIR)/to_nsq:      $(TO_NSQ_SRCS)
 
 clean:
 	rm -fr $(BLDDIR)
 
 .PHONY: install clean all
-.PHONY: $(BINARIES)
 .PHONY: $(APPS)
 
-install: $(BINARIES) $(EXAMPLES)
+install: $(APPS)
 	install -m 755 -d ${DESTDIR}${BINDIR}
-	install -m 755 $(BLDDIR)/apps/nsqlookupd ${DESTDIR}${BINDIR}/nsqlookupd
-	install -m 755 $(BLDDIR)/apps/nsqd ${DESTDIR}${BINDIR}/nsqd
-	install -m 755 $(BLDDIR)/apps/nsqadmin ${DESTDIR}${BINDIR}/nsqadmin
-	install -m 755 $(BLDDIR)/apps/nsq_pubsub ${DESTDIR}${BINDIR}/nsq_pubsub
-	install -m 755 $(BLDDIR)/apps/nsq_to_nsq ${DESTDIR}${BINDIR}/nsq_to_nsq
-	install -m 755 $(BLDDIR)/apps/nsq_to_file ${DESTDIR}${BINDIR}/nsq_to_file
-	install -m 755 $(BLDDIR)/apps/nsq_to_http ${DESTDIR}${BINDIR}/nsq_to_http
-	install -m 755 $(BLDDIR)/apps/nsq_tail ${DESTDIR}${BINDIR}/nsq_tail
-	install -m 755 $(BLDDIR)/apps/nsq_stat ${DESTDIR}${BINDIR}/nsq_stat
-	install -m 755 $(BLDDIR)/apps/to_nsq ${DESTDIR}${BINDIR}/to_nsq
+	install -m 755 $(BLDDIR)/nsqlookupd  ${DESTDIR}${BINDIR}/nsqlookupd
+	install -m 755 $(BLDDIR)/nsqd        ${DESTDIR}${BINDIR}/nsqd
+	install -m 755 $(BLDDIR)/nsqadmin    ${DESTDIR}${BINDIR}/nsqadmin
+	install -m 755 $(BLDDIR)/nsq_pubsub  ${DESTDIR}${BINDIR}/nsq_pubsub
+	install -m 755 $(BLDDIR)/nsq_to_nsq  ${DESTDIR}${BINDIR}/nsq_to_nsq
+	install -m 755 $(BLDDIR)/nsq_to_file ${DESTDIR}${BINDIR}/nsq_to_file
+	install -m 755 $(BLDDIR)/nsq_to_http ${DESTDIR}${BINDIR}/nsq_to_http
+	install -m 755 $(BLDDIR)/nsq_tail    ${DESTDIR}${BINDIR}/nsq_tail
+	install -m 755 $(BLDDIR)/nsq_stat    ${DESTDIR}${BINDIR}/nsq_stat
+	install -m 755 $(BLDDIR)/to_nsq      ${DESTDIR}${BINDIR}/to_nsq
