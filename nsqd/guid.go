@@ -22,8 +22,8 @@ const (
 	timestampShift = sequenceBits + workerIDBits
 	sequenceMask   = int64(-1) ^ (int64(-1) << sequenceBits)
 
-	// Thu Nov  4 01:42:54 UTC 2010
-	twepoch = int64(1288834974657)
+	// ( 2012-10-28 16:23:42 UTC ).UnixNano() >> 20
+	twepoch = int64(1288834974288)
 )
 
 var ErrTimeBackwards = errors.New("time has gone backwards")
@@ -39,7 +39,8 @@ type guidFactory struct {
 }
 
 func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
-	ts := time.Now().UnixNano() / 1e6
+	// divide by 1048576, giving pseudo-milliseconds
+	ts := time.Now().UnixNano() >> 20
 
 	if ts < f.lastTimestamp {
 		return 0, ErrTimeBackwards
