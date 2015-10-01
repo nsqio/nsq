@@ -18,19 +18,13 @@ set -e
 # build binary distributions for linux/amd64 and darwin/amd64
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -e $DIR/dist/docker ]; then
-    rm -rf $DIR/dist/docker
-fi
+rm -rf   $DIR/dist/docker
 mkdir -p $DIR/dist/docker
-
-if [ -e $DIR/.godeps ]; then
-    rm -rf $DIR/.godeps
-fi
+rm -rf   $DIR/.godeps
 mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
 GOPATH=$DIR/.godeps gpm install
 
-os=$(go env GOOS)
 arch=$(go env GOARCH)
 version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
@@ -43,13 +37,14 @@ for os in linux darwin; do
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
-    make DESTDIR=$BUILD/$TARGET PREFIX= install
+    make DESTDIR=$BUILD PREFIX=/$TARGET install
     pushd $BUILD
-    if [ "$os" == "linux" ]; then cp -r $BUILD/$TARGET/bin $DIR/dist/docker/; fi
+    if [ "$os" == "linux" ]; then cp -r $TARGET/bin $DIR/dist/docker/; fi
     tar czvf $TARGET.tar.gz $TARGET
     mv $TARGET.tar.gz $DIR/dist
     popd
     make clean
+    rm -r $BUILD
 done
 
 docker build -t nsqio/nsq:v$version .
