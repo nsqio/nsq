@@ -50,6 +50,7 @@ for os in linux darwin; do
     mv $TARGET.tar.gz $DIR/dist
     popd
     make clean
+    rm -r $BUILD
 done
 
 docker build -t nsqio/nsq:v$version .
