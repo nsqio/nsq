@@ -15,8 +15,6 @@
 
 set -e
 
-# build binary distributions for linux/amd64 and darwin/amd64
-
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 rm -rf   $DIR/dist/docker
 mkdir -p $DIR/dist/docker
@@ -32,14 +30,16 @@ goversion=$(go version | awk '{print $3}')
 echo "... running tests"
 ./test.sh
 
-for os in linux darwin; do
+for os in linux darwin freebsd; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
     make DESTDIR=$BUILD PREFIX=/$TARGET install
     pushd $BUILD
-    if [ "$os" == "linux" ]; then cp -r $TARGET/bin $DIR/dist/docker/; fi
+    if [ "$os" == "linux" ]; then
+        cp -r $TARGET/bin $DIR/dist/docker/
+    fi
     tar czvf $TARGET.tar.gz $TARGET
     mv $TARGET.tar.gz $DIR/dist
     popd
