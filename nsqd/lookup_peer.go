@@ -1,7 +1,9 @@
 package nsqd
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -19,6 +21,7 @@ type lookupPeer struct {
 	conn            net.Conn
 	state           int32
 	connectCallback func(*lookupPeer)
+	maxBodySize     int64
 	Info            peerInfo
 }
 
@@ -33,11 +36,12 @@ type peerInfo struct {
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, maxBodySize int64, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
 		l:               l,
 		addr:            addr,
 		state:           stateDisconnected,
+		maxBodySize:     maxBodySize,
 		connectCallback: connectCallback,
 	}
 }
@@ -106,10 +110,34 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		lp.Close()
 		return nil, err
 	}
-	resp, err := nsq.ReadResponse(lp)
+	resp, err := readResponseBounded(lp, lp.maxBodySize)
 	if err != nil {
 		lp.Close()
 		return nil, err
 	}
 	return resp, nil
+}
+
+func readResponseBounded(r io.Reader, limit int64) ([]byte, error) {
+	var msgSize int32
+
+	// message size
+	err := binary.Read(r, binary.BigEndian, &msgSize)
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(msgSize) > limit {
+		return nil, fmt.Errorf("response body size (%d) is greater than limit (%d)",
+			msgSize, limit)
+	}
+
+	// message binary data
+	buf := make([]byte, msgSize)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }
