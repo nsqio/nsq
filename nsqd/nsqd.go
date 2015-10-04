@@ -19,6 +19,7 @@ import (
 
 	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/statsd"
@@ -45,6 +46,7 @@ type NSQD struct {
 
 	opts atomic.Value
 
+	dl        *dirlock.DirLock
 	flag      int32
 	errMtx    sync.RWMutex
 	err       error
@@ -71,6 +73,12 @@ type NSQD struct {
 }
 
 func New(opts *Options) *NSQD {
+	dataPath := opts.DataPath
+	if opts.DataPath == "" {
+		cwd, _ := os.Getwd()
+		dataPath = cwd
+	}
+
 	n := &NSQD{
 		flag:                 flagHealthy,
 		startTime:            time.Now(),
@@ -80,8 +88,15 @@ func New(opts *Options) *NSQD {
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
 		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil)),
+		dl:                   dirlock.New(dataPath),
 	}
 	n.swapOpts(opts)
+
+	err := n.dl.Lock()
+	if err != nil {
+		n.logf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		os.Exit(1)
+	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
 		n.logf("FATAL: --max-deflate-level must be [1,9]")
@@ -435,6 +450,8 @@ func (n *NSQD) Exit() {
 	// could potentially starve items in process and deadlock)
 	close(n.exitChan)
 	n.waitGroup.Wait()
+
+	n.dl.Unlock()
 }
 
 // GetTopic performs a thread safe operation
