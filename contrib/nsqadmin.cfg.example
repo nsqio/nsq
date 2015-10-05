@@ -10,6 +10,12 @@ proxy_graphite = false
 ## prefix used for keys sent to statsd (%s for host replacement, must match nsqd)
 statsd_prefix = "nsq.%s"
 
+## format of statsd counter stats
+statsd_counter_format = "stats.counters.%s.count"
+
+## format of statsd gauge stats
+statsd_gauge_format = "stats.gauges.%s"
+
 ## time interval nsqd is configured to push to statsd (must match nsqd)
 statsd_interval = "60s"
 

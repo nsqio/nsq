@@ -4,18 +4,37 @@ var Handlebars = require('hbsfy/runtime');
 
 var AppState = require('../app_state');
 
-var statsdPrefix = function(host, metricType) {
+var formatStatsdKey = function(metricType, key) {
+    var fullKey = key;
+
+    // Remove this check when the --use-statsd-prefixes field is removed.
+    if (!AppState.get('USE_STATSD_PREFIXES')) {
+        // If the user has overridden the default boolean, then
+        // we will assume they don't want any formatting at all.
+        // In the future, if the user requests no formatting, then
+        // they must set the counter and gauge format flags to empty strings.
+        return fullKey;
+    }
+
+    if (metricType === 'counter') {
+        var format = AppState.get('STATSD_COUNTER_FORMAT');
+        fullKey = format.replace(/%s/g, key)
+    } else if (metricType === 'gauge') {
+        var format = AppState.get('STATSD_GAUGE_FORMAT');
+        fullKey = format.replace(/%s/g, key)
+    }
+
+    return fullKey;
+}
+
+var statsdPrefix = function(host) {
     var prefix = AppState.get('STATSD_PREFIX');
     var statsdHostKey = host.replace(/[\.:]/g, '_');
     prefix = prefix.replace(/%s/g, statsdHostKey);
     if (prefix.substring(prefix.length, 1) !== '.') {
         prefix += '.';
     }
-    if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'counter') {
-        prefix = 'stats.counters.' + prefix;
-    } else if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'gauge') {
-        prefix = 'stats.gauges.' + prefix;
-    }
+    
     return prefix;
 };
 
@@ -53,16 +72,19 @@ var genColorList = function(typ, key) {
 
 var genTargets = function(typ, node, ns1, ns2, key) {
     var targets = [];
-    var prefix = statsdPrefix(node ? node : '*', metricType(key));
+    var prefix = statsdPrefix(node ? node : '*');
     if (typ === 'topic') {
-        targets.push('sumSeries(' + prefix + 'topic.' + ns1 + '.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'channel') {
-        targets.push('sumSeries(' + prefix + 'topic.' + ns1 + '.channel.' + ns2 + '.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.channel.' + ns2 + '.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'node') {
         var target = prefix + 'mem.' + key;
         if (key === 'gc_runs') {
             target = 'movingAverage(' + target + ',45)';
         }
+        var fullKey = formatStatsdKey(metricType(key), target);
         targets.push(target);
     } else if (typ === 'e2e') {
         targets = _.map(ns1['percentiles'], function(p) {
@@ -76,10 +98,12 @@ var genTargets = function(typ, node, ns1, ns2, key) {
             if (node === '*') {
                 t = 'averageSeries(' + t + ')';
             }
+            var fullKey = formatStatsdKey(metricType(key), t);
             return 'scale(' + t + ',0.000001)';
         });
     } else if (typ === 'counter') {
-        targets.push('sumSeries(' + prefix + 'topic.*.channel.*.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.*.channel.*.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     }
     return targets;
 };
