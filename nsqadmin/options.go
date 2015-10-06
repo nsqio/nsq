@@ -29,6 +29,9 @@ type Options struct {
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
 
+	MessageTailMaxCount int           `flag:"message-tail-max-count"`
+	MessageTailMaxWait  time.Duration `flag:"message-tail-max-wait"`
+
 	Logger logger
 }
 
@@ -41,5 +44,7 @@ func NewOptions() *Options {
 		StatsdGaugeFormat:   "stats.gauges.%s",
 		StatsdInterval:      60 * time.Second,
 		Logger:              log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+		MessageTailMaxCount: 10,
+		MessageTailMaxWait:  250 * time.Millisecond,
 	}
 }

@@ -230,6 +230,8 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 
 	topicName := ps.ByName("topic")
 
+	s.ctx.nsqadmin.logf("INFO: topicHandler for %s", topicName)
+
 	producers, err := s.ci.GetTopicProducers(topicName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
@@ -258,10 +260,22 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		allNodesTopicStats.Add(t)
 	}
 
+	lastMessages, err := s.getLastMessages(topicName)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get topic messages - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
 	return struct {
 		*clusterinfo.TopicStats
-		Message string `json:"message"`
-	}{allNodesTopicStats, maybeWarnMsg(messages)}, nil
+		Message       string         `json:"message"`
+		TopicMessages []TopicMessage `json:"topic_messages"`
+	}{allNodesTopicStats, maybeWarnMsg(messages), lastMessages}, nil
 }
 
 func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
