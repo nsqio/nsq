@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	RPC_TIMEOUT       = time.Duration(time.Second * 10)
+	RPC_TIMEOUT_SHORT = time.Duration(time.Second)
+)
+
 type NsqdRpcClient struct {
 	remote     string
 	timeout    time.Duration
@@ -51,7 +56,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 	}
 }
 
-func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicLeadershipInfo, leaderSession *TopicLeaderSession) error {
+func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) error {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = *leaderSession
@@ -63,26 +68,26 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicL
 	return self.CallWithRetry("NsqdCoordinator.NotifyTopicLeaderSession", rpcInfo, &ret)
 }
 
-func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicLeadershipInfo) error {
+func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicPartionMetaInfo) error {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicLeadershipInfo = *topicInfo
+	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.UpdateTopicInfo", rpcInfo, &ret)
 }
 
-func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicLeadershipInfo) error {
+func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) error {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicLeadershipInfo = *topicInfo
+	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.EnableTopicWrite", rpcInfo, &ret)
 }
 
-func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicLeadershipInfo) error {
+func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) error {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicLeadershipInfo = *topicInfo
+	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.DisableTopicWrite", rpcInfo, &ret)
 }
@@ -93,27 +98,28 @@ func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) 
 	return &stat, err
 }
 
-func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicLeadershipInfo) error {
+func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicPartionMetaInfo) error {
 	var rpcReq RpcAdminTopicInfo
-	rpcReq.TopicLeadershipInfo = *info
+	rpcReq.TopicPartionMetaInfo = *info
 	rpcReq.LookupdEpoch = epoch
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.UpdateCatchupForTopic", rpcReq, &ret)
 }
 
-func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicLeadershipInfo) error {
+func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicPartionMetaInfo) error {
 	var rpcReq RpcAdminTopicInfo
-	rpcReq.TopicLeadershipInfo = *info
+	rpcReq.TopicPartionMetaInfo = *info
 	rpcReq.LookupdEpoch = epoch
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.UpdateChannelsForTopic", rpcReq, &ret)
 }
 
-func (self *NsqdRpcClient) UpdateChannelOffset(info *TopicLeadershipInfo, channel string, offset ConsumerChanOffset) error {
+func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int, info *TopicPartionMetaInfo, channel string, offset ConsumerChanOffset) error {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
 	updateInfo.TopicEpoch = info.Epoch
+	updateInfo.TopicLeaderEpoch = leaderEpoch
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
 	ret := false
@@ -121,44 +127,46 @@ func (self *NsqdRpcClient) UpdateChannelOffset(info *TopicLeadershipInfo, channe
 	return err
 }
 
-func (self *NsqdRpcClient) PubMessage(info *TopicLeadershipInfo, loglist []CommitLogData, messages []string) error {
+func (self *NsqdRpcClient) PubMessage(leaderEpoch int, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []string) error {
 	var pubData RpcPubMessage
 	pubData.LogList = loglist
 	pubData.TopicName = info.Name
 	pubData.TopicPartition = info.Partition
 	pubData.TopicMessages = messages
 	pubData.TopicEpoch = info.Epoch
+	pubData.TopicLeaderEpoch = leaderEpoch
 	ret := false
 	err := self.CallWithRetry("NsqdCoordinator.PubMessage", pubData, &ret)
 	return err
 }
 
-func (self *NsqdRpcClient) GetLastCommitLogId(topicInfo *TopicLeadershipInfo) (int, error) {
-	logid := 0
-	err := self.CallWithRetry("NsqdCoordinator.GetLastCommitLogId", topicInfo, &logid)
-	return logid, err
+func (self *NsqdRpcClient) GetLastCommmitLogID(topicInfo *TopicPartionMetaInfo) (int64, error) {
+	var req RpcCommitLogReq
+	req.TopicName = topicInfo.Name
+	req.TopicPartition = topicInfo.Partition
+	var ret int64
+	err := self.CallWithRetry("NsqdCoordinator.GetLastCommitLogID", req, &ret)
+	return ret, err
 }
 
-func (self *NsqdRpcClient) CommitLog(info *TopicLeadershipInfo, logid int64, msgid string) error {
-	var r RpcCommitLog
-	r.TopicName = info.Name
-	r.TopicPartition = info.Partition
-	r.TopicEpoch = info.Epoch
-	r.LogId = logid
-	r.LogEpoch = info.Epoch
-	r.MsgId = msgid
-	ret := false
-	err := self.CallWithRetry("NsqdCoordinator.CommitLog", r, &ret)
-	return err
+func (self *NsqdRpcClient) GetCommmitLogFromOffset(topicInfo *TopicPartionMetaInfo, offset int64) (int64, CommitLogData, error) {
+	var req RpcCommitLogReq
+	req.LogOffset = offset
+	req.TopicName = topicInfo.Name
+	req.TopicPartition = topicInfo.Partition
+	var rsp RpcCommitLogRsp
+	err := self.CallWithRetry("NsqdCoordinator.GetCommmitLogFromOffset", req, &rsp)
+	return rsp.LogOffset, rsp.LogData, err
 }
 
-func (self *NsqdRpcClient) GetLeaderCommitLogs(topic string, partition int, startLogId int64, num int) ([]CommitLogData, error) {
+func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
+	startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
 	var r RpcPullCommitLogsReq
 	r.TopicName = topic
 	r.TopicPartition = partition
-	r.StartLogId = startLogId
-	r.LogNum = num
+	r.StartLogOffset = startOffset
+	r.LogMaxNum = num
 	var ret RpcPullCommitLogsRsp
-	err := self.CallWithRetry("NsqdCoordinator.GetLeaderCommitLogs", r, &ret)
-	return ret.Logs, err
+	err := self.CallWithRetry("NsqdCoordinator.PullCommitLogs", r, &ret)
+	return ret.Logs, ret.DataList, err
 }
