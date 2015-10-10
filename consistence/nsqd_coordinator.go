@@ -267,7 +267,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			continue
 		}
 
-		leaderOffset, leaderLogData, err := c.GetCommmitLogFromOffset(topicInfo, offset)
+		leaderOffset, leaderLogData, err := c.GetCommmitLogFromOffset(&topicInfo, offset)
 		if err == ErrCommitLogOutofBound || leaderOffset < offset {
 			glog.Infof("local commit log is more than leader while catchup: %v vs %v", offset, leaderOffset)
 			// local log is ahead of the leader, must truncate local data.
@@ -325,7 +325,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 
 		if synced && !readyJoinISR {
 			// notify nsqlookupd coordinator to add myself to isr list.
-			err := self.requestJoinTopicISR(topicInfo)
+			err := self.requestJoinTopicISR(&topicInfo)
 			if err != nil {
 				glog.Infof("request join isr failed: %v", err)
 				time.Sleep(time.Second)

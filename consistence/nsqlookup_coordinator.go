@@ -6,6 +6,7 @@ import (
 	"github.com/golang/glog"
 	"net"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -18,6 +19,9 @@ var (
 	ErrNotLeader          = errors.New("Not leader")
 	ErrLeaderElectionFail = errors.New("Leader election failed.")
 	ErrNodeNotFound       = errors.New("node not found")
+	ErrJoinISRInvalid     = errors.New("Join ISR failed")
+	ErrJoinISRTimeout     = errors.New("Join ISR timeout")
+	ErrWaitingJoinISR     = errors.New("The topic is waiting node to join isr")
 )
 
 func MergeList(l []string, r []string) []string {
@@ -177,6 +181,13 @@ func (s *StatsSorter) Less(i, j int) bool {
 	return s.by(&s.stats[i], &s.stats[j])
 }
 
+type JoinISRState struct {
+	sync.Mutex
+	waitingJoin    bool
+	waitingSession string
+	doneChan       chan struct{}
+}
+
 type NSQLookupdCoordinator struct {
 	clusterKey       string
 	coordID          string
@@ -186,6 +197,7 @@ type NSQLookupdCoordinator struct {
 	nsqdRpcClients   map[string]*NsqdRpcClient
 	nsqdNodeFailChan chan struct{}
 	stopChan         chan struct{}
+	joinISRState     map[string]*JoinISRState
 }
 
 func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator {
@@ -197,6 +209,7 @@ func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator
 		nsqdRpcClients:   make(map[string]*NsqdRpcClient),
 		nsqdNodeFailChan: make(chan struct{}, 1),
 		stopChan:         make(chan struct{}),
+		joinISRState:     make(map[string]*JoinISRState),
 	}
 }
 
@@ -589,167 +602,62 @@ func (self *NSQLookupdCoordinator) handleTopicMigrate(topicInfo TopicPartionMeta
 			return
 		}
 	}
-	catchupList := make([]string, 0)
+	newCatchupList := make([]string, 0)
+	catchupChanged := false
 	for _, n := range topicInfo.CatchupList {
 		if _, ok := self.nsqdNodes[n]; ok {
-			catchupList = append(catchupList, n)
+			newCatchupList = append(newCatchupList, n)
+			catchupChanged = true
 		} else {
 			glog.Infof("topic %v catchup node %v is lost.", topicInfo.GetTopicDesp(), n)
 		}
 	}
 	newISR := make([]string, 0)
+	isrChanged := false
 	for _, replica := range topicInfo.ISR {
 		if _, ok := self.nsqdNodes[replica]; !ok {
 			glog.Warningf("topic %v isr node %v is lost.", topicInfo.GetTopicDesp(), replica)
+			isrChanged = true
 		} else {
 			newISR = append(newISR, replica)
 		}
 	}
-	topicInfo.ISR = newISR
-	topicNsqdNum := len(newISR) + len(catchupList)
+	topicNsqdNum := len(newISR) + len(newCatchupList)
 	if topicNsqdNum < topicInfo.Replica {
 		for i := topicNsqdNum; i < topicInfo.Replica; i++ {
-			n, err := self.AllocNodeForTopic(topicInfo)
+			n, err := self.AllocNodeForTopic(&topicInfo)
 			if err != nil {
-				catchupList = append(catchupList, n.GetID())
+				newCatchupList = append(newCatchupList, n.GetID())
+				catchupChanged = true
 			}
 		}
 	}
-	topicInfo.CatchupList = catchupList
-	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo, topicInfo.Epoch)
-	if err != nil {
-		glog.Infof("update topic node info failed: %v", err.Error())
-		return
+	topicInfo.CatchupList = newCatchupList
+	topicInfo.ISR = newISR
+	if isrChanged {
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo, topicInfo.Epoch)
+		if err != nil {
+			glog.Infof("update topic node info failed: %v", err.Error())
+			return
+		}
+		glog.Infof("topic %v isr list changed: %v", topicInfo.GetTopicDesp(), topicInfo.ISR)
 	}
-	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
-	if err != nil {
-		glog.Infof("update topic catchup failed: %v", err.Error())
-		return
+	if catchupChanged {
+		err := self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
+		if err != nil {
+			glog.Infof("update topic catchup failed: %v", err.Error())
+			return
+		}
+		glog.Infof("topic %v catchup list changed: %v", topicInfo.GetTopicDesp(), topicInfo.CatchupList)
 	}
-	err = self.notifyNsqdForTopic(&topicInfo)
+	err := self.notifyNsqdForTopic(&topicInfo)
 	if err != nil {
 		glog.Infof("notify topic failed: %v", err.Error())
-		return
 	}
 	err = self.notifyNsqdUpdateCatchup(&topicInfo)
 	if err != nil {
-		glog.Infof("notify topic failed: %v", err.Error())
-		return
+		glog.Infof("notify topic catchup failed: %v", err.Error())
 	}
-	var wg sync.WaitGroup
-	doneCatchup := make(map[string]bool, len(catchupList))
-	for _, catchNode := range catchupList {
-		wg.Add(1)
-		go func(nodeID string) {
-			successCatchup := false
-			defer func() {
-				doneCatchup[nodeID] = successCatchup
-				wg.Done()
-			}()
-			ticker := time.NewTicker(time.Second * 3)
-			for {
-				select {
-				case <-ticker.C:
-					cid, err := self.getNsqdLastCommitLogID(nodeID, &topicInfo)
-					if err != nil {
-						glog.Infof("failed to get last commit : %v", nodeID)
-						if _, ok := self.nsqdNodes[nodeID]; !ok {
-							glog.Infof("catchup node lost while migrate: %v", nodeID)
-							successCatchup = false
-							return
-						}
-						continue
-					}
-					leaderCid, err := self.getNsqdLastCommitLogID(topicInfo.Leader, &topicInfo)
-					if err != nil {
-						glog.Infof("failed to get last commit on leader: %v", topicInfo.Leader)
-						if _, ok := self.nsqdNodes[topicInfo.Leader]; !ok {
-							glog.Infof("leader node lost while migrate: %v", topicInfo.Leader)
-							successCatchup = false
-							return
-						}
-						continue
-					}
-					if leaderCid-cid < 0 {
-						glog.Warningf("the catch log id should less than leader. %v vs %v", cid, leaderCid)
-						successCatchup = false
-						return
-					}
-					if leaderCid-cid > 10 {
-						glog.Infof("catch up log id %v still fall behind leader log id : %v", cid, leaderCid)
-						delete(doneCatchup, nodeID)
-					} else {
-						doneCatchup[nodeID] = true
-						successCatchup = true
-						glog.Infof("node %v is nearly catching up leader log", nodeID)
-						if len(doneCatchup) >= len(catchupList) {
-							return
-						}
-					}
-				}
-			}
-		}(catchNode)
-	}
-	wg.Wait()
-
-	nearlyCatchup := make(map[string]struct{}, len(catchupList))
-	for nid, isSuccess := range doneCatchup {
-		if isSuccess {
-			nearlyCatchup[nid] = struct{}{}
-		}
-	}
-	if len(nearlyCatchup) < len(catchupList) {
-		glog.Infof("Only part of catchup nodes nearly catching up.")
-	}
-	if len(nearlyCatchup) == 0 {
-		glog.Infof("No catchup node.")
-		return
-	}
-	ticker := time.NewTicker(time.Second * 3)
-	defer func() {
-		ticker.Stop()
-		self.notifyEnableTopicWrite(&topicInfo)
-	}()
-
-	err = self.notifyDisableTopicWrite(&topicInfo)
-	if err != nil {
-		glog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
-		return
-	}
-	newISR = make([]string, 0)
-	for len(nearlyCatchup) > 0 {
-		select {
-		case <-ticker.C:
-			for nodeID, _ := range nearlyCatchup {
-				cid, _ := self.getNsqdLastCommitLogID(nodeID, &topicInfo)
-				leaderCid, _ := self.getNsqdLastCommitLogID(topicInfo.Leader, &topicInfo)
-				if leaderCid-cid < 0 {
-					glog.Warningf("the catch log id should less than leader. %v vs %v", cid, leaderCid)
-					return
-				}
-				if cid > 0 && leaderCid == cid {
-					newISR = append(newISR, nodeID)
-					delete(nearlyCatchup, nodeID)
-				}
-			}
-		}
-	}
-
-	topicInfo.ISR = MergeList(topicInfo.ISR, newISR)
-	topicInfo.CatchupList = FilterList(topicInfo.CatchupList, newISR)
-	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo, topicInfo.Epoch)
-	if err != nil {
-		glog.Infof("move catchup node to isr failed")
-		return
-	}
-
-	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
-	if err != nil {
-		glog.Infof("update catchup failed")
-		return
-	}
-
-	glog.Infof("topic %v migrate done.", topicInfo.GetTopicDesp())
 }
 
 func (self *NSQLookupdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, error) {
@@ -770,6 +678,11 @@ func (self *NSQLookupdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient,
 }
 
 func (self *NSQLookupdCoordinator) notifyEnableTopicWrite(topicInfo *TopicPartionMetaInfo) error {
+	if state, ok := self.joinISRState[topicInfo.Name+strconv.Itoa(topicInfo.Partition)]; ok {
+		if state.waitingJoin {
+			return ErrWaitingJoinISR
+		}
+	}
 	c, err := self.acquireRpcClient(topicInfo.Leader)
 	if err != nil {
 		return err
@@ -1194,12 +1107,123 @@ func (self *NSQLookupdCoordinator) handleRequestJoinCatchup(topic string, partit
 	return nil
 }
 
-func (self *NSQLookupdCoordinator) handleRequestJoinISR() {
+func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition int, nodeID string) (string, error) {
 	// 1. got join isr request, check valid, should be in catchup list.
 	// 2. notify the topic leader disable write
-	// 3. notify node do the final sync.
-	// 4. wait the final sync notify , if timeout just go to step 7
-	// 5. got final sync finished event, add the node to ISR
-	// 6. notify node for isr
-	// 7. enable write
+	// 3. wait the final sync notify , if timeout just go to end
+	// 4. got final sync finished event, add the node to ISR and remove from
+	// CatchupList.
+	// 5. notify all nodes for the new isr
+	// 6. enable write
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		return "", err
+	}
+	if FindSlice(topicInfo.CatchupList, nodeID) == -1 {
+		glog.Infof("join isr node is not in catchup list.")
+		return "", ErrJoinISRInvalid
+	}
+	if _, ok := self.joinISRState[topicInfo.GetTopicDesp()]; !ok {
+		self.joinISRState[topicInfo.GetTopicDesp()] = &JoinISRState{}
+	} else {
+		if self.joinISRState[topicInfo.GetTopicDesp()].waitingJoin {
+			glog.Warningf("failed request join isr because the join state is used.")
+			return "", ErrJoinISRInvalid
+		}
+	}
+	state := self.joinISRState[topicInfo.GetTopicDesp()]
+	state.waitingJoin = true
+
+	err = self.notifyDisableTopicWrite(topicInfo)
+	if err != nil {
+		glog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
+		state.waitingJoin = false
+		return "", err
+	}
+
+	state.waitingSession = time.Now().String()
+	if state.doneChan != nil {
+		close(state.doneChan)
+	}
+
+	state.doneChan = make(chan struct{})
+	go self.waitForFinalSyncedISR(topic, partition, nodeID, state)
+	return state.waitingSession, nil
+}
+
+func (self *NSQLookupdCoordinator) handleJoinISRFinished(topic string, partition int, nodeID string, session string) error {
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("get topic info failed while sync isr.")
+		return err
+	}
+	// check for state and should lock for the state to prevent others join isr.
+	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	if !ok {
+		glog.Warningf("failed join isr because the join state is not set.")
+		return ErrJoinISRInvalid
+	}
+	state.Lock()
+	defer state.Unlock()
+	if !state.waitingJoin || state.waitingSession != session {
+		return ErrJoinISRInvalid
+	}
+
+	defer self.notifyEnableTopicWrite(topicInfo)
+	newCatchupList := make([]string, 0)
+	for _, nid := range topicInfo.CatchupList {
+		if nid == nodeID {
+			continue
+		}
+		newCatchupList = append(newCatchupList, nid)
+	}
+	topicInfo.CatchupList = newCatchupList
+	topicInfo.ISR = append(topicInfo.ISR, nodeID)
+	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+	if err != nil {
+		glog.Infof("move catchup node to isr failed")
+		return err
+	}
+
+	self.notifyNsqdForTopic(topicInfo)
+	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
+	if err != nil {
+		glog.Infof("update catchup failed")
+		return err
+	}
+	self.notifyNsqdUpdateCatchup(topicInfo)
+
+	glog.Infof("topic %v isr node added %v.", topicInfo.GetTopicDesp(), nodeID)
+	state.waitingJoin = false
+	state.waitingSession = ""
+	close(state.doneChan)
+	return nil
+}
+
+func (self *NSQLookupdCoordinator) waitForFinalSyncedISR(topic string, partition int, nodeID string, state *JoinISRState) {
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+	select {
+	case <-ticker.C:
+		glog.Infof("wait timeout for sync isr.")
+	case <-state.doneChan:
+		return
+	}
+
+	state.Lock()
+	defer state.Unlock()
+	if !state.waitingJoin {
+		return
+	}
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("get topic info failed while sync isr.")
+		return
+	}
+	state.waitingJoin = false
+	state.waitingSession = ""
+	err = self.notifyEnableTopicWrite(topicInfo)
+	if err != nil {
+		glog.Warningf("failed to enable write ")
+	}
 }
