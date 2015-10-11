@@ -77,7 +77,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 ([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of
 [bitly][bitly] and all our [contributors][contributors].
 
-Logo created by Wolasi Konu [@kisalow][wolasi_twitter].
+Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 
 [docs]: http://nsq.io/
 [github]: https://github.com/nsqio/nsq
