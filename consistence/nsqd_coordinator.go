@@ -21,6 +21,8 @@ var (
 	ErrMissingTopicLeaderSession = errors.New("missing topic leader session")
 	ErrWriteDisabled             = errors.New("write is disabled on the topic")
 	ErrPubArgError               = errors.New("pub argument error")
+	ErrLocalFallBehind           = errors.New("local data fall behind")
+	ErrLocalForwardThanLeader    = errors.New("local data is more than leader")
 )
 
 func GetTopicPartitionPath(topic string, partition int) string {
@@ -74,6 +76,7 @@ type NsqdCoordinator struct {
 	stopChan        chan struct{}
 	rpcListener     net.Listener
 	dataRootPath    string
+	localDataStates map[string]map[int]bool
 }
 
 func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string) *NsqdCoordinator {
@@ -93,6 +96,7 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string) *
 		flushNotifyChan: make(chan TopicPartitionID, 2),
 		stopChan:        make(chan struct{}),
 		dataRootPath:    rootPath,
+		localDataStates: make(map[string]map[int]bool),
 	}
 }
 
@@ -203,6 +207,23 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 				glog.Infof("failed to get topic info:%v-%v", topicName, partition)
 				continue
 			}
+			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
+				glog.Infof("I am starting as isr node.")
+				// check local data with leader.
+				err := self.checkLocalTopicForISR(topicInfo)
+				if err != nil {
+					self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+				} else {
+					states, ok := self.localDataStates[topicInfo.Name]
+					if !ok {
+						states := make(map[int]bool)
+						self.localDataStates[topicInfo.Name] = states
+					}
+					states[topicInfo.Partition] = true
+					self.notifyReadyForTopicISR(topicInfo)
+					continue
+				}
+			}
 			if len(topicInfo.ISR) >= topicInfo.Replica {
 				glog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
 				continue
@@ -218,6 +239,38 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 			go self.catchupFromLeader(*topicInfo)
 		}
 	}
+}
+
+func (self *NsqdCoordinator) checkLocalTopicForISR(topicInfo *TopicPartionMetaInfo) error {
+	logmgr, err := self.getLogMgrWithoutCreate(topicInfo.Name, topicInfo.Partition)
+	if err != nil {
+		glog.Warningf("get local log failed: %v", err)
+		return err
+	}
+	if topicInfo.Leader == self.myNode.GetID() {
+		// leader should always has the newest local data
+		return nil
+	}
+	logid := logmgr.GetLastCommitLogID()
+	c, err := self.acquireRpcClient(topicInfo.Leader)
+	if err != nil {
+		return err
+	}
+	leaderID, err := c.GetLastCommmitLogID(topicInfo)
+	if err != nil {
+		return err
+	}
+	if leaderID > logid {
+		glog.Infof("this node is out of date, should rejoin.")
+		// TODO: request the lookup to remove myself from isr
+		return ErrLocalFallBehind
+	}
+
+	if logid > leaderID+1 {
+		glog.Infof("this node has more data than leader, should rejoin.")
+		return ErrLocalForwardThanLeader
+	}
+	return nil
 }
 
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo TopicPartionMetaInfo) error {
@@ -241,6 +294,10 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaI
 
 func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) error {
 	//
+	return nil
+}
+
+func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) error {
 	return nil
 }
 
@@ -338,10 +395,17 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			logmgr.FlushCommitLogs()
 			glog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
 			err := RetryWithTimeout(func() error {
-				return self.notifyReadyForTopicISR(topicInfo)
+				return self.notifyReadyForTopicISR(&topicInfo)
 			})
 			if err != nil {
 				glog.Infof("notify ready for isr failed: %v", err)
+			} else {
+				states, ok := self.localDataStates[topicInfo.Name]
+				if !ok {
+					states := make(map[int]bool)
+					self.localDataStates[topicInfo.Name] = states
+				}
+				states[topicInfo.Partition] = true
 			}
 			break
 		}

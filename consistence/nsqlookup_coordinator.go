@@ -1151,7 +1151,7 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 	return state.waitingSession, nil
 }
 
-func (self *NSQLookupdCoordinator) handleJoinISRFinished(topic string, partition int, nodeID string, session string) error {
+func (self *NSQLookupdCoordinator) handleReadyForJoinISR(topic string, partition int, nodeID string, session string) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		glog.Infof("get topic info failed while sync isr.")
@@ -1160,6 +1160,11 @@ func (self *NSQLookupdCoordinator) handleJoinISRFinished(topic string, partition
 	// check for state and should lock for the state to prevent others join isr.
 	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
 	if !ok {
+		if FindSlice(topicInfo.ISR, nodeID) != -1 {
+			self.notifyNsqdForTopic(topicInfo)
+			return nil
+		}
+
 		glog.Warningf("failed join isr because the join state is not set.")
 		return ErrJoinISRInvalid
 	}

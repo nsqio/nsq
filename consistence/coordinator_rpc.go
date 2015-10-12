@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ErrSessionMismatch = errors.New("session mismatch")
-	ErrMissingTopic    = errors.New("missing topic")
+	ErrSessionMismatch       = errors.New("session mismatch")
+	ErrMissingTopic          = errors.New("missing topic")
+	ErrLocalNotReadyForWrite = errors.New("local topic is not ready for write.")
 )
 
 func FindSlice(in []string, e string) int {
@@ -260,6 +261,10 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeader
 			if topicInfo.topicLeaderSession.Session != rpcData.TopicSession {
 				glog.Infof("rpc call with wrong session:%v", rpcData)
 				return nil, ErrSessionMismatch
+			}
+			if !self.localDataStates[topicInfo.topicInfo.Name][topicInfo.topicInfo.Partition] {
+				glog.Infof("local data is still loading. %v", topicInfo.topicInfo.GetTopicDesp())
+				return nil, ErrLocalNotReadyForWrite
 			}
 			return &topicInfo.topicLeaderSession, nil
 		}
