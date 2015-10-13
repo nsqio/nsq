@@ -33,11 +33,6 @@ const (
 	TLSRequired
 )
 
-const (
-	flagHealthy = 1 << iota
-	flagLoading
-)
-
 type errStore struct {
 	err error
 }
@@ -51,7 +46,7 @@ type NSQD struct {
 	opts atomic.Value
 
 	dl        *dirlock.DirLock
-	flag      int32
+	isLoading int32
 	errValue  atomic.Value
 	startTime time.Time
 
@@ -83,7 +78,6 @@ func New(opts *Options) *NSQD {
 	}
 
 	n := &NSQD{
-		flag:                 flagHealthy,
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
 		idChan:               make(chan MessageID, 4096),
@@ -94,6 +88,7 @@ func New(opts *Options) *NSQD {
 		dl:                   dirlock.New(dataPath),
 	}
 	n.swapOpts(opts)
+	n.errValue.Store(errStore{})
 
 	err := n.dl.Lock()
 	if err != nil {
@@ -186,46 +181,16 @@ func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
 	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
-func (n *NSQD) setFlag(f int32, b bool) {
-	for {
-		old := atomic.LoadInt32(&n.flag)
-		newFlag := old
-		if b {
-			newFlag |= f
-		} else {
-			newFlag &= ^f
-		}
-		if atomic.CompareAndSwapInt32(&n.flag, old, newFlag) {
-			return
-		}
-	}
-}
-
-func (n *NSQD) getFlag(f int32) bool {
-	return f&atomic.LoadInt32(&n.flag) != 0
-}
-
 func (n *NSQD) SetHealth(err error) {
-	if err != nil {
-		n.setFlag(flagHealthy, false)
-		n.errValue.Store(errStore{err: err})
-	} else {
-		if !n.getFlag(flagHealthy) {
-			n.setFlag(flagHealthy, true)
-			n.errValue.Store(errStore{err: nil})
-		}
-	}
+	n.errValue.Store(errStore{err: err})
 }
 
 func (n *NSQD) IsHealthy() bool {
-	return n.getFlag(flagHealthy)
+	return n.GetError() == nil
 }
 
 func (n *NSQD) GetError() error {
 	errValue := n.errValue.Load()
-	if errValue == nil {
-		return nil
-	}
 	return errValue.(errStore).err
 }
 
@@ -296,8 +261,8 @@ func (n *NSQD) Main() {
 }
 
 func (n *NSQD) LoadMetadata() {
-	n.setFlag(flagLoading, true)
-	defer n.setFlag(flagLoading, false)
+	atomic.StoreInt32(&n.isLoading, 1)
+	defer atomic.StoreInt32(&n.isLoading, 0)
 	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
@@ -581,7 +546,7 @@ func (n *NSQD) Notify(v interface{}) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
-	persist := !n.getFlag(flagLoading)
+	persist := atomic.LoadInt32(&n.isLoading) == 0
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123

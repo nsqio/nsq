@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -110,7 +111,7 @@ func TestStartup(t *testing.T) {
 	// verify nsqd metadata shows no topics
 	err := nsqd.PersistMetadata()
 	equal(t, err, nil)
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
 	metaData, err := getMetadata(nsqd)
 	equal(t, err, nil)
@@ -118,7 +119,7 @@ func TestStartup(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(topics), 0)
 	nsqd.DeleteExistingTopic(topicName)
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -262,11 +263,11 @@ func TestPauseMetadata(t *testing.T) {
 	defer nsqd.Exit()
 
 	// avoid concurrency issue of async PersistMetadata() calls
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata()
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
