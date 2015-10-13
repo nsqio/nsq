@@ -320,10 +320,10 @@ func (c *Channel) put(m *Message) error {
 		b := bufferPoolGet()
 		err := writeMessageToBackend(b, m, c.backend)
 		bufferPoolPut(b)
+		c.ctx.nsqd.SetHealth(err)
 		if err != nil {
 			c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
 				c.name, err)
-			c.ctx.nsqd.SetHealth(err)
 			return err
 		}
 	}
@@ -571,7 +571,7 @@ func (c *Channel) messagePump() {
 		atomic.StoreInt32(&c.bufferedCount, 1)
 		c.clientMsgChan <- msg
 		atomic.StoreInt32(&c.bufferedCount, 0)
-		// the client will call back to mark as in-flight w/ it's info
+		// the client will call back to mark as in-flight w/ its info
 	}
 
 exit:

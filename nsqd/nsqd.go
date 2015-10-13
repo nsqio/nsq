@@ -38,6 +38,10 @@ const (
 	flagLoading
 )
 
+type errStore struct {
+	err error
+}
+
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
@@ -48,8 +52,7 @@ type NSQD struct {
 
 	dl        *dirlock.DirLock
 	flag      int32
-	errMtx    sync.RWMutex
-	err       error
+	errValue  atomic.Value
 	startTime time.Time
 
 	topicMap map[string]*Topic
@@ -203,13 +206,14 @@ func (n *NSQD) getFlag(f int32) bool {
 }
 
 func (n *NSQD) SetHealth(err error) {
-	n.errMtx.Lock()
-	defer n.errMtx.Unlock()
-	n.err = err
 	if err != nil {
 		n.setFlag(flagHealthy, false)
+		n.errValue.Store(errStore{err: err})
 	} else {
-		n.setFlag(flagHealthy, true)
+		if !n.getFlag(flagHealthy) {
+			n.setFlag(flagHealthy, true)
+			n.errValue.Store(errStore{err: nil})
+		}
 	}
 }
 
@@ -218,14 +222,17 @@ func (n *NSQD) IsHealthy() bool {
 }
 
 func (n *NSQD) GetError() error {
-	n.errMtx.RLock()
-	defer n.errMtx.RUnlock()
-	return n.err
+	errValue := n.errValue.Load()
+	if errValue == nil {
+		return nil
+	}
+	return errValue.(errStore).err
 }
 
 func (n *NSQD) GetHealth() string {
-	if !n.IsHealthy() {
-		return fmt.Sprintf("NOK - %s", n.GetError())
+	err := n.GetError()
+	if err != nil {
+		return fmt.Sprintf("NOK - %s", err)
 	}
 	return "OK"
 }

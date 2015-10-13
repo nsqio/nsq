@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -39,7 +40,7 @@ func equal(t *testing.T, act, exp interface{}) {
 func nequal(t *testing.T, act, exp interface{}) {
 	if reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+		t.Logf("\033[31m%s:%d:\n\n\tnexp: %#v\n\n\tgot:  %#v\033[39m\n\n",
 			filepath.Base(file), line, exp, act)
 		t.FailNow()
 	}
@@ -437,4 +438,27 @@ func TestCluster(t *testing.T) {
 
 	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
 	equal(t, len(producers), 0)
+}
+
+func TestSetHealth(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	nsqd := New(opts)
+
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(errors.New("health error"))
+	nequal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "NOK - health error")
+	equal(t, nsqd.IsHealthy(), false)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "OK")
+	equal(t, nsqd.IsHealthy(), true)
 }
