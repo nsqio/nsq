@@ -107,7 +107,8 @@ func New(opts *Options) *NSQD {
 	}
 
 	if opts.StatsdPrefix != "" {
-		_, port, err := net.SplitHostPort(opts.HTTPAddress)
+		var port string
+		_, port, err = net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
 			n.logf("ERROR: failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 			os.Exit(1)

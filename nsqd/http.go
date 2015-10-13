@@ -213,7 +213,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	var deferred time.Duration
 	if ds, ok := reqParams["defer"]; ok {
-		di, err := strconv.ParseInt(ds[0], 10, 64)
+		var di int64
+		di, err = strconv.ParseInt(ds[0], 10, 64)
 		if err != nil {
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
@@ -264,7 +265,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
 		total := 0
 		for !exit {
-			block, err := rdr.ReadBytes('\n')
+			var block []byte
+			block, err = rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
 					return nil, http_api.Err{500, "INTERNAL_ERROR"}
