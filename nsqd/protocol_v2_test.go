@@ -6,6 +6,7 @@ import (
 	"compress/flate"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,6 +26,7 @@ import (
 	"github.com/mreiferson/go-snappystream"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/test"
 )
 
 func mustStartNSQD(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
@@ -182,8 +184,8 @@ func TestMultipleConsumerV2(t *testing.T) {
 		go func(c net.Conn) {
 			resp, _ := nsq.ReadResponse(c)
 			_, data, _ := nsq.UnpackResponse(resp)
-			msg, _ := decodeMessage(data)
-			msgChan <- msg
+			recvdMsg, _ := decodeMessage(data)
+			msgChan <- recvdMsg
 		}(conn)
 	}
 
@@ -1450,6 +1452,43 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 		sub(t, conn, "test", "ch")
 	}
 
+}
+
+func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
+	fakeConn := test.NewFakeNetConn()
+	fakeConn.WriteFunc = func(b []byte) (int, error) {
+		return 0, errors.New("write error")
+	}
+
+	testIOLoopReturnsClientErr(t, fakeConn)
+}
+
+func TestIOLoopReturnsClientErrWhenSendSucceeds(t *testing.T) {
+	fakeConn := test.NewFakeNetConn()
+	fakeConn.WriteFunc = func(b []byte) (int, error) {
+		return len(b), nil
+	}
+
+	testIOLoopReturnsClientErr(t, fakeConn)
+}
+
+func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
+	fakeConn.ReadFunc = func(b []byte) (int, error) {
+		return copy(b, []byte("INVALID_COMMAND\n")), nil
+	}
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+
+	prot := &protocolV2{ctx: &context{nsqd: New(opts)}}
+	defer prot.ctx.nsqd.Exit()
+
+	err := prot.IOLoop(fakeConn)
+
+	nequal(t, err, nil)
+	equal(t, err.Error(), "E_INVALID invalid command INVALID_COMMAND")
+	nequal(t, err.(*protocol.FatalClientErr), nil)
 }
 
 func BenchmarkProtocolV2Exec(b *testing.B) {
