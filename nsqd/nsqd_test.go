@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,7 +41,7 @@ func equal(t *testing.T, act, exp interface{}) {
 func nequal(t *testing.T, act, exp interface{}) {
 	if reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+		t.Logf("\033[31m%s:%d:\n\n\tnexp: %#v\n\n\tgot:  %#v\033[39m\n\n",
 			filepath.Base(file), line, exp, act)
 		t.FailNow()
 	}
@@ -109,7 +111,7 @@ func TestStartup(t *testing.T) {
 	// verify nsqd metadata shows no topics
 	err := nsqd.PersistMetadata()
 	equal(t, err, nil)
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
 	metaData, err := getMetadata(nsqd)
 	equal(t, err, nil)
@@ -117,7 +119,7 @@ func TestStartup(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(topics), 0)
 	nsqd.DeleteExistingTopic(topicName)
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -261,11 +263,11 @@ func TestPauseMetadata(t *testing.T) {
 	defer nsqd.Exit()
 
 	// avoid concurrency issue of async PersistMetadata() calls
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata()
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
@@ -437,4 +439,27 @@ func TestCluster(t *testing.T) {
 
 	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
 	equal(t, len(producers), 0)
+}
+
+func TestSetHealth(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	nsqd := New(opts)
+
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(errors.New("health error"))
+	nequal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "NOK - health error")
+	equal(t, nsqd.IsHealthy(), false)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "OK")
+	equal(t, nsqd.IsHealthy(), true)
 }

@@ -59,6 +59,10 @@ func (d *errorBackendQueue) Delete() error         { return nil }
 func (d *errorBackendQueue) Depth() int64          { return 0 }
 func (d *errorBackendQueue) Empty() error          { return nil }
 
+type errorRecoveredBackendQueue struct{ errorBackendQueue }
+
+func (d *errorRecoveredBackendQueue) Put([]byte) error { return nil }
+
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -93,6 +97,19 @@ func TestHealth(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	equal(t, string(body), "NOK - never gonna happen")
+
+	topic.backend = &errorRecoveredBackendQueue{}
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = topic.PutMessages([]*Message{msg})
+	equal(t, err, nil)
+
+	resp, err = http.Get(url)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	equal(t, string(body), "OK")
 }
 
 func TestDeletes(t *testing.T) {
