@@ -10,7 +10,24 @@ var (
 	ErrSessionMismatch       = errors.New("session mismatch")
 	ErrMissingTopic          = errors.New("missing topic")
 	ErrLocalNotReadyForWrite = errors.New("local topic is not ready for write.")
+	ErrLeavingISRWait        = errors.New("leaving isr need wait.")
 )
+
+type ErrRPCRetCode int
+
+var gRPCRetCodeMap map[error]ErrRPCRetCode
+
+func (self *ErrRPCRetCode) IsMatchedError(e error) bool {
+	if elem, ok := gRPCRetCodeMap[e]; ok {
+		return elem == *self
+	}
+	return false
+}
+
+func init() {
+	gRPCRetCodeMap = make(map[error]ErrRPCRetCode)
+	gRPCRetCodeMap[ErrLeavingISRWait] = ErrRPCRetCode(0)
+}
 
 func FindSlice(in []string, e string) int {
 	for i, v := range in {
@@ -63,13 +80,10 @@ func (self *NsqdCoordinator) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeader
 	n := rpcTopicReq.TopicLeaderSession
 	topicPartitionInfo.topicLeaderSession = rpcTopicReq.TopicLeaderSession
 	if n.LeaderNode == nil || n.Session == "" {
-		self.isMineLeader = false
 		glog.Infof("topic leader is missing : %v", rpcTopicReq.RpcTopicData)
 	} else if n.LeaderNode.GetID() == self.myNode.GetID() {
 		glog.Infof("I become the leader for the topic: %v", rpcTopicReq.RpcTopicData)
-		self.isMineLeader = true
 	} else {
-		self.isMineLeader = false
 		glog.Infof("topic %v leader changed to :%v. epoch: %v", rpcTopicReq.RpcTopicData, n.LeaderNode.GetID(), n.LeaderEpoch)
 		// if catching up, pull data from the new leader
 		// if isr, make sure sync to the new leader
@@ -106,7 +120,7 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 	topicData[rpcTopicReq.Partition].topicInfo = rpcTopicReq.TopicPartionMetaInfo
 	self.updateLocalTopic(rpcTopicReq.TopicPartionMetaInfo)
 	if rpcTopicReq.Leader == self.myNode.GetID() {
-		if !self.isMineLeader {
+		if !self.IsMineLeaderForTopic(rpcTopicReq.Name, rpcTopicReq.Partition) {
 			glog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.

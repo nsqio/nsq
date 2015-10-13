@@ -69,7 +69,6 @@ type NsqdCoordinator struct {
 	lookupLeader    *NsqLookupdNodeInfo
 	topicsData      map[string]map[int]*TopicSummaryData
 	myNode          NsqdNodeInfo
-	isMineLeader    bool
 	nsqdRpcClients  map[string]*NsqdRpcClient
 	topicLogMgr     map[string]map[int]*TopicCommitLogMgr
 	flushNotifyChan chan TopicPartitionID
@@ -90,7 +89,6 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string) *
 		leadership:      nil,
 		topicsData:      make(map[string]map[int]*TopicSummaryData),
 		myNode:          nodeInfo,
-		isMineLeader:    false,
 		nsqdRpcClients:  make(map[string]*NsqdRpcClient),
 		topicLogMgr:     make(map[string]map[int]*TopicCommitLogMgr),
 		flushNotifyChan: make(chan TopicPartitionID, 2),
@@ -278,6 +276,18 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo TopicPartionMetaInfo) 
 	return err
 }
 
+func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, partition int) bool {
+	t, ok := self.topicsData[topic]
+	if !ok {
+		return false
+	}
+	tp, ok := t[partition]
+	if !ok {
+		return false
+	}
+	return tp.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID()
+}
+
 func (self *NsqdCoordinator) syncToNewLeader(topic string, partition int, leader *TopicLeaderSession) {
 	// check last commit log.
 }
@@ -298,6 +308,20 @@ func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) err
 }
 
 func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) error {
+	return nil
+}
+
+// this should only be called by leader to remove slow node in isr.
+// Be careful to avoid removing most of the isr nodes, should only remove while
+// only small part of isr is slow.
+// TODO: If most of nodes is slow, the leader should check the leader itself and
+// maybe giveup the leadership.
+func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition int, nid string) error {
+	topicData, err := self.checkWriteForTopicLeader(topic, partition)
+	if err != nil {
+		return err
+	}
+	// send request with leader session, so lookup can check the valid of session.
 	return nil
 }
 
@@ -414,9 +438,6 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 
 // any modify operation on the topic should check for topic leader.
 func (self *NsqdCoordinator) checkWriteForTopicLeader(topic string, partition int) (*TopicSummaryData, error) {
-	if !self.isMineLeader {
-		return nil, ErrNotTopicLeader
-	}
 	if v, ok := self.topicsData[topic]; ok {
 		if topicInfo, ok := v[partition]; ok {
 			if topicInfo.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {

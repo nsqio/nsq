@@ -1232,3 +1232,45 @@ func (self *NSQLookupdCoordinator) waitForFinalSyncedISR(topic string, partition
 		glog.Warningf("failed to enable write ")
 	}
 }
+
+func (self *NSQLookupdCoordinator) handleLeaveFromISR(topic string, partition int, leader *TopicLeaderSession, nodeID string) error {
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("get topic info failed while sync isr.")
+		return err
+	}
+	if FindSlice(topicInfo.ISR, nodeID) == -1 {
+		return nil
+	}
+	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
+		glog.Infof("no enough isr node, leaving should wait.")
+		return ErrLeavingISRWait
+	}
+
+	if leader != nil {
+		newestLeaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
+		if err != nil {
+			return err
+		}
+		if !leader.IsSame(newestLeaderSession) {
+			return ErrNotTopicLeader
+		}
+	}
+	newISR := make([]string, 0, len(topicInfo.ISR)-1)
+	for _, n := range topicInfo.ISR {
+		if n == nodeID {
+			continue
+		}
+		newISR = append(newISR, n)
+	}
+	topicInfo.ISR = newISR
+	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+	if err != nil {
+		glog.Infof("remove node from isr failed")
+		return err
+	}
+
+	self.notifyNsqdForTopic(topicInfo)
+	glog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo.GetTopicDesp())
+	return nil
+}

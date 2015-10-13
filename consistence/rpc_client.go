@@ -62,8 +62,8 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicP
 	rpcInfo.TopicLeaderSession = *leaderSession
 	rpcInfo.TopicName = topicInfo.Name
 	rpcInfo.TopicPartition = topicInfo.Partition
-	rpcInfo.TopicEpoch = leaderSession.topicEpoch
-	rpcInfo.TopicSession = leaderSession.session
+	rpcInfo.TopicEpoch = leaderSession.LeaderEpoch
+	rpcInfo.TopicSession = leaderSession.Session
 	ret := false
 	return self.CallWithRetry("NsqdCoordinator.NotifyTopicLeaderSession", rpcInfo, &ret)
 }

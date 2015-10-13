@@ -94,7 +94,7 @@ type NSQLookupdLeadership interface {
 	UpdateTopicCatchupList(topic string, partition int, catchupList []string, oldGen int) error
 	CreateChannel(topic string, partition int, channel string) error
 	DeleteChannel(topic string, partition int, channel string) error
-	GetTopicLeaderSession(topic string, partition int) (string, error)
+	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) error
 }
 
@@ -243,8 +243,8 @@ func (self *FakeNsqlookupLeadership) DeleteChannel(topic string, partition int, 
 	return nil
 }
 
-func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (string, error) {
-	return "", nil
+func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
+	return nil, nil
 }
 
 func (self *FakeNsqlookupLeadership) WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) error {
