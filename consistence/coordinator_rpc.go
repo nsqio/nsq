@@ -15,6 +15,13 @@ var (
 
 type ErrRPCRetCode int
 
+var (
+	RpcNoErr     = ErrRPCRetCode(0)
+	RpcCommonErr = ErrRPCRetCode(1)
+
+	RpcErrLeavingISRWait = ErrRPCRetCode(10)
+)
+
 var gRPCRetCodeMap map[error]ErrRPCRetCode
 
 func (self *ErrRPCRetCode) IsMatchedError(e error) bool {
@@ -26,7 +33,18 @@ func (self *ErrRPCRetCode) IsMatchedError(e error) bool {
 
 func init() {
 	gRPCRetCodeMap = make(map[error]ErrRPCRetCode)
-	gRPCRetCodeMap[ErrLeavingISRWait] = ErrRPCRetCode(0)
+	gRPCRetCodeMap[ErrLeavingISRWait] = RpcErrLeavingISRWait
+}
+
+func GetRpcErrCode(e error) ErrRPCRetCode {
+	if e == nil {
+		return RpcNoErr
+	}
+	code, ok := gRPCRetCodeMap[e]
+	if !ok {
+		return RpcCommonErr
+	}
+	return code
 }
 
 func FindSlice(in []string, e string) int {
@@ -169,7 +187,7 @@ func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, re
 	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
 		if tp, ok := t[rpcTopicReq.Partition]; ok {
 			tp.disableWrite = true
-			// wait until the current write finished.
+			//TODO: wait until the current write finished.
 			return nil
 		}
 	}

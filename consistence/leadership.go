@@ -19,6 +19,7 @@ type NsqLookupdNodeInfo struct {
 	ID       string
 	NodeIp   string
 	HttpPort string
+	RpcPort  string
 	Epoch    int
 }
 

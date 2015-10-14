@@ -22,6 +22,7 @@ var (
 	ErrJoinISRInvalid     = errors.New("Join ISR failed")
 	ErrJoinISRTimeout     = errors.New("Join ISR timeout")
 	ErrWaitingJoinISR     = errors.New("The topic is waiting node to join isr")
+	ErrLeavingISRAsLeader = errors.New("node should not leave the isr as leader")
 )
 
 func MergeList(l []string, r []string) []string {
@@ -494,18 +495,16 @@ func (self *NSQLookupdCoordinator) waitOldLeaderRelease(topicInfo *TopicPartionM
 	return err
 }
 
-func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPartionMetaInfo) error {
-	err := self.waitOldLeaderRelease(topicInfo)
-	if err != nil {
-		glog.Infof("Leader is not released: %v", topicInfo)
-		return err
-	}
+func (self *NSQLookupdCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartionMetaInfo) (string, int64, error) {
 	// choose another leader in ISR list, and add new node to ISR
 	// list.
 	newestReplicas := make([]string, 0)
 	newestLogID := int64(0)
 	for _, replica := range topicInfo.ISR {
 		if _, ok := self.nsqdNodes[replica]; !ok {
+			continue
+		}
+		if replica == topicInfo.Leader {
 			continue
 		}
 		cid, err := self.getNsqdLastCommitLogID(replica, topicInfo)
@@ -535,11 +534,16 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPar
 	}
 	if newLeader == "" {
 		glog.Warningf("No leader can be elected.")
-		return ErrLeaderElectionFail
+		return "", 0, ErrLeaderElectionFail
 	}
 	glog.Infof("new leader %v found with commit id: %v", newLeader, newestLogID)
+
+	return newLeader, newestLogID, nil
+}
+
+func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *TopicPartionMetaInfo, newLeader string, newestLogID int64) error {
 	topicInfo.Leader = newLeader
-	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
 		glog.Infof("update topic node info failed: %v", err)
 		return err
@@ -551,6 +555,7 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPar
 		if err != nil {
 			glog.Infof("topic leader session still missing")
 			time.Sleep(time.Second)
+			self.notifyNsqdForTopic(topicInfo)
 		} else {
 			glog.Infof("topic leader session found: %v", session)
 			break
@@ -587,11 +592,32 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPar
 	if err != nil {
 		glog.Infof("update channels after election failed: ", err)
 	}
+	return err
+}
+
+func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPartionMetaInfo) error {
+	err := self.waitOldLeaderRelease(topicInfo)
+	if err != nil {
+		glog.Infof("Leader is not released: %v", topicInfo)
+		return err
+	}
+	// choose another leader in ISR list, and add new node to ISR
+	// list.
+	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo)
+	if err != nil {
+		return err
+	}
+	topicInfo.Leader = newLeader
+
+	err = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
+	if err != nil {
+		return err
+	}
 	err = self.notifyEnableTopicWrite(topicInfo)
 	if err != nil {
 		glog.Infof("enable topic write failed: ", err)
 	}
-	return nil
+	return err
 }
 
 func (self *NSQLookupdCoordinator) handleTopicMigrate(topicInfo TopicPartionMetaInfo) {
@@ -1233,11 +1259,63 @@ func (self *NSQLookupdCoordinator) waitForFinalSyncedISR(topic string, partition
 	}
 }
 
+func (self *NSQLookupdCoordinator) transferTopicLeader(topicInfo *TopicPartionMetaInfo) error {
+	if len(topicInfo.ISR) < 2 {
+		return ErrNodeUnavailable
+	}
+	// try
+	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo)
+	if err != nil {
+		return err
+	}
+	if newLeader == "" {
+		return ErrLeaderElectionFail
+	}
+	err = self.notifyDisableTopicWrite(topicInfo)
+	if err != nil {
+		glog.Infof("disable write failed while transfer leader: %v", err)
+		return err
+	}
+	defer self.notifyEnableTopicWrite(topicInfo)
+	newLeader, newestLogID, err = self.chooseNewLeaderFromISR(topicInfo)
+	if err != nil {
+		return err
+	}
+	err = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
+
+	return err
+}
+
+func (self *NSQLookupdCoordinator) handlePrepareLeaveFromISR(topic string, partition int, nodeID string) error {
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("get topic info failed while sync isr.")
+		return err
+	}
+	if FindSlice(topicInfo.ISR, nodeID) == -1 {
+		return nil
+	}
+	if len(topicInfo.ISR)-1 <= topicInfo.Replica/2 {
+		glog.Infof("no enough isr node, leaving should wait.")
+		return ErrLeavingISRWait
+	}
+	if topicInfo.Leader == nodeID {
+		glog.Infof("the leader node will leave the isr, prepare transfer leader")
+		err := self.transferTopicLeader(topicInfo)
+		return err
+	}
+	return nil
+}
+
 func (self *NSQLookupdCoordinator) handleLeaveFromISR(topic string, partition int, leader *TopicLeaderSession, nodeID string) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		glog.Infof("get topic info failed while sync isr.")
 		return err
+	}
+	if topicInfo.Leader == nodeID {
+		glog.Infof("node should not leave as leader, need transfer leader first.")
+		return ErrLeavingISRAsLeader
 	}
 	if FindSlice(topicInfo.ISR, nodeID) == -1 {
 		return nil
