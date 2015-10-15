@@ -57,6 +57,20 @@ func TestPutMessage2Chan(t *testing.T) {
 	equal(t, msg.Body, outputMsg2.Body)
 }
 
+func TestChannelBackendMaxMsgSize(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	ch := topic.GetChannel("ch")
+
+	equal(t, ch.backend.(*diskQueue).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+}
+
 func TestInFlightWorker(t *testing.T) {
 	count := 250
 
