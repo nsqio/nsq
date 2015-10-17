@@ -82,7 +82,8 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] %s", client, params)
 		}
 
-		response, err := p.Exec(client, params)
+		var response []byte
+		response, err = p.Exec(client, params)
 		if err != nil {
 			ctx := ""
 			if parentErr := err.(protocol.ChildErr).Parent(); parentErr != nil {
@@ -92,6 +93,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
+				p.ctx.nsqd.logf("ERROR: [%s] - %s%s", client, sendErr, ctx)
 				break
 			}
 

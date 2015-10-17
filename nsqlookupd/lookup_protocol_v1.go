@@ -26,7 +26,6 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	var line string
 
 	client := NewClientV1(conn)
-	err = nil
 	reader := bufio.NewReader(client)
 	for {
 		line, err = reader.ReadString('\n')
@@ -37,7 +36,8 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		line = strings.TrimSpace(line)
 		params := strings.Split(line, " ")
 
-		response, err := p.Exec(client, reader, params)
+		var response []byte
+		response, err = p.Exec(client, reader, params)
 		if err != nil {
 			ctx := ""
 			if parentErr := err.(protocol.ChildErr).Parent(); parentErr != nil {
@@ -45,8 +45,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 			}
 			p.ctx.nsqlookupd.logf("ERROR: [%s] - %s%s", client, err, ctx)
 
-			_, err = protocol.SendResponse(client, []byte(err.Error()))
-			if err != nil {
+			_, sendErr := protocol.SendResponse(client, []byte(err.Error()))
+			if sendErr != nil {
+				p.ctx.nsqlookupd.logf("ERROR: [%s] - %s%s", client, sendErr, ctx)
 				break
 			}
 
