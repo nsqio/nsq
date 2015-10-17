@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -88,13 +89,21 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string) (*St
 	return nil, errors.New("Unable to access auth server")
 }
 
+func addScheme(url string) string {
+	lowerUrl := strings.ToLower(url)
+	if !strings.HasPrefix(lowerUrl, "http://") && !strings.HasPrefix(lowerUrl, "https://") {
+		url = fmt.Sprintf("http://%s", url)
+	}
+	return url
+}
+
 func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) {
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
 	v.Set("tls", tlsEnabled)
 	v.Set("secret", authSecret)
 
-	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+	endpoint := fmt.Sprintf("%s/auth?%s", addScheme(authd), v.Encode())
 
 	var authState State
 	client := http_api.NewClient(nil)
@@ -105,10 +114,11 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) 
 	// validation on response
 	for _, auth := range authState.Authorizations {
 		for _, p := range auth.Permissions {
+			// TODO: Add more granular permissions, for example delete, pause, etc
 			switch p {
 			case "subscribe", "publish":
 			default:
-				return nil, fmt.Errorf("unknown permission %s", p)
+				log.Printf("Warning: unknown permission %s", p)
 			}
 		}
 

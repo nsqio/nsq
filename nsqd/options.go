@@ -20,6 +20,7 @@ type Options struct {
 	BroadcastAddress       string   `flag:"broadcast-address"`
 	NSQLookupdTCPAddresses []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
 	AuthHTTPAddresses      []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	AuthRequired           uint16   `flag:"auth-required"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -94,6 +95,7 @@ func NewOptions() *Options {
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),
+		AuthRequired:           FlagTCPProtocol,
 
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 100 * 1024 * 1024,

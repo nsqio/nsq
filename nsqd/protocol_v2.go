@@ -419,7 +419,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		MaxDeflateLevel:     p.ctx.nsqd.getOpts().MaxDeflateLevel,
 		Snappy:              snappy,
 		SampleRate:          client.SampleRate,
-		AuthRequired:        p.ctx.nsqd.IsAuthEnabled(),
+		AuthRequired:        p.ctx.nsqd.IsAuthEnabledTCP(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
 	})
@@ -475,6 +475,8 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
+	opts := p.ctx.nsqd.getOpts()
+
 	if atomic.LoadInt32(&client.State) != stateInit {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot AUTH in current state")
 	}
@@ -488,9 +490,9 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "AUTH failed to read body size")
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxBodySize {
+	if int64(bodyLen) > opts.MaxBodySize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("AUTH body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
+			fmt.Sprintf("AUTH body too big %d > %d", bodyLen, opts.MaxBodySize))
 	}
 
 	if bodyLen <= 0 {
@@ -504,21 +506,23 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "AUTH failed to read body")
 	}
 
-	if client.HasAuthorizations() {
+	if client.Auth != nil {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH Already set")
 	}
 
-	if !client.ctx.nsqd.IsAuthEnabled() {
+	if !client.ctx.nsqd.IsAuthEnabledTCP() {
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_DISABLED", "AUTH Disabled")
 	}
 
-	if err := client.Auth(string(body)); err != nil {
+	err = client.Auth(string(body))
+	if err != nil {
 		// we don't want to leak errors contacting the auth server to untrusted clients
 		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_FAILED", "AUTH failed")
 	}
 
-	if !client.HasAuthorizations() {
+	permissionCount := len(client.AuthState.Authorizations)
+	if permissionCount == 0 {
 		return nil, protocol.NewFatalClientErr(nil, "E_UNAUTHORIZED", "AUTH No authorizations found")
 	}
 
@@ -529,7 +533,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 	}{
 		Identity:        client.AuthState.Identity,
 		IdentityURL:     client.AuthState.IdentityURL,
-		PermissionCount: len(client.AuthState.Authorizations),
+		PermissionCount: permissionCount,
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_ERROR", "AUTH error "+err.Error())
@@ -541,14 +545,13 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	return nil, nil
-
 }
 
 func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName string) error {
 	// if auth is enabled, the client must have authorized already
 	// compare topic/channel against cached authorization data (refetching if expired)
-	if client.ctx.nsqd.IsAuthEnabled() {
-		if !client.HasAuthorizations() {
+	if client.ctx.nsqd.IsAuthEnabledTCP() {
+		if client.AuthState == nil {
 			return protocol.NewFatalClientErr(nil, "E_AUTH_FIRST",
 				fmt.Sprintf("AUTH required before %s", cmd))
 		}
@@ -563,6 +566,7 @@ func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName str
 				fmt.Sprintf("AUTH failed for %s on %q %q", cmd, topicName, channelName))
 		}
 	}
+
 	return nil
 }
 

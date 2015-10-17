@@ -114,6 +114,51 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	s.router.ServeHTTP(w, req)
 }
 
+func (s *httpServer) checkAuth(req *http.Request, cmd, topicName, channelName string) error {
+	var isAuthEnabled func() bool
+	var tls int32
+	if req.TLS != nil {
+		isAuthEnabled = s.ctx.nsqd.IsAuthEnabledHTTPS
+		tls = 1
+	} else {
+		isAuthEnabled = s.ctx.nsqd.IsAuthEnabledHTTP
+		tls = 0
+	}
+
+	if isAuthEnabled() {
+		// TODO: Need to determine how to cache auth responses
+		authService := AuthService{
+			AuthParameters: AuthParameters{
+				AuthHTTPAddresses: s.ctx.nsqd.getOpts().AuthHTTPAddresses,
+				RemoteIP:          req.RemoteAddr,
+				TLS:               tls,
+			},
+		}
+
+		err := authService.Auth("TODO_SECRET")
+		if err != nil {
+			// we don't want to leak errors contacting the auth server to untrusted clients
+			s.ctx.nsqd.logf("ERROR: [%s] Auth Failed %s", s, err)
+			return http_api.Err{500, "E_AUTH_FAILED"}
+		}
+		// TODO: We'll need something like this if the secret isn't passed with the request
+		/*if !auth.HasAuthorizations() {
+			return http_api.Err{401, "E_AUTH_FIRST"}
+		}*/
+
+		ok, err := authService.IsAuthorized(topicName, channelName)
+		if err != nil {
+			// we don't want to leak errors contacting the auth server to untrusted clients
+			s.ctx.nsqd.logf("ERROR: [%s] Auth Failed %s", s, err)
+			return http_api.Err{500, "E_AUTH_FAILED"}
+		}
+		if !ok {
+			return http_api.Err{403, "E_UNAUTHORIZED"}
+		}
+	}
+	return nil
+}
+
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	health := s.ctx.nsqd.GetHealth()
 	if !s.ctx.nsqd.IsHealthy() {
@@ -187,6 +232,10 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
+	err := s.checkAuth(req, "PUB", "", "")
+	if err != nil {
+		return nil, err
+	}
 
 	if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -207,6 +256,11 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	}
 
 	reqParams, topic, err := s.getTopicFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.checkAuth(req, "PUB", topic.name, "")
 	if err != nil {
 		return nil, err
 	}
