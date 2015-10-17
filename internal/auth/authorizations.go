@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -86,7 +87,15 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string,
 		}
 		return authState, nil
 	}
-	return nil, errors.New("Unable to access auth server")
+	return nil, errors.New("unable to access auth server")
+}
+
+func addScheme(url string) string {
+	lowerUrl := strings.ToLower(url)
+	if !strings.HasPrefix(lowerUrl, "http://") && !strings.HasPrefix(lowerUrl, "https://") {
+		url = fmt.Sprintf("http://%s", url)
+	}
+	return url
 }
 
 func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
@@ -96,7 +105,7 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	v.Set("tls", tlsEnabled)
 	v.Set("secret", authSecret)
 
-	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+	endpoint := fmt.Sprintf("%s/auth?%s", addScheme(authd), v.Encode())
 
 	var authState State
 	client := http_api.NewClient(nil, connectTimeout, requestTimeout)
@@ -107,10 +116,11 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	// validation on response
 	for _, auth := range authState.Authorizations {
 		for _, p := range auth.Permissions {
+			// TODO (judwhite): Add more granular permissions, for example delete, pause, etc
 			switch p {
 			case "subscribe", "publish":
 			default:
-				return nil, fmt.Errorf("unknown permission %s", p)
+				log.Printf("Warning: unknown permission %s", p)
 			}
 		}
 

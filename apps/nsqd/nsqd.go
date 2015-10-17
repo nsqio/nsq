@@ -15,7 +15,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
-	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
@@ -73,6 +72,29 @@ func (t *tlsMinVersionOption) String() string {
 	return strconv.FormatInt(int64(*t), 10)
 }
 
+type authRequiredOption uint16
+
+func (t *authRequiredOption) Set(s string) error {
+	s = strings.ToLower(s)
+	for _, v := range strings.Split(s, ",") {
+		switch v {
+		case "tcp":
+			*t |= nsqd.FlagTCPProtocol
+		case "http":
+			*t |= nsqd.FlagHTTPProtocol
+		case "https":
+			*t |= nsqd.FlagHTTPSProtocol
+		default:
+			return fmt.Errorf("unknown auth-required value '%s'", v)
+		}
+	}
+	return nil
+}
+
+func (t *authRequiredOption) String() string {
+	return strconv.FormatInt(int64(*t), 10)
+}
+
 func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
@@ -93,6 +115,10 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 	flagSet.String("broadcast-address", opts.BroadcastAddress, "address that will be registered with lookupd (defaults to the OS hostname)")
+
+	var authRequired authRequiredOption
+	flagSet.Var(&authRequired, "auth-required", "protocols which require auth when --auth-http-address is set (may be given multiple times or comma separated 'tcp,http,https', default 'tcp')")
+
 	lookupdTCPAddrs := app.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 	flagSet.Duration("http-client-connect-timeout", opts.HTTPClientConnectTimeout, "timeout for HTTP connect")

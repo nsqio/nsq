@@ -35,6 +35,12 @@ const (
 	TLSRequired
 )
 
+const (
+	FlagTCPProtocol = 1 << iota
+	FlagHTTPProtocol
+	FlagHTTPSProtocol
+)
+
 type errStore struct {
 	err error
 }
@@ -787,6 +793,20 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (n *NSQD) IsAuthEnabled() bool {
-	return len(n.getOpts().AuthHTTPAddresses) != 0
+func (n *NSQD) IsAuthEnabledTCP() bool {
+	opts := n.getOpts()
+
+	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagTCPProtocol) == FlagTCPProtocol
+}
+
+func (n *NSQD) IsAuthEnabledHTTP() bool {
+	opts := n.getOpts()
+
+	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagHTTPProtocol) == FlagHTTPProtocol
+}
+
+func (n *NSQD) IsAuthEnabledHTTPS() bool {
+	opts := n.getOpts()
+
+	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagHTTPSProtocol) == FlagHTTPSProtocol
 }

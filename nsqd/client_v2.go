@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
-	"github.com/nsqio/nsq/internal/auth"
 )
 
 const defaultBufferSize = 16 * 1024
@@ -94,7 +93,6 @@ type clientV2 struct {
 	IdentifyEventChan chan identifyEvent
 	SubEventChan      chan *Channel
 
-	TLS     int32
 	Snappy  int32
 	Deflate int32
 
@@ -102,8 +100,7 @@ type clientV2 struct {
 	lenBuf   [4]byte
 	lenSlice []byte
 
-	AuthSecret string
-	AuthState  *auth.State
+	AuthService
 }
 
 func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
@@ -142,6 +139,12 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
 	}
+
+	c.AuthHTTPAddresses = ctx.nsqd.getOpts().AuthHTTPAddresses
+	c.RemoteIP = identifier
+	c.HTTPClientConnectTimeout = ctx.nsqd.getOpts().HTTPClientConnectTimeout
+	c.HTTPClientRequestTimeout = ctx.nsqd.getOpts().HTTPClientRequestTimeout
+
 	c.lenSlice = c.lenBuf[:]
 	return c
 }
@@ -205,11 +208,13 @@ func (c *clientV2) Stats() ClientStats {
 	clientID := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
+
 	var identity string
 	var identityURL string
-	if c.AuthState != nil {
-		identity = c.AuthState.Identity
-		identityURL = c.AuthState.IdentityURL
+	authState := c.AuthState
+	if authState != nil {
+		identity = authState.Identity
+		identityURL = authState.IdentityURL
 	}
 	c.metaLock.RUnlock()
 	stats := ClientStats{
@@ -229,7 +234,7 @@ func (c *clientV2) Stats() ClientStats {
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
 		Deflate:         atomic.LoadInt32(&c.Deflate) == 1,
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
-		Authed:          c.HasAuthorizations(),
+		Authed:          authState != nil,
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityURL,
 	}
@@ -536,54 +541,4 @@ func (c *clientV2) Flush() error {
 	}
 
 	return nil
-}
-
-func (c *clientV2) QueryAuthd() error {
-	remoteIP, _, err := net.SplitHostPort(c.String())
-	if err != nil {
-		return err
-	}
-
-	tls := atomic.LoadInt32(&c.TLS) == 1
-	tlsEnabled := "false"
-	if tls {
-		tlsEnabled = "true"
-	}
-
-	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
-		remoteIP, tlsEnabled, c.AuthSecret, c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
-		c.ctx.nsqd.getOpts().HTTPClientRequestTimeout)
-	if err != nil {
-		return err
-	}
-	c.AuthState = authState
-	return nil
-}
-
-func (c *clientV2) Auth(secret string) error {
-	c.AuthSecret = secret
-	return c.QueryAuthd()
-}
-
-func (c *clientV2) IsAuthorized(topic, channel string) (bool, error) {
-	if c.AuthState == nil {
-		return false, nil
-	}
-	if c.AuthState.IsExpired() {
-		err := c.QueryAuthd()
-		if err != nil {
-			return false, err
-		}
-	}
-	if c.AuthState.IsAllowed(topic, channel) {
-		return true, nil
-	}
-	return false, nil
-}
-
-func (c *clientV2) HasAuthorizations() bool {
-	if c.AuthState != nil {
-		return len(c.AuthState.Authorizations) != 0
-	}
-	return false
 }
