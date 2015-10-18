@@ -128,7 +128,6 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		GraphEnabled        bool
 		GraphiteURL         string
 		StatsdInterval      int
-		UseStatsdPrefixes   bool
 		StatsdCounterFormat string
 		StatsdGaugeFormat   string
 		StatsdPrefix        string
@@ -139,7 +138,6 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		GraphEnabled:        s.ctx.nsqadmin.getOpts().GraphiteURL != "",
 		GraphiteURL:         s.ctx.nsqadmin.getOpts().GraphiteURL,
 		StatsdInterval:      int(s.ctx.nsqadmin.getOpts().StatsdInterval / time.Second),
-		UseStatsdPrefixes:   s.ctx.nsqadmin.getOpts().UseStatsdPrefixes,
 		StatsdCounterFormat: s.ctx.nsqadmin.getOpts().StatsdCounterFormat,
 		StatsdGaugeFormat:   s.ctx.nsqadmin.getOpts().StatsdGaugeFormat,
 		StatsdPrefix:        s.ctx.nsqadmin.getOpts().StatsdPrefix,
