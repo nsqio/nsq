@@ -7,15 +7,6 @@ var AppState = require('../app_state');
 var formatStatsdKey = function(metricType, key) {
     var fullKey = key;
 
-    // Remove this check when the --use-statsd-prefixes field is removed.
-    if (!AppState.get('USE_STATSD_PREFIXES')) {
-        // If the user has overridden the default boolean, then
-        // we will assume they don't want any formatting at all.
-        // In the future, if the user requests no formatting, then
-        // they must set the counter and gauge format flags to empty strings.
-        return fullKey;
-    }
-
     if (metricType === 'counter') {
         var format = AppState.get('STATSD_COUNTER_FORMAT');
         fullKey = format.replace(/%s/g, key)
