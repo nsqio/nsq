@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bitly/nsq/internal/statsd"
+	"github.com/nsqio/nsq/internal/statsd"
 )
 
 type Uint64Slice []uint64

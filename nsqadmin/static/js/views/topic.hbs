@@ -1,3 +1,6 @@
+{{> warning}}
+{{> error}}
+
 <ol class="breadcrumb">
   <li><a class="link" href="/">Streams</a>
   <li class="active">{{name}}</li>
@@ -62,7 +65,12 @@
         {{#each nodes}}
         <tr>
             <td>
-                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/nodes/{{node}}">{{node}}</a>
+                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                {{#if show_broadcast_address}}
+                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{else}}
+                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>{{commafy depth}}</td>
@@ -146,7 +154,7 @@
         <table class="table table-bordered table-condensed">
             {{#if e2e_processing_latency.percentiles.length}}
             <tr>
-                <th colspan="{{#if graph_active}}9{{else}}8{{/if}}"></th>
+                <th colspan="{{#if graph_active}}10{{else}}9{{/if}}"></th>
                 <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
             </tr>
             {{/if}}
@@ -174,7 +182,7 @@
                 <td>{{commafy depth}}</td>
                 <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
                 <td>{{commafy in_flight_count}}</td>
-                <td>{{commafy defer_count}}</td>
+                <td>{{commafy deferred_count}}</td>
                 <td>{{commafy requeue_count}}</td>
                 <td>{{commafy timeout_count}}</td>
                 <td>{{commafy message_count}}</td>

@@ -1,13 +1,16 @@
-<p align="center"><img src="http://nsq.io/static/img/nsq.png"/></p>
+<p align="center">
+<img align="left" width="175" src="http://nsq.io/static/img/nsq_blue.png">
+<ul>
+<li><strong>Source</strong>: https://github.com/nsqio/nsq
+<li><strong>Issues</strong>: https://github.com/nsqio/nsq/issues
+<li><strong>Mailing List</strong>: <a href="https://groups.google.com/d/forum/nsq-users">nsq-users@googlegroups.com</a>
+<li><strong>IRC</strong>: #nsq on freenode
+<li><strong>Docs</strong>: http://nsq.io
+<li><strong>Twitter</strong>: <a href="https://twitter.com/nsqio">@nsqio</a>
+</ul>
+</p>
 
- * **Source**: [https://github.com/bitly/nsq][github]
- * **Issues**: [https://github.com/bitly/nsq/issues][issues]
- * **Mailing List**: [nsq-users@googlegroups.com](https://groups.google.com/d/forum/nsq-users)
- * **IRC**: #nsq on freenode
- * **Docs**: [http://nsq.io][docs]
- * **Twitter**: [@nsqio][nsqio_twitter]
-
-[![Build Status](https://secure.travis-ci.org/bitly/nsq.svg?branch=master)](http://travis-ci.org/bitly/nsq)
+[![Build Status](https://secure.travis-ci.org/nsqio/nsq.svg?branch=master)](http://travis-ci.org/nsqio/nsq) [![GitHub release](https://img.shields.io/github/release/nsqio/nsq.svg)](https://github.com/nsqio/nsq/releases/latest)
 
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.
@@ -23,8 +26,7 @@ Python libraries are available out of the box (as well as many other [client
 libraries][client_libraries]) and, if you're interested in building your own, there's a [protocol
 spec][protocol].
 
-The latest stable release is **[0.3.5][latest_tag]** ([ChangeLog][changelog]). We publish [binary
-releases][installing] for linux and darwin.
+We publish [binary releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
 
@@ -61,8 +63,15 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="http://augury.com"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://buzzfeed.com"><img src="http://nsq.io/static/img/buzzfeed_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://www.dotabuff.com"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://www.fastly.com"><img src="http://nsq.io/static/img/fastly_logo.png" width="97" align="middle"/></a>
+<a href="http://dotabuff.com"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://fastly.com"><img src="http://nsq.io/static/img/fastly_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://talky.io"><img src="http://nsq.io/static/img/talky_logo.png" width="97" align="middle"/></a><br/>
+
+<a href="https://groupme.com"><img src="http://nsq.io/static/img/groupme_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+
+## Code of Conduct
+
+Help us keep NSQ open and inclusive. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Authors
 
@@ -70,17 +79,14 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 ([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of
 [bitly][bitly] and all our [contributors][contributors].
 
-[docs]: http://nsq.io/
-[github]: https://github.com/bitly/nsq
-[issues]: https://github.com/bitly/nsq/issues
-[changelog]: ChangeLog.md
+Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
+
 [protocol]: http://nsq.io/clients/tcp_protocol_spec.html
 [installing]: http://nsq.io/deployment/installing.html
 [snakes_twitter]: https://twitter.com/imsnakes
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
 [features_guarantees]: http://nsq.io/overview/features_and_guarantees.html
-[latest_tag]: https://github.com/bitly/nsq/releases/tag/v0.3.5
-[contributors]: https://github.com/bitly/nsq/graphs/contributors
+[contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
-[nsqio_twitter]: https://twitter.com/nsqio
+[wolasi_twitter]: https://twitter.com/kisalow

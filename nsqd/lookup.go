@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/internal/version"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 func connectCallback(n *NSQD, hostname string, syncTopicChan chan *lookupPeer) func(*lookupPeer) {
@@ -67,7 +67,7 @@ func (n *NSQD) lookupLoop() {
 					continue
 				}
 				n.logf("LOOKUP(%s): adding peer", host)
-				lookupPeer := newLookupPeer(host, n.getOpts().Logger,
+				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.getOpts().Logger,
 					connectCallback(n, hostname, syncTopicChan))
 				lookupPeer.Command(nil) // start the connection
 				lookupPeers = append(lookupPeers, lookupPeer)

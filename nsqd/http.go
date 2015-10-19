@@ -11,15 +11,16 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/protocol"
-	"github.com/bitly/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/protocol"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 type httpServer struct {
@@ -91,7 +92,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/unpause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
 
 	// debug
-	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
+	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
 	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
 	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
 	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
@@ -105,7 +106,9 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		http_api.Respond(w, 403, "TLS_REQUIRED", nil)
+		resp := fmt.Sprintf(`{"message": "TLS_REQUIRED", "https_port": %d}`,
+			s.ctx.nsqd.RealHTTPSAddr().Port)
+		http_api.Respond(w, 403, "", resp)
 		return
 	}
 	s.router.ServeHTTP(w, req)
@@ -120,10 +123,24 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
 	return struct {
-		Version string `json:"version"`
+		Version          string `json:"version"`
+		BroadcastAddress string `json:"broadcast_address"`
+		Hostname         string `json:"hostname"`
+		HTTPPort         int    `json:"http_port"`
+		TCPPort          int    `json:"tcp_port"`
+		StartTime        int64  `json:"start_time"`
 	}{
-		Version: version.Binary,
+		Version:          version.Binary,
+		BroadcastAddress: s.ctx.nsqd.getOpts().BroadcastAddress,
+		Hostname:         hostname,
+		TCPPort:          s.ctx.nsqd.RealTCPAddr().Port,
+		HTTPPort:         s.ctx.nsqd.RealHTTPAddr().Port,
+		StartTime:        s.ctx.nsqd.GetStartTime().Unix(),
 	}, nil
 }
 
@@ -196,7 +213,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	var deferred time.Duration
 	if ds, ok := reqParams["defer"]; ok {
-		di, err := strconv.ParseInt(ds[0], 10, 64)
+		var di int64
+		di, err = strconv.ParseInt(ds[0], 10, 64)
 		if err != nil {
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
@@ -247,7 +265,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
 		total := 0
 		for !exit {
-			block, err := rdr.ReadBytes('\n')
+			var block []byte
+			block, err = rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
 					return nil, http_api.Err{500, "INTERNAL_ERROR"}

@@ -2,8 +2,11 @@ package nsqadmin
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,18 +14,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bitly/nsq/internal/http_api"
-	"github.com/bitly/nsq/internal/util"
-	"github.com/bitly/nsq/internal/version"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/util"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 type NSQAdmin struct {
 	sync.RWMutex
-	opts          *Options
-	httpListener  net.Listener
-	waitGroup     util.WaitGroupWrapper
-	notifications chan *AdminAction
-	graphiteURL   *url.URL
+	opts                *Options
+	httpListener        net.Listener
+	waitGroup           util.WaitGroupWrapper
+	notifications       chan *AdminAction
+	graphiteURL         *url.URL
+	httpClientTLSConfig *tls.Config
 }
 
 func New(opts *Options) *NSQAdmin {
@@ -49,6 +53,43 @@ func New(opts *Options) *NSQAdmin {
 			os.Exit(1)
 		}
 		return addr
+	}
+
+	if opts.HTTPClientTLSCert != "" && opts.HTTPClientTLSKey == "" {
+		n.logf("FATAL: --http-client-tls-key must be specified with --http-client-tls-cert")
+		os.Exit(1)
+	}
+
+	if opts.HTTPClientTLSKey != "" && opts.HTTPClientTLSCert == "" {
+		n.logf("FATAL: --http-client-tls-cert must be specified with --http-client-tls-key")
+		os.Exit(1)
+	}
+
+	n.httpClientTLSConfig = &tls.Config{
+		InsecureSkipVerify: opts.HTTPClientTLSInsecureSkipVerify,
+	}
+	if opts.HTTPClientTLSCert != "" && opts.HTTPClientTLSKey != "" {
+		cert, err := tls.LoadX509KeyPair(opts.HTTPClientTLSCert, opts.HTTPClientTLSKey)
+		if err != nil {
+			n.logf("FATAL: failed to LoadX509KeyPair %s, %s - %s",
+				opts.HTTPClientTLSCert, opts.HTTPClientTLSKey, err)
+			os.Exit(1)
+		}
+		n.httpClientTLSConfig.Certificates = []tls.Certificate{cert}
+	}
+	if opts.HTTPClientTLSRootCAFile != "" {
+		tlsCertPool := x509.NewCertPool()
+		caCertFile, err := ioutil.ReadFile(opts.HTTPClientTLSRootCAFile)
+		if err != nil {
+			n.logf("FATAL: failed to read TLS root CA file %s - %s",
+				opts.HTTPClientTLSRootCAFile, err)
+			os.Exit(1)
+		}
+		if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
+			n.logf("FATAL: failed to AppendCertsFromPEM %s", opts.HTTPClientTLSRootCAFile)
+			os.Exit(1)
+		}
+		n.httpClientTLSConfig.ClientCAs = tlsCertPool
 	}
 
 	// require that both the hostname and port be specified

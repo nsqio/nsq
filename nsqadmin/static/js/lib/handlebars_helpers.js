@@ -4,18 +4,37 @@ var Handlebars = require('hbsfy/runtime');
 
 var AppState = require('../app_state');
 
-var statsdPrefix = function(host, metricType) {
+var formatStatsdKey = function(metricType, key) {
+    var fullKey = key;
+
+    // Remove this check when the --use-statsd-prefixes field is removed.
+    if (!AppState.get('USE_STATSD_PREFIXES')) {
+        // If the user has overridden the default boolean, then
+        // we will assume they don't want any formatting at all.
+        // In the future, if the user requests no formatting, then
+        // they must set the counter and gauge format flags to empty strings.
+        return fullKey;
+    }
+
+    if (metricType === 'counter') {
+        var format = AppState.get('STATSD_COUNTER_FORMAT');
+        fullKey = format.replace(/%s/g, key)
+    } else if (metricType === 'gauge') {
+        var format = AppState.get('STATSD_GAUGE_FORMAT');
+        fullKey = format.replace(/%s/g, key)
+    }
+
+    return fullKey;
+}
+
+var statsdPrefix = function(host) {
     var prefix = AppState.get('STATSD_PREFIX');
     var statsdHostKey = host.replace(/[\.:]/g, '_');
     prefix = prefix.replace(/%s/g, statsdHostKey);
     if (prefix.substring(prefix.length, 1) !== '.') {
         prefix += '.';
     }
-    if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'counter') {
-        prefix = 'stats_counts.' + prefix;
-    } else if (AppState.get('USE_STATSD_PREFIXES') && metricType === 'gauge') {
-        prefix = 'stats.gauges.' + prefix;
-    }
+    
     return prefix;
 };
 
@@ -38,10 +57,6 @@ var metricType = function(key) {
 };
 /* eslint-enable key-spacing */
 
-var startForTimeframe = function(t) {
-    return '-' + (parseInt(t.substring(0, t.length - 1), 10) * 60) + 'min';
-};
-
 var genColorList = function(typ, key) {
     if (typ === 'topic' || typ === 'channel') {
         if (key === 'depth' || key === 'deferred_count') {
@@ -57,16 +72,19 @@ var genColorList = function(typ, key) {
 
 var genTargets = function(typ, node, ns1, ns2, key) {
     var targets = [];
-    var prefix = statsdPrefix(node ? node : '*', metricType(key));
+    var prefix = statsdPrefix(node ? node : '*');
     if (typ === 'topic') {
-        targets.push('sumSeries(' + prefix + 'topic.' + ns1 + '.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'channel') {
-        targets.push('sumSeries(' + prefix + 'topic.' + ns1 + '.channel.' + ns2 + '.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.channel.' + ns2 + '.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'node') {
         var target = prefix + 'mem.' + key;
         if (key === 'gc_runs') {
             target = 'movingAverage(' + target + ',45)';
         }
+        var fullKey = formatStatsdKey(metricType(key), target);
         targets.push(target);
     } else if (typ === 'e2e') {
         targets = _.map(ns1['percentiles'], function(p) {
@@ -80,10 +98,12 @@ var genTargets = function(typ, node, ns1, ns2, key) {
             if (node === '*') {
                 t = 'averageSeries(' + t + ')';
             }
+            var fullKey = formatStatsdKey(metricType(key), t);
             return 'scale(' + t + ',0.000001)';
         });
     } else if (typ === 'counter') {
-        targets.push('sumSeries(' + prefix + 'topic.*.channel.*.' + key + ')');
+        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.*.channel.*.' + key);
+        targets.push('sumSeries(' + fullKey + ')');
     }
     return targets;
 };
@@ -179,8 +199,14 @@ Handlebars.registerHelper('commafy', function(n) {
     return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 });
 
+function round(num, places) {
+    var multiplier = Math.pow(10, places);
+    return Math.round(num * multiplier) / multiplier;
+}
+
 Handlebars.registerHelper('nanotohuman', function(n) {
-    var s = "";
+    var s = '';
+    var v;
     if (n >= 3600000000000) {
         v = Math.floor(n / 3600000000000);
         n = n % 3600000000000;
@@ -192,13 +218,13 @@ Handlebars.registerHelper('nanotohuman', function(n) {
         s = v + 'm';
     }
     if (n >= 1000000000) {
-        n = n / 1000000000;
+        n = round(n / 1000000000, 2);
         s += n + 's';
     } else if (n >= 1000000) {
-        n = n / 1000000;
+        n = round(n / 1000000, 2);
         s += n + 'ms';
     } else if (n >= 1000) {
-        n = n / 1000;
+        n = round(n / 1000, 2);
         s += n + 'us';
     } else {
         s = n + 'ns';
@@ -220,7 +246,7 @@ Handlebars.registerHelper('sparkline', function(typ, node, ns1, ns2, key) {
         'yMin': '0',
         'lineMode': 'connected',
         'drawNullAsZero': 'false',
-        'from': startForTimeframe(AppState.get('graph_interval')),
+        'from': '-' + AppState.get('graph_interval'),
         'until': '-1min'
     };
 
@@ -242,7 +268,7 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
         'yMin': '0',
         'lineMode': 'connected',
         'drawNullAsZero': 'false',
-        'from': startForTimeframe(AppState.get('graph_interval')),
+        'from': '-' + AppState.get('graph_interval'),
         'until': '-1min'
     };
 
@@ -261,3 +287,6 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
 Handlebars.registerHelper('rate', function(typ, node, ns1, ns2) {
     return genTargets(typ, node, ns1, ns2, 'message_count')[0];
 });
+
+Handlebars.registerPartial('error', require('../views/error.hbs'));
+Handlebars.registerPartial('warning', require('../views/warning.hbs'));

@@ -11,8 +11,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/nsq/nsqlookupd"
-	"github.com/bitly/nsq/internal/version"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var (

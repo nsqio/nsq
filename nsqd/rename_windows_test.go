@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bitly/nsq/internal/util"
+	"github.com/nsqio/nsq/internal/util"
 )
 
 const TEST_FILE_COUNT = 500

@@ -1,6 +1,9 @@
 package nsqd
 
 import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"testing"
@@ -52,6 +55,20 @@ func TestPutMessage2Chan(t *testing.T) {
 	outputMsg2 := <-channel2.clientMsgChan
 	equal(t, msg.ID, outputMsg2.ID)
 	equal(t, msg.Body, outputMsg2.Body)
+}
+
+func TestChannelBackendMaxMsgSize(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	ch := topic.GetChannel("ch")
+
+	equal(t, ch.backend.(*diskQueue).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
 func TestInFlightWorker(t *testing.T) {
@@ -166,5 +183,59 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		stats := cl.Stats()
 		equal(t, stats.InFlightCount, int64(0))
 	}
+}
 
+func TestChannelHealth(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MemQueueSize = 2
+
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+
+	channel := topic.GetChannel("channel")
+	// cause channel.messagePump to exit so we can set channel.backend without
+	// a data race. side effect is it closes clientMsgChan, and messagePump is
+	// never restarted. note this isn't the intended usage of exitChan but gets
+	// around the data race without more invasive changes to how channel.backend
+	// is set/loaded.
+	channel.exitChan <- 1
+
+	channel.backend = &errorBackendQueue{}
+
+	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err := channel.PutMessage(msg)
+	equal(t, err, nil)
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = channel.PutMessage(msg)
+	equal(t, err, nil)
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = channel.PutMessage(msg)
+	nequal(t, err, nil)
+
+	url := fmt.Sprintf("http://%s/ping", httpAddr)
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 500)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	equal(t, string(body), "NOK - never gonna happen")
+
+	channel.backend = &errorRecoveredBackendQueue{}
+
+	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	err = channel.PutMessage(msg)
+	equal(t, err, nil)
+
+	resp, err = http.Get(url)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	equal(t, string(body), "OK")
 }

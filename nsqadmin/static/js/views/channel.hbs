@@ -1,3 +1,6 @@
+{{> warning}}
+{{> error}}
+
 <ol class="breadcrumb">
   <li><a class="link" href="/">Streams</a>
   <li><a class="link" href="/topics/{{urlencode topic}}">{{topic}}</a>
@@ -69,7 +72,11 @@
         {{#each nodes}}
         <tr>
             <td>
-                <a class="link" href="/nodes/{{node}}">{{node}}</a>
+                {{#if show_broadcast_address}}
+                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{else}}
+                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>{{commafy depth}}</td>
@@ -178,7 +185,7 @@
             </tr>
             {{#each clients}}
             <tr>
-                <td title="{{remote_address}}">{{hostname_port}}{{#if client_id}} ({{client_id}}){{/if}}</td>
+                <td title="{{remote_address}}">{{hostname_port}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
                 <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
                 <td>
                     {{#if sample_rate}}

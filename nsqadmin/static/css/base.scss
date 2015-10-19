@@ -159,3 +159,11 @@
     max-height:100%;
     overflow:auto;
 }
+
+.navbar-brand > img {
+    width: 30px;
+    height: 30px;
+    margin-right: 5px;
+    margin-top: -5px;
+    display: inline;
+}

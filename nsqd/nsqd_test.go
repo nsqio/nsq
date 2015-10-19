@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -10,12 +11,13 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/bitly/go-simplejson"
-	"github.com/bitly/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/http_api"
 )
 
 func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
@@ -39,7 +41,7 @@ func equal(t *testing.T, act, exp interface{}) {
 func nequal(t *testing.T, act, exp interface{}) {
 	if reflect.DeepEqual(exp, act) {
 		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
+		t.Logf("\033[31m%s:%d:\n\n\tnexp: %#v\n\n\tgot:  %#v\033[39m\n\n",
 			filepath.Base(file), line, exp, act)
 		t.FailNow()
 	}
@@ -78,7 +80,7 @@ func getMetadata(n *NSQD) (*simplejson.Json, error) {
 
 func API(endpoint string) (data *simplejson.Json, err error) {
 	d := make(map[string]interface{})
-	err = http_api.NegotiateV1(endpoint, &d)
+	err = http_api.NewClient(nil).NegotiateV1(endpoint, &d)
 	data = simplejson.New()
 	data.SetPath(nil, d)
 	return
@@ -109,7 +111,7 @@ func TestStartup(t *testing.T) {
 	// verify nsqd metadata shows no topics
 	err := nsqd.PersistMetadata()
 	equal(t, err, nil)
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
 	metaData, err := getMetadata(nsqd)
 	equal(t, err, nil)
@@ -117,7 +119,7 @@ func TestStartup(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(topics), 0)
 	nsqd.DeleteExistingTopic(topicName)
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
@@ -261,11 +263,11 @@ func TestPauseMetadata(t *testing.T) {
 	defer nsqd.Exit()
 
 	// avoid concurrency issue of async PersistMetadata() calls
-	nsqd.setFlag(flagLoading, true)
+	atomic.StoreInt32(&nsqd.isLoading, 1)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	nsqd.setFlag(flagLoading, false)
+	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata()
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
@@ -361,11 +363,11 @@ func TestCluster(t *testing.T) {
 	equal(t, err, nil)
 
 	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
@@ -413,7 +415,7 @@ func TestCluster(t *testing.T) {
 	equal(t, channel, "ch")
 
 	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.POSTV1(url)
+	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
@@ -437,4 +439,27 @@ func TestCluster(t *testing.T) {
 
 	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
 	equal(t, len(producers), 0)
+}
+
+func TestSetHealth(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	nsqd := New(opts)
+
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.IsHealthy(), true)
+
+	nsqd.SetHealth(errors.New("health error"))
+	nequal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "NOK - health error")
+	equal(t, nsqd.IsHealthy(), false)
+
+	nsqd.SetHealth(nil)
+	equal(t, nsqd.GetError(), nil)
+	equal(t, nsqd.GetHealth(), "OK")
+	equal(t, nsqd.IsHealthy(), true)
 }

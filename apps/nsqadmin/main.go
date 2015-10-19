@@ -11,9 +11,9 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/nsq/nsqadmin"
-	"github.com/bitly/nsq/internal/app"
-	"github.com/bitly/nsq/internal/version"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var (
@@ -28,11 +28,18 @@ var (
 	graphiteURL   = flagSet.String("graphite-url", "", "graphite HTTP address")
 	proxyGraphite = flagSet.Bool("proxy-graphite", false, "proxy HTTP requests to graphite")
 
-	useStatsdPrefixes = flagSet.Bool("use-statsd-prefixes", true, "expect statsd prefixed keys in graphite (ie: 'stats_counts.')")
-	statsdPrefix      = flagSet.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement, must match nsqd)")
-	statsdInterval    = flagSet.Duration("statsd-interval", 60*time.Second, "time interval nsqd is configured to push to statsd (must match nsqd)")
+	useStatsdPrefixes   = flagSet.Bool("use-statsd-prefixes", true, "(Deprecated - Use --statsd-counter-format and --statsd-gauge-format) Expect statsd prefixed keys in graphite (ie: 'stats.counters.' and 'stats.gauges.')")
+	statsdCounterFormat = flagSet.String("statsd-counter-format", "stats.counters.%s.count", "The counter stats key formatting applied by the implementation of statsd. If no formatting is desired, set this to an empty string.")
+	statsdGaugeFormat   = flagSet.String("statsd-gauge-format", "stats.gauges.%s", "The gauge stats key formatting applied by the implementation of statsd. If no formatting is desired, set this to an empty string.")
+	statsdPrefix        = flagSet.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement, must match nsqd)")
+	statsdInterval      = flagSet.Duration("statsd-interval", 60*time.Second, "time interval nsqd is configured to push to statsd (must match nsqd)")
 
 	notificationHTTPEndpoint = flagSet.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
+
+	httpClientTLSInsecureSkipVerify = flagSet.Bool("http-client-tls-insecure-skip-verify", false, "configure the HTTP client to skip verification of TLS certificates")
+	httpClientTLSRootCAFile         = flagSet.String("http-client-tls-root-ca-file", "", "path to CA file for the HTTP client")
+	httpClientTLSCert               = flagSet.String("http-client-tls-cert", "", "path to certificate file for the HTTP client")
+	httpClientTLSKey                = flagSet.String("http-client-tls-key", "", "path to key file for the HTTP client")
 
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
