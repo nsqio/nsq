@@ -189,6 +189,13 @@ type JoinISRState struct {
 	doneChan       chan struct{}
 }
 
+type RpcFailedInfo struct {
+	nodeID    string
+	topic     string
+	partition int
+	failTime  time.Time
+}
+
 type NSQLookupdCoordinator struct {
 	clusterKey       string
 	coordID          string
@@ -199,6 +206,7 @@ type NSQLookupdCoordinator struct {
 	nsqdNodeFailChan chan struct{}
 	stopChan         chan struct{}
 	joinISRState     map[string]*JoinISRState
+	failedRpcList    []RpcFailedInfo
 }
 
 func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator {
@@ -211,6 +219,7 @@ func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator
 		nsqdNodeFailChan: make(chan struct{}, 1),
 		stopChan:         make(chan struct{}),
 		joinISRState:     make(map[string]*JoinISRState),
+		failedRpcList:    make([]RpcFailedInfo, 0),
 	}
 }
 
@@ -289,7 +298,7 @@ func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 			_ = newTopicsMap
 
 			glog.Infof("topic loaded : %v", len(newTopics))
-			self.NotifyTopicsToNsqdForReload(newTopics)
+			self.NotifyTopicsToAllNsqdForReload(newTopics)
 		}
 		for _, t := range newTopics {
 			go self.watchTopicLeaderSession(self.leaderNode.GetID(), self.leaderNode.Epoch, t.Name, t.Partition)
@@ -301,12 +310,27 @@ func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 	}
 	go self.handleNsqdNodes(self.leaderNode.GetID(), self.leaderNode.Epoch)
 	go self.checkTopics(self.leaderNode.GetID(), self.leaderNode.Epoch)
+	go self.rpcFailRetryFunc(self.leaderNode.GetID(), self.leaderNode.Epoch)
 	go self.balanceTopicData(self.leaderNode.GetID(), self.leaderNode.Epoch)
 }
 
-func (self *NSQLookupdCoordinator) NotifyTopicsToNsqdForReload(topics []TopicPartionMetaInfo) {
+// for the nsqd node that temporally lost, we need send the related topics to
+// it .
+func (self *NSQLookupdCoordinator) NotifyTopicsToSingleNsqdForReload(topics []TopicPartionMetaInfo, nodeID string) {
 	for _, v := range topics {
-		self.notifyNsqdForTopicForReload(&v)
+		if FindSlice(v.ISR, nodeID) != -1 {
+			self.notifySingleNsqdForTopicReload(&v, nodeID)
+		}
+		if FindSlice(v.CatchupList, nodeID) != -1 {
+			self.sendUpdateCatchupToNsqd(self.leaderNode.Epoch, nodeID, &v)
+		}
+		//TODO: check disable write on the nsqd and continue enable the write
+	}
+}
+
+func (self *NSQLookupdCoordinator) NotifyTopicsToAllNsqdForReload(topics []TopicPartionMetaInfo) {
+	for _, v := range topics {
+		self.notifyAllNsqdsForTopicReload(&v)
 		//TODO: check disable write on the nsqd and continue enable the write
 	}
 }
@@ -349,6 +373,8 @@ func (self *NSQLookupdCoordinator) handleNsqdNodes(leaderID string, epoch int) {
 					// topicInfo to the node.
 					// notify the nsqd node to recheck topic info.(for
 					// temp lost)
+					topics, err := self.leadership.ScanTopics()
+					self.NotifyTopicsToSingleNsqdForReload(topics, newID)
 				}
 			}
 		case <-ticker.C:
@@ -601,6 +627,11 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPar
 		glog.Infof("Leader is not released: %v", topicInfo)
 		return err
 	}
+	err = self.notifyISRDisableTopicWrite(topicInfo)
+	if err != nil {
+		glog.Infof("failed notify disable write while election: %v", err)
+		return err
+	}
 	// choose another leader in ISR list, and add new node to ISR
 	// list.
 	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo)
@@ -709,6 +740,19 @@ func (self *NSQLookupdCoordinator) notifyEnableTopicWrite(topicInfo *TopicPartio
 			return ErrWaitingJoinISR
 		}
 	}
+	for _, node := range topicInfo.ISR {
+		if node == topicInfo.Leader {
+			continue
+		}
+		c, err := self.acquireRpcClient(node)
+		if err != nil {
+			return err
+		}
+		err = c.EnableTopicWrite(self.leaderNode.Epoch, topicInfo)
+		if err != nil {
+			return err
+		}
+	}
 	c, err := self.acquireRpcClient(topicInfo.Leader)
 	if err != nil {
 		return err
@@ -720,13 +764,30 @@ func (self *NSQLookupdCoordinator) notifyEnableTopicWrite(topicInfo *TopicPartio
 // each time change leader or isr list, make sure disable write.
 // Because we need make sure the new leader and isr is in sync before accepting the
 // write request.
-func (self *NSQLookupdCoordinator) notifyDisableTopicWrite(topicInfo *TopicPartionMetaInfo) error {
+func (self *NSQLookupdCoordinator) notifyLeaderDisableTopicWrite(topicInfo *TopicPartionMetaInfo) error {
 	c, err := self.acquireRpcClient(topicInfo.Leader)
 	if err != nil {
 		return err
 	}
 	err = c.DisableTopicWrite(self.leaderNode.Epoch, topicInfo)
 	return err
+}
+
+func (self *NSQLookupdCoordinator) notifyISRDisableTopicWrite(topicInfo *TopicPartionMetaInfo) error {
+	for _, node := range topicInfo.ISR {
+		if node == topicInfo.Leader {
+			continue
+		}
+		c, err := self.acquireRpcClient(node)
+		if err != nil {
+			return err
+		}
+		err = c.DisableTopicWrite(self.leaderNode.Epoch, topicInfo)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (self *NSQLookupdCoordinator) getNsqdLastCommitLogID(nid string, topicInfo *TopicPartionMetaInfo) (int64, error) {
@@ -988,6 +1049,57 @@ func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, ch
 	return err
 }
 
+// some failed rpc means lost, we should always try to notify to the node when they are available
+func (self *NSQLookupdCoordinator) rpcFailRetryFunc(leaderID string, epoch int) {
+	ticker := time.NewTicker(time.Second)
+	failList := make([]RpcFailedInfo, 0)
+	for {
+		select {
+		case <-ticker.C:
+			if self.leaderNode.GetID() != leaderID ||
+				self.leaderNode.Epoch != epoch {
+				return
+			}
+
+			failList = append(failList, self.failedRpcList...)
+			self.failedRpcList = self.failedRpcList[0:0]
+			for _, info := range failList {
+				topicInfo, err := self.leadership.GetTopicInfo(info.topic, info.partition)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				c, err := self.acquireRpcClient(info.nodeID)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				err = c.UpdateTopicInfo(self.leaderNode.Epoch, topicInfo)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				leaderSession, err := self.leadership.GetTopicLeaderSession(info.topic, info.partition)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				err = c.NotifyTopicLeaderSession(self.leaderNode.Epoch, topicInfo, leaderSession)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				err = c.UpdateChannelsForTopic(self.leaderNode.Epoch, topicInfo)
+				if err != nil {
+					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+			}
+			failList = failList[0:0]
+		}
+	}
+}
+
 func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo *TopicPartionMetaInfo, notifyRpcFunc func(string) error) error {
 	node := self.nsqdNodes[topicInfo.Leader]
 	err := RetryWithTimeout(func() error {
@@ -1059,7 +1171,18 @@ func (self *NSQLookupdCoordinator) notifyNsqdForTopic(topicInfo *TopicPartionMet
 	})
 }
 
-func (self *NSQLookupdCoordinator) notifyNsqdForTopicForReload(topicInfo *TopicPartionMetaInfo) error {
+func (self *NSQLookupdCoordinator) notifySingleNsqdForTopicReload(topicInfo *TopicPartionMetaInfo, nodeID string) error {
+	err := self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nodeID, topicInfo)
+	if err != nil {
+		return err
+	}
+	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
+	self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nodeID, topicInfo, leaderSession)
+	self.sendUpdateChannelsToNsqd(self.leaderNode.Epoch, nodeID, topicInfo)
+	return nil
+}
+
+func (self *NSQLookupdCoordinator) notifyAllNsqdsForTopicReload(topicInfo *TopicPartionMetaInfo) error {
 	err := self.doNotifyToTopicISRNodes(topicInfo, func(nid string) error {
 		return self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nid, topicInfo)
 	})
@@ -1067,35 +1190,59 @@ func (self *NSQLookupdCoordinator) notifyNsqdForTopicForReload(topicInfo *TopicP
 	if err != nil {
 		return err
 	}
+	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
+	self.notifyTopicLeaderSession(topicInfo.Name, topicInfo.Partition, leaderSession)
 	self.notifyNsqdUpdateChannels(topicInfo)
 	self.notifyNsqdUpdateCatchup(topicInfo)
 	return nil
 }
 
+func (self *NSQLookupdCoordinator) addRetryFailedRpc(topic string, partition int, nid string) {
+	failed := RpcFailedInfo{
+		nodeID:    nid,
+		topic:     topic,
+		partition: partition,
+		failTime:  time.Now(),
+	}
+	self.failedRpcList = append(self.failedRpcList, failed)
+}
+
 func (self *NSQLookupdCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) error {
 	c, err := self.acquireRpcClient(nid)
 	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 		return err
 	}
 	err = c.NotifyTopicLeaderSession(epoch, topicInfo, leaderSession)
+	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
+	}
 	return err
 }
 
 func (self *NSQLookupdCoordinator) sendTopicInfoToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo) error {
 	c, err := self.acquireRpcClient(nid)
 	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 		return err
 	}
 	err = c.UpdateTopicInfo(epoch, topicInfo)
+	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
+	}
 	return err
 }
 
 func (self *NSQLookupdCoordinator) sendUpdateCatchupToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo) error {
 	c, err := self.acquireRpcClient(nid)
 	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 		return err
 	}
 	err = c.UpdateCatchupForTopic(epoch, topicInfo)
+	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
+	}
 	return err
 }
 
@@ -1105,6 +1252,9 @@ func (self *NSQLookupdCoordinator) sendUpdateChannelsToNsqd(epoch int, nid strin
 		return err
 	}
 	err = c.UpdateChannelsForTopic(epoch, topicInfo)
+	if err != nil {
+		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
+	}
 	return err
 }
 
@@ -1160,7 +1310,7 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 	state := self.joinISRState[topicInfo.GetTopicDesp()]
 	state.waitingJoin = true
 
-	err = self.notifyDisableTopicWrite(topicInfo)
+	err = self.notifyLeaderDisableTopicWrite(topicInfo)
 	if err != nil {
 		glog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
 		state.waitingJoin = false
@@ -1271,7 +1421,7 @@ func (self *NSQLookupdCoordinator) transferTopicLeader(topicInfo *TopicPartionMe
 	if newLeader == "" {
 		return ErrLeaderElectionFail
 	}
-	err = self.notifyDisableTopicWrite(topicInfo)
+	err = self.notifyLeaderDisableTopicWrite(topicInfo)
 	if err != nil {
 		glog.Infof("disable write failed while transfer leader: %v", err)
 		return err

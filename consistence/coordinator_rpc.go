@@ -11,6 +11,7 @@ var (
 	ErrMissingTopic          = errors.New("missing topic")
 	ErrLocalNotReadyForWrite = errors.New("local topic is not ready for write.")
 	ErrLeavingISRWait        = errors.New("leaving isr need wait.")
+	ErrEpochLessThanCurrent  = errors.New("epoch should be increased")
 )
 
 type ErrRPCRetCode int
@@ -95,6 +96,10 @@ func (self *NsqdCoordinator) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeader
 		glog.Infof("topic partition missing.")
 		return ErrTopicNotCreated
 	}
+	if rpcTopicReq.LeaderEpoch < topicPartitionInfo.topicLeaderSession.LeaderEpoch {
+		glog.Infof("topic partition leadership epoch error.")
+		return ErrEpochLessThanCurrent
+	}
 	n := rpcTopicReq.TopicLeaderSession
 	topicPartitionInfo.topicLeaderSession = rpcTopicReq.TopicLeaderSession
 	if n.LeaderNode == nil || n.Session == "" {
@@ -128,14 +133,19 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 		topicData = make(map[int]*TopicSummaryData)
 		self.topicsData[rpcTopicReq.Name] = topicData
 	}
-	if _, ok := topicData[rpcTopicReq.Partition]; !ok {
-		topicData[rpcTopicReq.Partition] = &TopicSummaryData{disableWrite: true}
+	tpMetaInfo, ok := topicData[rpcTopicReq.Partition]
+	if !ok {
+		tpMetaInfo = &TopicSummaryData{disableWrite: true}
+		topicData[rpcTopicReq.Partition] = tpMetaInfo
 		rpcTopicReq.DisableWrite = true
 	}
+	if rpcTopicReq.Epoch < tpMetaInfo.topicInfo.Epoch {
+		return ErrEpochLessThanCurrent
+	}
 	// channels and catchup should only be modified in the separate rpc method.
-	rpcTopicReq.Channels = topicData[rpcTopicReq.Partition].topicInfo.Channels
-	rpcTopicReq.CatchupList = topicData[rpcTopicReq.Partition].topicInfo.CatchupList
-	topicData[rpcTopicReq.Partition].topicInfo = rpcTopicReq.TopicPartionMetaInfo
+	rpcTopicReq.Channels = tpMetaInfo.topicInfo.Channels
+	rpcTopicReq.CatchupList = tpMetaInfo.topicInfo.CatchupList
+	tpMetaInfo.topicInfo = rpcTopicReq.TopicPartionMetaInfo
 	self.updateLocalTopic(rpcTopicReq.TopicPartionMetaInfo)
 	if rpcTopicReq.Leader == self.myNode.GetID() {
 		if !self.IsMineLeaderForTopic(rpcTopicReq.Name, rpcTopicReq.Partition) {
@@ -218,7 +228,7 @@ func (self *NsqdCoordinator) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo
 
 	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
 	if FindSlice(tp.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-		self.catchupFromLeader(tp.topicInfo)
+		go self.catchupFromLeader(tp.topicInfo)
 	}
 
 	return nil

@@ -148,6 +148,7 @@ func (self *NsqdCoordinator) Start() error {
 	}
 	go self.watchNsqLookupd()
 	go self.loadLocalTopicData()
+	go self.checkForUnusedTopics()
 	// for each topic, wait other replicas and sync data with leader,
 	// begin accept client request.
 	rpc.Accept(self.rpcListener)
@@ -276,6 +277,37 @@ func (self *NsqdCoordinator) checkLocalTopicForISR(topicInfo *TopicPartionMetaIn
 		return ErrLocalForwardThanLeader
 	}
 	return nil
+}
+
+func (self *NsqdCoordinator) checkForUnusedTopics() {
+	ticker := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-ticker.C:
+			tmpChecks := make(map[string]map[int]bool, len(self.topicsData))
+			for topic, info := range self.topicsData {
+				for pid, summary := range info {
+					if _, ok := tmpChecks[topic]; !ok {
+						tmpChecks[topic] = make(map[int]bool)
+					}
+					tmpChecks[topic][pid] = true
+				}
+			}
+			for topic, info := range tmpChecks {
+				for pid, _ := range info {
+					topicMeta, err := self.leadership.GetTopicInfo(topic, pid)
+					if err != nil {
+						continue
+					}
+					if FindSlice(topicMeta.ISR, self.myNode.GetID()) == -1 &&
+						FindSlice(topicMeta.CatchupList, self.myNode.GetID()) == -1 {
+						glog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
+						delete(self.topicsData[topic], pid)
+					}
+				}
+			}
+		}
+	}
 }
 
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo TopicPartionMetaInfo) error {
