@@ -147,7 +147,7 @@ func TestChannelEmpty(t *testing.T) {
 	test.Equal(t, 0, len(channel.inFlightPQ))
 	test.Equal(t, 0, len(channel.deferredMessages))
 	test.Equal(t, 0, len(channel.deferredPQ))
-	test.Equal(t, int64(0), channel.Depth())
+	test.Equal(t, uint64(0), channel.Depth())
 }
 
 func TestChannelEmptyConsumer(t *testing.T) {

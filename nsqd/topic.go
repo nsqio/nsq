@@ -165,7 +165,7 @@ func (t *Topic) Pub(data [][]byte) error {
 	if err != nil {
 		return err
 	}
-	t.rs.AddRange(Range{High: int64(startIdx), Low: int64(endIdx)})
+	t.rs.AddRange(Range{Low: int64(startIdx), High: int64(endIdx)})
 	atomic.AddUint64(&t.messageCount, uint64(len(data)))
 	var total uint64
 	for _, b := range data {
