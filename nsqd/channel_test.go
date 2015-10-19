@@ -57,6 +57,21 @@ func TestPutMessage2Chan(t *testing.T) {
 	test.Equal(t, body, outputMsg2.Body)
 }
 
+// TODO: (WAL) fixme
+// func TestChannelBackendMaxMsgSize(t *testing.T) {
+// 	opts := NewOptions()
+// 	opts.Logger = newTestLogger(t)
+// 	_, _, nsqd := mustStartNSQD(opts)
+// 	defer os.RemoveAll(opts.DataPath)
+// 	defer nsqd.Exit()
+//
+// 	topicName := "test_channel_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
+// 	topic := nsqd.GetTopic(topicName)
+// 	ch := topic.GetChannel("ch")
+//
+// 	test.Equal(t, int32(opts.MaxMsgSize+minValidMsgLength), ch.backend.(*diskQueue).maxMsgSize)
+// }
+
 func TestInFlightWorker(t *testing.T) {
 	count := 250
 

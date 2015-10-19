@@ -55,7 +55,7 @@ func TestGetChannel(t *testing.T) {
 
 type errorWAL struct{}
 
-func (d *errorWAL) Append([][]byte) (uint64, uint64, error) {
+func (d *errorWAL) Append([][]byte, []uint32) (uint64, uint64, error) {
 	return 0, 0, errors.New("never gonna happen")
 }
 func (d *errorWAL) Close() error                             { return nil }
@@ -64,9 +64,9 @@ func (d *errorWAL) Empty() error                             { return nil }
 func (d *errorWAL) Depth() uint64                            { return 0 }
 func (d *errorWAL) GetCursor(idx uint64) (wal.Cursor, error) { return nil, nil }
 
-type errorRecoveredBackendQueue struct{ errorBackendQueue }
-
-func (d *errorRecoveredBackendQueue) Put([]byte) error { return nil }
+// type errorRecoveredBackendQueue struct{ errorBackendQueue }
+//
+// func (d *errorRecoveredBackendQueue) Put([]byte) error { return nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
@@ -92,8 +92,9 @@ func TestHealth(t *testing.T) {
 	test.Equal(t, 500, resp.StatusCode)
 	rbody, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	test.Equal(t, "NOK - never gonna happen", string(body))
+	test.Equal(t, "NOK - never gonna happen", string(rbody))
 
+	// TODO: (WAL) fixme
 	// topic.backend = &errorRecoveredBackendQueue{}
 	//
 	// msg = NewMessage(topic.GenerateID(), make([]byte, 100))
@@ -188,6 +189,20 @@ func TestPause(t *testing.T) {
 	test.Equal(t, int64(0), topic.Depth())
 	test.Equal(t, int64(1), channel.Depth())
 }
+
+// TODO: (WAL) fixme
+// func TestTopicBackendMaxMsgSize(t *testing.T) {
+// 	opts := NewOptions()
+// 	opts.Logger = newTestLogger(t)
+// 	_, _, nsqd := mustStartNSQD(opts)
+// 	defer os.RemoveAll(opts.DataPath)
+// 	defer nsqd.Exit()
+//
+// 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
+// 	topic := nsqd.GetTopic(topicName)
+//
+// 	test.Equal(t, int32(opts.MaxMsgSize+minValidMsgLength), topic.backend.(*diskQueue).maxMsgSize)
+// }
 
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
