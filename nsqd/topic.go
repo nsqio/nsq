@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/klauspost/crc32"
 	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/quantile"
@@ -149,13 +150,17 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	return nil
 }
 
-func (t *Topic) Pub(data [][]byte, crc []uint32) error {
+func (t *Topic) Pub(data [][]byte) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
 	// TODO: (WAL) health
+	crc := make([]uint32, 0, len(data))
+	for _, d := range data {
+		crc = append(crc, crc32.ChecksumIEEE(d))
+	}
 	startIdx, endIdx, err := t.wal.Append(data, crc)
 	if err != nil {
 		return err
