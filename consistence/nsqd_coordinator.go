@@ -687,7 +687,6 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 			if FindSlice(tpData.topicInfo.ISR, self.myNode.GetID()) == -1 {
 				continue
 			}
-			self.prepareLeaveFromISR(topicName, pid)
 			if len(tpData.topicInfo.ISR)-1 <= tpData.topicInfo.Replica/2 {
 				glog.Infof("The isr nodes in topic %v is not enough, waiting...", tpData.topicInfo.GetTopicDesp())
 				// we need notify lookup to add new isr since I am leaving.
@@ -695,14 +694,18 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				time.Sleep(time.Second * 30)
 			}
 
-			if tpData.topicLeaderSession.LeaderNode.GetID() != self.myNode.GetID() {
-				// not leader
-				self.requestLeaveFromISR(topicName, pid)
-				continue
+			// prepare will handle the leader transfer.
+			err := self.prepareLeaveFromISR(topicName, pid)
+			if err != nil {
+				glog.Infof("failed to prepare the leave request: %v", err)
 			}
-			// notify lookup to transfer the leader to other node in the isr
-			// wait leader transfer
-			glog.Infof("The leader for topic %v is transfered.", tpData.topicInfo.GetTopicDesp())
+
+			if tpData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
+				// leader
+				self.leadership.ReleaseTopicLeader(topicName, pid)
+				glog.Infof("The leader for topic %v is transfered.", tpData.topicInfo.GetTopicDesp())
+			}
+			self.requestLeaveFromISR(topicName, pid)
 		}
 	}
 	glog.Infof("prepare leaving finished.")
