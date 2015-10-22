@@ -93,26 +93,30 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func getTopicChan(command string, params []string) (string, string, error) {
-	if len(params) == 0 {
-		return "", "", protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
+func getTopicChan(command string, params []string) (string, string, string, error) {
+	if len(params) <= 1 {
+		return "", "", "", protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
 	}
 
 	topicName := params[0]
+	partitionID := params[1]
 	var channelName string
-	if len(params) >= 2 {
-		channelName = params[1]
+	if len(params) >= 3 {
+		channelName = params[2]
 	}
 
 	if !protocol.IsValidTopicName(topicName) {
-		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
+		return "", "", "", protocol.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
 	}
 
 	if channelName != "" && !protocol.IsValidChannelName(channelName) {
-		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
+		return "", "", "", protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
 
-	return topicName, channelName, nil
+	if partitionID != "" && !IsValidPartitionID(partitionID) {
+		return "", "", "", protocol.NewFatalClientErr(nil, "E_BAD_PARTITIONID", fmt.Sprintf("%s partition id '%s' is not valid", command, partitionID))
+	}
+	return topicName, channelName, partitionID, nil
 }
 
 func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
@@ -120,19 +124,19 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
-	topic, channel, err := getTopicChan("REGISTER", params)
+	topic, channel, pid, err := getTopicChan("REGISTER", params)
 	if err != nil {
 		return nil, err
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
+		key := Registration{"channel", topic, channel, pid}
 		if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
-			p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
-				client, "channel", topic, channel)
+			p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s pid:%s",
+				client, "channel", topic, channel, pid)
 		}
 	}
-	key := Registration{"topic", topic, ""}
+	key := Registration{"topic", topic, "", pid}
 	if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 		p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
 			client, "topic", topic, "")
@@ -146,13 +150,13 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
 	}
 
-	topic, channel, err := getTopicChan("UNREGISTER", params)
+	topic, channel, pid, err := getTopicChan("UNREGISTER", params)
 	if err != nil {
 		return nil, err
 	}
 
 	if channel != "" {
-		key := Registration{"channel", topic, channel}
+		key := Registration{"channel", topic, channel, pid}
 		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
 		if removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
@@ -167,7 +171,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// remove all of the channel registrations...
 		// normally this shouldn't happen which is why we print a warning message
 		// if anything is actually removed
-		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
+		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*", pid)
 		for _, r := range registrations {
 			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
 				p.ctx.nsqlookupd.logf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
@@ -175,7 +179,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 			}
 		}
 
-		key := Registration{"topic", topic, ""}
+		key := Registration{"topic", topic, "", pid}
 		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
@@ -224,7 +228,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		client, peerInfo.BroadcastAddress, peerInfo.TCPPort, peerInfo.HTTPPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
-	if p.ctx.nsqlookupd.DB.AddProducer(Registration{"client", "", ""}, &Producer{peerInfo: client.peerInfo}) {
+	if p.ctx.nsqlookupd.DB.AddProducerClient(Registration{"client", "", "", ""}, &Producer{peerInfo: client.peerInfo}) {
 		p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
 	}
 

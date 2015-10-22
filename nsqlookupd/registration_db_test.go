@@ -19,24 +19,24 @@ func TestRegistrationDB(t *testing.T) {
 	db := NewRegistrationDB()
 
 	// add producers
-	db.AddProducer(Registration{"c", "a", ""}, p1)
-	db.AddProducer(Registration{"c", "a", ""}, p2)
-	db.AddProducer(Registration{"c", "a", "b"}, p2)
-	db.AddProducer(Registration{"d", "a", ""}, p3)
-	db.AddProducer(Registration{"t", "a", ""}, p4)
+	db.AddProducer(Registration{"c", "a", "", "0"}, p1)
+	db.AddProducer(Registration{"c", "a", "", "0"}, p2)
+	db.AddProducer(Registration{"c", "a", "b", "0"}, p2)
+	db.AddProducer(Registration{"d", "a", "", "0"}, p3)
+	db.AddProducer(Registration{"t", "a", "", "0"}, p4)
 
 	// find producers
-	r := db.FindRegistrations("c", "*", "").Keys()
+	r := db.FindRegistrations("c", "*", "", "0").Keys()
 	equal(t, len(r), 1)
 	equal(t, r[0], "a")
 
-	p := db.FindProducers("t", "*", "")
+	p := db.FindProducers("t", "*", "", "0")
 	equal(t, len(p), 1)
-	p = db.FindProducers("c", "*", "")
+	p = db.FindProducers("c", "*", "", "0")
 	equal(t, len(p), 2)
-	p = db.FindProducers("c", "a", "")
+	p = db.FindProducers("c", "a", "", "0")
 	equal(t, len(p), 2)
-	p = db.FindProducers("c", "*", "b")
+	p = db.FindProducers("c", "*", "b", "0")
 	equal(t, len(p), 1)
 	equal(t, p[0].peerInfo.id, p2.peerInfo.id)
 
@@ -44,7 +44,7 @@ func TestRegistrationDB(t *testing.T) {
 	equal(t, len(p.FilterByActive(sec30, sec30)), 0)
 	p2.peerInfo.lastUpdate = time.Now().UnixNano()
 	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
-	p = db.FindProducers("c", "*", "")
+	p = db.FindProducers("c", "*", "", "0")
 	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
 
 	// tombstoning
@@ -57,33 +57,35 @@ func TestRegistrationDB(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	equal(t, len(p.FilterByActive(sec30, 5*time.Millisecond)), 2)
 	// make sure we can still retrieve p1 from another registration see #148
-	equal(t, len(db.FindProducers("t", "*", "").FilterByActive(sec30, sec30)), 1)
+	equal(t, len(db.FindProducers("t", "*", "", "0").FilterByActive(sec30, sec30)), 1)
 
 	// keys and subkeys
-	k := db.FindRegistrations("c", "b", "").Keys()
+	k := db.FindRegistrations("c", "b", "", "0").Keys()
 	equal(t, len(k), 0)
-	k = db.FindRegistrations("c", "a", "").Keys()
+	k = db.FindRegistrations("c", "a", "", "0").Keys()
 	equal(t, len(k), 1)
 	equal(t, k[0], "a")
-	k = db.FindRegistrations("c", "*", "b").SubKeys()
+	k = db.FindRegistrations("c", "*", "b", "0").SubKeys()
 	equal(t, len(k), 1)
 	equal(t, k[0], "b")
 
 	// removing producers
-	db.RemoveProducer(Registration{"c", "a", ""}, p1.peerInfo.id)
-	p = db.FindProducers("c", "*", "*")
+	db.RemoveProducer(Registration{"c", "a", "", "0"}, p1.peerInfo.id)
+	p = db.FindProducers("c", "*", "*", "0")
 	equal(t, len(p), 1)
 
-	db.RemoveProducer(Registration{"c", "a", ""}, p2.peerInfo.id)
-	db.RemoveProducer(Registration{"c", "a", "b"}, p2.peerInfo.id)
-	p = db.FindProducers("c", "*", "*")
+	db.RemoveProducer(Registration{"c", "a", "", "0"}, p2.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", "b", "0"}, p2.peerInfo.id)
+	p = db.FindProducers("c", "*", "*", "0")
 	equal(t, len(p), 0)
 
 	// do some key removals
-	k = db.FindRegistrations("c", "*", "*").Keys()
-	equal(t, len(k), 2)
-	db.RemoveRegistration(Registration{"c", "a", ""})
-	db.RemoveRegistration(Registration{"c", "a", "b"})
-	k = db.FindRegistrations("c", "*", "*").Keys()
+	regs := db.FindRegistrations("c", "*", "*", "0")
+	k = regs.Keys()
+	equal(t, len(regs), 2)
+	equal(t, len(k), 1)
+	db.RemoveRegistration(Registration{"c", "a", "", "0"})
+	db.RemoveRegistration(Registration{"c", "a", "b", "0"})
+	k = db.FindRegistrations("c", "*", "*", "0").Keys()
 	equal(t, len(k), 0)
 }

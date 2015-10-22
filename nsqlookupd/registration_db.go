@@ -2,6 +2,7 @@ package nsqlookupd
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,10 +14,12 @@ type RegistrationDB struct {
 }
 
 type Registration struct {
-	Category string
-	Key      string
-	SubKey   string
+	Category    string
+	Key         string
+	SubKey      string
+	PartitionID string
 }
+
 type Registrations []Registration
 
 type PeerInfo struct {
@@ -67,8 +70,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 	}
 }
 
-// add a producer to a registration
-func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
+func (r *RegistrationDB) AddProducerClient(k Registration, p *Producer) bool {
 	r.Lock()
 	defer r.Unlock()
 	producers := r.registrationMap[k]
@@ -82,6 +84,18 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 		r.registrationMap[k] = append(producers, p)
 	}
 	return !found
+}
+
+// add a producer to a registration
+func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
+	if k.PartitionID == "" {
+		return false
+	}
+	pid, err := strconv.Atoi(k.PartitionID)
+	if err != nil || pid < 0 {
+		return false
+	}
+	return r.AddProducerClient(k, p)
 }
 
 // remove a producer from a registration
@@ -113,15 +127,15 @@ func (r *RegistrationDB) RemoveRegistration(k Registration) {
 	delete(r.registrationMap, k)
 }
 
-func (r *RegistrationDB) needFilter(key string, subkey string) bool {
-	return key == "*" || subkey == "*"
+func (r *RegistrationDB) needFilter(key string, subkey string, pid string) bool {
+	return key == "*" || subkey == "*" || pid == "*"
 }
 
-func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string) Registrations {
+func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string, pid string) Registrations {
 	r.RLock()
 	defer r.RUnlock()
-	if !r.needFilter(key, subkey) {
-		k := Registration{category, key, subkey}
+	if !r.needFilter(key, subkey, pid) {
+		k := Registration{category, key, subkey, pid}
 		if _, ok := r.registrationMap[k]; ok {
 			return Registrations{k}
 		}
@@ -129,7 +143,7 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 	}
 	results := Registrations{}
 	for k := range r.registrationMap {
-		if !k.IsMatch(category, key, subkey) {
+		if !k.IsMatch(category, key, subkey, pid) {
 			continue
 		}
 		results = append(results, k)
@@ -137,17 +151,17 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 	return results
 }
 
-func (r *RegistrationDB) FindProducers(category string, key string, subkey string) Producers {
+func (r *RegistrationDB) FindProducers(category string, key string, subkey string, pid string) Producers {
 	r.RLock()
 	defer r.RUnlock()
-	if !r.needFilter(key, subkey) {
-		k := Registration{category, key, subkey}
+	if !r.needFilter(key, subkey, pid) {
+		k := Registration{category, key, subkey, pid}
 		return r.registrationMap[k]
 	}
 
 	results := Producers{}
 	for k, producers := range r.registrationMap {
-		if !k.IsMatch(category, key, subkey) {
+		if !k.IsMatch(category, key, subkey, pid) {
 			continue
 		}
 		for _, producer := range producers {
@@ -180,7 +194,7 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	return results
 }
 
-func (k Registration) IsMatch(category string, key string, subkey string) bool {
+func (k Registration) IsMatch(category string, key string, subkey string, pid string) bool {
 	if category != k.Category {
 		return false
 	}
@@ -190,13 +204,16 @@ func (k Registration) IsMatch(category string, key string, subkey string) bool {
 	if subkey != "*" && k.SubKey != subkey {
 		return false
 	}
+	if pid != "*" && k.PartitionID != pid {
+		return false
+	}
 	return true
 }
 
-func (rr Registrations) Filter(category string, key string, subkey string) Registrations {
+func (rr Registrations) Filter(category string, key string, subkey string, pid string) Registrations {
 	output := Registrations{}
 	for _, k := range rr {
-		if k.IsMatch(category, key, subkey) {
+		if k.IsMatch(category, key, subkey, pid) {
 			output = append(output, k)
 		}
 	}
@@ -204,19 +221,45 @@ func (rr Registrations) Filter(category string, key string, subkey string) Regis
 }
 
 func (rr Registrations) Keys() []string {
-	keys := make([]string, len(rr))
-	for i, k := range rr {
-		keys[i] = k.Key
+	keys := make([]string, 0, len(rr))
+	dupCheck := make(map[string]struct{}, len(keys)*2)
+	for _, k := range rr {
+		if _, ok := dupCheck[k.Key]; ok {
+			continue
+		}
+		keys = append(keys, k.Key)
+		dupCheck[k.Key] = struct{}{}
 	}
 	return keys
 }
 
 func (rr Registrations) SubKeys() []string {
-	subkeys := make([]string, len(rr))
-	for i, k := range rr {
-		subkeys[i] = k.SubKey
+	subkeys := make([]string, 0, len(rr))
+	dupCheck := make(map[string]struct{}, len(subkeys)*2)
+	for _, k := range rr {
+		if _, ok := dupCheck[k.SubKey]; ok {
+			continue
+		}
+		subkeys = append(subkeys, k.SubKey)
+		dupCheck[k.SubKey] = struct{}{}
 	}
 	return subkeys
+}
+
+func (rr Registrations) PartitionIDStrs() []string {
+	pids := make([]string, len(rr))
+	for i, k := range rr {
+		pids[i] = k.PartitionID
+	}
+	return pids
+}
+
+func (rr Registrations) PartitionIDs() []int {
+	pids := make([]int, len(rr))
+	for i, k := range rr {
+		pids[i], _ = strconv.Atoi(k.PartitionID)
+	}
+	return pids
 }
 
 func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLifetime time.Duration) Producers {

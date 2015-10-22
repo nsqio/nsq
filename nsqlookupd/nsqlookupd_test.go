@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/go-nsq"
 	"github.com/bitly/go-simplejson"
-	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
 )
@@ -95,7 +95,7 @@ func TestBasicLookupd(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
+	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
 	equal(t, len(topics), 0)
 
 	topicName := "connectmsg"
@@ -106,7 +106,7 @@ func TestBasicLookupd(t *testing.T) {
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
-	nsq.Register(topicName, "channel1").WriteTo(conn)
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
@@ -119,10 +119,10 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(returnedProducers), 1)
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
 	equal(t, len(topics), 1)
 
-	producers := nsqlookupd.DB.FindProducers("topic", topicName, "")
+	producers := nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
 	equal(t, len(producers), 1)
 	producer := producers[0]
 
@@ -194,7 +194,7 @@ func TestChannelUnregister(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*")
+	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
 	equal(t, len(topics), 0)
 
 	topicName := "channel_unregister"
@@ -206,28 +206,28 @@ func TestChannelUnregister(t *testing.T) {
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
-	nsq.Register(topicName, "ch1").WriteTo(conn)
+	nsq.Register(topicName, "0", "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
 	equal(t, len(topics), 1)
 
-	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
+	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
 	equal(t, len(channels), 1)
 
-	nsq.UnRegister(topicName, "ch1").WriteTo(conn)
+	nsq.UnRegister(topicName, "0", "ch1").WriteTo(conn)
 	v, err = nsq.ReadResponse(conn)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "")
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
 	equal(t, len(topics), 1)
 
 	// we should still have mention of the topic even though there is no producer
 	// (ie. we haven't *deleted* the channel, just unregistered as a producer)
-	channels = nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
+	channels = nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
 	equal(t, len(channels), 1)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
@@ -253,11 +253,11 @@ func TestTombstoneRecover(t *testing.T) {
 
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").WriteTo(conn)
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	nsq.Register(topicName2, "channel2").WriteTo(conn)
+	nsq.Register(topicName2, "0", "channel2").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -301,7 +301,7 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").WriteTo(conn)
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -316,7 +316,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	producers, _ := data.Get("producers").Array()
 	equal(t, len(producers), 0)
 
-	nsq.UnRegister(topicName, "").WriteTo(conn)
+	nsq.UnRegister(topicName, "0", "").WriteTo(conn)
 	_, err = nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -345,7 +345,7 @@ func TestInactiveNodes(t *testing.T) {
 
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").WriteTo(conn)
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -378,7 +378,7 @@ func TestTombstonedNodes(t *testing.T) {
 
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
-	nsq.Register(topicName, "channel1").WriteTo(conn)
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -400,4 +400,161 @@ func TestTombstonedNodes(t *testing.T) {
 	equal(t, len(producers[0].Topics), 1)
 	equal(t, producers[0].Topics[0].Topic, topicName)
 	equal(t, producers[0].Topics[0].Tombstoned, true)
+}
+
+func TestTopicPartitions(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
+	defer nsqlookupd.Exit()
+
+	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
+	equal(t, len(topics), 0)
+
+	topicName := "topic_partitions"
+
+	conn_p1 := mustConnectLookupd(t, tcpAddr)
+	conn_p2 := mustConnectLookupd(t, tcpAddr)
+	conn_p1_ip := "ip.address.p1"
+	conn_p2_ip := "ip.address.p2"
+	fakeVer := "fake-version"
+
+	tcpPort := 5000
+	httpPort := 5555
+	identify(t, conn_p1, conn_p1_ip, tcpPort, httpPort, fakeVer)
+	identify(t, conn_p2, conn_p2_ip, tcpPort, httpPort, fakeVer)
+
+	nsq.Register(topicName, "0", "channel1").WriteTo(conn_p1)
+	nsq.Register(topicName, "1", "channel1").WriteTo(conn_p2)
+	v, err := nsq.ReadResponse(conn_p1)
+	equal(t, err, nil)
+	equal(t, v, []byte("OK"))
+	v, err = nsq.ReadResponse(conn_p2)
+	equal(t, err, nil)
+	equal(t, v, []byte("OK"))
+
+	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
+	data, err := API(endpoint)
+
+	t.Logf("got %v", data)
+	returnedProducers, err := data.Get("producers").Array()
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 2)
+	for i, _ := range returnedProducers {
+		retP, err := data.Get("producers").GetIndex(i).Get("partitions").Map()
+		equal(t, err, nil)
+		equal(t, len(retP), 1)
+		t.Logf("node partitions %v", retP)
+		plist, err := data.Get("producers").GetIndex(i).Get("partitions").Get(topicName).Array()
+		equal(t, err, nil)
+		equal(t, len(plist), 1)
+	}
+
+	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
+	equal(t, len(topics), 2)
+	topic_p1 := nsqlookupd.DB.FindRegistrations("topic", topicName, "", "0")
+	equal(t, len(topic_p1), 1)
+	topic_p2 := nsqlookupd.DB.FindRegistrations("topic", topicName, "", "1")
+	equal(t, len(topic_p2), 1)
+
+	producers := nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
+	equal(t, len(producers), 2)
+	producer := producers[0]
+
+	if producer.peerInfo.BroadcastAddress == conn_p1_ip {
+		equal(t, producer.peerInfo.Hostname, conn_p1_ip)
+		equal(t, producer.peerInfo.TCPPort, tcpPort)
+		equal(t, producer.peerInfo.HTTPPort, httpPort)
+		producer = producers[1]
+
+		equal(t, producer.peerInfo.BroadcastAddress, conn_p2_ip)
+		equal(t, producer.peerInfo.Hostname, conn_p2_ip)
+		equal(t, producer.peerInfo.TCPPort, tcpPort)
+		equal(t, producer.peerInfo.HTTPPort, httpPort)
+	} else {
+		equal(t, producer.peerInfo.BroadcastAddress, conn_p2_ip)
+		equal(t, producer.peerInfo.Hostname, conn_p2_ip)
+		equal(t, producer.peerInfo.TCPPort, tcpPort)
+		equal(t, producer.peerInfo.HTTPPort, httpPort)
+		producer = producers[1]
+
+		equal(t, producer.peerInfo.BroadcastAddress, conn_p1_ip)
+		equal(t, producer.peerInfo.Hostname, conn_p1_ip)
+		equal(t, producer.peerInfo.TCPPort, tcpPort)
+		equal(t, producer.peerInfo.HTTPPort, httpPort)
+
+	}
+	endpoint = fmt.Sprintf("http://%s/topics", httpAddr)
+	data, err = API(endpoint)
+
+	equal(t, err, nil)
+	returnedTopics, err := data.Get("topics").Array()
+	t.Logf("got returnedTopics %v", returnedTopics)
+	equal(t, err, nil)
+	equal(t, len(returnedTopics), 1)
+
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	data, err = API(endpoint)
+
+	equal(t, err, nil)
+	returnedChannels, err := data.Get("channels").Array()
+	equal(t, err, nil)
+	equal(t, len(returnedChannels), 1)
+
+	retPartitions, err := data.Get("partitions").Map()
+	equal(t, err, nil)
+	equal(t, len(retPartitions), 2)
+	t.Logf("got returnedPartitions %v", retPartitions)
+	partData := simplejson.New()
+	partData.SetPath(nil, retPartitions["0"])
+	p1_producers, err := partData.Array()
+	equal(t, err, nil)
+	equal(t, len(p1_producers), 1)
+	p1_producer := partData.GetIndex(0)
+	broadcastaddress_p1, err := p1_producer.Get("broadcast_address").String()
+	equal(t, err, nil)
+	equal(t, broadcastaddress_p1, conn_p1_ip)
+
+	partData.SetPath(nil, retPartitions["1"])
+	p2_producers, err := partData.Array()
+	equal(t, err, nil)
+	equal(t, len(p2_producers), 1)
+	p2_producer := partData.GetIndex(0)
+	broadcastaddress_p2, err := p2_producer.Get("broadcast_address").String()
+	equal(t, err, nil)
+	equal(t, broadcastaddress_p2, conn_p2_ip)
+
+	returnedProducers, err = data.Get("producers").Array()
+	t.Logf("got returnedProducers %v", returnedProducers)
+	equal(t, err, nil)
+	equal(t, len(returnedProducers), 2)
+	iplist := make(map[string]struct{})
+	iplist[conn_p1_ip] = struct{}{}
+	iplist[conn_p2_ip] = struct{}{}
+
+	for i := range returnedProducers {
+		producer := data.Get("producers").GetIndex(i)
+		t.Logf("producer %v", producer)
+
+		port, err := producer.Get("tcp_port").Int()
+		equal(t, err, nil)
+		equal(t, port, tcpPort)
+
+		port, err = producer.Get("http_port").Int()
+		equal(t, err, nil)
+		equal(t, port, httpPort)
+
+		broadcastaddress, err := producer.Get("broadcast_address").String()
+		equal(t, err, nil)
+		_, ok := iplist[broadcastaddress]
+		equal(t, ok, true)
+		delete(iplist, broadcastaddress)
+
+		ver, err := producer.Get("version").String()
+		equal(t, err, nil)
+		equal(t, ver, fakeVer)
+	}
+
+	conn_p1.Close()
+	conn_p2.Close()
 }
