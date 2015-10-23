@@ -794,19 +794,18 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 }
 
 func (n *NSQD) IsAuthEnabledTCP() bool {
-	opts := n.getOpts()
-
-	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagTCPProtocol) == FlagTCPProtocol
+	return n.isAuthEnabled(FlagTCPProtocol)
 }
 
 func (n *NSQD) IsAuthEnabledHTTP() bool {
-	opts := n.getOpts()
-
-	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagHTTPProtocol) == FlagHTTPProtocol
+	return n.isAuthEnabled(FlagHTTPProtocol)
 }
 
 func (n *NSQD) IsAuthEnabledHTTPS() bool {
-	opts := n.getOpts()
+	return n.isAuthEnabled(FlagHTTPSProtocol)
+}
 
-	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&FlagHTTPSProtocol) == FlagHTTPSProtocol
+func (n *NSQD) isAuthEnabled(flagProtocol uint16) bool {
+	opts := n.getOpts()
+	return len(opts.AuthHTTPAddresses) != 0 && (opts.AuthRequired&flagProtocol) == flagProtocol
 }
