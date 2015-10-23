@@ -148,7 +148,6 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 			},
 		},
 	}
-
 	c.lenSlice = c.lenBuf[:]
 	return c
 }
@@ -226,13 +225,11 @@ func (c *clientV2) Stats() ClientStats {
 	clientID := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
-
 	var identity string
 	var identityURL string
-	authState := c.AuthState
-	if authState != nil {
-		identity = authState.Identity
-		identityURL = authState.IdentityURL
+	if c.AuthState != nil {
+		identity = c.AuthState.Identity
+		identityURL = c.AuthState.IdentityURL
 	}
 	c.RUnlock()
 	stats := ClientStats{
@@ -255,7 +252,7 @@ func (c *clientV2) Stats() ClientStats {
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
 		Deflate:         atomic.LoadInt32(&c.Deflate) == 1,
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
-		Authed:          authState != nil,
+		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityURL,
 	}
