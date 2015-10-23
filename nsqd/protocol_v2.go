@@ -506,7 +506,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "AUTH failed to read body")
 	}
 
-	if client.Auth != nil {
+	if client.AuthState != nil {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH Already set")
 	}
 
