@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -24,6 +25,13 @@ type State struct {
 	Identity       string          `json:"identity"`
 	IdentityURL    string          `json:"identity_url"`
 	Expires        time.Time
+}
+
+var authStateCache map[string]State
+var authStateCacheMutex sync.RWMutex
+
+func init() {
+	authStateCache = make(map[string]State)
 }
 
 func (a *Authorization) HasPermission(permission string) bool {
@@ -107,7 +115,13 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 
 	endpoint := fmt.Sprintf("%s/auth?%s", addScheme(authd), v.Encode())
 
-	var authState State
+	authStateCacheMutex.RLock()
+	authState, ok := authStateCache[endpoint]
+	authStateCacheMutex.RUnlock()
+	if ok && !authState.IsExpired() {
+		return &authState, nil
+	}
+
 	client := http_api.NewClient(nil, connectTimeout, requestTimeout)
 	if err := client.GETV1(endpoint, &authState); err != nil {
 		return nil, err
@@ -140,5 +154,10 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	}
 
 	authState.Expires = time.Now().Add(time.Duration(authState.TTL) * time.Second)
+
+	authStateCacheMutex.Lock()
+	authStateCache[endpoint] = authState
+	authStateCacheMutex.Unlock()
+
 	return &authState, nil
 }

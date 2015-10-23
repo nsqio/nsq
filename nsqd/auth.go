@@ -58,9 +58,9 @@ func (a *AuthService) IsAuthorized(topic, channel string) (bool, error) {
 	return false, nil
 }
 
-func (c *clientV2) HasAuthorizations() bool {
-	if c.AuthState != nil {
-		return len(c.AuthState.Authorizations) != 0
+func (a *AuthService) HasAuthorizations() bool {
+	if a.AuthState != nil {
+		return len(a.AuthState.Authorizations) != 0
 	}
 	return false
 }
