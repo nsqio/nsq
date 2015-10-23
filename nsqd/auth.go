@@ -24,12 +24,10 @@ func (a *AuthService) Auth(secret string) error {
 }
 
 func (a *AuthService) QueryAuthd() error {
-	var tlsEnabled string
-	tls := atomic.LoadInt32(&a.TLS)
-	if tls == 1 {
+	tls := atomic.LoadInt32(&a.TLS) == 1
+	tlsEnabled := "false"
+	if tls {
 		tlsEnabled = "true"
-	} else {
-		tlsEnabled = "false"
 	}
 
 	authState, err := auth.QueryAnyAuthd(a.AuthHTTPAddresses, a.RemoteIP, tlsEnabled, a.AuthSecret)
@@ -54,4 +52,11 @@ func (a *AuthService) IsAuthorized(topic, channel string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (c *clientV2) HasAuthorizations() bool {
+	if c.AuthState != nil {
+		return len(c.AuthState.Authorizations) != 0
+	}
+	return false
 }
