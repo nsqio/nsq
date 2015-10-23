@@ -138,12 +138,16 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
-	}
 
-	c.AuthHTTPAddresses = ctx.nsqd.getOpts().AuthHTTPAddresses
-	c.RemoteIP = identifier
-	c.HTTPClientConnectTimeout = ctx.nsqd.getOpts().HTTPClientConnectTimeout
-	c.HTTPClientRequestTimeout = ctx.nsqd.getOpts().HTTPClientRequestTimeout
+		AuthService: AuthService{
+			AuthParameters: AuthParameters{
+				AuthHTTPAddresses:        ctx.nsqd.getOpts().AuthHTTPAddresses,
+				RemoteIP:                 identifier,
+				HTTPClientConnectTimeout: ctx.nsqd.getOpts().HTTPClientConnectTimeout,
+				HTTPClientRequestTimeout: ctx.nsqd.getOpts().HTTPClientRequestTimeout,
+			},
+		},
+	}
 
 	c.lenSlice = c.lenBuf[:]
 	return c
