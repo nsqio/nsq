@@ -6,6 +6,7 @@ import (
 	"net/http/pprof"
 	"sync/atomic"
 
+	"errors"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/protocol"
@@ -18,37 +19,37 @@ const (
 	MAX_REPLICATOR    = 5
 )
 
-func IsValidPartitionNum(numStr string) bool {
+func GetValidPartitionNum(numStr string) (int, error) {
 	num, err := strconv.Atoi(numStr)
 	if err != nil {
-		return false
+		return 0, err
 	}
 	if num > 0 && num <= MAX_PARTITION_NUM {
-		return true
+		return num, nil
 	}
-	return false
+	return 0, errors.New("INVALID_PARTITION_NUM")
 }
 
-func IsValidPartitionID(numStr string) bool {
+func GetValidPartitionID(numStr string) (int, error) {
 	num, err := strconv.Atoi(numStr)
 	if err != nil {
-		return false
+		return 0, err
 	}
 	if num >= 0 && num < MAX_PARTITION_NUM {
-		return true
+		return num, nil
 	}
-	return false
+	return 0, errors.New("INVALID_PARTITION_ID")
 }
 
-func IsValidReplicator(r string) bool {
+func GetValidReplicator(r string) (int, error) {
 	num, err := strconv.Atoi(r)
 	if err != nil {
-		return false
+		return 0, err
 	}
 	if num > 0 && num <= MAX_REPLICATOR {
-		return true
+		return num, nil
 	}
-	return false
+	return 0, errors.New("INVALID_REPLICATOR")
 }
 
 type httpServer struct {
@@ -173,7 +174,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if len(registrations) == 0 {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
-	partitionProducers := make(map[string][]*PeerInfo)
+	partitionProducers := make(map[string]*PeerInfo)
 	allProducers := make(map[string]*Producer, len(registrations))
 	for _, r := range registrations {
 		producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "", r.PartitionID)
@@ -183,10 +184,17 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 			continue
 		}
 		// filter by leader
-		leaderProducers := producers
-		partitionProducers[r.PartitionID] = leaderProducers.PeerInfo()
-		for _, p := range leaderProducers {
-			allProducers[p.peerInfo.id] = p
+		var leaderProducer *Producer
+		for _, p := range producers {
+			pid, _ := strconv.Atoi(r.PartitionID)
+			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, p.peerInfo.Id) {
+				leaderProducer = p
+				break
+			}
+		}
+		if leaderProducer != nil {
+			partitionProducers[r.PartitionID] = leaderProducer.peerInfo
+			allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 		}
 	}
 	producers := make(Producers, 0, len(allProducers))
@@ -194,6 +202,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		producers = append(producers, p)
 	}
 
+	// maybe channels should be under topic partitions?
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", topicPartition).SubKeys()
 	return map[string]interface{}{
 		"channels":   channels,
@@ -217,29 +226,39 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
-	topicPartitionNum, err := reqParams.Get("partition_num")
+	pnumStr, err := reqParams.Get("partition_num")
 	if err != nil {
-		topicPartitionNum = "3"
+		pnumStr = "3"
 	}
-	if !IsValidPartitionNum(topicPartitionNum) {
+	pnum, err := GetValidPartitionNum(pnumStr)
+	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION_NUM"}
 	}
-	topicReplicaFactor, err := reqParams.Get("replicator")
+	replicatorStr, err := reqParams.Get("replicator")
 	if err != nil {
-		topicReplicaFactor = "3"
+		replicatorStr = "3"
 	}
-	if !IsValidReplicator(topicReplicaFactor) {
+	replicator, err := GetValidReplicator(replicatorStr)
+	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_REPLICATOR"}
 	}
 	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
-	// TODO: create keys on etcd
-	//key := Registration{"topic", topicName, ""}
-	//s.ctx.nsqlookupd.DB.AddRegistration(key)
+	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+	for i := 0; i < pnum; i++ {
+		key := Registration{"topic", topicName, "", strconv.Itoa(i)}
+		s.ctx.nsqlookupd.DB.AddRegistration(key)
+	}
 
 	return nil, nil
 }
 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	// not support currently.
+	return nil, http_api.Err{501, "DELETE not Implemented"}
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -317,11 +336,18 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		key := Registration{"channel", topicName, channelName, reg.PartitionID}
 		s.ctx.nsqlookupd.DB.AddRegistration(key)
 	}
+	err = s.ctx.nsqlookupd.coordinator.CreateChannelForAll(topicName, channelName)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
 
 	return nil, nil
 }
 
 func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	// not support currently.
+	return nil, http_api.Err{501, "DELETE not Implemented"}
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -367,7 +393,7 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {
-		regs := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "", "*")
+		regs := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.Id).Filter("topic", "*", "", "*")
 		topics := regs.Keys()
 		partitions := make(map[string][]string)
 		for _, r := range regs {
@@ -413,7 +439,7 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 		key := r.Category + ":" + r.Key + ":" + r.SubKey
 		for _, p := range producers {
 			m := map[string]interface{}{
-				"id":                p.peerInfo.id,
+				"id":                p.peerInfo.Id,
 				"hostname":          p.peerInfo.Hostname,
 				"broadcast_address": p.peerInfo.BroadcastAddress,
 				"tcp_port":          p.peerInfo.TCPPort,

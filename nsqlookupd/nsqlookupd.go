@@ -2,6 +2,7 @@ package nsqlookupd
 
 import (
 	"fmt"
+	"github.com/absolute8511/nsq/consistence"
 	"net"
 	"os"
 	"sync"
@@ -19,6 +20,7 @@ type NSQLookupd struct {
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
+	coordinator  *consistence.NSQLookupdCoordinator
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -58,6 +60,20 @@ func (l *NSQLookupd) Main() {
 		l.logf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
+
+	var node consistence.NsqLookupdNodeInfo
+	node.NodeIp, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
+	_, node.RpcPort, _ = net.SplitHostPort(l.opts.RPCAddress)
+	node.ID = net.JoinHostPort(l.opts.BroadcastAddress, node.HttpPort)
+
+	l.coordinator = consistence.NewNSQLookupdCoordinator("cluster-id", &node)
+	// set etcd leader manager here
+	// l.coordinator.SetLeadershipMgr(nil)
+	err = l.coordinator.Start()
+	if err != nil {
+		l.logf("FATAL: start coordinator failed - %s", err)
+		os.Exit(1)
+	}
 	l.Lock()
 	l.httpListener = httpListener
 	l.Unlock()
@@ -88,4 +104,7 @@ func (l *NSQLookupd) Exit() {
 		l.httpListener.Close()
 	}
 	l.waitGroup.Wait()
+	if l.coordinator != nil {
+		l.coordinator.Stop()
+	}
 }

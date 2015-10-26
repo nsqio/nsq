@@ -24,7 +24,7 @@ type Registrations []Registration
 
 type PeerInfo struct {
 	lastUpdate       int64
-	id               string
+	Id               string `json:"id"`
 	RemoteAddress    string `json:"remote_address"`
 	Hostname         string `json:"hostname"`
 	BroadcastAddress string `json:"broadcast_address"`
@@ -76,7 +76,7 @@ func (r *RegistrationDB) AddProducerClient(k Registration, p *Producer) bool {
 	producers := r.registrationMap[k]
 	found := false
 	for _, producer := range producers {
-		if producer.peerInfo.id == p.peerInfo.id {
+		if producer.peerInfo.Id == p.peerInfo.Id {
 			found = true
 		}
 	}
@@ -109,7 +109,7 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	removed := false
 	cleaned := Producers{}
 	for _, producer := range producers {
-		if producer.peerInfo.id != id {
+		if producer.peerInfo.Id != id {
 			cleaned = append(cleaned, producer)
 		} else {
 			removed = true
@@ -167,7 +167,7 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 		for _, producer := range producers {
 			found := false
 			for _, p := range results {
-				if producer.peerInfo.id == p.peerInfo.id {
+				if producer.peerInfo.Id == p.peerInfo.Id {
 					found = true
 				}
 			}
@@ -185,7 +185,7 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	results := Registrations{}
 	for k, producers := range r.registrationMap {
 		for _, p := range producers {
-			if p.peerInfo.id == id {
+			if p.peerInfo.Id == id {
 				results = append(results, k)
 				break
 			}

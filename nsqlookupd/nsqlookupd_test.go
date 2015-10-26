@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/consistence"
 	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -74,6 +75,7 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 	ci["broadcast_address"] = address
 	ci["hostname"] = address
 	ci["version"] = version
+	ci["id"] = address
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
 	equal(t, err, nil)
@@ -95,6 +97,9 @@ func TestBasicLookupd(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
 	equal(t, len(topics), 0)
 
@@ -107,6 +112,8 @@ func TestBasicLookupd(t *testing.T) {
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
+
 	v, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
@@ -202,9 +209,13 @@ func TestChannelUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
@@ -251,13 +262,18 @@ func TestTombstoneRecover(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
 	nsq.Register(topicName2, "0", "channel2").WriteTo(conn)
+	fakeLeadership.UpdateTopicLeader(topicName2, "0", "ip.address")
 	_, err = nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -299,7 +315,11 @@ func TestTombstoneUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -343,7 +363,11 @@ func TestInactiveNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -376,9 +400,14 @@ func TestTombstonedNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
+	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
+
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
@@ -419,6 +448,9 @@ func TestTopicPartitions(t *testing.T) {
 	conn_p2_ip := "ip.address.p2"
 	fakeVer := "fake-version"
 
+	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
+	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
+
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn_p1, conn_p1_ip, tcpPort, httpPort, fakeVer)
@@ -426,6 +458,9 @@ func TestTopicPartitions(t *testing.T) {
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn_p1)
 	nsq.Register(topicName, "1", "channel1").WriteTo(conn_p2)
+
+	fakeLeadership.UpdateTopicLeader(topicName, "0", conn_p1_ip)
+
 	v, err := nsq.ReadResponse(conn_p1)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
@@ -493,6 +528,7 @@ func TestTopicPartitions(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(returnedTopics), 1)
 
+	// test get topic partition 2 producer without leader
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = API(endpoint)
 
@@ -503,24 +539,26 @@ func TestTopicPartitions(t *testing.T) {
 
 	retPartitions, err := data.Get("partitions").Map()
 	equal(t, err, nil)
-	equal(t, len(retPartitions), 2)
+	equal(t, len(retPartitions), 1)
 	t.Logf("got returnedPartitions %v", retPartitions)
 	partData := simplejson.New()
 	partData.SetPath(nil, retPartitions["0"])
-	p1_producers, err := partData.Array()
-	equal(t, err, nil)
-	equal(t, len(p1_producers), 1)
-	p1_producer := partData.GetIndex(0)
-	broadcastaddress_p1, err := p1_producer.Get("broadcast_address").String()
+	broadcastaddress_p1, err := partData.Get("broadcast_address").String()
 	equal(t, err, nil)
 	equal(t, broadcastaddress_p1, conn_p1_ip)
 
-	partData.SetPath(nil, retPartitions["1"])
-	p2_producers, err := partData.Array()
+	// test get topic partition 2 producer with updated leader
+	fakeLeadership.UpdateTopicLeader(topicName, "1", conn_p2_ip)
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	data, err = API(endpoint)
 	equal(t, err, nil)
-	equal(t, len(p2_producers), 1)
-	p2_producer := partData.GetIndex(0)
-	broadcastaddress_p2, err := p2_producer.Get("broadcast_address").String()
+
+	retPartitions, err = data.Get("partitions").Map()
+	equal(t, err, nil)
+	equal(t, len(retPartitions), 2)
+	t.Logf("got returnedPartitions %v", retPartitions)
+	partData.SetPath(nil, retPartitions["1"])
+	broadcastaddress_p2, err := partData.Get("broadcast_address").String()
 	equal(t, err, nil)
 	equal(t, broadcastaddress_p2, conn_p2_ip)
 

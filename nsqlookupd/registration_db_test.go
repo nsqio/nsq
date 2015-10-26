@@ -38,7 +38,7 @@ func TestRegistrationDB(t *testing.T) {
 	equal(t, len(p), 2)
 	p = db.FindProducers("c", "*", "b", "0")
 	equal(t, len(p), 1)
-	equal(t, p[0].peerInfo.id, p2.peerInfo.id)
+	equal(t, p[0].peerInfo.Id, p2.peerInfo.Id)
 
 	// filter by active
 	equal(t, len(p.FilterByActive(sec30, sec30)), 0)
@@ -70,12 +70,12 @@ func TestRegistrationDB(t *testing.T) {
 	equal(t, k[0], "b")
 
 	// removing producers
-	db.RemoveProducer(Registration{"c", "a", "", "0"}, p1.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", "", "0"}, p1.peerInfo.Id)
 	p = db.FindProducers("c", "*", "*", "0")
 	equal(t, len(p), 1)
 
-	db.RemoveProducer(Registration{"c", "a", "", "0"}, p2.peerInfo.id)
-	db.RemoveProducer(Registration{"c", "a", "b", "0"}, p2.peerInfo.id)
+	db.RemoveProducer(Registration{"c", "a", "", "0"}, p2.peerInfo.Id)
+	db.RemoveProducer(Registration{"c", "a", "b", "0"}, p2.peerInfo.Id)
 	p = db.FindProducers("c", "*", "*", "0")
 	equal(t, len(p), 0)
 

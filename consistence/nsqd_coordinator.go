@@ -286,7 +286,7 @@ func (self *NsqdCoordinator) checkForUnusedTopics() {
 		case <-ticker.C:
 			tmpChecks := make(map[string]map[int]bool, len(self.topicsData))
 			for topic, info := range self.topicsData {
-				for pid, summary := range info {
+				for pid, _ := range info {
 					if _, ok := tmpChecks[topic]; !ok {
 						tmpChecks[topic] = make(map[int]bool)
 					}

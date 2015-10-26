@@ -24,7 +24,11 @@ var (
 
 	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
 	httpAddress      = flagSet.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
+	rpcAddress       = flagSet.String("rpc-address", "0.0.0.0:4162", "<addr>:<port> to listen on for RCP call")
 	broadcastAddress = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
+
+	etcdAddress = flagSet.String("etcd-address", "", "<addr1>:<port1>, <addr2>:<port2>  the etcd server list")
+	clusterID   = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")
 
 	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")

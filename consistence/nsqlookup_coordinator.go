@@ -198,7 +198,7 @@ type RpcFailedInfo struct {
 
 type NSQLookupdCoordinator struct {
 	clusterKey       string
-	coordID          string
+	myNode           NsqLookupdNodeInfo
 	leaderNode       NsqLookupdNodeInfo
 	leadership       NSQLookupdLeadership
 	nsqdNodes        map[string]NsqdNodeInfo
@@ -207,12 +207,13 @@ type NSQLookupdCoordinator struct {
 	stopChan         chan struct{}
 	joinISRState     map[string]*JoinISRState
 	failedRpcList    []RpcFailedInfo
+	quitChan         chan struct{}
 }
 
-func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator {
+func NewNSQLookupdCoordinator(cluster string, n *NsqLookupdNodeInfo) *NSQLookupdCoordinator {
 	return &NSQLookupdCoordinator{
 		clusterKey:       cluster,
-		coordID:          nid,
+		myNode:           *n,
 		leadership:       &FakeNsqlookupLeadership{},
 		nsqdNodes:        make(map[string]NsqdNodeInfo),
 		nsqdRpcClients:   make(map[string]*NsqdRpcClient),
@@ -220,7 +221,12 @@ func NewNSQLookupdCoordinator(cluster string, nid string) *NSQLookupdCoordinator
 		stopChan:         make(chan struct{}),
 		joinISRState:     make(map[string]*JoinISRState),
 		failedRpcList:    make([]RpcFailedInfo, 0),
+		quitChan:         make(chan struct{}),
 	}
+}
+
+func (self *NSQLookupdCoordinator) SetLeadershipMgr(l NSQLookupdLeadership) {
+	self.leadership = l
 }
 
 func RetryWithTimeout(fn func() error) error {
@@ -232,28 +238,25 @@ func RetryWithTimeout(fn func() error) error {
 
 // init and register to leader server
 func (self *NSQLookupdCoordinator) Start() error {
-	var n NsqLookupdNodeInfo
-	n.ID = self.coordID
-	n.NodeIp = "127.0.0.1"
-	n.HttpPort = "3000"
-	n.Epoch = 0
 	self.leadership.InitClusterID(self.clusterKey)
-	err := self.leadership.Register(n)
+	err := self.leadership.Register(self.myNode)
 	if err != nil {
 		glog.Warningf("failed to start nsqlookupd coordinator: %v", err)
 		return err
 	}
-	self.handleLeadership()
+	go self.handleLeadership()
 	return nil
 }
 
 func (self *NSQLookupdCoordinator) Stop() {
 	close(self.stopChan)
+	<-self.quitChan
 }
 
 func (self *NSQLookupdCoordinator) handleLeadership() {
-	lookupdLeaderChan := make(chan NsqLookupdNodeInfo)
+	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
 	go self.leadership.AcquireAndWatchLeader(lookupdLeaderChan, self.stopChan)
+	defer close(self.quitChan)
 	for {
 		select {
 		case l, ok := <-lookupdLeaderChan:
@@ -261,10 +264,14 @@ func (self *NSQLookupdCoordinator) handleLeadership() {
 				glog.Warningf("leader chan closed.")
 				return
 			}
+			if l == nil {
+				glog.Warningln("leader is lost.")
+				continue
+			}
 			if l.GetID() != self.leaderNode.GetID() ||
 				l.Epoch != self.leaderNode.Epoch {
 				glog.Infof("lookup leader changed from %v to %v", self.leaderNode.GetID(), l.GetID())
-				self.leaderNode = l
+				self.leaderNode = *l
 				go self.notifyLeaderChanged()
 			}
 			if self.leaderNode.GetID() == "" {
@@ -275,7 +282,7 @@ func (self *NSQLookupdCoordinator) handleLeadership() {
 }
 
 func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
-	if self.leaderNode.GetID() != self.coordID {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
 		glog.Infof("I am slave.")
 		// remove watchers.
 		return
@@ -374,6 +381,10 @@ func (self *NSQLookupdCoordinator) handleNsqdNodes(leaderID string, epoch int) {
 					// notify the nsqd node to recheck topic info.(for
 					// temp lost)
 					topics, err := self.leadership.ScanTopics()
+					if err != nil {
+						glog.Infof("scan topics failed: %v", err)
+						continue
+					}
 					self.NotifyTopicsToSingleNsqdForReload(topics, newID)
 				}
 			}
@@ -818,6 +829,26 @@ func (self *NSQLookupdCoordinator) getTopicDataNodes(topicInfo *TopicPartionMeta
 	return nsqdNodes
 }
 
+func (self *NSQLookupdCoordinator) IsTopicLeader(topic string, partition int, nid string) bool {
+	info, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		glog.Infof("get topic info failed :%v", err)
+		return false
+	}
+	return info.Leader == nid
+}
+
+func (self *NSQLookupdCoordinator) IsTopicISRNode(topic string, partition int, nid string) bool {
+	info, err := self.leadership.GetTopicInfo(topic, partition)
+	if err != nil {
+		return false
+	}
+	if FindSlice(info.ISR, nid) == -1 {
+		return false
+	}
+	return true
+}
+
 func (self *NSQLookupdCoordinator) AllocNodeForTopic(topicInfo *TopicPartionMetaInfo) (*NsqdNodeInfo, error) {
 	// collect the nsqd data, check if any node has the topic data already.
 	var chosenNode *NsqdNodeInfo
@@ -957,41 +988,35 @@ func (self *NSQLookupdCoordinator) AllocTopicLeaderAndISR(replica int) (string, 
 }
 
 func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, replica int) error {
-	if self.leaderNode.GetID() != self.coordID {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
 		glog.Infof("not leader while create topic")
 		return ErrNotLeader
 	}
-	if len(self.nsqdNodes) < replica {
-		return ErrNodeUnavailable
+
+	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
+		err := self.leadership.CreateTopic(topic, partitionNum, replica)
+		if err != nil {
+			glog.Infof("create topic key %v failed :%v", topic, err)
+			return err
+		}
 	}
 
-	if ok, _ := self.leadership.IsExistTopic(topic); ok {
-		return ErrAlreadyExist
-	}
-	// for each node, get the total topic data size,
-	// we assume the more data the more throughput need.
-	// The least load factor will became new leader for this topic. ( first filter the
-	// storage not enough nodes)
-	// Make data size MB, if has the same MB, the topic number is used.
-	//
-
-	err := self.leadership.CreateTopic(topic, partitionNum, replica)
-	if err != nil {
-		glog.Infof("create topic key %v failed :%v", topic, err)
-		return err
-	}
 	for i := 0; i < partitionNum; i++ {
 		err := RetryWithTimeout(func() error {
 			err := self.leadership.CreateTopicPartition(topic, i, replica)
 			if err != nil {
 				glog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
 			}
+			if err == ErrAlreadyExist {
+				return nil
+			}
 			return err
 		})
 		if err != nil {
 			return err
+		} else {
+			go self.watchTopicLeaderSession(self.leaderNode.GetID(), self.leaderNode.Epoch, topic, i)
 		}
-		go self.watchTopicLeaderSession(self.leaderNode.GetID(), self.leaderNode.Epoch, topic, i)
 	}
 	for i := 0; i < partitionNum; i++ {
 		leader, ISRList, err := self.AllocTopicLeaderAndISR(replica)
@@ -1018,8 +1043,19 @@ func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, r
 	return nil
 }
 
+func (self *NSQLookupdCoordinator) CreateChannelForAll(topic string, channel string) error {
+	pnum, err := self.leadership.GetTopicPartitionNum(topic)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < pnum; i++ {
+		err = self.CreateChannel(topic, i, channel)
+	}
+	return err
+}
+
 func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, channel string) error {
-	if self.leaderNode.GetID() != self.coordID {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
 		glog.Infof("not leader while create topic")
 		return ErrNotLeader
 	}

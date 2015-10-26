@@ -104,6 +104,9 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	if err != nil {
 		return nil, err
 	}
+	if n != GetLogDataSize() {
+		return nil, ErrCommitLogOffsetInvalid
+	}
 	var l CommitLogData
 	err = binary.Read(b, binary.BigEndian, &l)
 	if err != nil {
@@ -134,6 +137,9 @@ func (self *TopicCommitLogMgr) GetCommmitLogFromOffset(offset int64) (*CommitLog
 	n, err := self.appender.ReadAt(b.Bytes(), offset)
 	if err != nil {
 		return nil, err
+	}
+	if n != GetLogDataSize() {
+		return nil, ErrCommitLogOffsetInvalid
 	}
 	var l CommitLogData
 	err = binary.Read(b, binary.BigEndian, &l)

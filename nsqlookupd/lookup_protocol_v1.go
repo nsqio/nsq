@@ -68,9 +68,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 
 	p.ctx.nsqlookupd.logf("CLIENT(%s): closing", client)
 	if client.peerInfo != nil {
-		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
+		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.Id)
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.Id); removed {
 				p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 					client, r.Category, r.Key, r.SubKey)
 			}
@@ -113,7 +113,7 @@ func getTopicChan(command string, params []string) (string, string, string, erro
 		return "", "", "", protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
 
-	if partitionID != "" && !IsValidPartitionID(partitionID) {
+	if _, err := GetValidPartitionID(partitionID); err != nil {
 		return "", "", "", protocol.NewFatalClientErr(nil, "E_BAD_PARTITIONID", fmt.Sprintf("%s partition id '%s' is not valid", command, partitionID))
 	}
 	return topicName, channelName, partitionID, nil
@@ -157,7 +157,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel, pid}
-		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.Id)
 		if removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "channel", topic, channel)
@@ -173,14 +173,14 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*", pid)
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.Id); removed {
 				p.ctx.nsqlookupd.logf("WARNING: client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
 		key := Registration{"topic", topic, "", pid}
-		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
+		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.Id); removed {
 			p.ctx.nsqlookupd.logf("DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
 		}
@@ -209,7 +209,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	// body is a json structure with producer information
-	peerInfo := PeerInfo{id: client.RemoteAddr().String()}
+	peerInfo := PeerInfo{Id: client.RemoteAddr().String()}
 	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
@@ -257,7 +257,7 @@ func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, erro
 		// we could get a PING before other commands on the same client connection
 		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.lastUpdate))
 		now := time.Now()
-		p.ctx.nsqlookupd.logf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.id,
+		p.ctx.nsqlookupd.logf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.Id,
 			now.Sub(cur))
 		atomic.StoreInt64(&client.peerInfo.lastUpdate, now.UnixNano())
 	}
