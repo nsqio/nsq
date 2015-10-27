@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -206,26 +205,12 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
-	reqParams, topic, err := s.getTopicFromQuery(req)
+	_, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
 
-	var deferred time.Duration
-	if ds, ok := reqParams["defer"]; ok {
-		var di int64
-		di, err = strconv.ParseInt(ds[0], 10, 64)
-		if err != nil {
-			return nil, http_api.Err{400, "INVALID_DEFER"}
-		}
-		deferred = time.Duration(di) * time.Millisecond
-		if deferred < 0 || deferred > s.ctx.nsqd.getOpts().MaxReqTimeout {
-			return nil, http_api.Err{400, "INVALID_DEFER"}
-		}
-	}
-
 	msg := NewMessage(<-s.ctx.nsqd.idChan, body)
-	msg.deferred = deferred
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}

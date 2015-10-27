@@ -155,33 +155,6 @@ func TestHTTPmputBinary(t *testing.T) {
 	equal(t, topic.Depth(), int64(5))
 }
 
-func TestHTTPpubDefer(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, httpAddr, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "test_http_pub_defer" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	ch := topic.GetChannel("ch")
-
-	buf := bytes.NewBuffer([]byte("test message"))
-	url := fmt.Sprintf("http://%s/pub?topic=%s&defer=%d", httpAddr, topicName, 1000)
-	resp, err := http.Post(url, "application/octet-stream", buf)
-	equal(t, err, nil)
-	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
-	equal(t, string(body), "OK")
-
-	time.Sleep(5 * time.Millisecond)
-
-	ch.Lock()
-	numDef := len(ch.deferredMessages)
-	ch.Unlock()
-	equal(t, numDef, 1)
-}
-
 func TestHTTPSRequire(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)

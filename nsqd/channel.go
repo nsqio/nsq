@@ -2,7 +2,6 @@ package nsqd
 
 import (
 	"bytes"
-	"container/heap"
 	"errors"
 	"math"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nsqio/nsq/internal/pqueue"
 	"github.com/nsqio/nsq/internal/quantile"
 )
 
@@ -61,10 +59,6 @@ type Channel struct {
 	// Stats tracking
 	e2eProcessingLatencyStream *quantile.Quantile
 
-	// TODO: these can be DRYd up
-	deferredMessages map[MessageID]*pqueue.Item
-	deferredPQ       pqueue.PriorityQueue
-	deferredMutex    sync.Mutex
 	inFlightMessages map[MessageID]*Message
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
@@ -123,15 +117,11 @@ func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
 
 	c.inFlightMessages = make(map[MessageID]*Message)
-	c.deferredMessages = make(map[MessageID]*pqueue.Item)
 
 	c.inFlightMutex.Lock()
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	c.inFlightMutex.Unlock()
 
-	c.deferredMutex.Lock()
-	c.deferredPQ = pqueue.New(pqSize)
-	c.deferredMutex.Unlock()
 }
 
 // Exiting returns a boolean indicating if this channel is closed/exiting
@@ -216,7 +206,7 @@ finish:
 }
 
 // flush persists all the messages in internal memory buffers to the backend
-// it does not drain inflight/deferred because it is only called in Close()
+// it does not drain inflight because it is only called in Close()
 func (c *Channel) flush() error {
 	var msgBuf bytes.Buffer
 
@@ -227,9 +217,9 @@ func (c *Channel) flush() error {
 		writeMessageToBackend(&msgBuf, msg, c.backend)
 	}
 
-	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		c.ctx.nsqd.logf("CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
-			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
+	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 {
+		c.ctx.nsqd.logf("CHANNEL(%s): flushing %d memory %d in-flight messages to backend",
+			c.name, len(c.memoryMsgChan), len(c.inFlightMessages))
 	}
 
 	for {
@@ -246,14 +236,6 @@ func (c *Channel) flush() error {
 
 finish:
 	for _, msg := range c.inFlightMessages {
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
-		if err != nil {
-			c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
-		}
-	}
-
-	for _, item := range c.deferredMessages {
-		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
@@ -371,22 +353,20 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 //
 // `timeoutMs` == 0 - requeue a message immediately
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
-//     and requeue a message (aka "deferred requeue")
+//     and requeue a message
 //
 func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {
-	// remove from inflight first
-	msg, err := c.popInFlightMessage(clientID, id)
-	if err != nil {
-		return err
-	}
-	c.removeFromInFlightPQ(msg)
-
 	if timeout == 0 {
+		// remove from inflight first
+		msg, err := c.popInFlightMessage(clientID, id)
+		if err != nil {
+			return err
+		}
+		c.removeFromInFlightPQ(msg)
+
 		return c.doRequeue(msg)
 	}
-
-	// deferred requeue
-	return c.StartDeferredTimeout(msg, timeout)
+	return nil
 }
 
 // AddClient adds a client to the Channel's client list
@@ -427,17 +407,6 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 		return err
 	}
 	c.addToInFlightPQ(msg)
-	return nil
-}
-
-func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) error {
-	absTs := time.Now().Add(timeout).UnixNano()
-	item := &pqueue.Item{Value: msg, Priority: absTs}
-	err := c.pushDeferredMessage(item)
-	if err != nil {
-		return err
-	}
-	c.addToDeferredPQ(item)
 	return nil
 }
 
@@ -503,42 +472,6 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 	c.inFlightMutex.Unlock()
 }
 
-func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
-	c.Lock()
-	defer c.Unlock()
-
-	// TODO: these map lookups are costly
-	id := item.Value.(*Message).ID
-	_, ok := c.deferredMessages[id]
-	if ok {
-		return errors.New("ID already deferred")
-	}
-	c.deferredMessages[id] = item
-
-	return nil
-}
-
-func (c *Channel) popDeferredMessage(id MessageID) (*pqueue.Item, error) {
-	c.Lock()
-	defer c.Unlock()
-
-	// TODO: these map lookups are costly
-	item, ok := c.deferredMessages[id]
-	if !ok {
-		return nil, errors.New("ID not deferred")
-	}
-	delete(c.deferredMessages, id)
-
-	return item, nil
-}
-
-func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
-	c.deferredMutex.Lock()
-	defer c.deferredMutex.Unlock()
-
-	heap.Push(&c.deferredPQ, item)
-}
-
 // messagePump reads messages from either memory or backend and sends
 // messages to clients over a go chan
 func (c *Channel) messagePump() {
@@ -577,37 +510,6 @@ func (c *Channel) messagePump() {
 exit:
 	c.ctx.nsqd.logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
-}
-
-func (c *Channel) processDeferredQueue(t int64) bool {
-	c.exitMutex.RLock()
-	defer c.exitMutex.RUnlock()
-
-	if c.Exiting() {
-		return false
-	}
-
-	dirty := false
-	for {
-		c.deferredMutex.Lock()
-		item, _ := c.deferredPQ.PeekAndShift(t)
-		c.deferredMutex.Unlock()
-
-		if item == nil {
-			goto exit
-		}
-		dirty = true
-
-		msg := item.Value.(*Message)
-		_, err := c.popDeferredMessage(msg.ID)
-		if err != nil {
-			goto exit
-		}
-		c.doRequeue(msg)
-	}
-
-exit:
-	return dirty
 }
 
 func (c *Channel) processInFlightQueue(t int64) bool {

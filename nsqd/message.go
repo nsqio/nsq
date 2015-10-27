@@ -27,7 +27,6 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
-	deferred   time.Duration
 }
 
 func NewMessage(id MessageID, body []byte) *Message {

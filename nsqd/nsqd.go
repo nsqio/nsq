@@ -611,7 +611,7 @@ func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, c
 }
 
 // queueScanWorker receives work (in the form of a channel) from queueScanLoop
-// and processes the deferred and in-flight queues
+// and processes the in-flight queues
 func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, closeCh chan int) {
 	for {
 		select {
@@ -621,9 +621,6 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 			if c.processInFlightQueue(now) {
 				dirty = true
 			}
-			if c.processDeferredQueue(now) {
-				dirty = true
-			}
 			responseCh <- dirty
 		case <-closeCh:
 			return
@@ -631,8 +628,8 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 	}
 }
 
-// queueScanLoop runs in a single goroutine to process in-flight and deferred
-// priority queues. It manages a pool of queueScanWorker (configurable max of
+// queueScanLoop runs in a single goroutine to process in-flight
+// . It manages a pool of queueScanWorker (configurable max of
 // QueueScanWorkerPoolMax (default: 4)) that process channels concurrently.
 //
 // It copies Redis's probabilistic expiration algorithm: it wakes up every

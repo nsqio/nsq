@@ -52,7 +52,6 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		Depth:         c.Depth(),
 		BackendDepth:  c.backend.Depth(),
 		InFlightCount: len(c.inFlightMessages),
-		DeferredCount: len(c.deferredMessages),
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),

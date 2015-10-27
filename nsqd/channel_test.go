@@ -134,18 +134,14 @@ func TestChannelEmpty(t *testing.T) {
 		msgs = append(msgs, msg)
 	}
 
-	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 100*time.Millisecond)
+	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 0)
 	equal(t, len(channel.inFlightMessages), 24)
 	equal(t, len(channel.inFlightPQ), 24)
-	equal(t, len(channel.deferredMessages), 1)
-	equal(t, len(channel.deferredPQ), 1)
 
 	channel.Empty()
 
 	equal(t, len(channel.inFlightMessages), 0)
 	equal(t, len(channel.inFlightPQ), 0)
-	equal(t, len(channel.deferredMessages), 0)
-	equal(t, len(channel.deferredPQ), 0)
 	equal(t, channel.Depth(), int64(0))
 }
 
