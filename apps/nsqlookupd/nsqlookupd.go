@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqlookupd"
@@ -30,16 +30,32 @@ var (
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 )
 
+type program struct {
+	nsqlookupd *nsqlookupd.NSQLookupd
+}
+
 func main() {
+	prg := &program{}
+	if err := svc.Run(prg); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (p *program) Init(env svc.Environment) error {
+	if env.IsWindowsService() {
+		dir := filepath.Dir(os.Args[0])
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
+func (p *program) Start() error {
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {
 		fmt.Println(version.String("nsqlookupd"))
-		return
+		os.Exit(0)
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg map[string]interface{}
 	if *config != "" {
@@ -54,6 +70,13 @@ func main() {
 	daemon := nsqlookupd.New(opts)
 
 	daemon.Main()
-	<-signalChan
-	daemon.Exit()
+	p.nsqlookupd = daemon
+	return nil
+}
+
+func (p *program) Stop() error {
+	if p.nsqlookupd != nil {
+		p.nsqlookupd.Exit()
+	}
+	return nil
 }

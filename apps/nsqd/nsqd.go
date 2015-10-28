@@ -7,13 +7,13 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/version"
@@ -174,7 +174,26 @@ func (cfg config) Validate() {
 	}
 }
 
+type program struct {
+	nsqd *nsqd.NSQD
+}
+
 func main() {
+	prg := &program{}
+	if err := svc.Run(prg); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (p *program) Init(env svc.Environment) error {
+	if env.IsWindowsService() {
+		dir := filepath.Dir(os.Args[0])
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
+func (p *program) Start() error {
 	flagSet := nsqFlagset()
 	flagSet.Parse(os.Args[1:])
 
@@ -182,11 +201,8 @@ func main() {
 
 	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
 		fmt.Println(version.String("nsqd"))
-		return
+		os.Exit(0)
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
@@ -208,6 +224,14 @@ func main() {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
 	nsqd.Main()
-	<-signalChan
-	nsqd.Exit()
+
+	p.nsqd = nsqd
+	return nil
+}
+
+func (p *program) Stop() error {
+	if p.nsqd != nil {
+		p.nsqd.Exit()
+	}
+	return nil
 }
