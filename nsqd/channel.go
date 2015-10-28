@@ -499,8 +499,6 @@ func (c *Channel) messagePump() {
 			goto exit
 		}
 
-		msg.Attempts++
-
 		atomic.StoreInt32(&c.bufferedCount, 1)
 		c.clientMsgChan <- msg
 		atomic.StoreInt32(&c.bufferedCount, 0)

@@ -124,7 +124,7 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		msg := NewMessage(<-nsqd.idChan, body)
+		msg := NewMessage(topic.NextMsgID(), body)
 		topic.PutMessage(msg)
 	}
 
@@ -226,7 +226,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	msg := NewMessage(<-nsqd.idChan, body)
+	msg := NewMessage(topic.NextMsgID(), body)
 	topic.PutMessage(msg)
 	msg = <-ephemeralChannel.clientMsgChan
 	equal(t, msg.Body, body)

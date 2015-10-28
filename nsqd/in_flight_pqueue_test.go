@@ -52,7 +52,7 @@ func TestRemove(t *testing.T) {
 	msgs := make(map[MessageID]*Message)
 	for i := 0; i < c; i++ {
 		m := &Message{pri: int64(rand.Intn(100000000))}
-		copy(m.ID[:], fmt.Sprintf("%016d", m.pri))
+		m.ID = MessageID(m.pri)
 		msgs[m.ID] = m
 		pq.Push(m)
 	}

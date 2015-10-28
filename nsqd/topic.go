@@ -33,7 +33,8 @@ type Topic struct {
 	paused    int32
 	pauseChan chan bool
 
-	ctx *context
+	ctx         *context
+	msgIDCursor uint64
 }
 
 // Topic constructor
@@ -73,6 +74,12 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 // Exiting returns a boolean indicating if this topic is closed/exiting
 func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
+}
+
+func (t *Topic) NextMsgID() MessageID {
+	// TODO: read latest logid and incr. combine the partition id at high.
+	id := atomic.AddUint64(&t.msgIDCursor, 1)
+	return MessageID(id)
 }
 
 // GetChannel performs a thread safe operation

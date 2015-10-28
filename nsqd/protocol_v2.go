@@ -657,7 +657,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
-	err = client.Channel.FinishMessage(client.ID, *id)
+	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id))
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %s failed %s", *id, err.Error()))
@@ -695,7 +695,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.ctx.nsqd.getOpts().MaxReqTimeout))
 	}
 
-	err = client.Channel.RequeueMessage(client.ID, *id, timeoutDuration)
+	err = client.Channel.RequeueMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id), timeoutDuration)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %s failed %s", *id, err.Error()))
@@ -759,7 +759,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	msg := NewMessage(<-p.ctx.nsqd.idChan, messageBody)
+	msg := NewMessage(topic.NextMsgID(), messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -796,17 +796,17 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
 	}
 
-	messages, err := readMPUB(client.Reader, client.lenSlice, p.ctx.nsqd.idChan,
-		p.ctx.nsqd.getOpts().MaxMsgSize)
-	if err != nil {
-		return nil, err
-	}
-
 	if err := p.CheckAuth(client, "MPUB", topicName, ""); err != nil {
 		return nil, err
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
+
+	messages, err := readMPUB(client.Reader, client.lenSlice, topic,
+		p.ctx.nsqd.getOpts().MaxMsgSize)
+	if err != nil {
+		return nil, err
+	}
 
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
@@ -837,7 +837,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	client.RLock()
 	msgTimeout := client.MsgTimeout
 	client.RUnlock()
-	err = client.Channel.TouchMessage(client.ID, *id, msgTimeout)
+	err = client.Channel.TouchMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id), msgTimeout)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_TOUCH_FAILED",
 			fmt.Sprintf("TOUCH %s failed %s", *id, err.Error()))
@@ -846,7 +846,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int64) ([]*Message, error) {
+func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64) ([]*Message, error) {
 	numMessages, err := readLen(r, tmp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
@@ -881,18 +881,18 @@ func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, NewMessage(<-idChan, msgBody))
+		messages = append(messages, NewMessage(topic.NextMsgID(), msgBody))
 	}
 
 	return messages, nil
 }
 
 // validate and cast the bytes on the wire to a message ID
-func getMessageID(p []byte) (*MessageID, error) {
+func getMessageID(p []byte) (*CompatibleMessageID, error) {
 	if len(p) != MsgIDLength {
 		return nil, errors.New("Invalid Message ID")
 	}
-	return (*MessageID)(unsafe.Pointer(&p[0])), nil
+	return (*CompatibleMessageID)(unsafe.Pointer(&p[0])), nil
 }
 
 func readLen(r io.Reader, tmp []byte) (int32, error) {
