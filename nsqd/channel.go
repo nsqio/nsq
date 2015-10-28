@@ -364,6 +364,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		}
 		c.removeFromInFlightPQ(msg)
 
+		msg.Attempts++
 		return c.doRequeue(msg)
 	}
 	return nil

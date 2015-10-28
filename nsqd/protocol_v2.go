@@ -70,13 +70,76 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			break
 		}
 
-		// trim the '\n'
-		line = line[:len(line)-1]
-		// optionally trim the '\r'
-		if len(line) > 0 && line[len(line)-1] == '\r' {
-			line = line[:len(line)-1]
+		// handle the compatible for message id.
+		// Since the new message id is id+traceid. we can not
+		// use \n to check line.
+		// REQ, FIN, TOUCH (with message id as param) should be handled.
+		// FIN 16BYTES\n
+		// REQ 16bytes time\n
+		// TOUCH 16bytes\n
+		isSpecial := false
+		params := make([][]byte, 0)
+		if len(line) >= 3 {
+			if bytes.Equal(line[:3], []byte("FIN")) {
+				isSpecial = true
+				if len(line) < 21 {
+					left := make([]byte, 21-len(line))
+					_, err = client.Reader.Read(left)
+					if err != nil {
+						p.ctx.nsqd.logf("FIN param err:%v", err)
+						break
+					}
+				}
+				params = append(params, line[:3])
+				params = append(params, line[4:20])
+			} else if bytes.Equal(line[:3], []byte("REQ")) {
+				isSpecial = true
+				if len(line) < 21 {
+					left := make([]byte, 21-len(line))
+					_, err = client.Reader.Read(left)
+					if err != nil {
+						p.ctx.nsqd.logf("REQ param err:%v", err)
+						break
+					}
+				}
+				params = append(params, line[:3])
+				params = append(params, line[4:20])
+				if len(line) < 21 {
+					_, err = client.Reader.ReadSlice('\n')
+					if err != nil {
+						p.ctx.nsqd.logf("REQ time param err:%v", err)
+						break
+					}
+				}
+				params = append(params, []byte("0"))
+			} else if len(line) >= 5 {
+				if bytes.Equal(line[:5], []byte("TOUCH")) {
+					isSpecial = true
+					if len(line) < 23 {
+						left := make([]byte, 23-len(line))
+						_, err = client.Reader.Read(left)
+						if err != nil {
+							p.ctx.nsqd.logf("TOUCH param err:%v", err)
+							break
+						}
+					}
+					params = append(params, line[:5])
+					params = append(params, line[6:22])
+				}
+			}
 		}
-		params := bytes.Split(line, separatorBytes)
+		if p.ctx.nsqd.getOpts().Verbose {
+			p.ctx.nsqd.logf("PROTOCOL(V2) got client command: %s ", line)
+		}
+		if !isSpecial {
+			// trim the '\n'
+			line = line[:len(line)-1]
+			// optionally trim the '\r'
+			if len(line) > 0 && line[len(line)-1] == '\r' {
+				line = line[:len(line)-1]
+			}
+			params = bytes.Split(line, separatorBytes)
+		}
 
 		if p.ctx.nsqd.getOpts().Verbose {
 			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] %s", client, params)
@@ -654,6 +717,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 
 	id, err := getMessageID(params[1])
 	if err != nil {
+		p.ctx.nsqd.logf("FIN error: %v", params[1])
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
