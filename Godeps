@@ -8,3 +8,4 @@ github.com/mreiferson/go-snappystream   028eae7ab5c4c9e2d1cb4c4ca1e53259bbe7e504
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
 github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
+github.com/judwhite/go-svc/svc          53bd3020e68399b23994ce23d1130801aa674226
