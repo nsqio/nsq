@@ -7,10 +7,8 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -174,7 +172,7 @@ func (cfg config) Validate() {
 	}
 }
 
-func main() {
+func start() *nsqd.NSQD {
 	flagSet := nsqFlagset()
 	flagSet.Parse(os.Args[1:])
 
@@ -182,11 +180,8 @@ func main() {
 
 	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
 		fmt.Println(version.String("nsqd"))
-		return
+		return nil
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
@@ -208,6 +203,5 @@ func main() {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
 	nsqd.Main()
-	<-signalChan
-	nsqd.Exit()
+	return nsqd
 }
