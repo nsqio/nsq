@@ -35,7 +35,7 @@ func TestDiskQueueWriter(t *testing.T) {
 	equal(t, end.(*diskQueueEndInfo).EndPos, int64(len(msg)+4))
 	equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
 
-	dqReader := newDiskQueueReader(dqName, tmpDir, 1024, 4, 1<<10, 2500, 2*time.Second, true, l)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 2500, 2*time.Second, true, l)
 	dqReader.UpdateQueueEnd(end)
 	msgOut := <-dqReader.ReadChan()
 	equal(t, msgOut.data, msg)
@@ -79,7 +79,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	msg := bytes.Repeat([]byte{0}, 10)
 	dq := newDiskQueueWriter(dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, l)
-	dqReader := newDiskQueueReader(dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, true, l)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, true, l)
 	dqObj := dq.(*diskQueueWriter)
 	defer dq.Close()
 
@@ -116,7 +116,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	}
 	equal(t, dqObj.totalMsgCnt, int64(0))
 
-	dqReader = newDiskQueueReader(dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, true, l)
+	dqReader = newDiskQueueReader(dqName, dqName, tmpDir, 100, 0, 1<<10, 2500, 2*time.Second, true, l)
 	for i := 0; i < 100; i++ {
 		end, err := dq.Put(msg)
 		equal(t, err, nil)
@@ -136,7 +136,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	}
 
 	equal(t, dqReader.Depth(), int64(0))
-	equal(t, dqReader.(*diskQueueReader).readFileNum, dqObj.writeFileNum)
+	equal(t, dqReader.(*diskQueueReader).readPos.FileNum, dqObj.writeFileNum)
 	equal(t, dqReader.(*diskQueueReader).nextReadPos, dqObj.writePos)
 	dqReader.Close()
 }
@@ -151,7 +151,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	// require a non-zero message length for the corrupt (len 0) test below
 	dq := newDiskQueueWriter(dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, l)
-	dqReader := newDiskQueueReader(dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, true, l)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, true, l)
 	defer dqReader.Close()
 	defer dq.Close()
 
@@ -258,7 +258,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	t.Logf("diskqueue end : %v", e)
 	t.Logf("restarting diskqueue")
 
-	dqReader := newDiskQueueReader(dqName, tmpDir, 262144, 0, 1<<10, 2500, 2*time.Second, true, l)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 262144, 0, 1<<10, 2500, 2*time.Second, true, l)
 	defer dqReader.Close()
 	dqReader.UpdateQueueEnd(e)
 	time.Sleep(time.Second * 10)
@@ -389,7 +389,7 @@ func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 	dq := newDiskQueueWriter(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
-	dqReader := newDiskQueueReader(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, true, l)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, true, l)
 	defer dqReader.Close()
 	defer dq.Close()
 	b.SetBytes(size)

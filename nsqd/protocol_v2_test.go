@@ -379,7 +379,7 @@ func TestPausing(t *testing.T) {
 	msg, err = decodeMessage(data)
 	equal(t, msg.Body, []byte("test body"))
 
-	_, err = nsq.Finish(nsq.MessageID(msg.GetCompatibleMsgID())).WriteTo(conn)
+	_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
 	equal(t, err, nil)
 
 	_, err = nsq.Ready(1).WriteTo(conn)
@@ -586,12 +586,12 @@ func TestTouch(t *testing.T) {
 
 	time.Sleep(75 * time.Millisecond)
 
-	_, err = nsq.Touch(nsq.MessageID(msg.GetCompatibleMsgID())).WriteTo(conn)
+	_, err = nsq.Touch(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
 	equal(t, err, nil)
 
 	time.Sleep(75 * time.Millisecond)
 
-	_, err = nsq.Finish(nsq.MessageID(msg.GetCompatibleMsgID())).WriteTo(conn)
+	_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
 	equal(t, err, nil)
 
 	equal(t, channel.timeoutCount, uint64(0))
@@ -1313,14 +1313,14 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	time.Sleep(1100 * time.Millisecond)
 
-	_, err = nsq.Finish(nsq.MessageID(msgOut.GetCompatibleMsgID())).WriteTo(conn)
+	_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 	equal(t, err, nil)
 
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	equal(t, frameType, frameTypeError)
 	equal(t, string(data),
-		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.GetCompatibleMsgID()))
+		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.GetFullMsgID()))
 }
 
 func TestBadFin(t *testing.T) {
@@ -1604,7 +1604,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		if err != nil {
 			panic(err.Error())
 		}
-		nsq.Finish(nsq.MessageID(msg.GetCompatibleMsgID())).WriteTo(rw)
+		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
 		if (i+1)%rdyCount == 0 || i+1 == num {
 			if i+1 == num {
 				nsq.Ready(0).WriteTo(conn)

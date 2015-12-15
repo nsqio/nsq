@@ -367,6 +367,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			}
 
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
+				// TODO: should FIN automatically?
 				continue
 			}
 

@@ -18,10 +18,11 @@ import (
 type diskQueueWriter struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	// run-time state (also persisted to disk)
-	writePos     int64
-	writeFileNum int64
-	totalMsgCnt  int64
-	virtualEnd   VirtualDiskOffset
+	writePos           int64
+	writeFileNum       int64
+	totalMsgCnt        int64
+	virtualEnd         VirtualDiskOffset
+	virtualReadableEnd VirtualDiskOffset
 	sync.RWMutex
 
 	// instantiation time metadata
@@ -154,6 +155,7 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 		d.writeFile.Close()
 		d.writeFile = nil
 	}
+	d.virtualReadableEnd = d.virtualEnd
 
 	return nil
 }
@@ -203,13 +205,14 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 		}
 	}
 
+	d.virtualReadableEnd = d.virtualEnd
 	d.writeFileNum++
 	d.writePos = 0
 	d.totalMsgCnt = 0
 	return nil
 }
 
-func (d *diskQueueWriter) GetQueueEnd() BackendQueueEnd {
+func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	d.RLock()
 	defer d.RUnlock()
 
@@ -220,12 +223,12 @@ func (d *diskQueueWriter) GetQueueEnd() BackendQueueEnd {
 	return <-d.endResponseChan
 }
 
-func (d *diskQueueWriter) internalGetQueueEnd() BackendQueueEnd {
+func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
 	e := &diskQueueEndInfo{}
 	e.EndFileNum = d.writeFileNum
 	e.EndPos = d.writePos
 	e.TotalMsgCnt = d.totalMsgCnt
-	e.VirtualEnd = d.virtualEnd
+	e.VirtualEnd = d.virtualReadableEnd
 	return e
 }
 
@@ -305,6 +308,8 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
+		d.virtualReadableEnd = d.virtualEnd
+		endInfo.VirtualEnd = d.virtualReadableEnd
 	}
 
 	return endInfo, err
@@ -330,6 +335,7 @@ func (d *diskQueueWriter) sync() error {
 			return err
 		}
 	}
+	d.virtualReadableEnd = d.virtualEnd
 
 	err := d.persistMetaData()
 	if err != nil {
@@ -425,7 +431,7 @@ func (d *diskQueueWriter) ioLoop() {
 			d.emptyResponseChan <- d.deleteAllFiles()
 			count = 0
 		case <-d.getEndChan:
-			d.endResponseChan <- d.internalGetQueueEnd()
+			d.endResponseChan <- d.internalGetQueueReadEnd()
 		case dataWrite := <-d.writeChan:
 			count++
 			e, werr := d.writeOne(dataWrite)
@@ -436,9 +442,16 @@ func (d *diskQueueWriter) ioLoop() {
 				end: e,
 				err: werr,
 			}
-		case <-d.flushChan:
-			d.flushResponseChan <- d.sync()
-			count = 0
+		case wait := <-d.flushChan:
+			if count > 0 {
+				count = 0
+				d.needSync = true
+				if wait > 1 {
+					d.flushResponseChan <- d.sync()
+					continue
+				}
+			}
+			d.flushResponseChan <- nil
 		case <-syncTicker.C:
 			if count > 0 {
 				count = 0

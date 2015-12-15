@@ -218,6 +218,7 @@ func (t *Topic) messagePump() {
 		chans = append(chans, c)
 	}
 	t.RUnlock()
+	var lastEnd diskQueueEndInfo
 
 	for {
 		select {
@@ -233,17 +234,19 @@ func (t *Topic) messagePump() {
 			if flag > 1 {
 				flushCnt = 10
 			}
-			if flushCnt < 10 {
-				continue
-			} else {
+			if flushCnt >= 10 {
 				flushCnt = 0
+				t.flush()
 			}
 		case <-t.exitChan:
 			goto exit
 		}
 
-		t.flush()
-		e := t.backend.GetQueueEnd()
+		e := t.backend.GetQueueReadEnd()
+		if lastEnd == *(e.(*diskQueueEndInfo)) {
+			continue
+		}
+		lastEnd = *(e.(*diskQueueEndInfo))
 		for _, channel := range chans {
 			err = channel.UpdateQueueEnd(e)
 			if err != nil {
@@ -259,7 +262,7 @@ exit:
 }
 
 func (t *Topic) totalSize() int64 {
-	e := t.backend.GetQueueEnd()
+	e := t.backend.GetQueueReadEnd()
 	diskEnd, ok := e.(*diskQueueEndInfo)
 	if ok {
 		return int64(diskEnd.VirtualEnd)

@@ -24,7 +24,7 @@ type BackendQueueWriter interface {
 	Delete() error
 	Empty() error
 	Flush() error
-	GetQueueEnd() BackendQueueEnd
+	GetQueueReadEnd() BackendQueueEnd
 }
 
 type ReadResult struct {

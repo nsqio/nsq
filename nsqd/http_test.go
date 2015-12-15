@@ -27,7 +27,7 @@ func TestHTTPput(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_put" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	_ = nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
@@ -39,7 +39,6 @@ func TestHTTPput(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
 }
 
 func TestHTTPputEmpty(t *testing.T) {
@@ -50,7 +49,7 @@ func TestHTTPputEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte(""))
 	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
@@ -63,7 +62,6 @@ func TestHTTPputEmpty(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(0))
 }
 
 func TestHTTPmput(t *testing.T) {
@@ -74,7 +72,7 @@ func TestHTTPmput(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -92,7 +90,6 @@ func TestHTTPmput(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(4))
 }
 
 func TestHTTPmputEmpty(t *testing.T) {
@@ -103,7 +100,7 @@ func TestHTTPmputEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -123,7 +120,6 @@ func TestHTTPmputEmpty(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(4))
 }
 
 func TestHTTPmputBinary(t *testing.T) {
@@ -134,7 +130,7 @@ func TestHTTPmputBinary(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -152,7 +148,6 @@ func TestHTTPmputBinary(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(5))
 }
 
 func TestHTTPSRequire(t *testing.T) {
@@ -167,7 +162,7 @@ func TestHTTPSRequire(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_put_req" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
@@ -197,7 +192,6 @@ func TestHTTPSRequire(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
 }
 
 func TestHTTPSRequireVerify(t *testing.T) {
@@ -214,7 +208,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 	topicName := "test_http_put_req_verf" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -261,7 +255,6 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
 }
 
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
@@ -278,7 +271,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	nsqd.GetTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -291,7 +284,6 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
 }
 
 func TestHTTPDeprecatedTopicChannel(t *testing.T) {

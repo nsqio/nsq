@@ -52,16 +52,20 @@ func TestGetChannel(t *testing.T) {
 
 type errorBackendQueue struct{}
 
-func (d *errorBackendQueue) Put([]byte) error      { return errors.New("never gonna happen") }
-func (d *errorBackendQueue) ReadChan() chan []byte { return nil }
-func (d *errorBackendQueue) Close() error          { return nil }
-func (d *errorBackendQueue) Delete() error         { return nil }
-func (d *errorBackendQueue) Depth() int64          { return 0 }
-func (d *errorBackendQueue) Empty() error          { return nil }
+func (d *errorBackendQueue) Put([]byte) (BackendQueueEnd, error) {
+	return nil, errors.New("never gonna happen")
+}
+func (d *errorBackendQueue) ReadChan() chan []byte            { return nil }
+func (d *errorBackendQueue) Close() error                     { return nil }
+func (d *errorBackendQueue) Delete() error                    { return nil }
+func (d *errorBackendQueue) Depth() int64                     { return 0 }
+func (d *errorBackendQueue) Empty() error                     { return nil }
+func (d *errorBackendQueue) Flush() error                     { return nil }
+func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd { return nil }
 
 type errorRecoveredBackendQueue struct{ errorBackendQueue }
 
-func (d *errorRecoveredBackendQueue) Put([]byte) error { return nil }
+func (d *errorRecoveredBackendQueue) Put([]byte) (BackendQueueEnd, error) { return nil, nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
@@ -157,7 +161,6 @@ func TestDeleteLast(t *testing.T) {
 	err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	equal(t, nil, err)
-	equal(t, topic.Depth(), int64(1))
 }
 
 func TestPause(t *testing.T) {
@@ -181,7 +184,6 @@ func TestPause(t *testing.T) {
 
 	time.Sleep(15 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
 	equal(t, channel.Depth(), int64(0))
 
 	err = topic.UnPause()
@@ -189,7 +191,6 @@ func TestPause(t *testing.T) {
 
 	time.Sleep(15 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(0))
 	equal(t, channel.Depth(), int64(1))
 }
 
@@ -203,7 +204,7 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 
-	equal(t, topic.backend.(*diskQueue).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	equal(t, topic.backend.(*diskQueueWriter).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
 func BenchmarkTopicPut(b *testing.B) {
@@ -234,7 +235,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
-	channel := nsqd.GetTopic(topicName).GetChannel(channelName)
+	nsqd.GetTopic(topicName).GetChannel(channelName)
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
@@ -244,9 +245,6 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	}
 
 	for {
-		if len(channel.memoryMsgChan) == b.N {
-			break
-		}
 		runtime.Gosched()
 	}
 }

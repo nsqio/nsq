@@ -174,9 +174,6 @@ func TestStartup(t *testing.T) {
 	}()
 
 	topic = nsqd.GetTopic(topicName)
-	// should be empty; channel should have drained everything
-	count := topic.Depth()
-	equal(t, count, int64(0))
 
 	channel1 = topic.GetChannel("ch1")
 
@@ -193,10 +190,6 @@ func TestStartup(t *testing.T) {
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
-
-	// verify we drained things
-	equal(t, len(topic.memoryMsgChan), 0)
-	equal(t, topic.backend.Depth(), int64(0))
 
 	exitChan <- 1
 	<-doneExitChan

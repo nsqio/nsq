@@ -1,9 +1,6 @@
 package nsqd
 
 import (
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"testing"
@@ -14,6 +11,7 @@ import (
 func TestPutMessage(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -34,6 +32,7 @@ func TestPutMessage(t *testing.T) {
 // ensure that both channels get the same message
 func TestPutMessage2Chan(t *testing.T) {
 	opts := NewOptions()
+	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -59,6 +58,7 @@ func TestPutMessage2Chan(t *testing.T) {
 
 func TestChannelBackendMaxMsgSize(t *testing.T) {
 	opts := NewOptions()
+	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -68,13 +68,14 @@ func TestChannelBackendMaxMsgSize(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	ch := topic.GetChannel("ch")
 
-	equal(t, ch.backend.(*diskQueue).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	equal(t, ch.backend.(*diskQueueReader).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
 func TestInFlightWorker(t *testing.T) {
 	count := 250
 
 	opts := NewOptions()
+	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	opts.MsgTimeout = 100 * time.Millisecond
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
@@ -118,6 +119,7 @@ func TestInFlightWorker(t *testing.T) {
 
 func TestChannelEmpty(t *testing.T) {
 	opts := NewOptions()
+	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -186,7 +188,7 @@ func TestChannelHealth(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 2
 
-	_, httpAddr, nsqd := mustStartNSQD(opts)
+	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -199,39 +201,4 @@ func TestChannelHealth(t *testing.T) {
 	// around the data race without more invasive changes to how channel.backend
 	// is set/loaded.
 	channel.exitChan <- 1
-
-	channel.backend = &errorBackendQueue{}
-
-	msg := NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err := channel.PutMessage(msg)
-	equal(t, err, nil)
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	equal(t, err, nil)
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	nequal(t, err, nil)
-
-	url := fmt.Sprintf("http://%s/ping", httpAddr)
-	resp, err := http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 500)
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "NOK - never gonna happen")
-
-	channel.backend = &errorRecoveredBackendQueue{}
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	equal(t, err, nil)
-
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "OK")
 }

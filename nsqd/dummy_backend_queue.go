@@ -52,7 +52,7 @@ func (d *dummyBackendQueue) Empty() error {
 func (d *dummyBackendQueueWriter) Put([]byte) (BackendQueueEnd, error) {
 	return nil, nil
 }
-func (d *dummyBackendQueueWriter) GetQueueEnd() BackendQueueEnd {
+func (d *dummyBackendQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	return nil
 }
 func (d *dummyBackendQueueWriter) Flush() error {
