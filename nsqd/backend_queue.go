@@ -3,6 +3,9 @@ package nsqd
 type BackendQueueEnd interface {
 }
 
+type BackendOffset interface {
+}
+
 // BackendQueue represents the behavior for the secondary message
 // storage system
 type BackendQueue interface {
@@ -21,17 +24,21 @@ type BackendQueueWriter interface {
 	Delete() error
 	Empty() error
 	Flush() error
+	GetQueueEnd() BackendQueueEnd
 }
 
 type ReadResult struct {
-	data []byte
-	err  error
+	offset BackendOffset
+	data   []byte
+	err    error
 }
 
 // for channel consumer
 type BackendQueueReader interface {
 	ReadChan() chan ReadResult
+	ConfirmRead(BackendOffset) error
 	Close() error
 	Depth() int64
+	Delete() error
 	UpdateQueueEnd(BackendQueueEnd)
 }

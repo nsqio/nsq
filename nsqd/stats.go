@@ -22,8 +22,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	return TopicStats{
 		TopicName:    t.name,
 		Channels:     channels,
-		Depth:        t.Depth(),
-		BackendDepth: t.backend.Depth(),
+		Depth:        t.totalSize(),
 		MessageCount: atomic.LoadUint64(&t.messageCount),
 		Paused:       t.IsPaused(),
 

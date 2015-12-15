@@ -715,13 +715,13 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
 	}
 
-	id, err := getMessageID(params[1])
+	id, err := getFullMessageID(params[1])
 	if err != nil {
 		p.ctx.nsqd.logf("FIN error: %v", params[1])
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
-	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id))
+	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromFullMsgID(*id))
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %s failed %s", *id, err.Error()))
@@ -742,7 +742,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "REQ insufficient number of params")
 	}
 
-	id, err := getMessageID(params[1])
+	id, err := getFullMessageID(params[1])
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
@@ -759,7 +759,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.ctx.nsqd.getOpts().MaxReqTimeout))
 	}
 
-	err = client.Channel.RequeueMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id), timeoutDuration)
+	err = client.Channel.RequeueMessage(client.ID, GetMessageIDFromFullMsgID(*id), timeoutDuration)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %s failed %s", *id, err.Error()))
@@ -893,7 +893,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
 	}
 
-	id, err := getMessageID(params[1])
+	id, err := getFullMessageID(params[1])
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
@@ -901,7 +901,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	client.RLock()
 	msgTimeout := client.MsgTimeout
 	client.RUnlock()
-	err = client.Channel.TouchMessage(client.ID, GetMessageIDFromCompatibleMsgID(*id), msgTimeout)
+	err = client.Channel.TouchMessage(client.ID, GetMessageIDFromFullMsgID(*id), msgTimeout)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_TOUCH_FAILED",
 			fmt.Sprintf("TOUCH %s failed %s", *id, err.Error()))
@@ -952,11 +952,11 @@ func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64) ([]*M
 }
 
 // validate and cast the bytes on the wire to a message ID
-func getMessageID(p []byte) (*CompatibleMessageID, error) {
+func getFullMessageID(p []byte) (*FullMessageID, error) {
 	if len(p) != MsgIDLength {
 		return nil, errors.New("Invalid Message ID")
 	}
-	return (*CompatibleMessageID)(unsafe.Pointer(&p[0])), nil
+	return (*FullMessageID)(unsafe.Pointer(&p[0])), nil
 }
 
 func readLen(r io.Reader, tmp []byte) (int32, error) {

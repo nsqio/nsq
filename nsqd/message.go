@@ -17,14 +17,14 @@ const (
 // the new message total id will be ID+TraceID, the length is same with old id
 // slice, the traceid only used for trace for business, the ID is used for internal.
 // In order to be compatible with old format, we keep the attempts field.
-type CompatibleMessageID [MsgIDLength]byte
+type FullMessageID [MsgIDLength]byte
 type MessageID uint64
 
-func GetMessageIDFromCompatibleMsgID(id CompatibleMessageID) MessageID {
+func GetMessageIDFromFullMsgID(id FullMessageID) MessageID {
 	return MessageID(binary.BigEndian.Uint64(id[:8]))
 }
 
-func GetTraceIDFromCompatibleMsgID(id CompatibleMessageID) uint64 {
+func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
 	return binary.BigEndian.Uint64(id[8:16])
 }
 
@@ -40,6 +40,9 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
+	//for backend queue
+	offset  BackendOffset
+	rawSize int
 }
 
 func NewMessage(id MessageID, body []byte) *Message {
@@ -60,8 +63,8 @@ func NewMessageWithTs(id MessageID, body []byte, ts int64) *Message {
 	}
 }
 
-func (m *Message) GetCompatibleMsgID() CompatibleMessageID {
-	var buf CompatibleMessageID
+func (m *Message) GetFullMsgID() FullMessageID {
+	var buf FullMessageID
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.ID))
 	binary.BigEndian.PutUint64(buf[8:16], uint64(m.TraceID))
 	return buf
@@ -120,11 +123,11 @@ func decodeMessage(b []byte) (*Message, error) {
 	return &msg, nil
 }
 
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
+func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueueWriter) (BackendQueueEnd, error) {
 	buf.Reset()
 	_, err := msg.WriteTo(buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return bq.Put(buf.Bytes())
 }

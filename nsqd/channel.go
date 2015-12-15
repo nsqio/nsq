@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"errors"
 	"math"
 	"strings"
@@ -41,13 +40,13 @@ type Channel struct {
 	name      string
 	ctx       *context
 
-	backend BackendQueue
+	backend BackendQueueReader
 
-	memoryMsgChan chan *Message
-	clientMsgChan chan *Message
-	exitChan      chan int
-	exitFlag      int32
-	exitMutex     sync.RWMutex
+	requeuedMsgChan chan *Message
+	clientMsgChan   chan *Message
+	exitChan        chan int
+	exitFlag        int32
+	exitMutex       sync.RWMutex
 
 	// state tracking
 	clients        map[int64]Consumer
@@ -63,8 +62,9 @@ type Channel struct {
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
+	currentLastConfirmed VirtualDiskOffset
+	confirmedMsgs        map[VirtualDiskOffset]*Message
 	// stat counters
-	bufferedCount int32
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -72,14 +72,15 @@ func NewChannel(topicName string, channelName string, ctx *context,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
-		topicName:      topicName,
-		name:           channelName,
-		memoryMsgChan:  make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
-		clientMsgChan:  make(chan *Message),
-		exitChan:       make(chan int),
-		clients:        make(map[int64]Consumer),
-		deleteCallback: deleteCallback,
-		ctx:            ctx,
+		topicName:       topicName,
+		name:            channelName,
+		requeuedMsgChan: make(chan *Message, ctx.nsqd.getOpts().MaxRdyCount+1),
+		clientMsgChan:   make(chan *Message),
+		exitChan:        make(chan int),
+		clients:         make(map[int64]Consumer),
+		confirmedMsgs:   make(map[VirtualDiskOffset]*Message),
+		deleteCallback:  deleteCallback,
+		ctx:             ctx,
 	}
 	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -92,17 +93,18 @@ func NewChannel(topicName string, channelName string, ctx *context,
 
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeral = true
-		c.backend = newDummyBackendQueue()
+		c.backend = newDummyBackendQueueReader()
 	} else {
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
-		c.backend = newDiskQueue(backendName,
+		c.backend = newDiskQueueReader(topicName, backendName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout,
+			false,
 			ctx.nsqd.getOpts().Logger)
 	}
 
@@ -195,58 +197,39 @@ func (c *Channel) Empty() error {
 				// so just remove it from the select so we can make progress
 				clientMsgChan = nil
 			}
-		case <-c.memoryMsgChan:
+		case <-c.requeuedMsgChan:
 		default:
 			goto finish
 		}
 	}
 
 finish:
-	return c.backend.Empty()
+	return nil
 }
 
 // flush persists all the messages in internal memory buffers to the backend
 // it does not drain inflight because it is only called in Close()
 func (c *Channel) flush() error {
-	var msgBuf bytes.Buffer
 
-	// messagePump is responsible for closing the channel it writes to
-	// this will read until it's closed (exited)
-	for msg := range c.clientMsgChan {
-		c.ctx.nsqd.logf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
-		writeMessageToBackend(&msgBuf, msg, c.backend)
-	}
-
-	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 {
-		c.ctx.nsqd.logf("CHANNEL(%s): flushing %d memory %d in-flight messages to backend",
-			c.name, len(c.memoryMsgChan), len(c.inFlightMessages))
+	if len(c.requeuedMsgChan) > 0 || len(c.inFlightMessages) > 0 {
+		c.ctx.nsqd.logf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
+			c.name, len(c.requeuedMsgChan), len(c.inFlightMessages))
 	}
 
 	for {
 		select {
-		case msg := <-c.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, c.backend)
-			if err != nil {
-				c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
-			}
+		case <-c.requeuedMsgChan:
 		default:
 			goto finish
 		}
 	}
 
 finish:
-	for _, msg := range c.inFlightMessages {
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
-		if err != nil {
-			c.ctx.nsqd.logf("ERROR: failed to write message to backend - %s", err)
-		}
-	}
-
 	return nil
 }
 
 func (c *Channel) Depth() int64 {
-	return int64(len(c.memoryMsgChan)) + c.backend.Depth() + int64(atomic.LoadInt32(&c.bufferedCount))
+	return c.backend.Depth()
 }
 
 func (c *Channel) Pause() error {
@@ -280,35 +263,15 @@ func (c *Channel) IsPaused() bool {
 	return atomic.LoadInt32(&c.paused) == 1
 }
 
-// PutMessage writes a Message to the queue
-func (c *Channel) PutMessage(m *Message) error {
+// When topic message is put, update the new end of the queue
+func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	err := c.put(m)
-	if err != nil {
-		return err
-	}
-	atomic.AddUint64(&c.messageCount, 1)
-	return nil
-}
-
-func (c *Channel) put(m *Message) error {
-	select {
-	case c.memoryMsgChan <- m:
-	default:
-		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, c.backend)
-		bufferPoolPut(b)
-		c.ctx.nsqd.SetHealth(err)
-		if err != nil {
-			c.ctx.nsqd.logf("CHANNEL(%s) ERROR: failed to write message to backend - %s",
-				c.name, err)
-			return err
-		}
-	}
+	c.backend.UpdateQueueEnd(end)
+	atomic.StoreUint64(&c.messageCount, uint64(end.(*diskQueueEndInfo).TotalMsgCnt))
 	return nil
 }
 
@@ -346,6 +309,26 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
+	c.Lock()
+	if c.currentLastConfirmed == msg.offset {
+		c.currentLastConfirmed += VirtualDiskOffset(msg.rawSize)
+		for {
+			if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
+				c.currentLastConfirmed += VirtualDiskOffset(m.rawSize)
+				delete(c.confirmedMsgs, m.offset.(VirtualDiskOffset))
+			} else {
+				break
+			}
+		}
+		err = c.backend.ConfirmRead(c.currentLastConfirmed)
+		if err != nil {
+			c.ctx.nsqd.logf("ERROR: confirm read failed: %v", err)
+			return err
+		}
+	} else {
+		c.confirmedMsgs[msg.offset.(VirtualDiskOffset)] = msg
+	}
+	c.Unlock()
 	return nil
 }
 
@@ -417,10 +400,7 @@ func (c *Channel) doRequeue(m *Message) error {
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	err := c.put(m)
-	if err != nil {
-		return err
-	}
+	c.requeuedMsgChan <- m
 	atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
@@ -476,7 +456,7 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 // messages to clients over a go chan
 func (c *Channel) messagePump() {
 	var msg *Message
-	var buf []byte
+	var data ReadResult
 	var err error
 
 	for {
@@ -488,21 +468,27 @@ func (c *Channel) messagePump() {
 		}
 
 		select {
-		case msg = <-c.memoryMsgChan:
-		case buf = <-c.backend.ReadChan():
-			msg, err = decodeMessage(buf)
+		case msg = <-c.requeuedMsgChan:
+		case data = <-c.backend.ReadChan():
+			if data.err != nil {
+				c.ctx.nsqd.logf("ERROR: failed to read message - %s", err)
+				// TODO: fix corrupt file from other replica.
+				c.backend.(*diskQueueReader).SkipToNext()
+				continue
+			}
+			msg, err = decodeMessage(data.data)
 			if err != nil {
 				c.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
 				continue
 			}
+			msg.offset = data.offset
+			msg.rawSize = len(data.data)
 		case <-c.exitChan:
 			goto exit
 		}
 
 		msg.Attempts++
-		atomic.StoreInt32(&c.bufferedCount, 1)
 		c.clientMsgChan <- msg
-		atomic.StoreInt32(&c.bufferedCount, 0)
 		// the client will call back to mark as in-flight w/ its info
 	}
 

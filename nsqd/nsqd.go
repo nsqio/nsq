@@ -512,6 +512,14 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
+func (n *NSQD) flushAll() {
+	n.RLock()
+	for _, t := range n.topicMap {
+		t.ForceFlush()
+	}
+	n.RUnlock()
+}
+
 func (n *NSQD) Notify(v interface{}) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
@@ -617,6 +625,7 @@ func (n *NSQD) queueScanLoop() {
 
 	workTicker := time.NewTicker(n.getOpts().QueueScanInterval)
 	refreshTicker := time.NewTicker(n.getOpts().QueueScanRefreshInterval)
+	flushTicker := time.NewTicker(time.Second)
 
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
@@ -630,6 +639,9 @@ func (n *NSQD) queueScanLoop() {
 		case <-refreshTicker.C:
 			channels = n.channels()
 			n.resizePool(len(channels), workCh, responseCh, closeCh)
+			continue
+		case <-flushTicker.C:
+			n.flushAll()
 			continue
 		case <-n.exitChan:
 			goto exit

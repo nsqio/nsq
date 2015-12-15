@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"sync"
@@ -19,10 +18,10 @@ type Topic struct {
 
 	name              string
 	channelMap        map[string]*Channel
-	backend           BackendQueue
-	memoryMsgChan     chan *Message
+	backend           BackendQueueWriter
 	exitChan          chan int
 	channelUpdateChan chan int
+	flushChan         chan int
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
 
@@ -35,6 +34,7 @@ type Topic struct {
 
 	ctx         *context
 	msgIDCursor uint64
+	needFlush   int32
 }
 
 // Topic constructor
@@ -42,9 +42,9 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 	t := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
-		memoryMsgChan:     make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
+		flushChan:         make(chan int),
 		ctx:               ctx,
 		pauseChan:         make(chan bool),
 		deleteCallback:    deleteCallback,
@@ -52,9 +52,9 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true
-		t.backend = newDummyBackendQueue()
+		t.backend = newDummyBackendQueueWriter()
 	} else {
-		t.backend = newDiskQueue(topicName,
+		t.backend = newDiskQueueWriter(topicName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
@@ -191,36 +191,27 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 }
 
 func (t *Topic) put(m *Message) error {
-	select {
-	case t.memoryMsgChan <- m:
-	default:
-		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, t.backend)
-		bufferPoolPut(b)
-		t.ctx.nsqd.SetHealth(err)
-		if err != nil {
-			t.ctx.nsqd.logf(
-				"TOPIC(%s) ERROR: failed to write message to backend - %s",
-				t.name, err)
-			return err
-		}
+	b := bufferPoolGet()
+	_, err := writeMessageToBackend(b, m, t.backend)
+	bufferPoolPut(b)
+	t.ctx.nsqd.SetHealth(err)
+	atomic.StoreInt32(&t.needFlush, 1)
+	if err != nil {
+		t.ctx.nsqd.logf(
+			"TOPIC(%s) ERROR: failed to write message to backend - %s",
+			t.name, err)
+		return err
 	}
+	t.flushChan <- 1
 	return nil
-}
-
-func (t *Topic) Depth() int64 {
-	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
 }
 
 // messagePump selects over the in-memory and backend queue and
 // writes messages to every channel for this topic
 func (t *Topic) messagePump() {
-	var msg *Message
-	var buf []byte
 	var err error
 	var chans []*Channel
-	var memoryMsgChan chan *Message
-	var backendChan chan []byte
+	flushCnt := 0
 
 	t.RLock()
 	for _, c := range t.channelMap {
@@ -228,20 +219,8 @@ func (t *Topic) messagePump() {
 	}
 	t.RUnlock()
 
-	if len(chans) > 0 {
-		memoryMsgChan = t.memoryMsgChan
-		backendChan = t.backend.ReadChan()
-	}
-
 	for {
 		select {
-		case msg = <-memoryMsgChan:
-		case buf = <-backendChan:
-			msg, err = decodeMessage(buf)
-			if err != nil {
-				t.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
-				continue
-			}
 		case <-t.channelUpdateChan:
 			chans = chans[:0]
 			t.RLock()
@@ -249,48 +228,43 @@ func (t *Topic) messagePump() {
 				chans = append(chans, c)
 			}
 			t.RUnlock()
-			if len(chans) == 0 || t.IsPaused() {
-				memoryMsgChan = nil
-				backendChan = nil
-			} else {
-				memoryMsgChan = t.memoryMsgChan
-				backendChan = t.backend.ReadChan()
+		case flag := <-t.flushChan:
+			flushCnt++
+			if flag > 1 {
+				flushCnt = 10
 			}
-			continue
-		case pause := <-t.pauseChan:
-			if pause || len(chans) == 0 {
-				memoryMsgChan = nil
-				backendChan = nil
+			if flushCnt < 10 {
+				continue
 			} else {
-				memoryMsgChan = t.memoryMsgChan
-				backendChan = t.backend.ReadChan()
+				flushCnt = 0
 			}
-			continue
 		case <-t.exitChan:
 			goto exit
 		}
 
-		for i, channel := range chans {
-			chanMsg := msg
-			// copy the message because each channel
-			// needs a unique instance but...
-			// fastpath to avoid copy if its the first channel
-			// (the topic already created the first copy)
-			if i > 0 {
-				chanMsg = NewMessage(msg.ID, msg.Body)
-				chanMsg.Timestamp = msg.Timestamp
-			}
-			err := channel.PutMessage(chanMsg)
+		t.flush()
+		e := t.backend.GetQueueEnd()
+		for _, channel := range chans {
+			err = channel.UpdateQueueEnd(e)
 			if err != nil {
 				t.ctx.nsqd.logf(
-					"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
-					t.name, msg.ID, channel.name, err)
+					"TOPIC(%s) ERROR: failed to update topic end to channel(%s) - %s",
+					t.name, channel.name, err)
 			}
 		}
 	}
 
 exit:
 	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.name)
+}
+
+func (t *Topic) totalSize() int64 {
+	e := t.backend.GetQueueEnd()
+	diskEnd, ok := e.(*diskQueueEndInfo)
+	if ok {
+		return int64(diskEnd.VirtualEnd)
+	}
+	return 0
 }
 
 // Delete empties the topic and all its channels and closes
@@ -351,42 +325,23 @@ func (t *Topic) exit(deleted bool) error {
 }
 
 func (t *Topic) Empty() error {
-	for {
-		select {
-		case <-t.memoryMsgChan:
-		default:
-			goto finish
-		}
-	}
-
-finish:
 	return t.backend.Empty()
 }
 
+func (t *Topic) ForceFlush() {
+	t.flushChan <- 2
+}
+
 func (t *Topic) flush() error {
-	var msgBuf bytes.Buffer
-
-	if len(t.memoryMsgChan) > 0 {
-		t.ctx.nsqd.logf(
-			"TOPIC(%s): flushing %d memory messages to backend",
-			t.name, len(t.memoryMsgChan))
+	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
+	if !ok {
+		return nil
 	}
-
-	for {
-		select {
-		case msg := <-t.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, t.backend)
-			if err != nil {
-				t.ctx.nsqd.logf(
-					"ERROR: failed to write message to backend - %s", err)
-			}
-		default:
-			goto finish
-		}
+	err := t.backend.Flush()
+	if err != nil {
+		t.ctx.nsqd.logf("ERROR: failed flush: %v", err)
 	}
-
-finish:
-	return nil
+	return err
 }
 
 func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {

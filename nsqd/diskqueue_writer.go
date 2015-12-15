@@ -1,7 +1,7 @@
 package nsqd
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -21,6 +21,7 @@ type diskQueueWriter struct {
 	writePos     int64
 	writeFileNum int64
 	totalMsgCnt  int64
+	virtualEnd   VirtualDiskOffset
 	sync.RWMutex
 
 	// instantiation time metadata
@@ -34,8 +35,8 @@ type diskQueueWriter struct {
 	exitFlag        int32
 	needSync        bool
 
-	writeFile *os.File
-	writeBuf  bytes.Buffer
+	writeFile    *os.File
+	bufferWriter *bufio.Writer
 
 	// internal channels
 	writeChan         chan []byte
@@ -49,6 +50,8 @@ type diskQueueWriter struct {
 	flushResponseChan chan error
 	exitChan          chan int
 	exitSyncChan      chan int
+	getEndChan        chan int
+	endResponseChan   chan BackendQueueEnd
 
 	logger logger
 }
@@ -76,6 +79,8 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		flushResponseChan: make(chan error),
 		exitChan:          make(chan int),
 		exitSyncChan:      make(chan int),
+		getEndChan:        make(chan int),
+		endResponseChan:   make(chan BackendQueueEnd),
 		syncEvery:         syncEvery,
 		syncTimeout:       syncTimeout,
 		logger:            logger,
@@ -142,6 +147,9 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 	// ensure that ioLoop has exited
 	<-d.exitSyncChan
 
+	if d.bufferWriter != nil {
+		d.bufferWriter.Flush()
+	}
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
@@ -179,6 +187,9 @@ func (d *diskQueueWriter) deleteAllFiles() error {
 }
 
 func (d *diskQueueWriter) skipToNextRWFile() error {
+	if d.bufferWriter != nil {
+		d.bufferWriter.Flush()
+	}
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
@@ -196,6 +207,26 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 	d.writePos = 0
 	d.totalMsgCnt = 0
 	return nil
+}
+
+func (d *diskQueueWriter) GetQueueEnd() BackendQueueEnd {
+	d.RLock()
+	defer d.RUnlock()
+
+	if d.exitFlag == 1 {
+		return errors.New("exiting")
+	}
+	d.getEndChan <- 1
+	return <-d.endResponseChan
+}
+
+func (d *diskQueueWriter) internalGetQueueEnd() BackendQueueEnd {
+	e := &diskQueueEndInfo{}
+	e.EndFileNum = d.writeFileNum
+	e.EndPos = d.writePos
+	e.TotalMsgCnt = d.totalMsgCnt
+	e.VirtualEnd = d.virtualEnd
+	return e
 }
 
 // writeOne performs a low level filesystem write for a single []byte
@@ -220,6 +251,11 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 				return nil, err
 			}
 		}
+		if d.bufferWriter == nil {
+			d.bufferWriter = bufio.NewWriter(d.writeFile)
+		} else {
+			d.bufferWriter.Reset(d.writeFile)
+		}
 	}
 
 	dataLen := int32(len(data))
@@ -228,19 +264,12 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 		return nil, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
 	}
 
-	d.writeBuf.Reset()
-	err = binary.Write(&d.writeBuf, binary.BigEndian, dataLen)
+	err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = d.writeBuf.Write(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// only write to the file once
-	_, err = d.writeFile.Write(d.writeBuf.Bytes())
+	_, err = d.bufferWriter.Write(data)
 	if err != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
@@ -249,11 +278,14 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 
 	totalBytes := int64(4 + dataLen)
 	d.writePos += totalBytes
+	d.virtualEnd += VirtualDiskOffset(totalBytes)
 	totalCnt := atomic.AddInt64(&d.totalMsgCnt, 1)
+
 	endInfo := &diskQueueEndInfo{
 		EndFileNum:  d.writeFileNum,
 		EndPos:      d.writePos,
 		TotalMsgCnt: totalCnt,
+		VirtualEnd:  d.virtualEnd,
 	}
 
 	if d.writePos > d.maxBytesPerFile {
@@ -266,6 +298,9 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 			d.logf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err)
 		}
 
+		if d.bufferWriter != nil {
+			d.bufferWriter.Flush()
+		}
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
@@ -284,6 +319,9 @@ func (d *diskQueueWriter) Flush() error {
 
 // sync fsyncs the current writeFile and persists metadata
 func (d *diskQueueWriter) sync() error {
+	if d.bufferWriter != nil {
+		d.bufferWriter.Flush()
+	}
 	if d.writeFile != nil {
 		err := d.writeFile.Sync()
 		if err != nil {
@@ -315,9 +353,9 @@ func (d *diskQueueWriter) retrieveMetaData() error {
 	defer f.Close()
 
 	var totalCnt int64
-	_, err = fmt.Fscanf(f, "%d\n%d,%d\n",
+	_, err = fmt.Fscanf(f, "%d\n%d,%d,%d\n",
 		&totalCnt,
-		&d.writeFileNum, &d.writePos)
+		&d.writeFileNum, &d.writePos, &d.virtualEnd)
 	if err != nil {
 		return err
 	}
@@ -340,9 +378,9 @@ func (d *diskQueueWriter) persistMetaData() error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(f, "%d\n%d,%d\n",
+	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n",
 		atomic.LoadInt64(&d.totalMsgCnt),
-		d.writeFileNum, d.writePos)
+		d.writeFileNum, d.writePos, d.virtualEnd)
 	if err != nil {
 		f.Close()
 		return err
@@ -386,6 +424,8 @@ func (d *diskQueueWriter) ioLoop() {
 		case <-d.emptyChan:
 			d.emptyResponseChan <- d.deleteAllFiles()
 			count = 0
+		case <-d.getEndChan:
+			d.endResponseChan <- d.internalGetQueueEnd()
 		case dataWrite := <-d.writeChan:
 			count++
 			e, werr := d.writeOne(dataWrite)
