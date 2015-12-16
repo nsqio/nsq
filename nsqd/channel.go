@@ -458,6 +458,8 @@ func (c *Channel) messagePump() {
 	var msg *Message
 	var data ReadResult
 	var err error
+	var lastMsg Message
+	isSkipped := false
 
 	for {
 		// do an extra check for closed exit before we select on all the memory/backend/exitChan
@@ -474,6 +476,7 @@ func (c *Channel) messagePump() {
 				c.ctx.nsqd.logf("ERROR: failed to read message - %s", err)
 				// TODO: fix corrupt file from other replica.
 				c.backend.(*diskQueueReader).SkipToNext()
+				isSkipped = true
 				continue
 			}
 			msg, err = decodeMessage(data.data)
@@ -483,6 +486,12 @@ func (c *Channel) messagePump() {
 			}
 			msg.offset = data.offset
 			msg.rawSize = len(data.data)
+			if isSkipped {
+				// TODO: store the skipped info to retry error if possible.
+				c.ctx.nsqd.logf("WARNING: skipped message from %v to the : %v", lastMsg, *msg)
+			}
+			isSkipped = false
+			lastMsg = *msg
 		case <-c.exitChan:
 			goto exit
 		}
