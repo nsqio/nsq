@@ -33,6 +33,10 @@ type peerInfo struct {
 	BroadcastAddress string `json:"broadcast_address"`
 }
 
+var (
+	lookupTimeout = time.Second * 5
+)
+
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
@@ -49,7 +53,7 @@ func newLookupPeer(addr string, maxBodySize int64, l logger, connectCallback fun
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
 	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
-	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
+	conn, err := net.DialTimeout("tcp", lp.addr, lookupTimeout)
 	if err != nil {
 		return err
 	}
@@ -64,13 +68,13 @@ func (lp *lookupPeer) String() string {
 
 // Read implements the io.Reader interface, adding deadlines
 func (lp *lookupPeer) Read(data []byte) (int, error) {
-	lp.conn.SetReadDeadline(time.Now().Add(time.Second))
+	lp.conn.SetReadDeadline(time.Now().Add(lookupTimeout))
 	return lp.conn.Read(data)
 }
 
 // Write implements the io.Writer interface, adding deadlines
 func (lp *lookupPeer) Write(data []byte) (int, error) {
-	lp.conn.SetWriteDeadline(time.Now().Add(time.Second))
+	lp.conn.SetWriteDeadline(time.Now().Add(lookupTimeout))
 	return lp.conn.Write(data)
 }
 

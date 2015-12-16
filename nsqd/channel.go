@@ -299,16 +299,12 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 	return nil
 }
 
-// FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
-	msg, err := c.popInFlightMessage(clientID, id)
-	if err != nil {
-		return err
-	}
-	c.removeFromInFlightPQ(msg)
-	if c.e2eProcessingLatencyStream != nil {
-		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
-	}
+// in order not to make the confirm map too large,
+// we need handle this case: a old message is not confirmed,
+// and we keep all the newer confirmed messages so we can confirm later.
+func (c *Channel) confirmBackendQueue(msg *Message) {
+	needPause := false
+	needUnPause := false
 	c.Lock()
 	if c.currentLastConfirmed == msg.offset {
 		c.currentLastConfirmed += VirtualDiskOffset(msg.rawSize)
@@ -320,15 +316,39 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 				break
 			}
 		}
-		err = c.backend.ConfirmRead(c.currentLastConfirmed)
+		if c.IsPaused() && int64(len(c.confirmedMsgs)) < c.ctx.nsqd.getOpts().MaxConfirmCnt/2 {
+			needUnPause = true
+		}
+		err := c.backend.ConfirmRead(c.currentLastConfirmed)
 		if err != nil {
-			c.ctx.nsqd.logf("ERROR: confirm read failed: %v", err)
-			return err
+			c.ctx.nsqd.logf("ERROR: confirm read failed: %v, msg: %v", err, msg)
+			return
 		}
 	} else {
 		c.confirmedMsgs[msg.offset.(VirtualDiskOffset)] = msg
+		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmCnt {
+			needPause = true
+		}
 	}
 	c.Unlock()
+	if needPause {
+		c.doPause(true)
+	} else if needUnPause {
+		c.doPause(false)
+	}
+}
+
+// FinishMessage successfully discards an in-flight message
+func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
+	msg, err := c.popInFlightMessage(clientID, id)
+	if err != nil {
+		return err
+	}
+	c.removeFromInFlightPQ(msg)
+	if c.e2eProcessingLatencyStream != nil {
+		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
+	}
+	c.confirmBackendQueue(msg)
 	return nil
 }
 

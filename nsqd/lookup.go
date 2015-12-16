@@ -137,6 +137,7 @@ func (n *NSQD) lookupLoop() {
 			}
 			n.RUnlock()
 
+			// avoid too much command once, we need sleep here
 			for _, cmd := range commands {
 				n.logf("LOOKUPD(%s): %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
@@ -144,6 +145,7 @@ func (n *NSQD) lookupLoop() {
 					n.logf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err)
 					break
 				}
+				time.Sleep(time.Millisecond * 100)
 			}
 		case <-n.optsNotificationChan:
 			var tmpPeers []*lookupPeer
