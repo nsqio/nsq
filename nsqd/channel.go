@@ -198,7 +198,11 @@ func (c *Channel) Empty() error {
 	}
 
 finish:
-	// TODO: (WAL) reset cursor
+	idx, err := c.cursor.Reset()
+	if err != nil {
+		return err
+	}
+	c.rs.AddRange(Range{Low: c.rs.Ranges[0].Low, High: int64(idx)})
 	return nil
 }
 
