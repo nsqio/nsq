@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -55,7 +56,22 @@ type testLogger struct {
 	tbLog
 }
 
+func (tl *testLogger) SetLevel(l int32) {
+}
+
+func (tl *testLogger) Level() int32 {
+	return 2
+}
+
 func (tl *testLogger) Output(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+func (tl *testLogger) OutputErr(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+func (tl *testLogger) OutputWarning(maxdepth int, s string) error {
 	tl.Log(s)
 	return nil
 }
@@ -91,6 +107,8 @@ func TestStartup(t *testing.T) {
 	doneExitChan := make(chan int)
 
 	opts := NewOptions()
+	opts.LogLevel = 2
+	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
@@ -122,24 +140,42 @@ func TestStartup(t *testing.T) {
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
+	tmpbuf := bytes.NewBuffer(make([]byte, 1024))
+	tmpmsg := NewMessage(0, body)
+	tmpbuf.Reset()
+	msgRawSize, _ := tmpmsg.WriteTo(tmpbuf)
+	msgRawSize += 4
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
 		msg := NewMessage(topic.NextMsgID(), body)
 		topic.PutMessage(msg)
 	}
 
+	topic.flush()
+	backEnd := topic.backend.GetQueueReadEnd()
+	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
+	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
 	t.Logf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
+	channel1.UpdateQueueEnd(backEnd)
 
 	t.Logf("read %d msgs", iterations/2)
+	equal(t, channel1.Depth(), int64(iterations)*msgRawSize)
+	equal(t, channel1.backend.(*diskQueueReader).virtualEnd,
+		BackendOffset(channel1.Depth()))
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
+	time.Sleep(time.Second)
+	channel1.backend.ConfirmRead(BackendOffset(-1))
+	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
+		int64(iterations/2)*msgRawSize)
+	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
 
 	for {
-		if channel1.Depth() == int64(iterations/2) {
+		if channel1.Depth() == int64(iterations/2)*msgRawSize {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)

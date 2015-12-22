@@ -1,9 +1,11 @@
 package nsqd
 
-type BackendQueueEnd interface {
-}
+type BackendOffset int64
 
-type BackendOffset interface {
+type BackendQueueEnd interface {
+	GetOffset() BackendOffset
+	GetTotalMsgCnt() int64
+	IsSame(BackendQueueEnd) bool
 }
 
 // BackendQueue represents the behavior for the secondary message

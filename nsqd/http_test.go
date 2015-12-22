@@ -19,18 +19,19 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
-func TestHTTPput(t *testing.T) {
+func TestHTTPpub(t *testing.T) {
 	opts := NewOptions()
+	opts.LogLevel = 2
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_put" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_pub" + strconv.Itoa(int(time.Now().Unix()))
 	_ = nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -41,18 +42,18 @@ func TestHTTPput(t *testing.T) {
 
 }
 
-func TestHTTPputEmpty(t *testing.T) {
+func TestHTTPpubEmpty(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_put_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_pub_empty" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte(""))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -64,14 +65,14 @@ func TestHTTPputEmpty(t *testing.T) {
 
 }
 
-func TestHTTPmput(t *testing.T) {
+func TestHTTPmpub(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_mput" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_mpub" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
@@ -81,7 +82,7 @@ func TestHTTPmput(t *testing.T) {
 	}
 	buf := bytes.NewBuffer(bytes.Join(msgs, []byte("\n")))
 
-	url := fmt.Sprintf("http://%s/mput?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/mpub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -92,14 +93,14 @@ func TestHTTPmput(t *testing.T) {
 
 }
 
-func TestHTTPmputEmpty(t *testing.T) {
+func TestHTTPmpubEmpty(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_mput_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_mpub_empty" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	msg := []byte("test message")
@@ -111,7 +112,7 @@ func TestHTTPmputEmpty(t *testing.T) {
 	_, err := buf.Write([]byte("\n"))
 	equal(t, err, nil)
 
-	url := fmt.Sprintf("http://%s/mput?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/mpub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -122,14 +123,14 @@ func TestHTTPmputEmpty(t *testing.T) {
 
 }
 
-func TestHTTPmputBinary(t *testing.T) {
+func TestHTTPmpubBinary(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_mput_bin" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	mpub := make([][]byte, 5)
@@ -139,7 +140,7 @@ func TestHTTPmputBinary(t *testing.T) {
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	buf := bytes.NewBuffer(cmd.Body)
 
-	url := fmt.Sprintf("http://%s/mput?topic=%s&binary=true", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/mpub?topic=%s&binary=true", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -161,11 +162,11 @@ func TestHTTPSRequire(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topicName := "test_http_put_req" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_pub_req" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, resp.StatusCode, 403)
 
@@ -183,7 +184,7 @@ func TestHTTPSRequire(t *testing.T) {
 	client := &http.Client{Transport: transport}
 
 	buf = bytes.NewBuffer([]byte("test message"))
-	url = fmt.Sprintf("https://%s/put?topic=%s", httpsAddr, topicName)
+	url = fmt.Sprintf("https://%s/pub?topic=%s", httpsAddr, topicName)
 	resp, err = client.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -207,12 +208,12 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	defer nsqd.Exit()
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
-	topicName := "test_http_put_req_verf" + strconv.Itoa(int(time.Now().Unix()))
+	topicName := "test_http_pub_req_verf" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, resp.StatusCode, 403)
 
@@ -229,7 +230,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	client := &http.Client{Transport: transport}
 
 	buf = bytes.NewBuffer([]byte("test message"))
-	url = fmt.Sprintf("https://%s/put?topic=%s", httpsAddr, topicName)
+	url = fmt.Sprintf("https://%s/pub?topic=%s", httpsAddr, topicName)
 	resp, err = client.Post(url, "application/octet-stream", buf)
 	nequal(t, err, nil)
 
@@ -246,7 +247,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	client = &http.Client{Transport: transport}
 
 	buf = bytes.NewBuffer([]byte("test message"))
-	url = fmt.Sprintf("https://%s/put?topic=%s", httpsAddr, topicName)
+	url = fmt.Sprintf("https://%s/pub?topic=%s", httpsAddr, topicName)
 	resp, err = client.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -275,7 +276,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	equal(t, err, nil)
 	defer resp.Body.Close()
@@ -284,225 +285,6 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-}
-
-func TestHTTPDeprecatedTopicChannel(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, httpAddr, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "test_http_topic_channel" + strconv.Itoa(int(time.Now().Unix()))
-	channelName := "ch"
-
-	url := fmt.Sprintf("http://%s/create_topic?topic=%s", httpAddr, topicName)
-	resp, err := http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	url = fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	topic, err := nsqd.GetExistingTopic(topicName)
-	equal(t, err, nil)
-	nequal(t, topic, nil)
-
-	channel, err := topic.GetExistingChannel(channelName)
-	equal(t, err, nil)
-	nequal(t, channel, nil)
-
-	url = fmt.Sprintf("http://%s/pause_topic?topic=%s", httpAddr, topicName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	equal(t, topic.IsPaused(), true)
-
-	url = fmt.Sprintf("http://%s/unpause_topic?topic=%s", httpAddr, topicName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	equal(t, topic.IsPaused(), false)
-
-	url = fmt.Sprintf("http://%s/pause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	equal(t, channel.IsPaused(), true)
-
-	url = fmt.Sprintf("http://%s/unpause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	equal(t, channel.IsPaused(), false)
-
-	url = fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	_, err = topic.GetExistingChannel(channelName)
-	nequal(t, err, nil)
-
-	url = fmt.Sprintf("http://%s/delete_topic?topic=%s", httpAddr, topicName)
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), `{"status_code":200,"status_txt":"OK","data":null}`)
-
-	_, err = nsqd.GetExistingTopic(topicName)
-	nequal(t, err, nil)
-}
-
-func TestHTTPTransitionTopicChannel(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, httpAddr, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	client := http.Client{}
-	topicName := "test_http_topic_channel1" + strconv.Itoa(int(time.Now().Unix()))
-	channelName := "ch1"
-
-	url := fmt.Sprintf("http://%s/create_topic?topic=%s", httpAddr, topicName)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	url = fmt.Sprintf("http://%s/create_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	topic, err := nsqd.GetExistingTopic(topicName)
-	equal(t, err, nil)
-	nequal(t, topic, nil)
-
-	channel, err := topic.GetExistingChannel(channelName)
-	equal(t, err, nil)
-	nequal(t, channel, nil)
-
-	url = fmt.Sprintf("http://%s/pause_topic?topic=%s", httpAddr, topicName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, topic.IsPaused(), true)
-
-	url = fmt.Sprintf("http://%s/unpause_topic?topic=%s", httpAddr, topicName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, topic.IsPaused(), false)
-
-	url = fmt.Sprintf("http://%s/pause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, channel.IsPaused(), true)
-
-	url = fmt.Sprintf("http://%s/unpause_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, channel.IsPaused(), false)
-
-	url = fmt.Sprintf("http://%s/delete_channel?topic=%s&channel=%s", httpAddr, topicName, channelName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	_, err = topic.GetExistingChannel(channelName)
-	nequal(t, err, nil)
-
-	url = fmt.Sprintf("http://%s/delete_topic?topic=%s", httpAddr, topicName)
-	req, _ = http.NewRequest("GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.nsq; version=1.0")
-	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	_, err = nsqd.GetExistingTopic(topicName)
-	nequal(t, err, nil)
 }
 
 func TestHTTPV1TopicChannel(t *testing.T) {
@@ -540,28 +322,6 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	channel, err := topic.GetExistingChannel(channelName)
 	equal(t, err, nil)
 	nequal(t, channel, nil)
-
-	url = fmt.Sprintf("http://%s/topic/pause?topic=%s", httpAddr, topicName)
-	resp, err = http.Post(url, "application/json", nil)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, topic.IsPaused(), true)
-
-	url = fmt.Sprintf("http://%s/topic/unpause?topic=%s", httpAddr, topicName)
-	resp, err = http.Post(url, "application/json", nil)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "")
-	equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
-
-	equal(t, topic.IsPaused(), false)
 
 	url = fmt.Sprintf("http://%s/channel/pause?topic=%s&channel=%s", httpAddr, topicName, channelName)
 	resp, err = http.Post(url, "application/json", nil)
@@ -610,7 +370,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	nequal(t, err, nil)
 }
 
-func BenchmarkHTTPput(b *testing.B) {
+func BenchmarkHTTPpub(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
@@ -619,8 +379,8 @@ func BenchmarkHTTPput(b *testing.B) {
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, 256)
-	topicName := "bench_http_put" + strconv.Itoa(int(time.Now().Unix()))
-	url := fmt.Sprintf("http://%s/put?topic=%s", httpAddr, topicName)
+	topicName := "bench_http_pub" + strconv.Itoa(int(time.Now().Unix()))
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	client := &http.Client{}
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()

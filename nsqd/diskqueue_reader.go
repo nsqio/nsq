@@ -19,13 +19,24 @@ var (
 	ErrOffsetTypeMismatch = errors.New("offset type mismatch")
 )
 
-type VirtualDiskOffset int64
-
 type diskQueueEndInfo struct {
 	EndFileNum  int64
 	EndPos      int64
-	VirtualEnd  VirtualDiskOffset
+	VirtualEnd  BackendOffset
 	TotalMsgCnt int64
+}
+
+func (d *diskQueueEndInfo) GetOffset() BackendOffset {
+	return d.VirtualEnd
+}
+func (d *diskQueueEndInfo) GetTotalMsgCnt() int64 {
+	return d.TotalMsgCnt
+}
+func (d *diskQueueEndInfo) IsSame(other BackendQueueEnd) bool {
+	if otherDiskEnd, ok := other.(*diskQueueEndInfo); ok {
+		return *d == *otherDiskEnd
+	}
+	return false
 }
 
 type diskQueueOffset struct {
@@ -49,8 +60,8 @@ type diskQueueReader struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	readPos           diskQueueOffset
 	endPos            diskQueueOffset
-	virtualReadOffset VirtualDiskOffset
-	virtualEnd        VirtualDiskOffset
+	virtualReadOffset BackendOffset
+	virtualEnd        BackendOffset
 	// left message number for read
 	depth int64
 	// total need to read
@@ -73,10 +84,10 @@ type diskQueueReader struct {
 	// keeps track of the position where we have read
 	// (but not yet sent over readChan)
 	nextReadPos           diskQueueOffset
-	virtualNextReadOffset VirtualDiskOffset
+	virtualNextReadOffset BackendOffset
 
 	confirmedOffset        diskQueueOffset
-	virtualConfirmedOffset VirtualDiskOffset
+	virtualConfirmedOffset BackendOffset
 
 	readFile *os.File
 	reader   *bufio.Reader
@@ -84,15 +95,16 @@ type diskQueueReader struct {
 	// exposed via ReadChan()
 	readResultChan   chan ReadResult
 	skipReadErrChan  chan diskQueueOffset
-	skipChan         chan VirtualDiskOffset
+	skipChan         chan BackendOffset
 	skipResponseChan chan error
 
-	endUpdatedChan      chan *diskQueueEndInfo
-	exitChan            chan int
-	exitSyncChan        chan int
-	autoSkipError       bool
-	confirmChan         chan VirtualDiskOffset
-	confirmResponseChan chan error
+	endUpdatedChan         chan *diskQueueEndInfo
+	endUpdatedResponseChan chan error
+	exitChan               chan int
+	exitSyncChan           chan int
+	autoSkipError          bool
+	confirmChan            chan BackendOffset
+	confirmResponseChan    chan error
 
 	logger logger
 }
@@ -104,31 +116,32 @@ func newDiskQueueReader(tp string, name string, dataPath string, maxBytesPerFile
 	syncEvery int64, syncTimeout time.Duration, autoSkip bool,
 	logger logger) BackendQueueReader {
 	d := diskQueueReader{
-		topicName:           tp,
-		name:                name,
-		dataPath:            dataPath,
-		maxBytesPerFile:     maxBytesPerFile,
-		minMsgSize:          minMsgSize,
-		maxMsgSize:          maxMsgSize,
-		readResultChan:      make(chan ReadResult),
-		skipReadErrChan:     make(chan diskQueueOffset),
-		skipChan:            make(chan VirtualDiskOffset),
-		skipResponseChan:    make(chan error),
-		endUpdatedChan:      make(chan *diskQueueEndInfo),
-		exitChan:            make(chan int),
-		exitSyncChan:        make(chan int),
-		confirmChan:         make(chan VirtualDiskOffset),
-		confirmResponseChan: make(chan error),
-		syncEvery:           syncEvery,
-		syncTimeout:         syncTimeout,
-		autoSkipError:       autoSkip,
-		logger:              logger,
+		topicName:              tp,
+		name:                   name,
+		dataPath:               dataPath,
+		maxBytesPerFile:        maxBytesPerFile,
+		minMsgSize:             minMsgSize,
+		maxMsgSize:             maxMsgSize,
+		readResultChan:         make(chan ReadResult),
+		skipReadErrChan:        make(chan diskQueueOffset),
+		skipChan:               make(chan BackendOffset),
+		skipResponseChan:       make(chan error),
+		endUpdatedChan:         make(chan *diskQueueEndInfo),
+		endUpdatedResponseChan: make(chan error),
+		exitChan:               make(chan int),
+		exitSyncChan:           make(chan int),
+		confirmChan:            make(chan BackendOffset),
+		confirmResponseChan:    make(chan error),
+		syncEvery:              syncEvery,
+		syncTimeout:            syncTimeout,
+		autoSkipError:          autoSkip,
+		logger:                 logger,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		d.logf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
+		d.logErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
 	}
 
 	go d.ioLoop()
@@ -145,11 +158,29 @@ func (d *diskQueueReader) getCurrentFileEnd(offset diskQueueOffset) (int64, erro
 	return f.Size(), nil
 }
 
+func (d *diskQueueReader) logDebugf(f string, args ...interface{}) {
+	if d.logger == nil {
+		return
+	}
+	if d.logger.Level() >= 2 {
+		d.logger.Output(2, fmt.Sprintf(f, args...))
+	}
+}
+
 func (d *diskQueueReader) logf(f string, args ...interface{}) {
 	if d.logger == nil {
 		return
 	}
-	d.logger.Output(2, fmt.Sprintf(f, args...))
+	if d.logger.Level() >= 1 {
+		d.logger.Output(2, fmt.Sprintf(f, args...))
+	}
+}
+
+func (d *diskQueueReader) logErrorf(f string, args ...interface{}) {
+	if d.logger == nil {
+		return
+	}
+	d.logger.OutputErr(2, fmt.Sprintf(f, args...))
 }
 
 // Depth returns the depth of the queue
@@ -183,22 +214,23 @@ func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) {
 		return
 	}
 	d.endUpdatedChan <- end
+	<-d.endUpdatedResponseChan
 }
 
 func (d *diskQueueReader) Delete() error {
-	return d.exit()
+	return d.exit(true)
 }
 
 // Close cleans up the queue and persists metadata
 func (d *diskQueueReader) Close() error {
-	err := d.exit()
+	err := d.exit(false)
 	if err != nil {
 		return err
 	}
 	return d.sync()
 }
 
-func (d *diskQueueReader) exit() error {
+func (d *diskQueueReader) exit(deleted bool) error {
 	d.Lock()
 	defer d.Unlock()
 
@@ -212,44 +244,43 @@ func (d *diskQueueReader) exit() error {
 		d.readFile = nil
 	}
 
+	if deleted {
+		d.skipToEndofFile()
+	}
 	return nil
 }
 
 func (d *diskQueueReader) ConfirmRead(offset BackendOffset) error {
-	confirm, ok := offset.(VirtualDiskOffset)
-	if !ok {
-		return ErrOffsetTypeMismatch
-	}
 	d.RLock()
 	defer d.RUnlock()
 
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
-	d.confirmChan <- confirm
+	d.confirmChan <- offset
 	return <-d.confirmResponseChan
 }
 
-func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next diskQueueOffset) (VirtualDiskOffset, error) {
+func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next diskQueueOffset) (BackendOffset, error) {
 	diff := int64(0)
 	if prev.GreatThan(&next) {
-		return VirtualDiskOffset(diff), ErrMoveOffsetInvalid
+		return BackendOffset(diff), ErrMoveOffsetInvalid
 	}
 	if prev.FileNum == next.FileNum {
 		diff = next.Pos - prev.Pos
-		return VirtualDiskOffset(diff), nil
+		return BackendOffset(diff), nil
 	}
 
 	fsize, err := d.getCurrentFileEnd(prev)
 	if err != nil {
-		return VirtualDiskOffset(diff), err
+		return BackendOffset(diff), err
 	}
 	left := fsize - prev.Pos
 	prev.FileNum++
 	prev.Pos = 0
-	vdiff := VirtualDiskOffset(0)
+	vdiff := BackendOffset(0)
 	vdiff, err = d.getVirtualOffsetDistance(prev, next)
-	return VirtualDiskOffset(int64(vdiff) + left), err
+	return BackendOffset(int64(vdiff) + left), err
 }
 
 func (d *diskQueueReader) SkipReadToOffset(offset int64) error {
@@ -258,7 +289,7 @@ func (d *diskQueueReader) SkipReadToOffset(offset int64) error {
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
-	d.skipChan <- VirtualDiskOffset(offset)
+	d.skipChan <- BackendOffset(offset)
 	return <-d.skipResponseChan
 }
 
@@ -288,7 +319,10 @@ func (d *diskQueueReader) stepOffset(cur diskQueueOffset, step int64, maxStep di
 	newOffset := cur
 	var err error
 	if cur.FileNum > maxStep.FileNum {
-		return newOffset, ErrMoveOffsetInvalid
+		return newOffset, fmt.Errorf("offset invalid: %v , %v", cur, maxStep)
+	}
+	if step == 0 {
+		return newOffset, nil
 	}
 	for {
 		end := int64(0)
@@ -301,24 +335,34 @@ func (d *diskQueueReader) stepOffset(cur diskQueueOffset, step int64, maxStep di
 			end = maxStep.Pos
 		}
 		diff := end - newOffset.Pos
-		if step >= diff {
+		if step > diff {
 			newOffset.FileNum++
 			newOffset.Pos = 0
 			if newOffset.GreatThan(&maxStep) {
-				return newOffset, ErrMoveOffsetInvalid
+				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
+					newOffset, maxStep, step)
 			}
 			step -= diff
+			if step == 0 {
+				return newOffset, nil
+			}
 		} else {
 			newOffset.Pos += step
 			if newOffset.GreatThan(&maxStep) {
-				return newOffset, ErrMoveOffsetInvalid
+				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
+					newOffset, maxStep, step)
 			}
 			return newOffset, nil
 		}
 	}
 }
 
-func (d *diskQueueReader) internalConfirm(offset VirtualDiskOffset) error {
+func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
+	if int64(offset) == -1 {
+		d.confirmedOffset = d.readPos
+		d.virtualConfirmedOffset = d.virtualReadOffset
+		return nil
+	}
 	if offset <= d.virtualConfirmedOffset {
 		return nil
 	}
@@ -328,7 +372,7 @@ func (d *diskQueueReader) internalConfirm(offset VirtualDiskOffset) error {
 	diffVirtual := int64(offset - d.virtualConfirmedOffset)
 	newConfirm, err := d.stepOffset(d.confirmedOffset, diffVirtual, d.readPos)
 	if err != nil {
-		d.logf("ERROR: confirmed exceed the read pos: %v, %v", offset, d.virtualReadOffset)
+		d.logErrorf("confirmed exceed the read pos: %v, %v", offset, d.virtualReadOffset)
 		return ErrConfirmSizeInvalid
 	}
 	d.confirmedOffset = newConfirm
@@ -336,7 +380,7 @@ func (d *diskQueueReader) internalConfirm(offset VirtualDiskOffset) error {
 	return nil
 }
 
-func (d *diskQueueReader) internalSkipTo(voffset VirtualDiskOffset) {
+func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 	if d.readFile != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -344,13 +388,13 @@ func (d *diskQueueReader) internalSkipTo(voffset VirtualDiskOffset) {
 	newPos := d.endPos
 	var err error
 	if voffset > d.virtualEnd {
-		d.logf("ERROR: internal skip error : %v, skipping to : %v", err, voffset)
-		return
+		d.logErrorf("internal skip error : %v, skipping to : %v", err, voffset)
+		return ErrMoveOffsetInvalid
 	} else {
 		newPos, err = d.stepOffset(d.readPos, int64(voffset-d.virtualReadOffset), d.endPos)
 		if err != nil {
-			d.logf("ERROR: internal skip error : %v, skipping to : %v", err, voffset)
-			return
+			d.logErrorf("internal skip error : %v, skipping to : %v", err, voffset)
+			return err
 		}
 	}
 
@@ -358,6 +402,31 @@ func (d *diskQueueReader) internalSkipTo(voffset VirtualDiskOffset) {
 	d.virtualReadOffset = voffset
 	d.nextReadPos = newPos
 	d.virtualNextReadOffset = voffset
+
+	d.confirmedOffset = d.readPos
+	d.virtualConfirmedOffset = d.virtualReadOffset
+	return nil
+}
+
+func (d *diskQueueReader) skipToNextFile() error {
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+	if d.readPos.FileNum >= d.endPos.FileNum {
+		return d.skipToEndofFile()
+	}
+
+	d.readPos.FileNum++
+	d.readPos.Pos = 0
+	d.nextReadPos = d.readPos
+	d.virtualNextReadOffset = d.virtualReadOffset
+	if d.confirmedOffset != d.readPos {
+		d.logErrorf("skip confirm from %v to %v.", d.confirmedOffset, d.readPos)
+	}
+	d.confirmedOffset = d.readPos
+	d.virtualConfirmedOffset = d.virtualReadOffset
+	return nil
 }
 
 func (d *diskQueueReader) skipToEndofFile() error {
@@ -370,16 +439,21 @@ func (d *diskQueueReader) skipToEndofFile() error {
 	d.virtualReadOffset = d.virtualEnd
 	d.nextReadPos = d.endPos
 	d.virtualNextReadOffset = d.virtualEnd
+	if d.confirmedOffset != d.readPos {
+		d.logErrorf("skip confirm from %v to %v.", d.confirmedOffset, d.readPos)
+	}
+	d.confirmedOffset = d.readPos
+	d.virtualConfirmedOffset = d.virtualReadOffset
 
 	return nil
 }
 
 // readOne performs a low level filesystem read for a single []byte
 // while advancing read positions and rolling files, if necessary
-func (d *diskQueueReader) readOne() (VirtualDiskOffset, []byte, error) {
+func (d *diskQueueReader) readOne() (BackendOffset, []byte, error) {
 	var err error
 	var msgSize int32
-	voffset := VirtualDiskOffset(0)
+	voffset := BackendOffset(0)
 
 CheckFileOpen:
 
@@ -412,7 +486,9 @@ CheckFileOpen:
 		if d.readPos.Pos >= stat.Size() {
 			d.readPos.FileNum++
 			d.readPos.Pos = 0
-			d.logf("DISKQUEUE(%s): readOne() read end, try next: %v", d.readPos.FileNum)
+			d.nextReadPos.FileNum++
+			d.nextReadPos.Pos = 0
+			d.logf("DISKQUEUE(%s): readOne() read end, try next: %v", d.name, d.readPos.FileNum)
 			d.readFile.Close()
 			d.readFile = nil
 			goto CheckFileOpen
@@ -449,8 +525,7 @@ CheckFileOpen:
 	// we only advance next* because we have not yet sent this to consumers
 	// (where readFileNum, readPos will actually be advanced)
 	d.nextReadPos.Pos = d.readPos.Pos + totalBytes
-	d.nextReadPos.FileNum = d.readPos.FileNum
-	d.virtualNextReadOffset += VirtualDiskOffset(totalBytes)
+	d.virtualNextReadOffset += BackendOffset(totalBytes)
 
 	// TODO: each data file should embed the maxBytesPerFile
 	// as the first 8 bytes (at creation time) ensuring that
@@ -464,7 +539,10 @@ CheckFileOpen:
 			return voffset, readBuf, err
 		}
 	}
-	if d.nextReadPos.Pos > d.maxBytesPerFile || isEnd {
+	if (d.nextReadPos.Pos > d.maxBytesPerFile) && !isEnd {
+		d.logErrorf("should be end since next position is larger than maxfile size. %v", d.nextReadPos)
+	}
+	if isEnd {
 		if d.readFile != nil {
 			d.readFile.Close()
 			d.readFile = nil
@@ -509,6 +587,8 @@ func (d *diskQueueReader) retrieveMetaData() error {
 	}
 	d.readPos = d.confirmedOffset
 	d.nextReadPos = d.readPos
+	d.virtualReadOffset = d.virtualConfirmedOffset
+	d.virtualNextReadOffset = d.virtualReadOffset
 
 	return nil
 }
@@ -527,7 +607,7 @@ func (d *diskQueueReader) persistMetaData() error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(f, "%d\n%d,%d\n%d,%d\n",
+	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n%d,%d,%d\n",
 		d.totalMsgCnt,
 		d.confirmedOffset.FileNum, d.confirmedOffset.Pos, d.virtualConfirmedOffset,
 		d.endPos.FileNum, d.endPos.Pos, d.virtualEnd)
@@ -556,8 +636,8 @@ func (d *diskQueueReader) checkTailCorruption() {
 	}
 
 	if d.readPos != d.endPos {
-		d.logf(
-			"ERROR: diskqueue(%s) readFileNum > endFileNum (%v > %v), corruption, skipping to end ...",
+		d.logErrorf(
+			"diskqueue(%s) readFileNum > endFileNum (%v > %v), corruption, skipping to end ...",
 			d.name, d.readPos, d.endPos)
 
 		d.skipToEndofFile()
@@ -569,13 +649,15 @@ func (d *diskQueueReader) moveForward() {
 	oldReadPos := d.readPos
 	vdiff, err := d.getVirtualOffsetDistance(oldReadPos, d.nextReadPos)
 	if err != nil {
-		d.logf(
-			"ERROR: diskqueue(%s) move error (%v > %v), corruption, skipping to end ...",
+		d.logErrorf(
+			"diskqueue(%s) move error (%v > %v), corruption, skipping to next...",
 			d.name, d.readPos, d.nextReadPos)
-		d.skipToEndofFile()
+		d.skipToNextFile()
 		d.needSync = true
 		return
 	}
+	d.logDebugf("=== read move forward: %v, %v, %v", d.readPos,
+		d.virtualReadOffset, d.nextReadPos)
 	d.readPos = d.nextReadPos
 	d.virtualReadOffset += vdiff
 
@@ -600,9 +682,9 @@ func (d *diskQueueReader) handleReadError() {
 	} else {
 		vdiff, err := d.getVirtualOffsetDistance(d.readPos, newRead)
 		if err != nil {
-			d.logf("ERROR: diskqueue(%s) move error (%v > %v), corruption, skipping to end ...",
+			d.logErrorf("diskqueue(%s) move error (%v > %v), corruption, skipping to next...",
 				d.name, d.readPos, newRead)
-			d.skipToEndofFile()
+			d.skipToNextFile()
 			return
 		}
 		d.virtualReadOffset += vdiff
@@ -610,6 +692,8 @@ func (d *diskQueueReader) handleReadError() {
 	d.readPos = newRead
 	d.nextReadPos = d.readPos
 	d.virtualNextReadOffset = d.virtualReadOffset
+	d.confirmedOffset = d.readPos
+	d.virtualConfirmedOffset = d.virtualReadOffset
 
 	// significant state change, schedule a sync on the next iteration
 	d.needSync = true
@@ -642,7 +726,7 @@ func (d *diskQueueReader) ioLoop() {
 		if d.needSync {
 			syncerr = d.sync()
 			if syncerr != nil {
-				d.logf("ERROR: diskqueue(%s) failed to sync - %s", d.name, syncerr)
+				d.logErrorf("diskqueue(%s) failed to sync - %s", d.name, syncerr)
 			}
 		}
 
@@ -654,7 +738,7 @@ func (d *diskQueueReader) ioLoop() {
 					dataRead.offset, dataRead.data, rerr = d.readOne()
 					dataRead.err = rerr
 					if rerr != nil {
-						d.logf("ERROR: reading from diskqueue(%s) at %d of %s - %s",
+						d.logErrorf("reading from diskqueue(%s) at %d of %s - %s",
 							d.name, d.readPos, d.fileName(d.readPos.FileNum), dataRead.err)
 						if d.autoSkipError {
 							d.handleReadError()
@@ -678,9 +762,9 @@ func (d *diskQueueReader) ioLoop() {
 				d.moveForward()
 			}
 		case skipInfo := <-d.skipChan:
-			d.internalSkipTo(skipInfo)
+			skiperr := d.internalSkipTo(skipInfo)
 			rerr = nil
-			d.skipResponseChan <- nil
+			d.skipResponseChan <- skiperr
 		case endPos := <-d.endUpdatedChan:
 			count++
 			if d.endPos.FileNum != endPos.EndFileNum && endPos.EndPos == 0 {
@@ -700,6 +784,7 @@ func (d *diskQueueReader) ioLoop() {
 			d.endPos.FileNum = endPos.EndFileNum
 			d.totalMsgCnt = endPos.TotalMsgCnt
 			d.virtualEnd = endPos.VirtualEnd
+			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:
 			d.confirmResponseChan <- d.internalConfirm(confirmInfo)

@@ -3,10 +3,12 @@ package nsqd
 import (
 	"crypto/md5"
 	"crypto/tls"
+	"github.com/golang/glog"
 	"hash/crc32"
 	"io"
 	"log"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -72,7 +74,35 @@ type Options struct {
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
 
-	Logger logger
+	LogLevel int32 `flag:"log-level"`
+	Logger   logger
+}
+
+type GLogger struct {
+	level int32
+}
+
+func (self *GLogger) SetLevel(l int32) {
+	atomic.StoreInt32(&self.level, l)
+}
+
+func (self *GLogger) Level() int32 {
+	return atomic.LoadInt32(&self.level)
+}
+
+func (self *GLogger) Output(maxdepth int, s string) error {
+	glog.InfoDepth(maxdepth, s)
+	return nil
+}
+
+func (self *GLogger) OutputErr(maxdepth int, s string) error {
+	glog.ErrorDepth(maxdepth, s)
+	return nil
+}
+
+func (self *GLogger) OutputWarning(maxdepth int, s string) error {
+	glog.WarningDepth(maxdepth, s)
+	return nil
 }
 
 func NewOptions() *Options {
@@ -132,6 +162,7 @@ func NewOptions() *Options {
 
 		TLSMinVersion: tls.VersionTLS10,
 
-		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile),
+		LogLevel: 2,
+		Logger:   &GLogger{2},
 	}
 }

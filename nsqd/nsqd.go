@@ -143,7 +143,32 @@ func (n *NSQD) logf(f string, args ...interface{}) {
 	if n.getOpts().Logger == nil {
 		return
 	}
-	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+	if n.getOpts().Logger.Level() >= 1 {
+		n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+	}
+}
+
+func (n *NSQD) logDebugf(f string, args ...interface{}) {
+	if n.getOpts().Logger == nil {
+		return
+	}
+	if n.getOpts().Logger.Level() >= 2 {
+		n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+	}
+}
+
+func (n *NSQD) logErrorf(f string, args ...interface{}) {
+	if n.getOpts().Logger == nil {
+		return
+	}
+	n.getOpts().Logger.OutputErr(2, fmt.Sprintf(f, args...))
+}
+
+func (n *NSQD) logWarningf(f string, args ...interface{}) {
+	if n.getOpts().Logger == nil {
+		return
+	}
+	n.getOpts().Logger.OutputWarning(2, fmt.Sprintf(f, args...))
 }
 
 func (n *NSQD) getOpts() *Options {
@@ -151,6 +176,7 @@ func (n *NSQD) getOpts() *Options {
 }
 
 func (n *NSQD) swapOpts(opts *Options) {
+	opts.Logger.SetLevel(opts.LogLevel)
 	n.opts.Store(opts)
 }
 
@@ -295,11 +321,6 @@ func (n *NSQD) LoadMetadata() {
 		}
 		topic := n.GetTopic(topicName)
 
-		paused, _ := topicJs.Get("paused").Bool()
-		if paused {
-			topic.Pause()
-		}
-
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
 			n.logf("ERROR: failed to parse metadata - %s", err)
@@ -320,7 +341,7 @@ func (n *NSQD) LoadMetadata() {
 			}
 			channel := topic.GetChannel(channelName)
 
-			paused, _ = channelJs.Get("paused").Bool()
+			paused, _ := channelJs.Get("paused").Bool()
 			if paused {
 				channel.Pause()
 			}
@@ -342,7 +363,6 @@ func (n *NSQD) PersistMetadata() error {
 		}
 		topicData := make(map[string]interface{})
 		topicData["name"] = topic.name
-		topicData["paused"] = topic.IsPaused()
 		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {

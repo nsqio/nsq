@@ -20,9 +20,10 @@ type diskQueueWriter struct {
 	// run-time state (also persisted to disk)
 	writePos           int64
 	writeFileNum       int64
+	readablePos        int64
 	totalMsgCnt        int64
-	virtualEnd         VirtualDiskOffset
-	virtualReadableEnd VirtualDiskOffset
+	virtualEnd         BackendOffset
+	virtualReadableEnd BackendOffset
 	sync.RWMutex
 
 	// instantiation time metadata
@@ -151,11 +152,12 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
+	d.virtualReadableEnd = d.virtualEnd
+	d.readablePos = d.writePos
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
 	}
-	d.virtualReadableEnd = d.virtualEnd
 
 	return nil
 }
@@ -179,11 +181,11 @@ func (d *diskQueueWriter) Empty() error {
 func (d *diskQueueWriter) deleteAllFiles() error {
 	err := d.skipToNextRWFile()
 
-	innerErr := os.Remove(d.metaDataFileName())
-	if innerErr != nil && !os.IsNotExist(innerErr) {
-		d.logf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
-		return innerErr
-	}
+	//innerErr := os.Remove(d.metaDataFileName())
+	//if innerErr != nil && !os.IsNotExist(innerErr) {
+	//	d.logf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
+	//	return innerErr
+	//}
 
 	return err
 }
@@ -192,6 +194,8 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
+	d.virtualReadableEnd = d.virtualEnd
+	d.readablePos = 0
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
@@ -205,10 +209,8 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 		}
 	}
 
-	d.virtualReadableEnd = d.virtualEnd
 	d.writeFileNum++
 	d.writePos = 0
-	d.totalMsgCnt = 0
 	return nil
 }
 
@@ -217,7 +219,7 @@ func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	defer d.RUnlock()
 
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return nil
 	}
 	d.getEndChan <- 1
 	return <-d.endResponseChan
@@ -226,7 +228,7 @@ func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
 	e := &diskQueueEndInfo{}
 	e.EndFileNum = d.writeFileNum
-	e.EndPos = d.writePos
+	e.EndPos = d.readablePos
 	e.TotalMsgCnt = d.totalMsgCnt
 	e.VirtualEnd = d.virtualReadableEnd
 	return e
@@ -281,7 +283,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 
 	totalBytes := int64(4 + dataLen)
 	d.writePos += totalBytes
-	d.virtualEnd += VirtualDiskOffset(totalBytes)
+	d.virtualEnd += BackendOffset(totalBytes)
 	totalCnt := atomic.AddInt64(&d.totalMsgCnt, 1)
 
 	endInfo := &diskQueueEndInfo{
@@ -304,20 +306,24 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 		if d.bufferWriter != nil {
 			d.bufferWriter.Flush()
 		}
+		d.virtualReadableEnd = d.virtualEnd
+		d.readablePos = 0
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
-		d.virtualReadableEnd = d.virtualEnd
-		endInfo.VirtualEnd = d.virtualReadableEnd
 	}
 
 	return endInfo, err
 }
 
 func (d *diskQueueWriter) Flush() error {
-	d.Lock()
-	defer d.Unlock()
+	d.RLock()
+	defer d.RUnlock()
+
+	if d.exitFlag == 1 {
+		return errors.New("exiting")
+	}
 	d.flushChan <- 1
 	return <-d.flushResponseChan
 }
@@ -327,6 +333,8 @@ func (d *diskQueueWriter) sync() error {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
+	d.virtualReadableEnd = d.virtualEnd
+	d.readablePos = d.writePos
 	if d.writeFile != nil {
 		err := d.writeFile.Sync()
 		if err != nil {
@@ -335,7 +343,6 @@ func (d *diskQueueWriter) sync() error {
 			return err
 		}
 	}
-	d.virtualReadableEnd = d.virtualEnd
 
 	err := d.persistMetaData()
 	if err != nil {

@@ -29,9 +29,6 @@ type Topic struct {
 	deleteCallback func(*Topic)
 	deleter        sync.Once
 
-	paused    int32
-	pauseChan chan bool
-
 	ctx         *context
 	msgIDCursor uint64
 	needFlush   int32
@@ -46,7 +43,6 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		channelUpdateChan: make(chan int),
 		flushChan:         make(chan int),
 		ctx:               ctx,
-		pauseChan:         make(chan bool),
 		deleteCallback:    deleteCallback,
 	}
 
@@ -218,7 +214,7 @@ func (t *Topic) messagePump() {
 		chans = append(chans, c)
 	}
 	t.RUnlock()
-	var lastEnd diskQueueEndInfo
+	var lastEnd BackendQueueEnd
 
 	for {
 		select {
@@ -243,10 +239,10 @@ func (t *Topic) messagePump() {
 		}
 
 		e := t.backend.GetQueueReadEnd()
-		if lastEnd == *(e.(*diskQueueEndInfo)) {
+		if lastEnd != nil && lastEnd.IsSame(e) {
 			continue
 		}
-		lastEnd = *(e.(*diskQueueEndInfo))
+		lastEnd = e
 		for _, channel := range chans {
 			err = channel.UpdateQueueEnd(e)
 			if err != nil {
@@ -263,11 +259,7 @@ exit:
 
 func (t *Topic) totalSize() int64 {
 	e := t.backend.GetQueueReadEnd()
-	diskEnd, ok := e.(*diskQueueEndInfo)
-	if ok {
-		return int64(diskEnd.VirtualEnd)
-	}
-	return 0
+	return int64(e.GetOffset())
 }
 
 // Delete empties the topic and all its channels and closes
@@ -361,31 +353,4 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 		latencyStream.Merge(c.e2eProcessingLatencyStream)
 	}
 	return latencyStream
-}
-
-func (t *Topic) Pause() error {
-	return t.doPause(true)
-}
-
-func (t *Topic) UnPause() error {
-	return t.doPause(false)
-}
-
-func (t *Topic) doPause(pause bool) error {
-	if pause {
-		atomic.StoreInt32(&t.paused, 1)
-	} else {
-		atomic.StoreInt32(&t.paused, 0)
-	}
-
-	select {
-	case t.pauseChan <- pause:
-	case <-t.exitChan:
-	}
-
-	return nil
-}
-
-func (t *Topic) IsPaused() bool {
-	return atomic.LoadInt32(&t.paused) == 1
 }

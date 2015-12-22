@@ -50,8 +50,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
-	router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
+	//router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
+	//router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
@@ -132,6 +132,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.Req
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
+		s.ctx.nsqd.logf("topic not found - %s", topicName)
 		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
@@ -171,6 +172,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
+		s.ctx.nsqd.logf("read request body error: %v", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
@@ -182,6 +184,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	_, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
+		s.ctx.nsqd.logf("get topic err: %v", err)
 		return nil, err
 	}
 
@@ -316,41 +319,6 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
-	return nil, nil
-}
-
-func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
-	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
-	}
-
-	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
-	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
-	}
-
-	if strings.Contains(req.URL.Path, "unpause") {
-		err = topic.UnPause()
-	} else {
-		err = topic.Pause()
-	}
-	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-
-	// pro-actively persist metadata so in case of process failure
-	// nsqd won't suddenly (un)pause a topic
-	s.ctx.nsqd.Lock()
-	s.ctx.nsqd.PersistMetadata()
-	s.ctx.nsqd.Unlock()
 	return nil, nil
 }
 
@@ -491,11 +459,7 @@ func (s *httpServer) printStats(stats []TopicStats, health string, startTime tim
 	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
 	for _, t := range stats {
 		var pausedPrefix string
-		if t.Paused {
-			pausedPrefix = "*P "
-		} else {
-			pausedPrefix = "   "
-		}
+		pausedPrefix = "   "
 		io.WriteString(w, fmt.Sprintf("\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
 			pausedPrefix,
 			t.TopicName,

@@ -163,37 +163,6 @@ func TestDeleteLast(t *testing.T) {
 	equal(t, nil, err)
 }
 
-func TestPause(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "test_topic_pause" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	err := topic.Pause()
-	equal(t, err, nil)
-
-	channel := topic.GetChannel("ch1")
-	nequal(t, channel, nil)
-
-	msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	err = topic.PutMessage(msg)
-	equal(t, err, nil)
-
-	time.Sleep(15 * time.Millisecond)
-
-	equal(t, channel.Depth(), int64(0))
-
-	err = topic.UnPause()
-	equal(t, err, nil)
-
-	time.Sleep(15 * time.Millisecond)
-
-	equal(t, channel.Depth(), int64(1))
-}
-
 func TestTopicBackendMaxMsgSize(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)

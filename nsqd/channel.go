@@ -51,6 +51,7 @@ type Channel struct {
 	// state tracking
 	clients        map[int64]Consumer
 	paused         int32
+	internalPaused int32
 	ephemeral      bool
 	deleteCallback func(*Channel)
 	deleter        sync.Once
@@ -62,8 +63,8 @@ type Channel struct {
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
-	currentLastConfirmed VirtualDiskOffset
-	confirmedMsgs        map[VirtualDiskOffset]*Message
+	currentLastConfirmed BackendOffset
+	confirmedMsgs        map[BackendOffset]*Message
 	// stat counters
 }
 
@@ -78,7 +79,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		clientMsgChan:   make(chan *Message),
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
-		confirmedMsgs:   make(map[VirtualDiskOffset]*Message),
+		confirmedMsgs:   make(map[BackendOffset]*Message),
 		deleteCallback:  deleteCallback,
 		ctx:             ctx,
 	}
@@ -237,6 +238,7 @@ func (c *Channel) Pause() error {
 }
 
 func (c *Channel) UnPause() error {
+	atomic.StoreInt32(&c.internalPaused, 0)
 	return c.doPause(false)
 }
 
@@ -259,8 +261,26 @@ func (c *Channel) doPause(pause bool) error {
 	return nil
 }
 
+func (c *Channel) internalPause(pause bool) {
+	if pause {
+		atomic.StoreInt32(&c.internalPaused, 1)
+	} else {
+		atomic.StoreInt32(&c.internalPaused, 0)
+	}
+
+	c.RLock()
+	for _, client := range c.clients {
+		if pause {
+			client.Pause()
+		} else {
+			client.UnPause()
+		}
+	}
+	c.RUnlock()
+}
+
 func (c *Channel) IsPaused() bool {
-	return atomic.LoadInt32(&c.paused) == 1
+	return atomic.LoadInt32(&c.paused) == 1 || atomic.LoadInt32(&c.internalPaused) == 1
 }
 
 // When topic message is put, update the new end of the queue
@@ -271,7 +291,7 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 		return errors.New("exiting")
 	}
 	c.backend.UpdateQueueEnd(end)
-	atomic.StoreUint64(&c.messageCount, uint64(end.(*diskQueueEndInfo).TotalMsgCnt))
+	atomic.StoreUint64(&c.messageCount, uint64(end.GetTotalMsgCnt()))
 	return nil
 }
 
@@ -307,11 +327,11 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 	needUnPause := false
 	c.Lock()
 	if c.currentLastConfirmed == msg.offset {
-		c.currentLastConfirmed += VirtualDiskOffset(msg.rawSize)
+		c.currentLastConfirmed += BackendOffset(msg.rawSize)
 		for {
 			if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-				c.currentLastConfirmed += VirtualDiskOffset(m.rawSize)
-				delete(c.confirmedMsgs, m.offset.(VirtualDiskOffset))
+				c.currentLastConfirmed += BackendOffset(m.rawSize)
+				delete(c.confirmedMsgs, BackendOffset(m.offset))
 			} else {
 				break
 			}
@@ -325,16 +345,16 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 			return
 		}
 	} else {
-		c.confirmedMsgs[msg.offset.(VirtualDiskOffset)] = msg
+		c.confirmedMsgs[BackendOffset(msg.offset)] = msg
 		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmCnt {
 			needPause = true
 		}
 	}
 	c.Unlock()
 	if needPause {
-		c.doPause(true)
+		c.internalPause(true)
 	} else if needUnPause {
-		c.doPause(false)
+		c.internalPause(false)
 	}
 }
 
@@ -495,20 +515,22 @@ func (c *Channel) messagePump() {
 			if data.err != nil {
 				c.ctx.nsqd.logf("ERROR: failed to read message - %s", err)
 				// TODO: fix corrupt file from other replica.
+				// and should handle the confirm offset, since some skipped data
+				// may never be confirmed any more
 				c.backend.(*diskQueueReader).SkipToNext()
 				isSkipped = true
 				continue
 			}
 			msg, err = decodeMessage(data.data)
 			if err != nil {
-				c.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
+				c.ctx.nsqd.logErrorf("failed to decode message - %s", err)
 				continue
 			}
 			msg.offset = data.offset
 			msg.rawSize = len(data.data)
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
-				c.ctx.nsqd.logf("WARNING: skipped message from %v to the : %v", lastMsg, *msg)
+				c.ctx.nsqd.logWarningf("skipped message from %v to the : %v", lastMsg, *msg)
 			}
 			isSkipped = false
 			lastMsg = *msg
