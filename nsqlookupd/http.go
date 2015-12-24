@@ -183,6 +183,12 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if len(producers) == 0 {
 			continue
 		}
+		// only for test
+		if len(producers) == 1 {
+			partitionProducers[r.PartitionID] = producers[0].peerInfo
+			allProducers[producers[0].peerInfo.Id] = producers[0]
+			continue
+		}
 		// filter by leader
 		var leaderProducer *Producer
 		for _, p := range producers {

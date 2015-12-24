@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/nsqio/go-nsq"
+	"github.com/absolute8511/go-nsq"
 )
 
 // lookupPeer is a low-level type for connecting/reading/writing to nsqlookupd

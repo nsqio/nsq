@@ -38,6 +38,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	var err error
 	var line []byte
 	var zeroTime time.Time
+	left := bytes.NewBuffer(make([]byte, 100))
 
 	clientID := atomic.AddInt64(&p.ctx.nsqd.clientIDSequence, 1)
 	client := newClientV2(clientID, conn, p.ctx)
@@ -80,53 +81,56 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		isSpecial := false
 		params := make([][]byte, 0)
 		if len(line) >= 3 {
-			if bytes.Equal(line[:3], []byte("FIN")) {
+			// since we read a command, then left data should come quickly.
+			client.SetReadDeadline(time.Now().Add(time.Second))
+			if bytes.Equal(line[:3], []byte("FIN")) ||
+				bytes.Equal(line[:3], []byte("REQ")) {
 				isSpecial = true
-				if len(line) < 21 {
-					left := make([]byte, 21-len(line))
-					_, err = client.Reader.Read(left)
+				if len(line) < 20 {
+					left.Truncate(20 - len(line))
+					nr := 0
+					nr, err = client.Reader.Read(left.Bytes())
 					if err != nil {
-						p.ctx.nsqd.logf("FIN param err:%v", err)
-						break
+						p.ctx.nsqd.logErrorf("read param err:%v", err)
 					}
+					line = append(line, left.Bytes()[:nr]...)
+					// read last real '\n'
+					extra, err := client.Reader.ReadSlice('\n')
+					if err != nil {
+						p.ctx.nsqd.logErrorf("read param err:%v", err)
+					}
+					line = append(line, extra...)
 				}
 				params = append(params, line[:3])
-				params = append(params, line[4:20])
-			} else if bytes.Equal(line[:3], []byte("REQ")) {
-				isSpecial = true
-				if len(line) < 21 {
-					left := make([]byte, 21-len(line))
-					_, err = client.Reader.Read(left)
-					if err != nil {
-						p.ctx.nsqd.logf("REQ param err:%v", err)
-						break
+				if len(line) >= 20 {
+					params = append(params, line[4:20])
+					if len(line) > 21 {
+						params = append(params, line[21:len(line)-1])
 					}
+				} else {
+					params = append(params, []byte(""))
 				}
-				params = append(params, line[:3])
-				params = append(params, line[4:20])
-				if len(line) < 21 {
-					_, err = client.Reader.ReadSlice('\n')
-					if err != nil {
-						p.ctx.nsqd.logf("REQ time param err:%v", err)
-						break
-					}
-				}
-				params = append(params, []byte("0"))
 			} else if len(line) >= 5 {
 				if bytes.Equal(line[:5], []byte("TOUCH")) {
 					isSpecial = true
 					if len(line) < 23 {
-						left := make([]byte, 23-len(line))
-						_, err = client.Reader.Read(left)
+						left.Truncate(23 - len(line))
+						nr := 0
+						nr, err = client.Reader.Read(left.Bytes())
 						if err != nil {
 							p.ctx.nsqd.logf("TOUCH param err:%v", err)
-							break
 						}
+						line = append(line, left.Bytes()[:nr]...)
 					}
 					params = append(params, line[:5])
-					params = append(params, line[6:22])
+					if len(line) >= 23 {
+						params = append(params, line[6:22])
+					} else {
+						params = append(params, []byte(""))
+					}
 				}
 			}
+			client.SetReadDeadline(zeroTime)
 		}
 		if p.ctx.nsqd.getOpts().Verbose {
 			p.ctx.nsqd.logf("PROTOCOL(V2) got client command: %s ", line)
@@ -152,11 +156,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			if parentErr := err.(protocol.ChildErr).Parent(); parentErr != nil {
 				ctx = " - " + parentErr.Error()
 			}
-			p.ctx.nsqd.logf("ERROR: [%s] - %s%s", client, err, ctx)
+			p.ctx.nsqd.logErrorf("Error response for [%s] - %s - %s", client, err, ctx)
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
-				p.ctx.nsqd.logf("ERROR: [%s] - %s%s", client, sendErr, ctx)
+				p.ctx.nsqd.logErrorf("Send response error: [%s] - %s%s", client, sendErr, ctx)
 				break
 			}
 
@@ -358,6 +362,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			msgTimeout = identifyData.MsgTimeout
 		case <-heartbeatChan:
 			err = p.Send(client, frameTypeResponse, heartbeatBytes)
+			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
 				goto exit
 			}
@@ -370,6 +375,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				// TODO: should FIN automatically, before refactoring,
 				// all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
+				subChannel.confirmBackendQueue(msg)
 				continue
 			}
 

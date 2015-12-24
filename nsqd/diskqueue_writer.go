@@ -372,6 +372,8 @@ func (d *diskQueueWriter) retrieveMetaData() error {
 	if err != nil {
 		return err
 	}
+	d.readablePos = d.writePos
+	d.virtualReadableEnd = d.virtualEnd
 	atomic.StoreInt64(&d.totalMsgCnt, totalCnt)
 
 	return nil
@@ -413,6 +415,7 @@ func (d *diskQueueWriter) fileName(fileNum int64) string {
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
 }
 
+// NOTE: never call any lock op here or it may cause deadlock.
 func (d *diskQueueWriter) ioLoop() {
 	var err error
 	var count int64

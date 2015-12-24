@@ -54,13 +54,15 @@ type tbLog interface {
 
 type testLogger struct {
 	tbLog
+	level int32
 }
 
 func (tl *testLogger) SetLevel(l int32) {
+	tl.level = l
 }
 
 func (tl *testLogger) Level() int32 {
-	return 2
+	return tl.level
 }
 
 func (tl *testLogger) Output(maxdepth int, s string) error {
@@ -77,7 +79,7 @@ func (tl *testLogger) OutputWarning(maxdepth int, s string) error {
 }
 
 func newTestLogger(tbl tbLog) logger {
-	return &testLogger{tbl}
+	return &testLogger{tbl, 0}
 }
 
 func getMetadata(n *NSQD) (*simplejson.Json, error) {
@@ -107,7 +109,6 @@ func TestStartup(t *testing.T) {
 	doneExitChan := make(chan int)
 
 	opts := NewOptions()
-	opts.LogLevel = 2
 	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	opts.MemQueueSize = 100
@@ -168,10 +169,10 @@ func TestStartup(t *testing.T) {
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
-	time.Sleep(time.Second)
-	channel1.backend.ConfirmRead(BackendOffset(-1))
+	channel1.backend.ConfirmRead(BackendOffset(int64(iterations/2) *
+		msgRawSize))
 	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
-		int64(iterations/2)*msgRawSize)
+		BackendOffset(int64(iterations/2)*msgRawSize))
 	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
 
 	for {
@@ -198,6 +199,7 @@ func TestStartup(t *testing.T) {
 
 	opts = NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
 	opts.DataPath = origDataPath
@@ -210,15 +212,19 @@ func TestStartup(t *testing.T) {
 	}()
 
 	topic = nsqd.GetTopic(topicName)
+	backEnd = topic.backend.GetQueueReadEnd()
+	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
+	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
 
 	channel1 = topic.GetChannel("ch1")
+	channel1.UpdateQueueEnd(backEnd)
 
-	for {
-		if channel1.Depth() == int64(iterations/2) {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
+		BackendOffset(int64(iterations/2)*msgRawSize))
+	equal(t, channel1.backend.(*diskQueueReader).virtualEnd,
+		backEnd.GetOffset())
+
+	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
@@ -226,53 +232,6 @@ func TestStartup(t *testing.T) {
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
-
-	exitChan <- 1
-	<-doneExitChan
-}
-
-func TestEphemeralTopicsAndChannels(t *testing.T) {
-	// ephemeral topics/channels are lazily removed after the last channel/client is removed
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	opts.MemQueueSize = 100
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-
-	topicName := "ephemeral_topic" + strconv.Itoa(int(time.Now().Unix())) + "#ephemeral"
-	doneExitChan := make(chan int)
-
-	exitChan := make(chan int)
-	go func() {
-		<-exitChan
-		nsqd.Exit()
-		doneExitChan <- 1
-	}()
-
-	body := []byte("an_ephemeral_message")
-	topic := nsqd.GetTopic(topicName)
-	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
-	client := newClientV2(0, nil, &context{nsqd})
-	ephemeralChannel.AddClient(client.ID, client)
-
-	msg := NewMessage(topic.NextMsgID(), body)
-	topic.PutMessage(msg)
-	msg = <-ephemeralChannel.clientMsgChan
-	equal(t, msg.Body, body)
-
-	ephemeralChannel.RemoveClient(client.ID)
-
-	time.Sleep(100 * time.Millisecond)
-
-	topic.Lock()
-	numChannels := len(topic.channelMap)
-	topic.Unlock()
-	equal(t, numChannels, 0)
-
-	nsqd.Lock()
-	numTopics := len(nsqd.topicMap)
-	nsqd.Unlock()
-	equal(t, numTopics, 0)
 
 	exitChan <- 1
 	<-doneExitChan
@@ -406,6 +365,7 @@ func TestCluster(t *testing.T) {
 	data, err := API(endpoint)
 	equal(t, err, nil)
 
+	t.Logf("debug data: %v", data)
 	topicData := data.Get("topic:" + topicName + ":")
 	producers, _ := topicData.Array()
 	equal(t, len(producers), 1)
@@ -429,6 +389,7 @@ func TestCluster(t *testing.T) {
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
 	data, err = API(endpoint)
 
+	t.Logf("debug data: %v", data)
 	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 1)
 

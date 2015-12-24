@@ -42,7 +42,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		p.ctx.nsqd.logf("ERROR: client(%s) - %s", clientConn.RemoteAddr(), err)
+		p.ctx.nsqd.logErrorf("client(%s) error - %s", clientConn.RemoteAddr(), err)
 		return
 	}
 }

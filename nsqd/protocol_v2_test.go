@@ -554,6 +554,7 @@ func TestSizeLimits(t *testing.T) {
 func TestTouch(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
 	opts.Verbose = true
 	opts.MsgTimeout = 150 * time.Millisecond
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
@@ -1156,8 +1157,10 @@ func TestSampling(t *testing.T) {
 
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
 	opts.Verbose = false
 	opts.MaxRdyCount = int64(num)
+	opts.MaxConfirmWin = int64(num * 100)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -1177,12 +1180,14 @@ func TestSampling(t *testing.T) {
 	equal(t, r.SampleRate, int32(sampleRate))
 
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
+	testBody := []byte("test body")
 	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("ch")
+
 	for i := 0; i < num; i++ {
-		msg := NewMessage(topic.NextMsgID(), []byte("test body"))
+		msg := NewMessage(topic.NextMsgID(), testBody)
 		topic.PutMessage(msg)
 	}
-	channel := topic.GetChannel("ch")
 
 	// let the topic drain into the channel
 	time.Sleep(50 * time.Millisecond)
@@ -1200,10 +1205,14 @@ func TestSampling(t *testing.T) {
 		}
 	}()
 
+	time.Sleep(time.Second * 15)
+	equal(t, channel.backend.(*diskQueueReader).virtualReadOffset,
+		BackendOffset(num*(4+len(testBody)+10+16)))
 	doneChan := make(chan int)
 	go func() {
 		for {
-			if channel.Depth() == 0 {
+			if channel.backend.(*diskQueueReader).virtualReadOffset ==
+				channel.backend.(*diskQueueReader).virtualEnd {
 				close(doneChan)
 				return
 			}
@@ -1326,6 +1335,8 @@ func TestClientMsgTimeout(t *testing.T) {
 func TestBadFin(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
+	opts.Logger.SetLevel(2)
 	opts.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1337,6 +1348,8 @@ func TestBadFin(t *testing.T) {
 
 	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
 	sub(t, conn, "test_fin", "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	equal(t, err, nil)
 
 	fin := nsq.Finish(nsq.MessageID{})
 	fin.Params[0] = []byte("")
@@ -1344,9 +1357,14 @@ func TestBadFin(t *testing.T) {
 	equal(t, err, nil)
 
 	resp, _ := nsq.ReadResponse(conn)
+	t.Logf("%v", resp)
 	frameType, data, _ := nsq.UnpackResponse(resp)
-	equal(t, frameType, frameTypeError)
+	if string(data) == string(heartbeatBytes) {
+		//resp, _ = nsq.ReadResponse(conn)
+		//frameType, data, _ = nsq.UnpackResponse(resp)
+	}
 	equal(t, string(data), "E_INVALID Invalid Message ID")
+	equal(t, frameType, frameTypeError)
 }
 
 func TestClientAuth(t *testing.T) {

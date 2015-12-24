@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nsqio/go-nsq"
+	"github.com/absolute8511/go-nsq"
 	"github.com/nsqio/nsq/internal/version"
 )
 
@@ -98,18 +98,19 @@ func (n *NSQD) lookupLoop() {
 				branch = "channel"
 				channel := val.(*Channel)
 				if channel.Exiting() == true {
-					cmd = nsq.UnRegister(channel.topicName, channel.name)
+					cmd = nsq.UnRegister(channel.topicName, "0", channel.name)
 				} else {
-					cmd = nsq.Register(channel.topicName, channel.name)
+					cmd = nsq.Register(channel.topicName, "0", channel.name)
 				}
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
 				topic := val.(*Topic)
 				if topic.Exiting() == true {
-					cmd = nsq.UnRegister(topic.name, "")
+					cmd = nsq.UnRegister(topic.name,
+						strconv.Itoa(topic.partition), "")
 				} else {
-					cmd = nsq.Register(topic.name, "")
+					cmd = nsq.Register(topic.name, strconv.Itoa(topic.partition), "")
 				}
 			}
 
@@ -127,10 +128,13 @@ func (n *NSQD) lookupLoop() {
 			for _, topic := range n.topicMap {
 				topic.RLock()
 				if len(topic.channelMap) == 0 {
-					commands = append(commands, nsq.Register(topic.name, ""))
+					commands = append(commands, nsq.Register(topic.name,
+						strconv.Itoa(topic.partition), ""))
 				} else {
 					for _, channel := range topic.channelMap {
-						commands = append(commands, nsq.Register(channel.topicName, channel.name))
+						commands = append(commands,
+							nsq.Register(channel.topicName,
+								"0", channel.name))
 					}
 				}
 				topic.RUnlock()

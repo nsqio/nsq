@@ -49,7 +49,7 @@ type Options struct {
 	MaxRdyCount            int64         `flag:"max-rdy-count"`
 	MaxOutputBufferSize    int64         `flag:"max-output-buffer-size"`
 	MaxOutputBufferTimeout time.Duration `flag:"max-output-buffer-timeout"`
-	MaxConfirmCnt          int64         `flag:"max-confirm-count"`
+	MaxConfirmWin          int64         `flag:"max-confirm-win"`
 
 	// statsd integration
 	StatsdAddress  string        `flag:"statsd-address"`
@@ -148,7 +148,7 @@ func NewOptions() *Options {
 		MaxRdyCount:            2500,
 		MaxOutputBufferSize:    64 * 1024,
 		MaxOutputBufferTimeout: 1 * time.Second,
-		MaxConfirmCnt:          5000,
+		MaxConfirmWin:          50000,
 
 		StatsdPrefix:   "nsq.%s",
 		StatsdInterval: 60 * time.Second,

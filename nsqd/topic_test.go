@@ -70,6 +70,7 @@ func (d *errorRecoveredBackendQueue) Put([]byte) (BackendQueueEnd, error) { retu
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.Logger.SetLevel(2)
 	opts.MemQueueSize = 2
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -80,18 +81,6 @@ func TestHealth(t *testing.T) {
 
 	msg := NewMessage(topic.NextMsgID(), make([]byte, 100))
 	err := topic.PutMessage(msg)
-	equal(t, err, nil)
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = topic.PutMessages([]*Message{msg})
-	equal(t, err, nil)
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = topic.PutMessage(msg)
-	nequal(t, err, nil)
-
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
-	err = topic.PutMessages([]*Message{msg})
 	nequal(t, err, nil)
 
 	url := fmt.Sprintf("http://%s/ping", httpAddr)

@@ -17,6 +17,7 @@ type Topic struct {
 	sync.RWMutex
 
 	name              string
+	partition         int
 	channelMap        map[string]*Channel
 	backend           BackendQueueWriter
 	exitChan          chan int
@@ -41,7 +42,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		channelMap:        make(map[string]*Channel),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
-		flushChan:         make(chan int),
+		flushChan:         make(chan int, 10),
 		ctx:               ctx,
 		deleteCallback:    deleteCallback,
 	}
@@ -105,6 +106,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			t.DeleteExistingChannel(c.name)
 		}
 		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
+		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
 		t.channelMap[channelName] = channel
 		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
@@ -198,7 +200,10 @@ func (t *Topic) put(m *Message) error {
 			t.name, err)
 		return err
 	}
-	t.flushChan <- 1
+	select {
+	case t.flushChan <- 1:
+	default:
+	}
 	return nil
 }
 
@@ -224,6 +229,7 @@ func (t *Topic) messagePump() {
 			for _, c := range t.channelMap {
 				chans = append(chans, c)
 			}
+			lastEnd = nil
 			t.RUnlock()
 		case flag := <-t.flushChan:
 			flushCnt++

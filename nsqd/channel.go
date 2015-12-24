@@ -107,6 +107,8 @@ func NewChannel(topicName string, channelName string, ctx *context,
 			ctx.nsqd.getOpts().SyncTimeout,
 			false,
 			ctx.nsqd.getOpts().Logger)
+		c.backend.(*diskQueueReader).maxConfirmWin =
+			BackendOffset(c.ctx.nsqd.getOpts().MaxConfirmWin)
 	}
 
 	go c.messagePump()
@@ -285,6 +287,9 @@ func (c *Channel) IsPaused() bool {
 
 // When topic message is put, update the new end of the queue
 func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
+	if end == nil {
+		return nil
+	}
 	c.RLock()
 	defer c.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
@@ -336,7 +341,8 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 				break
 			}
 		}
-		if c.IsPaused() && int64(len(c.confirmedMsgs)) < c.ctx.nsqd.getOpts().MaxConfirmCnt/2 {
+		if c.IsPaused() && int64(len(c.confirmedMsgs)) <
+			c.ctx.nsqd.getOpts().MaxConfirmWin/2 {
 			needUnPause = true
 		}
 		err := c.backend.ConfirmRead(c.currentLastConfirmed)
@@ -344,9 +350,11 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 			c.ctx.nsqd.logf("ERROR: confirm read failed: %v, msg: %v", err, msg)
 			return
 		}
+	} else if msg.offset < c.currentLastConfirmed {
+		c.ctx.nsqd.logWarningf("confirmed msg is less than current confirmed offset: %v, %v", msg, c.currentLastConfirmed)
 	} else {
 		c.confirmedMsgs[BackendOffset(msg.offset)] = msg
-		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmCnt {
+		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmWin {
 			needPause = true
 		}
 	}
