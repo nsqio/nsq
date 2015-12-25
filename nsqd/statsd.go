@@ -36,7 +36,7 @@ func (n *NSQD) statsdLoop() {
 			client := statsd.NewClient(n.getOpts().StatsdAddress, n.getOpts().StatsdPrefix)
 			err := client.CreateSocket()
 			if err != nil {
-				n.logf("ERROR: failed to create UDP socket to statsd(%s)", client)
+				n.logErrorf("failed to create UDP socket to statsd(%s)", client)
 				continue
 			}
 

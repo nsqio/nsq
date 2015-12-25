@@ -350,7 +350,7 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 		}
 		err := c.backend.ConfirmRead(c.currentLastConfirmed)
 		if err != nil {
-			c.ctx.nsqd.logf("ERROR: confirm read failed: %v, msg: %v", err, msg)
+			c.ctx.nsqd.logErrorf("confirm read failed: %v, msg: %v", err, msg)
 			return
 		}
 	} else if msg.offset < c.currentLastConfirmed {
@@ -524,7 +524,7 @@ func (c *Channel) messagePump() {
 		case msg = <-c.requeuedMsgChan:
 		case data = <-c.backend.ReadChan():
 			if data.err != nil {
-				c.ctx.nsqd.logf("ERROR: failed to read message - %s", err)
+				c.ctx.nsqd.logErrorf("failed to read message - %s", err)
 				// TODO: fix corrupt file from other replica.
 				// and should handle the confirm offset, since some skipped data
 				// may never be confirmed any more

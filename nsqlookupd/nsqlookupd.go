@@ -39,12 +39,19 @@ func (l *NSQLookupd) logf(f string, args ...interface{}) {
 	l.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
+func (l *NSQLookupd) logErrorf(f string, args ...interface{}) {
+	if l.opts.Logger == nil {
+		return
+	}
+	l.opts.Logger.OutputErr(2, fmt.Sprintf(f, args...))
+}
+
 func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
+		l.logErrorf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
 		os.Exit(1)
 	}
 	l.Lock()
@@ -57,7 +64,7 @@ func (l *NSQLookupd) Main() {
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
+		l.logErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
 
@@ -71,7 +78,7 @@ func (l *NSQLookupd) Main() {
 	// l.coordinator.SetLeadershipMgr(nil)
 	err = l.coordinator.Start()
 	if err != nil {
-		l.logf("FATAL: start coordinator failed - %s", err)
+		l.logErrorf("FATAL: start coordinator failed - %s", err)
 		os.Exit(1)
 	}
 	l.Lock()

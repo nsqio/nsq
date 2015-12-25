@@ -122,7 +122,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logErrorf("failed to parse request params - %s", err)
 		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -143,7 +143,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.Req
 func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logErrorf("failed to parse request params - %s", err)
 		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -287,7 +287,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -316,7 +316,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -392,7 +392,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 		err = channel.Pause()
 	}
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
+		s.ctx.nsqd.logErrorf("failure in %s - %s", req.URL.Path, err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
@@ -407,7 +407,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")

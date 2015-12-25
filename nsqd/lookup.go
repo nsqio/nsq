@@ -54,7 +54,7 @@ func (n *NSQD) lookupLoop() {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		n.logf("FATAL: failed to get hostname - %s", err)
+		n.logErrorf("failed to get hostname - %s", err)
 		os.Exit(1)
 	}
 

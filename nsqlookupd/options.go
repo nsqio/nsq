@@ -41,6 +41,6 @@ func NewOptions() *Options {
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
 
-		Logger: log.New(os.Stderr, "[nsqlookupd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+		Logger: &GLogger{1},
 	}
 }

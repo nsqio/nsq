@@ -91,7 +91,7 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		d.logf("ERROR: diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
+		d.logErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
 	}
 
 	go d.ioLoop()
@@ -100,6 +100,15 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 }
 
 func (d *diskQueueWriter) logf(f string, args ...interface{}) {
+	if d.logger == nil {
+		return
+	}
+	if d.logger.Level() >= 1 {
+		d.logger.Output(2, fmt.Sprintf(f, args...))
+	}
+}
+
+func (d *diskQueueWriter) logErrorf(f string, args ...interface{}) {
 	if d.logger == nil {
 		return
 	}
@@ -205,7 +214,7 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
 		if innerErr != nil && !os.IsNotExist(innerErr) {
-			d.logf("ERROR: diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
+			d.logErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
 		}
 	}
 
@@ -300,7 +309,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 		// sync every time we start writing to a new file
 		err = d.sync()
 		if err != nil {
-			d.logf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err)
+			d.logErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 		}
 
 		if d.bufferWriter != nil {
@@ -432,7 +441,7 @@ func (d *diskQueueWriter) ioLoop() {
 		if d.needSync {
 			err = d.sync()
 			if err != nil {
-				d.logf("ERROR: diskqueue(%s) failed to sync - %s", d.name, err)
+				d.logErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 			}
 		}
 

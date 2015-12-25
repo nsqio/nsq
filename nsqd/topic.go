@@ -11,6 +11,10 @@ import (
 	"github.com/nsqio/nsq/internal/util"
 )
 
+const (
+	MAX_TOPIC_PARTITION = 1023
+)
+
 type Topic struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	messageCount uint64
@@ -43,6 +47,9 @@ func GetTopicFullName(topic string, part int) string {
 
 // Topic constructor
 func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Topic)) *Topic {
+	if part > MAX_TOPIC_PARTITION {
+		return nil
+	}
 	t := &Topic{
 		tname:             topicName,
 		partition:         part,
@@ -217,8 +224,8 @@ func (t *Topic) put(m *Message) error {
 	t.ctx.nsqd.SetHealth(err)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
-		t.ctx.nsqd.logf(
-			"TOPIC(%s) ERROR: failed to write message to backend - %s",
+		t.ctx.nsqd.logErrorf(
+			"TOPIC(%s) : failed to write message to backend - %s",
 			t.GetFullName(), err)
 		return err
 	}
@@ -274,8 +281,8 @@ func (t *Topic) messagePump() {
 		for _, channel := range chans {
 			err = channel.UpdateQueueEnd(e)
 			if err != nil {
-				t.ctx.nsqd.logf(
-					"TOPIC(%s) ERROR: failed to update topic end to channel(%s) - %s",
+				t.ctx.nsqd.logErrorf(
+					"TOPIC(%s) : failed to update topic end to channel(%s) - %s",
 					t.GetFullName(), channel.name, err)
 			}
 		}
@@ -338,7 +345,7 @@ func (t *Topic) exit(deleted bool) error {
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
-			t.ctx.nsqd.logf("ERROR: channel(%s) close - %s", channel.name, err)
+			t.ctx.nsqd.logf(" channel(%s) close - %s", channel.name, err)
 		}
 	}
 
@@ -362,7 +369,7 @@ func (t *Topic) flush() error {
 	}
 	err := t.backend.Flush()
 	if err != nil {
-		t.ctx.nsqd.logf("ERROR: failed flush: %v", err)
+		t.ctx.nsqd.logErrorf("failed flush: %v", err)
 	}
 	return err
 }
