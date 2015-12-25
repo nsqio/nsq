@@ -82,7 +82,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		params := make([][]byte, 0)
 		if len(line) >= 3 {
 			// since we read a command, then left data should come quickly.
-			client.SetReadDeadline(time.Now().Add(time.Second))
+			client.SetReadDeadline(time.Now().Add(time.Second * 10))
 			if bytes.Equal(line[:3], []byte("FIN")) ||
 				bytes.Equal(line[:3], []byte("REQ")) {
 				isSpecial = true
@@ -153,10 +153,13 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		response, err = p.Exec(client, params)
 		if err != nil {
 			ctx := ""
-			if parentErr := err.(protocol.ChildErr).Parent(); parentErr != nil {
-				ctx = " - " + parentErr.Error()
-			}
 			p.ctx.nsqd.logErrorf("Error response for [%s] - %s - %s", client, err, ctx)
+
+			if childErr, ok := err.(protocol.ChildErr); ok {
+				if parentErr := childErr.Parent(); parentErr != nil {
+					ctx = " - " + parentErr.Error()
+				}
+			}
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
@@ -665,7 +668,11 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		p.ctx.nsqd.logf("sub to not existing topic: %v", topicName)
+		return nil, err
+	}
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client.ID, client)
 
@@ -831,7 +838,11 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		p.ctx.nsqd.logf("PUB to not existing topic: %v", topicName)
+		return nil, err
+	}
 	msg := NewMessage(topic.NextMsgID(), messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
@@ -873,7 +884,12 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
+
+	if err != nil {
+		p.ctx.nsqd.logf("PUB to not existing topic: %v", topicName)
+		return nil, err
+	}
 
 	messages, err := readMPUB(client.Reader, client.lenSlice, topic,
 		p.ctx.nsqd.getOpts().MaxMsgSize)

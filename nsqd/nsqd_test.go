@@ -111,6 +111,8 @@ func TestStartup(t *testing.T) {
 	opts := NewOptions()
 	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 0
+	opts.Logger.SetLevel(0)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
 	_, _, nsqd := mustStartNSQD(opts)
@@ -131,7 +133,7 @@ func TestStartup(t *testing.T) {
 	err := nsqd.PersistMetadata()
 	equal(t, err, nil)
 	atomic.StoreInt32(&nsqd.isLoading, 1)
-	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
+	nsqd.GetTopicIgnPart(topicName) // will not persist if `flagLoading`
 	metaData, err := getMetadata(nsqd)
 	equal(t, err, nil)
 	topics, err := metaData.Get("topics").Array()
@@ -146,7 +148,7 @@ func TestStartup(t *testing.T) {
 	tmpbuf.Reset()
 	msgRawSize, _ := tmpmsg.WriteTo(tmpbuf)
 	msgRawSize += 4
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	for i := 0; i < iterations; i++ {
 		msg := NewMessage(topic.NextMsgID(), body)
 		topic.PutMessage(msg)
@@ -166,7 +168,7 @@ func TestStartup(t *testing.T) {
 		BackendOffset(channel1.Depth()))
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
-		t.Logf("read message %d", i+1)
+		//t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
 	channel1.backend.ConfirmRead(BackendOffset(int64(iterations/2) *
@@ -199,6 +201,8 @@ func TestStartup(t *testing.T) {
 
 	opts = NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 0
+	opts.Logger.SetLevel(0)
 	opts.SyncEvery = 1
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
@@ -211,7 +215,7 @@ func TestStartup(t *testing.T) {
 		doneExitChan <- 1
 	}()
 
-	topic = nsqd.GetTopic(topicName)
+	topic = nsqd.GetTopicIgnPart(topicName)
 	backEnd = topic.backend.GetQueueReadEnd()
 	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
 	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
@@ -229,7 +233,6 @@ func TestStartup(t *testing.T) {
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
-		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
 
@@ -253,7 +256,7 @@ func TestPauseMetadata(t *testing.T) {
 	// avoid concurrency issue of async PersistMetadata() calls
 	atomic.StoreInt32(&nsqd.isLoading, 1)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("ch")
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata()
@@ -346,11 +349,13 @@ func TestCluster(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "cluster_test" + strconv.Itoa(int(time.Now().Unix()))
+	partitionStr := "0"
 
 	hostname, err := os.Hostname()
 	equal(t, err, nil)
 
-	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
+	url := fmt.Sprintf("http://%s/topic/create?topic=%s&partition=%s",
+		nsqd.RealHTTPAddr(), topicName, partitionStr)
 	err = http_api.NewClient(nil).POSTV1(url)
 	equal(t, err, nil)
 
@@ -366,7 +371,7 @@ func TestCluster(t *testing.T) {
 	equal(t, err, nil)
 
 	t.Logf("debug data: %v", data)
-	topicData := data.Get("topic:" + topicName + ":")
+	topicData := data.Get("topic:" + topicName + "::" + partitionStr)
 	producers, _ := topicData.Array()
 	equal(t, len(producers), 1)
 
@@ -376,7 +381,7 @@ func TestCluster(t *testing.T) {
 	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
 	equal(t, producer.Get("tombstoned").MustBool(), false)
 
-	channelData := data.Get("channel:" + topicName + ":ch")
+	channelData := data.Get("channel:" + topicName + ":ch:" + partitionStr)
 	producers, _ = channelData.Array()
 	equal(t, len(producers), 1)
 
@@ -424,10 +429,10 @@ func TestCluster(t *testing.T) {
 
 	equal(t, err, nil)
 
-	producers, _ = data.Get("topic:" + topicName + ":").Array()
+	producers, _ = data.Get("topic:" + topicName + ":" + partitionStr).Array()
 	equal(t, len(producers), 0)
 
-	producers, _ = data.Get("channel:" + topicName + ":ch").Array()
+	producers, _ = data.Get("channel:" + topicName + ":ch" + partitionStr).Array()
 	equal(t, len(producers), 0)
 }
 

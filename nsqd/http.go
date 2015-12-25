@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,8 +156,18 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	if !protocol.IsValidTopicName(topicName) {
 		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
+	topicParts, ok := reqParams["partition"]
+	topicPart := 0
+	if !ok {
+		return reqParams, s.ctx.nsqd.GetTopicIgnPart(topicName), nil
+	} else {
+		topicPart, err = strconv.Atoi(topicParts[0])
+		if err != nil {
+			return nil, nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION"}
+		}
+	}
 
-	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
+	return reqParams, s.ctx.nsqd.GetTopic(topicName, topicPart), nil
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

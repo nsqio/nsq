@@ -37,6 +37,7 @@ type Channel struct {
 	sync.RWMutex
 
 	topicName string
+	topicPart int
 	name      string
 	ctx       *context
 
@@ -69,11 +70,12 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, ctx *context,
+func NewChannel(topicName string, part int, channelName string, ctx *context,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
 		topicName:       topicName,
+		topicPart:       part,
 		name:            channelName,
 		requeuedMsgChan: make(chan *Message, ctx.nsqd.getOpts().MaxRdyCount+1),
 		clientMsgChan:   make(chan *Message),
@@ -97,8 +99,9 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		c.backend = newDummyBackendQueueReader()
 	} else {
 		// backend names, for uniqueness, automatically include the topic...
-		backendName := getBackendName(topicName, channelName)
-		c.backend = newDiskQueueReader(topicName, backendName,
+		backendReaderName := getBackendReaderName(c.topicName, c.topicPart, channelName)
+		backendName := getBackendName(c.topicName, c.topicPart)
+		c.backend = newDiskQueueReader(backendName, backendReaderName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),

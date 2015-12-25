@@ -319,7 +319,12 @@ func (n *NSQD) LoadMetadata() {
 			n.logf("WARNING: skipping creation of invalid topic %s", topicName)
 			continue
 		}
-		topic := n.GetTopic(topicName)
+		part, err := topicJs.Get("partition").Int()
+		if err != nil {
+			n.logErrorf("failed to parse metadata - %s", err)
+			return
+		}
+		topic := n.GetTopic(topicName, part)
 
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
@@ -362,7 +367,8 @@ func (n *NSQD) PersistMetadata() error {
 			continue
 		}
 		topicData := make(map[string]interface{})
-		topicData["name"] = topic.name
+		topicData["name"] = topic.GetTopicName()
+		topicData["partition"] = topic.GetTopicPart()
 		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {
@@ -443,23 +449,34 @@ func (n *NSQD) Exit() {
 	n.dl.Unlock()
 }
 
+func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
+	return n.GetTopic(topicName, -1)
+}
+
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
-func (n *NSQD) GetTopic(topicName string) *Topic {
+func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	n.Lock()
 
 	t, ok := n.topicMap[topicName]
 	if ok {
 		n.Unlock()
+		if part != -1 && t.GetTopicPart() != part {
+			n.logWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
+			return nil
+		}
 		return t
 	}
-	deleteCallback := func(t *Topic) {
-		n.DeleteExistingTopic(t.name)
+	if part < 0 {
+		part = 0
 	}
-	t = NewTopic(topicName, &context{n}, deleteCallback)
+	deleteCallback := func(t *Topic) {
+		n.DeleteExistingTopic(t.GetTopicName())
+	}
+	t = NewTopic(topicName, part, &context{n}, deleteCallback)
 	n.topicMap[topicName] = t
 
-	n.logf("TOPIC(%s): created", t.name)
+	n.logf("TOPIC(%s): created", t.GetFullName())
 
 	// release our global nsqd lock, and switch to a more granular topic lock while we init our
 	// channels from lookupd. This blocks concurrent PutMessages to this topic.
@@ -470,7 +487,8 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	// this makes sure that any message received is buffered to the right channels
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
-		channelNames, _ := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		channelNames, _ := n.ci.GetLookupdTopicChannels(t.GetTopicName(),
+			t.GetTopicPart(), lookupdHTTPAddrs)
 		for _, channelName := range channelNames {
 			if strings.HasSuffix(channelName, "#ephemeral") {
 				// we don't want to pre-create ephemeral channels

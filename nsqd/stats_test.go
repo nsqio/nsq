@@ -19,7 +19,7 @@ func TestStats(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -70,6 +70,8 @@ func TestClientAttributes(t *testing.T) {
 	readValidate(t, r, frameTypeResponse, "OK")
 
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 	sub(t, readWriter{r, w}, topicName, "ch")
 
 	testURL := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)

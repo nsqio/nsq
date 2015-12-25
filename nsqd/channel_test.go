@@ -17,7 +17,7 @@ func TestPutMessage(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel1 := topic.GetChannel("ch")
 
 	var id MessageID
@@ -39,7 +39,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
@@ -65,7 +65,7 @@ func TestChannelBackendMaxMsgSize(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_channel_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	ch := topic.GetChannel("ch")
 
 	equal(t, ch.backend.(*diskQueueReader).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
@@ -84,7 +84,7 @@ func TestInFlightWorker(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < count; i++ {
@@ -126,7 +126,7 @@ func TestChannelEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("channel")
 
 	msgs := make([]*Message, 0, 25)
@@ -158,7 +158,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	defer conn.Close()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("channel")
 	client := newClientV2(0, conn, &context{nsqd})
 	client.SetReadyCount(25)
@@ -192,7 +192,7 @@ func TestChannelHealth(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test")
+	topic := nsqd.GetTopicIgnPart("test")
 
 	channel := topic.GetChannel("channel")
 	// cause channel.messagePump to exit so we can set channel.backend without

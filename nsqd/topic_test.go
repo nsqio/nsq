@@ -19,16 +19,24 @@ func TestGetTopic(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic1 := nsqd.GetTopic("test")
+	topic1 := nsqd.GetTopic("test", 0)
 	nequal(t, nil, topic1)
-	equal(t, "test", topic1.name)
+	equal(t, "test", topic1.GetTopicName())
 
-	topic2 := nsqd.GetTopic("test")
+	topic2 := nsqd.GetTopic("test", 0)
 	equal(t, topic1, topic2)
 
-	topic3 := nsqd.GetTopic("test2")
-	equal(t, "test2", topic3.name)
+	topic3 := nsqd.GetTopic("test2", 1)
+	equal(t, "test2", topic3.GetTopicName())
 	nequal(t, topic2, topic3)
+
+	topic1_1 := nsqd.GetTopicIgnPart("test")
+	equal(t, "test", topic1_1.GetTopicName())
+	equal(t, 0, topic1_1.GetTopicPart())
+	topic3_1 := nsqd.GetTopicIgnPart("test2")
+	equal(t, "test2", topic3_1.GetTopicName())
+	equal(t, 1, topic3_1.GetTopicPart())
+
 }
 
 func TestGetChannel(t *testing.T) {
@@ -38,7 +46,7 @@ func TestGetChannel(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test")
+	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
 	nequal(t, nil, channel1)
@@ -76,7 +84,7 @@ func TestHealth(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test")
+	topic := nsqd.GetTopicIgnPart("test")
 	topic.backend = &errorBackendQueue{}
 
 	msg := NewMessage(topic.NextMsgID(), make([]byte, 100))
@@ -112,7 +120,7 @@ func TestDeletes(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test")
+	topic := nsqd.GetTopicIgnPart("test")
 
 	channel1 := topic.GetChannel("ch1")
 	nequal(t, nil, channel1)
@@ -137,7 +145,7 @@ func TestDeleteLast(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetTopic("test")
+	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
 	nequal(t, nil, channel1)
@@ -160,7 +168,7 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopic(topicName, 0)
 
 	equal(t, topic.backend.(*diskQueueWriter).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
@@ -177,7 +185,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
-		topic := nsqd.GetTopic(topicName)
+		topic := nsqd.GetTopic(topicName, 0)
 		msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
@@ -193,11 +201,11 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
-	nsqd.GetTopic(topicName).GetChannel(channelName)
+	nsqd.GetTopic(topicName, 0).GetChannel(channelName)
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
-		topic := nsqd.GetTopic(topicName)
+		topic := nsqd.GetTopic(topicName, 0)
 		msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}

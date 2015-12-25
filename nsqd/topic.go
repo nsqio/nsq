@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +17,8 @@ type Topic struct {
 
 	sync.RWMutex
 
-	name              string
+	tname             string
+	fullName          string
 	partition         int
 	channelMap        map[string]*Channel
 	backend           BackendQueueWriter
@@ -35,10 +37,15 @@ type Topic struct {
 	needFlush   int32
 }
 
+func GetTopicFullName(topic string, part int) string {
+	return topic + "-" + strconv.Itoa(part)
+}
+
 // Topic constructor
-func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topic {
+func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Topic)) *Topic {
 	t := &Topic{
-		name:              topicName,
+		tname:             topicName,
+		partition:         part,
 		channelMap:        make(map[string]*Channel),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
@@ -47,11 +54,14 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		deleteCallback:    deleteCallback,
 	}
 
+	t.fullName = GetTopicFullName(t.tname, t.partition)
+
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true
 		t.backend = newDummyBackendQueueWriter()
 	} else {
-		t.backend = newDiskQueueWriter(topicName,
+		backendName := getBackendName(t.tname, t.partition)
+		t.backend = newDiskQueueWriter(backendName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
@@ -77,6 +87,18 @@ func (t *Topic) NextMsgID() MessageID {
 	// TODO: read latest logid and incr. combine the partition id at high.
 	id := atomic.AddUint64(&t.msgIDCursor, 1)
 	return MessageID(id)
+}
+
+func (t *Topic) GetFullName() string {
+	return t.fullName
+}
+
+func (t *Topic) GetTopicName() string {
+	return t.tname
+}
+
+func (t *Topic) GetTopicPart() int {
+	return t.partition
 }
 
 // GetChannel performs a thread safe operation
@@ -105,10 +127,10 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
+		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, t.ctx, deleteCallback)
 		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
 		t.channelMap[channelName] = channel
-		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.name, channel.name)
+		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.GetFullName(), channel.name)
 		return channel, true
 	}
 	return channel, false
@@ -137,7 +159,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	numChannels := len(t.channelMap)
 	t.Unlock()
 
-	t.ctx.nsqd.logf("TOPIC(%s): deleting channel %s", t.name, channel.name)
+	t.ctx.nsqd.logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
@@ -197,7 +219,7 @@ func (t *Topic) put(m *Message) error {
 	if err != nil {
 		t.ctx.nsqd.logf(
 			"TOPIC(%s) ERROR: failed to write message to backend - %s",
-			t.name, err)
+			t.GetFullName(), err)
 		return err
 	}
 	select {
@@ -254,13 +276,13 @@ func (t *Topic) messagePump() {
 			if err != nil {
 				t.ctx.nsqd.logf(
 					"TOPIC(%s) ERROR: failed to update topic end to channel(%s) - %s",
-					t.name, channel.name, err)
+					t.GetFullName(), channel.name, err)
 			}
 		}
 	}
 
 exit:
-	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.name)
+	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.GetFullName())
 }
 
 func (t *Topic) totalSize() int64 {
@@ -284,13 +306,13 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	if deleted {
-		t.ctx.nsqd.logf("TOPIC(%s): deleting", t.name)
+		t.ctx.nsqd.logf("TOPIC(%s): deleting", t.GetFullName())
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
 		t.ctx.nsqd.Notify(t)
 	} else {
-		t.ctx.nsqd.logf("TOPIC(%s): closing", t.name)
+		t.ctx.nsqd.logf("TOPIC(%s): closing", t.GetFullName())
 	}
 
 	close(t.exitChan)

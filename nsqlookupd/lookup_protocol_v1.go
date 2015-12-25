@@ -139,7 +139,7 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	key := Registration{"topic", topic, "", pid}
 	if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {
 		p.ctx.nsqlookupd.logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s",
-			client, "topic", topic, "")
+			client, "topic", topic, pid)
 	}
 
 	return []byte("OK"), nil

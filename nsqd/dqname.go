@@ -2,8 +2,13 @@
 
 package nsqd
 
-func getBackendName(topicName, channelName string) string {
+func getBackendName(topicName string, part int) string {
+	backendName := GetTopicFullName(topicName, part)
+	return backendName
+}
+
+func getBackendReaderName(topicName string, part int, channelName string) string {
 	// backend names, for uniqueness, automatically include the topic... <topic>:<channel>
-	backendName := topicName + ":" + channelName
+	backendName := GetTopicFullName(topicName, part) + ":" + channelName
 	return backendName
 }

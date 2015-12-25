@@ -70,8 +70,8 @@ type diskQueueReader struct {
 	sync.RWMutex
 
 	// instantiation time metadata
-	name            string
-	topicName       string
+	readerMetaName  string
+	readFrom        string
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
 	minMsgSize      int32
@@ -111,13 +111,13 @@ type diskQueueReader struct {
 
 // newDiskQueue instantiates a new instance of diskQueueReader, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
-func newDiskQueueReader(tp string, name string, dataPath string, maxBytesPerFile int64,
+func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64, syncTimeout time.Duration, autoSkip bool,
 	logger logger) BackendQueueReader {
 	d := diskQueueReader{
-		topicName:              tp,
-		name:                   name,
+		readFrom:               readFrom,
+		readerMetaName:         metaname,
 		dataPath:               dataPath,
 		maxBytesPerFile:        maxBytesPerFile,
 		minMsgSize:             minMsgSize,
@@ -142,7 +142,8 @@ func newDiskQueueReader(tp string, name string, dataPath string, maxBytesPerFile
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		d.logErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
+		d.logErrorf("diskqueue(%s) failed to retrieveMetaData %v - %s",
+			d.readFrom, d.readerMetaName, err)
 	}
 
 	go d.ioLoop()
@@ -463,7 +464,7 @@ CheckFileOpen:
 			return voffset, nil, err
 		}
 
-		d.logf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
+		d.logf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
 
 		if d.readPos.Pos > 0 {
 			_, err = d.readFile.Seek(d.readPos.Pos, 0)
@@ -484,7 +485,8 @@ CheckFileOpen:
 		if d.readPos.Pos >= stat.Size() {
 			d.readPos.FileNum++
 			d.readPos.Pos = 0
-			d.logf("DISKQUEUE(%s): readOne() read end, try next: %v", d.name, d.readPos.FileNum)
+			d.logf("DISKQUEUE(%s): readOne() read end, try next: %v",
+				d.readerMetaName, d.readPos.FileNum)
 			d.readFile.Close()
 			d.readFile = nil
 			goto CheckFileOpen
@@ -627,11 +629,12 @@ func (d *diskQueueReader) persistMetaData() error {
 }
 
 func (d *diskQueueReader) metaDataFileName() string {
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.reader.dat"), d.name)
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.reader.dat"),
+		d.readerMetaName)
 }
 
 func (d *diskQueueReader) fileName(fileNum int64) string {
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.topicName, fileNum)
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.readFrom, fileNum)
 }
 
 func (d *diskQueueReader) checkTailCorruption() {
@@ -642,7 +645,7 @@ func (d *diskQueueReader) checkTailCorruption() {
 	if d.readPos != d.endPos {
 		d.logErrorf(
 			"diskqueue(%s) readFileNum > endFileNum (%v > %v), corruption, skipping to end ...",
-			d.name, d.readPos, d.endPos)
+			d.readerMetaName, d.readPos, d.endPos)
 
 		d.skipToEndofFile()
 		d.needSync = true
@@ -662,7 +665,7 @@ func (d *diskQueueReader) handleReadError() {
 		vdiff, err := d.getVirtualOffsetDistance(d.readPos, newRead)
 		if err != nil {
 			d.logErrorf("diskqueue(%s) move error (%v > %v), corruption, skipping to next...",
-				d.name, d.readPos, newRead)
+				d.readerMetaName, d.readPos, newRead)
 			d.skipToNextFile()
 			return
 		}
@@ -705,7 +708,8 @@ func (d *diskQueueReader) ioLoop() {
 		if d.needSync {
 			syncerr = d.sync()
 			if syncerr != nil {
-				d.logErrorf("diskqueue(%s) failed to sync - %s", d.name, syncerr)
+				d.logErrorf("diskqueue(%s) failed to sync - %s",
+					d.readerMetaName, syncerr)
 			}
 		}
 
@@ -721,7 +725,7 @@ func (d *diskQueueReader) ioLoop() {
 					dataRead.err = rerr
 					if rerr != nil {
 						d.logErrorf("reading from diskqueue(%s) at %d of %s - %s",
-							d.name, d.readPos, d.fileName(d.readPos.FileNum), dataRead.err)
+							d.readerMetaName, d.readPos, d.fileName(d.readPos.FileNum), dataRead.err)
 						if d.autoSkipError {
 							d.handleReadError()
 							rerr = nil
@@ -785,7 +789,7 @@ func (d *diskQueueReader) ioLoop() {
 	}
 
 exit:
-	d.logf("DISKQUEUE(%s): closing ... ioLoop", d.name)
+	d.logf("DISKQUEUE(%s): closing ... ioLoop", d.readerMetaName)
 	syncTicker.Stop()
 	d.exitSyncChan <- 1
 }

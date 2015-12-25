@@ -95,22 +95,27 @@ func (n *NSQD) lookupLoop() {
 			switch val.(type) {
 			case *Channel:
 				// notify all nsqlookupds that a new channel exists, or that it's removed
+				// For channel, we just know the full topic name without
+				// knowing the partition
 				branch = "channel"
 				channel := val.(*Channel)
 				if channel.Exiting() == true {
-					cmd = nsq.UnRegister(channel.topicName, "0", channel.name)
+					cmd = nsq.UnRegister(channel.topicName,
+						strconv.Itoa(channel.topicPart), channel.name)
 				} else {
-					cmd = nsq.Register(channel.topicName, "0", channel.name)
+					cmd = nsq.Register(channel.topicName,
+						strconv.Itoa(channel.topicPart), channel.name)
 				}
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
 				topic := val.(*Topic)
 				if topic.Exiting() == true {
-					cmd = nsq.UnRegister(topic.name,
-						strconv.Itoa(topic.partition), "")
+					cmd = nsq.UnRegister(topic.GetTopicName(),
+						strconv.Itoa(topic.GetTopicPart()), "")
 				} else {
-					cmd = nsq.Register(topic.name, strconv.Itoa(topic.partition), "")
+					cmd = nsq.Register(topic.GetTopicName(),
+						strconv.Itoa(topic.GetTopicPart()), "")
 				}
 			}
 
@@ -128,13 +133,14 @@ func (n *NSQD) lookupLoop() {
 			for _, topic := range n.topicMap {
 				topic.RLock()
 				if len(topic.channelMap) == 0 {
-					commands = append(commands, nsq.Register(topic.name,
-						strconv.Itoa(topic.partition), ""))
+					commands = append(commands,
+						nsq.Register(topic.GetTopicName(),
+							strconv.Itoa(topic.GetTopicPart()), ""))
 				} else {
 					for _, channel := range topic.channelMap {
 						commands = append(commands,
 							nsq.Register(channel.topicName,
-								"0", channel.name))
+								strconv.Itoa(channel.topicPart), channel.name))
 					}
 				}
 				topic.RUnlock()

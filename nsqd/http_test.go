@@ -28,7 +28,7 @@ func TestHTTPpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub" + strconv.Itoa(int(time.Now().Unix()))
-	_ = nsqd.GetTopic(topicName)
+	_ = nsqd.GetTopicIgnPart(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -50,7 +50,7 @@ func TestHTTPpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	buf := bytes.NewBuffer([]byte(""))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -73,7 +73,7 @@ func TestHTTPmpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -101,7 +101,7 @@ func TestHTTPmpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -131,7 +131,7 @@ func TestHTTPmpubBinary(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -163,7 +163,7 @@ func TestHTTPSRequire(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_req" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -209,7 +209,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 	topicName := "test_http_pub_req_verf" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -272,7 +272,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopic(topicName)
+	nsqd.GetTopicIgnPart(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))

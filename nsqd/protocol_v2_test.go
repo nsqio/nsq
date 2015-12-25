@@ -129,7 +129,7 @@ func TestBasicV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -163,7 +163,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	topic.GetChannel("ch1")
 	topic.GetChannel("ch2")
@@ -210,6 +210,8 @@ func TestClientTimeout(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
 	defer conn.Close()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -246,6 +248,9 @@ func TestClientHeartbeat(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
 	defer conn.Close()
+
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -357,6 +362,8 @@ func TestPausing(t *testing.T) {
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
@@ -368,7 +375,6 @@ func TestPausing(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	equal(t, err, nil)
 
-	topic := nsqd.GetTopic(topicName)
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	channel := topic.GetChannel("ch")
 	topic.PutMessage(msg)
@@ -449,6 +455,7 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	topicName := "test_limits_v2" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopicIgnPart(topicName).GetChannel("ch")
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
@@ -563,6 +570,9 @@ func TestTouch(t *testing.T) {
 
 	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
 
+	topic := nsqd.GetTopicIgnPart(topicName)
+	channel := topic.GetChannel("ch")
+
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
 	defer conn.Close()
@@ -570,8 +580,6 @@ func TestTouch(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel("ch")
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -613,7 +621,8 @@ func TestMaxRdyCount(t *testing.T) {
 	equal(t, err, nil)
 	defer conn.Close()
 
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 	msg := NewMessage(topic.NextMsgID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -689,7 +698,8 @@ func TestOutputBuffering(t *testing.T) {
 	outputBufferSize := 256 * 1024
 	outputBufferTimeout := 500
 
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
 	msg := NewMessage(topic.NextMsgID(), make([]byte, outputBufferSize-1024))
 	topic.PutMessage(msg)
 
@@ -1080,12 +1090,13 @@ func TestSnappy(t *testing.T) {
 	rw := readWriter{compressConn, w}
 
 	topicName := "test_snappy" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopicIgnPart(topicName).GetChannel("ch")
 	sub(t, rw, topicName, "ch")
 
 	_, err = nsq.Ready(1).WriteTo(rw)
 	equal(t, err, nil)
 
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	msg := NewMessage(topic.NextMsgID(), msgBody)
 	topic.PutMessage(msg)
 
@@ -1181,7 +1192,7 @@ func TestSampling(t *testing.T) {
 
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
 	testBody := []byte("test body")
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("ch")
 
 	for i := 0; i < num; i++ {
@@ -1290,7 +1301,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	msg := NewMessage(topic.NextMsgID(), make([]byte, 100))
 	topic.PutMessage(msg)
 
@@ -1345,6 +1356,7 @@ func TestBadFin(t *testing.T) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	equal(t, err, nil)
 	defer conn.Close()
+	nsqd.GetTopicIgnPart("test_fin").GetChannel("ch")
 
 	identify(t, conn, map[string]interface{}{}, frameTypeResponse)
 	sub(t, conn, "test_fin", "ch")
@@ -1424,6 +1436,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	if authError != "" {
 		readValidate(t, conn, nsq.FrameTypeError, authError)
 	} else {
+		nsqd.GetTopicIgnPart("test").GetChannel("ch")
 		sub(t, conn, "test", "ch")
 	}
 
@@ -1563,7 +1576,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetTopicIgnPart(topicName)
 	for i := 0; i < b.N; i++ {
 		msg := NewMessage(topic.NextMsgID(), msg)
 		topic.PutMessage(msg)
@@ -1663,7 +1676,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	workers := runtime.GOMAXPROCS(0)
 	for i := 0; i < num; i++ {
 		topicName := "bench_v2" + strconv.Itoa(b.N) + "_" + strconv.Itoa(i) + "_" + strconv.Itoa(int(time.Now().Unix()))
-		topic := nsqd.GetTopic(topicName)
+		topic := nsqd.GetTopicIgnPart(topicName)
 		for i := 0; i < b.N; i++ {
 			msg := NewMessage(topic.NextMsgID(), msg)
 			topic.PutMessage(msg)

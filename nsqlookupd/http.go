@@ -442,7 +442,7 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 
 	data := make(map[string][]map[string]interface{})
 	for r, producers := range s.ctx.nsqlookupd.DB.registrationMap {
-		key := r.Category + ":" + r.Key + ":" + r.SubKey
+		key := r.Category + ":" + r.Key + ":" + r.SubKey + ":" + r.PartitionID
 		for _, p := range producers {
 			m := map[string]interface{}{
 				"id":                p.peerInfo.Id,

@@ -19,7 +19,7 @@ type TopicStats struct {
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	return TopicStats{
-		TopicName:    t.name,
+		TopicName:    t.GetFullName(),
 		Channels:     channels,
 		Depth:        t.totalSize(),
 		MessageCount: atomic.LoadUint64(&t.messageCount),
@@ -98,7 +98,10 @@ type TopicsByName struct {
 	Topics
 }
 
-func (t TopicsByName) Less(i, j int) bool { return t.Topics[i].name < t.Topics[j].name }
+func (t TopicsByName) Less(i, j int) bool {
+	return t.Topics[i].GetFullName() <
+		t.Topics[j].GetFullName()
+}
 
 type Channels []*Channel
 
