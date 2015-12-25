@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 // lookupPeer is a low-level type for connecting/reading/writing to nsqlookupd
@@ -16,7 +17,7 @@ import (
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
 type lookupPeer struct {
-	l               logger
+	l               levellogger.Logger
 	addr            string
 	conn            net.Conn
 	state           int32
@@ -40,7 +41,7 @@ var (
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, maxBodySize int64, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, maxBodySize int64, l levellogger.Logger, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
 		l:               l,
 		addr:            addr,

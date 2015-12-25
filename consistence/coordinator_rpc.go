@@ -2,7 +2,6 @@ package consistence
 
 import (
 	"errors"
-	"github.com/golang/glog"
 	_ "github.com/valyala/gorpc"
 )
 
@@ -77,7 +76,7 @@ type RpcTopicLeaderSession struct {
 
 func (self *NsqdCoordinator) CheckLookupForWrite(lookupEpoch int) error {
 	if lookupEpoch < self.lookupLeader.Epoch {
-		glog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
+		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
 	}
 	return nil
@@ -93,21 +92,21 @@ func (self *NsqdCoordinator) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeader
 	}
 	topicPartitionInfo, ok := self.topicsData[rpcTopicReq.TopicName][rpcTopicReq.TopicPartition]
 	if !ok {
-		glog.Infof("topic partition missing.")
+		coordLog.Infof("topic partition missing.")
 		return ErrTopicNotCreated
 	}
 	if rpcTopicReq.LeaderEpoch < topicPartitionInfo.topicLeaderSession.LeaderEpoch {
-		glog.Infof("topic partition leadership epoch error.")
+		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
 	n := rpcTopicReq.TopicLeaderSession
 	topicPartitionInfo.topicLeaderSession = rpcTopicReq.TopicLeaderSession
 	if n.LeaderNode == nil || n.Session == "" {
-		glog.Infof("topic leader is missing : %v", rpcTopicReq.RpcTopicData)
+		coordLog.Infof("topic leader is missing : %v", rpcTopicReq.RpcTopicData)
 	} else if n.LeaderNode.GetID() == self.myNode.GetID() {
-		glog.Infof("I become the leader for the topic: %v", rpcTopicReq.RpcTopicData)
+		coordLog.Infof("I become the leader for the topic: %v", rpcTopicReq.RpcTopicData)
 	} else {
-		glog.Infof("topic %v leader changed to :%v. epoch: %v", rpcTopicReq.RpcTopicData, n.LeaderNode.GetID(), n.LeaderEpoch)
+		coordLog.Infof("topic %v leader changed to :%v. epoch: %v", rpcTopicReq.RpcTopicData, n.LeaderNode.GetID(), n.LeaderEpoch)
 		// if catching up, pull data from the new leader
 		// if isr, make sure sync to the new leader
 		if FindSlice(topicPartitionInfo.topicInfo.ISR, self.myNode.GetID()) != -1 {
@@ -127,7 +126,7 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	glog.Infof("got update request for topic : %v", rpcTopicReq)
+	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
 	topicData, ok := self.topicsData[rpcTopicReq.Name]
 	if !ok {
 		topicData = make(map[int]*TopicSummaryData)
@@ -149,7 +148,7 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 	self.updateLocalTopic(rpcTopicReq.TopicPartionMetaInfo)
 	if rpcTopicReq.Leader == self.myNode.GetID() {
 		if !self.IsMineLeaderForTopic(rpcTopicReq.Name, rpcTopicReq.Partition) {
-			glog.Infof("I am notified to be leader for the topic.")
+			coordLog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.
 			rpcTopicReq.DisableWrite = true
@@ -159,14 +158,14 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 		}
 		err := self.acquireTopicLeader(rpcTopicReq.TopicPartionMetaInfo)
 		if err != nil {
-			glog.Infof("acquire topic leader failed.")
+			coordLog.Infof("acquire topic leader failed.")
 		}
 	} else if FindSlice(rpcTopicReq.ISR, self.myNode.GetID()) != -1 {
-		glog.Infof("I am in isr list.")
+		coordLog.Infof("I am in isr list.")
 	} else if FindSlice(rpcTopicReq.CatchupList, self.myNode.GetID()) != -1 {
-		glog.Infof("I am in catchup list.")
+		coordLog.Infof("I am in catchup list.")
 	} else {
-		glog.Infof("Not a topic related to me.")
+		coordLog.Infof("Not a topic related to me.")
 		// TODO: check if local has the topic data and decide whether to join
 		// catchup list
 	}
@@ -297,21 +296,21 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeader
 	if v, ok := self.topicsData[rpcData.TopicName]; ok {
 		if topicInfo, ok := v[rpcData.TopicPartition]; ok {
 			if topicInfo.topicLeaderSession.LeaderEpoch != rpcData.TopicLeaderEpoch {
-				glog.Infof("rpc call with wrong epoch :%v", rpcData)
+				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
 				return nil, ErrEpochMismatch
 			}
 			if topicInfo.topicLeaderSession.Session != rpcData.TopicSession {
-				glog.Infof("rpc call with wrong session:%v", rpcData)
+				coordLog.Infof("rpc call with wrong session:%v", rpcData)
 				return nil, ErrSessionMismatch
 			}
 			if !self.localDataStates[topicInfo.topicInfo.Name][topicInfo.topicInfo.Partition] {
-				glog.Infof("local data is still loading. %v", topicInfo.topicInfo.GetTopicDesp())
+				coordLog.Infof("local data is still loading. %v", topicInfo.topicInfo.GetTopicDesp())
 				return nil, ErrLocalNotReadyForWrite
 			}
 			return &topicInfo.topicLeaderSession, nil
 		}
 	}
-	glog.Infof("rpc call with missing topic :%v", rpcData)
+	coordLog.Infof("rpc call with missing topic :%v", rpcData)
 	return nil, ErrMissingTopic
 }
 

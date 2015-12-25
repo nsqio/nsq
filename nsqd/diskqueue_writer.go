@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"math/rand"
 	"os"
 	"path"
@@ -55,7 +56,7 @@ type diskQueueWriter struct {
 	getEndChan        chan int
 	endResponseChan   chan BackendQueueEnd
 
-	logger logger
+	logger levellogger.Logger
 }
 
 // newDiskQueue instantiates a new instance of diskQueueWriter, retrieving metadata
@@ -63,7 +64,7 @@ type diskQueueWriter struct {
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64, syncTimeout time.Duration,
-	logger logger) BackendQueueWriter {
+	logger levellogger.Logger) BackendQueueWriter {
 	d := diskQueueWriter{
 		name:            name,
 		dataPath:        dataPath,

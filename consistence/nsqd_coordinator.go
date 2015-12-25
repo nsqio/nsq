@@ -3,7 +3,6 @@ package consistence
 import (
 	"bytes"
 	"errors"
-	"github.com/golang/glog"
 	"net"
 	"net/rpc"
 	"os"
@@ -143,7 +142,7 @@ func (self *NsqdCoordinator) Start() error {
 	var e error
 	self.rpcListener, e = net.Listen("tcp", ":"+self.myNode.RpcPort)
 	if e != nil {
-		glog.Warningf("listen rpc error : %v", e.Error())
+		coordLog.Warningf("listen rpc error : %v", e.Error())
 		return e
 	}
 	go self.watchNsqLookupd()
@@ -179,7 +178,7 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 			}
 			if n.GetID() != self.lookupLeader.GetID() ||
 				n.Epoch != self.lookupLeader.Epoch {
-				glog.Infof("nsqlookup leader changed: %v", n)
+				coordLog.Infof("nsqlookup leader changed: %v", n)
 				self.lookupLeader = n
 			}
 		}
@@ -195,26 +194,26 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 	for _, topicName := range pathList {
 		partitionList, err := filepath.Glob(filepath.Join(self.dataRootPath, topicName) + "/*")
 		if err != nil {
-			glog.Infof("read topic partition file failed: %v", err)
+			coordLog.Infof("read topic partition file failed: %v", err)
 		}
 		for _, partitionStr := range partitionList {
 			partition, err := strconv.Atoi(partitionStr)
 			if err != nil {
 				continue
 			}
-			glog.Infof("load topic: %v-%v", topicName, partition)
+			coordLog.Infof("load topic: %v-%v", topicName, partition)
 			if _, err := os.Stat(GetTopicPartitionLogPath(self.dataRootPath, topicName, partition)); os.IsNotExist(err) {
-				glog.Infof("no commit log file under topic: %v-%v", topicName, partition)
+				coordLog.Infof("no commit log file under topic: %v-%v", topicName, partition)
 				continue
 			}
 			//scan local File
 			topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
 			if err != nil {
-				glog.Infof("failed to get topic info:%v-%v", topicName, partition)
+				coordLog.Infof("failed to get topic info:%v-%v", topicName, partition)
 				continue
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
-				glog.Infof("I am starting as isr node.")
+				coordLog.Infof("I am starting as isr node.")
 				// check local data with leader.
 				err := self.checkLocalTopicForISR(topicInfo)
 				if err != nil {
@@ -231,7 +230,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 				}
 			}
 			if len(topicInfo.ISR) >= topicInfo.Replica {
-				glog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
+				coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
 				continue
 			}
 			err = RetryWithTimeout(func() error {
@@ -239,7 +238,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 				return err
 			})
 			if err != nil {
-				glog.Infof("failed to request join catchup")
+				coordLog.Infof("failed to request join catchup")
 				continue
 			}
 			go self.catchupFromLeader(*topicInfo)
@@ -250,7 +249,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() {
 func (self *NsqdCoordinator) checkLocalTopicForISR(topicInfo *TopicPartionMetaInfo) error {
 	logmgr, err := self.getLogMgrWithoutCreate(topicInfo.Name, topicInfo.Partition)
 	if err != nil {
-		glog.Warningf("get local log failed: %v", err)
+		coordLog.Warningf("get local log failed: %v", err)
 		return err
 	}
 	if topicInfo.Leader == self.myNode.GetID() {
@@ -267,13 +266,13 @@ func (self *NsqdCoordinator) checkLocalTopicForISR(topicInfo *TopicPartionMetaIn
 		return err
 	}
 	if leaderID > logid {
-		glog.Infof("this node is out of date, should rejoin.")
+		coordLog.Infof("this node is out of date, should rejoin.")
 		// TODO: request the lookup to remove myself from isr
 		return ErrLocalFallBehind
 	}
 
 	if logid > leaderID+1 {
-		glog.Infof("this node has more data than leader, should rejoin.")
+		coordLog.Infof("this node has more data than leader, should rejoin.")
 		return ErrLocalForwardThanLeader
 	}
 	return nil
@@ -301,7 +300,7 @@ func (self *NsqdCoordinator) checkForUnusedTopics() {
 					}
 					if FindSlice(topicMeta.ISR, self.myNode.GetID()) == -1 &&
 						FindSlice(topicMeta.CatchupList, self.myNode.GetID()) == -1 {
-						glog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
+						coordLog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
 						delete(self.topicsData[topic], pid)
 					}
 				}
@@ -402,13 +401,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 	logmgr := self.getLogMgr(topicInfo.Name, topicInfo.Partition)
 	offset, err := logmgr.GetLastLogOffset()
 	if err != nil {
-		glog.Warningf("catching failed since log offset read error: %v", err)
+		coordLog.Warningf("catching failed since log offset read error: %v", err)
 		return
 	}
 	// pull logdata from leader at the offset.
 	c, err := self.acquireRpcClient(topicInfo.Leader)
 	if err != nil {
-		glog.Warningf("failed to get rpc client while catchup: %v", err)
+		coordLog.Warningf("failed to get rpc client while catchup: %v", err)
 		return
 	}
 
@@ -422,13 +421,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 
 		leaderOffset, leaderLogData, err := c.GetCommmitLogFromOffset(&topicInfo, offset)
 		if err == ErrCommitLogOutofBound || leaderOffset < offset {
-			glog.Infof("local commit log is more than leader while catchup: %v vs %v", offset, leaderOffset)
+			coordLog.Infof("local commit log is more than leader while catchup: %v vs %v", offset, leaderOffset)
 			// local log is ahead of the leader, must truncate local data.
 			// truncate commit log and truncate the data file to last log
 			// commit offset.
 			lastLog, err := logmgr.TruncateToOffset(leaderOffset + int64(GetLogDataSize()))
 			if err != nil {
-				glog.Infof("failed to truncate local commit log: %v", err)
+				coordLog.Infof("failed to truncate local commit log: %v", err)
 				return
 			}
 			offset = leaderOffset
@@ -440,7 +439,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 				break
 			}
 		} else if err != nil {
-			glog.Warningf("something wrong while get leader logdata while catchup: %v", err)
+			coordLog.Warningf("something wrong while get leader logdata while catchup: %v", err)
 		} else {
 			if *localLogData == leaderLogData {
 				break
@@ -448,7 +447,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 		}
 		offset -= int64(GetLogDataSize())
 	}
-	glog.Infof("local commit log match leader at: %v", offset)
+	coordLog.Infof("local commit log match leader at: %v", offset)
 	synced := false
 	readyJoinISR := false
 	joinSession := ""
@@ -459,7 +458,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			synced = true
 		} else if err != nil {
 			// if not network error, something wrong with commit log file, we need return to abort.
-			glog.Infof("error while get logs :%v", err)
+			coordLog.Infof("error while get logs :%v", err)
 			time.Sleep(time.Second)
 			continue
 		} else if len(logs) == 0 {
@@ -472,7 +471,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			//
 			err := logmgr.AppendCommitLog(&l, true)
 			if err != nil {
-				glog.Infof("Failed to append local log: %v", err)
+				coordLog.Infof("Failed to append local log: %v", err)
 				return
 			}
 		}
@@ -482,7 +481,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			// notify nsqlookupd coordinator to add myself to isr list.
 			s, err := self.requestJoinTopicISR(&topicInfo)
 			if err != nil {
-				glog.Infof("request join isr failed: %v", err)
+				coordLog.Infof("request join isr failed: %v", err)
 				time.Sleep(time.Second)
 			} else {
 				joinSession = s
@@ -492,12 +491,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 			}
 		} else if synced && readyJoinISR {
 			logmgr.FlushCommitLogs()
-			glog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
+			coordLog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
 			err := RetryWithTimeout(func() error {
 				return self.notifyReadyForTopicISR(&topicInfo, joinSession)
 			})
 			if err != nil {
-				glog.Infof("notify ready for isr failed: %v", err)
+				coordLog.Infof("notify ready for isr failed: %v", err)
 			} else {
 				states, ok := self.localDataStates[topicInfo.Name]
 				if !ok {
@@ -526,7 +525,7 @@ func (self *NsqdCoordinator) checkWriteForTopicLeader(topic string, partition in
 			}
 			if topicInfo.topicInfo.Leader == self.myNode.GetID() {
 				if len(topicInfo.topicInfo.ISR) <= topicInfo.topicInfo.Replica/2 {
-					glog.Infof("No enough isr for topic %v while doing modification.", topicInfo.topicInfo.GetTopicDesp())
+					coordLog.Infof("No enough isr for topic %v while doing modification.", topicInfo.topicInfo.GetTopicDesp())
 					return topicInfo, ErrWriteQuorumFailed
 				}
 				return topicInfo, nil
@@ -566,7 +565,7 @@ func (self *NsqdCoordinator) pubMessagesToCluster(topic string, partition int, m
 	for _, nodeID := range topicData.topicInfo.ISR {
 		c, err := self.acquireRpcClient(nodeID)
 		if err != nil {
-			glog.Infof("get rpc client failed: %v", err)
+			coordLog.Infof("get rpc client failed: %v", err)
 			continue
 		}
 		err = c.PubMessage(topicData.topicLeaderSession.LeaderEpoch, &topicData.topicInfo, commitLogDataList, messages)
@@ -591,18 +590,18 @@ func (self *NsqdCoordinator) pubMessagesToCluster(topic string, partition int, m
 
 func (self *NsqdCoordinator) pubMessageOnSlave(topic string, partition int, loglist []CommitLogData, msgs []string) error {
 	if len(loglist) != len(msgs) {
-		glog.Warningf("the pub log size mismatch message size.")
+		coordLog.Warningf("the pub log size mismatch message size.")
 		return ErrPubArgError
 	}
 	logMgr := self.getLogMgr(topic, partition)
 	for i, l := range loglist {
 		if logMgr.IsCommitted(l.LogID) {
-			glog.Infof("pub the already commited log id : %v", l.LogID)
+			coordLog.Infof("pub the already commited log id : %v", l.LogID)
 			return ErrCommitLogIDDup
 		}
 		_, msgOffset, err := self.pubMessageLocal(topic, partition, l.LogID, msgs[i])
 		if err != nil {
-			glog.Warningf("pub on slave failed: %v", err)
+			coordLog.Warningf("pub on slave failed: %v", err)
 			return err
 		}
 		var newlog CommitLogData
@@ -611,7 +610,7 @@ func (self *NsqdCoordinator) pubMessageOnSlave(topic string, partition int, logl
 		newlog.MsgOffset = msgOffset
 		err = logMgr.AppendCommitLog(&newlog, true)
 		if err != nil {
-			glog.Infof("write commit log on slave failed: %v", err)
+			coordLog.Infof("write commit log on slave failed: %v", err)
 			return err
 		}
 	}
@@ -637,7 +636,7 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 	for _, nodeID := range topicData.topicInfo.ISR {
 		c, err := self.acquireRpcClient(nodeID)
 		if err != nil {
-			glog.Infof("get rpc client failed: %v", err)
+			coordLog.Infof("get rpc client failed: %v", err)
 			continue
 		}
 
@@ -649,7 +648,7 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 	}
 	if successNum > topicData.topicInfo.Replica/2 {
 		if successNum != len(topicData.topicInfo.ISR) {
-			glog.Infof("some nodes in isr is not synced with consume offset.")
+			coordLog.Infof("some nodes in isr is not synced with consume offset.")
 		}
 		return nil
 	}
@@ -681,14 +680,14 @@ func (self *NsqdCoordinator) updateLocalTopicChannels(topicInfo TopicPartionMeta
 // before shutdown, we transfer the leader to others to reduce
 // the unavailable time.
 func (self *NsqdCoordinator) prepareLeavingCluster() {
-	glog.Infof("I am prepare leaving the cluster.")
+	coordLog.Infof("I am prepare leaving the cluster.")
 	for topicName, topicData := range self.topicsData {
 		for pid, tpData := range topicData {
 			if FindSlice(tpData.topicInfo.ISR, self.myNode.GetID()) == -1 {
 				continue
 			}
 			if len(tpData.topicInfo.ISR)-1 <= tpData.topicInfo.Replica/2 {
-				glog.Infof("The isr nodes in topic %v is not enough, waiting...", tpData.topicInfo.GetTopicDesp())
+				coordLog.Infof("The isr nodes in topic %v is not enough, waiting...", tpData.topicInfo.GetTopicDesp())
 				// we need notify lookup to add new isr since I am leaving.
 				// wait until isr is enough or timeout.
 				time.Sleep(time.Second * 30)
@@ -697,16 +696,16 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 			// prepare will handle the leader transfer.
 			err := self.prepareLeaveFromISR(topicName, pid)
 			if err != nil {
-				glog.Infof("failed to prepare the leave request: %v", err)
+				coordLog.Infof("failed to prepare the leave request: %v", err)
 			}
 
 			if tpData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid)
-				glog.Infof("The leader for topic %v is transfered.", tpData.topicInfo.GetTopicDesp())
+				coordLog.Infof("The leader for topic %v is transfered.", tpData.topicInfo.GetTopicDesp())
 			}
 			self.requestLeaveFromISR(topicName, pid)
 		}
 	}
-	glog.Infof("prepare leaving finished.")
+	coordLog.Infof("prepare leaving finished.")
 }

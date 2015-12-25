@@ -3,6 +3,7 @@ package nsqd
 import (
 	"crypto/md5"
 	"crypto/tls"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"hash/crc32"
 	"io"
 	"log"
@@ -73,7 +74,7 @@ type Options struct {
 	SnappyEnabled   bool `flag:"snappy"`
 
 	LogLevel int32 `flag:"log-level"`
-	Logger   logger
+	Logger   levellogger.Logger
 }
 
 func NewOptions() *Options {
@@ -134,6 +135,6 @@ func NewOptions() *Options {
 		TLSMinVersion: tls.VersionTLS10,
 
 		LogLevel: 1,
-		Logger:   &GLogger{1},
+		Logger:   levellogger.NewGLogger(1),
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/version"
@@ -35,6 +36,7 @@ var (
 )
 
 func main() {
+	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {

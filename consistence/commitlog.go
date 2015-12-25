@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/golang/glog"
 	"io"
 	"os"
 	"path/filepath"
@@ -81,7 +80,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	// we can do random read without affecting the append behavior
 	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
-		glog.Infof("open topic commit log file error: %v", err)
+		coordLog.Infof("open topic commit log file error: %v", err)
 		return nil
 	}
 

@@ -147,11 +147,12 @@ func (n *NSQD) logf(f string, args ...interface{}) {
 }
 
 func (n *NSQD) logDebugf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
+	l := n.getOpts().Logger
+	if l == nil {
 		return
 	}
-	if n.getOpts().Logger.Level() >= 2 {
-		n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+	if l.Level() > 1 {
+		l.Output(2, fmt.Sprintf(f, args...))
 	}
 }
 

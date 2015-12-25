@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
@@ -114,6 +115,7 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.Int64("max-rdy-count", 2500, "maximum RDY count for a client")
 	flagSet.Int64("max-output-buffer-size", 64*1024, "maximum client configurable size (in bytes) for a client output buffer")
 	flagSet.Duration("max-output-buffer-timeout", 1*time.Second, "maximum client configurable duration of time between flushing to a client")
+	flagSet.Int64("max-confirm-win", 1024*1024, "maximum confirm window (in bytes)")
 
 	// statsd integration options
 	flagSet.String("statsd-address", "", "UDP <addr>:<port> of a statsd daemon for pushing stats")
@@ -140,6 +142,7 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.Bool("deflate", true, "enable deflate feature negotiation (client compression)")
 	flagSet.Int("max-deflate-level", 6, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", true, "enable snappy feature negotiation (client compression)")
+	flagSet.Int("log-level", 1, "log verbose level")
 
 	return flagSet
 }
@@ -176,6 +179,7 @@ func (cfg config) Validate() {
 
 func main() {
 	flagSet := nsqFlagset()
+	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
 
 	rand.Seed(time.Now().UTC().UnixNano())

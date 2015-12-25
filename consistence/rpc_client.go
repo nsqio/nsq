@@ -1,7 +1,6 @@
 package consistence
 
 import (
-	"github.com/golang/glog"
 	"net"
 	"net/rpc"
 	"time"
@@ -50,7 +49,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 				return err
 			}
 		} else {
-			glog.Infof("rpc call %v error: %v", method, err)
+			coordLog.Infof("rpc call %v error: %v", method, err)
 			return err
 		}
 	}

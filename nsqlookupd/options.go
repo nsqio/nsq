@@ -1,6 +1,7 @@
 package nsqlookupd
 
 import (
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"log"
 	"os"
 	"time"
@@ -20,7 +21,7 @@ type Options struct {
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
 
-	Logger logger
+	Logger levellogger.Logger
 }
 
 func NewOptions() *Options {
@@ -41,6 +42,6 @@ func NewOptions() *Options {
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
 
-		Logger: &GLogger{1},
+		Logger: levellogger.NewGLogger(1),
 	}
 }

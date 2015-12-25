@@ -3,7 +3,6 @@ package consistence
 import (
 	"errors"
 	"github.com/cenkalti/backoff"
-	"github.com/golang/glog"
 	"net"
 	"sort"
 	"strconv"
@@ -241,7 +240,7 @@ func (self *NSQLookupdCoordinator) Start() error {
 	self.leadership.InitClusterID(self.clusterKey)
 	err := self.leadership.Register(self.myNode)
 	if err != nil {
-		glog.Warningf("failed to start nsqlookupd coordinator: %v", err)
+		coordLog.Warningf("failed to start nsqlookupd coordinator: %v", err)
 		return err
 	}
 	go self.handleLeadership()
@@ -261,21 +260,21 @@ func (self *NSQLookupdCoordinator) handleLeadership() {
 		select {
 		case l, ok := <-lookupdLeaderChan:
 			if !ok {
-				glog.Warningf("leader chan closed.")
+				coordLog.Warningf("leader chan closed.")
 				return
 			}
 			if l == nil {
-				glog.Warningln("leader is lost.")
+				coordLog.Warningln("leader is lost.")
 				continue
 			}
 			if l.GetID() != self.leaderNode.GetID() ||
 				l.Epoch != self.leaderNode.Epoch {
-				glog.Infof("lookup leader changed from %v to %v", self.leaderNode.GetID(), l.GetID())
+				coordLog.Infof("lookup leader changed from %v to %v", self.leaderNode.GetID(), l.GetID())
 				self.leaderNode = *l
 				go self.notifyLeaderChanged()
 			}
 			if self.leaderNode.GetID() == "" {
-				glog.Warningln("leader is lost.")
+				coordLog.Warningln("leader is lost.")
 			}
 		}
 	}
@@ -283,7 +282,7 @@ func (self *NSQLookupdCoordinator) handleLeadership() {
 
 func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
-		glog.Infof("I am slave.")
+		coordLog.Infof("I am slave.")
 		// remove watchers.
 		return
 	}
@@ -291,7 +290,7 @@ func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 	err := RetryWithTimeout(func() error {
 		newTopics, err := self.leadership.ScanTopics()
 		if err != nil {
-			glog.Errorf("load topic info failed: %v", err)
+			coordLog.Errorf("load topic info failed: %v", err)
 			return err
 		} else {
 			newTopicsMap := make(map[string]map[int]TopicPartionMetaInfo)
@@ -300,11 +299,11 @@ func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 					newTopicsMap[t.Name] = make(map[int]TopicPartionMetaInfo)
 				}
 				newTopicsMap[t.Name][t.Partition] = t
-				glog.Infof("found topic %v partition %v: %v", t.Name, t.Partition, t)
+				coordLog.Infof("found topic %v partition %v: %v", t.Name, t.Partition, t)
 			}
 			_ = newTopicsMap
 
-			glog.Infof("topic loaded : %v", len(newTopics))
+			coordLog.Infof("topic loaded : %v", len(newTopics))
 			self.NotifyTopicsToAllNsqdForReload(newTopics)
 		}
 		for _, t := range newTopics {
@@ -313,7 +312,7 @@ func (self *NSQLookupdCoordinator) notifyLeaderChanged() {
 		return nil
 	})
 	if err != nil {
-		glog.Errorf("load topic info failed: %v", err)
+		coordLog.Errorf("load topic info failed: %v", err)
 	}
 	go self.handleNsqdNodes(self.leaderNode.GetID(), self.leaderNode.Epoch)
 	go self.checkTopics(self.leaderNode.GetID(), self.leaderNode.Epoch)
@@ -349,7 +348,7 @@ func (self *NSQLookupdCoordinator) handleNsqdNodes(leaderID string, epoch int) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer func() {
 		ticker.Stop()
-		glog.Infof("stop watch the nsqd nodes.")
+		coordLog.Infof("stop watch the nsqd nodes.")
 	}()
 	for {
 		select {
@@ -358,31 +357,31 @@ func (self *NSQLookupdCoordinator) handleNsqdNodes(leaderID string, epoch int) {
 				return
 			}
 			// check if any nsqd node changed.
-			glog.Infof("Current nsqd nodes: %v", len(nodes))
+			coordLog.Infof("Current nsqd nodes: %v", len(nodes))
 			oldNodes := self.nsqdNodes
 			newNodes := make(map[string]NsqdNodeInfo)
 			for _, v := range nodes {
-				glog.Infof("nsqd node %v : %v", v.GetID(), v)
+				coordLog.Infof("nsqd node %v : %v", v.GetID(), v)
 				newNodes[v.GetID()] = v
 			}
 			self.nsqdNodes = newNodes
 			for oldID, oldNode := range oldNodes {
 				if _, ok := newNodes[oldID]; !ok {
-					glog.Warningf("nsqd node failed: %v, %v", oldID, oldNode)
+					coordLog.Warningf("nsqd node failed: %v, %v", oldID, oldNode)
 					// if node is missing we need check election immediately.
 					self.nsqdNodeFailChan <- struct{}{}
 				}
 			}
 			for newID, newNode := range newNodes {
 				if _, ok := oldNodes[newID]; !ok {
-					glog.Infof("new nsqd node joined: %v, %v", newID, newNode)
+					coordLog.Infof("new nsqd node joined: %v, %v", newID, newNode)
 					// TODO: check if this node in catchup list and notify new
 					// topicInfo to the node.
 					// notify the nsqd node to recheck topic info.(for
 					// temp lost)
 					topics, err := self.leadership.ScanTopics()
 					if err != nil {
-						glog.Infof("scan topics failed: %v", err)
+						coordLog.Infof("scan topics failed: %v", err)
 						continue
 					}
 					self.NotifyTopicsToSingleNsqdForReload(topics, newID)
@@ -405,7 +404,7 @@ func (self *NSQLookupdCoordinator) watchTopicLeaderSession(leaderID string, epoc
 	ticker := time.NewTicker(time.Second * 10)
 	defer func() {
 		ticker.Stop()
-		glog.Infof("stop watch the topic leader session.")
+		coordLog.Infof("stop watch the topic leader session.")
 	}()
 
 	for {
@@ -430,7 +429,7 @@ func (self *NSQLookupdCoordinator) checkTopics(leaderID string, epoch int) {
 	waitingMigrateTopic := make(map[string]map[int]time.Time)
 	defer func() {
 		ticker.Stop()
-		glog.Infof("check topics quit.")
+		coordLog.Infof("check topics quit.")
 	}()
 
 	checking := true
@@ -460,7 +459,7 @@ func (self *NSQLookupdCoordinator) doCheckTopics(epoch int, waitingMigrateTopic 
 	waitMigrateInterval := time.Minute
 	topics, err := self.leadership.ScanTopics()
 	if err != nil {
-		glog.Infof("scan topics failed. %v", err)
+		coordLog.Infof("scan topics failed. %v", err)
 		return
 	}
 	// TODO: check partition number for topic, maybe failed to create
@@ -468,22 +467,22 @@ func (self *NSQLookupdCoordinator) doCheckTopics(epoch int, waitingMigrateTopic 
 	for _, t := range topics {
 		needMigrate := false
 		if len(t.ISR) < t.Replica {
-			glog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
+			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
 			// notify the migrate goroutine to handle isr lost.
 			needMigrate = true
 		}
 		if _, ok := self.nsqdNodes[t.Leader]; !ok {
 			needMigrate = true
-			glog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
+			coordLog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
 			err := self.handleTopicLeaderElection(&t)
 			if err != nil {
-				glog.Warningf("topic leader election failed: %v", err)
+				coordLog.Warningf("topic leader election failed: %v", err)
 			}
 		} else {
 			// check topic leader session key.
 			_, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
 			if err != nil {
-				glog.Infof("topic leader session %v not found.", t.GetTopicDesp())
+				coordLog.Infof("topic leader session %v not found.", t.GetTopicDesp())
 				// notify the nsqd node to acquire the leader session.
 				self.notifyNsqdForTopic(&t)
 			}
@@ -491,7 +490,7 @@ func (self *NSQLookupdCoordinator) doCheckTopics(epoch int, waitingMigrateTopic 
 		aliveCount := 0
 		for _, replica := range t.ISR {
 			if _, ok := self.nsqdNodes[replica]; !ok {
-				glog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
+				coordLog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
 				needMigrate = true
 			} else {
 				aliveCount++
@@ -508,7 +507,7 @@ func (self *NSQLookupdCoordinator) doCheckTopics(epoch int, waitingMigrateTopic 
 			}
 			if (aliveCount <= t.Replica/2) ||
 				partitions[t.Partition].Before(time.Now().Add(-1*waitMigrateInterval)) {
-				glog.Infof("begin migrate the topic :%v", t.GetTopicDesp())
+				coordLog.Infof("begin migrate the topic :%v", t.GetTopicDesp())
 				self.handleTopicMigrate(t)
 				delete(partitions, t.Partition)
 			}
@@ -570,10 +569,10 @@ func (self *NSQLookupdCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartio
 		}
 	}
 	if newLeader == "" {
-		glog.Warningf("No leader can be elected.")
+		coordLog.Warningf("No leader can be elected.")
 		return "", 0, ErrLeaderElectionFail
 	}
-	glog.Infof("new leader %v found with commit id: %v", newLeader, newestLogID)
+	coordLog.Infof("new leader %v found with commit id: %v", newLeader, newestLogID)
 
 	return newLeader, newestLogID, nil
 }
@@ -582,7 +581,7 @@ func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Top
 	topicInfo.Leader = newLeader
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
-		glog.Infof("update topic node info failed: %v", err)
+		coordLog.Infof("update topic node info failed: %v", err)
 		return err
 	}
 	self.notifyNsqdForTopic(topicInfo)
@@ -590,11 +589,11 @@ func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Top
 	for {
 		session, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 		if err != nil {
-			glog.Infof("topic leader session still missing")
+			coordLog.Infof("topic leader session still missing")
 			time.Sleep(time.Second)
 			self.notifyNsqdForTopic(topicInfo)
 		} else {
-			glog.Infof("topic leader session found: %v", session)
+			coordLog.Infof("topic leader session found: %v", session)
 			break
 		}
 	}
@@ -612,7 +611,7 @@ func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Top
 				continue
 			}
 			if cid != newestLogID {
-				glog.Infof("node in isr is still syncing: %v", replica)
+				coordLog.Infof("node in isr is still syncing: %v", replica)
 				waiting = true
 				break
 			}
@@ -627,7 +626,7 @@ func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Top
 	// make sure new leader has all new channels
 	err = self.notifyNsqdUpdateChannels(topicInfo)
 	if err != nil {
-		glog.Infof("update channels after election failed: ", err)
+		coordLog.Infof("update channels after election failed: ", err)
 	}
 	return err
 }
@@ -635,12 +634,12 @@ func (self *NSQLookupdCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Top
 func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPartionMetaInfo) error {
 	err := self.waitOldLeaderRelease(topicInfo)
 	if err != nil {
-		glog.Infof("Leader is not released: %v", topicInfo)
+		coordLog.Infof("Leader is not released: %v", topicInfo)
 		return err
 	}
 	err = self.notifyISRDisableTopicWrite(topicInfo)
 	if err != nil {
-		glog.Infof("failed notify disable write while election: %v", err)
+		coordLog.Infof("failed notify disable write while election: %v", err)
 		return err
 	}
 	// choose another leader in ISR list, and add new node to ISR
@@ -657,7 +656,7 @@ func (self *NSQLookupdCoordinator) handleTopicLeaderElection(topicInfo *TopicPar
 	}
 	err = self.notifyEnableTopicWrite(topicInfo)
 	if err != nil {
-		glog.Infof("enable topic write failed: ", err)
+		coordLog.Infof("enable topic write failed: ", err)
 	}
 	return err
 }
@@ -666,7 +665,7 @@ func (self *NSQLookupdCoordinator) handleTopicMigrate(topicInfo TopicPartionMeta
 	if _, ok := self.nsqdNodes[topicInfo.Leader]; !ok {
 		err := self.handleTopicLeaderElection(&topicInfo)
 		if err != nil {
-			glog.Warningf("topic leader election error : %v", err)
+			coordLog.Warningf("topic leader election error : %v", err)
 			return
 		}
 	}
@@ -677,14 +676,14 @@ func (self *NSQLookupdCoordinator) handleTopicMigrate(topicInfo TopicPartionMeta
 			newCatchupList = append(newCatchupList, n)
 			catchupChanged = true
 		} else {
-			glog.Infof("topic %v catchup node %v is lost.", topicInfo.GetTopicDesp(), n)
+			coordLog.Infof("topic %v catchup node %v is lost.", topicInfo.GetTopicDesp(), n)
 		}
 	}
 	newISR := make([]string, 0)
 	isrChanged := false
 	for _, replica := range topicInfo.ISR {
 		if _, ok := self.nsqdNodes[replica]; !ok {
-			glog.Warningf("topic %v isr node %v is lost.", topicInfo.GetTopicDesp(), replica)
+			coordLog.Warningf("topic %v isr node %v is lost.", topicInfo.GetTopicDesp(), replica)
 			isrChanged = true
 		} else {
 			newISR = append(newISR, replica)
@@ -705,26 +704,26 @@ func (self *NSQLookupdCoordinator) handleTopicMigrate(topicInfo TopicPartionMeta
 	if isrChanged {
 		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo, topicInfo.Epoch)
 		if err != nil {
-			glog.Infof("update topic node info failed: %v", err.Error())
+			coordLog.Infof("update topic node info failed: %v", err.Error())
 			return
 		}
-		glog.Infof("topic %v isr list changed: %v", topicInfo.GetTopicDesp(), topicInfo.ISR)
+		coordLog.Infof("topic %v isr list changed: %v", topicInfo.GetTopicDesp(), topicInfo.ISR)
 	}
 	if catchupChanged {
 		err := self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
 		if err != nil {
-			glog.Infof("update topic catchup failed: %v", err.Error())
+			coordLog.Infof("update topic catchup failed: %v", err.Error())
 			return
 		}
-		glog.Infof("topic %v catchup list changed: %v", topicInfo.GetTopicDesp(), topicInfo.CatchupList)
+		coordLog.Infof("topic %v catchup list changed: %v", topicInfo.GetTopicDesp(), topicInfo.CatchupList)
 	}
 	err := self.notifyNsqdForTopic(&topicInfo)
 	if err != nil {
-		glog.Infof("notify topic failed: %v", err.Error())
+		coordLog.Infof("notify topic failed: %v", err.Error())
 	}
 	err = self.notifyNsqdUpdateCatchup(&topicInfo)
 	if err != nil {
-		glog.Infof("notify topic catchup failed: %v", err.Error())
+		coordLog.Infof("notify topic catchup failed: %v", err.Error())
 	}
 }
 
@@ -832,7 +831,7 @@ func (self *NSQLookupdCoordinator) getTopicDataNodes(topicInfo *TopicPartionMeta
 func (self *NSQLookupdCoordinator) IsTopicLeader(topic string, partition int, nid string) bool {
 	info, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("get topic info failed :%v", err)
+		coordLog.Infof("get topic info failed :%v", err)
 		return false
 	}
 	return info.Leader == nid
@@ -883,7 +882,7 @@ func (self *NSQLookupdCoordinator) AllocNodeForTopic(topicInfo *TopicPartionMeta
 		}
 		topicStat, err := self.getNsqdTopicStat(nodeInfo)
 		if err != nil {
-			glog.Infof("failed to get topic status for this node: %v", nodeInfo)
+			coordLog.Infof("failed to get topic status for this node: %v", nodeInfo)
 			continue
 		}
 		if chosenNode == nil {
@@ -915,7 +914,7 @@ func (self *NSQLookupdCoordinator) balanceTopicData(leaderID string, epoch int) 
 	ticker := time.NewTicker(time.Minute * 10)
 	defer func() {
 		ticker.Stop()
-		glog.Infof("balance check exit.")
+		coordLog.Infof("balance check exit.")
 	}()
 	for {
 		select {
@@ -939,11 +938,11 @@ func (self *NSQLookupdCoordinator) balanceTopicData(leaderID string, epoch int) 
 			for nodeID, nodeInfo := range self.nsqdNodes {
 				topicStat, err := self.getNsqdTopicStat(nodeInfo)
 				if err != nil {
-					glog.Infof("failed to get node topic status while checking balance: %v", nodeID)
+					coordLog.Infof("failed to get node topic status while checking balance: %v", nodeID)
 					continue
 				}
 				_, leaderLF := topicStat.GetNodeLeaderLoadFactor()
-				glog.Infof("nsqd node load factor is : %v, %v", leaderLF, topicStat.GetNodeLoadFactor())
+				coordLog.Infof("nsqd node load factor is : %v, %v", leaderLF, topicStat.GetNodeLoadFactor())
 			}
 		}
 	}
@@ -983,20 +982,20 @@ func (self *NSQLookupdCoordinator) AllocTopicLeaderAndISR(replica int) (string, 
 			break
 		}
 	}
-	glog.Infof("topic selected isr : %v", isrlist)
+	coordLog.Infof("topic selected isr : %v", isrlist)
 	return isrlist[0], isrlist, nil
 }
 
 func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, replica int) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
-		glog.Infof("not leader while create topic")
+		coordLog.Infof("not leader while create topic")
 		return ErrNotLeader
 	}
 
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, partitionNum, replica)
 		if err != nil {
-			glog.Infof("create topic key %v failed :%v", topic, err)
+			coordLog.Infof("create topic key %v failed :%v", topic, err)
 			return err
 		}
 	}
@@ -1005,7 +1004,7 @@ func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, r
 		err := RetryWithTimeout(func() error {
 			err := self.leadership.CreateTopicPartition(topic, i, replica)
 			if err != nil {
-				glog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
+				coordLog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
 			}
 			if err == ErrAlreadyExist {
 				return nil
@@ -1021,7 +1020,7 @@ func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, r
 	for i := 0; i < partitionNum; i++ {
 		leader, ISRList, err := self.AllocTopicLeaderAndISR(replica)
 		if err != nil {
-			glog.Infof("failed alloc nodes for topic: %v", err)
+			coordLog.Infof("failed alloc nodes for topic: %v", err)
 			return err
 		}
 		var tmpTopicInfo TopicPartionMetaInfo
@@ -1034,7 +1033,7 @@ func (self *NSQLookupdCoordinator) CreateTopic(topic string, partitionNum int, r
 
 		err = self.leadership.UpdateTopicNodeInfo(topic, i, &tmpTopicInfo, tmpTopicInfo.Epoch)
 		if err != nil {
-			glog.Infof("failed update info for topic : %v-%v, %v", topic, i, err)
+			coordLog.Infof("failed update info for topic : %v-%v, %v", topic, i, err)
 			continue
 		}
 		self.notifyNsqdForTopic(&tmpTopicInfo)
@@ -1056,7 +1055,7 @@ func (self *NSQLookupdCoordinator) CreateChannelForAll(topic string, channel str
 
 func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, channel string) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
-		glog.Infof("not leader while create topic")
+		coordLog.Infof("not leader while create topic")
 		return ErrNotLeader
 	}
 
@@ -1065,19 +1064,19 @@ func (self *NSQLookupdCoordinator) CreateChannel(topic string, partition int, ch
 	}
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("failed to get info for topic: %v", err)
+		coordLog.Infof("failed to get info for topic: %v", err)
 		return err
 	}
 	for _, v := range topicInfo.Channels {
 		if v == channel {
-			glog.Infof("channel already exist: %v", channel)
+			coordLog.Infof("channel already exist: %v", channel)
 			self.notifyNsqdUpdateChannels(topicInfo)
 			return nil
 		}
 	}
 	err = self.leadership.CreateChannel(topic, partition, channel)
 	if err != nil {
-		glog.Infof("failed to create channel : %v for topic %v-%v", channel, topic, partition)
+		coordLog.Infof("failed to create channel : %v for topic %v-%v", channel, topic, partition)
 		return err
 	}
 	topicInfo.Channels = append(topicInfo.Channels, channel)
@@ -1143,7 +1142,7 @@ func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo *TopicParti
 		return err
 	})
 	if err != nil {
-		glog.Infof("notify to topic leader %v for topic %v failed.", node, topicInfo)
+		coordLog.Infof("notify to topic leader %v for topic %v failed.", node, topicInfo)
 		return err
 	}
 	for _, n := range topicInfo.ISR {
@@ -1155,7 +1154,7 @@ func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo *TopicParti
 			return notifyRpcFunc(node.GetID())
 		})
 		if err != nil {
-			glog.Infof("notify to nsqd ISR node %v for topic %v failed.", node, topicInfo)
+			coordLog.Infof("notify to nsqd ISR node %v for topic %v failed.", node, topicInfo)
 		}
 	}
 	return nil
@@ -1164,10 +1163,10 @@ func (self *NSQLookupdCoordinator) doNotifyToTopicISRNodes(topicInfo *TopicParti
 func (self *NSQLookupdCoordinator) notifyTopicLeaderSession(topic string, partition int, leaderSession *TopicLeaderSession) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("failed get topic info : %v", err)
+		coordLog.Infof("failed get topic info : %v", err)
 		return err
 	}
-	glog.Infof("notify topic leader session changed: %v-%v, %v", topic, partition, leaderSession.Session)
+	coordLog.Infof("notify topic leader session changed: %v-%v, %v", topic, partition, leaderSession.Session)
 	err = self.doNotifyToTopicISRNodes(topicInfo, func(nid string) error {
 		return self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nid, topicInfo, leaderSession)
 	})
@@ -1187,14 +1186,14 @@ func (self *NSQLookupdCoordinator) notifyNsqdUpdateCatchup(topicInfo *TopicParti
 	for _, catchNode := range topicInfo.CatchupList {
 		node, ok := self.nsqdNodes[catchNode]
 		if !ok {
-			glog.Infof("catchup node not found: %v", catchNode)
+			coordLog.Infof("catchup node not found: %v", catchNode)
 			continue
 		}
 		err := RetryWithTimeout(func() error {
 			return self.sendUpdateCatchupToNsqd(self.leaderNode.Epoch, node.GetID(), topicInfo)
 		})
 		if err != nil {
-			glog.Infof("notify to nsqd catchup node %v for topic %v failed.", node, topicInfo)
+			coordLog.Infof("notify to nsqd catchup node %v for topic %v failed.", node, topicInfo)
 			return err
 		}
 	}
@@ -1306,7 +1305,7 @@ func (self *NSQLookupdCoordinator) handleRequestJoinCatchup(topic string, partit
 			topicInfo.CatchupList = append(topicInfo.CatchupList, nid)
 			err = self.leadership.UpdateTopicCatchupList(topic, partition, topicInfo.CatchupList, topicInfo.Epoch)
 			if err != nil {
-				glog.Infof("failed to update catchup list: %v", err)
+				coordLog.Infof("failed to update catchup list: %v", err)
 				return err
 			}
 		}
@@ -1332,14 +1331,14 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 		return "", err
 	}
 	if FindSlice(topicInfo.CatchupList, nodeID) == -1 {
-		glog.Infof("join isr node is not in catchup list.")
+		coordLog.Infof("join isr node is not in catchup list.")
 		return "", ErrJoinISRInvalid
 	}
 	if _, ok := self.joinISRState[topicInfo.GetTopicDesp()]; !ok {
 		self.joinISRState[topicInfo.GetTopicDesp()] = &JoinISRState{}
 	} else {
 		if self.joinISRState[topicInfo.GetTopicDesp()].waitingJoin {
-			glog.Warningf("failed request join isr because the join state is used.")
+			coordLog.Warningf("failed request join isr because the join state is used.")
 			return "", ErrJoinISRInvalid
 		}
 	}
@@ -1348,7 +1347,7 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 
 	err = self.notifyLeaderDisableTopicWrite(topicInfo)
 	if err != nil {
-		glog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
+		coordLog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
 		state.waitingJoin = false
 		return "", err
 	}
@@ -1366,7 +1365,7 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 func (self *NSQLookupdCoordinator) handleReadyForJoinISR(topic string, partition int, nodeID string, session string) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("get topic info failed while sync isr.")
+		coordLog.Infof("get topic info failed while sync isr.")
 		return err
 	}
 	// check for state and should lock for the state to prevent others join isr.
@@ -1377,7 +1376,7 @@ func (self *NSQLookupdCoordinator) handleReadyForJoinISR(topic string, partition
 			return nil
 		}
 
-		glog.Warningf("failed join isr because the join state is not set.")
+		coordLog.Warningf("failed join isr because the join state is not set.")
 		return ErrJoinISRInvalid
 	}
 	state.Lock()
@@ -1398,19 +1397,19 @@ func (self *NSQLookupdCoordinator) handleReadyForJoinISR(topic string, partition
 	topicInfo.ISR = append(topicInfo.ISR, nodeID)
 	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
-		glog.Infof("move catchup node to isr failed")
+		coordLog.Infof("move catchup node to isr failed")
 		return err
 	}
 
 	self.notifyNsqdForTopic(topicInfo)
 	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
 	if err != nil {
-		glog.Infof("update catchup failed")
+		coordLog.Infof("update catchup failed")
 		return err
 	}
 	self.notifyNsqdUpdateCatchup(topicInfo)
 
-	glog.Infof("topic %v isr node added %v.", topicInfo.GetTopicDesp(), nodeID)
+	coordLog.Infof("topic %v isr node added %v.", topicInfo.GetTopicDesp(), nodeID)
 	state.waitingJoin = false
 	state.waitingSession = ""
 	close(state.doneChan)
@@ -1422,7 +1421,7 @@ func (self *NSQLookupdCoordinator) waitForFinalSyncedISR(topic string, partition
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:
-		glog.Infof("wait timeout for sync isr.")
+		coordLog.Infof("wait timeout for sync isr.")
 	case <-state.doneChan:
 		return
 	}
@@ -1434,14 +1433,14 @@ func (self *NSQLookupdCoordinator) waitForFinalSyncedISR(topic string, partition
 	}
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("get topic info failed while sync isr.")
+		coordLog.Infof("get topic info failed while sync isr.")
 		return
 	}
 	state.waitingJoin = false
 	state.waitingSession = ""
 	err = self.notifyEnableTopicWrite(topicInfo)
 	if err != nil {
-		glog.Warningf("failed to enable write ")
+		coordLog.Warningf("failed to enable write ")
 	}
 }
 
@@ -1459,7 +1458,7 @@ func (self *NSQLookupdCoordinator) transferTopicLeader(topicInfo *TopicPartionMe
 	}
 	err = self.notifyLeaderDisableTopicWrite(topicInfo)
 	if err != nil {
-		glog.Infof("disable write failed while transfer leader: %v", err)
+		coordLog.Infof("disable write failed while transfer leader: %v", err)
 		return err
 	}
 	defer self.notifyEnableTopicWrite(topicInfo)
@@ -1475,18 +1474,18 @@ func (self *NSQLookupdCoordinator) transferTopicLeader(topicInfo *TopicPartionMe
 func (self *NSQLookupdCoordinator) handlePrepareLeaveFromISR(topic string, partition int, nodeID string) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("get topic info failed while sync isr.")
+		coordLog.Infof("get topic info failed while sync isr.")
 		return err
 	}
 	if FindSlice(topicInfo.ISR, nodeID) == -1 {
 		return nil
 	}
 	if len(topicInfo.ISR)-1 <= topicInfo.Replica/2 {
-		glog.Infof("no enough isr node, leaving should wait.")
+		coordLog.Infof("no enough isr node, leaving should wait.")
 		return ErrLeavingISRWait
 	}
 	if topicInfo.Leader == nodeID {
-		glog.Infof("the leader node will leave the isr, prepare transfer leader")
+		coordLog.Infof("the leader node will leave the isr, prepare transfer leader")
 		err := self.transferTopicLeader(topicInfo)
 		return err
 	}
@@ -1496,18 +1495,18 @@ func (self *NSQLookupdCoordinator) handlePrepareLeaveFromISR(topic string, parti
 func (self *NSQLookupdCoordinator) handleLeaveFromISR(topic string, partition int, leader *TopicLeaderSession, nodeID string) error {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		glog.Infof("get topic info failed while sync isr.")
+		coordLog.Infof("get topic info failed while sync isr.")
 		return err
 	}
 	if topicInfo.Leader == nodeID {
-		glog.Infof("node should not leave as leader, need transfer leader first.")
+		coordLog.Infof("node should not leave as leader, need transfer leader first.")
 		return ErrLeavingISRAsLeader
 	}
 	if FindSlice(topicInfo.ISR, nodeID) == -1 {
 		return nil
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
-		glog.Infof("no enough isr node, leaving should wait.")
+		coordLog.Infof("no enough isr node, leaving should wait.")
 		return ErrLeavingISRWait
 	}
 
@@ -1530,11 +1529,11 @@ func (self *NSQLookupdCoordinator) handleLeaveFromISR(topic string, partition in
 	topicInfo.ISR = newISR
 	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
-		glog.Infof("remove node from isr failed")
+		coordLog.Infof("remove node from isr failed")
 		return err
 	}
 
 	self.notifyNsqdForTopic(topicInfo)
-	glog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo.GetTopicDesp())
+	coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo.GetTopicDesp())
 	return nil
 }
