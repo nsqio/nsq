@@ -75,6 +75,7 @@ func New(opts *Options) *NSQD {
 		dataPath = cwd
 	}
 
+	nsqLog.l = opts.Logger
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
@@ -85,21 +86,22 @@ func New(opts *Options) *NSQD {
 		dl:                   dirlock.New(dataPath),
 	}
 	n.swapOpts(opts)
+
 	n.errValue.Store(errStore{})
 
 	err := n.dl.Lock()
 	if err != nil {
-		n.logErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		nsqLog.logErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
 		os.Exit(1)
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
-		n.logErrorf("FATAL: --max-deflate-level must be [1,9]")
+		nsqLog.logErrorf("FATAL: --max-deflate-level must be [1,9]")
 		os.Exit(1)
 	}
 
 	if opts.ID < 0 || opts.ID >= 1024 {
-		n.logErrorf("FATAL: --worker-id must be [0,1024)")
+		nsqLog.logErrorf("FATAL: --worker-id must be [0,1024)")
 		os.Exit(1)
 	}
 
@@ -107,7 +109,7 @@ func New(opts *Options) *NSQD {
 		var port string
 		_, port, err = net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
-			n.logErrorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
+			nsqLog.logErrorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 			os.Exit(1)
 		}
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
@@ -124,50 +126,19 @@ func New(opts *Options) *NSQD {
 
 	tlsConfig, err := buildTLSConfig(opts)
 	if err != nil {
-		n.logErrorf("FATAL: failed to build TLS config - %s", err)
+		nsqLog.logErrorf("FATAL: failed to build TLS config - %s", err)
 		os.Exit(1)
 	}
 	if tlsConfig == nil && opts.TLSRequired != TLSNotRequired {
-		n.logErrorf("FATAL: cannot require TLS client connections without TLS key and cert")
+		nsqLog.logErrorf("FATAL: cannot require TLS client connections without TLS key and cert")
 		os.Exit(1)
 	}
 	n.tlsConfig = tlsConfig
 
-	n.logf(version.String("nsqd"))
-	n.logf("ID: %d", opts.ID)
+	nsqLog.logf(version.String("nsqd"))
+	nsqLog.logf("ID: %d", opts.ID)
 
 	return n
-}
-
-func (n *NSQD) logf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
-		return
-	}
-	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
-}
-
-func (n *NSQD) logDebugf(f string, args ...interface{}) {
-	l := n.getOpts().Logger
-	if l == nil {
-		return
-	}
-	if l.Level() > 1 {
-		l.Output(2, fmt.Sprintf(f, args...))
-	}
-}
-
-func (n *NSQD) logErrorf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
-		return
-	}
-	n.getOpts().Logger.OutputErr(2, fmt.Sprintf(f, args...))
-}
-
-func (n *NSQD) logWarningf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
-		return
-	}
-	n.getOpts().Logger.OutputWarning(2, fmt.Sprintf(f, args...))
 }
 
 func (n *NSQD) getOpts() *Options {
@@ -176,6 +147,7 @@ func (n *NSQD) getOpts() *Options {
 
 func (n *NSQD) swapOpts(opts *Options) {
 	opts.Logger.SetLevel(opts.LogLevel)
+	nsqLog.SetLogLevel(opts.LogLevel)
 	n.opts.Store(opts)
 }
 
@@ -237,7 +209,7 @@ func (n *NSQD) Main() {
 
 	tcpListener, err := net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
-		n.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().TCPAddress, err)
+		nsqLog.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().TCPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -251,7 +223,7 @@ func (n *NSQD) Main() {
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
 		if err != nil {
-			n.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
+			nsqLog.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
 			os.Exit(1)
 		}
 		n.Lock()
@@ -264,7 +236,7 @@ func (n *NSQD) Main() {
 	}
 	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
-		n.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
+		nsqLog.logErrorf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -289,20 +261,20 @@ func (n *NSQD) LoadMetadata() {
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			n.logErrorf("failed to read channel metadata from %s - %s", fn, err)
+			nsqLog.logErrorf("failed to read channel metadata from %s - %s", fn, err)
 		}
 		return
 	}
 
 	js, err := simplejson.NewJson(data)
 	if err != nil {
-		n.logErrorf("failed to parse metadata - %s", err)
+		nsqLog.logErrorf("failed to parse metadata - %s", err)
 		return
 	}
 
 	topics, err := js.Get("topics").Array()
 	if err != nil {
-		n.logErrorf("failed to parse metadata - %s", err)
+		nsqLog.logErrorf("failed to parse metadata - %s", err)
 		return
 	}
 
@@ -311,23 +283,23 @@ func (n *NSQD) LoadMetadata() {
 
 		topicName, err := topicJs.Get("name").String()
 		if err != nil {
-			n.logErrorf("failed to parse metadata - %s", err)
+			nsqLog.logErrorf("failed to parse metadata - %s", err)
 			return
 		}
 		if !protocol.IsValidTopicName(topicName) {
-			n.logWarningf("skipping creation of invalid topic %s", topicName)
+			nsqLog.logWarningf("skipping creation of invalid topic %s", topicName)
 			continue
 		}
 		part, err := topicJs.Get("partition").Int()
 		if err != nil {
-			n.logErrorf("failed to parse metadata - %s", err)
+			nsqLog.logErrorf("failed to parse metadata - %s", err)
 			return
 		}
 		topic := n.GetTopic(topicName, part)
 
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
-			n.logErrorf("failed to parse metadata - %s", err)
+			nsqLog.logErrorf("failed to parse metadata - %s", err)
 			return
 		}
 
@@ -336,11 +308,11 @@ func (n *NSQD) LoadMetadata() {
 
 			channelName, err := channelJs.Get("name").String()
 			if err != nil {
-				n.logErrorf("failed to parse metadata - %s", err)
+				nsqLog.logErrorf("failed to parse metadata - %s", err)
 				return
 			}
 			if !protocol.IsValidChannelName(channelName) {
-				n.logWarningf("skipping creation of invalid channel %s", channelName)
+				nsqLog.logWarningf("skipping creation of invalid channel %s", channelName)
 				continue
 			}
 			channel := topic.GetChannel(channelName)
@@ -357,7 +329,7 @@ func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
-	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
+	nsqLog.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
 	topics := []interface{}{}
@@ -432,9 +404,9 @@ func (n *NSQD) Exit() {
 	n.Lock()
 	err := n.PersistMetadata()
 	if err != nil {
-		n.logErrorf(" failed to persist metadata - %s", err)
+		nsqLog.logErrorf(" failed to persist metadata - %s", err)
 	}
-	n.logf("NSQ: closing topics")
+	nsqLog.logf("NSQ: closing topics")
 	for _, topic := range n.topicMap {
 		topic.Close()
 	}
@@ -464,7 +436,7 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	if ok {
 		n.Unlock()
 		if part != -1 && t.GetTopicPart() != part {
-			n.logWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
+			nsqLog.logWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
 			return nil
 		}
 		return t
@@ -478,7 +450,7 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	t = NewTopic(topicName, part, &context{n}, deleteCallback)
 	n.topicMap[topicName] = t
 
-	n.logf("TOPIC(%s): created", t.GetFullName())
+	nsqLog.logf("TOPIC(%s): created", t.GetFullName())
 
 	// release our global nsqd lock, and switch to a more granular topic lock while we init our
 	// channels from lookupd. This blocks concurrent PutMessages to this topic.
@@ -577,7 +549,7 @@ func (n *NSQD) Notify(v interface{}) {
 			n.Lock()
 			err := n.PersistMetadata()
 			if err != nil {
-				n.logErrorf("failed to persist metadata - %s", err)
+				nsqLog.logErrorf("failed to persist metadata - %s", err)
 			}
 			n.Unlock()
 		}
@@ -710,7 +682,7 @@ func (n *NSQD) queueScanLoop() {
 	}
 
 exit:
-	n.logf("QUEUESCAN: closing")
+	nsqLog.logf("QUEUESCAN: closing")
 	close(closeCh)
 	workTicker.Stop()
 	refreshTicker.Stop()

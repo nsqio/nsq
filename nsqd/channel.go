@@ -156,13 +156,13 @@ func (c *Channel) exit(deleted bool) error {
 	}
 
 	if deleted {
-		c.ctx.nsqd.logf("CHANNEL(%s): deleting", c.name)
+		nsqLog.logf("CHANNEL(%s): deleting", c.name)
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
 		c.ctx.nsqd.Notify(c)
 	} else {
-		c.ctx.nsqd.logf("CHANNEL(%s): closing", c.name)
+		nsqLog.logf("CHANNEL(%s): closing", c.name)
 	}
 
 	// this forceably closes client connections
@@ -218,7 +218,7 @@ finish:
 func (c *Channel) flush() error {
 
 	if len(c.requeuedMsgChan) > 0 || len(c.inFlightMessages) > 0 {
-		c.ctx.nsqd.logf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
+		nsqLog.logf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
 			c.name, len(c.requeuedMsgChan), len(c.inFlightMessages))
 	}
 
@@ -350,11 +350,11 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 		}
 		err := c.backend.ConfirmRead(c.currentLastConfirmed)
 		if err != nil {
-			c.ctx.nsqd.logErrorf("confirm read failed: %v, msg: %v", err, msg)
+			nsqLog.logErrorf("confirm read failed: %v, msg: %v", err, msg)
 			return
 		}
 	} else if msg.offset < c.currentLastConfirmed {
-		c.ctx.nsqd.logWarningf("confirmed msg is less than current confirmed offset: %v, %v", msg, c.currentLastConfirmed)
+		nsqLog.logWarningf("confirmed msg is less than current confirmed offset: %v, %v", msg, c.currentLastConfirmed)
 	} else {
 		c.confirmedMsgs[BackendOffset(msg.offset)] = msg
 		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmWin {
@@ -524,7 +524,7 @@ func (c *Channel) messagePump() {
 		case msg = <-c.requeuedMsgChan:
 		case data = <-c.backend.ReadChan():
 			if data.err != nil {
-				c.ctx.nsqd.logErrorf("failed to read message - %s", err)
+				nsqLog.logErrorf("failed to read message - %s", err)
 				// TODO: fix corrupt file from other replica.
 				// and should handle the confirm offset, since some skipped data
 				// may never be confirmed any more
@@ -534,14 +534,14 @@ func (c *Channel) messagePump() {
 			}
 			msg, err = decodeMessage(data.data)
 			if err != nil {
-				c.ctx.nsqd.logErrorf("failed to decode message - %s", err)
+				nsqLog.logErrorf("failed to decode message - %s", err)
 				continue
 			}
 			msg.offset = data.offset
 			msg.rawSize = len(data.data)
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
-				c.ctx.nsqd.logWarningf("skipped message from %v to the : %v", lastMsg, *msg)
+				nsqLog.logWarningf("skipped message from %v to the : %v", lastMsg, *msg)
 			}
 			isSkipped = false
 			lastMsg = *msg
@@ -555,7 +555,7 @@ func (c *Channel) messagePump() {
 	}
 
 exit:
-	c.ctx.nsqd.logf("CHANNEL(%s): closing ... messagePump", c.name)
+	nsqLog.logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 }
 

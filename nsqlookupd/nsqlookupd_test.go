@@ -11,6 +11,7 @@ import (
 
 	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -40,6 +41,31 @@ type tbLog interface {
 
 type testLogger struct {
 	tbLog
+	level int32
+}
+
+func (tl *testLogger) Level() int32 {
+	return tl.level
+}
+
+func (tl *testLogger) SetLevel(l int32) {
+	tl.level = l
+}
+
+func (tl *testLogger) Logf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+
+func (tl *testLogger) LogDebugf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+
+func (tl *testLogger) LogErrorf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+
+func (tl *testLogger) LogWarningf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
 }
 
 func (tl *testLogger) Output(maxdepth int, s string) error {
@@ -47,8 +73,18 @@ func (tl *testLogger) Output(maxdepth int, s string) error {
 	return nil
 }
 
-func newTestLogger(tbl tbLog) logger {
-	return &testLogger{tbl}
+func (tl *testLogger) OutputErr(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+
+func (tl *testLogger) OutputWarning(maxdepth int, s string) error {
+	tl.Log(s)
+	return nil
+}
+
+func newTestLogger(tbl tbLog) levellogger.Logger {
+	return &testLogger{tbl, 1}
 }
 
 func mustStartLookupd(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {

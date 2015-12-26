@@ -55,6 +55,7 @@ func main() {
 		}
 	}
 
+	defer glog.Flush()
 	opts := nsqlookupd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
 	daemon := nsqlookupd.New(opts)

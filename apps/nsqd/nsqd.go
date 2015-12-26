@@ -202,6 +202,7 @@ func main() {
 	}
 	cfg.Validate()
 
+	defer glog.Flush()
 	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)

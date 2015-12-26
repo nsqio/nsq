@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"errors"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/cenkalti/backoff"
 	"net"
 	"sort"
@@ -209,7 +210,8 @@ type NSQLookupdCoordinator struct {
 	quitChan         chan struct{}
 }
 
-func NewNSQLookupdCoordinator(cluster string, n *NsqLookupdNodeInfo) *NSQLookupdCoordinator {
+func NewNSQLookupdCoordinator(cluster string, n *NsqLookupdNodeInfo, log levellogger.Logger) *NSQLookupdCoordinator {
+	coordLog.logger = log
 	return &NSQLookupdCoordinator{
 		clusterKey:       cluster,
 		myNode:           *n,

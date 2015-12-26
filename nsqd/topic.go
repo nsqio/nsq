@@ -137,7 +137,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, t.ctx, deleteCallback)
 		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
 		t.channelMap[channelName] = channel
-		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.GetFullName(), channel.name)
+		nsqLog.logf("TOPIC(%s): new channel(%s)", t.GetFullName(), channel.name)
 		return channel, true
 	}
 	return channel, false
@@ -166,7 +166,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	numChannels := len(t.channelMap)
 	t.Unlock()
 
-	t.ctx.nsqd.logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)
+	nsqLog.logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
@@ -224,7 +224,7 @@ func (t *Topic) put(m *Message) error {
 	t.ctx.nsqd.SetHealth(err)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
-		t.ctx.nsqd.logErrorf(
+		nsqLog.logErrorf(
 			"TOPIC(%s) : failed to write message to backend - %s",
 			t.GetFullName(), err)
 		return err
@@ -281,7 +281,7 @@ func (t *Topic) messagePump() {
 		for _, channel := range chans {
 			err = channel.UpdateQueueEnd(e)
 			if err != nil {
-				t.ctx.nsqd.logErrorf(
+				nsqLog.logErrorf(
 					"TOPIC(%s) : failed to update topic end to channel(%s) - %s",
 					t.GetFullName(), channel.name, err)
 			}
@@ -289,7 +289,7 @@ func (t *Topic) messagePump() {
 	}
 
 exit:
-	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.GetFullName())
+	nsqLog.logf("TOPIC(%s): closing ... messagePump", t.GetFullName())
 }
 
 func (t *Topic) totalSize() int64 {
@@ -313,13 +313,13 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	if deleted {
-		t.ctx.nsqd.logf("TOPIC(%s): deleting", t.GetFullName())
+		nsqLog.logf("TOPIC(%s): deleting", t.GetFullName())
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
 		t.ctx.nsqd.Notify(t)
 	} else {
-		t.ctx.nsqd.logf("TOPIC(%s): closing", t.GetFullName())
+		nsqLog.logf("TOPIC(%s): closing", t.GetFullName())
 	}
 
 	close(t.exitChan)
@@ -345,7 +345,7 @@ func (t *Topic) exit(deleted bool) error {
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
-			t.ctx.nsqd.logf(" channel(%s) close - %s", channel.name, err)
+			nsqLog.logf(" channel(%s) close - %s", channel.name, err)
 		}
 	}
 
@@ -369,7 +369,7 @@ func (t *Topic) flush() error {
 	}
 	err := t.backend.Flush()
 	if err != nil {
-		t.ctx.nsqd.logErrorf("failed flush: %v", err)
+		nsqLog.logErrorf("failed flush: %v", err)
 	}
 	return err
 }

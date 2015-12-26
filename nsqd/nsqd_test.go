@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -65,6 +66,19 @@ func (tl *testLogger) Level() int32 {
 	return tl.level
 }
 
+func (tl *testLogger) Logf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+func (tl *testLogger) LogDebugf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+func (tl *testLogger) LogErrorf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+func (tl *testLogger) LogWarningf(f string, args ...interface{}) {
+	tl.Log(fmt.Sprintf(f, args...))
+}
+
 func (tl *testLogger) Output(maxdepth int, s string) error {
 	tl.Log(s)
 	return nil
@@ -78,7 +92,7 @@ func (tl *testLogger) OutputWarning(maxdepth int, s string) error {
 	return nil
 }
 
-func newTestLogger(tbl tbLog) logger {
+func newTestLogger(tbl tbLog) levellogger.Logger {
 	return &testLogger{tbl, 0}
 }
 

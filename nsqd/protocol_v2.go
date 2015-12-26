@@ -91,13 +91,13 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 					nr := 0
 					nr, err = client.Reader.Read(left.Bytes())
 					if err != nil {
-						p.ctx.nsqd.logErrorf("read param err:%v", err)
+						nsqLog.logErrorf("read param err:%v", err)
 					}
 					line = append(line, left.Bytes()[:nr]...)
 					// read last real '\n'
 					extra, err := client.Reader.ReadSlice('\n')
 					if err != nil {
-						p.ctx.nsqd.logErrorf("read param err:%v", err)
+						nsqLog.logErrorf("read param err:%v", err)
 					}
 					line = append(line, extra...)
 				}
@@ -118,7 +118,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 						nr := 0
 						nr, err = client.Reader.Read(left.Bytes())
 						if err != nil {
-							p.ctx.nsqd.logf("TOUCH param err:%v", err)
+							nsqLog.logf("TOUCH param err:%v", err)
 						}
 						line = append(line, left.Bytes()[:nr]...)
 					}
@@ -133,7 +133,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			client.SetReadDeadline(zeroTime)
 		}
 		if p.ctx.nsqd.getOpts().Verbose {
-			p.ctx.nsqd.logf("PROTOCOL(V2) got client command: %s ", line)
+			nsqLog.logf("PROTOCOL(V2) got client command: %s ", line)
 		}
 		if !isSpecial {
 			// trim the '\n'
@@ -146,14 +146,14 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 
 		if p.ctx.nsqd.getOpts().Verbose {
-			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] %s", client, params)
+			nsqLog.logf("PROTOCOL(V2): [%s] %s", client, params)
 		}
 
 		var response []byte
 		response, err = p.Exec(client, params)
 		if err != nil {
 			ctx := ""
-			p.ctx.nsqd.logErrorf("Error response for [%s] - %s - %s", client, err, ctx)
+			nsqLog.logErrorf("Error response for [%s] - %s - %s", client, err, ctx)
 
 			if childErr, ok := err.(protocol.ChildErr); ok {
 				if parentErr := childErr.Parent(); parentErr != nil {
@@ -163,7 +163,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
-				p.ctx.nsqd.logErrorf("Send response error: [%s] - %s%s", client, sendErr, ctx)
+				nsqLog.logErrorf("Send response error: [%s] - %s%s", client, sendErr, ctx)
 				break
 			}
 
@@ -183,7 +183,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	p.ctx.nsqd.logf("PROTOCOL(V2): [%s] exiting ioloop", client)
+	nsqLog.logf("PROTOCOL(V2): [%s] exiting ioloop", client)
 	conn.Close()
 	close(client.ExitChan)
 	if client.Channel != nil {
@@ -195,7 +195,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 func (p *protocolV2) SendMessage(client *clientV2, msg *Message, buf *bytes.Buffer) error {
 	if p.ctx.nsqd.getOpts().Verbose {
-		p.ctx.nsqd.logf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
+		nsqLog.logf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
 			msg.ID, client, msg.Body)
 	}
 
@@ -365,7 +365,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			msgTimeout = identifyData.MsgTimeout
 		case <-heartbeatChan:
 			err = p.Send(client, frameTypeResponse, heartbeatBytes)
-			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] send heartbeat", client)
+			nsqLog.logf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
 				goto exit
 			}
@@ -395,11 +395,11 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	}
 
 exit:
-	p.ctx.nsqd.logf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	nsqLog.logf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
+		nsqLog.logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
 	}
 }
 
@@ -439,7 +439,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if p.ctx.nsqd.getOpts().Verbose {
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] %+v", client, identifyData)
+		nsqLog.logf("PROTOCOL(V2): [%s] %+v", client, identifyData)
 	}
 
 	err = client.Identify(identifyData)
@@ -506,7 +506,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if tlsv1 {
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] upgrading connection to TLS", client)
+		nsqLog.logf("PROTOCOL(V2): [%s] upgrading connection to TLS", client)
 		err = client.UpgradeTLS()
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -519,7 +519,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if snappy {
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] upgrading connection to snappy", client)
+		nsqLog.logf("PROTOCOL(V2): [%s] upgrading connection to snappy", client)
 		err = client.UpgradeSnappy()
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -532,7 +532,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if deflate {
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] upgrading connection to deflate", client)
+		nsqLog.logf("PROTOCOL(V2): [%s] upgrading connection to deflate", client)
 		err = client.UpgradeDeflate(deflateLevel)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -587,7 +587,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 
 	if err := client.Auth(string(body)); err != nil {
 		// we don't want to leak errors contacting the auth server to untrusted clients
-		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
+		nsqLog.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_FAILED", "AUTH failed")
 	}
 
@@ -628,7 +628,7 @@ func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName str
 		ok, err := client.IsAuthorized(topicName, channelName)
 		if err != nil {
 			// we don't want to leak errors contacting the auth server to untrusted clients
-			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
+			nsqLog.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
 			return protocol.NewFatalClientErr(nil, "E_AUTH_FAILED", "AUTH failed")
 		}
 		if !ok {
@@ -670,7 +670,7 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		p.ctx.nsqd.logf("sub to not existing topic: %v", topicName)
+		nsqLog.logf("sub to not existing topic: %v", topicName)
 		return nil, err
 	}
 	channel := topic.GetChannel(channelName)
@@ -689,7 +689,7 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 
 	if state == stateClosing {
 		// just ignore ready changes on a closing channel
-		p.ctx.nsqd.logf(
+		nsqLog.logf(
 			"PROTOCOL(V2): [%s] ignoring RDY after CLS in state ClientStateV2Closing",
 			client)
 		return nil, nil
@@ -733,7 +733,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
-		p.ctx.nsqd.logf("FIN error: %v", params[1])
+		nsqLog.logf("FIN error: %v", params[1])
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
@@ -840,7 +840,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		p.ctx.nsqd.logf("PUB to not existing topic: %v", topicName)
+		nsqLog.logf("PUB to not existing topic: %v", topicName)
 		return nil, err
 	}
 	msg := NewMessage(topic.NextMsgID(), messageBody)
@@ -887,7 +887,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	topic, err := p.ctx.nsqd.GetExistingTopic(topicName)
 
 	if err != nil {
-		p.ctx.nsqd.logf("PUB to not existing topic: %v", topicName)
+		nsqLog.logf("PUB to not existing topic: %v", topicName)
 		return nil, err
 	}
 

@@ -36,11 +36,11 @@ func (n *NSQD) statsdLoop() {
 			client := statsd.NewClient(n.getOpts().StatsdAddress, n.getOpts().StatsdPrefix)
 			err := client.CreateSocket()
 			if err != nil {
-				n.logErrorf("failed to create UDP socket to statsd(%s)", client)
+				nsqLog.logErrorf("failed to create UDP socket to statsd(%s)", client)
 				continue
 			}
 
-			n.logf("STATSD: pushing stats to %s", client)
+			nsqLog.logf("STATSD: pushing stats to %s", client)
 
 			stats := n.GetStats()
 			for _, topic := range stats {
