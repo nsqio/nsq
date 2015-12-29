@@ -23,20 +23,21 @@ type NSQLookupd struct {
 }
 
 func New(opts *Options) *NSQLookupd {
+	nsqlookupLog.Logger = opts.Logger
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
 	}
-	n.opts.Logger.Logf(version.String("nsqlookupd"))
+	nsqlookupLog.Logf(version.String("nsqlookupd"))
 	return n
 }
 
 func (l *NSQLookupd) Main() {
-	ctx := &Context{l, l.opts.Logger}
+	ctx := &Context{l}
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
-		l.opts.Logger.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
+		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
 		os.Exit(1)
 	}
 	l.Lock()
@@ -49,7 +50,7 @@ func (l *NSQLookupd) Main() {
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
-		l.opts.Logger.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
+		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
 
@@ -64,7 +65,7 @@ func (l *NSQLookupd) Main() {
 	// l.coordinator.SetLeadershipMgr(nil)
 	err = l.coordinator.Start()
 	if err != nil {
-		l.opts.Logger.LogErrorf("FATAL: start coordinator failed - %s", err)
+		nsqlookupLog.LogErrorf("FATAL: start coordinator failed - %s", err)
 		os.Exit(1)
 	}
 	l.Lock()

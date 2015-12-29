@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/absolute8511/nsq/internal/levellogger"
 	"math/rand"
 	"os"
 	"path"
@@ -55,20 +54,13 @@ type diskQueueWriter struct {
 	exitSyncChan      chan int
 	getEndChan        chan int
 	endResponseChan   chan BackendQueueEnd
-
-	logger levellogger.Logger
 }
 
 // newDiskQueue instantiates a new instance of diskQueueWriter, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64, syncTimeout time.Duration,
-	logger levellogger.Logger) BackendQueueWriter {
-
-	if logger == nil {
-		logger = levellogger.NewGLogger(1)
-	}
+	syncEvery int64, syncTimeout time.Duration) BackendQueueWriter {
 
 	d := diskQueueWriter{
 		name:            name,
@@ -91,13 +83,12 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		endResponseChan:   make(chan BackendQueueEnd),
 		syncEvery:         syncEvery,
 		syncTimeout:       syncTimeout,
-		logger:            logger,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
-		d.logger.LogErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
+		nsqLog.LogErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
 	}
 
 	go d.ioLoop()
@@ -139,9 +130,9 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 	d.exitFlag = 1
 
 	if deleted {
-		d.logger.Logf("DISKQUEUE(%s): deleting", d.name)
+		nsqLog.Logf("DISKQUEUE(%s): deleting", d.name)
 	} else {
-		d.logger.Logf("DISKQUEUE(%s): closing", d.name)
+		nsqLog.Logf("DISKQUEUE(%s): closing", d.name)
 	}
 
 	close(d.exitChan)
@@ -171,7 +162,7 @@ func (d *diskQueueWriter) Empty() error {
 		return errors.New("exiting")
 	}
 
-	d.logger.Logf("DISKQUEUE(%s): emptying", d.name)
+	nsqLog.Logf("DISKQUEUE(%s): emptying", d.name)
 
 	d.emptyChan <- 1
 	return <-d.emptyResponseChan
@@ -182,7 +173,7 @@ func (d *diskQueueWriter) deleteAllFiles() error {
 
 	//innerErr := os.Remove(d.metaDataFileName())
 	//if innerErr != nil && !os.IsNotExist(innerErr) {
-	//	d.logger.Logf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
+	//	nsqLog.Logf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
 	//	return innerErr
 	//}
 
@@ -204,7 +195,7 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
 		if innerErr != nil && !os.IsNotExist(innerErr) {
-			d.logger.LogErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
+			nsqLog.LogErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
 		}
 	}
 
@@ -245,7 +236,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 			return nil, err
 		}
 
-		d.logger.Logf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
+		nsqLog.Logf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
 
 		if d.writePos > 0 {
 			_, err = d.writeFile.Seek(d.writePos, 0)
@@ -299,7 +290,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 		// sync every time we start writing to a new file
 		err = d.sync()
 		if err != nil {
-			d.logger.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
+			nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 		}
 
 		if d.bufferWriter != nil {
@@ -431,7 +422,7 @@ func (d *diskQueueWriter) ioLoop() {
 		if d.needSync {
 			err = d.sync()
 			if err != nil {
-				d.logger.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
+				nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 			}
 		}
 
@@ -472,7 +463,7 @@ func (d *diskQueueWriter) ioLoop() {
 	}
 
 exit:
-	d.logger.Logf("DISKQUEUE(%s): closing ... ioLoop", d.name)
+	nsqLog.Logf("DISKQUEUE(%s): closing ... ioLoop", d.name)
 	syncTicker.Stop()
 	d.exitSyncChan <- 1
 }

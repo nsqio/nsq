@@ -78,7 +78,7 @@ func (d *errorRecoveredBackendQueue) Put([]byte) (BackendQueueEnd, error) { retu
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.Logger.SetLevel(2)
+	opts.LogLevel = 2
 	opts.MemQueueSize = 2
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

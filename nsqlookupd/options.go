@@ -42,6 +42,6 @@ func NewOptions() *Options {
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
 
-		Logger: levellogger.NewGLogger(1),
+		Logger: &levellogger.GLogger{},
 	}
 }

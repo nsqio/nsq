@@ -135,6 +135,6 @@ func NewOptions() *Options {
 		TLSMinVersion: tls.VersionTLS10,
 
 		LogLevel: 1,
-		Logger:   levellogger.NewGLogger(1),
+		Logger:   &levellogger.GLogger{},
 	}
 }

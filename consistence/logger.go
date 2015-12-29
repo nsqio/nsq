@@ -6,18 +6,20 @@ import (
 )
 
 var coordLog = &coordLogT{
-	levellogger.NewGLogger(1),
+	&levellogger.GLogger{},
+	1,
 }
 
 type coordLogT struct {
 	logger levellogger.Logger
+	level  int32
 }
 
 func (l *coordLogT) Infof(f string, args ...interface{}) {
 	if l.logger == nil {
 		return
 	}
-	if l.logger.Level() > 0 {
+	if l.level > 0 {
 		l.logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }
@@ -26,7 +28,7 @@ func (l *coordLogT) Debugf(f string, args ...interface{}) {
 	if l.logger == nil {
 		return
 	}
-	if l.logger.Level() > 1 {
+	if l.level > 1 {
 		l.logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }

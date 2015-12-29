@@ -153,7 +153,7 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	nsqLog.logf("[%s] IDENTIFY: %+v", c, data)
+	nsqLog.Logf("[%s] IDENTIFY: %+v", c, data)
 
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname
@@ -323,7 +323,7 @@ func (c *clientV2) IsReadyForMessages() bool {
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	if c.ctx.nsqd.getOpts().Verbose {
-		nsqLog.logf("[%s] state rdy: %4d inflt: %4d",
+		nsqLog.Logf("[%s] state rdy: %4d inflt: %4d",
 			c, readyCount, inFlightCount)
 	}
 

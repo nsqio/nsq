@@ -58,7 +58,7 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *Context) *httpServer {
-	log := http_api.Log(ctx.log)
+	log := http_api.Log(ctx.nsqlookupd.opts.Logger)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
@@ -230,7 +230,7 @@ func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps 
 	if err != nil {
 		return nil, http_api.Err{400, "BAD_LEVEL_STRING"}
 	}
-	s.ctx.log.SetLevel(int32(level))
+	nsqlookupLog.SetLevel(int32(level))
 	return nil, nil
 }
 
@@ -265,7 +265,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_REPLICATOR"}
 	}
-	s.ctx.log.Logf("DB: adding topic(%s)", topicName)
+	nsqlookupLog.Logf("DB: adding topic(%s)", topicName)
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
@@ -294,13 +294,13 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
 	for _, registration := range registrations {
-		s.ctx.log.Logf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
+		nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}
 
 	registrations = s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
 	for _, registration := range registrations {
-		s.ctx.log.Logf("DB: removing topic(%s)", topicName)
+		nsqlookupLog.Logf("DB: removing topic(%s)", topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}
 
@@ -323,7 +323,7 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
-	s.ctx.log.Logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
+	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
 	for _, p := range producers {
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
@@ -355,7 +355,7 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{400, "TOPIC_NOT_FOUND"}
 	}
 	for _, reg := range regs {
-		s.ctx.log.Logf("DB: adding channel(%s) in topic(%s)-pid:%s", channelName, topicName, reg.PartitionID)
+		nsqlookupLog.Logf("DB: adding channel(%s) in topic(%s)-pid:%s", channelName, topicName, reg.PartitionID)
 		key := Registration{"channel", topicName, channelName, reg.PartitionID}
 		s.ctx.nsqlookupd.DB.AddRegistration(key)
 	}
@@ -390,7 +390,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
-	s.ctx.log.Logf("DB: removing channel(%s) from topic(%s)-pid:%s", channelName, topicName, tpid)
+	nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s)-pid:%s", channelName, topicName, tpid)
 	for _, registration := range registrations {
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}

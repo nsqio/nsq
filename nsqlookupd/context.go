@@ -1,10 +1,7 @@
 package nsqlookupd
 
-import (
-	"github.com/absolute8511/nsq/internal/levellogger"
-)
+import ()
 
 type Context struct {
 	nsqlookupd *NSQLookupd
-	log        levellogger.Logger
 }

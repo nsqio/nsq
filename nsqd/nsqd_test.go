@@ -58,27 +58,6 @@ type testLogger struct {
 	level int32
 }
 
-func (tl *testLogger) SetLevel(l int32) {
-	tl.level = l
-}
-
-func (tl *testLogger) Level() int32 {
-	return tl.level
-}
-
-func (tl *testLogger) Logf(f string, args ...interface{}) {
-	tl.Log(fmt.Sprintf(f, args...))
-}
-func (tl *testLogger) LogDebugf(f string, args ...interface{}) {
-	tl.Log(fmt.Sprintf(f, args...))
-}
-func (tl *testLogger) LogErrorf(f string, args ...interface{}) {
-	tl.Log(fmt.Sprintf(f, args...))
-}
-func (tl *testLogger) LogWarningf(f string, args ...interface{}) {
-	tl.Log(fmt.Sprintf(f, args...))
-}
-
 func (tl *testLogger) Output(maxdepth int, s string) error {
 	tl.Log(s)
 	return nil
@@ -126,7 +105,6 @@ func TestStartup(t *testing.T) {
 	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 0
-	opts.Logger.SetLevel(0)
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
 	_, _, nsqd := mustStartNSQD(opts)
@@ -216,7 +194,6 @@ func TestStartup(t *testing.T) {
 	opts = NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 0
-	opts.Logger.SetLevel(0)
 	opts.SyncEvery = 1
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240

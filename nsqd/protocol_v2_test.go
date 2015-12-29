@@ -1347,7 +1347,7 @@ func TestBadFin(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
-	opts.Logger.SetLevel(2)
+	opts.LogLevel = 2
 	opts.Verbose = true
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

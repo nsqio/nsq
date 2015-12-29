@@ -36,7 +36,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	opts.Logger = newTestLogger(t)
 	opts.Verbose = true
 
-	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: New(opts), log: opts.Logger}}
+	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: New(opts)}}
 
 	errChan := make(chan error)
 	test := func() {
