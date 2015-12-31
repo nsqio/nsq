@@ -23,7 +23,9 @@ import (
 	"testing"
 	"time"
 
+	//"github.com/absolute8511/glog"
 	"github.com/absolute8511/go-nsq"
+	//"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/mreiferson/go-snappystream"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -1501,6 +1503,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = newTestLogger(b)
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1510,12 +1513,15 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 		batch[i] = msg
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopicIgnPart(topicName)
+
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()
 
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			conn, err := mustConnectNSQD(tcpAddr)
 			if err != nil {
 				panic(err.Error())
@@ -1527,22 +1533,35 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 				cmd, _ := nsq.MultiPublish(topicName, batch)
 				_, err := cmd.WriteTo(rw)
 				if err != nil {
-					panic(err.Error())
+					b.Error(err.Error())
+					return
 				}
 				err = rw.Flush()
 				if err != nil {
-					panic(err.Error())
+					b.Error(err.Error())
+					return
 				}
 				resp, err := nsq.ReadResponse(rw)
 				if err != nil {
-					panic(err.Error())
+					b.Error(err.Error())
+					return
 				}
-				_, data, _ := nsq.UnpackResponse(resp)
+				_, data, err := nsq.UnpackResponse(resp)
+				if err != nil {
+					b.Error(err.Error())
+					return
+				}
+
+				if bytes.Equal(data, []byte("_heartbeat_")) {
+					nsq.Nop().WriteTo(rw)
+					rw.Flush()
+					continue
+				}
 				if !bytes.Equal(data, []byte("OK")) {
-					panic("invalid response")
+					b.Error("response not OK :" + string(data))
+					return
 				}
 			}
-			wg.Done()
 		}()
 	}
 
@@ -1571,6 +1590,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
+	//opts.Logger = &levellogger.GLogger{}
+	//glog.SetFlags(2, "INFO", "./")
+	opts.LogLevel = 2
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1581,6 +1603,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 		msg := NewMessage(topic.NextMsgID(), msg)
 		topic.PutMessage(msg)
 	}
+	topic.flush()
 	topic.GetChannel("ch")
 	b.SetBytes(int64(len(msg)))
 	goChan := make(chan int)
@@ -1589,8 +1612,13 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	for j := 0; j < workers; j++ {
 		wg.Add(1)
 		go func() {
-			subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
-			wg.Done()
+			defer wg.Done()
+			err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
+			if err != nil {
+				b.Error(err.Error())
+			} else {
+				b.Logf("sub done ok")
+			}
 		}()
 		<-rdyChan
 	}
@@ -1603,10 +1631,10 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	nsqd.Exit()
 }
 
-func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyChan chan int, goChan chan int) {
+func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyChan chan int, goChan chan int) error {
 	conn, err := mustConnectNSQD(tcpAddr)
 	if err != nil {
-		panic(err.Error())
+		return err
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriterSize(conn, 65536))
 
@@ -1622,18 +1650,24 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
-			panic(err.Error())
+			return err
 		}
 		frameType, data, err := nsq.UnpackResponse(resp)
 		if err != nil {
-			panic(err.Error())
+			return err
+		}
+		if frameType == frameTypeResponse {
+			if !bytes.Equal(data, heartbeatBytes) {
+				return errors.New("got response not heartbeat:" + string(data))
+			}
+			continue
 		}
 		if frameType != frameTypeMessage {
-			panic("got something else")
+			return errors.New("got something else")
 		}
 		msg, err := decodeMessage(data)
 		if err != nil {
-			panic(err.Error())
+			return err
 		}
 		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
 		if (i+1)%rdyCount == 0 || i+1 == num {
@@ -1643,6 +1677,8 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			rw.Flush()
 		}
 	}
+
+	return nil
 }
 
 func BenchmarkProtocolV2Sub256(b *testing.B)  { benchmarkProtocolV2Sub(b, 256) }
@@ -1665,6 +1701,9 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
+	//opts.Logger = &levellogger.GLogger{}
+	//glog.SetFlags(2, "INFO", "./")
+	opts.LogLevel = 2
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1681,13 +1720,19 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 			msg := NewMessage(topic.NextMsgID(), msg)
 			topic.PutMessage(msg)
 		}
+		topic.flush()
 		topic.GetChannel("ch")
 
 		for j := 0; j < workers; j++ {
 			wg.Add(1)
 			go func() {
-				subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
-				wg.Done()
+				defer wg.Done()
+				err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
+				if err != nil {
+					b.Error(err.Error())
+				} else {
+					b.Logf("sub finished ok")
+				}
 			}()
 			<-rdyChan
 		}

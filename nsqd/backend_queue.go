@@ -30,9 +30,10 @@ type BackendQueueWriter interface {
 }
 
 type ReadResult struct {
-	offset BackendOffset
-	data   []byte
-	err    error
+	offset    BackendOffset
+	movedSize BackendOffset
+	data      []byte
+	err       error
 }
 
 // for channel consumer

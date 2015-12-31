@@ -332,6 +332,7 @@ func (d *diskQueueReader) stepOffset(cur diskQueueOffset, step int64, maxStep di
 }
 
 func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
+	nsqLog.LogDebugf("confirming to offset: %v", offset)
 	if int64(offset) == -1 {
 		d.confirmedOffset = d.readPos
 		d.virtualConfirmedOffset = d.virtualReadOffset
@@ -421,38 +422,39 @@ func (d *diskQueueReader) skipToEndofFile() error {
 
 // readOne performs a low level filesystem read for a single []byte
 // while advancing read positions and rolling files, if necessary
-func (d *diskQueueReader) readOne() (BackendOffset, []byte, error) {
-	var err error
+func (d *diskQueueReader) readOne() ReadResult {
+	var result ReadResult
 	var msgSize int32
-	voffset := BackendOffset(0)
+	var stat os.FileInfo
+	result.offset = BackendOffset(0)
 
 CheckFileOpen:
 
-	voffset = d.virtualReadOffset
+	result.offset = d.virtualReadOffset
 	if d.readFile == nil {
 		curFileName := d.fileName(d.readPos.FileNum)
-		d.readFile, err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
-		if err != nil {
-			return voffset, nil, err
+		d.readFile, result.err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
+		if result.err != nil {
+			return result
 		}
 
 		nsqLog.Logf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
 
 		if d.readPos.Pos > 0 {
-			_, err = d.readFile.Seek(d.readPos.Pos, 0)
-			if err != nil {
+			_, result.err = d.readFile.Seek(d.readPos.Pos, 0)
+			if result.err != nil {
 				d.readFile.Close()
 				d.readFile = nil
-				return voffset, nil, err
+				return result
 			}
 		}
 
 		d.reader = bufio.NewReader(d.readFile)
 	}
 	if d.readPos.FileNum < d.endPos.FileNum {
-		stat, err := d.readFile.Stat()
-		if err != nil {
-			return voffset, nil, err
+		stat, result.err = d.readFile.Stat()
+		if result.err != nil {
+			return result
 		}
 		if d.readPos.Pos >= stat.Size() {
 			d.readPos.FileNum++
@@ -465,11 +467,11 @@ CheckFileOpen:
 		}
 	}
 
-	err = binary.Read(d.reader, binary.BigEndian, &msgSize)
-	if err != nil {
+	result.err = binary.Read(d.reader, binary.BigEndian, &msgSize)
+	if result.err != nil {
 		d.readFile.Close()
 		d.readFile = nil
-		return voffset, nil, err
+		return result
 	}
 
 	if msgSize < d.minMsgSize || msgSize > d.maxMsgSize {
@@ -477,20 +479,22 @@ CheckFileOpen:
 		// where a new message should begin
 		d.readFile.Close()
 		d.readFile = nil
-		return voffset, nil, fmt.Errorf("invalid message read size (%d)", msgSize)
+		result.err = fmt.Errorf("invalid message read size (%d)", msgSize)
+		return result
 	}
 
-	readBuf := make([]byte, msgSize)
-	_, err = io.ReadFull(d.reader, readBuf)
-	if err != nil {
+	result.data = make([]byte, msgSize)
+	_, result.err = io.ReadFull(d.reader, result.data)
+	if result.err != nil {
 		d.readFile.Close()
 		d.readFile = nil
-		return voffset, nil, err
+		return result
 	}
 
-	voffset = d.virtualReadOffset
+	result.offset = d.virtualReadOffset
 
 	totalBytes := int64(4 + msgSize)
+	result.movedSize = BackendOffset(totalBytes)
 
 	// we only advance next* because we have not yet sent this to consumers
 	// (where readFileNum, readPos will actually be advanced)
@@ -506,11 +510,11 @@ CheckFileOpen:
 	// the value can change without affecting runtime
 	isEnd := false
 	if d.readPos.FileNum < d.endPos.FileNum {
-		stat, err := d.readFile.Stat()
-		if err == nil {
+		stat, result.err = d.readFile.Stat()
+		if result.err == nil {
 			isEnd = d.readPos.Pos >= stat.Size()
 		} else {
-			return voffset, readBuf, err
+			return result
 		}
 	}
 	if (d.readPos.Pos > d.maxBytesPerFile) && !isEnd {
@@ -532,7 +536,7 @@ CheckFileOpen:
 		d.needSync = true
 	}
 
-	return voffset, readBuf, nil
+	return result
 }
 
 // sync fsyncs the current writeFile and persists metadata
@@ -693,8 +697,8 @@ func (d *diskQueueReader) ioLoop() {
 		} else {
 			if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
 				if continueRead {
-					dataRead.offset, dataRead.data, rerr = d.readOne()
-					dataRead.err = rerr
+					dataRead = d.readOne()
+					rerr = dataRead.err
 					if rerr != nil {
 						nsqLog.LogErrorf("reading from diskqueue(%s) at %d of %s - %s",
 							d.readerMetaName, d.readPos, d.fileName(d.readPos.FileNum), dataRead.err)
@@ -703,9 +707,8 @@ func (d *diskQueueReader) ioLoop() {
 							rerr = nil
 							continue
 						}
-					} else {
-						continueRead = false
 					}
+					continueRead = false
 				}
 				r = d.readResultChan
 			} else {
@@ -720,8 +723,8 @@ func (d *diskQueueReader) ioLoop() {
 			// moveForward sets needSync flag if a file is removed
 			if rerr == nil {
 				d.checkTailCorruption()
-				continueRead = true
 			}
+			continueRead = true
 		case skipInfo := <-d.skipChan:
 			skiperr := d.internalSkipTo(skipInfo)
 			rerr = nil

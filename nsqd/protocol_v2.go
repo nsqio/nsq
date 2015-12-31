@@ -287,6 +287,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	outputBufferTicker := time.NewTicker(client.OutputBufferTimeout)
 	heartbeatTicker := time.NewTicker(client.HeartbeatInterval)
 	heartbeatChan := heartbeatTicker.C
+	heartbeatFailedCnt := 0
 	msgTimeout := client.MsgTimeout
 
 	// v2 opportunistically buffers data to clients to reduce write system calls
@@ -367,7 +368,13 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			err = p.Send(client, frameTypeResponse, heartbeatBytes)
 			nsqLog.Logf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
-				goto exit
+				heartbeatFailedCnt++
+				nsqLog.LogWarningf("PROTOCOL(V2): [%s] send heartbeat failed %v times, %v", client, heartbeatFailedCnt, err)
+				if heartbeatFailedCnt > 2 {
+					goto exit
+				}
+			} else {
+				heartbeatFailedCnt = 0
 			}
 		case msg, ok := <-clientMsgChan:
 			if !ok {
@@ -400,6 +407,9 @@ exit:
 	outputBufferTicker.Stop()
 	if err != nil {
 		nsqLog.Logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
+	}
+	if subChannel != nil {
+		subChannel.RequeueClientMessages(client.ID)
 	}
 }
 
@@ -737,6 +747,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
+	nsqLog.LogDebugf("fin message: %v", id)
 	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromFullMsgID(*id))
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",

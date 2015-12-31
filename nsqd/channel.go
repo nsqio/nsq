@@ -330,22 +330,16 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
 func (c *Channel) confirmBackendQueue(msg *Message) {
-	needPause := false
-	needUnPause := false
 	c.Lock()
 	if c.currentLastConfirmed == msg.offset {
-		c.currentLastConfirmed += BackendOffset(msg.rawSize)
+		c.currentLastConfirmed += msg.rawMoveSize
 		for {
 			if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-				c.currentLastConfirmed += BackendOffset(m.rawSize)
+				c.currentLastConfirmed += m.rawMoveSize
 				delete(c.confirmedMsgs, BackendOffset(m.offset))
 			} else {
 				break
 			}
-		}
-		if c.IsPaused() && int64(len(c.confirmedMsgs)) <
-			c.ctx.nsqd.getOpts().MaxConfirmWin/2 {
-			needUnPause = true
 		}
 		err := c.backend.ConfirmRead(c.currentLastConfirmed)
 		if err != nil {
@@ -357,15 +351,14 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 	} else {
 		c.confirmedMsgs[BackendOffset(msg.offset)] = msg
 		if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmWin {
-			needPause = true
+			nsqLog.LogWarningf("lots of confirmed messages : %v, %v",
+				len(c.confirmedMsgs), c.currentLastConfirmed)
 		}
 	}
+	// TODO: if some messages lost while re-queue, it may happen that some messages not
+	// in inflight queue and also wait confirm. In this way, we need reset
+	// backend queue to force read the data from disk again.
 	c.Unlock()
-	if needPause {
-		c.internalPause(true)
-	} else if needUnPause {
-		c.internalPause(false)
-	}
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -400,6 +393,22 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		return c.doRequeue(msg)
 	}
 	return nil
+}
+
+func (c *Channel) RequeueClientMessages(clientID int64) {
+	idList := make([]MessageID, 0)
+	c.Lock()
+	for id, msg := range c.inFlightMessages {
+		if msg.clientID == clientID {
+			idList = append(idList, id)
+		}
+	}
+	c.Unlock()
+	nsqLog.Logf("requeue all messages %v related with client: %v",
+		len(idList), clientID)
+	for _, id := range idList {
+		c.RequeueMessage(clientID, id, 0)
+	}
 }
 
 // AddClient adds a client to the Channel's client list
@@ -537,7 +546,7 @@ func (c *Channel) messagePump() {
 				continue
 			}
 			msg.offset = data.offset
-			msg.rawSize = len(data.data)
+			msg.rawMoveSize = data.movedSize
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
 				nsqLog.LogWarningf("skipped message from %v to the : %v", lastMsg, *msg)

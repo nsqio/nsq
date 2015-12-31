@@ -41,8 +41,8 @@ type Message struct {
 	pri        int64
 	index      int
 	//for backend queue
-	offset  BackendOffset
-	rawSize int
+	offset      BackendOffset
+	rawMoveSize BackendOffset
 }
 
 func NewMessage(id MessageID, body []byte) *Message {
