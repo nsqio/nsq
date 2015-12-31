@@ -117,8 +117,6 @@ func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Chan
 
 func (n *NSQD) GetStats() []TopicStats {
 	n.RLock()
-	defer n.RUnlock()
-
 	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for _, t := range n.topicMap {
 		realTopics = append(realTopics, t)
@@ -126,6 +124,7 @@ func (n *NSQD) GetStats() []TopicStats {
 	sort.Sort(TopicsByName{realTopics})
 
 	topics := make([]TopicStats, 0, len(n.topicMap))
+	n.RUnlock()
 	for _, t := range realTopics {
 		t.RLock()
 
