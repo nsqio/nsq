@@ -380,33 +380,50 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 }
 
 func BenchmarkDiskQueueWriterPut16(b *testing.B) {
-	benchmarkDiskQueueWriterPut(16, b)
+	benchmarkDiskQueueWriterPut(16, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut64(b *testing.B) {
-	benchmarkDiskQueueWriterPut(64, b)
+	benchmarkDiskQueueWriterPut(64, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut256(b *testing.B) {
-	benchmarkDiskQueueWriterPut(256, b)
+	benchmarkDiskQueueWriterPut(256, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut1024(b *testing.B) {
-	benchmarkDiskQueueWriterPut(1024, b)
+	benchmarkDiskQueueWriterPut(1024, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut4096(b *testing.B) {
-	benchmarkDiskQueueWriterPut(4096, b)
+	benchmarkDiskQueueWriterPut(4096, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut16384(b *testing.B) {
-	benchmarkDiskQueueWriterPut(16384, b)
+	benchmarkDiskQueueWriterPut(16384, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut65536(b *testing.B) {
-	benchmarkDiskQueueWriterPut(65536, b)
+	benchmarkDiskQueueWriterPut(65536, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut262144(b *testing.B) {
-	benchmarkDiskQueueWriterPut(262144, b)
+	benchmarkDiskQueueWriterPut(262144, 2500, b)
 }
 func BenchmarkDiskQueueWriterPut1048576(b *testing.B) {
-	benchmarkDiskQueueWriterPut(1048576, b)
+	benchmarkDiskQueueWriterPut(1048576, 2500, b)
 }
-func benchmarkDiskQueueWriterPut(size int64, b *testing.B) {
+
+func BenchmarkDiskQueueWriterPut16Sync(b *testing.B) {
+	benchmarkDiskQueueWriterPut(16, 1, b)
+}
+func BenchmarkDiskQueueWriterPut64Sync(b *testing.B) {
+	benchmarkDiskQueueWriterPut(64, 1, b)
+}
+func BenchmarkDiskQueueWriterPut256Sync(b *testing.B) {
+	benchmarkDiskQueueWriterPut(256, 1, b)
+}
+func BenchmarkDiskQueueWriterPut1024Sync(b *testing.B) {
+	benchmarkDiskQueueWriterPut(1024, 1, b)
+}
+func BenchmarkDiskQueueWriterPut4096Sync(b *testing.B) {
+	benchmarkDiskQueueWriterPut(4096, 1, b)
+}
+
+func benchmarkDiskQueueWriterPut(size int64, syncEvery int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	nsqLog.Logger = l
@@ -416,7 +433,7 @@ func benchmarkDiskQueueWriterPut(size int64, b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueueWriter(dqName, tmpDir, 1024768*100, 0, 1<<20, 1, 2*time.Second)
+	dq := newDiskQueueWriter(dqName, tmpDir, 1024768*100, 0, 1<<20, syncEvery, 2*time.Second)
 	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
@@ -428,6 +445,7 @@ func benchmarkDiskQueueWriterPut(size int64, b *testing.B) {
 			panic(err)
 		}
 	}
+	b.StopTimer()
 }
 
 // you might want to run this like
@@ -471,16 +489,19 @@ func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueueWriter(dqName, tmpDir, 1024768, 0, 1<<10, 1, 2*time.Second)
-	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024768, 0, 1<<10, 1, 2*time.Second, true)
+	dq := newDiskQueueWriter(dqName, tmpDir, 1024768, 0, 1<<20, 2500, 2*time.Second)
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024768, 0, 1<<20,
+		2500, 2*time.Second, true)
 	defer dqReader.Close()
 	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
 	var e BackendQueueEnd
 	for i := 0; i < b.N; i++ {
-		e, _ = dq.Put(data)
+		dq.Put(data)
 	}
+	dq.Flush()
+	e = dq.GetQueueReadEnd()
 	b.StartTimer()
 	dqReader.UpdateQueueEnd(e)
 
