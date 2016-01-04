@@ -330,7 +330,6 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	dq.Close()
 
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 262144, 0, 1<<10, 1, 2*time.Second, true)
-	dqReader.(*diskQueueReader).maxConfirmWin = BackendOffset(depth * 2)
 	defer dqReader.Close()
 	dqReader.UpdateQueueEnd(e)
 	time.Sleep(time.Second * 1)

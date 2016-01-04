@@ -52,7 +52,6 @@ type Channel struct {
 	// state tracking
 	clients        map[int64]Consumer
 	paused         int32
-	internalPaused int32
 	ephemeral      bool
 	deleteCallback func(*Channel)
 	deleter        sync.Once
@@ -66,6 +65,8 @@ type Channel struct {
 
 	currentLastConfirmed BackendOffset
 	confirmedMsgs        map[BackendOffset]*Message
+	waitingConfirm       int32
+	tryReadBackend       chan bool
 	// stat counters
 }
 
@@ -82,6 +83,7 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 		exitChan:        make(chan int),
 		clients:         make(map[int64]Consumer),
 		confirmedMsgs:   make(map[BackendOffset]*Message),
+		tryReadBackend:  make(chan bool, 1),
 		deleteCallback:  deleteCallback,
 		ctx:             ctx,
 	}
@@ -109,8 +111,6 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout,
 			false)
-		c.backend.(*diskQueueReader).maxConfirmWin =
-			BackendOffset(c.ctx.nsqd.getOpts().MaxConfirmWin)
 	}
 
 	go c.messagePump()
@@ -123,7 +123,7 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
 
-	c.inFlightMessages = make(map[MessageID]*Message)
+	c.inFlightMessages = make(map[MessageID]*Message, pqSize)
 
 	c.inFlightMutex.Lock()
 	c.inFlightPQ = newInFlightPqueue(pqSize)
@@ -242,7 +242,6 @@ func (c *Channel) Pause() error {
 }
 
 func (c *Channel) UnPause() error {
-	atomic.StoreInt32(&c.internalPaused, 0)
 	return c.doPause(false)
 }
 
@@ -265,26 +264,8 @@ func (c *Channel) doPause(pause bool) error {
 	return nil
 }
 
-func (c *Channel) internalPause(pause bool) {
-	if pause {
-		atomic.StoreInt32(&c.internalPaused, 1)
-	} else {
-		atomic.StoreInt32(&c.internalPaused, 0)
-	}
-
-	c.RLock()
-	for _, client := range c.clients {
-		if pause {
-			client.Pause()
-		} else {
-			client.UnPause()
-		}
-	}
-	c.RUnlock()
-}
-
 func (c *Channel) IsPaused() bool {
-	return atomic.LoadInt32(&c.paused) == 1 || atomic.LoadInt32(&c.internalPaused) == 1
+	return atomic.LoadInt32(&c.paused) == 1
 }
 
 // When topic message is put, update the new end of the queue
@@ -292,8 +273,8 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	if end == nil {
 		return nil
 	}
-	c.RLock()
-	defer c.RUnlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
@@ -331,20 +312,28 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 // and we keep all the newer confirmed messages so we can confirm later.
 func (c *Channel) confirmBackendQueue(msg *Message) {
 	c.Lock()
+	defer c.Unlock()
 	if c.currentLastConfirmed == msg.offset {
 		c.currentLastConfirmed += msg.rawMoveSize
+		reduced := false
 		for {
 			if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
 				c.currentLastConfirmed += m.rawMoveSize
 				delete(c.confirmedMsgs, BackendOffset(m.offset))
+				reduced = true
 			} else {
 				break
 			}
 		}
 		err := c.backend.ConfirmRead(c.currentLastConfirmed)
 		if err != nil {
-			nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
+			if atomic.LoadInt32(&c.exitFlag) != 1 {
+				nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
+			}
 			return
+		}
+		if reduced && int64(len(c.confirmedMsgs)) < c.ctx.nsqd.getOpts().MaxConfirmWin/2 {
+			c.tryReadBackend <- true
 		}
 	} else if msg.offset < c.currentLastConfirmed {
 		nsqLog.LogWarningf("confirmed msg is less than current confirmed offset: %v, %v", msg, c.currentLastConfirmed)
@@ -355,10 +344,10 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 				len(c.confirmedMsgs), c.currentLastConfirmed)
 		}
 	}
+	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
 	// in inflight queue and also wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
-	c.Unlock()
 }
 
 // FinishMessage successfully discards an in-flight message
@@ -446,16 +435,21 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	msg.pri = now.Add(timeout).UnixNano()
 	err := c.pushInFlightMessage(msg)
 	if err != nil {
+		nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
+			msg.GetFullMsgID())
 		return err
 	}
 	c.addToInFlightPQ(msg)
+
+	//nsqLog.LogDebugf("message from client %v in flight : %v,, %v ", clientID,
+	//	msg.GetFullMsgID(), msg.offset)
 	return nil
 }
 
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(m *Message) error {
-	c.RLock()
-	defer c.RUnlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
@@ -519,7 +513,10 @@ func (c *Channel) messagePump() {
 	var err error
 	var lastMsg Message
 	isSkipped := false
+	var readChan <-chan ReadResult
+	maxWin := int32(c.ctx.nsqd.getOpts().MaxConfirmWin)
 
+LOOP:
 	for {
 		// do an extra check for closed exit before we select on all the memory/backend/exitChan
 		// this solves the case where we are closed and something else is draining clientMsgChan into
@@ -528,9 +525,20 @@ func (c *Channel) messagePump() {
 			goto exit
 		}
 
+		if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
+			readChan = nil
+		} else {
+			readChan = c.backend.ReadChan()
+		}
+
+		if readChan == nil {
+			nsqLog.Logf("channel reader is holding: %v, %v", c.waitingConfirm,
+				c.name)
+		}
+
 		select {
 		case msg = <-c.requeuedMsgChan:
-		case data = <-c.backend.ReadChan():
+		case data = <-readChan:
 			if data.err != nil {
 				nsqLog.LogErrorf("failed to read message - %s", err)
 				// TODO: fix corrupt file from other replica.
@@ -538,12 +546,12 @@ func (c *Channel) messagePump() {
 				// may never be confirmed any more
 				c.backend.(*diskQueueReader).SkipToNext()
 				isSkipped = true
-				continue
+				continue LOOP
 			}
 			msg, err = decodeMessage(data.data)
 			if err != nil {
-				nsqLog.LogErrorf("failed to decode message - %s", err)
-				continue
+				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
+				continue LOOP
 			}
 			msg.offset = data.offset
 			msg.rawMoveSize = data.movedSize
@@ -555,10 +563,18 @@ func (c *Channel) messagePump() {
 			lastMsg = *msg
 		case <-c.exitChan:
 			goto exit
+		case <-c.tryReadBackend:
+			continue LOOP
 		}
 
+		if msg == nil {
+			continue
+		}
 		msg.Attempts++
+		//nsqLog.LogDebugf("push message to client chan : %v,, %v ",
+		//	msg.GetFullMsgID(), msg.offset)
 		c.clientMsgChan <- msg
+		msg = nil
 		// the client will call back to mark as in-flight w/ its info
 	}
 

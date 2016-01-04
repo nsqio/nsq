@@ -1592,7 +1592,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	opts.Logger = newTestLogger(b)
 	//opts.Logger = &levellogger.GLogger{}
 	//glog.SetFlags(2, "INFO", "./")
-	opts.LogLevel = 2
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1616,16 +1616,16 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 			err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
 			if err != nil {
 				b.Error(err.Error())
-			} else {
-				b.Logf("sub done ok")
 			}
 		}()
 		<-rdyChan
 	}
+	b.Logf("starting :%v", b.N)
 	b.StartTimer()
 
 	close(goChan)
 	wg.Wait()
+	b.Logf("done : %v", b.N)
 
 	b.StopTimer()
 	nsqd.Exit()
@@ -1646,6 +1646,18 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	<-goChan
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
+	done := make(chan bool)
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			select {
+			case <-done:
+				return
+			default:
+				rw.Flush()
+			}
+		}
+	}()
 	num := n / workers
 	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
@@ -1660,6 +1672,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			if !bytes.Equal(data, heartbeatBytes) {
 				return errors.New("got response not heartbeat:" + string(data))
 			}
+			rw.Flush()
 			continue
 		}
 		if frameType != frameTypeMessage {
@@ -1677,6 +1690,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			rw.Flush()
 		}
 	}
+	close(done)
 
 	return nil
 }
@@ -1703,7 +1717,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	opts.Logger = newTestLogger(b)
 	//opts.Logger = &levellogger.GLogger{}
 	//glog.SetFlags(2, "INFO", "./")
-	opts.LogLevel = 2
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

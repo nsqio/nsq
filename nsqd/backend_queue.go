@@ -38,7 +38,7 @@ type ReadResult struct {
 
 // for channel consumer
 type BackendQueueReader interface {
-	ReadChan() chan ReadResult
+	ReadChan() <-chan ReadResult
 	ConfirmRead(BackendOffset) error
 	Close() error
 	Depth() int64

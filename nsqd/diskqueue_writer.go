@@ -412,6 +412,7 @@ func (d *diskQueueWriter) ioLoop() {
 
 	syncTicker := time.NewTicker(d.syncTimeout)
 
+LOOP:
 	for {
 		// dont sync all the time :)
 		if count == d.syncEvery {
@@ -448,7 +449,7 @@ func (d *diskQueueWriter) ioLoop() {
 				d.needSync = true
 				if wait > 1 {
 					d.flushResponseChan <- d.sync()
-					continue
+					continue LOOP
 				}
 			}
 			d.flushResponseChan <- nil

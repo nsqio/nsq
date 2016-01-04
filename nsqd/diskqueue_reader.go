@@ -104,7 +104,6 @@ type diskQueueReader struct {
 	autoSkipError          bool
 	confirmChan            chan BackendOffset
 	confirmResponseChan    chan error
-	maxConfirmWin          BackendOffset
 }
 
 // newDiskQueue instantiates a new instance of diskQueueReader, retrieving metadata
@@ -130,7 +129,6 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		exitSyncChan:           make(chan int),
 		confirmChan:            make(chan BackendOffset),
 		confirmResponseChan:    make(chan error),
-		maxConfirmWin:          BackendOffset(10000),
 		syncEvery:              syncEvery,
 		syncTimeout:            syncTimeout,
 		autoSkipError:          autoSkip,
@@ -171,7 +169,7 @@ func (d *diskQueueReader) Depth() int64 {
 	return int64(d.virtualEnd - d.virtualConfirmedOffset)
 }
 
-func (d *diskQueueReader) ReadChan() chan ReadResult {
+func (d *diskQueueReader) ReadChan() <-chan ReadResult {
 	return d.readResultChan
 }
 
@@ -500,8 +498,8 @@ CheckFileOpen:
 	// (where readFileNum, readPos will actually be advanced)
 	oldPos := d.readPos
 	d.readPos.Pos = d.readPos.Pos + totalBytes
-	nsqLog.LogDebugf("=== read move forward: %v, %v, %v", oldPos,
-		d.virtualReadOffset, d.readPos)
+	//nsqLog.LogDebugf("=== read move forward: %v, %v, %v", oldPos,
+	//	d.virtualReadOffset, d.readPos)
 
 	d.virtualReadOffset += BackendOffset(totalBytes)
 
@@ -670,7 +668,12 @@ func (d *diskQueueReader) ioLoop() {
 	var syncerr error
 	var count int64
 	var r chan ReadResult
-	continueRead := true
+	lastDataNeedRead := false
+
+	maxConfirmWin := BackendOffset(10000 * d.maxMsgSize)
+	if maxConfirmWin > BackendOffset(d.maxBytesPerFile) {
+		maxConfirmWin = BackendOffset(d.maxBytesPerFile)
+	}
 
 	syncTicker := time.NewTicker(d.syncTimeout)
 
@@ -691,12 +694,14 @@ func (d *diskQueueReader) ioLoop() {
 
 		if rerr != nil {
 			r = nil
-		} else if d.virtualConfirmedOffset+d.maxConfirmWin < d.virtualReadOffset {
-			// too much waiting confirm, just hold on.
-			r = nil
 		} else {
-			if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
-				if continueRead {
+			if d.virtualConfirmedOffset+maxConfirmWin < d.virtualReadOffset {
+				// too much waiting confirm, just hold on.
+				nsqLog.LogDebugf("too much waiting confirm, diskreader is holding on:%v, %v",
+					d.virtualConfirmedOffset, d.virtualReadOffset)
+			}
+			if !lastDataNeedRead {
+				if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
 					dataRead = d.readOne()
 					rerr = dataRead.err
 					if rerr != nil {
@@ -708,12 +713,23 @@ func (d *diskQueueReader) ioLoop() {
 							continue
 						}
 					}
-					continueRead = false
+					lastDataNeedRead = true
+					r = d.readResultChan
+				} else {
+					r = nil
+					if count > 0 {
+						count = 0
+						d.needSync = true
+					}
 				}
-				r = d.readResultChan
 			} else {
-				r = nil
+				r = d.readResultChan
 			}
+		}
+
+		if r == nil {
+			nsqLog.Logf("diskreader(%s) is holding on:%v, %v", d.readerMetaName,
+				d.virtualConfirmedOffset, d.virtualReadOffset)
 		}
 
 		select {
@@ -724,7 +740,7 @@ func (d *diskQueueReader) ioLoop() {
 			if rerr == nil {
 				d.checkTailCorruption()
 			}
-			continueRead = true
+			lastDataNeedRead = false
 		case skipInfo := <-d.skipChan:
 			skiperr := d.internalSkipTo(skipInfo)
 			rerr = nil
@@ -733,6 +749,7 @@ func (d *diskQueueReader) ioLoop() {
 			count++
 			if d.endPos.FileNum != endPos.EndFileNum && endPos.EndPos == 0 {
 				// a new file for the position
+				count = 0
 				d.needSync = true
 			}
 			if d.readPos.FileNum > endPos.EndFileNum {
@@ -751,6 +768,7 @@ func (d *diskQueueReader) ioLoop() {
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:
+			count++
 			d.confirmResponseChan <- d.internalConfirm(confirmInfo)
 
 		case <-syncTicker.C:

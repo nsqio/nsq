@@ -38,7 +38,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	var err error
 	var line []byte
 	var zeroTime time.Time
-	left := bytes.NewBuffer(make([]byte, 100))
+	left := make([]byte, 100)
 
 	clientID := atomic.AddInt64(&p.ctx.nsqd.clientIDSequence, 1)
 	client := newClientV2(clientID, conn, p.ctx)
@@ -87,13 +87,13 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 				bytes.Equal(line[:3], []byte("REQ")) {
 				isSpecial = true
 				if len(line) < 20 {
-					left.Truncate(20 - len(line))
+					left = left[:20-len(line)]
 					nr := 0
-					nr, err = client.Reader.Read(left.Bytes())
+					nr, err = client.Reader.Read(left)
 					if err != nil {
 						nsqLog.LogErrorf("read param err:%v", err)
 					}
-					line = append(line, left.Bytes()[:nr]...)
+					line = append(line, left[:nr]...)
 					// read last real '\n'
 					extra, err := client.Reader.ReadSlice('\n')
 					if err != nil {
@@ -114,13 +114,13 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 				if bytes.Equal(line[:5], []byte("TOUCH")) {
 					isSpecial = true
 					if len(line) < 23 {
-						left.Truncate(23 - len(line))
+						left = left[:23-len(line)]
 						nr := 0
-						nr, err = client.Reader.Read(left.Bytes())
+						nr, err = client.Reader.Read(left)
 						if err != nil {
 							nsqLog.Logf("TOUCH param err:%v", err)
 						}
-						line = append(line, left.Bytes()[:nr]...)
+						line = append(line, left[:nr]...)
 					}
 					params = append(params, line[:5])
 					if len(line) >= 23 {
@@ -342,6 +342,8 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 		case <-client.ReadyStateChan:
 		case subChannel = <-subEventChan:
 			// you can't SUB anymore
+			nsqLog.Logf("client %v sub to channel: %v", client.ID,
+				subChannel.name)
 			subEventChan = nil
 		case identifyData := <-identifyEventChan:
 			// you can't IDENTIFY anymore
@@ -747,7 +749,7 @@ func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
-	nsqLog.LogDebugf("fin message: %v", id)
+	//nsqLog.LogDebugf("fin message: %v", id)
 	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromFullMsgID(*id))
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",

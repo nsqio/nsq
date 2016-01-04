@@ -59,7 +59,7 @@ func (d *dummyBackendQueueWriter) Flush() error {
 	return nil
 }
 
-func (d *dummyBackendQueueReader) ReadChan() chan ReadResult {
+func (d *dummyBackendQueueReader) ReadChan() <-chan ReadResult {
 	return d.readResultChan
 }
 

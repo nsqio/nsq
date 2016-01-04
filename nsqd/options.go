@@ -41,6 +41,7 @@ type Options struct {
 	MaxMsgSize    int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
 	MaxBodySize   int64         `flag:"max-body-size"`
 	MaxReqTimeout time.Duration `flag:"max-req-timeout"`
+	MaxConfirmWin int64         `flag:"max-confirm-win"`
 	ClientTimeout time.Duration
 
 	// client overridable configuration options
@@ -48,7 +49,6 @@ type Options struct {
 	MaxRdyCount            int64         `flag:"max-rdy-count"`
 	MaxOutputBufferSize    int64         `flag:"max-output-buffer-size"`
 	MaxOutputBufferTimeout time.Duration `flag:"max-output-buffer-timeout"`
-	MaxConfirmWin          int64         `flag:"max-confirm-win"`
 
 	// statsd integration
 	StatsdAddress  string        `flag:"statsd-address"`
@@ -120,7 +120,7 @@ func NewOptions() *Options {
 		MaxRdyCount:            2500,
 		MaxOutputBufferSize:    64 * 1024,
 		MaxOutputBufferTimeout: 1 * time.Second,
-		MaxConfirmWin:          50000,
+		MaxConfirmWin:          500,
 
 		StatsdPrefix:   "nsq.%s",
 		StatsdInterval: 60 * time.Second,
