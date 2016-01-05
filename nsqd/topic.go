@@ -27,7 +27,7 @@ type Topic struct {
 	channelMap        map[string]*Channel
 	backend           BackendQueueWriter
 	exitChan          chan int
-	channelUpdateChan chan int
+	channelUpdateChan chan []*Channel
 	flushChan         chan int
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
@@ -55,7 +55,7 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 		partition:         part,
 		channelMap:        make(map[string]*Channel),
 		exitChan:          make(chan int),
-		channelUpdateChan: make(chan int),
+		channelUpdateChan: make(chan []*Channel),
 		flushChan:         make(chan int, 10),
 		ctx:               ctx,
 		deleteCallback:    deleteCallback,
@@ -117,13 +117,28 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 	if isNew {
 		// update messagePump state
-		select {
-		case t.channelUpdateChan <- 1:
-		case <-t.exitChan:
-		}
+		t.NotifyReloadChannels()
 	}
 
 	return channel
+}
+
+func (t *Topic) NotifyReloadChannels() {
+	t.RLock()
+
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return
+	}
+	chans := make([]*Channel, 0, len(t.channelMap))
+	for _, c := range t.channelMap {
+		chans = append(chans, c)
+	}
+	t.RUnlock()
+
+	select {
+	case t.channelUpdateChan <- chans:
+	case <-t.exitChan:
+	}
 }
 
 // this expects the caller to handle locking
@@ -164,6 +179,10 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	delete(t.channelMap, channelName)
 	// not defered so that we can continue while the channel async closes
 	numChannels := len(t.channelMap)
+	chans := make([]*Channel, 0, len(t.channelMap))
+	for _, c := range t.channelMap {
+		chans = append(chans, c)
+	}
 	t.Unlock()
 
 	nsqLog.Logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)
@@ -172,9 +191,12 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// (so that we dont leave any messages around)
 	channel.Delete()
 
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return errors.New("exiting")
+	}
 	// update messagePump state
 	select {
-	case t.channelUpdateChan <- 1:
+	case t.channelUpdateChan <- chans:
 	case <-t.exitChan:
 	}
 
@@ -238,28 +260,18 @@ func (t *Topic) put(m *Message) error {
 
 // messagePump selects over the in-memory and backend queue and
 // writes messages to every channel for this topic
+// Note: never use Lock here.
 func (t *Topic) messagePump() {
 	var err error
 	var chans []*Channel
 	flushCnt := 0
 
-	t.RLock()
-	for _, c := range t.channelMap {
-		chans = append(chans, c)
-	}
-	t.RUnlock()
 	var lastEnd BackendQueueEnd
 
 	for {
 		select {
-		case <-t.channelUpdateChan:
-			chans = chans[:0]
-			t.RLock()
-			for _, c := range t.channelMap {
-				chans = append(chans, c)
-			}
+		case chans = <-t.channelUpdateChan:
 			lastEnd = nil
-			t.RUnlock()
 		case flag := <-t.flushChan:
 			flushCnt++
 			if flag > 1 {
@@ -308,6 +320,8 @@ func (t *Topic) Close() error {
 }
 
 func (t *Topic) exit(deleted bool) error {
+	t.Lock()
+	defer t.Unlock()
 	if !atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
@@ -328,15 +342,12 @@ func (t *Topic) exit(deleted bool) error {
 	t.waitGroup.Wait()
 
 	if deleted {
-		t.Lock()
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
 			channel.Delete()
 		}
-		t.Unlock()
-
 		// empty the queue (deletes the backend files, too)
-		t.Empty()
+		t.empty()
 		return t.backend.Delete()
 	}
 
@@ -354,12 +365,15 @@ func (t *Topic) exit(deleted bool) error {
 	return t.backend.Close()
 }
 
-func (t *Topic) Empty() error {
+func (t *Topic) empty() error {
 	return t.backend.Empty()
 }
 
 func (t *Topic) ForceFlush() {
-	t.flushChan <- 2
+	select {
+	case t.flushChan <- 2:
+	default:
+	}
 }
 
 func (t *Topic) flush() error {

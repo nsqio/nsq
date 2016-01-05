@@ -481,10 +481,7 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	// from lookupd...
 	//
 	// update messagePump state
-	select {
-	case t.channelUpdateChan <- 1:
-	case <-t.exitChan:
-	}
+	t.NotifyReloadChannels()
 	return t
 }
 

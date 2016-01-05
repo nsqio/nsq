@@ -175,7 +175,7 @@ func (c *Channel) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		c.Empty()
+		c.empty()
 		return c.backend.Delete()
 	}
 
@@ -184,7 +184,7 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
-func (c *Channel) Empty() error {
+func (c *Channel) empty() error {
 	c.Lock()
 	defer c.Unlock()
 

@@ -218,6 +218,12 @@ func (d *diskQueueReader) exit(deleted bool) error {
 
 	if deleted {
 		d.skipToEndofFile()
+		err := os.Remove(d.metaDataFileName())
+
+		if err != nil && !os.IsNotExist(err) {
+			nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.readerMetaName, err)
+			return err
+		}
 	}
 	return nil
 }

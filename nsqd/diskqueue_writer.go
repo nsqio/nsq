@@ -149,6 +149,9 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 		d.writeFile = nil
 	}
 
+	if deleted {
+		return d.deleteAllFiles(deleted)
+	}
 	return nil
 }
 
@@ -168,16 +171,17 @@ func (d *diskQueueWriter) Empty() error {
 	return <-d.emptyResponseChan
 }
 
-func (d *diskQueueWriter) deleteAllFiles() error {
-	err := d.skipToNextRWFile()
+func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
+	d.skipToNextRWFile()
 
-	//innerErr := os.Remove(d.metaDataFileName())
-	//if innerErr != nil && !os.IsNotExist(innerErr) {
-	//	nsqLog.Logf("ERROR: diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
-	//	return innerErr
-	//}
-
-	return err
+	if deleted {
+		innerErr := os.Remove(d.metaDataFileName())
+		if innerErr != nil && !os.IsNotExist(innerErr) {
+			nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
+			return innerErr
+		}
+	}
+	return nil
 }
 
 func (d *diskQueueWriter) skipToNextRWFile() error {
@@ -429,7 +433,7 @@ LOOP:
 
 		select {
 		case <-d.emptyChan:
-			d.emptyResponseChan <- d.deleteAllFiles()
+			d.emptyResponseChan <- d.deleteAllFiles(false)
 			count = 0
 		case <-d.getEndChan:
 			d.endResponseChan <- d.internalGetQueueReadEnd()

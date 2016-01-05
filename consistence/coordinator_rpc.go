@@ -15,11 +15,15 @@ var (
 
 type ErrRPCRetCode int
 
-var (
-	RpcNoErr     = ErrRPCRetCode(0)
-	RpcCommonErr = ErrRPCRetCode(1)
+const (
+	RpcNoErr ErrRPCRetCode = iota
+	RpcCommonErr
+)
 
-	RpcErrLeavingISRWait = ErrRPCRetCode(10)
+const (
+	RpcErrLeavingISRWait = iota + 10
+	RpcErrNoLeader
+	RpcErrShouldTryLeader
 )
 
 var gRPCRetCodeMap map[error]ErrRPCRetCode

@@ -140,7 +140,7 @@ func TestChannelEmpty(t *testing.T) {
 	equal(t, len(channel.inFlightMessages), 24)
 	equal(t, len(channel.inFlightPQ), 24)
 
-	channel.Empty()
+	channel.empty()
 
 	equal(t, len(channel.inFlightMessages), 0)
 	equal(t, len(channel.inFlightPQ), 0)
@@ -175,7 +175,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		equal(t, stats.InFlightCount, int64(25))
 	}
 
-	channel.Empty()
+	channel.empty()
 
 	for _, cl := range channel.clients {
 		stats := cl.Stats()

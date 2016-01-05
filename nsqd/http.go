@@ -64,7 +64,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, http_api.DeprecatedAPI, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, http_api.DeprecatedAPI, log, http_api.V1))
-	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, http_api.DeprecatedAPI, log, http_api.V1))
+	//router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, http_api.DeprecatedAPI, log, http_api.V1))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
@@ -305,7 +305,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
-	err = topic.Empty()
+	err = topic.empty()
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
@@ -339,25 +339,6 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 	topic.GetChannel(channelName)
-	return nil, nil
-}
-
-func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
-	if err != nil {
-		return nil, err
-	}
-
-	channel, err := topic.GetExistingChannel(channelName)
-	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
-	}
-
-	err = channel.Empty()
-	if err != nil {
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-
 	return nil, nil
 }
 
