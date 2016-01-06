@@ -58,7 +58,8 @@ type clientV2 struct {
 	FinishCount   uint64
 	RequeueCount  uint64
 
-	sync.RWMutex
+	writeLock sync.RWMutex
+	metaLock  sync.RWMutex
 
 	ID        int64
 	ctx       *context
@@ -166,11 +167,11 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 		clientID = data.ShortID
 	}
 
-	c.Lock()
+	c.metaLock.Lock()
 	c.ClientID = clientID
 	c.Hostname = hostname
 	c.UserAgent = data.UserAgent
-	c.Unlock()
+	c.metaLock.Unlock()
 
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
@@ -214,7 +215,7 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 }
 
 func (c *clientV2) Stats() ClientStats {
-	c.RLock()
+	c.metaLock.RLock()
 	// TODO: deprecated, remove in 1.0
 	name := c.ClientID
 
@@ -227,7 +228,7 @@ func (c *clientV2) Stats() ClientStats {
 		identity = c.AuthState.Identity
 		identityURL = c.AuthState.IdentityURL
 	}
-	c.RUnlock()
+	c.metaLock.RUnlock()
 	stats := ClientStats{
 		// TODO: deprecated, remove in 1.0
 		Name: name,
@@ -392,8 +393,8 @@ func (c *clientV2) UnPause() {
 }
 
 func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case desiredInterval == -1:
@@ -426,8 +427,8 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 	}
 
 	if size > 0 {
-		c.Lock()
-		defer c.Unlock()
+		c.writeLock.Lock()
+		defer c.writeLock.Unlock()
 		c.OutputBufferSize = size
 		err := c.Writer.Flush()
 		if err != nil {
@@ -440,8 +441,8 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 }
 
 func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case desiredTimeout == -1:
@@ -467,8 +468,8 @@ func (c *clientV2) SetSampleRate(sampleRate int32) error {
 }
 
 func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case msgTimeout == 0:
@@ -484,8 +485,8 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 }
 
 func (c *clientV2) UpgradeTLS() error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	tlsConn := tls.Server(c.Conn, c.ctx.nsqd.tlsConfig)
 	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -504,8 +505,8 @@ func (c *clientV2) UpgradeTLS() error {
 }
 
 func (c *clientV2) UpgradeDeflate(level int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	conn := c.Conn
 	if c.tlsConn != nil {
@@ -524,8 +525,8 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 }
 
 func (c *clientV2) UpgradeSnappy() error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	conn := c.Conn
 	if c.tlsConn != nil {
