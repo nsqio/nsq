@@ -382,7 +382,10 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 	c.removeFromInFlightPQ(msg)
 
 	if timeout == 0 {
-		return c.doRequeue(msg)
+		c.exitMutex.RLock()
+		err := c.doRequeue(msg)
+		c.exitMutex.RUnlock()
+		return err
 	}
 
 	// deferred requeue
@@ -442,12 +445,9 @@ func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) erro
 }
 
 // doRequeue performs the low level operations to requeue a message
+//
+// Callers of this method need to ensure that a simultaneous exit will not occur
 func (c *Channel) doRequeue(m *Message) error {
-	c.RLock()
-	defer c.RUnlock()
-	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	err := c.put(m)
 	if err != nil {
 		return err
