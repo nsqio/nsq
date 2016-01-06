@@ -458,31 +458,31 @@ func (c *Channel) doRequeue(m *Message) error {
 
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
 func (c *Channel) pushInFlightMessage(msg *Message) error {
-	c.Lock()
+	c.inFlightMutex.Lock()
 	_, ok := c.inFlightMessages[msg.ID]
 	if ok {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return errors.New("ID already in flight")
 	}
 	c.inFlightMessages[msg.ID] = msg
-	c.Unlock()
+	c.inFlightMutex.Unlock()
 	return nil
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
 func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, error) {
-	c.Lock()
+	c.inFlightMutex.Lock()
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return nil, errors.New("ID not in flight")
 	}
 	if msg.clientID != clientID {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return nil, errors.New("client does not own message")
 	}
 	delete(c.inFlightMessages, id)
-	c.Unlock()
+	c.inFlightMutex.Unlock()
 	return msg, nil
 }
 
@@ -504,39 +504,36 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 }
 
 func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
-	c.Lock()
-	defer c.Unlock()
-
+	c.deferredMutex.Lock()
 	// TODO: these map lookups are costly
 	id := item.Value.(*Message).ID
 	_, ok := c.deferredMessages[id]
 	if ok {
+		c.deferredMutex.Unlock()
 		return errors.New("ID already deferred")
 	}
 	c.deferredMessages[id] = item
-
+	c.deferredMutex.Unlock()
 	return nil
 }
 
 func (c *Channel) popDeferredMessage(id MessageID) (*pqueue.Item, error) {
-	c.Lock()
-	defer c.Unlock()
-
+	c.deferredMutex.Lock()
 	// TODO: these map lookups are costly
 	item, ok := c.deferredMessages[id]
 	if !ok {
+		c.deferredMutex.Unlock()
 		return nil, errors.New("ID not deferred")
 	}
 	delete(c.deferredMessages, id)
-
+	c.deferredMutex.Unlock()
 	return item, nil
 }
 
 func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	c.deferredMutex.Lock()
-	defer c.deferredMutex.Unlock()
-
 	heap.Push(&c.deferredPQ, item)
+	c.deferredMutex.Unlock()
 }
 
 // messagePump reads messages from either memory or backend and sends
