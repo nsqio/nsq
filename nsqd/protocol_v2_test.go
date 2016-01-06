@@ -580,9 +580,9 @@ func TestDPUB(t *testing.T) {
 	time.Sleep(25 * time.Millisecond)
 
 	ch := nsqd.GetTopic(topicName).GetChannel("ch")
-	ch.Lock()
+	ch.deferredMutex.Lock()
 	numDef := len(ch.deferredMessages)
-	ch.Unlock()
+	ch.deferredMutex.Unlock()
 	equal(t, numDef, 1)
 
 	// duration out of range
@@ -1255,9 +1255,9 @@ func TestSampling(t *testing.T) {
 	}()
 	<-doneChan
 
-	channel.Lock()
+	channel.inFlightMutex.Lock()
 	numInFlight := len(channel.inFlightMessages)
-	channel.Unlock()
+	channel.inFlightMutex.Unlock()
 
 	equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
 	equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)
