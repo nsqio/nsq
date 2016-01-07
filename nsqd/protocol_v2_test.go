@@ -25,7 +25,7 @@ import (
 
 	//"github.com/absolute8511/glog"
 	"github.com/absolute8511/go-nsq"
-	//"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/mreiferson/go-snappystream"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -1333,7 +1333,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	_, err = nsq.Ready(0).WriteTo(conn)
 	equal(t, err, nil)
 
-	time.Sleep(1100 * time.Millisecond)
+	time.Sleep(1100*time.Millisecond + opts.QueueScanInterval)
 
 	_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 	equal(t, err, nil)
@@ -1342,7 +1342,15 @@ func TestClientMsgTimeout(t *testing.T) {
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	equal(t, frameType, frameTypeError)
 	equal(t, string(data),
-		fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.GetFullMsgID()))
+		fmt.Sprintf("E_FIN_FAILED FIN %v failed ID not in flight", msgOut.GetFullMsgID()))
+}
+
+// TODO:
+func TestOutofOrderFin(t *testing.T) {
+}
+
+// fail to finish some messages and wait server requeue.
+func TestTimeoutFin(t *testing.T) {
 }
 
 func TestBadFin(t *testing.T) {
@@ -1485,7 +1493,9 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
-	nsqd := New(opts)
+	_ = &levellogger.GLogger{}
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	ctx := &context{nsqd}
 	p := &protocolV2{ctx}
 	c := newClientV2(0, nil, ctx)
@@ -1590,9 +1600,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
-	//opts.Logger = &levellogger.GLogger{}
+	opts.Logger = &levellogger.GLogger{}
 	//glog.SetFlags(2, "INFO", "./")
-	opts.LogLevel = 0
+	opts.LogLevel = 2
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1604,7 +1614,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 		topic.PutMessage(msg)
 	}
 	topic.flush()
-	topic.GetChannel("ch")
+	topic.GetChannel("ch").enableTrace = false
 	b.SetBytes(int64(len(msg)))
 	goChan := make(chan int)
 	rdyChan := make(chan int)
@@ -1615,6 +1625,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 			defer wg.Done()
 			err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
 			if err != nil {
+				opts.Logger.Output(1, fmt.Sprintf("%v", err))
 				b.Error(err.Error())
 			}
 		}()
@@ -1647,17 +1658,21 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
 	done := make(chan bool)
+	syncDone := make(chan bool)
 	go func() {
+		defer close(syncDone)
+		ticker := time.NewTicker(time.Second * 1)
 		for {
-			time.Sleep(time.Second)
 			select {
 			case <-done:
 				return
-			default:
+			case <-ticker.C:
 				rw.Flush()
 			}
 		}
 	}()
+	traceLog := &levellogger.GLogger{}
+	traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
 	num := n / workers
 	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
@@ -1672,6 +1687,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			if !bytes.Equal(data, heartbeatBytes) {
 				return errors.New("got response not heartbeat:" + string(data))
 			}
+			nsq.Nop().WriteTo(rw)
 			rw.Flush()
 			continue
 		}
@@ -1691,7 +1707,11 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		}
 	}
 	close(done)
+	<-syncDone
 
+	rw.Flush()
+	conn.Close()
+	traceLog.Output(1, fmt.Sprintf("done from client: %v", conn.LocalAddr()))
 	return nil
 }
 

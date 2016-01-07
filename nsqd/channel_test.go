@@ -104,7 +104,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	// the in flight worker has a resolution of 100ms so we need to wait
 	// at least that much longer than our msgTimeout (in worst case)
-	time.Sleep(4 * opts.MsgTimeout)
+	time.Sleep(4*opts.MsgTimeout + opts.QueueScanInterval)
 
 	channel.Lock()
 	inFlightMsgs = len(channel.inFlightMessages)

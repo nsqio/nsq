@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"runtime"
+	//"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -208,9 +208,5 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 		topic := nsqd.GetTopic(topicName, 0)
 		msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
-	}
-
-	for {
-		runtime.Gosched()
 	}
 }
