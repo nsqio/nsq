@@ -49,7 +49,8 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	// and avoid a potential race with IDENTIFY (where a client
 	// could have changed or disabled said attributes)
 	messagePumpStartedChan := make(chan bool)
-	go p.messagePump(client, messagePumpStartedChan)
+	msgPumpStoppedChan := make(chan bool)
+	go p.messagePump(client, messagePumpStartedChan, msgPumpStoppedChan)
 	<-messagePumpStartedChan
 
 	for {
@@ -186,8 +187,10 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	}
 
 	nsqLog.Logf("PROTOCOL(V2): client [%s] exiting ioloop", client)
-	conn.Close()
 	close(client.ExitChan)
+	<-msgPumpStoppedChan
+
+	conn.Close()
 
 	if client.Channel != nil {
 		client.Channel.RequeueClientMessages(client.ID)
@@ -198,11 +201,6 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 }
 
 func (p *protocolV2) SendMessage(client *clientV2, msg *Message, buf *bytes.Buffer) error {
-	if p.ctx.nsqd.getOpts().Verbose {
-		nsqLog.Logf("PROTOCOL(V2): writing msg(%s) to client(%s) - %s",
-			msg.ID, client, msg.Body)
-	}
-
 	buf.Reset()
 	_, err := msg.WriteTo(buf)
 	if err != nil {
@@ -275,7 +273,8 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
+func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool,
+	stoppedChan chan bool) {
 	var err error
 	var buf bytes.Buffer
 	var clientMsgChan chan *Message
@@ -332,6 +331,8 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 		}
 
 		select {
+		case <-client.ExitChan:
+			goto exit
 		case <-flusherChan:
 			// if this case wins, we're either starved
 			// or we won the race between other channels...
@@ -402,8 +403,6 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				goto exit
 			}
 			flushed = false
-		case <-client.ExitChan:
-			goto exit
 		}
 	}
 
@@ -414,6 +413,7 @@ exit:
 	if err != nil {
 		nsqLog.Logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
 	}
+	close(stoppedChan)
 }
 
 func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error) {
@@ -451,9 +451,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
-	if p.ctx.nsqd.getOpts().Verbose {
-		nsqLog.Logf("PROTOCOL(V2): [%s] %+v", client, identifyData)
-	}
+	nsqLog.LogDebugf("PROTOCOL(V2): [%s] %+v", client, identifyData)
 
 	err = client.Identify(identifyData)
 	if err != nil {

@@ -1657,20 +1657,6 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	<-goChan
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
-	done := make(chan bool)
-	syncDone := make(chan bool)
-	go func() {
-		defer close(syncDone)
-		ticker := time.NewTicker(time.Second * 1)
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				rw.Flush()
-			}
-		}
-	}()
 	traceLog := &levellogger.GLogger{}
 	traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
 	num := n / workers
@@ -1699,6 +1685,9 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			return err
 		}
 		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
+		if i%2 == 0 {
+			rw.Flush()
+		}
 		if (i+1)%rdyCount == 0 || i+1 == num {
 			if i+1 == num {
 				nsq.Ready(0).WriteTo(conn)
@@ -1706,8 +1695,6 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			rw.Flush()
 		}
 	}
-	close(done)
-	<-syncDone
 
 	rw.Flush()
 	conn.Close()

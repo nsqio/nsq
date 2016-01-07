@@ -326,10 +326,8 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 	reduced := false
 	for {
 		if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-			if m.ID < 10 {
-				nsqLog.LogDebugf("move confirm: %v, msg: %v",
-					c.currentLastConfirmed, m.ID)
-			}
+			//nsqLog.LogDebugf("move confirm: %v, msg: %v",
+			//    c.currentLastConfirmed, m.ID)
 			c.currentLastConfirmed += m.rawMoveSize
 			delete(c.confirmedMsgs, m.offset)
 			reduced = true
@@ -649,9 +647,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v, total fin: %v, fin err: %v",
 					flightCnt, atomic.LoadInt32(&c.waitingConfirm), c.currentLastConfirmed,
 					len(c.finMsgs), len(c.finErrMsgs))
-				for offset, msg := range c.confirmedMsgs {
-					nsqLog.LogDebugf("first waiting confirm: %v, %v, %v", offset,
-						msg.rawMoveSize, msg.ID)
+				for _, msg := range c.confirmedMsgs {
 					waitID := MessageID(int64(c.currentLastConfirmed)/int64(msg.rawMoveSize) + 1)
 					if v, ok := c.finMsgs[waitID]; ok {
 						nsqLog.LogDebugf("waitID in finished : %v, %v",
@@ -690,6 +686,8 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if ok {
 			client.TimedOutMessage()
 		}
+		nsqLog.LogDebugf("message %v, offset: %v timeout, client: %v",
+			msg.ID, msg.offset, msg.clientID)
 		c.doRequeue(msg)
 	}
 
