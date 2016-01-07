@@ -1600,9 +1600,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
-	opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.GLogger{}
 	//glog.SetFlags(2, "INFO", "./")
-	opts.LogLevel = 2
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1657,8 +1657,8 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	<-goChan
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
-	traceLog := &levellogger.GLogger{}
-	traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
+	//traceLog := &levellogger.GLogger{}
+	//traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
 	num := n / workers
 	for i := 0; i < num; i++ {
 		resp, err := nsq.ReadResponse(rw)
@@ -1698,7 +1698,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 
 	rw.Flush()
 	conn.Close()
-	traceLog.Output(1, fmt.Sprintf("done from client: %v", conn.LocalAddr()))
+	//traceLog.Output(1, fmt.Sprintf("done from client: %v", conn.LocalAddr()))
 	return nil
 }
 

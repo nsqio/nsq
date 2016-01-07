@@ -349,10 +349,10 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 		}
 	}
 	if msg.offset < c.currentLastConfirmed {
-		//nsqLog.Logf("confirmed msg is less than current confirmed offset: %v, %v", msg, c.currentLastConfirmed)
+		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, c.currentLastConfirmed)
 	} else if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmWin {
-		//nsqLog.Logf("lots of confirmed messages : %v, %v",
-		//	len(c.confirmedMsgs), c.currentLastConfirmed)
+		nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
+			len(c.confirmedMsgs), c.currentLastConfirmed)
 
 		//TODO: found the message in the flight with offset c.currentLastConfirmed and
 		//requeue to client again.
@@ -569,7 +569,7 @@ LOOP:
 		}
 
 		if readChan == nil {
-			nsqLog.Logf("channel reader is holding: %v, %v",
+			nsqLog.LogDebugf("channel reader is holding: %v, %v",
 				atomic.LoadInt32(&c.waitingConfirm),
 				c.name)
 		}
@@ -609,8 +609,6 @@ LOOP:
 			continue
 		}
 		msg.Attempts++
-		//nsqLog.LogDebugf("push message to client chan : %v,, %v ",
-		//	msg.GetFullMsgID(), msg.offset)
 		select {
 		case c.clientMsgChan <- msg:
 		case <-c.exitChan:
@@ -642,35 +640,36 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		c.inFlightMutex.Unlock()
 
 		if msg == nil {
-			c.confirmMutex.Lock()
 			if atomic.LoadInt32(&c.waitingConfirm) > 1 || flightCnt > 1 {
-				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v, total fin: %v, fin err: %v",
-					flightCnt, atomic.LoadInt32(&c.waitingConfirm), c.currentLastConfirmed,
-					len(c.finMsgs), len(c.finErrMsgs))
-				for _, msg := range c.confirmedMsgs {
-					waitID := MessageID(int64(c.currentLastConfirmed)/int64(msg.rawMoveSize) + 1)
-					if v, ok := c.finMsgs[waitID]; ok {
-						nsqLog.LogDebugf("waitID in finished : %v, %v",
-							waitID, v.clientID)
-					}
-					if v, ok := c.finErrMsgs[waitID]; ok {
-						nsqLog.LogDebugf("waitID in fin error list: %v, %v",
-							waitID, v)
-					}
-					if v, ok := c.inFlightMessages[waitID]; ok {
-						nsqLog.LogDebugf("waitID in inflight: %v, %v", waitID,
-							v.clientID)
-					}
-					if _, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-						nsqLog.LogDebugf("waitID in confirmed: %v", waitID)
-					}
-					if _, ok := c.waitingRequeueMsgs[waitID]; ok {
-						nsqLog.LogDebugf("waitID in requeue: %v", waitID)
-					}
-					break
-				}
+				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
+					flightCnt, atomic.LoadInt32(&c.waitingConfirm),
+					c.currentLastConfirmed)
+				//c.confirmMutex.Lock()
+				//nsqLog.LogDebugf("total fin: %v, fin err: %v", len(c.finMsgs), len(c.finErrMsgs))
+				//for _, msg := range c.confirmedMsgs {
+				//	waitID := MessageID(int64(c.currentLastConfirmed)/int64(msg.rawMoveSize) + 1)
+				//	if v, ok := c.finMsgs[waitID]; ok {
+				//		nsqLog.LogDebugf("waitID in finished : %v, %v",
+				//			waitID, v.clientID)
+				//	}
+				//	if v, ok := c.finErrMsgs[waitID]; ok {
+				//		nsqLog.LogDebugf("waitID in fin error list: %v, %v",
+				//			waitID, v)
+				//	}
+				//	if v, ok := c.inFlightMessages[waitID]; ok {
+				//		nsqLog.LogDebugf("waitID in inflight: %v, %v", waitID,
+				//			v.clientID)
+				//	}
+				//	if _, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
+				//		nsqLog.LogDebugf("waitID in confirmed: %v", waitID)
+				//	}
+				//	if _, ok := c.waitingRequeueMsgs[waitID]; ok {
+				//		nsqLog.LogDebugf("waitID in requeue: %v", waitID)
+				//	}
+				//	break
+				//}
+				//c.confirmMutex.Unlock()
 			}
-			c.confirmMutex.Unlock()
 			goto exit
 		}
 		dirty = true
