@@ -103,7 +103,7 @@ func NewOptions() *Options {
 		SyncEvery:       2500,
 		SyncTimeout:     2 * time.Second,
 
-		QueueScanInterval:        100 * time.Millisecond,
+		QueueScanInterval:        500 * time.Millisecond,
 		QueueScanRefreshInterval: 5 * time.Second,
 		QueueScanSelectionCount:  20,
 		QueueScanWorkerPoolMax:   4,

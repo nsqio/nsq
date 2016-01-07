@@ -179,8 +179,8 @@ func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) {
 	if !ok || end == nil {
 		return
 	}
-	d.Lock()
-	defer d.Unlock()
+	d.RLock()
+	defer d.RUnlock()
 
 	if d.exitFlag == 1 {
 		return
@@ -336,7 +336,6 @@ func (d *diskQueueReader) stepOffset(cur diskQueueOffset, step int64, maxStep di
 }
 
 func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
-	nsqLog.LogDebugf("confirming to offset: %v", offset)
 	if int64(offset) == -1 {
 		d.confirmedOffset = d.readPos
 		d.virtualConfirmedOffset = d.virtualReadOffset
@@ -357,6 +356,7 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
 	}
 	d.confirmedOffset = newConfirm
 	d.virtualConfirmedOffset = offset
+	//nsqLog.LogDebugf("confirmed to offset: %v", offset)
 	return nil
 }
 
@@ -703,8 +703,8 @@ func (d *diskQueueReader) ioLoop() {
 		} else {
 			if d.virtualConfirmedOffset+maxConfirmWin < d.virtualReadOffset {
 				// too much waiting confirm, just hold on.
-				nsqLog.LogDebugf("too much waiting confirm, diskreader is holding on:%v, %v",
-					d.virtualConfirmedOffset, d.virtualReadOffset)
+				//nsqLog.LogDebugf("too much waiting confirm :%v, %v",
+				//d.virtualConfirmedOffset, d.virtualReadOffset)
 			}
 			if !lastDataNeedRead {
 				if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
@@ -734,8 +734,8 @@ func (d *diskQueueReader) ioLoop() {
 		}
 
 		if r == nil {
-			nsqLog.Logf("diskreader(%s) is holding on:%v, %v", d.readerMetaName,
-				d.virtualConfirmedOffset, d.virtualReadOffset)
+			//nsqLog.LogDebugf("diskreader(%s) is holding on:%v, %v", d.readerMetaName,
+			//	d.virtualConfirmedOffset, d.virtualReadOffset)
 		}
 
 		select {
@@ -790,5 +790,5 @@ func (d *diskQueueReader) ioLoop() {
 exit:
 	nsqLog.Logf("DISKQUEUE(%s): closing ... ioLoop", d.readerMetaName)
 	syncTicker.Stop()
-	d.exitSyncChan <- 1
+	close(d.exitSyncChan)
 }

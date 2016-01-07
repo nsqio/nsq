@@ -153,13 +153,15 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		response, err = p.Exec(client, params)
 		if err != nil {
 			ctx := ""
-			nsqLog.LogErrorf("Error response for [%s] - %s - %s", client, err, ctx)
 
 			if childErr, ok := err.(protocol.ChildErr); ok {
 				if parentErr := childErr.Parent(); parentErr != nil {
 					ctx = " - " + parentErr.Error()
 				}
 			}
+
+			nsqLog.LogWarningf("Error response for [%s] - %s - %s, rawline: %v",
+				client, err, ctx, line)
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
@@ -183,10 +185,12 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	nsqLog.Logf("PROTOCOL(V2): [%s] exiting ioloop", client)
+	nsqLog.Logf("PROTOCOL(V2): client [%s] exiting ioloop", client)
 	conn.Close()
 	close(client.ExitChan)
+
 	if client.Channel != nil {
+		client.Channel.RequeueClientMessages(client.ID)
 		client.Channel.RemoveClient(client.ID)
 	}
 
@@ -409,9 +413,6 @@ exit:
 	outputBufferTicker.Stop()
 	if err != nil {
 		nsqLog.Logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
-	}
-	if subChannel != nil {
-		subChannel.RequeueClientMessages(client.ID)
 	}
 }
 
@@ -736,24 +737,31 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
+		nsqLog.Logf("FIN error at state: %v", state)
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot FIN in current state")
 	}
 
 	if len(params) < 2 {
+		nsqLog.Logf("FIN error params: %v", params)
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
 	}
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
-		nsqLog.Logf("FIN error: %v", params[1])
+		nsqLog.Logf("FIN error: %v, %v", params[1], err)
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
 	}
 
-	//nsqLog.LogDebugf("fin message: %v", id)
+	if client.Channel == nil {
+		nsqLog.Logf("FIN error no channel: %v", GetMessageIDFromFullMsgID(*id))
+		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+	}
 	err = client.Channel.FinishMessage(client.ID, GetMessageIDFromFullMsgID(*id))
 	if err != nil {
+		nsqLog.Logf("FIN error : %v, err: %v", GetMessageIDFromFullMsgID(*id),
+			err)
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
-			fmt.Sprintf("FIN %s failed %s", *id, err.Error()))
+			fmt.Sprintf("FIN %v failed %s", *id, err.Error()))
 	}
 
 	client.FinishedMessage()
@@ -788,10 +796,13 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.ctx.nsqd.getOpts().MaxReqTimeout))
 	}
 
+	if client.Channel == nil {
+		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+	}
 	err = client.Channel.RequeueMessage(client.ID, GetMessageIDFromFullMsgID(*id), timeoutDuration)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
-			fmt.Sprintf("REQ %s failed %s", *id, err.Error()))
+			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}
 
 	client.RequeuedMessage()
@@ -939,10 +950,14 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	client.RLock()
 	msgTimeout := client.MsgTimeout
 	client.RUnlock()
+
+	if client.Channel == nil {
+		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+	}
 	err = client.Channel.TouchMessage(client.ID, GetMessageIDFromFullMsgID(*id), msgTimeout)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_TOUCH_FAILED",
-			fmt.Sprintf("TOUCH %s failed %s", *id, err.Error()))
+			fmt.Sprintf("TOUCH %v failed %s", *id, err.Error()))
 	}
 
 	return nil, nil
