@@ -39,6 +39,7 @@ type Topic struct {
 	ctx         *context
 	msgIDCursor uint64
 	needFlush   int32
+	enableTrace bool
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -255,14 +256,28 @@ func (t *Topic) put(m *Message) error {
 	case t.flushChan <- 1:
 	default:
 	}
+	if t.enableTrace {
+		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
+			t.GetFullName())
+	}
 	return nil
+}
+
+func updateChannelsEnd(chans []*Channel, e BackendQueueEnd) {
+	for _, channel := range chans {
+		err := channel.UpdateQueueEnd(e)
+		if err != nil {
+			nsqLog.LogErrorf(
+				"failed to update topic end to channel(%s) - %s",
+				channel.name, err)
+		}
+	}
 }
 
 // messagePump selects over the in-memory and backend queue and
 // writes messages to every channel for this topic
 // Note: never use Lock here.
 func (t *Topic) messagePump() {
-	var err error
 	var chans []*Channel
 	flushCnt := 0
 
@@ -290,18 +305,14 @@ func (t *Topic) messagePump() {
 			continue
 		}
 		lastEnd = e
-		for _, channel := range chans {
-			err = channel.UpdateQueueEnd(e)
-			if err != nil {
-				nsqLog.LogErrorf(
-					"TOPIC(%s) : failed to update topic end to channel(%s) - %s",
-					t.GetFullName(), channel.name, err)
-			}
-		}
+		updateChannelsEnd(chans, e)
 	}
 
 exit:
 	nsqLog.Logf("TOPIC(%s): closing ... messagePump", t.GetFullName())
+	t.flush()
+	e := t.backend.GetQueueReadEnd()
+	updateChannelsEnd(chans, e)
 }
 
 func (t *Topic) totalSize() int64 {

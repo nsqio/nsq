@@ -632,3 +632,10 @@ func TestTopicPartitions(t *testing.T) {
 	conn_p1.Close()
 	conn_p2.Close()
 }
+
+// TODO: test performance for db
+func TestTopicChannelRegUnReg(t *testing.T) {
+}
+
+func BenchmarkTopicChannelRegUnReg(b *testing.B) {
+}

@@ -74,8 +74,8 @@ type Channel struct {
 	tryReadBackend       chan bool
 	// stat counters
 	enableTrace bool
-	finMsgs     map[MessageID]*Message
-	finErrMsgs  map[MessageID]string
+	//finMsgs     map[MessageID]*Message
+	//finErrMsgs map[MessageID]string
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -93,11 +93,11 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 		exitSyncChan:       make(chan bool),
 		clients:            make(map[int64]Consumer),
 		confirmedMsgs:      make(map[BackendOffset]*Message),
-		finMsgs:            make(map[MessageID]*Message),
-		finErrMsgs:         make(map[MessageID]string),
-		tryReadBackend:     make(chan bool, 1),
-		deleteCallback:     deleteCallback,
-		ctx:                ctx,
+		//finMsgs:            make(map[MessageID]*Message),
+		//finErrMsgs:     make(map[MessageID]string),
+		tryReadBackend: make(chan bool, 1),
+		deleteCallback: deleteCallback,
+		ctx:            ctx,
 	}
 	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -321,7 +321,7 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 func (c *Channel) confirmBackendQueue(msg *Message) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
-	c.finMsgs[msg.ID] = msg
+	//c.finMsgs[msg.ID] = msg
 	c.confirmedMsgs[msg.offset] = msg
 	reduced := false
 	for {
@@ -367,13 +367,15 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
-		c.confirmMutex.Lock()
-		c.finErrMsgs[id] = err.Error()
-		c.confirmMutex.Unlock()
+		//c.confirmMutex.Lock()
+		//c.finErrMsgs[id] = err.Error()
+		//c.confirmMutex.Unlock()
+		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
+			clientID)
 		return err
 	}
 	if c.enableTrace {
-		nsqLog.Logf("message %v, offset:%v, finished from client %v",
+		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
 	}
 	c.removeFromInFlightPQ(msg)
@@ -467,7 +469,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	c.addToInFlightPQ(msg)
 
 	if c.enableTrace {
-		nsqLog.Logf("message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
+		nsqLog.Logf("[TRACE] message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
 	}
 	return nil
 }
@@ -489,7 +491,7 @@ func (c *Channel) doRequeue(m *Message) error {
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
 	if c.enableTrace {
-		nsqLog.Logf("message %v requeued.", m.GetFullMsgID())
+		nsqLog.Logf("[TRACE] message %v requeued.", m.GetFullMsgID())
 	}
 	return nil
 }

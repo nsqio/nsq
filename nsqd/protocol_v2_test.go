@@ -1685,9 +1685,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			return err
 		}
 		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
-		if i%2 == 0 {
-			rw.Flush()
-		}
+		rw.Flush()
 		if (i+1)%rdyCount == 0 || i+1 == num {
 			if i+1 == num {
 				nsq.Ready(0).WriteTo(conn)
