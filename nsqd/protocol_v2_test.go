@@ -1613,7 +1613,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 		msg := NewMessage(0, msg)
 		topic.PutMessage(msg)
 	}
-	topic.flush()
+	topic.flush(true)
 	topic.GetChannel("ch").enableTrace = false
 	b.SetBytes(int64(len(msg)))
 	goChan := make(chan int)
@@ -1745,7 +1745,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 			msg := NewMessage(0, msg)
 			topic.PutMessage(msg)
 		}
-		topic.flush()
+		topic.flush(true)
 		topic.GetChannel("ch")
 
 		for j := 0; j < workers; j++ {

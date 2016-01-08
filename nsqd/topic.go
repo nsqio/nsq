@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 
 	"github.com/nsqio/nsq/internal/quantile"
-	"github.com/nsqio/nsq/internal/util"
 )
 
 const (
@@ -21,16 +20,14 @@ type Topic struct {
 
 	sync.RWMutex
 
-	tname             string
-	fullName          string
-	partition         int
-	channelMap        map[string]*Channel
-	backend           BackendQueueWriter
-	exitChan          chan int
-	channelUpdateChan chan []*Channel
-	flushChan         chan int
-	waitGroup         util.WaitGroupWrapper
-	exitFlag          int32
+	tname      string
+	fullName   string
+	partition  int
+	channelMap map[string]*Channel
+	backend    BackendQueueWriter
+	exitChan   chan int
+	flushChan  chan int
+	exitFlag   int32
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
@@ -40,6 +37,7 @@ type Topic struct {
 	msgIDCursor uint64
 	needFlush   int32
 	enableTrace bool
+	syncEvery   int64
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -52,14 +50,17 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 		return nil
 	}
 	t := &Topic{
-		tname:             topicName,
-		partition:         part,
-		channelMap:        make(map[string]*Channel),
-		exitChan:          make(chan int),
-		channelUpdateChan: make(chan []*Channel),
-		flushChan:         make(chan int, 10),
-		ctx:               ctx,
-		deleteCallback:    deleteCallback,
+		tname:          topicName,
+		partition:      part,
+		channelMap:     make(map[string]*Channel),
+		exitChan:       make(chan int),
+		flushChan:      make(chan int, 10),
+		ctx:            ctx,
+		deleteCallback: deleteCallback,
+		syncEvery:      ctx.nsqd.getOpts().SyncEvery,
+	}
+	if t.syncEvery < 1 {
+		t.syncEvery = 1
 	}
 
 	t.fullName = GetTopicFullName(t.tname, t.partition)
@@ -77,8 +78,6 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout)
 	}
-
-	t.waitGroup.Wrap(func() { t.messagePump() })
 
 	t.ctx.nsqd.Notify(t)
 
@@ -125,21 +124,6 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 }
 
 func (t *Topic) NotifyReloadChannels() {
-	t.RLock()
-
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return
-	}
-	chans := make([]*Channel, 0, len(t.channelMap))
-	for _, c := range t.channelMap {
-		chans = append(chans, c)
-	}
-	t.RUnlock()
-
-	select {
-	case t.channelUpdateChan <- chans:
-	case <-t.exitChan:
-	}
 }
 
 // this expects the caller to handle locking
@@ -192,15 +176,6 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	// (so that we dont leave any messages around)
 	channel.Delete()
 
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
-	// update messagePump state
-	select {
-	case t.channelUpdateChan <- chans:
-	case <-t.exitChan:
-	}
-
 	if numChannels == 0 && t.ephemeral == true {
 		go t.deleter.Do(func() { t.deleteCallback(t) })
 	}
@@ -214,7 +189,10 @@ func (t *Topic) PutMessage(m *Message) error {
 	if err != nil {
 		return err
 	}
-	atomic.AddUint64(&t.messageCount, 1)
+	cnt := atomic.AddUint64(&t.messageCount, 1)
+	if cnt%uint64(t.syncEvery) == 0 {
+		t.flush(false)
+	}
 	return nil
 }
 
@@ -227,6 +205,10 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 		}
 	}
 	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
+
+	if int64(len(msgs)) >= t.syncEvery {
+		t.flush(false)
+	}
 	return nil
 }
 
@@ -250,10 +232,7 @@ func (t *Topic) put(m *Message) error {
 		t.Unlock()
 		return err
 	}
-	select {
-	case t.flushChan <- 1:
-	default:
-	}
+
 	if t.enableTrace {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
 			t.GetFullName())
@@ -262,7 +241,7 @@ func (t *Topic) put(m *Message) error {
 	return nil
 }
 
-func updateChannelsEnd(chans []*Channel, e BackendQueueEnd) {
+func updateChannelsEnd(chans map[string]*Channel, e BackendQueueEnd) {
 	for _, channel := range chans {
 		err := channel.UpdateQueueEnd(e)
 		if err != nil {
@@ -271,47 +250,6 @@ func updateChannelsEnd(chans []*Channel, e BackendQueueEnd) {
 				channel.name, err)
 		}
 	}
-}
-
-// messagePump selects over the in-memory and backend queue and
-// writes messages to every channel for this topic
-// Note: never use Lock here.
-func (t *Topic) messagePump() {
-	var chans []*Channel
-	flushCnt := 0
-
-	var lastEnd BackendQueueEnd
-
-	for {
-		select {
-		case chans = <-t.channelUpdateChan:
-			lastEnd = nil
-		case flag := <-t.flushChan:
-			flushCnt++
-			if flag > 1 {
-				flushCnt = 10
-			}
-			if flushCnt >= 10 {
-				flushCnt = 0
-				t.flush()
-			}
-		case <-t.exitChan:
-			goto exit
-		}
-
-		e := t.backend.GetQueueReadEnd()
-		if lastEnd != nil && lastEnd.IsSame(e) {
-			continue
-		}
-		lastEnd = e
-		updateChannelsEnd(chans, e)
-	}
-
-exit:
-	nsqLog.Logf("TOPIC(%s): closing ... messagePump", t.GetFullName())
-	t.flush()
-	e := t.backend.GetQueueReadEnd()
-	updateChannelsEnd(chans, e)
 }
 
 func (t *Topic) totalSize() int64 {
@@ -348,9 +286,6 @@ func (t *Topic) exit(deleted bool) error {
 
 	close(t.exitChan)
 
-	// synchronize the close of messagePump()
-	t.waitGroup.Wait()
-
 	if deleted {
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
@@ -361,6 +296,8 @@ func (t *Topic) exit(deleted bool) error {
 		return t.backend.Delete()
 	}
 
+	// write anything leftover to disk
+	t.flush(true)
 	// close all the channels
 	for _, channel := range t.channelMap {
 		err := channel.Close()
@@ -370,8 +307,6 @@ func (t *Topic) exit(deleted bool) error {
 		}
 	}
 
-	// write anything leftover to disk
-	t.flush()
 	return t.backend.Close()
 }
 
@@ -380,20 +315,28 @@ func (t *Topic) empty() error {
 }
 
 func (t *Topic) ForceFlush() {
-	select {
-	case t.flushChan <- 2:
-	default:
-	}
+	t.RLock()
+	t.flush(true)
+	t.RUnlock()
 }
 
-func (t *Topic) flush() error {
+func (t *Topic) flush(notifyChan bool) error {
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
 	if !ok {
+		if notifyChan {
+			e := t.backend.GetQueueReadEnd()
+			updateChannelsEnd(t.channelMap, e)
+		}
 		return nil
 	}
 	err := t.backend.Flush()
 	if err != nil {
 		nsqLog.LogErrorf("failed flush: %v", err)
+		return err
+	}
+	if notifyChan {
+		e := t.backend.GetQueueReadEnd()
+		updateChannelsEnd(t.channelMap, e)
 	}
 	return err
 }

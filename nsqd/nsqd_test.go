@@ -146,7 +146,7 @@ func TestStartup(t *testing.T) {
 		topic.PutMessage(msg)
 	}
 
-	topic.flush()
+	topic.flush(true)
 	backEnd := topic.backend.GetQueueReadEnd()
 	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
 	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))

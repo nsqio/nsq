@@ -23,6 +23,7 @@ func TestPutMessage(t *testing.T) {
 	var id MessageID
 	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
+	topic.flush(true)
 
 	outputMsg := <-channel1.clientMsgChan
 	equal(t, msg.ID, outputMsg.ID)
@@ -46,6 +47,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	var id MessageID
 	msg := NewMessage(id, []byte("test"))
 	topic.PutMessage(msg)
+	topic.flush(true)
 
 	outputMsg1 := <-channel1.clientMsgChan
 	equal(t, msg.ID, outputMsg1.ID)
