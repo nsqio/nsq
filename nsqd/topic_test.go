@@ -87,7 +87,7 @@ func TestHealth(t *testing.T) {
 	topic := nsqd.GetTopicIgnPart("test")
 	topic.backend = &errorBackendQueue{}
 
-	msg := NewMessage(topic.NextMsgID(), make([]byte, 100))
+	msg := NewMessage(0, make([]byte, 100))
 	err := topic.PutMessage(msg)
 	nequal(t, err, nil)
 
@@ -101,7 +101,7 @@ func TestHealth(t *testing.T) {
 
 	topic.backend = &errorRecoveredBackendQueue{}
 
-	msg = NewMessage(topic.NextMsgID(), make([]byte, 100))
+	msg = NewMessage(0, make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
 	equal(t, err, nil)
 
@@ -154,7 +154,7 @@ func TestDeleteLast(t *testing.T) {
 	equal(t, nil, err)
 	equal(t, 0, len(topic.channelMap))
 
-	msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	equal(t, nil, err)
@@ -186,7 +186,7 @@ func BenchmarkTopicPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName, 0)
-		msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }
@@ -206,7 +206,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName, 0)
-		msg := NewMessage(topic.NextMsgID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }

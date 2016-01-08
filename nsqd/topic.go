@@ -90,7 +90,7 @@ func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
-func (t *Topic) NextMsgID() MessageID {
+func (t *Topic) nextMsgID() MessageID {
 	// TODO: read latest logid and incr. combine the partition id at high.
 	id := atomic.AddUint64(&t.msgIDCursor, 1)
 	return MessageID(id)
@@ -210,11 +210,6 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) error {
-	t.RLock()
-	defer t.RUnlock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	err := t.put(m)
 	if err != nil {
 		return err
@@ -225,11 +220,6 @@ func (t *Topic) PutMessage(m *Message) error {
 
 // PutMessages writes multiple Messages to the queue
 func (t *Topic) PutMessages(msgs []*Message) error {
-	t.RLock()
-	defer t.RUnlock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	for _, m := range msgs {
 		err := t.put(m)
 		if err != nil {
@@ -241,7 +231,14 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 }
 
 func (t *Topic) put(m *Message) error {
+	t.Lock()
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		t.Unlock()
+		return errors.New("exiting")
+	}
+
 	b := bufferPoolGet()
+	m.ID = t.nextMsgID()
 	_, err := writeMessageToBackend(b, m, t.backend)
 	bufferPoolPut(b)
 	t.ctx.nsqd.SetHealth(err)
@@ -250,6 +247,7 @@ func (t *Topic) put(m *Message) error {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to write message to backend - %s",
 			t.GetFullName(), err)
+		t.Unlock()
 		return err
 	}
 	select {
@@ -260,6 +258,7 @@ func (t *Topic) put(m *Message) error {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
 			t.GetFullName())
 	}
+	t.Unlock()
 	return nil
 }
 

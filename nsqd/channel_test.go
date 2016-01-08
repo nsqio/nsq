@@ -88,7 +88,7 @@ func TestInFlightWorker(t *testing.T) {
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < count; i++ {
-		msg := NewMessage(topic.NextMsgID(), []byte("test"))
+		msg := NewMessage(topic.nextMsgID(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 	}
 
@@ -131,7 +131,7 @@ func TestChannelEmpty(t *testing.T) {
 
 	msgs := make([]*Message, 0, 25)
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(topic.NextMsgID(), []byte("test"))
+		msg := NewMessage(topic.nextMsgID(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 		msgs = append(msgs, msg)
 	}
@@ -165,7 +165,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	channel.AddClient(client.ID, client)
 
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(topic.NextMsgID(), []byte("test"))
+		msg := NewMessage(topic.nextMsgID(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 		client.SendingMessage()
 	}

@@ -199,7 +199,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, err
 	}
 
-	msg := NewMessage(topic.NextMsgID(), body)
+	msg := NewMessage(0, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
@@ -266,7 +266,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(topic.NextMsgID(), block)
+			msg := NewMessage(0, block)
 			msgs = append(msgs, msg)
 		}
 	}

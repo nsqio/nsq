@@ -448,7 +448,7 @@ LOOP:
 				err: werr,
 			}
 		case wait := <-d.flushChan:
-			if count > 0 {
+			if count > 0 || d.needSync {
 				count = 0
 				d.needSync = true
 				if wait > 1 {

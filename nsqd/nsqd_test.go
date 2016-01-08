@@ -142,7 +142,7 @@ func TestStartup(t *testing.T) {
 	msgRawSize += 4
 	topic := nsqd.GetTopicIgnPart(topicName)
 	for i := 0; i < iterations; i++ {
-		msg := NewMessage(topic.NextMsgID(), body)
+		msg := NewMessage(0, body)
 		topic.PutMessage(msg)
 	}
 

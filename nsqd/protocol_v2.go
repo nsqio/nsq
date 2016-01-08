@@ -865,7 +865,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 		nsqLog.Logf("PUB to not existing topic: %v", topicName)
 		return nil, err
 	}
-	msg := NewMessage(topic.NextMsgID(), messageBody)
+	msg := NewMessage(0, messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -996,7 +996,7 @@ func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64) ([]*M
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, NewMessage(topic.NextMsgID(), msgBody))
+		messages = append(messages, NewMessage(0, msgBody))
 	}
 
 	return messages, nil
