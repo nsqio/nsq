@@ -1661,8 +1661,15 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	//traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
 	num := n / workers
 	for i := 0; i < num; i++ {
+		conn.SetReadDeadline(time.Now().Add(time.Second))
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
+			if err == io.EOF {
+				return err
+			} else {
+				rw.Flush()
+				continue
+			}
 			return err
 		}
 		frameType, data, err := nsq.UnpackResponse(resp)
@@ -1685,7 +1692,6 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 			return err
 		}
 		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
-		rw.Flush()
 		if (i+1)%rdyCount == 0 || i+1 == num {
 			if i+1 == num {
 				nsq.Ready(0).WriteTo(conn)

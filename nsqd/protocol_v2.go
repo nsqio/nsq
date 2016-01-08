@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -269,6 +270,8 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("AUTH")):
 		return p.AUTH(client, params)
+	case bytes.Equal(params[0], []byte("CREATE_TOPIC")):
+		return p.CreateTopic(client, params)
 	}
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -820,6 +823,36 @@ func (p *protocolV2) CLS(client *clientV2, params [][]byte) ([]byte, error) {
 
 func (p *protocolV2) NOP(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
+}
+
+func (p *protocolV2) CreateTopic(client *clientV2, params [][]byte) ([]byte, error) {
+	var err error
+
+	if len(params) < 3 {
+		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "CREATE_TOPIC insufficient number of parameters")
+	}
+
+	topicName := string(params[1])
+	if !protocol.IsValidTopicName(topicName) {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
+			fmt.Sprintf("topic name %q is not valid", topicName))
+	}
+
+	partition, err := strconv.Atoi(string(params[2]))
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+			fmt.Sprintf("topic partition is not valid: %v", err))
+	}
+	if err := p.CheckAuth(client, "CREATE_TOPIC", topicName, ""); err != nil {
+		return nil, err
+	}
+
+	topic := p.ctx.nsqd.GetTopic(topicName, partition)
+	if topic == nil {
+		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
+			fmt.Sprintf("CREATE_TOPIC %v failed", ""))
+	}
+	return okBytes, nil
 }
 
 func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {

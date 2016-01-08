@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nsqio/go-nsq"
+	"github.com/absolute8511/go-nsq"
 )
 
 var (
@@ -34,6 +34,23 @@ func main() {
 	batch := make([][]byte, *batchSize)
 	for i := range batch {
 		batch[i] = msg
+	}
+	conn, err := net.DialTimeout("tcp", *tcpAddress, time.Second)
+	if err != nil {
+		panic(err.Error())
+	}
+	conn.Write(nsq.MagicV2)
+	nsq.CreateTopic(*topic, 0).WriteTo(conn)
+	resp, err := nsq.ReadResponse(conn)
+	if err != nil {
+		panic(err.Error())
+	}
+	frameType, data, err := nsq.UnpackResponse(resp)
+	if err != nil {
+		panic(err.Error())
+	}
+	if frameType == nsq.FrameTypeError {
+		panic(string(data))
 	}
 
 	goChan := make(chan int)

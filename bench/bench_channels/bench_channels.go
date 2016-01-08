@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nsqio/go-nsq"
+	"github.com/absolute8511/go-nsq"
 )
 
 var (
@@ -22,6 +22,28 @@ func main() {
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)
+	conn, err := net.DialTimeout("tcp", *tcpAddress, time.Second)
+	if err != nil {
+		panic(err.Error())
+	}
+	conn.Write(nsq.MagicV2)
+
+	for j := 0; j < *num; j++ {
+		nsq.CreateTopic(fmt.Sprintf("t%d", j), 0).WriteTo(conn)
+		resp, err := nsq.ReadResponse(conn)
+		if err != nil {
+			panic(err.Error())
+		}
+		frameType, data, err := nsq.UnpackResponse(resp)
+		if err != nil {
+			panic(err.Error())
+		}
+		if frameType == nsq.FrameTypeError {
+			panic(string(data))
+		}
+
+	}
+
 	for j := 0; j < *num; j++ {
 		wg.Add(1)
 		go func(id int) {
