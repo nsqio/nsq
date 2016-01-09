@@ -634,7 +634,7 @@ func (n *NSQD) queueScanLoop() {
 
 	workTicker := time.NewTicker(n.getOpts().QueueScanInterval)
 	refreshTicker := time.NewTicker(n.getOpts().QueueScanRefreshInterval)
-	flushTicker := time.NewTicker(time.Second)
+	flushTicker := time.NewTicker(n.getOpts().SyncTimeout)
 
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)

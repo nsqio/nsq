@@ -25,7 +25,6 @@ type Topic struct {
 	partition  int
 	channelMap map[string]*Channel
 	backend    BackendQueueWriter
-	exitChan   chan int
 	flushChan  chan int
 	exitFlag   int32
 
@@ -33,11 +32,12 @@ type Topic struct {
 	deleteCallback func(*Topic)
 	deleter        sync.Once
 
-	ctx         *context
-	msgIDCursor uint64
-	needFlush   int32
-	enableTrace bool
-	syncEvery   int64
+	ctx            *context
+	msgIDCursor    uint64
+	needFlush      int32
+	needNotifyChan bool
+	enableTrace    bool
+	syncEvery      int64
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -53,7 +53,6 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 		tname:          topicName,
 		partition:      part,
 		channelMap:     make(map[string]*Channel),
-		exitChan:       make(chan int),
 		flushChan:      make(chan int, 10),
 		ctx:            ctx,
 		deleteCallback: deleteCallback,
@@ -191,7 +190,9 @@ func (t *Topic) PutMessage(m *Message) error {
 	}
 	cnt := atomic.AddUint64(&t.messageCount, 1)
 	if cnt%uint64(t.syncEvery) == 0 {
+		t.Lock()
 		t.flush(false)
+		t.Unlock()
 	}
 	return nil
 }
@@ -207,7 +208,9 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
 
 	if int64(len(msgs)) >= t.syncEvery {
+		t.Lock()
 		t.flush(false)
+		t.Unlock()
 	}
 	return nil
 }
@@ -242,6 +245,9 @@ func (t *Topic) put(m *Message) error {
 }
 
 func updateChannelsEnd(chans map[string]*Channel, e BackendQueueEnd) {
+	if e == nil {
+		return
+	}
 	for _, channel := range chans {
 		err := channel.UpdateQueueEnd(e)
 		if err != nil {
@@ -284,8 +290,6 @@ func (t *Topic) exit(deleted bool) error {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
 
-	close(t.exitChan)
-
 	if deleted {
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
@@ -315,15 +319,16 @@ func (t *Topic) empty() error {
 }
 
 func (t *Topic) ForceFlush() {
-	t.RLock()
+	t.Lock()
 	t.flush(true)
-	t.RUnlock()
+	t.Unlock()
 }
 
 func (t *Topic) flush(notifyChan bool) error {
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
 	if !ok {
-		if notifyChan {
+		if notifyChan && t.needNotifyChan {
+			t.needNotifyChan = false
 			e := t.backend.GetQueueReadEnd()
 			updateChannelsEnd(t.channelMap, e)
 		}
@@ -335,8 +340,11 @@ func (t *Topic) flush(notifyChan bool) error {
 		return err
 	}
 	if notifyChan {
+		t.needNotifyChan = false
 		e := t.backend.GetQueueReadEnd()
 		updateChannelsEnd(t.channelMap, e)
+	} else {
+		t.needNotifyChan = true
 	}
 	return err
 }

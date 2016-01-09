@@ -29,6 +29,7 @@ func TestDiskQueueWriter(t *testing.T) {
 
 	msg := []byte("test")
 	end, err := dqWriter.Put(msg)
+	dqWriter.Flush()
 	equal(t, err, nil)
 	equal(t, dqWriter.totalMsgCnt, int64(1))
 	equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(0))
@@ -66,6 +67,7 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 		equal(t, err, nil)
 		equal(t, dqObj.totalMsgCnt, int64(i+1))
 	}
+	dq.Flush()
 
 	equal(t, dqObj.writeFileNum, int64(1))
 	equal(t, dqObj.writePos, int64(0))

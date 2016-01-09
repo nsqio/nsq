@@ -32,28 +32,11 @@ type diskQueueWriter struct {
 	maxBytesPerFile int64 // currently this cannot change once created
 	minMsgSize      int32
 	maxMsgSize      int32
-	syncEvery       int64         // number of writes per fsync
-	syncTimeout     time.Duration // duration of time per fsync
 	exitFlag        int32
 	needSync        bool
 
 	writeFile    *os.File
 	bufferWriter *bufio.Writer
-
-	// internal channels
-	writeChan         chan []byte
-	writeResponseChan chan struct {
-		end *diskQueueEndInfo
-		err error
-	}
-	emptyChan         chan int
-	emptyResponseChan chan error
-	flushChan         chan int
-	flushResponseChan chan error
-	exitChan          chan int
-	exitSyncChan      chan int
-	getEndChan        chan int
-	endResponseChan   chan BackendQueueEnd
 }
 
 // newDiskQueue instantiates a new instance of diskQueueWriter, retrieving metadata
@@ -68,21 +51,6 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		maxBytesPerFile: maxBytesPerFile,
 		minMsgSize:      minMsgSize,
 		maxMsgSize:      maxMsgSize,
-		writeChan:       make(chan []byte),
-		writeResponseChan: make(chan struct {
-			end *diskQueueEndInfo
-			err error
-		}),
-		emptyChan:         make(chan int),
-		emptyResponseChan: make(chan error),
-		flushChan:         make(chan int),
-		flushResponseChan: make(chan error),
-		exitChan:          make(chan int),
-		exitSyncChan:      make(chan int),
-		getEndChan:        make(chan int),
-		endResponseChan:   make(chan BackendQueueEnd),
-		syncEvery:         syncEvery,
-		syncTimeout:       syncTimeout,
 	}
 
 	// no need to lock here, nothing else could possibly be touching this instance
@@ -91,32 +59,25 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		nsqLog.LogErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
 	}
 
-	go d.ioLoop()
-
 	return &d
 }
 
 // Put writes a []byte to the queue
 func (d *diskQueueWriter) Put(data []byte) (BackendQueueEnd, error) {
-	d.RLock()
-	defer d.RUnlock()
+	d.Lock()
+	defer d.Unlock()
 
 	if d.exitFlag == 1 {
 		return nil, errors.New("exiting")
 	}
-
-	d.writeChan <- data
-	ret := <-d.writeResponseChan
-	return ret.end, ret.err
+	e, werr := d.writeOne(data)
+	d.needSync = true
+	return e, werr
 }
 
 // Close cleans up the queue and persists metadata
 func (d *diskQueueWriter) Close() error {
-	err := d.exit(false)
-	if err != nil {
-		return err
-	}
-	return d.sync()
+	return d.exit(false)
 }
 
 func (d *diskQueueWriter) Delete() error {
@@ -135,20 +96,7 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 		nsqLog.Logf("DISKQUEUE(%s): closing", d.name)
 	}
 
-	close(d.exitChan)
-	// ensure that ioLoop has exited
-	<-d.exitSyncChan
-
-	if d.bufferWriter != nil {
-		d.bufferWriter.Flush()
-	}
-	d.virtualReadableEnd = d.virtualEnd
-	d.readablePos = d.writePos
-	if d.writeFile != nil {
-		d.writeFile.Close()
-		d.writeFile = nil
-	}
-
+	d.sync()
 	if deleted {
 		return d.deleteAllFiles(deleted)
 	}
@@ -158,17 +106,15 @@ func (d *diskQueueWriter) exit(deleted bool) error {
 // Empty destructively clears out any pending data in the queue
 // by fast forwarding read positions and removing intermediate files
 func (d *diskQueueWriter) Empty() error {
-	d.RLock()
-	defer d.RUnlock()
+	d.Lock()
+	defer d.Unlock()
 
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
 
 	nsqLog.Logf("DISKQUEUE(%s): emptying", d.name)
-
-	d.emptyChan <- 1
-	return <-d.emptyResponseChan
+	return d.deleteAllFiles(false)
 }
 
 func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
@@ -215,8 +161,7 @@ func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	if d.exitFlag == 1 {
 		return nil
 	}
-	d.getEndChan <- 1
-	return <-d.endResponseChan
+	return d.internalGetQueueReadEnd()
 }
 
 func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
@@ -312,14 +257,16 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 }
 
 func (d *diskQueueWriter) Flush() error {
-	d.RLock()
-	defer d.RUnlock()
+	d.Lock()
+	defer d.Unlock()
 
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
-	d.flushChan <- 1
-	return <-d.flushResponseChan
+	if d.needSync {
+		return d.sync()
+	}
+	return nil
 }
 
 // sync fsyncs the current writeFile and persists metadata
@@ -407,68 +354,4 @@ func (d *diskQueueWriter) metaDataFileName() string {
 
 func (d *diskQueueWriter) fileName(fileNum int64) string {
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
-}
-
-// NOTE: never call any lock op here or it may cause deadlock.
-func (d *diskQueueWriter) ioLoop() {
-	var err error
-	var count int64
-
-	syncTicker := time.NewTicker(d.syncTimeout)
-
-LOOP:
-	for {
-		// dont sync all the time :)
-		if count == d.syncEvery {
-			count = 0
-			d.needSync = true
-		}
-
-		if d.needSync {
-			err = d.sync()
-			if err != nil {
-				nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
-			}
-		}
-
-		select {
-		case <-d.emptyChan:
-			d.emptyResponseChan <- d.deleteAllFiles(false)
-			count = 0
-		case <-d.getEndChan:
-			d.endResponseChan <- d.internalGetQueueReadEnd()
-		case dataWrite := <-d.writeChan:
-			count++
-			e, werr := d.writeOne(dataWrite)
-			d.writeResponseChan <- struct {
-				end *diskQueueEndInfo
-				err error
-			}{
-				end: e,
-				err: werr,
-			}
-		case wait := <-d.flushChan:
-			if count > 0 || d.needSync {
-				count = 0
-				d.needSync = true
-				if wait > 1 {
-					d.flushResponseChan <- d.sync()
-					continue LOOP
-				}
-			}
-			d.flushResponseChan <- nil
-		case <-syncTicker.C:
-			if count > 0 {
-				count = 0
-				d.needSync = true
-			}
-		case <-d.exitChan:
-			goto exit
-		}
-	}
-
-exit:
-	nsqLog.Logf("DISKQUEUE(%s): closing ... ioLoop", d.name)
-	syncTicker.Stop()
-	d.exitSyncChan <- 1
 }
