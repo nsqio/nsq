@@ -242,10 +242,6 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 		}
 
-		if d.bufferWriter != nil {
-			d.bufferWriter.Flush()
-		}
-		d.virtualReadableEnd = d.virtualEnd
 		d.readablePos = 0
 		if d.writeFile != nil {
 			d.writeFile.Close()
