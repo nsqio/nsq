@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -157,16 +158,7 @@ func (d *diskQueueReader) getCurrentFileEnd(offset diskQueueOffset) (int64, erro
 
 // Depth returns the depth of the queue
 func (d *diskQueueReader) Depth() int64 {
-	d.Lock()
-	defer d.Unlock()
-	if d.confirmedOffset.FileNum > d.endPos.FileNum {
-		return 0
-	}
-	if d.endPos.FileNum == d.confirmedOffset.FileNum {
-		return d.endPos.Pos - d.confirmedOffset.Pos
-	}
-
-	return int64(d.virtualEnd - d.virtualConfirmedOffset)
+	return atomic.LoadInt64(&d.depth)
 }
 
 func (d *diskQueueReader) ReadChan() <-chan ReadResult {
@@ -195,11 +187,7 @@ func (d *diskQueueReader) Delete() error {
 
 // Close cleans up the queue and persists metadata
 func (d *diskQueueReader) Close() error {
-	err := d.exit(false)
-	if err != nil {
-		return err
-	}
-	return d.sync()
+	return d.exit(false)
 }
 
 func (d *diskQueueReader) exit(deleted bool) error {
@@ -215,7 +203,7 @@ func (d *diskQueueReader) exit(deleted bool) error {
 		d.readFile.Close()
 		d.readFile = nil
 	}
-
+	d.sync()
 	if deleted {
 		d.skipToEndofFile()
 		err := os.Remove(d.metaDataFileName())
@@ -237,6 +225,14 @@ func (d *diskQueueReader) ConfirmRead(offset BackendOffset) error {
 	}
 	d.confirmChan <- offset
 	return <-d.confirmResponseChan
+}
+
+func (d *diskQueueReader) updateDepth() {
+	if d.confirmedOffset.FileNum > d.endPos.FileNum {
+		atomic.StoreInt64(&d.depth, 0)
+		return
+	}
+	atomic.StoreInt64(&d.depth, int64(d.virtualEnd-d.virtualConfirmedOffset))
 }
 
 func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next diskQueueOffset) (BackendOffset, error) {
@@ -339,6 +335,7 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
 	if int64(offset) == -1 {
 		d.confirmedOffset = d.readPos
 		d.virtualConfirmedOffset = d.virtualReadOffset
+		d.updateDepth()
 		return nil
 	}
 	if offset <= d.virtualConfirmedOffset {
@@ -356,6 +353,7 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
 	}
 	d.confirmedOffset = newConfirm
 	d.virtualConfirmedOffset = offset
+	d.updateDepth()
 	//nsqLog.LogDebugf("confirmed to offset: %v", offset)
 	return nil
 }
@@ -385,6 +383,7 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 
 	d.confirmedOffset = d.readPos
 	d.virtualConfirmedOffset = d.virtualReadOffset
+	d.updateDepth()
 	return nil
 }
 
@@ -404,6 +403,7 @@ func (d *diskQueueReader) skipToNextFile() error {
 	}
 	d.confirmedOffset = d.readPos
 	d.virtualConfirmedOffset = d.virtualReadOffset
+	d.updateDepth()
 	return nil
 }
 
@@ -420,6 +420,7 @@ func (d *diskQueueReader) skipToEndofFile() error {
 	}
 	d.confirmedOffset = d.readPos
 	d.virtualConfirmedOffset = d.virtualReadOffset
+	d.updateDepth()
 
 	return nil
 }
@@ -575,6 +576,7 @@ func (d *diskQueueReader) retrieveMetaData() error {
 	}
 	d.readPos = d.confirmedOffset
 	d.virtualReadOffset = d.virtualConfirmedOffset
+	d.updateDepth()
 
 	return nil
 }
@@ -654,6 +656,7 @@ func (d *diskQueueReader) handleReadError() {
 	d.readPos = newRead
 	d.confirmedOffset = d.readPos
 	d.virtualConfirmedOffset = d.virtualReadOffset
+	d.updateDepth()
 
 	// significant state change, schedule a sync on the next iteration
 	d.needSync = true
@@ -771,6 +774,7 @@ func (d *diskQueueReader) ioLoop() {
 			d.endPos.FileNum = endPos.EndFileNum
 			d.totalMsgCnt = endPos.TotalMsgCnt
 			d.virtualEnd = endPos.VirtualEnd
+			d.updateDepth()
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:
