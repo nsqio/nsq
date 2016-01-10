@@ -354,7 +354,6 @@ func hasArg(s string) bool {
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == s {
 			argExist = true
-			return
 		}
 	})
 
