@@ -123,6 +123,8 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout,
 			false)
+
+		c.currentLastConfirmed = c.backend.(*diskQueueReader).virtualConfirmedOffset
 	}
 
 	go c.messagePump()
@@ -355,7 +357,8 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 			len(c.confirmedMsgs), c.currentLastConfirmed)
 
 		//TODO: found the message in the flight with offset c.currentLastConfirmed and
-		//requeue to client again.
+		//requeue to client again. This can force the missed message with
+		//c.currentLastConfirmed offset
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
@@ -624,6 +627,27 @@ exit:
 	nsqLog.Logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 	close(c.exitSyncChan)
+}
+
+func (c *Channel) GetChannelStats() string {
+	debugStr := ""
+	c.inFlightMutex.Lock()
+	inFlightCount := len(c.inFlightMessages)
+	debugStr += fmt.Sprintf("inflight %v messages : ", inFlightCount)
+	for _, msg := range c.inFlightMessages {
+		debugStr += fmt.Sprintf("%v(%v),", msg.ID, msg.offset)
+	}
+	c.inFlightMutex.Unlock()
+	debugStr += "\n"
+	c.confirmMutex.Lock()
+	debugStr += fmt.Sprintf("current confirm %v, confirmed %v messages: ",
+		c.currentLastConfirmed, len(c.confirmedMsgs))
+	for _, msg := range c.confirmedMsgs {
+		debugStr += fmt.Sprintf("%v(%v), ", msg.ID, msg.offset)
+	}
+	c.confirmMutex.Unlock()
+	debugStr += "\n"
+	return debugStr
 }
 
 func (c *Channel) processInFlightQueue(t int64) bool {

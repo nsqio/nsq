@@ -51,6 +51,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.NegotiateVersion))
 	//router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	//router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
@@ -383,6 +384,24 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 	s.ctx.nsqd.PersistMetadata()
 	s.ctx.nsqd.Unlock()
 	return nil, nil
+}
+
+func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName, _ := reqParams.Get("topic")
+	channelName, _ := reqParams.Get("channel")
+
+	t, err := s.ctx.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		return nil, http_api.Err{404, "Topic not found"}
+	}
+	statStr := t.GetTopicChannelStat(channelName)
+
+	return statStr, nil
 }
 
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

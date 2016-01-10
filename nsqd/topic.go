@@ -125,6 +125,18 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 func (t *Topic) NotifyReloadChannels() {
 }
 
+func (t *Topic) GetTopicChannelStat(channelName string) string {
+	statStr := ""
+	t.Lock()
+	for n, channel := range t.channelMap {
+		if channelName == "" || channelName == n {
+			statStr += channel.GetChannelStats()
+		}
+	}
+	t.Unlock()
+	return statStr
+}
+
 // this expects the caller to handle locking
 func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 	channel, ok := t.channelMap[channelName]
