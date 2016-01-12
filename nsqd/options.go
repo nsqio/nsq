@@ -73,7 +73,7 @@ type Options struct {
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
 
-	LogLevel int32 `flag:"log-level"`
+	LogLevel int32 `flag:"log-level" cfg:"log_level"`
 	Logger   levellogger.Logger
 }
 

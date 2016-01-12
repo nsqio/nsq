@@ -327,6 +327,7 @@ func (t *Topic) exit(deleted bool) error {
 }
 
 func (t *Topic) empty() error {
+	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
 	return t.backend.Empty()
 }
 

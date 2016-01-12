@@ -735,6 +735,10 @@ exit:
 		}
 	}
 	c.waitingRequeueMutex.Unlock()
+	if atomic.LoadInt32(&c.waitingConfirm) >
+		int32(c.ctx.nsqd.getOpts().MaxConfirmWin) {
+		// check if lastconfirmed message offset not in inflight
+	}
 
 	return dirty
 }

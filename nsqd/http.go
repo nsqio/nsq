@@ -545,6 +545,12 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
+		case "log_level":
+			err := json.Unmarshal(body, &opts.LogLevel)
+			if err != nil {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+			nsqLog.Logf("nsqd log level set to : %v", opts.LogLevel)
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}

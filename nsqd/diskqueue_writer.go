@@ -121,6 +121,7 @@ func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
 	d.skipToNextRWFile()
 
 	if deleted {
+		nsqLog.Logf("DISKQUEUE(%s): deleting meta file", d.name)
 		innerErr := os.Remove(d.metaDataFileName())
 		if innerErr != nil && !os.IsNotExist(innerErr) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
@@ -144,6 +145,7 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 	for i := int64(0); i <= d.writeFileNum; i++ {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
+		nsqLog.Logf("DISKQUEUE(%s): removed data file", fn)
 		if innerErr != nil && !os.IsNotExist(innerErr) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
 		}
