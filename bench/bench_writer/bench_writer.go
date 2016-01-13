@@ -101,6 +101,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 	endTime := time.Now().Add(td)
 	for {
 		time.Sleep(*sleepfor)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		cmd, _ := nsq.MultiPublish(topic, batch)
 		_, err := cmd.WriteTo(rw)
 		if err != nil {
@@ -118,6 +119,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 		if err != nil {
 			panic(err.Error())
 		}
+		conn.SetReadDeadline(time.Time{})
 		if frameType == nsq.FrameTypeError {
 			panic(string(data))
 		}
