@@ -117,7 +117,9 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 		if time.Now().After(endTime) {
 			break
 		}
-		time.Sleep(*sleepfor)
+		if (*sleepfor).Nanoseconds() > int64(10000) {
+			time.Sleep(*sleepfor)
+		}
 		if shouldClose || !*keepAlive {
 			if conn != nil {
 				conn.Close()
