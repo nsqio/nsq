@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -212,6 +213,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
+	runtime.SetBlockProfileRate(opts.BlockProfile)
 	nsqd.Main()
 	<-signalChan
 	nsqd.Exit()

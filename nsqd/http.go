@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -175,22 +176,32 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
+	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
+	} else if req.ContentLength <= 0 {
+		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
-	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
-	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+
+	readMax := req.ContentLength + 1
+	body := make([]byte, req.ContentLength)
+	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
 	if err != nil {
 		nsqLog.Logf("read request body error: %v", err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			// we ignore EOF, maybe the ContentLength is not match?
+			nsqLog.LogWarningf("read request body eof: %v, ContentLength: %v,return length %v.",
+				err, req.ContentLength, n)
+		} else {
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
 	}
 	if int64(len(body)) == readMax {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
-	}
-	if len(body) == 0 {
+	} else if len(body) == 0 {
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
@@ -551,6 +562,13 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
 			nsqLog.Logf("nsqd log level set to : %v", opts.LogLevel)
+		case "blockprofile":
+			err := json.Unmarshal(body, &opts.BlockProfile)
+			if err != nil {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+			nsqLog.Logf("nsqd block profile set to : %v", opts.BlockProfile)
+			runtime.SetBlockProfileRate(opts.BlockProfile)
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}

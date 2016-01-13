@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"time"
 )
 
@@ -112,14 +111,7 @@ func decodeMessage(b []byte) (*Message, error) {
 	msg.ID = MessageID(binary.BigEndian.Uint64(b[10:18]))
 	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
 
-	buf := bytes.NewBuffer(b[26:])
-
-	var err error
-	msg.Body, err = ioutil.ReadAll(buf)
-	if err != nil {
-		return nil, err
-	}
-
+	msg.Body = append(msg.Body, b[26:]...)
 	return &msg, nil
 }
 
