@@ -68,17 +68,17 @@ def connect_to_ec2():
 
 
 def _bootstrap(addr):
+    commit = tornado.options.options.commit
+    golang_version = tornado.options.options.golang_version
     ssh_client = ssh_connect_with_retries(addr)
     for cmd in [
-            'wget https://storage.googleapis.com/golang/go1.3.1.linux-amd64.tar.gz',
-            'sudo -S tar -C /usr/local -xzf go1.3.1.linux-amd64.tar.gz',
+            'wget https://storage.googleapis.com/golang/go%s.linux-amd64.tar.gz' % golang_version,
+            'sudo -S tar -C /usr/local -xzf go%s.linux-amd64.tar.gz' % golang_version,
+            'sudo -S apt-get update',
             'sudo -S apt-get -y install git mercurial',
             'mkdir -p go/src/github.com/nsqio',
             'cd go/src/github.com/nsqio && git clone https://github.com/nsqio/nsq',
-            # 'cd go/src/github.com/nsqio/nsq && \
-            #     git remote add mreiferson https://github.com/mreiferson/nsq.git',
-            # 'cd go/src/github.com/nsqio/nsq && \
-            #     git fetch mreiferson && git checkout mreiferson/bench_438',
+            'cd go/src/github.com/nsqio/nsq && git checkout %s' % commit,
             'sudo -S curl -s -o /usr/local/bin/gpm \
                 https://raw.githubusercontent.com/pote/gpm/v1.2.3/bin/gpm',
             'sudo -S chmod +x /usr/local/bin/gpm',
@@ -148,7 +148,9 @@ def run():
                     'sudo -S pkill -f nsqd',
                     'sudo -S rm -f /mnt/nsq/*.dat',
                     'GOMAXPROCS=32 ./go/src/github.com/nsqio/nsq/apps/nsqd/nsqd \
-                        --data-path=/mnt/nsq --mem-queue-size=10000000 --max-rdy-count=10000']:
+                        --data-path=/mnt/nsq --mem-queue-size=10000000 --max-rdy-count=%s' % (
+                        tornado.options.options.rdy
+                        )]:
                 nsqd_chans.append((ssh_client, ssh_cmd_async(ssh_client, cmd)))
         except Exception:
             logging.exception('failed')
@@ -297,6 +299,10 @@ if __name__ == '__main__':
                            help='RDY count to use for bench_reader')
     tornado.options.define('mode', type=str, default='pubsub',
                            help='the benchmark mode (pub, pubsub)')
+    tornado.options.define('commit', type=str, default='master',
+                           help='the git commit')
+    tornado.options.define('golang_version', type=str, default='1.5.1',
+                           help='the go version')
     tornado.options.parse_command_line()
 
     logging.getLogger('paramiko').setLevel(logging.WARNING)
