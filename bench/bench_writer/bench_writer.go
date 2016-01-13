@@ -15,6 +15,7 @@ import (
 
 var (
 	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
+	sleepfor   = flag.Duration("sleepfor", 1*time.Second, " time to sleep between pub")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
 	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
 	size       = flag.Int("size", 200, "size of messages")
@@ -99,6 +100,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	for {
+		time.Sleep(*sleepfor)
 		cmd, _ := nsq.MultiPublish(topic, batch)
 		_, err := cmd.WriteTo(rw)
 		if err != nil {
