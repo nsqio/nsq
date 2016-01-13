@@ -144,6 +144,7 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.Int("max-deflate-level", 6, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", true, "enable snappy feature negotiation (client compression)")
 	flagSet.Int("log-level", 1, "log verbose level")
+	flagSet.Int("blockprofile", 1000, "block profile rate")
 
 	return flagSet
 }
