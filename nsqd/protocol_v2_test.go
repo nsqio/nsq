@@ -1234,9 +1234,9 @@ func TestSampling(t *testing.T) {
 	}()
 	<-doneChan
 
-	channel.Lock()
+	channel.inFlightMutex.Lock()
 	numInFlight := len(channel.inFlightMessages)
-	channel.Unlock()
+	channel.inFlightMutex.Unlock()
 
 	equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
 	equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)

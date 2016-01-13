@@ -116,15 +116,15 @@ func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Chan
 
 func (n *NSQD) GetStats() []TopicStats {
 	n.RLock()
-	defer n.RUnlock()
 
 	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for _, t := range n.topicMap {
 		realTopics = append(realTopics, t)
 	}
+	n.RUnlock()
 	sort.Sort(TopicsByName{realTopics})
 
-	topics := make([]TopicStats, 0, len(n.topicMap))
+	topics := make([]TopicStats, 0, len(realTopics))
 	for _, t := range realTopics {
 		t.RLock()
 
@@ -132,22 +132,22 @@ func (n *NSQD) GetStats() []TopicStats {
 		for _, c := range t.channelMap {
 			realChannels = append(realChannels, c)
 		}
+		t.RUnlock()
 		sort.Sort(ChannelsByName{realChannels})
 
-		channels := make([]ChannelStats, 0, len(t.channelMap))
+		channels := make([]ChannelStats, 0, len(realChannels))
 		for _, c := range realChannels {
 			c.RLock()
 			clients := make([]ClientStats, 0, len(c.clients))
 			for _, client := range c.clients {
 				clients = append(clients, client.Stats())
 			}
-			channels = append(channels, NewChannelStats(c, clients))
 			c.RUnlock()
+			channels = append(channels, NewChannelStats(c, clients))
 		}
 
 		topics = append(topics, NewTopicStats(t, channels))
 
-		t.RUnlock()
 	}
 
 	return topics

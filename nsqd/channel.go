@@ -501,23 +501,23 @@ func (c *Channel) doRequeue(m *Message) error {
 
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
 func (c *Channel) pushInFlightMessage(msg *Message) error {
-	c.Lock()
+	c.inFlightMutex.Lock()
 	_, ok := c.inFlightMessages[msg.ID]
 	if ok {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return errors.New("ID already in flight")
 	}
 	c.inFlightMessages[msg.ID] = msg
-	c.Unlock()
+	c.inFlightMutex.Unlock()
 	return nil
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
 func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, error) {
-	c.Lock()
+	c.inFlightMutex.Lock()
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return nil, errors.New("ID not in flight")
 	}
 	if msg.clientID != clientID {
@@ -526,7 +526,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 			msg.clientID, clientID)
 	}
 	delete(c.inFlightMessages, id)
-	c.Unlock()
+	c.inFlightMutex.Unlock()
 	return msg, nil
 }
 
