@@ -16,10 +16,11 @@ import (
 var (
 	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
 	sleepfor   = flag.Duration("sleepfor", 1*time.Second, " time to sleep between pub")
+	keepAlive  = flag.Bool("keepalive", true, "keep alive for connection")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
 	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
 	size       = flag.Int("size", 200, "size of messages")
-	batchSize  = flag.Int("batch-size", 200, "batch size of messages")
+	batchSize  = flag.Int("batch-size", 20, "batch size of messages")
 	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
 )
 
@@ -38,20 +39,22 @@ func main() {
 	}
 	conn, err := net.DialTimeout("tcp", *tcpAddress, time.Second)
 	if err != nil {
-		panic(err.Error())
-	}
-	conn.Write(nsq.MagicV2)
-	nsq.CreateTopic(*topic, 0).WriteTo(conn)
-	resp, err := nsq.ReadResponse(conn)
-	if err != nil {
-		panic(err.Error())
-	}
-	frameType, data, err := nsq.UnpackResponse(resp)
-	if err != nil {
-		panic(err.Error())
-	}
-	if frameType == nsq.FrameTypeError {
-		panic(string(data))
+		log.Println(err.Error())
+	} else {
+		conn.Write(nsq.MagicV2)
+		nsq.CreateTopic(*topic, 0).WriteTo(conn)
+		resp, err := nsq.ReadResponse(conn)
+		if err != nil {
+			log.Println(err.Error())
+		} else {
+			frameType, data, err := nsq.UnpackResponse(resp)
+			if err != nil {
+				log.Println(err.Error())
+			} else if frameType == nsq.FrameTypeError {
+				log.Println(string(data))
+			}
+		}
+		conn.Close()
 	}
 
 	goChan := make(chan int)
@@ -59,8 +62,8 @@ func main() {
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			pubWorker(*runfor, *tcpAddress, *batchSize, batch, *topic, rdyChan, goChan)
-			wg.Done()
 		}()
 		<-rdyChan
 	}
@@ -85,43 +88,78 @@ func main() {
 		duration,
 		float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
 		float64(tmc)/duration.Seconds(),
-		float64(duration/time.Microsecond)/float64(tmc))
+		float64(duration/time.Microsecond)/(float64(tmc)+0.01))
+}
+
+func checkShouldClose(err error) bool {
+	if err != nil {
+		log.Printf("err: %v\n", err)
+		return true
+	}
+	return false
 }
 
 func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, topic string, rdyChan chan int, goChan chan int) {
+	shouldClose := !*keepAlive
 	conn, err := net.DialTimeout("tcp", tcpAddr, time.Second)
 	if err != nil {
-		panic(err.Error())
+		log.Println(err.Error())
+		shouldClose = true
+	} else {
+		conn.Write(nsq.MagicV2)
 	}
-	conn.Write(nsq.MagicV2)
-	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	rdyChan <- 1
 	<-goChan
 	var msgCount int64
 	endTime := time.Now().Add(td)
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	for {
+		if time.Now().After(endTime) {
+			break
+		}
 		time.Sleep(*sleepfor)
+		if shouldClose || !*keepAlive {
+			if conn != nil {
+				conn.Close()
+			}
+			conn, err = net.DialTimeout("tcp", tcpAddr, time.Second)
+			shouldClose = checkShouldClose(err)
+			if shouldClose {
+				continue
+			}
+			_, err = conn.Write(nsq.MagicV2)
+			shouldClose = checkShouldClose(err)
+			if shouldClose {
+				continue
+			}
+			rw = bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		}
 		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		cmd, _ := nsq.MultiPublish(topic, batch)
 		_, err := cmd.WriteTo(rw)
-		if err != nil {
-			panic(err.Error())
+		shouldClose = checkShouldClose(err)
+		if shouldClose {
+			continue
 		}
 		err = rw.Flush()
-		if err != nil {
-			panic(err.Error())
+		shouldClose = checkShouldClose(err)
+		if shouldClose {
+			continue
 		}
 		resp, err := nsq.ReadResponse(rw)
-		if err != nil {
-			panic(err.Error())
+		shouldClose = checkShouldClose(err)
+		if shouldClose {
+			continue
 		}
 		frameType, data, err := nsq.UnpackResponse(resp)
-		if err != nil {
-			panic(err.Error())
+		shouldClose = checkShouldClose(err)
+		if shouldClose {
+			continue
 		}
 		conn.SetReadDeadline(time.Time{})
 		if frameType == nsq.FrameTypeError {
-			panic(string(data))
+			log.Println("frame unexpected:" + string(data))
+			shouldClose = true
 		}
 		msgCount += int64(len(batch))
 		if time.Now().After(endTime) {
