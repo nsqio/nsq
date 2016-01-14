@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -100,9 +101,19 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
 	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
 	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
+	router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(setBlockRateHandler, log, http_api.PlainText))
 	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
 	return s
+}
+
+func setBlockRateHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	rate, err := strconv.Atoi(req.FormValue("rate"))
+	if err != nil {
+		return nil, http_api.Err{http.StatusBadRequest, fmt.Sprintf("invalid block rate : %s", err.Error())}
+	}
+	runtime.SetBlockProfileRate(rate)
+	return nil, nil
 }
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
