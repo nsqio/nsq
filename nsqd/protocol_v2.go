@@ -48,7 +48,8 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	// and avoid a potential race with IDENTIFY (where a client
 	// could have changed or disabled said attributes)
 	messagePumpStartedChan := make(chan bool)
-	go p.messagePump(client, messagePumpStartedChan)
+	messagePumpStoppedChan := make(chan bool)
+	go p.messagePump(client, messagePumpStartedChan, messagePumpStoppedChan)
 	<-messagePumpStartedChan
 
 	for {
@@ -114,12 +115,14 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	}
 
 	p.ctx.nsqd.logf("PROTOCOL(V2): [%s] exiting ioloop", client)
-	conn.Close()
 	close(client.ExitChan)
+	<-messagePumpStoppedChan
+
 	if client.Channel != nil {
 		client.Channel.RemoveClient(client.ID)
 	}
 
+	client.Close()
 	return err
 }
 
@@ -203,7 +206,8 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
 
-func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
+func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool,
+	stoppedChan chan bool) {
 	var err error
 	var buf bytes.Buffer
 	var clientMsgChan chan *Message
@@ -328,6 +332,7 @@ exit:
 	if err != nil {
 		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] messagePump error - %s", client, err)
 	}
+	close(stoppedChan)
 }
 
 func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error) {

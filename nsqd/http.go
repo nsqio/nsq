@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -262,7 +261,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
 		readMax := s.ctx.nsqd.getOpts().MaxBodySize + 1
-		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
+		rdr := newBufioReader(io.LimitReader(req.Body, readMax))
+		defer putBufioReader(rdr)
 		total := 0
 		for !exit {
 			var block []byte
