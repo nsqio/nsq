@@ -25,6 +25,7 @@ var (
 )
 
 var totalMsgCount int64
+var currentMsgCount int64
 
 func main() {
 	flag.Parse()
@@ -80,6 +81,26 @@ func main() {
 
 	start := time.Now()
 	close(goChan)
+	go func() {
+		prevMsgCount := int64(0)
+		prevStart := start
+		for {
+			time.Sleep(time.Second * 5)
+			end := time.Now()
+			duration := end.Sub(prevStart)
+			currentTmc := atomic.LoadInt64(&currentMsgCount)
+			tmc := currentTmc - prevMsgCount
+			prevMsgCount = currentTmc
+			prevStart = time.Now()
+			log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op",
+				duration,
+				float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
+				float64(tmc)/duration.Seconds(),
+				float64(duration/time.Microsecond)/(float64(tmc)+0.01))
+
+		}
+
+	}()
 	wg.Wait()
 	end := time.Now()
 	duration := end.Sub(start)
@@ -136,7 +157,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 			}
 			rw = bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		}
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(time.Second))
 		cmd, _ := nsq.MultiPublish(topic, batch)
 		_, err := cmd.WriteTo(rw)
 		shouldClose = checkShouldClose(err)
@@ -167,6 +188,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 		if time.Now().After(endTime) {
 			break
 		}
+		atomic.AddInt64(&currentMsgCount, int64(len(batch)))
 	}
 	atomic.AddInt64(&totalMsgCount, msgCount)
 }
