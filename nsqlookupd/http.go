@@ -63,6 +63,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
 	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
 	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
+	router.HandlerFunc("POST", "/debug/pprof/symbol", pprof.Symbol)
 	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
 	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
 	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
