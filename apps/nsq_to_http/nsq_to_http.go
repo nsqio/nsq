@@ -157,12 +157,13 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 }
 
 func hasArg(s string) bool {
-	for _, arg := range os.Args {
-		if strings.Contains(arg, s) {
-			return true
+	argExist := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == s {
+			argExist = true
 		}
-	}
-	return false
+	})
+	return argExist
 }
 
 func main() {
