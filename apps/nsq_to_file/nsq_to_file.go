@@ -356,7 +356,6 @@ func hasArg(s string) bool {
 			argExist = true
 		}
 	})
-
 	return argExist
 }
 
