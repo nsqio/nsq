@@ -430,9 +430,17 @@ func (n *NSQD) Exit() {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string) *Topic {
+	// most likely, we already have this topic, so try read lock first.
+	n.RLock()
+	t, ok := n.topicMap[topicName]
+	n.RUnlock()
+	if ok {
+		return t
+	}
+
 	n.Lock()
 
-	t, ok := n.topicMap[topicName]
+	t, ok = n.topicMap[topicName]
 	if ok {
 		n.Unlock()
 		return t
