@@ -187,7 +187,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	nsqLog.Logf("PROTOCOL(V2): client [%s] exiting ioloop", client)
+	nsqLog.LogDebugf("PROTOCOL(V2): client [%s] exiting ioloop", client)
 	close(client.ExitChan)
 	<-msgPumpStoppedChan
 
@@ -410,7 +410,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool,
 	}
 
 exit:
-	nsqLog.Logf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	nsqLog.LogDebugf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {

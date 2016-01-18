@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/bitly/go-simplejson"
-	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
-	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"

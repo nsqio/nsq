@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/blang/semver"
-	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/stringy"
 )
 

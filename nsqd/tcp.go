@@ -12,8 +12,6 @@ type tcpServer struct {
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
-	nsqLog.Logf("TCP: new client(%s)", clientConn.RemoteAddr())
-
 	// The client should initialize itself by sending a 4 byte sequence indicating
 	// the version of the protocol that it intends to communicate, this will allow us
 	// to gracefully upgrade the protocol away from text/line oriented to whatever...
@@ -25,7 +23,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	}
 	protocolMagic := string(buf)
 
-	nsqLog.Logf("CLIENT(%s): desired protocol magic '%s'",
+	nsqLog.Logf("new CLIENT(%s): desired protocol magic '%s'",
 		clientConn.RemoteAddr(), protocolMagic)
 
 	var prot protocol.Protocol
