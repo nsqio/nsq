@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"errors"
 	"strconv"
 	"strings"
@@ -38,6 +39,8 @@ type Topic struct {
 	needNotifyChan bool
 	enableTrace    bool
 	syncEvery      int64
+	putBuffer      bytes.Buffer
+	bp             sync.Pool
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -57,11 +60,14 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 		ctx:            ctx,
 		deleteCallback: deleteCallback,
 		syncEvery:      ctx.nsqd.getOpts().SyncEvery,
+		putBuffer:      bytes.Buffer{},
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1
 	}
-
+	t.bp.New = func() interface{} {
+		return &bytes.Buffer{}
+	}
 	t.fullName = GetTopicFullName(t.tname, t.partition)
 
 	if strings.HasSuffix(topicName, "#ephemeral") {
@@ -81,6 +87,17 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 	t.ctx.nsqd.Notify(t)
 
 	return t
+}
+
+func (t *Topic) bufferPoolGet(capacity int) *bytes.Buffer {
+	b := t.bp.Get().(*bytes.Buffer)
+	b.Reset()
+	b.Grow(capacity)
+	return b
+}
+
+func (t *Topic) bufferPoolPut(b *bytes.Buffer) {
+	t.bp.Put(b)
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting
@@ -196,7 +213,14 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) error {
+	t.Lock()
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		t.Unlock()
+		return errors.New("exiting")
+	}
+
 	err := t.put(m)
+	t.Unlock()
 	if err != nil {
 		return err
 	}
@@ -211,6 +235,12 @@ func (t *Topic) PutMessage(m *Message) error {
 
 // PutMessages writes multiple Messages to the queue
 func (t *Topic) PutMessages(msgs []*Message) error {
+	t.Lock()
+	defer t.Unlock()
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return errors.New("exiting")
+	}
+
 	for _, m := range msgs {
 		err := t.put(m)
 		if err != nil {
@@ -220,31 +250,20 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
 
 	if int64(len(msgs)) >= t.syncEvery {
-		t.Lock()
 		t.flush(false)
-		t.Unlock()
 	}
 	return nil
 }
 
 func (t *Topic) put(m *Message) error {
-	t.Lock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		t.Unlock()
-		return errors.New("exiting")
-	}
-
-	b := bufferPoolGet()
 	m.ID = t.nextMsgID()
-	_, err := writeMessageToBackend(b, m, t.backend)
-	bufferPoolPut(b)
+	_, err := writeMessageToBackend(&t.putBuffer, m, t.backend)
 	t.ctx.nsqd.SetHealth(err)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to write message to backend - %s",
 			t.GetFullName(), err)
-		t.Unlock()
 		return err
 	}
 
@@ -252,7 +271,6 @@ func (t *Topic) put(m *Message) error {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
 			t.GetFullName())
 	}
-	t.Unlock()
 	return nil
 }
 

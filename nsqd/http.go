@@ -195,9 +195,16 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
+	_, topic, err := s.getTopicFromQuery(req)
+	if err != nil {
+		nsqLog.Logf("get topic err: %v", err)
+		return nil, err
+	}
 
 	readMax := req.ContentLength + 1
-	body := make([]byte, req.ContentLength)
+	b := topic.bufferPoolGet(int(req.ContentLength))
+	defer topic.bufferPoolPut(b)
+	body := b.Bytes()[:req.ContentLength]
 	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
 	if err != nil {
 		nsqLog.Logf("read request body error: %v", err)
@@ -215,12 +222,6 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
-	_, topic, err := s.getTopicFromQuery(req)
-	if err != nil {
-		nsqLog.Logf("get topic err: %v", err)
-		return nil, err
-	}
-
 	msg := NewMessage(0, body)
 	err = topic.PutMessage(msg)
 	if err != nil {
@@ -231,9 +232,6 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var msgs []*Message
-	var exit bool
-
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
 
@@ -246,11 +244,21 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
+	var msgs []*Message
+	var buffers []*bytes.Buffer
+	var exit bool
+
 	_, ok := reqParams["binary"]
 	if ok {
 		tmp := make([]byte, 4)
-		msgs, err = readMPUB(req.Body, tmp, topic,
+		msgs, buffers, err = readMPUB(req.Body, tmp, topic,
 			s.ctx.nsqd.getOpts().MaxMsgSize)
+		defer func() {
+			for _, b := range buffers {
+				topic.bufferPoolPut(b)
+			}
+		}()
+
 		if err != nil {
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
 		}
