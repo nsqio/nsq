@@ -5,7 +5,6 @@ import (
 	"flag"
 	"log"
 	"net"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,14 +13,15 @@ import (
 )
 
 var (
-	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
-	sleepfor   = flag.Duration("sleepfor", 1*time.Second, " time to sleep between pub")
-	keepAlive  = flag.Bool("keepalive", true, "keep alive for connection")
-	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
-	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
-	size       = flag.Int("size", 200, "size of messages")
-	batchSize  = flag.Int("batch-size", 20, "batch size of messages")
-	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
+	runfor      = flag.Duration("runfor", 10*time.Second, "duration of time to run")
+	sleepfor    = flag.Duration("sleepfor", 1*time.Second, " time to sleep between pub")
+	keepAlive   = flag.Bool("keepalive", true, "keep alive for connection")
+	tcpAddress  = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
+	topic       = flag.String("topic", "sub_bench", "topic to receive messages on")
+	size        = flag.Int("size", 200, "size of messages")
+	batchSize   = flag.Int("batch-size", 20, "batch size of messages")
+	deadline    = flag.String("deadline", "", "deadline to start the benchmark run")
+	concurrency = flag.Int("c", 100, "concurrency of goroutine")
 )
 
 var totalMsgCount int64
@@ -38,7 +38,7 @@ func main() {
 	for i := range batch {
 		batch[i] = msg
 	}
-	conn, err := net.DialTimeout("tcp", *tcpAddress, time.Second)
+	conn, err := net.DialTimeout("tcp", *tcpAddress, 5*time.Second)
 	if err != nil {
 		log.Println(err.Error())
 	} else {
@@ -60,7 +60,7 @@ func main() {
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)
-	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
+	for j := 0; j < *concurrency; j++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -122,7 +122,7 @@ func checkShouldClose(err error) bool {
 
 func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, topic string, rdyChan chan int, goChan chan int) {
 	shouldClose := !*keepAlive
-	conn, err := net.DialTimeout("tcp", tcpAddr, time.Second)
+	conn, err := net.DialTimeout("tcp", tcpAddr, 5*time.Second)
 	if err != nil {
 		log.Println(err.Error())
 		shouldClose = true
@@ -145,7 +145,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 			if conn != nil {
 				conn.Close()
 			}
-			conn, err = net.DialTimeout("tcp", tcpAddr, time.Second)
+			conn, err = net.DialTimeout("tcp", tcpAddr, 5*time.Second)
 			shouldClose = checkShouldClose(err)
 			if shouldClose {
 				continue
