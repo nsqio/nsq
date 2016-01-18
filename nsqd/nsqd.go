@@ -430,9 +430,21 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
+	// most likely, we already have this topic, so try read lock first.
+	n.RLock()
+	t, ok := n.topicMap[topicName]
+	n.RUnlock()
+	if ok {
+		if part != -1 && t.GetTopicPart() != part {
+			nsqLog.LogWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
+			return nil
+		}
+		return t
+	}
+
 	n.Lock()
 
-	t, ok := n.topicMap[topicName]
+	t, ok = n.topicMap[topicName]
 	if ok {
 		n.Unlock()
 		if part != -1 && t.GetTopicPart() != part {

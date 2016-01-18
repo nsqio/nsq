@@ -364,7 +364,13 @@ func (t *Topic) flush(notifyChan bool) error {
 
 func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	var latencyStream *quantile.Quantile
+	t.RLock()
+	realChannels := make([]*Channel, 0, len(t.channelMap))
 	for _, c := range t.channelMap {
+		realChannels = append(realChannels, c)
+	}
+	t.RUnlock()
+	for _, c := range realChannels {
 		if c.e2eProcessingLatencyStream == nil {
 			continue
 		}
