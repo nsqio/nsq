@@ -191,12 +191,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	close(client.ExitChan)
 	<-msgPumpStoppedChan
 
-	conn.Close()
-
 	if client.Channel != nil {
 		client.Channel.RequeueClientMessages(client.ID)
 		client.Channel.RemoveClient(client.ID)
 	}
+	client.FinalClose()
 
 	return err
 }
