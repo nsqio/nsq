@@ -183,16 +183,32 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if err != nil {
 		topicPartition = "*"
 	}
+	// access mode will be used for disable some write method (pub) to allow
+	// removing the topic from some node without affecting the consumer.
+	// if a node is setting read only, then with access mode "w", this node
+	// will be filtered before return to client.
+	// The access mode "r" will return all nodes (that have the topic) without any filter.
+	accessMode, err := reqParams.Get("access")
+	if err != nil {
+		accessMode = "r"
+	}
+	if accessMode != "w" && accessMode != "r" {
+		return nil, http_api.Err{400, "INVALID_ACCESS_MODE"}
+	}
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", topicPartition)
 	if len(registrations) == 0 {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 	partitionProducers := make(map[string]*PeerInfo)
 	allProducers := make(map[string]*Producer, len(registrations))
+	filterTombTime := s.ctx.nsqlookupd.opts.TombstoneLifetime
+	if accessMode == "r" {
+		filterTombTime = 0
+	}
 	for _, r := range registrations {
 		producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "", r.PartitionID)
 		producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
-			s.ctx.nsqlookupd.opts.TombstoneLifetime)
+			filterTombTime)
 		if len(producers) == 0 {
 			continue
 		}
