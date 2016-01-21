@@ -33,7 +33,8 @@ type Topic struct {
 	deleteCallback func(*Topic)
 	deleter        sync.Once
 
-	ctx            *context
+	notifyCall     func(v interface{})
+	option         *Options
 	msgIDCursor    uint64
 	needFlush      int32
 	needNotifyChan bool
@@ -48,7 +49,7 @@ func GetTopicFullName(topic string, part int) string {
 }
 
 // Topic constructor
-func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Topic)) *Topic {
+func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Topic), notify func(v interface{})) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -57,9 +58,9 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 		partition:      part,
 		channelMap:     make(map[string]*Channel),
 		flushChan:      make(chan int, 10),
-		ctx:            ctx,
+		option:         opt,
 		deleteCallback: deleteCallback,
-		syncEvery:      ctx.nsqd.getOpts().SyncEvery,
+		syncEvery:      opt.SyncEvery,
 		putBuffer:      bytes.Buffer{},
 	}
 	if t.syncEvery < 1 {
@@ -76,15 +77,15 @@ func NewTopic(topicName string, part int, ctx *context, deleteCallback func(*Top
 	} else {
 		backendName := getBackendName(t.tname, t.partition)
 		t.backend = newDiskQueueWriter(backendName,
-			ctx.nsqd.getOpts().DataPath,
-			ctx.nsqd.getOpts().MaxBytesPerFile,
+			opt.DataPath,
+			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
-			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
-			ctx.nsqd.getOpts().SyncEvery,
-			ctx.nsqd.getOpts().SyncTimeout)
+			int32(opt.MaxMsgSize)+minValidMsgLength,
+			opt.SyncEvery,
+			opt.SyncTimeout)
 	}
 
-	t.ctx.nsqd.Notify(t)
+	t.notifyCall(t)
 
 	return t
 }
@@ -161,7 +162,8 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, t.ctx, deleteCallback)
+		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
+			t.option, deleteCallback, t.notifyCall)
 		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
 		t.channelMap[channelName] = channel
 		nsqLog.Logf("TOPIC(%s): new channel(%s), end: %v", t.GetFullName(),
@@ -258,7 +260,6 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 func (t *Topic) put(m *Message) error {
 	m.ID = t.nextMsgID()
 	_, err := writeMessageToBackend(&t.putBuffer, m, t.backend)
-	t.ctx.nsqd.SetHealth(err)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(
@@ -315,7 +316,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		t.ctx.nsqd.Notify(t)
+		t.notifyCall(t)
 	} else {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
@@ -394,8 +395,8 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 		}
 		if latencyStream == nil {
 			latencyStream = quantile.New(
-				t.ctx.nsqd.getOpts().E2EProcessingLatencyWindowTime,
-				t.ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles)
+				t.option.E2EProcessingLatencyWindowTime,
+				t.option.E2EProcessingLatencyPercentiles)
 		}
 		latencyStream.Merge(c.e2eProcessingLatencyStream)
 	}

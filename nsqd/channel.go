@@ -37,10 +37,11 @@ type Channel struct {
 
 	sync.RWMutex
 
-	topicName string
-	topicPart int
-	name      string
-	ctx       *context
+	topicName  string
+	topicPart  int
+	name       string
+	notifyCall func(v interface{})
+	option     *Options
 
 	backend BackendQueueReader
 
@@ -79,14 +80,14 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, part int, channelName string, ctx *context,
-	deleteCallback func(*Channel)) *Channel {
+func NewChannel(topicName string, part int, channelName string, opt *Options,
+	deleteCallback func(*Channel), notify func(v interface{})) *Channel {
 
 	c := &Channel{
 		topicName:          topicName,
 		topicPart:          part,
 		name:               channelName,
-		requeuedMsgChan:    make(chan *Message, ctx.nsqd.getOpts().MaxRdyCount+1),
+		requeuedMsgChan:    make(chan *Message, opt.MaxRdyCount+1),
 		waitingRequeueMsgs: make(map[MessageID]*Message, 100),
 		clientMsgChan:      make(chan *Message),
 		exitChan:           make(chan int),
@@ -97,12 +98,13 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 		//finErrMsgs:     make(map[MessageID]string),
 		tryReadBackend: make(chan bool, 1),
 		deleteCallback: deleteCallback,
-		ctx:            ctx,
+		option:         opt,
+		notifyCall:     notify,
 	}
-	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
+	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
-			ctx.nsqd.getOpts().E2EProcessingLatencyWindowTime,
-			ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles,
+			opt.E2EProcessingLatencyWindowTime,
+			opt.E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -116,12 +118,12 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 		backendReaderName := getBackendReaderName(c.topicName, c.topicPart, channelName)
 		backendName := getBackendName(c.topicName, c.topicPart)
 		c.backend = newDiskQueueReader(backendName, backendReaderName,
-			ctx.nsqd.getOpts().DataPath,
-			ctx.nsqd.getOpts().MaxBytesPerFile,
+			opt.DataPath,
+			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
-			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
-			ctx.nsqd.getOpts().SyncEvery,
-			ctx.nsqd.getOpts().SyncTimeout,
+			int32(opt.MaxMsgSize)+minValidMsgLength,
+			opt.SyncEvery,
+			opt.SyncTimeout,
 			false)
 
 		c.currentLastConfirmed = c.backend.(*diskQueueReader).virtualConfirmedOffset
@@ -129,13 +131,13 @@ func NewChannel(topicName string, part int, channelName string, ctx *context,
 
 	go c.messagePump()
 
-	c.ctx.nsqd.Notify(c)
+	c.notifyCall(c)
 
 	return c
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.option.MemQueueSize)/10))
 
 	c.inFlightMessages = make(map[MessageID]*Message, pqSize)
 
@@ -173,7 +175,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.ctx.nsqd.Notify(c)
+		c.notifyCall(c)
 	} else {
 		nsqLog.Logf("CHANNEL(%s): closing", c.name)
 	}
@@ -303,9 +305,9 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
-		c.ctx.nsqd.getOpts().MaxMsgTimeout {
+		c.option.MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.getOpts().MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.option.MaxMsgTimeout)
 	}
 
 	msg.pri = newTimeout.UnixNano()
@@ -344,7 +346,7 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 		}
 		return
 	}
-	if reduced && int64(len(c.confirmedMsgs)) < c.ctx.nsqd.getOpts().MaxConfirmWin/2 {
+	if reduced && int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
 		select {
 		case c.tryReadBackend <- true:
 		default:
@@ -352,7 +354,7 @@ func (c *Channel) confirmBackendQueue(msg *Message) {
 	}
 	if msg.offset < c.currentLastConfirmed {
 		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, c.currentLastConfirmed)
-	} else if int64(len(c.confirmedMsgs)) > c.ctx.nsqd.getOpts().MaxConfirmWin {
+	} else if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
 			len(c.confirmedMsgs), c.currentLastConfirmed)
 
@@ -556,7 +558,7 @@ func (c *Channel) messagePump() {
 	var lastMsg Message
 	isSkipped := false
 	var readChan <-chan ReadResult
-	maxWin := int32(c.ctx.nsqd.getOpts().MaxConfirmWin)
+	maxWin := int32(c.option.MaxConfirmWin)
 
 LOOP:
 	for {
@@ -736,7 +738,7 @@ exit:
 	}
 	c.waitingRequeueMutex.Unlock()
 	if atomic.LoadInt32(&c.waitingConfirm) >
-		int32(c.ctx.nsqd.getOpts().MaxConfirmWin) {
+		int32(c.option.MaxConfirmWin) {
 		// check if lastconfirmed message offset not in inflight
 	}
 

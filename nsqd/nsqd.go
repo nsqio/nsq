@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/absolute8511/nsq/consistence"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -204,13 +205,17 @@ func (n *NSQD) Main() {
 	var httpListener net.Listener
 	var httpsListener net.Listener
 
-	ctx := &context{n}
-
 	tcpListener, err := net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
 		nsqLog.LogErrorf("FATAL: listen (%s) failed - %s", n.getOpts().TCPAddress, err)
 		os.Exit(1)
 	}
+
+	ip, port, err := net.SplitHostPort(n.getOpts().TCPAddress)
+	rpcport := ""
+	nsqCoord := consistence.NewNsqdCoordinator(ip, port, rpcport, "nsqd-coord", n.getOpts().DataPath)
+	ctx := &context{n, nsqCoord}
+
 	n.Lock()
 	n.tcpListener = tcpListener
 	n.Unlock()
@@ -459,7 +464,7 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.GetTopicName())
 	}
-	t = NewTopic(topicName, part, &context{n}, deleteCallback)
+	t = NewTopic(topicName, part, n.getOpts(), deleteCallback, n.Notify)
 	n.topicMap[topicName] = t
 
 	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
