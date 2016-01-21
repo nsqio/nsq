@@ -60,9 +60,9 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
 	// only v1, deprecated
-	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, http_api.DeprecatedAPI, log, http_api.V1))
-	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
-	router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
+	//router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, http_api.DeprecatedAPI, log, http_api.V1))
+	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
+	//router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, http_api.DeprecatedAPI, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, http_api.DeprecatedAPI, log, http_api.V1))
@@ -76,13 +76,13 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
 	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
 	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
-	router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(HandleBlockRate, log, http_api.PlainText))
+	router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(setBlockRateHandler, log, http_api.PlainText))
 	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
 	return s
 }
 
-func HandleBlockRate(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+func setBlockRateHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	rate, err := strconv.Atoi(req.FormValue("rate"))
 	if err != nil {
 		return nil, http_api.Err{http.StatusBadRequest, fmt.Sprintf("invalid block rate : %s", err.Error())}
@@ -131,8 +131,8 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	}, nil
 }
 
-func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
-	reqParams, err := http_api.NewReqParams(req)
+func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Values, *Topic, string, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
@@ -152,34 +152,28 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.Req
 	return reqParams, topic, channelName, err
 }
 
-func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
+func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicNames, ok := reqParams["topic"]
-	if !ok {
-		return nil, nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
-	}
-	topicName := topicNames[0]
-
-	if !protocol.IsValidTopicName(topicName) {
-		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
-	}
-	topicParts, ok := reqParams["partition"]
-	topicPart := 0
-	if !ok {
-		return reqParams, s.ctx.nsqd.GetTopicIgnPart(topicName), nil
-	} else {
-		topicPart, err = strconv.Atoi(topicParts[0])
-		if err != nil {
-			return nil, nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION"}
-		}
+	topicName, topicPart, err := http_api.GetTopicPartitionArgs(reqParams)
+	if err != nil {
+		return nil, nil, http_api.Err{400, err.Error()}
 	}
 
-	return reqParams, s.ctx.nsqd.GetTopic(topicName, topicPart), nil
+	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		return nil, nil, http_api.Err{400, err.Error()}
+	}
+
+	if topicPart != topic.GetTopicPart() {
+		return nil, nil, http_api.Err{http.StatusNotFound, "Topic partition not exist"}
+	}
+
+	return reqParams, topic, nil
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -195,7 +189,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
-	_, topic, err := s.getTopicFromQuery(req)
+	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		nsqLog.Logf("get topic err: %v", err)
 		return nil, err
@@ -239,7 +233,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}
 
-	reqParams, topic, err := s.getTopicFromQuery(req)
+	reqParams, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -310,25 +304,16 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	return "OK", nil
 }
 
-func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, _, err := s.getTopicFromQuery(req)
-	return nil, err
-}
-
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
+	topicName, err := http_api.GetTopicArg(reqParams)
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
-	}
-
-	if !protocol.IsValidTopicName(topicName) {
-		return nil, http_api.Err{400, "INVALID_TOPIC"}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
@@ -345,15 +330,15 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 }
 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
+	topicName, err := http_api.GetTopicArg(reqParams)
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	err = s.ctx.nsqd.DeleteExistingTopic(topicName)
@@ -365,7 +350,7 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +359,7 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 }
 
 func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +373,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 }
 
 func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -417,13 +402,13 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
-	topicName, _ := reqParams.Get("topic")
-	channelName, _ := reqParams.Get("channel")
+	topicName := reqParams.Get("topic")
+	channelName := reqParams.Get("channel")
 
 	t, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
@@ -435,14 +420,14 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 }
 
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
-	formatString, _ := reqParams.Get("format")
-	topicName, _ := reqParams.Get("topic")
-	channelName, _ := reqParams.Get("channel")
+	formatString := reqParams.Get("format")
+	topicName := reqParams.Get("topic")
+	channelName := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
 	stats := s.ctx.nsqd.GetStats()

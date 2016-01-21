@@ -28,7 +28,7 @@ func NewReqParams(req *http.Request) (*ReqParams, error) {
 
 func (r *ReqParams) Get(key string) (string, error) {
 	v, ok := r.Values[key]
-	if !ok {
+	if !ok || len(v) == 0 {
 		return "", errors.New("key not in query params")
 	}
 	return v[0], nil
@@ -50,7 +50,7 @@ func (p *PostParams) Get(key string) (string, error) {
 	if p.Request.Form == nil {
 		p.Request.ParseMultipartForm(1 << 20)
 	}
-	if vs, ok := p.Request.Form[key]; ok {
+	if vs, ok := p.Request.Form[key]; ok && len(vs) > 0 {
 		return vs[0], nil
 	}
 	return "", errors.New("key not in post params")
