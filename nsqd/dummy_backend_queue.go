@@ -49,12 +49,19 @@ func (d *dummyBackendQueue) Empty() error {
 	return nil
 }
 
-func (d *dummyBackendQueueWriter) Put([]byte) (BackendQueueEnd, error) {
-	return nil, nil
+func (d *dummyBackendQueueWriter) Put([]byte) (BackendOffset, error) {
+	return 0, nil
 }
 func (d *dummyBackendQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	return nil
 }
+func (d *dummyBackendQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
+	return nil
+}
+func (d *dummyBackendQueueWriter) ResetWriteEnd(offset BackendOffset, diffCnt uint64) error {
+	return nil
+}
+
 func (d *dummyBackendQueueWriter) Flush() error {
 	return nil
 }

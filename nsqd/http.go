@@ -192,6 +192,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		nsqLog.Logf("get topic err: %v", err)
+		// TODO: forward request to the right nsqd node.
 		return nil, err
 	}
 
@@ -202,6 +203,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
 	if err != nil {
 		nsqLog.Logf("read request body error: %v", err)
+		body = body[:n]
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			// we ignore EOF, maybe the ContentLength is not match?
 			nsqLog.LogWarningf("read request body eof: %v, ContentLength: %v,return length %v.",
@@ -210,17 +212,44 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
 	}
-	if int64(len(body)) == readMax {
-		return nil, http_api.Err{413, "MSG_TOO_BIG"}
-	} else if len(body) == 0 {
+	if len(body) == 0 {
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
 	msg := NewMessage(0, body)
-	err = topic.PutMessage(msg)
-	s.ctx.setHealth(err)
-	if err != nil {
-		return nil, http_api.Err{503, "EXITING"}
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		id, offset, err := topic.PutMessage(msg)
+		s.ctx.setHealth(err)
+		if err != nil {
+			nsqLog.LogErrorf("topic %v put message %v failed: %v", topic.GetFullName(), msg.ID, err)
+			return nil, http_api.Err{503, err.Error()}
+		}
+		// replica should check if offset matching. If not the replica should leave the ISR list.
+		// also, the coordinator should retry on fail until all nodes in ISR success.
+		// If failed, should update ISR and retry.
+		err = s.ctx.syncPutMessage(topic.GetTopicName(), topic.GetTopicPart(), msg, offset)
+		if err != nil {
+			nsqLog.LogWarningf("topic %v sync message %v failed: %v", topic.GetFullName(), msg.ID, err)
+			err = topic.ResetBackendEnd(offset, 1)
+			if err != nil {
+				nsqLog.LogErrorf("rollback local topic %v to offset %v failed: %v", topic.GetFullName(), offset, err)
+			}
+			// TODO: do we need notify others to reset their backend?
+			return nil, http_api.Err{500, err.Error()}
+		}
+		err = s.ctx.appendTopicLog(topic.GetTopicName(), topic.GetTopicPart(), id, offset)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		//TODO: forward to master of topic
+		nsqLog.LogDebugf("forward put to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		err := s.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), msg)
+		if err != nil {
+			nsqLog.LogWarningf("topic %v forward message failed: %v", topic.GetFullName(), err)
+			return nil, http_api.Err{500, err.Error()}
+		}
 	}
 
 	return "OK", nil
@@ -297,7 +326,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
-	err = topic.PutMessages(msgs)
+	_, _, err = topic.PutMessages(msgs)
 	s.ctx.setHealth(err)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}

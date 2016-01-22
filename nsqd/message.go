@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -113,13 +112,4 @@ func decodeMessage(b []byte) (*Message, error) {
 
 	msg.Body = append(msg.Body, b[26:]...)
 	return &msg, nil
-}
-
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueueWriter) (BackendQueueEnd, error) {
-	buf.Reset()
-	_, err := msg.WriteTo(buf)
-	if err != nil {
-		return nil, err
-	}
-	return bq.Put(buf.Bytes())
 }

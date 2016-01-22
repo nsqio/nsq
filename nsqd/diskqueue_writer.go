@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+var (
+	ErrInvalidOffset = errors.New("invalid offset")
+)
+
 // diskQueueWriter implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type diskQueueWriter struct {
@@ -63,16 +67,39 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 }
 
 // Put writes a []byte to the queue
-func (d *diskQueueWriter) Put(data []byte) (BackendQueueEnd, error) {
+func (d *diskQueueWriter) Put(data []byte) (BackendOffset, error) {
 	d.Lock()
-	defer d.Unlock()
 
 	if d.exitFlag == 1 {
-		return nil, errors.New("exiting")
+		d.Unlock()
+		return 0, errors.New("exiting")
 	}
-	e, werr := d.writeOne(data)
+	offset, werr := d.writeOne(data)
 	d.needSync = true
-	return e, werr
+	d.Unlock()
+	return offset, werr
+}
+
+func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, diffCnt uint64) error {
+	d.Lock()
+	if offset > d.virtualEnd {
+		return ErrInvalidOffset
+	}
+	if offset < d.virtualEnd-BackendOffset(d.writePos) {
+		nsqLog.Logf("reset write position can not across file %v, %v, %v", offset, d.virtualEnd, d.writePos)
+		return ErrInvalidOffset
+	}
+	d.writePos = int64(d.virtualEnd - offset)
+	if d.readablePos > d.writePos {
+		d.readablePos = d.writePos
+	}
+	d.virtualEnd = offset
+	atomic.AddInt64(&d.totalMsgCnt, -1*int64(diffCnt))
+	if d.virtualReadableEnd > d.virtualEnd {
+		d.virtualReadableEnd = d.virtualEnd
+	}
+	d.Unlock()
+	return nil
 }
 
 // Close cleans up the queue and persists metadata
@@ -156,14 +183,22 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 	return nil
 }
 
+func (d *diskQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
+	d.RLock()
+	e := &diskQueueEndInfo{}
+	e.EndFileNum = d.writeFileNum
+	e.EndPos = d.writePos
+	e.TotalMsgCnt = d.totalMsgCnt
+	e.VirtualEnd = d.virtualEnd
+	d.RUnlock()
+	return e
+}
+
 func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	d.RLock()
-	defer d.RUnlock()
-
-	if d.exitFlag == 1 {
-		return nil
-	}
-	return d.internalGetQueueReadEnd()
+	e := d.internalGetQueueReadEnd()
+	d.RUnlock()
+	return e
 }
 
 func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
@@ -177,14 +212,14 @@ func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
 
 // writeOne performs a low level filesystem write for a single []byte
 // while advancing write positions and rolling files, if necessary
-func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
+func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, error) {
 	var err error
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(d.writeFileNum)
 		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
 
 		nsqLog.Logf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
@@ -194,7 +229,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 			if err != nil {
 				d.writeFile.Close()
 				d.writeFile = nil
-				return nil, err
+				return 0, err
 			}
 		}
 		if d.bufferWriter == nil {
@@ -207,32 +242,26 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 	dataLen := int32(len(data))
 
 	if dataLen < d.minMsgSize || dataLen > d.maxMsgSize {
-		return nil, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
+		return 0, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
 	}
 
 	err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	_, err = d.bufferWriter.Write(data)
 	if err != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
-		return nil, err
+		return 0, err
 	}
 
+	writeOffset := d.virtualEnd
 	totalBytes := int64(4 + dataLen)
 	d.writePos += totalBytes
 	d.virtualEnd += BackendOffset(totalBytes)
-	totalCnt := atomic.AddInt64(&d.totalMsgCnt, 1)
-
-	endInfo := &diskQueueEndInfo{
-		EndFileNum:  d.writeFileNum,
-		EndPos:      d.writePos,
-		TotalMsgCnt: totalCnt,
-		VirtualEnd:  d.virtualEnd,
-	}
+	atomic.AddInt64(&d.totalMsgCnt, 1)
 
 	if d.writePos > d.maxBytesPerFile {
 		d.writeFileNum++
@@ -251,7 +280,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (*diskQueueEndInfo, error) {
 		}
 	}
 
-	return endInfo, err
+	return writeOffset, err
 }
 
 func (d *diskQueueWriter) Flush() error {

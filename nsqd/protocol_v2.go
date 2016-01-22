@@ -902,7 +902,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	msg := NewMessage(0, messageBody)
-	err = topic.PutMessage(msg)
+	_, _, err = topic.PutMessage(msg)
 	p.ctx.setHealth(err)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -965,7 +965,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
 	// this next call (and no messages will be queued in that case)
-	err = topic.PutMessages(messages)
+	_, _, err = topic.PutMessages(messages)
 	p.ctx.setHealth(err)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())

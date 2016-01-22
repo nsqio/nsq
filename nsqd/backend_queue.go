@@ -21,12 +21,14 @@ type BackendQueue interface {
 
 // for topic producer
 type BackendQueueWriter interface {
-	Put([]byte) (BackendQueueEnd, error)
+	Put([]byte) (BackendOffset, error)
 	Close() error
 	Delete() error
 	Empty() error
 	Flush() error
+	GetQueueWriteEnd() BackendQueueEnd
 	GetQueueReadEnd() BackendQueueEnd
+	ResetWriteEnd(BackendOffset, uint64) error
 }
 
 type ReadResult struct {

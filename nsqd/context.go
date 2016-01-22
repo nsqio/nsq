@@ -76,3 +76,19 @@ func (c *context) persistMetadata() {
 	c.nsqd.PersistMetadata()
 	c.nsqd.Unlock()
 }
+
+func (c *context) checkForMasterWrite(topic string, port int) bool {
+	return true
+}
+
+func (c *context) syncPutMessage(topic string, part int, msg *Message, offset BackendOffset) error {
+	return nil
+}
+
+func (c *context) appendTopicLog(topic string, part int, msgid MessageID, offset BackendOffset) error {
+	return nil
+}
+
+func (c *context) forwardPutMessage(topic string, port int, msg *Message) error {
+	return nil
+}
