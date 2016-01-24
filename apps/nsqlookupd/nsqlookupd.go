@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -30,16 +28,13 @@ var (
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 )
 
-func main() {
+func start() *nsqlookupd.NSQLookupd {
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {
 		fmt.Println(version.String("nsqlookupd"))
-		return
+		return nil
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg map[string]interface{}
 	if *config != "" {
@@ -54,6 +49,5 @@ func main() {
 	daemon := nsqlookupd.New(opts)
 
 	daemon.Main()
-	<-signalChan
-	daemon.Exit()
+	return daemon
 }
