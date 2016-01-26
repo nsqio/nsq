@@ -157,7 +157,7 @@ retry:
 // and parse our NSQ daemon's expected response format, with deadlines.
 func (c *Client) POSTV1(endpoint string) error {
 retry:
-	req, err := http.NewRequest("POST", endpoint, nil)
+	req, err := http.NewRequest("PUT", endpoint, nil)
 	if err != nil {
 		return err
 	}
