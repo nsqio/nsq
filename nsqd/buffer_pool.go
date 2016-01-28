@@ -42,7 +42,7 @@ func bufioWriterPool(size int) *sync.Pool {
 	return nil
 }
 
-func newBufioReader(r io.Reader) *bufio.Reader {
+func NewBufioReader(r io.Reader) *bufio.Reader {
 	if v := bufioReaderPool.Get(); v != nil {
 		br := v.(*bufio.Reader)
 		br.Reset(r)
@@ -51,7 +51,7 @@ func newBufioReader(r io.Reader) *bufio.Reader {
 	return bufio.NewReader(r)
 }
 
-func putBufioReader(br *bufio.Reader) {
+func PutBufioReader(br *bufio.Reader) {
 	br.Reset(nil)
 	bufioReaderPool.Put(br)
 }

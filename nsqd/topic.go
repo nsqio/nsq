@@ -36,13 +36,14 @@ type Topic struct {
 
 	sync.RWMutex
 
-	tname      string
-	fullName   string
-	partition  int
-	channelMap map[string]*Channel
-	backend    BackendQueueWriter
-	flushChan  chan int
-	exitFlag   int32
+	tname       string
+	fullName    string
+	partition   int
+	channelMap  map[string]*Channel
+	channelLock sync.RWMutex
+	backend     BackendQueueWriter
+	flushChan   chan int
+	exitFlag    int32
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
@@ -53,7 +54,7 @@ type Topic struct {
 	msgIDCursor    uint64
 	needFlush      int32
 	needNotifyChan bool
-	enableTrace    bool
+	EnableTrace    bool
 	syncEvery      int64
 	putBuffer      bytes.Buffer
 	bp             sync.Pool
@@ -77,6 +78,7 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 		deleteCallback: deleteCallback,
 		syncEvery:      opt.SyncEvery,
 		putBuffer:      bytes.Buffer{},
+		notifyCall:     notify,
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1
@@ -101,19 +103,25 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 	}
 
 	t.notifyCall(t)
+	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
 }
 
-func (t *Topic) bufferPoolGet(capacity int) *bytes.Buffer {
+func (t *Topic) BufferPoolGet(capacity int) *bytes.Buffer {
 	b := t.bp.Get().(*bytes.Buffer)
 	b.Reset()
 	b.Grow(capacity)
 	return b
 }
 
-func (t *Topic) bufferPoolPut(b *bytes.Buffer) {
+func (t *Topic) BufferPoolPut(b *bytes.Buffer) {
 	t.bp.Put(b)
+}
+
+// should be protected by read lock outside
+func (t *Topic) GetChannelMap() map[string]*Channel {
+	return t.channelMap
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting
@@ -143,9 +151,9 @@ func (t *Topic) GetTopicPart() int {
 // to return a pointer to a Channel object (potentially new)
 // for the given Topic
 func (t *Topic) GetChannel(channelName string) *Channel {
-	t.Lock()
+	t.channelLock.Lock()
 	channel, isNew := t.getOrCreateChannel(channelName)
-	t.Unlock()
+	t.channelLock.Unlock()
 
 	if isNew {
 		// update messagePump state
@@ -160,13 +168,13 @@ func (t *Topic) NotifyReloadChannels() {
 
 func (t *Topic) GetTopicChannelStat(channelName string) string {
 	statStr := ""
-	t.Lock()
+	t.channelLock.Lock()
 	for n, channel := range t.channelMap {
 		if channelName == "" || channelName == n {
 			statStr += channel.GetChannelStats()
 		}
 	}
-	t.Unlock()
+	t.channelLock.Unlock()
 	return statStr
 }
 
@@ -189,9 +197,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 }
 
 func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
-	t.RLock()
-	defer t.RUnlock()
+	t.channelLock.RLock()
 	channel, ok := t.channelMap[channelName]
+	t.channelLock.RUnlock()
 	if !ok {
 		return nil, errors.New("channel does not exist")
 	}
@@ -200,10 +208,10 @@ func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
 
 // DeleteExistingChannel removes a channel from the topic only if it exists
 func (t *Topic) DeleteExistingChannel(channelName string) error {
-	t.Lock()
+	t.channelLock.Lock()
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		t.Unlock()
+		t.channelLock.Unlock()
 		return errors.New("channel does not exist")
 	}
 	delete(t.channelMap, channelName)
@@ -213,7 +221,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	for _, c := range t.channelMap {
 		chans = append(chans, c)
 	}
-	t.Unlock()
+	t.channelLock.Unlock()
 
 	nsqLog.Logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)
 
@@ -228,33 +236,46 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	return nil
 }
 
-func (t *Topic) ResetBackendEnd(vend BackendOffset, diffCnt uint64) error {
-	t.Lock()
+func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, diffCnt uint64) error {
 	err := t.backend.ResetWriteEnd(vend, diffCnt)
-	t.Unlock()
 	return err
 }
 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, error) {
 	t.Lock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		t.Unlock()
-		return 0, 0, errors.New("exiting")
-	}
-
-	id, offset, err := t.put(m)
+	id, offset, err := t.PutMessageNoLock(m)
 	t.Unlock()
 	if err != nil {
 		return id, offset, err
 	}
-	cnt := atomic.AddUint64(&t.messageCount, 1)
+	cnt := atomic.LoadUint64(&t.messageCount)
 	if cnt%uint64(t.syncEvery) == 0 {
 		t.Lock()
 		t.flush(false)
 		t.Unlock()
 	}
 	return id, offset, nil
+}
+
+func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, error) {
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		t.Unlock()
+		return 0, 0, errors.New("exiting")
+	}
+
+	id, offset, err := t.put(m)
+	if err == nil {
+		atomic.AddUint64(&t.messageCount, 1)
+	}
+	return id, offset, err
+}
+
+func (t *Topic) FlushAsNeedNoLock() {
+	cnt := atomic.LoadUint64(&t.messageCount)
+	if cnt%uint64(t.syncEvery) == 0 {
+		t.flush(false)
+	}
 }
 
 func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) error {
@@ -324,7 +345,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, error) {
 		return m.ID, offset, err
 	}
 
-	if t.enableTrace {
+	if t.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
 			t.GetFullName())
 	}
@@ -378,12 +399,14 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	if deleted {
+		t.channelLock.Lock()
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
 			channel.Delete()
 		}
+		t.channelLock.Unlock()
 		// empty the queue (deletes the backend files, too)
-		t.empty()
+		t.Empty()
 		return t.backend.Delete()
 	}
 
@@ -401,7 +424,7 @@ func (t *Topic) exit(deleted bool) error {
 	return t.backend.Close()
 }
 
-func (t *Topic) empty() error {
+func (t *Topic) Empty() error {
 	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
 	return t.backend.Empty()
 }
@@ -439,12 +462,12 @@ func (t *Topic) flush(notifyChan bool) error {
 
 func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	var latencyStream *quantile.Quantile
-	t.RLock()
+	t.channelLock.RLock()
 	realChannels := make([]*Channel, 0, len(t.channelMap))
 	for _, c := range t.channelMap {
 		realChannels = append(realChannels, c)
 	}
-	t.RUnlock()
+	t.channelLock.RUnlock()
 	for _, c := range realChannels {
 		if c.e2eProcessingLatencyStream == nil {
 			continue

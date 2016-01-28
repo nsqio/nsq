@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/http_api"
 )
@@ -75,8 +74,24 @@ func newTestLogger(tbl tbLog) levellogger.Logger {
 	return &testLogger{tbl, 0}
 }
 
+func mustStartNSQD(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.HTTPSAddress = "127.0.0.1:0"
+	if opts.DataPath == "" {
+		tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+		if err != nil {
+			panic(err)
+		}
+		opts.DataPath = tmpDir
+	}
+	nsqd := New(opts)
+	nsqd.Start()
+	return nil, nil, nsqd
+}
+
 func getMetadata(n *NSQD) (*simplejson.Json, error) {
-	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
+	fn := fmt.Sprintf(path.Join(n.GetOpts().DataPath, "nsqd.%d.dat"), n.GetOpts().ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
@@ -154,6 +169,8 @@ func TestStartup(t *testing.T) {
 	channel1 := topic.GetChannel("ch1")
 	channel1.UpdateQueueEnd(backEnd)
 
+	err = nsqd.PersistMetadata()
+	equal(t, err, nil)
 	t.Logf("read %d msgs", iterations/2)
 	equal(t, channel1.Depth(), int64(iterations)*msgRawSize)
 	equal(t, channel1.backend.(*diskQueueReader).virtualEnd,
@@ -179,6 +196,7 @@ func TestStartup(t *testing.T) {
 	// make sure metadata shows the topic
 	metaData, err = getMetadata(nsqd)
 	equal(t, err, nil)
+	t.Logf("meta: %v", metaData)
 	topics, err = metaData.Get("topics").Array()
 	equal(t, err, nil)
 	equal(t, len(topics), 1)
@@ -270,161 +288,6 @@ func TestPauseMetadata(t *testing.T) {
 	nsqd.PersistMetadata()
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
-}
-
-func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
-	opts.TCPAddress = "127.0.0.1:0"
-	opts.HTTPAddress = "127.0.0.1:0"
-	lookupd := nsqlookupd.New(opts)
-	lookupd.Main()
-	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
-}
-
-func TestReconfigure(t *testing.T) {
-	lopts := nsqlookupd.NewOptions()
-	lopts.Logger = newTestLogger(t)
-	_, _, lookupd1 := mustStartNSQLookupd(lopts)
-	defer lookupd1.Exit()
-	_, _, lookupd2 := mustStartNSQLookupd(lopts)
-	defer lookupd2.Exit()
-	_, _, lookupd3 := mustStartNSQLookupd(lopts)
-	defer lookupd3.Exit()
-
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	time.Sleep(50 * time.Millisecond)
-
-	newOpts := *opts
-	newOpts.NSQLookupdTCPAddresses = []string{lookupd1.RealTCPAddr().String()}
-	nsqd.swapOpts(&newOpts)
-	nsqd.triggerOptsNotification()
-	equal(t, len(nsqd.getOpts().NSQLookupdTCPAddresses), 1)
-
-	time.Sleep(50 * time.Millisecond)
-
-	numLookupPeers := len(nsqd.lookupPeers.Load().([]*lookupPeer))
-	equal(t, numLookupPeers, 1)
-
-	newOpts = *opts
-	newOpts.NSQLookupdTCPAddresses = []string{lookupd2.RealTCPAddr().String(), lookupd3.RealTCPAddr().String()}
-	nsqd.swapOpts(&newOpts)
-	nsqd.triggerOptsNotification()
-	equal(t, len(nsqd.getOpts().NSQLookupdTCPAddresses), 2)
-
-	time.Sleep(50 * time.Millisecond)
-
-	var lookupPeers []string
-	for _, lp := range nsqd.lookupPeers.Load().([]*lookupPeer) {
-		lookupPeers = append(lookupPeers, lp.addr)
-	}
-	equal(t, len(lookupPeers), 2)
-	equal(t, lookupPeers, newOpts.NSQLookupdTCPAddresses)
-}
-
-func TestCluster(t *testing.T) {
-	lopts := nsqlookupd.NewOptions()
-	lopts.Logger = newTestLogger(t)
-	lopts.BroadcastAddress = "127.0.0.1"
-	_, _, lookupd := mustStartNSQLookupd(lopts)
-
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	opts.NSQLookupdTCPAddresses = []string{lookupd.RealTCPAddr().String()}
-	opts.BroadcastAddress = "127.0.0.1"
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "cluster_test" + strconv.Itoa(int(time.Now().Unix()))
-	partitionStr := "0"
-
-	hostname, err := os.Hostname()
-	equal(t, err, nil)
-
-	url := fmt.Sprintf("http://%s/topic/create?topic=%s&partition=%s",
-		nsqd.RealHTTPAddr(), topicName, partitionStr)
-	err = http_api.NewClient(nil).POSTV1(url)
-	equal(t, err, nil)
-
-	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.NewClient(nil).POSTV1(url)
-	equal(t, err, nil)
-
-	// allow some time for nsqd to push info to nsqlookupd
-	time.Sleep(350 * time.Millisecond)
-
-	endpoint := fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr())
-	data, err := API(endpoint)
-	equal(t, err, nil)
-
-	t.Logf("debug data: %v", data)
-	topicData := data.Get("topic:" + topicName + "::" + partitionStr)
-	producers, _ := topicData.Array()
-	equal(t, len(producers), 1)
-
-	producer := topicData.GetIndex(0)
-	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
-	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
-	equal(t, producer.Get("tombstoned").MustBool(), false)
-
-	channelData := data.Get("channel:" + topicName + ":ch:" + partitionStr)
-	producers, _ = channelData.Array()
-	equal(t, len(producers), 1)
-
-	producer = topicData.GetIndex(0)
-	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
-	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
-	equal(t, producer.Get("tombstoned").MustBool(), false)
-
-	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
-	data, err = API(endpoint)
-
-	t.Logf("debug data: %v", data)
-	producers, _ = data.Get("producers").Array()
-	equal(t, len(producers), 1)
-
-	producer = data.Get("producers").GetIndex(0)
-	equal(t, producer.Get("hostname").MustString(), hostname)
-	equal(t, producer.Get("broadcast_address").MustString(), "127.0.0.1")
-	equal(t, producer.Get("tcp_port").MustInt(), nsqd.RealTCPAddr().Port)
-
-	channels, _ := data.Get("channels").Array()
-	equal(t, len(channels), 1)
-
-	channel := channels[0].(string)
-	equal(t, channel, "ch")
-
-	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.NewClient(nil).POSTV1(url)
-	equal(t, err, nil)
-
-	// allow some time for nsqd to push info to nsqlookupd
-	time.Sleep(350 * time.Millisecond)
-
-	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
-	data, err = API(endpoint)
-
-	equal(t, err, nil)
-
-	producers, _ = data.Get("producers").Array()
-	equal(t, len(producers), 0)
-
-	endpoint = fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr())
-	data, err = API(endpoint)
-
-	equal(t, err, nil)
-
-	producers, _ = data.Get("topic:" + topicName + ":" + partitionStr).Array()
-	equal(t, len(producers), 0)
-
-	producers, _ = data.Get("channel:" + topicName + ":ch" + partitionStr).Array()
-	equal(t, len(producers), 0)
 }
 
 func TestSetHealth(t *testing.T) {

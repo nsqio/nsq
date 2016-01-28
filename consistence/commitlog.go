@@ -29,7 +29,7 @@ type CommitLogData struct {
 	LogID int64
 	// epoch for the topic leader
 	Epoch     int
-	MsgOffset int
+	MsgOffset int64
 }
 
 var emptyLogData CommitLogData

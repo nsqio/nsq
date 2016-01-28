@@ -2,7 +2,7 @@ package consistence
 
 import (
 	"bytes"
-	"errors"
+	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"net/rpc"
 	"os"
@@ -12,16 +12,62 @@ import (
 	"time"
 )
 
+type CoordErrType int
+
+const (
+	CommonErr = iota
+	NetErr
+	ElectionErr
+	ElectionTmpErr
+	LocalErr
+	TmpErr
+)
+
+type CoordErr struct {
+	ErrMsg  string
+	ErrCode ErrRPCRetCode
+	ErrType CoordErrType
+}
+
+func NewCoordErr(msg string, etype CoordErrType) *CoordErr {
+	return &CoordErr{
+		ErrMsg:  msg,
+		ErrType: etype,
+		ErrCode: RpcCommonErr,
+	}
+}
+
+func NewCoordErrWithCode(msg string, etype CoordErrType, code ErrRPCRetCode) *CoordErr {
+	return &CoordErr{
+		ErrMsg:  msg,
+		ErrType: etype,
+		ErrCode: code,
+	}
+}
+
+func (self *CoordErr) Error() string {
+	return self.ErrMsg
+}
+
+func (self *CoordErr) IsNetErr() bool {
+	return self.ErrType == NetErr
+}
+
+func (self *CoordErr) CanRetry() bool {
+	return self.ErrType == TmpErr || self.ErrType == ElectionTmpErr
+}
+
 var (
-	ErrNotTopicLeader            = errors.New("not topic leader")
-	ErrEpochMismatch             = errors.New("commit epoch not match")
-	ErrWriteQuorumFailed         = errors.New("write to quorum failed.")
-	ErrCommitLogIDDup            = errors.New("commit id duplicated")
-	ErrMissingTopicLeaderSession = errors.New("missing topic leader session")
-	ErrWriteDisabled             = errors.New("write is disabled on the topic")
-	ErrPubArgError               = errors.New("pub argument error")
-	ErrLocalFallBehind           = errors.New("local data fall behind")
-	ErrLocalForwardThanLeader    = errors.New("local data is more than leader")
+	ErrNotTopicLeader            = NewCoordErr("not topic leader", ElectionErr)
+	ErrEpochMismatch             = NewCoordErr("commit epoch not match", ElectionErr)
+	ErrWriteQuorumFailed         = NewCoordErr("write to quorum failed.", ElectionTmpErr)
+	ErrCommitLogIDDup            = NewCoordErr("commit id duplicated", ElectionErr)
+	ErrMissingTopicLeaderSession = NewCoordErr("missing topic leader session", ElectionErr)
+	ErrWriteDisabled             = NewCoordErr("write is disabled on the topic", ElectionTmpErr)
+	ErrPubArgError               = NewCoordErr("pub argument error", CommonErr)
+	ErrLocalFallBehind           = NewCoordErr("local data fall behind", ElectionErr)
+	ErrLocalForwardThanLeader    = NewCoordErr("local data is more than leader", ElectionErr)
+	ErrLocalWriteFailed          = NewCoordErr("write data to local failed", LocalErr)
 )
 
 func GetTopicPartitionPath(topic string, partition int) string {
@@ -75,9 +121,10 @@ type NsqdCoordinator struct {
 	rpcListener     net.Listener
 	dataRootPath    string
 	localDataStates map[string]map[int]bool
+	localNsqd       *nsqd.NSQD
 }
 
-func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string) *NsqdCoordinator {
+func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
 	nodeInfo := NsqdNodeInfo{
 		NodeIp:  ip,
 		TcpPort: tcpport,
@@ -94,6 +141,7 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string) *
 		stopChan:        make(chan struct{}),
 		dataRootPath:    rootPath,
 		localDataStates: make(map[string]map[int]bool),
+		localNsqd:       nsqd,
 	}
 }
 
@@ -138,6 +186,7 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, error
 }
 
 func (self *NsqdCoordinator) Start() error {
+	return nil
 	rpc.Register(self)
 	var e error
 	self.rpcListener, e = net.Listen("tcp", ":"+self.myNode.RpcPort)
@@ -158,7 +207,9 @@ func (self *NsqdCoordinator) Stop() {
 	// give up the leadership on the topic to
 	// allow other isr take over to avoid electing.
 	close(self.stopChan)
-	self.rpcListener.Close()
+	if self.rpcListener != nil {
+		self.rpcListener.Close()
+	}
 }
 
 func (self *NsqdCoordinator) getLookupConn() (*NsqLookupRpcClient, error) {
@@ -537,58 +588,102 @@ func (self *NsqdCoordinator) checkWriteForTopicLeader(topic string, partition in
 }
 
 // write message to data file and return the file id and offset written.
-func (self *NsqdCoordinator) pubMessageLocal(topic string, partition int, logid int64, message string) (int, int, error) {
+func (self *NsqdCoordinator) putMessageLocal(topic string, partition int, logid int64, message *nsqd.Message) (int, int, error) {
 	return 0, 0, nil
 }
 
-func (self *NsqdCoordinator) pubMessagesToCluster(topic string, partition int, messages []string) error {
-	topicData, err := self.checkWriteForTopicLeader(topic, partition)
-	if err != nil {
-		return err
+func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte) error {
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
+	topicData, checkErr := self.checkWriteForTopicLeader(topicName, partition)
+	if checkErr != nil {
+		return checkErr
 	}
-	logMgr := self.getLogMgr(topic, partition)
-	commitLogDataList := make([]CommitLogData, 0, len(messages))
-	for _, message := range messages {
-		logid := logMgr.nextLogID()
-		_, msgOffset, err := self.pubMessageLocal(topic, partition, logid, message)
-		if err != nil {
-			return err
-		}
-		var l CommitLogData
-		l.LogID = logid
-		l.Epoch = topicData.topicLeaderSession.LeaderEpoch
-		l.MsgOffset = msgOffset
-		commitLogDataList = append(commitLogDataList, l)
+	if len(topicData.topicInfo.ISR) <= topicData.topicInfo.Replica/2 {
+		return ErrWriteQuorumFailed
 	}
+	logMgr := self.getLogMgr(topicName, partition)
+	var err error
+	var commitLog CommitLogData
+	needRefreshISR := false
+	needRollback := false
 	success := 0
-	// send message to slaves with current topic epoch
-	for _, nodeID := range topicData.topicInfo.ISR {
-		c, err := self.acquireRpcClient(nodeID)
+
+	topic.Lock()
+	msg := nsqd.NewMessage(0, body)
+	id, offset, putErr := topic.PutMessageNoLock(msg)
+	if putErr != nil {
+		coordLog.Warningf("put message to local failed: %v", err)
+		err = ErrLocalWriteFailed
+		goto exitpub
+	}
+	needRollback = true
+	commitLog.LogID = int64(id)
+	commitLog.Epoch = topicData.topicLeaderSession.LeaderEpoch
+	commitLog.MsgOffset = int64(offset)
+
+retrypub:
+	if needRefreshISR {
+		topicData, err = self.checkWriteForTopicLeader(topicName, partition)
 		if err != nil {
-			coordLog.Infof("get rpc client failed: %v", err)
+			goto exitpub
+		}
+		if len(topicData.topicInfo.ISR) <= topicData.topicInfo.Replica/2 {
+			err = ErrWriteQuorumFailed
+			goto exitpub
+		}
+		commitLog.Epoch = topicData.topicLeaderSession.LeaderEpoch
+	}
+	success = 0
+
+	// send message to slaves with current topic epoch
+	// replica should check if offset matching. If not matched the replica should leave the ISR list.
+	// also, the coordinator should retry on fail until all nodes in ISR success.
+	// If failed, should update ISR and retry.
+	for _, nodeID := range topicData.topicInfo.ISR {
+		c, rpcErr := self.acquireRpcClient(nodeID)
+		if rpcErr != nil {
+			coordLog.Infof("get rpc client failed: %v", rpcErr)
 			continue
 		}
-		err = c.PubMessage(topicData.topicLeaderSession.LeaderEpoch, &topicData.topicInfo, commitLogDataList, messages)
-		if err == nil {
+		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
+		putErr := c.PutMessage(topicData.topicLeaderSession.LeaderEpoch, &topicData.topicInfo, commitLog, msg)
+		if putErr == nil {
 			success++
 		}
 	}
 
-	if success > topicData.topicInfo.Replica/2 && success == len(topicData.topicInfo.ISR) {
-		for _, l := range commitLogDataList {
-			err := logMgr.AppendCommitLog(&l, false)
-			if err != nil {
-				panic(err)
-			}
+	if success == len(topicData.topicInfo.ISR) {
+		err := logMgr.AppendCommitLog(&commitLog, false)
+		if err != nil {
+			panic(err)
 		}
-		// TODO: success, move the write offset in the data file
-		// move fail can be restored from the commit log while recover.
-		return nil
+	} else {
+		coordLog.Warningf("topic %v sync message %v failed: %v", topic.GetFullName(), msg.ID, err)
+		needRefreshISR = true
+		goto retrypub
 	}
+exitpub:
+	if err != nil && needRollback {
+		resetErr := topic.ResetBackendEndNoLock(offset, 1)
+		if resetErr != nil {
+			coordLog.Errorf("rollback local topic %v to offset %v failed: %v", topic.GetFullName(), offset, resetErr)
+		}
+	}
+	topic.Unlock()
+	return err
+}
+
+func (self *NsqdCoordinator) PutMessagesToCluster(topic string, partition int, messages []string) error {
+	_, err := self.checkWriteForTopicLeader(topic, partition)
+	if err != nil {
+		return err
+	}
+	//TODO:
 	return ErrWriteQuorumFailed
 }
 
-func (self *NsqdCoordinator) pubMessageOnSlave(topic string, partition int, loglist []CommitLogData, msgs []string) error {
+func (self *NsqdCoordinator) putMessagesOnSlave(topic string, partition int, loglist []CommitLogData, msgs []*nsqd.Message) error {
 	if len(loglist) != len(msgs) {
 		coordLog.Warningf("the pub log size mismatch message size.")
 		return ErrPubArgError
@@ -599,7 +694,7 @@ func (self *NsqdCoordinator) pubMessageOnSlave(topic string, partition int, logl
 			coordLog.Infof("pub the already commited log id : %v", l.LogID)
 			return ErrCommitLogIDDup
 		}
-		_, msgOffset, err := self.pubMessageLocal(topic, partition, l.LogID, msgs[i])
+		_, msgOffset, err := self.putMessageLocal(topic, partition, l.LogID, msgs[i])
 		if err != nil {
 			coordLog.Warningf("pub on slave failed: %v", err)
 			return err
@@ -607,12 +702,31 @@ func (self *NsqdCoordinator) pubMessageOnSlave(topic string, partition int, logl
 		var newlog CommitLogData
 		newlog.LogID = l.LogID
 		newlog.Epoch = l.Epoch
-		newlog.MsgOffset = msgOffset
+		newlog.MsgOffset = int64(msgOffset)
 		err = logMgr.AppendCommitLog(&newlog, true)
 		if err != nil {
 			coordLog.Infof("write commit log on slave failed: %v", err)
 			return err
 		}
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) putMessageOnSlave(topic string, partition int, logData CommitLogData, msg *nsqd.Message) error {
+	logMgr := self.getLogMgr(topic, partition)
+	if logMgr.IsCommitted(logData.LogID) {
+		coordLog.Infof("pub the already commited log id : %v", logData.LogID)
+		return ErrCommitLogIDDup
+	}
+	_, _, err := self.putMessageLocal(topic, partition, logData.LogID, msg)
+	if err != nil {
+		coordLog.Warningf("pub on slave failed: %v", err)
+		return err
+	}
+	err = logMgr.AppendCommitLog(&logData, true)
+	if err != nil {
+		coordLog.Infof("write commit log on slave failed: %v", err)
+		return err
 	}
 	return nil
 }
@@ -664,7 +778,7 @@ func (self *NsqdCoordinator) NotifyFlushData(topic string, partition int) {
 	self.flushNotifyChan <- TopicPartitionID{topic, partition}
 }
 
-func (self *NsqdCoordinator) readMessageData(logID int64, fileOffset int) ([]byte, error) {
+func (self *NsqdCoordinator) readMessageData(logID int64, fileOffset int64) ([]byte, error) {
 	return nil, nil
 }
 

@@ -1,4 +1,4 @@
-package nsqd
+package nsqdserver
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/absolute8511/nsq/nsqd"
 	"github.com/nsqio/nsq/internal/statsd"
 )
 
@@ -24,28 +25,29 @@ func (s Uint64Slice) Less(i, j int) bool {
 	return s[i] < s[j]
 }
 
-func (n *NSQD) statsdLoop() {
+func (n *NsqdServer) statsdLoop() {
 	var lastMemStats runtime.MemStats
-	var lastStats []TopicStats
-	ticker := time.NewTicker(n.getOpts().StatsdInterval)
+	var lastStats []nsqd.TopicStats
+	opts := n.ctx.getOpts()
+	ticker := time.NewTicker(opts.StatsdInterval)
 	for {
 		select {
 		case <-n.exitChan:
 			goto exit
 		case <-ticker.C:
-			client := statsd.NewClient(n.getOpts().StatsdAddress, n.getOpts().StatsdPrefix)
+			client := statsd.NewClient(opts.StatsdAddress, opts.StatsdPrefix)
 			err := client.CreateSocket()
 			if err != nil {
-				nsqLog.LogErrorf("failed to create UDP socket to statsd(%s)", client)
+				nsqd.NsqLogger().LogErrorf("failed to create UDP socket to statsd(%s)", client)
 				continue
 			}
 
-			nsqLog.Logf("STATSD: pushing stats to %s", client)
+			nsqd.NsqLogger().Logf("STATSD: pushing stats to %s", client)
 
-			stats := n.GetStats()
+			stats := n.ctx.nsqd.GetStats()
 			for _, topic := range stats {
 				// try to find the topic in the last collection
-				lastTopic := TopicStats{}
+				lastTopic := nsqd.TopicStats{}
 				for _, checkTopic := range lastStats {
 					if topic.TopicName == checkTopic.TopicName {
 						lastTopic = checkTopic
@@ -72,7 +74,7 @@ func (n *NSQD) statsdLoop() {
 
 				for _, channel := range topic.Channels {
 					// try to find the channel in the last collection
-					lastChannel := ChannelStats{}
+					lastChannel := nsqd.ChannelStats{}
 					for _, checkChannel := range lastTopic.Channels {
 						if channel.ChannelName == checkChannel.ChannelName {
 							lastChannel = checkChannel
@@ -114,7 +116,7 @@ func (n *NSQD) statsdLoop() {
 			}
 			lastStats = stats
 
-			if n.getOpts().StatsdMemStats {
+			if opts.StatsdMemStats {
 				var memStats runtime.MemStats
 				runtime.ReadMemStats(&memStats)
 

@@ -1,4 +1,4 @@
-package nsqd
+package nsqdserver
 
 import (
 	"encoding/binary"
@@ -25,6 +25,14 @@ type lookupPeer struct {
 	maxBodySize     int64
 	Info            peerInfo
 }
+
+const (
+	stateInit = iota
+	stateDisconnected
+	stateConnected
+	stateSubscribed
+	stateClosing
+)
 
 // peerInfo contains metadata for a lookupPeer instance (and is JSON marshalable)
 type peerInfo struct {

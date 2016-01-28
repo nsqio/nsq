@@ -1,9 +1,10 @@
-package nsqd
+package nsqdserver
 
 import (
 	"io"
 	"net"
 
+	"github.com/absolute8511/nsq/nsqd"
 	"github.com/nsqio/nsq/internal/protocol"
 )
 
@@ -18,12 +19,12 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
-		nsqLog.LogErrorf(" failed to read protocol version - %s", err)
+		nsqd.NsqLogger().LogErrorf(" failed to read protocol version - %s", err)
 		return
 	}
 	protocolMagic := string(buf)
 
-	nsqLog.Logf("new CLIENT(%s): desired protocol magic '%s'",
+	nsqd.NsqLogger().LogDebugf("new CLIENT(%s): desired protocol magic '%s'",
 		clientConn.RemoteAddr(), protocolMagic)
 
 	var prot protocol.Protocol
@@ -33,14 +34,14 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	default:
 		protocol.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
-		nsqLog.LogErrorf("client(%s) bad protocol magic '%s'",
+		nsqd.NsqLogger().LogErrorf("client(%s) bad protocol magic '%s'",
 			clientConn.RemoteAddr(), protocolMagic)
 		return
 	}
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		nsqLog.LogErrorf("client(%s) error - %s", clientConn.RemoteAddr(), err)
+		nsqd.NsqLogger().LogErrorf("client(%s) error - %s", clientConn.RemoteAddr(), err)
 		return
 	}
 }

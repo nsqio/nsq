@@ -28,8 +28,9 @@ func TestDiskQueueWriter(t *testing.T) {
 	equal(t, dqWriter.totalMsgCnt, int64(0))
 
 	msg := []byte("test")
-	end, err := dqWriter.Put(msg)
+	_, err = dqWriter.Put(msg)
 	dqWriter.Flush()
+	end := dqWriter.GetQueueWriteEnd()
 	equal(t, err, nil)
 	equal(t, dqWriter.totalMsgCnt, int64(1))
 	equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(0))
@@ -95,15 +96,13 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	nequal(t, dqObj, nil)
 
 	t.Logf("test begin ... 000\n")
-	var end BackendQueueEnd
 	for i := 0; i < 100; i++ {
-		end, err = dq.Put(msg)
+		_, err = dq.Put(msg)
 		equal(t, err, nil)
 		equal(t, dqObj.totalMsgCnt, int64(i+1))
 	}
 	dq.Flush()
 	end2 := dq.GetQueueReadEnd().(*diskQueueEndInfo)
-	equal(t, end2, end.(*diskQueueEndInfo))
 	equal(t, int64(end2.VirtualEnd), int64(100*msgRawSize))
 	equal(t, int64(end2.EndFileNum), int64(100/(maxBytesPerFile/msgRawSize+1)))
 
@@ -150,7 +149,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 
 	numFiles := dqObj.writeFileNum
 	dq.Empty()
-	end = dq.GetQueueReadEnd().(*diskQueueEndInfo)
+	end := dq.GetQueueReadEnd().(*diskQueueEndInfo)
 	dqReader.UpdateQueueEnd(end)
 	dqReader.(*diskQueueReader).SkipToEnd()
 	equal(t, dqReader.(*diskQueueReader).readPos,
@@ -174,9 +173,9 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	end = dq.GetQueueReadEnd().(*diskQueueEndInfo)
 	dqReader.UpdateQueueEnd(end)
 	time.Sleep(time.Second)
-	equal(t, int64(end.(*diskQueueEndInfo).VirtualEnd), int64(200*msgRawSize))
+	equal(t, int64(end.VirtualEnd), int64(200*msgRawSize))
 	equal(t,
-		dqReader.(*diskQueueReader).virtualEnd, end.(*diskQueueEndInfo).VirtualEnd)
+		dqReader.(*diskQueueReader).virtualEnd, end.VirtualEnd)
 	equal(t, dqReader.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(100*msgRawSize))
 	equal(t,
@@ -225,9 +224,10 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	msg := make([]byte, 123) // 127 bytes per message, 8 (1016 bytes) messages per file
 	var e BackendQueueEnd
 	for i := 0; i < 25; i++ {
-		e, _ = dq.Put(msg)
+		dq.Put(msg)
 	}
 	dq.Flush()
+	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
 
 	equal(t, dq.(*diskQueueWriter).totalMsgCnt, int64(25))
@@ -246,8 +246,9 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	dqFn = dq.(*diskQueueWriter).fileName(3)
 	os.Truncate(dqFn, 100)
 
-	e, _ = dq.Put(msg) // in 5th file
+	dq.Put(msg) // in 5th file
 	dq.Flush()
+	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
 	readResult := <-dqReader.ReadChan()
 	equal(t, readResult.data, msg)
@@ -257,8 +258,9 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 
 	// force a new 6th file - put into 5th, then readOne errors, then put into 6th
 	dq.Put(msg)
-	e, _ = dq.Put(msg)
+	dq.Put(msg)
 	dq.Flush()
+	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
 	readResult = <-dqReader.ReadChan()
 
@@ -296,7 +298,6 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	writeExitChan := make(chan int)
 
 	var depth int64
-	var e BackendQueueEnd
 	for i := 0; i < numWriters; i++ {
 		wg.Add(1)
 		go func() {
@@ -307,10 +308,9 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 				case <-writeExitChan:
 					return
 				default:
-					tmpe, err := dq.Put(msg)
+					_, err := dq.Put(msg)
 					if err == nil {
 						atomic.AddInt64(&depth, int64(msgRawSize))
-						e = tmpe
 					} else {
 						t.Logf("put error %v", err)
 					}
@@ -320,6 +320,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
+	var e BackendQueueEnd
 
 	t.Logf("closing writeExitChan")
 	close(writeExitChan)

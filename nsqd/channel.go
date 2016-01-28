@@ -74,7 +74,7 @@ type Channel struct {
 	waitingConfirm       int32
 	tryReadBackend       chan bool
 	// stat counters
-	enableTrace bool
+	EnableTrace bool
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
 }
@@ -136,6 +136,22 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 	return c
 }
 
+func (c *Channel) GetName() string {
+	return c.name
+}
+
+func (c *Channel) GetTopicName() string {
+	return c.topicName
+}
+
+func (c *Channel) GetTopicPart() int {
+	return c.topicPart
+}
+
+func (c *Channel) GetClientMsgChan() chan *Message {
+	return c.clientMsgChan
+}
+
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.option.MemQueueSize)/10))
 
@@ -192,7 +208,7 @@ func (c *Channel) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		c.empty()
+		c.Empty()
 		return c.backend.Delete()
 	}
 
@@ -201,7 +217,11 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
-func (c *Channel) empty() error {
+func (c *Channel) GetClients() map[int64]Consumer {
+	return c.clients
+}
+
+func (c *Channel) Empty() error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -322,7 +342,7 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 // in order not to make the confirm map too large,
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
-func (c *Channel) confirmBackendQueue(msg *Message) {
+func (c *Channel) ConfirmBackendQueue(msg *Message) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	//c.finMsgs[msg.ID] = msg
@@ -379,7 +399,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 			clientID)
 		return err
 	}
-	if c.enableTrace {
+	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
 	}
@@ -387,7 +407,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
-	c.confirmBackendQueue(msg)
+	c.ConfirmBackendQueue(msg)
 	return nil
 }
 
@@ -473,10 +493,31 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	}
 	c.addToInFlightPQ(msg)
 
-	if c.enableTrace {
+	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
 	}
 	return nil
+}
+
+func (c *Channel) GetInflightNum() int {
+	c.inFlightMutex.Lock()
+	n := len(c.inFlightMessages)
+	c.inFlightMutex.Unlock()
+	return n
+}
+
+func (c *Channel) GetReadOffset() BackendOffset {
+	if _, ok := c.backend.(*diskQueueReader); ok {
+		return c.backend.(*diskQueueReader).virtualReadOffset
+	}
+	return 0
+}
+
+func (c *Channel) GetChannelEnd() BackendOffset {
+	if _, ok := c.backend.(*diskQueueReader); ok {
+		return c.backend.(*diskQueueReader).virtualEnd
+	}
+	return 0
 }
 
 // doRequeue performs the low level operations to requeue a message
@@ -495,7 +536,7 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
-	if c.enableTrace {
+	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v requeued.", m.GetFullMsgID())
 	}
 	return nil

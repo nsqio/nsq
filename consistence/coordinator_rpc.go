@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"errors"
+	"github.com/absolute8511/nsq/nsqd"
 	_ "github.com/valyala/gorpc"
 )
 
@@ -269,10 +270,16 @@ type RpcChannelOffsetArg struct {
 	ChannelOffset ConsumerChanOffset
 }
 
-type RpcPubMessage struct {
+type RpcPutMessages struct {
 	RpcTopicData
 	LogList       []CommitLogData
-	TopicMessages []string
+	TopicMessages []*nsqd.Message
+}
+
+type RpcPutMessage struct {
+	RpcTopicData
+	LogData      CommitLogData
+	TopicMessage *nsqd.Message
 }
 
 type RpcCommitLogReq struct {
@@ -330,13 +337,13 @@ func (self *NsqdCoordinator) UpdateChannelOffset(info RpcChannelOffsetArg, ret *
 }
 
 // receive from leader
-func (self *NsqdCoordinator) PubMessage(info RpcPubMessage, ret *bool) error {
+func (self *NsqdCoordinator) PutMessage(info RpcPutMessage, ret *bool) error {
 	_, err := self.checkForRpcCall(info.RpcTopicData)
 	if err != nil {
 		return err
 	}
 	// do local pub message
-	err = self.pubMessageOnSlave(info.TopicName, info.TopicPartition, info.LogList, info.TopicMessages)
+	err = self.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
 	*ret = true
 	return err
 }

@@ -98,6 +98,10 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
+func DecodeMessage(b []byte) (*Message, error) {
+	return decodeMessage(b)
+}
+
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
 

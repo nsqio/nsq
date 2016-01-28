@@ -5,3 +5,7 @@ import (
 )
 
 var nsqLog = levellogger.NewLevelLogger(1, &levellogger.GLogger{})
+
+func NsqLogger() *levellogger.LevelLogger {
+	return nsqLog
+}

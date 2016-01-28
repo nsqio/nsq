@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"sync/atomic"
 
 	"errors"
@@ -149,18 +150,18 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 }
 
 func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
-	topicPartition, err := reqParams.Get("partition")
-	if err != nil {
+	topicPartition := reqParams.Get("partition")
+	if topicPartition == "" {
 		topicPartition = "*"
 	}
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", topicPartition).SubKeys()
@@ -170,17 +171,17 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 }
 
 func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
-	topicPartition, err := reqParams.Get("partition")
-	if err != nil {
+	topicPartition := reqParams.Get("partition")
+	if topicPartition == "" {
 		topicPartition = "*"
 	}
 	// access mode will be used for disable some write method (pub) to allow
@@ -188,8 +189,8 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	// if a node is setting read only, then with access mode "w", this node
 	// will be filtered before return to client.
 	// The access mode "r" will return all nodes (that have the topic) without any filter.
-	accessMode, err := reqParams.Get("access")
-	if err != nil {
+	accessMode := reqParams.Get("access")
+	if accessMode == "" {
 		accessMode = "r"
 	}
 	if accessMode != "w" && accessMode != "r" {
@@ -246,12 +247,12 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 }
 
 func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
-	levelStr, err := reqParams.Get("loglevel")
-	if err != nil {
+	levelStr := reqParams.Get("loglevel")
+	if levelStr == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_LEVEL"}
 	}
 	level, err := strconv.Atoi(levelStr)
@@ -263,13 +264,13 @@ func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
@@ -277,16 +278,16 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
-	pnumStr, err := reqParams.Get("partition_num")
-	if err != nil {
+	pnumStr := reqParams.Get("partition_num")
+	if pnumStr == "" {
 		pnumStr = "3"
 	}
 	pnum, err := GetValidPartitionNum(pnumStr)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION_NUM"}
 	}
-	replicatorStr, err := reqParams.Get("replicator")
-	if err != nil {
+	replicatorStr := reqParams.Get("replicator")
+	if replicatorStr == "" {
 		replicatorStr = "3"
 	}
 	replicator, err := GetValidReplicator(replicatorStr)
@@ -310,13 +311,13 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	// not support currently.
 	return nil, http_api.Err{501, "DELETE not Implemented"}
 
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
@@ -336,18 +337,18 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
-	node, err := reqParams.Get("node")
-	if err != nil {
+	node := reqParams.Get("node")
+	if node == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
@@ -364,7 +365,7 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 }
 
 func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
@@ -373,8 +374,8 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
-	tpid, err := reqParams.Get("partition")
-	if err != nil {
+	tpid := reqParams.Get("partition")
+	if tpid == "" {
 		tpid = "*"
 	}
 
@@ -399,7 +400,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 	// not support currently.
 	return nil, http_api.Err{501, "DELETE not Implemented"}
 
-	reqParams, err := http_api.NewReqParams(req)
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
@@ -408,8 +409,8 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
-	tpid, err := reqParams.Get("partition")
-	if err != nil {
+	tpid := reqParams.Get("partition")
+	if tpid == "" {
 		tpid = "*"
 	}
 

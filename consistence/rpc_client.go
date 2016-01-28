@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"net/rpc"
 	"time"
@@ -126,8 +127,21 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int, info *TopicParti
 	return err
 }
 
-func (self *NsqdRpcClient) PubMessage(leaderEpoch int, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []string) error {
-	var pubData RpcPubMessage
+func (self *NsqdRpcClient) PutMessage(leaderEpoch int, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) error {
+	var pubData RpcPutMessage
+	pubData.LogData = log
+	pubData.TopicName = info.Name
+	pubData.TopicPartition = info.Partition
+	pubData.TopicMessage = message
+	pubData.TopicEpoch = info.Epoch
+	pubData.TopicLeaderEpoch = leaderEpoch
+	ret := false
+	err := self.CallWithRetry("NsqdCoordinator.PutMessage", pubData, &ret)
+	return err
+}
+
+func (self *NsqdRpcClient) PutMessages(leaderEpoch int, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) error {
+	var pubData RpcPutMessages
 	pubData.LogList = loglist
 	pubData.TopicName = info.Name
 	pubData.TopicPartition = info.Partition
@@ -135,7 +149,7 @@ func (self *NsqdRpcClient) PubMessage(leaderEpoch int, info *TopicPartionMetaInf
 	pubData.TopicEpoch = info.Epoch
 	pubData.TopicLeaderEpoch = leaderEpoch
 	ret := false
-	err := self.CallWithRetry("NsqdCoordinator.PubMessage", pubData, &ret)
+	err := self.CallWithRetry("NsqdCoordinator.PutMessages", pubData, &ret)
 	return err
 }
 

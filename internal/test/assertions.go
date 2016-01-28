@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+func Assert(t *testing.T, condition bool, msg string, v ...interface{}) {
+	if !condition {
+		_, file, line, _ := runtime.Caller(1)
+		t.Logf("\033[31m%s:%d: "+msg+"\033[39m\n\n",
+			append([]interface{}{filepath.Base(file), line}, v...)...)
+		t.FailNow()
+	}
+}
+
 func Equal(t *testing.T, expected, actual interface{}) {
 	if !reflect.DeepEqual(expected, actual) {
 		_, file, line, _ := runtime.Caller(1)

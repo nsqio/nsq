@@ -2,9 +2,6 @@ package nsqd
 
 import (
 	"errors"
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	//"runtime"
 	"strconv"
@@ -60,27 +57,29 @@ func TestGetChannel(t *testing.T) {
 
 type errorBackendQueue struct{}
 
-func (d *errorBackendQueue) Put([]byte) (BackendQueueEnd, error) {
-	return nil, errors.New("never gonna happen")
+func (d *errorBackendQueue) Put([]byte) (BackendOffset, error) {
+	return 0, errors.New("never gonna happen")
 }
-func (d *errorBackendQueue) ReadChan() chan []byte            { return nil }
-func (d *errorBackendQueue) Close() error                     { return nil }
-func (d *errorBackendQueue) Delete() error                    { return nil }
-func (d *errorBackendQueue) Depth() int64                     { return 0 }
-func (d *errorBackendQueue) Empty() error                     { return nil }
-func (d *errorBackendQueue) Flush() error                     { return nil }
-func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd { return nil }
+func (d *errorBackendQueue) ReadChan() chan []byte                     { return nil }
+func (d *errorBackendQueue) Close() error                              { return nil }
+func (d *errorBackendQueue) Delete() error                             { return nil }
+func (d *errorBackendQueue) Depth() int64                              { return 0 }
+func (d *errorBackendQueue) Empty() error                              { return nil }
+func (d *errorBackendQueue) Flush() error                              { return nil }
+func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd          { return nil }
+func (d *errorBackendQueue) GetQueueWriteEnd() BackendQueueEnd         { return nil }
+func (d *errorBackendQueue) ResetWriteEnd(BackendOffset, uint64) error { return nil }
 
 type errorRecoveredBackendQueue struct{ errorBackendQueue }
 
-func (d *errorRecoveredBackendQueue) Put([]byte) (BackendQueueEnd, error) { return nil, nil }
+func (d *errorRecoveredBackendQueue) Put([]byte) (BackendOffset, error) { return 0, nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 2
 	opts.MemQueueSize = 2
-	_, httpAddr, nsqd := mustStartNSQD(opts)
+	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -88,29 +87,18 @@ func TestHealth(t *testing.T) {
 	topic.backend = &errorBackendQueue{}
 
 	msg := NewMessage(0, make([]byte, 100))
-	err := topic.PutMessage(msg)
+	_, _, err := topic.PutMessage(msg)
 	nequal(t, err, nil)
 
-	url := fmt.Sprintf("http://%s/ping", httpAddr)
-	resp, err := http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 500)
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "NOK - never gonna happen")
-
+	// TODO: health should be topic scoped.
+	//equal(t, nsqd.IsHealthy(), false)
 	topic.backend = &errorRecoveredBackendQueue{}
 
 	msg = NewMessage(0, make([]byte, 100))
-	err = topic.PutMessages([]*Message{msg})
+	_, _, err = topic.PutMessages([]*Message{msg})
 	equal(t, err, nil)
 
-	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	equal(t, string(body), "OK")
+	equal(t, nsqd.IsHealthy(), true)
 }
 
 func TestDeletes(t *testing.T) {
@@ -155,7 +143,7 @@ func TestDeleteLast(t *testing.T) {
 	equal(t, 0, len(topic.channelMap))
 
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	err = topic.PutMessage(msg)
+	_, _, err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	equal(t, nil, err)
 }

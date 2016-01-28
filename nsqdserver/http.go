@@ -1,4 +1,4 @@
-package nsqd
+package nsqdserver
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
@@ -93,8 +94,7 @@ func setBlockRateHandler(w http.ResponseWriter, req *http.Request, ps httprouter
 
 func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
-		resp := fmt.Sprintf(`{"message": "TLS_REQUIRED", "https_port": %d}`,
-			s.ctx.realHTTPSAddr().Port)
+		resp := fmt.Sprintf(`{"message": "TLS_REQUIRED"}`)
 		http_api.Respond(w, 403, "", resp)
 		return
 	}
@@ -131,10 +131,10 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	}, nil
 }
 
-func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Values, *Topic, string, error) {
+func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Values, *nsqd.Topic, string, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -145,17 +145,17 @@ func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Va
 
 	topic, err := s.ctx.getExistingTopic(topicName)
 	if err != nil {
-		nsqLog.Logf("topic not found - %s", topicName)
+		nsqd.NsqLogger().Logf("topic not found - %s", topicName)
 		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
 	return reqParams, topic, channelName, err
 }
 
-func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
+func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *nsqd.Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -191,22 +191,22 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	// (LimitReader returns a "fake" EOF)
 	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		nsqLog.Logf("get topic err: %v", err)
+		nsqd.NsqLogger().Logf("get topic err: %v", err)
 		// TODO: forward request to the right nsqd node.
 		return nil, err
 	}
 
 	readMax := req.ContentLength + 1
-	b := topic.bufferPoolGet(int(req.ContentLength))
-	defer topic.bufferPoolPut(b)
+	b := topic.BufferPoolGet(int(req.ContentLength))
+	defer topic.BufferPoolPut(b)
 	body := b.Bytes()[:req.ContentLength]
 	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
 	if err != nil {
-		nsqLog.Logf("read request body error: %v", err)
+		nsqd.NsqLogger().Logf("read request body error: %v", err)
 		body = body[:n]
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			// we ignore EOF, maybe the ContentLength is not match?
-			nsqLog.LogWarningf("read request body eof: %v, ContentLength: %v,return length %v.",
+			nsqd.NsqLogger().LogWarningf("read request body eof: %v, ContentLength: %v,return length %v.",
 				err, req.ContentLength, n)
 		} else {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
@@ -216,38 +216,20 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
-	msg := NewMessage(0, body)
-	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		id, offset, err := topic.PutMessage(msg)
-		s.ctx.setHealth(err)
+	if s.ctx.checkForMasterWrite(topic) {
+		err := s.ctx.PutMessage(topic, body)
+		//s.ctx.setHealth(err)
 		if err != nil {
-			nsqLog.LogErrorf("topic %v put message %v failed: %v", topic.GetFullName(), msg.ID, err)
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			return nil, http_api.Err{503, err.Error()}
-		}
-		// replica should check if offset matching. If not the replica should leave the ISR list.
-		// also, the coordinator should retry on fail until all nodes in ISR success.
-		// If failed, should update ISR and retry.
-		err = s.ctx.syncPutMessage(topic.GetTopicName(), topic.GetTopicPart(), msg, offset)
-		if err != nil {
-			nsqLog.LogWarningf("topic %v sync message %v failed: %v", topic.GetFullName(), msg.ID, err)
-			err = topic.ResetBackendEnd(offset, 1)
-			if err != nil {
-				nsqLog.LogErrorf("rollback local topic %v to offset %v failed: %v", topic.GetFullName(), offset, err)
-			}
-			// TODO: do we need notify others to reset their backend?
-			return nil, http_api.Err{500, err.Error()}
-		}
-		err = s.ctx.appendTopicLog(topic.GetTopicName(), topic.GetTopicPart(), id, offset)
-		if err != nil {
-			panic(err)
 		}
 	} else {
 		//TODO: forward to master of topic
-		nsqLog.LogDebugf("forward put to master: %v, from %v",
+		nsqd.NsqLogger().LogDebugf("forward put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
-		err := s.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), msg)
+		err := s.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), body)
 		if err != nil {
-			nsqLog.LogWarningf("topic %v forward message failed: %v", topic.GetFullName(), err)
+			nsqd.NsqLogger().LogWarningf("topic %v forward message failed: %v", topic.GetFullName(), err)
 			return nil, http_api.Err{500, err.Error()}
 		}
 	}
@@ -268,7 +250,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
-	var msgs []*Message
+	var msgs []*nsqd.Message
 	var buffers []*bytes.Buffer
 	var exit bool
 
@@ -279,7 +261,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			s.ctx.getOpts().MaxMsgSize)
 		defer func() {
 			for _, b := range buffers {
-				topic.bufferPoolPut(b)
+				topic.BufferPoolPut(b)
 			}
 		}()
 
@@ -290,8 +272,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
 		readMax := s.ctx.getOpts().MaxBodySize + 1
-		rdr := newBufioReader(io.LimitReader(req.Body, readMax))
-		defer putBufioReader(rdr)
+		rdr := nsqd.NewBufioReader(io.LimitReader(req.Body, readMax))
+		defer nsqd.PutBufioReader(rdr)
 		total := 0
 		for !exit {
 			var block []byte
@@ -321,7 +303,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(0, block)
+			msg := nsqd.NewMessage(0, block)
 			msgs = append(msgs, msg)
 		}
 	}
@@ -338,7 +320,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -352,7 +334,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
-	err = topic.empty()
+	err = topic.Empty()
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
@@ -363,7 +345,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -420,7 +402,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 		err = channel.Pause()
 	}
 	if err != nil {
-		nsqLog.LogErrorf("failure in %s - %s", req.URL.Path, err)
+		nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
@@ -432,7 +414,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	topicName := reqParams.Get("topic")
@@ -450,7 +432,7 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		nsqLog.LogErrorf("failed to parse request params - %s", err)
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	formatString := reqParams.Get("format")
@@ -473,7 +455,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 					// Find the desired-channel:
 					for _, channelStats := range topicStats.Channels {
 						if channelStats.ChannelName == channelName {
-							topicStats.Channels = []ChannelStats{channelStats}
+							topicStats.Channels = []nsqd.ChannelStats{channelStats}
 							// We've got the channel we were looking for:
 							break
 						}
@@ -481,7 +463,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 				}
 
 				// We've got the topic we were looking for:
-				stats = []TopicStats{topicStats}
+				stats = []nsqd.TopicStats{topicStats}
 				break
 			}
 		}
@@ -492,14 +474,14 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return struct {
-		Version   string       `json:"version"`
-		Health    string       `json:"health"`
-		StartTime int64        `json:"start_time"`
-		Topics    []TopicStats `json:"topics"`
+		Version   string            `json:"version"`
+		Health    string            `json:"health"`
+		StartTime int64             `json:"start_time"`
+		Topics    []nsqd.TopicStats `json:"topics"`
 	}{version.Binary, health, startTime.Unix(), stats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []nsqd.TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()
@@ -593,14 +575,7 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
-			nsqLog.Logf("log level set to : %v", opts.LogLevel)
-		case "blockprofile":
-			err := json.Unmarshal(body, &opts.BlockProfile)
-			if err != nil {
-				return nil, http_api.Err{400, "INVALID_VALUE"}
-			}
-			nsqLog.Logf("block profile set to : %v", opts.BlockProfile)
-			runtime.SetBlockProfileRate(opts.BlockProfile)
+			nsqd.NsqLogger().Logf("log level set to : %v", opts.LogLevel)
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}

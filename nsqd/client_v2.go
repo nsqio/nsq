@@ -24,7 +24,7 @@ const (
 	stateClosing
 )
 
-type identifyDataV2 struct {
+type IdentifyDataV2 struct {
 	ShortID string `json:"short_id"` // TODO: deprecated, remove in 1.0
 	LongID  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
 
@@ -50,7 +50,7 @@ type identifyEvent struct {
 	MsgTimeout          time.Duration
 }
 
-type clientV2 struct {
+type ClientV2 struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	ReadyCount    int64
 	InFlightCount int64
@@ -62,7 +62,7 @@ type clientV2 struct {
 	metaLock  sync.RWMutex
 
 	ID        int64
-	ctx       *context
+	ctxOpts   *Options
 	UserAgent string
 
 	// original connection
@@ -103,31 +103,32 @@ type clientV2 struct {
 
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
-	lenSlice []byte
+	LenSlice []byte
 
 	AuthSecret string
 	AuthState  *auth.State
+	tlsConfig  *tls.Config
 }
 
-func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
+func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
 	var identifier string
 	if conn != nil {
 		identifier = conn.RemoteAddr().String()
 	}
 
-	c := &clientV2{
-		ID:  id,
-		ctx: ctx,
+	c := &ClientV2{
+		ID:      id,
+		ctxOpts: opts,
 
 		Conn: conn,
 
-		Reader: newBufioReader(conn),
+		Reader: NewBufioReader(conn),
 		Writer: newBufioWriterSize(conn, defaultBufferSize),
 
 		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: 250 * time.Millisecond,
 
-		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout,
+		MsgTimeout: opts.MsgTimeout,
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -143,21 +144,22 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
-		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
+		HeartbeatInterval: opts.ClientTimeout / 2,
+		tlsConfig:         tls,
 	}
-	c.lenSlice = c.lenBuf[:]
+	c.LenSlice = c.lenBuf[:]
 	return c
 }
 
-func (c *clientV2) String() string {
+func (c *ClientV2) String() string {
 	return c.RemoteAddr().String()
 }
 
-func (c *clientV2) FinalClose() {
+func (c *ClientV2) FinalClose() {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 	if c.Reader != nil {
-		putBufioReader(c.Reader)
+		PutBufioReader(c.Reader)
 		c.Reader = nil
 	}
 	if c.Writer != nil {
@@ -171,7 +173,23 @@ func (c *clientV2) FinalClose() {
 	c.Conn.Close()
 }
 
-func (c *clientV2) Identify(data identifyDataV2) error {
+func (c *ClientV2) LockRead() {
+	c.writeLock.RLock()
+}
+
+func (c *ClientV2) UnlockRead() {
+	c.writeLock.RUnlock()
+}
+
+func (c *ClientV2) LockWrite() {
+	c.writeLock.Lock()
+}
+
+func (c *ClientV2) UnlockWrite() {
+	c.writeLock.Unlock()
+}
+
+func (c *ClientV2) Identify(data IdentifyDataV2) error {
 	nsqLog.Logf("[%s] IDENTIFY: %+v", c, data)
 
 	// TODO: for backwards compatibility, remove in 1.0
@@ -232,7 +250,7 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 	return nil
 }
 
-func (c *clientV2) Stats() ClientStats {
+func (c *ClientV2) Stats() ClientStats {
 	c.metaLock.RLock()
 	// TODO: deprecated, remove in 1.0
 	name := c.ClientID
@@ -333,7 +351,7 @@ func (p *prettyConnectionState) GetVersion() string {
 	}
 }
 
-func (c *clientV2) IsReadyForMessages() bool {
+func (c *ClientV2) IsReadyForMessages() bool {
 	if c.Channel.IsPaused() {
 		return false
 	}
@@ -341,8 +359,8 @@ func (c *clientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	if c.ctx.nsqd.getOpts().Verbose {
-		nsqLog.Logf("[%s] state rdy: %4d inflt: %4d",
+	if nsqLog.Level() > 1 {
+		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d",
 			c, readyCount, inFlightCount)
 	}
 
@@ -353,12 +371,12 @@ func (c *clientV2) IsReadyForMessages() bool {
 	return true
 }
 
-func (c *clientV2) SetReadyCount(count int64) {
+func (c *ClientV2) SetReadyCount(count int64) {
 	atomic.StoreInt64(&c.ReadyCount, count)
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) tryUpdateReadyState() {
+func (c *ClientV2) tryUpdateReadyState() {
 	// you can always *try* to write to ReadyStateChan because in the cases
 	// where you cannot the message pump loop would have iterated anyway.
 	// the atomic integer operations guarantee correctness of the value.
@@ -368,49 +386,49 @@ func (c *clientV2) tryUpdateReadyState() {
 	}
 }
 
-func (c *clientV2) FinishedMessage() {
+func (c *ClientV2) FinishedMessage() {
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) Empty() {
+func (c *ClientV2) Empty() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) SendingMessage() {
+func (c *ClientV2) SendingMessage() {
 	atomic.AddInt64(&c.InFlightCount, 1)
 	atomic.AddUint64(&c.MessageCount, 1)
 }
 
-func (c *clientV2) TimedOutMessage() {
+func (c *ClientV2) TimedOutMessage() {
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) RequeuedMessage() {
+func (c *ClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) StartClose() {
+func (c *ClientV2) StartClose() {
 	// Force the client into ready 0
 	c.SetReadyCount(0)
 	// mark this client as closing
 	atomic.StoreInt32(&c.State, stateClosing)
 }
 
-func (c *clientV2) Pause() {
+func (c *ClientV2) Pause() {
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) UnPause() {
+func (c *ClientV2) UnPause() {
 	c.tryUpdateReadyState()
 }
 
-func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
+func (c *ClientV2) SetHeartbeatInterval(desiredInterval int) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -420,7 +438,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
-		desiredInterval <= int(c.ctx.nsqd.getOpts().MaxHeartbeatInterval/time.Millisecond):
+		desiredInterval <= int(c.ctxOpts.MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
 		return fmt.Errorf("heartbeat interval (%d) is invalid", desiredInterval)
@@ -429,7 +447,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	return nil
 }
 
-func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
+func (c *ClientV2) SetOutputBufferSize(desiredSize int) error {
 	var size int
 
 	switch {
@@ -438,7 +456,7 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 		size = 1
 	case desiredSize == 0:
 		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.getOpts().MaxOutputBufferSize):
+	case desiredSize >= 64 && desiredSize <= int(c.ctxOpts.MaxOutputBufferSize):
 		size = desiredSize
 	default:
 		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
@@ -458,7 +476,7 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 	return nil
 }
 
-func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
+func (c *ClientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -468,7 +486,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case desiredTimeout >= 1 &&
-		desiredTimeout <= int(c.ctx.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
+		desiredTimeout <= int(c.ctxOpts.MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
 		return fmt.Errorf("output buffer timeout (%d) is invalid", desiredTimeout)
@@ -477,7 +495,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	return nil
 }
 
-func (c *clientV2) SetSampleRate(sampleRate int32) error {
+func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
 		return fmt.Errorf("sample rate (%d) is invalid", sampleRate)
 	}
@@ -485,7 +503,7 @@ func (c *clientV2) SetSampleRate(sampleRate int32) error {
 	return nil
 }
 
-func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
+func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -493,7 +511,7 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 	case msgTimeout == 0:
 		// do nothing (use default)
 	case msgTimeout >= 1000 &&
-		msgTimeout <= int(c.ctx.nsqd.getOpts().MaxMsgTimeout/time.Millisecond):
+		msgTimeout <= int(c.ctxOpts.MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
 		return fmt.Errorf("msg timeout (%d) is invalid", msgTimeout)
@@ -502,11 +520,11 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 	return nil
 }
 
-func (c *clientV2) UpgradeTLS() error {
+func (c *ClientV2) UpgradeTLS() error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
-	tlsConn := tls.Server(c.Conn, c.ctx.nsqd.tlsConfig)
+	tlsConn := tls.Server(c.Conn, c.tlsConfig)
 	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
 	err := tlsConn.Handshake()
 	if err != nil {
@@ -514,7 +532,7 @@ func (c *clientV2) UpgradeTLS() error {
 	}
 	c.tlsConn = tlsConn
 
-	c.Reader = newBufioReader(c.tlsConn)
+	c.Reader = NewBufioReader(c.tlsConn)
 	c.Writer = newBufioWriterSize(c.tlsConn, c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.TLS, 1)
@@ -522,7 +540,7 @@ func (c *clientV2) UpgradeTLS() error {
 	return nil
 }
 
-func (c *clientV2) UpgradeDeflate(level int) error {
+func (c *ClientV2) UpgradeDeflate(level int) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -531,7 +549,7 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = newBufioReader(flate.NewReader(conn))
+	c.Reader = NewBufioReader(flate.NewReader(conn))
 
 	fw, _ := flate.NewWriter(conn, level)
 	c.flateWriter = fw
@@ -542,7 +560,7 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 	return nil
 }
 
-func (c *clientV2) UpgradeSnappy() error {
+func (c *ClientV2) UpgradeSnappy() error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -551,7 +569,7 @@ func (c *clientV2) UpgradeSnappy() error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = newBufioReader(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum))
+	c.Reader = NewBufioReader(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum))
 	c.Writer = newBufioWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)
@@ -559,7 +577,7 @@ func (c *clientV2) UpgradeSnappy() error {
 	return nil
 }
 
-func (c *clientV2) Flush() error {
+func (c *ClientV2) Flush() error {
 	var zeroTime time.Time
 	if c.HeartbeatInterval > 0 {
 		c.SetWriteDeadline(time.Now().Add(c.HeartbeatInterval))
@@ -579,7 +597,7 @@ func (c *clientV2) Flush() error {
 	return nil
 }
 
-func (c *clientV2) QueryAuthd() error {
+func (c *ClientV2) QueryAuthd() error {
 	remoteIP, _, err := net.SplitHostPort(c.String())
 	if err != nil {
 		return err
@@ -591,7 +609,7 @@ func (c *clientV2) QueryAuthd() error {
 		tlsEnabled = "true"
 	}
 
-	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
+	authState, err := auth.QueryAnyAuthd(c.ctxOpts.AuthHTTPAddresses,
 		remoteIP, tlsEnabled, c.AuthSecret)
 	if err != nil {
 		return err
@@ -600,12 +618,12 @@ func (c *clientV2) QueryAuthd() error {
 	return nil
 }
 
-func (c *clientV2) Auth(secret string) error {
+func (c *ClientV2) Auth(secret string) error {
 	c.AuthSecret = secret
 	return c.QueryAuthd()
 }
 
-func (c *clientV2) IsAuthorized(topic, channel string) (bool, error) {
+func (c *ClientV2) IsAuthorized(topic, channel string) (bool, error) {
 	if c.AuthState == nil {
 		return false, nil
 	}
@@ -621,7 +639,7 @@ func (c *clientV2) IsAuthorized(topic, channel string) (bool, error) {
 	return false, nil
 }
 
-func (c *clientV2) HasAuthorizations() bool {
+func (c *ClientV2) HasAuthorizations() bool {
 	if c.AuthState != nil {
 		return len(c.AuthState.Authorizations) != 0
 	}

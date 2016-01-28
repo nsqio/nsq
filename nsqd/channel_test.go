@@ -142,47 +142,11 @@ func TestChannelEmpty(t *testing.T) {
 	equal(t, len(channel.inFlightMessages), 24)
 	equal(t, len(channel.inFlightPQ), 24)
 
-	channel.empty()
+	channel.Empty()
 
 	equal(t, len(channel.inFlightMessages), 0)
 	equal(t, len(channel.inFlightPQ), 0)
 	equal(t, channel.Depth(), int64(0))
-}
-
-func TestChannelEmptyConsumer(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	conn, _ := mustConnectNSQD(tcpAddr)
-	defer conn.Close()
-
-	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopicIgnPart(topicName)
-	channel := topic.GetChannel("channel")
-	client := newClientV2(0, conn, &context{nsqd})
-	client.SetReadyCount(25)
-	channel.AddClient(client.ID, client)
-
-	for i := 0; i < 25; i++ {
-		msg := NewMessage(topic.nextMsgID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
-		client.SendingMessage()
-	}
-
-	for _, cl := range channel.clients {
-		stats := cl.Stats()
-		equal(t, stats.InFlightCount, int64(25))
-	}
-
-	channel.empty()
-
-	for _, cl := range channel.clients {
-		stats := cl.Stats()
-		equal(t, stats.InFlightCount, int64(0))
-	}
 }
 
 func TestChannelHealth(t *testing.T) {
