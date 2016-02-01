@@ -902,11 +902,22 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, err
 	}
 
-	msg := nsqd.NewMessage(0, messageBody)
-	_, _, err = topic.PutMessage(msg)
-	p.ctx.setHealth(err)
-	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
+	if p.ctx.checkForMasterWrite(topic) {
+		err := p.ctx.PutMessage(topic, messageBody)
+		//p.ctx.setHealth(err)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
+		}
+	} else {
+		//forward to master of topic
+		nsqd.NsqLogger().LogDebugf("forward put to master: %v, from %v",
+			topic.GetFullName(), client.RemoteAddr)
+		err := p.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), messageBody)
+		if err != nil {
+			nsqd.NsqLogger().LogWarningf("topic %v forward put failed: %v", topic.GetFullName(), err)
+			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
+		}
 	}
 
 	return okBytes, nil

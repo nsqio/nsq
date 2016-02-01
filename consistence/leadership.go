@@ -49,7 +49,7 @@ func (self *TopicPartionMetaInfo) GetTopicDesp() string {
 type TopicLeaderSession struct {
 	LeaderNode  *NsqdNodeInfo
 	Session     string
-	LeaderEpoch int
+	LeaderEpoch int32
 }
 
 func (self *TopicLeaderSession) IsSame(other *TopicLeaderSession) bool {
@@ -110,7 +110,7 @@ type NSQDLeadership interface {
 }
 
 type FakeNsqlookupLeadership struct {
-	fakeTopicsData map[string]map[int]*TopicSummaryData
+	fakeTopicsData map[string]map[int]*TopicCoordinator
 	fakeNsqdNodes  map[string]NsqdNodeInfo
 	nodeChanged    chan struct{}
 	fakeEpoch      int
@@ -119,7 +119,7 @@ type FakeNsqlookupLeadership struct {
 
 func NewFakeNsqlookupLeadership() *FakeNsqlookupLeadership {
 	return &FakeNsqlookupLeadership{
-		fakeTopicsData: make(map[string]map[int]*TopicSummaryData),
+		fakeTopicsData: make(map[string]map[int]*TopicCoordinator),
 		fakeNsqdNodes:  make(map[string]NsqdNodeInfo),
 		nodeChanged:    make(chan struct{}, 1),
 	}
@@ -216,14 +216,14 @@ func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (
 func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partition int, replica int) error {
 	t, ok := self.fakeTopicsData[topic]
 	if !ok {
-		t = make(map[int]*TopicSummaryData)
+		t = make(map[int]*TopicCoordinator)
 		self.fakeTopicsData[topic] = t
 	}
 	_, ok = t[partition]
 	if ok {
 		return ErrAlreadyExist
 	}
-	var newtp TopicSummaryData
+	var newtp TopicCoordinator
 	newtp.topicInfo.Name = topic
 	newtp.topicInfo.Partition = partition
 	newtp.topicInfo.Replica = replica
@@ -234,7 +234,7 @@ func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partitio
 func (self *FakeNsqlookupLeadership) CreateTopic(topic string, partitionNum int, replica int) error {
 	t, ok := self.fakeTopicsData[topic]
 	if !ok {
-		t = make(map[int]*TopicSummaryData)
+		t = make(map[int]*TopicCoordinator)
 		self.fakeTopicsData[topic] = t
 	}
 	return nil

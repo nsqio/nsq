@@ -24,10 +24,10 @@ import (
 
 	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"github.com/mreiferson/go-snappystream"
 	"github.com/nsqio/nsq/internal/protocol"
-	"github.com/nsqio/nsq/internal/test"
 )
 
 func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f int32) []byte {

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"github.com/mreiferson/go-snappystream"
-	"github.com/nsqio/nsq/internal/test"
 )
 
 func TestStats(t *testing.T) {

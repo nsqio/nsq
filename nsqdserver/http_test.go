@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/absolute8511/nsq/nsqlookupd"
-	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/version"
 )
 

@@ -213,7 +213,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if len(producers) == 0 {
 			continue
 		}
-		// only for test
+		// TODO: only for test
 		if len(producers) == 1 && len(registrations) == 1 {
 			allProducers[producers[0].peerInfo.Id] = producers[0]
 			continue

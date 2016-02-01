@@ -1,17 +1,8 @@
 package consistence
 
 import (
-	"errors"
 	"github.com/absolute8511/nsq/nsqd"
 	_ "github.com/valyala/gorpc"
-)
-
-var (
-	ErrSessionMismatch       = errors.New("session mismatch")
-	ErrMissingTopic          = errors.New("missing topic")
-	ErrLocalNotReadyForWrite = errors.New("local topic is not ready for write.")
-	ErrLeavingISRWait        = errors.New("leaving isr need wait.")
-	ErrEpochLessThanCurrent  = errors.New("epoch should be increased")
 )
 
 type ErrRPCRetCode int
@@ -92,10 +83,10 @@ func (self *NsqdCoordinator) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeader
 	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	if _, ok := self.topicsData[rpcTopicReq.TopicName]; !ok {
+	if _, ok := self.topicCoords[rpcTopicReq.TopicName]; !ok {
 		return ErrTopicNotCreated
 	}
-	topicPartitionInfo, ok := self.topicsData[rpcTopicReq.TopicName][rpcTopicReq.TopicPartition]
+	topicPartitionInfo, ok := self.topicCoords[rpcTopicReq.TopicName][rpcTopicReq.TopicPartition]
 	if !ok {
 		coordLog.Infof("topic partition missing.")
 		return ErrTopicNotCreated
@@ -132,14 +123,14 @@ func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret 
 		return err
 	}
 	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
-	topicData, ok := self.topicsData[rpcTopicReq.Name]
+	topicData, ok := self.topicCoords[rpcTopicReq.Name]
 	if !ok {
-		topicData = make(map[int]*TopicSummaryData)
-		self.topicsData[rpcTopicReq.Name] = topicData
+		topicData = make(map[int]*TopicCoordinator)
+		self.topicCoords[rpcTopicReq.Name] = topicData
 	}
 	tpMetaInfo, ok := topicData[rpcTopicReq.Partition]
 	if !ok {
-		tpMetaInfo = &TopicSummaryData{disableWrite: true}
+		tpMetaInfo = &TopicCoordinator{disableWrite: true}
 		topicData[rpcTopicReq.Partition] = tpMetaInfo
 		rpcTopicReq.DisableWrite = true
 	}
@@ -182,7 +173,7 @@ func (self *NsqdCoordinator) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret
 	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
+	if t, ok := self.topicCoords[rpcTopicReq.Name]; ok {
 		if tp, ok := t[rpcTopicReq.Partition]; ok {
 			tp.disableWrite = false
 			return nil
@@ -190,7 +181,7 @@ func (self *NsqdCoordinator) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret
 	}
 
 	*ret = true
-	return ErrMissingTopic
+	return ErrMissingTopicCoord
 }
 
 func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
@@ -198,7 +189,7 @@ func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, re
 		return err
 	}
 
-	if t, ok := self.topicsData[rpcTopicReq.Name]; ok {
+	if t, ok := self.topicCoords[rpcTopicReq.Name]; ok {
 		if tp, ok := t[rpcTopicReq.Partition]; ok {
 			tp.disableWrite = true
 			//TODO: wait until the current write finished.
@@ -206,7 +197,7 @@ func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, re
 		}
 	}
 	*ret = true
-	return ErrMissingTopic
+	return ErrMissingTopicCoord
 }
 
 func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
@@ -221,13 +212,13 @@ func (self *NsqdCoordinator) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo
 	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	t, ok := self.topicsData[rpcTopicReq.Name]
+	t, ok := self.topicCoords[rpcTopicReq.Name]
 	if !ok {
-		return ErrMissingTopic
+		return ErrMissingTopicCoord
 	}
 	tp, ok := t[rpcTopicReq.Partition]
 	if !ok {
-		return ErrMissingTopic
+		return ErrMissingTopicCoord
 	}
 
 	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
@@ -242,13 +233,13 @@ func (self *NsqdCoordinator) UpdateChannelsForTopic(rpcTopicReq RpcAdminTopicInf
 	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	t, ok := self.topicsData[rpcTopicReq.Name]
+	t, ok := self.topicCoords[rpcTopicReq.Name]
 	if !ok {
-		return ErrMissingTopic
+		return ErrMissingTopicCoord
 	}
 	tp, ok := t[rpcTopicReq.Partition]
 	if !ok {
-		return ErrMissingTopic
+		return ErrMissingTopicCoord
 	}
 	tp.topicInfo.Channels = rpcTopicReq.Channels
 	err := self.updateLocalTopicChannels(tp.topicInfo)
@@ -260,14 +251,14 @@ type RpcTopicData struct {
 	TopicPartition   int
 	TopicSession     string
 	TopicEpoch       int
-	TopicLeaderEpoch int
+	TopicLeaderEpoch int32
 }
 
 type RpcChannelOffsetArg struct {
 	RpcTopicData
 	Channel string
 	// position file + file offset
-	ChannelOffset ConsumerChanOffset
+	ChannelOffset ChannelConsumerOffset
 }
 
 type RpcPutMessages struct {
@@ -303,16 +294,16 @@ type RpcPullCommitLogsRsp struct {
 	DataList [][]byte
 }
 
-func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeaderSession, error) {
-	if v, ok := self.topicsData[rpcData.TopicName]; ok {
+func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeaderSession, *CoordErr) {
+	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
 		if topicInfo, ok := v[rpcData.TopicPartition]; ok {
-			if topicInfo.topicLeaderSession.LeaderEpoch != rpcData.TopicLeaderEpoch {
+			if topicInfo.GetLeaderEpoch() != rpcData.TopicLeaderEpoch {
 				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
 				return nil, ErrEpochMismatch
 			}
-			if topicInfo.topicLeaderSession.Session != rpcData.TopicSession {
+			if topicInfo.GetLeaderSession() != rpcData.TopicSession {
 				coordLog.Infof("rpc call with wrong session:%v", rpcData)
-				return nil, ErrSessionMismatch
+				return nil, ErrLeaderSessionMismatch
 			}
 			if !self.localDataStates[topicInfo.topicInfo.Name][topicInfo.topicInfo.Partition] {
 				coordLog.Infof("local data is still loading. %v", topicInfo.topicInfo.GetTopicDesp())
@@ -322,7 +313,7 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeader
 		}
 	}
 	coordLog.Infof("rpc call with missing topic :%v", rpcData)
-	return nil, ErrMissingTopic
+	return nil, ErrMissingTopicCoord
 }
 
 func (self *NsqdCoordinator) UpdateChannelOffset(info RpcChannelOffsetArg, ret *bool) error {
@@ -337,33 +328,31 @@ func (self *NsqdCoordinator) UpdateChannelOffset(info RpcChannelOffsetArg, ret *
 }
 
 // receive from leader
-func (self *NsqdCoordinator) PutMessage(info RpcPutMessage, ret *bool) error {
-	_, err := self.checkForRpcCall(info.RpcTopicData)
-	if err != nil {
-		return err
+func (self *NsqdCoordinator) PutMessage(info RpcPutMessage, retErr *CoordErr) error {
+	_, retErr = self.checkForRpcCall(info.RpcTopicData)
+	if retErr != nil {
+		return retErr
 	}
 	// do local pub message
-	err = self.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
-	*ret = true
-	return err
+	retErr = self.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
+	return retErr
 }
 
-func (self *NsqdCoordinator) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) error {
+func (self *NsqdCoordinator) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) {
 	*ret = 0
-	logMgr, err := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if err != nil {
-		return err
+	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+	if logMgr == nil {
+		return
 	}
 	*ret = logMgr.GetLastCommitLogID()
-	return nil
 }
 
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
 func (self *NsqdCoordinator) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
-	logMgr, err := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if err != nil {
-		return err
+	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+	if logMgr == nil {
+		return ErrMissingTopicLog
 	}
 	logData, err := logMgr.GetCommmitLogFromOffset(req.LogOffset)
 	if err != nil {
@@ -389,11 +378,12 @@ func (self *NsqdCoordinator) GetCommitLogFromOffset(req RpcCommitLogReq, ret *Rp
 }
 
 func (self *NsqdCoordinator) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret *RpcPullCommitLogsRsp) error {
-	logMgr, err := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if err != nil {
-		return err
+	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+	if logMgr != nil {
+		return ErrMissingTopicLog
 	}
 
+	var err error
 	ret.Logs, err = logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {

@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -28,7 +28,7 @@ var (
 type CommitLogData struct {
 	LogID int64
 	// epoch for the topic leader
-	Epoch     int
+	Epoch     int32
 	MsgOffset int64
 }
 
@@ -47,23 +47,21 @@ func GetNextLogOffset(cur int64) int64 {
 }
 
 type TopicCommitLogMgr struct {
-	sync.Mutex
 	topic         string
 	partition     int
 	nLogID        int64
 	pLogID        int64
 	path          string
-	checkPoints   map[int64]struct{}
 	committedLogs []CommitLogData
 	appender      *os.File
 }
 
 func GetTopicPartitionLogPath(basepath, t string, p int) string {
-	fullpath := filepath.Join(basepath, t, strconv.Itoa(p), "commit.log")
+	fullpath := filepath.Join(basepath, t+"-"+strconv.Itoa(p)+".commit.log")
 	return fullpath
 }
 
-func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) *TopicCommitLogMgr {
+func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) (*TopicCommitLogMgr, error) {
 	fullpath := GetTopicPartitionLogPath(basepath, t, p)
 	mgr := &TopicCommitLogMgr{
 		topic:         t,
@@ -71,26 +69,44 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		nLogID:        0,
 		pLogID:        0,
 		path:          fullpath,
-		checkPoints:   make(map[int64]struct{}),
 		committedLogs: make([]CommitLogData, 0, commitBufSize),
 	}
 	// load check point index. read sizeof(CommitLogData) until EOF.
 	var err error
 	// note: using append mode can make sure write only to end of file
 	// we can do random read without affecting the append behavior
-	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		coordLog.Infof("open topic commit log file error: %v", err)
-		return nil
+		return nil, err
 	}
 
-	return mgr
+	//load meta
+	f, err := mgr.appender.Stat()
+	if err != nil {
+		coordLog.Infof("stat file error: %v", err)
+		return nil, err
+	}
+	fsize := f.Size()
+	if fsize > 0 {
+		num := fsize / int64(GetLogDataSize())
+		roundOffset := (num - 1) * int64(GetLogDataSize())
+		l, err := mgr.GetCommmitLogFromOffset(roundOffset)
+		if err != nil {
+			coordLog.Infof("load file error: %v", err)
+			return nil, err
+		}
+		mgr.pLogID = l.LogID
+		mgr.nLogID = l.LogID + 1000
+	} else {
+		mgr.nLogID = 1
+	}
+	return mgr, nil
 }
 
-func (self *TopicCommitLogMgr) nextLogID() int64 {
-	oldid := self.nLogID
-	self.nLogID++
-	return oldid
+func (self *TopicCommitLogMgr) NextID() int64 {
+	id := atomic.AddInt64(&self.nLogID, 1)
+	return id
 }
 
 func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, error) {
@@ -179,25 +195,18 @@ func (self *TopicCommitLogMgr) IsCommitted(id int64) bool {
 	if self.pLogID == id {
 		return true
 	}
-	if _, ok := self.checkPoints[id]; ok {
-		return true
-	}
 	return false
 }
 
 func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) error {
-	if l.LogID < self.nLogID {
+	if l.LogID <= self.pLogID {
 		return ErrCommitLogWrongID
 	}
 	if slave {
 		self.nLogID = l.LogID + 1
-	} else {
-		if l.LogID == self.nLogID {
-			return ErrCommitLogWrongID
-		}
 	}
 	if cap(self.committedLogs) == 0 {
-		// no buffer, write to check point file directly.
+		// no buffer, write to file directly.
 		err := binary.Write(self.appender, binary.BigEndian, l)
 		if err != nil {
 			return err
@@ -208,15 +217,12 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		}
 		self.committedLogs = append(self.committedLogs, *l)
 	}
-	self.checkPoints[l.LogID] = struct{}{}
 	self.pLogID = l.LogID
 	return nil
 }
 
 func (self *TopicCommitLogMgr) FlushCommitLogs() {
-	// write commit logs to check point file.
-	self.checkPoints = make(map[int64]struct{})
-
+	// write buffered commit logs to file.
 	for _, v := range self.committedLogs {
 		err := binary.Write(self.appender, binary.BigEndian, v)
 		if err != nil {
@@ -268,14 +274,14 @@ func (self *TopicCommitLogMgr) GetCommitLogsReverse(startIndex int64, num int) (
 		}
 	}
 	dataSize := GetLogDataSize()
-	// read from end of commit file.
+	// TODO: read from end of commit file.
 	endOffset := 0
 	readStart := endOffset - dataSize*(num-len(ret))
 	if readStart < 0 {
 		readStart = 0
 	}
 	buf := make([]byte, endOffset-readStart)
-	// read file data to buf
+	// TODO: read file data to buf
 	var tmp CommitLogData
 	for i := 0; i < len(buf)-dataSize; i++ {
 		err := binary.Read(bytes.NewReader(buf[i:i+dataSize]), binary.BigEndian, &tmp)

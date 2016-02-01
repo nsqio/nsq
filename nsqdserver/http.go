@@ -224,12 +224,12 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
-		//TODO: forward to master of topic
+		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("forward put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		err := s.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), body)
 		if err != nil {
-			nsqd.NsqLogger().LogWarningf("topic %v forward message failed: %v", topic.GetFullName(), err)
+			nsqd.NsqLogger().LogWarningf("topic %v forward put failed: %v", topic.GetFullName(), err)
 			return nil, http_api.Err{500, err.Error()}
 		}
 	}

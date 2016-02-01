@@ -279,27 +279,44 @@ func (t *Topic) FlushAsNeedNoLock() {
 }
 
 func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) error {
-	t.Lock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		t.Unlock()
 		return ErrExiting
 	}
 	wend := t.backend.GetQueueWriteEnd()
 	if wend.GetOffset() != offset {
-		t.Unlock()
 		return ErrWriteOffsetMismatch
 	}
-
 	_, _, err := t.put(m)
-	t.Unlock()
 	if err != nil {
 		return err
 	}
 	cnt := atomic.AddUint64(&t.messageCount, 1)
 	if cnt%uint64(t.syncEvery) == 0 {
-		t.Lock()
 		t.flush(false)
-		t.Unlock()
+	}
+	return nil
+}
+
+func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) error {
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return ErrExiting
+	}
+
+	wend := t.backend.GetQueueWriteEnd()
+	if wend.GetOffset() != offset {
+		return ErrWriteOffsetMismatch
+	}
+
+	for _, m := range msgs {
+		_, _, err := t.put(m)
+		if err != nil {
+			return err
+		}
+	}
+	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
+
+	if int64(len(msgs)) >= t.syncEvery {
+		t.flush(false)
 	}
 	return nil
 }

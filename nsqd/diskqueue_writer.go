@@ -145,7 +145,7 @@ func (d *diskQueueWriter) Empty() error {
 }
 
 func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
-	d.skipToNextRWFile()
+	d.cleanOldData()
 
 	if deleted {
 		nsqLog.Logf("DISKQUEUE(%s): deleting meta file", d.name)
@@ -158,16 +158,17 @@ func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
 	return nil
 }
 
-func (d *diskQueueWriter) skipToNextRWFile() error {
+func (d *diskQueueWriter) cleanOldData() error {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
 	d.virtualReadableEnd = d.virtualEnd
-	d.readablePos = 0
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
 	}
+
+	d.saveFileOffsetMeta()
 
 	for i := int64(0); i <= d.writeFileNum; i++ {
 		fn := d.fileName(i)
@@ -180,7 +181,27 @@ func (d *diskQueueWriter) skipToNextRWFile() error {
 
 	d.writeFileNum++
 	d.writePos = 0
+	d.readablePos = 0
 	return nil
+}
+
+func (d *diskQueueWriter) saveFileOffsetMeta() {
+	fName := d.fileName(d.writeFileNum) + ".offsetmeta.dat"
+	f, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		nsqLog.LogErrorf("diskqueue(%s) failed to save data offset meta: %v", d.name, err)
+		return
+	}
+	_, err = fmt.Fprintf(f, "%d\n%d,%d\n",
+		atomic.LoadInt64(&d.totalMsgCnt),
+		d.virtualEnd-BackendOffset(d.writePos), d.virtualEnd)
+	if err != nil {
+		f.Close()
+		nsqLog.LogErrorf("diskqueue(%s) failed to save data offset meta: %v", d.name, err)
+		return
+	}
+	f.Sync()
+	f.Close()
 }
 
 func (d *diskQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
@@ -263,21 +284,22 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, error) {
 	d.virtualEnd += BackendOffset(totalBytes)
 	atomic.AddInt64(&d.totalMsgCnt, 1)
 
-	if d.writePos > d.maxBytesPerFile {
-		d.writeFileNum++
-		d.writePos = 0
-
+	if d.writePos >= d.maxBytesPerFile {
 		// sync every time we start writing to a new file
 		err = d.sync()
 		if err != nil {
 			nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s", d.name, err)
 		}
 
-		d.readablePos = 0
 		if d.writeFile != nil {
 			d.writeFile.Close()
 			d.writeFile = nil
 		}
+		d.saveFileOffsetMeta()
+
+		d.writeFileNum++
+		d.writePos = 0
+		d.readablePos = 0
 	}
 
 	return writeOffset, err
