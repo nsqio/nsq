@@ -12,6 +12,13 @@ type TopicCoordinator struct {
 	topicLeaderSession   TopicLeaderSession
 	disableWrite         bool
 	channelConsumeOffset map[string]ChannelConsumerOffset
+	localDataLoaded      bool
+}
+
+func NewTopicCoordinator() *TopicCoordinator {
+	return &TopicCoordinator{
+		channelConsumeOffset: make(map[string]ChannelConsumerOffset),
+	}
 }
 
 func (self *TopicCoordinator) GetLeaderID() string {

@@ -3,6 +3,8 @@ package consistence
 import (
 	"github.com/absolute8511/nsq/nsqd"
 	_ "github.com/valyala/gorpc"
+	"net"
+	"net/rpc"
 )
 
 type ErrRPCRetCode int
@@ -17,31 +19,6 @@ const (
 	RpcErrNoLeader
 	RpcErrShouldTryLeader
 )
-
-var gRPCRetCodeMap map[error]ErrRPCRetCode
-
-func (self *ErrRPCRetCode) IsMatchedError(e error) bool {
-	if elem, ok := gRPCRetCodeMap[e]; ok {
-		return elem == *self
-	}
-	return false
-}
-
-func init() {
-	gRPCRetCodeMap = make(map[error]ErrRPCRetCode)
-	gRPCRetCodeMap[ErrLeavingISRWait] = RpcErrLeavingISRWait
-}
-
-func GetRpcErrCode(e error) ErrRPCRetCode {
-	if e == nil {
-		return RpcNoErr
-	}
-	code, ok := gRPCRetCodeMap[e]
-	if !ok {
-		return RpcCommonErr
-	}
-	return code
-}
 
 func FindSlice(in []string, e string) int {
 	for i, v := range in {
@@ -70,7 +47,40 @@ type RpcTopicLeaderSession struct {
 	LookupdEpoch int
 }
 
-func (self *NsqdCoordinator) CheckLookupForWrite(lookupEpoch int) error {
+type NsqdCoordRpcServer struct {
+	nsqdCoord   *NsqdCoordinator
+	rpcListener net.Listener
+}
+
+func NewNsqdCoordRpcServer(coord *NsqdCoordinator) *NsqdCoordRpcServer {
+	return &NsqdCoordRpcServer{
+		nsqdCoord: coord,
+	}
+}
+
+func (self *NsqdCoordRpcServer) start(ip, port string) error {
+	e := rpc.Register(self)
+	if e != nil {
+		panic(e)
+	}
+	self.rpcListener, e = net.Listen("tcp4", ip+":"+port)
+	if e != nil {
+		coordLog.Warningf("listen rpc error : %v", e.Error())
+		return e
+	}
+
+	coordLog.Infof("nsqd coordinator rpc listen at : %v", self.rpcListener.Addr())
+	rpc.Accept(self.rpcListener)
+	return nil
+}
+
+func (self *NsqdCoordRpcServer) stop() {
+	if self.rpcListener != nil {
+		self.rpcListener.Close()
+	}
+}
+
+func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) error {
 	if lookupEpoch < self.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
@@ -78,126 +88,65 @@ func (self *NsqdCoordinator) CheckLookupForWrite(lookupEpoch int) error {
 	return nil
 }
 
-func (self *NsqdCoordinator) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *bool) error {
+func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *bool) error {
 	*ret = true
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	if _, ok := self.topicCoords[rpcTopicReq.TopicName]; !ok {
-		return ErrTopicNotCreated
-	}
-	topicPartitionInfo, ok := self.topicCoords[rpcTopicReq.TopicName][rpcTopicReq.TopicPartition]
-	if !ok {
+	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
+	if err != nil {
 		coordLog.Infof("topic partition missing.")
-		return ErrTopicNotCreated
+		return err
 	}
-	if rpcTopicReq.LeaderEpoch < topicPartitionInfo.topicLeaderSession.LeaderEpoch {
-		coordLog.Infof("topic partition leadership epoch error.")
-		return ErrEpochLessThanCurrent
-	}
-	n := rpcTopicReq.TopicLeaderSession
-	topicPartitionInfo.topicLeaderSession = rpcTopicReq.TopicLeaderSession
-	if n.LeaderNode == nil || n.Session == "" {
-		coordLog.Infof("topic leader is missing : %v", rpcTopicReq.RpcTopicData)
-	} else if n.LeaderNode.GetID() == self.myNode.GetID() {
-		coordLog.Infof("I become the leader for the topic: %v", rpcTopicReq.RpcTopicData)
-	} else {
-		coordLog.Infof("topic %v leader changed to :%v. epoch: %v", rpcTopicReq.RpcTopicData, n.LeaderNode.GetID(), n.LeaderEpoch)
-		// if catching up, pull data from the new leader
-		// if isr, make sure sync to the new leader
-		if FindSlice(topicPartitionInfo.topicInfo.ISR, self.myNode.GetID()) != -1 {
-			self.syncToNewLeader(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition, &n)
-		} else if FindSlice(topicPartitionInfo.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-			self.catchupFromLeader(topicPartitionInfo.topicInfo)
-		} else {
-			// TODO: check if local has the topic data and decide whether to join
-			// catchup list
-		}
-	}
-
-	return nil
+	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, &rpcTopicReq.TopicLeaderSession)
+	return err
 }
 
-func (self *NsqdCoordinator) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
 	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
-	topicData, ok := self.topicCoords[rpcTopicReq.Name]
+	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
 	if !ok {
-		topicData = make(map[int]*TopicCoordinator)
-		self.topicCoords[rpcTopicReq.Name] = topicData
+		coords = make(map[int]*TopicCoordinator)
+		self.nsqdCoord.topicCoords[rpcTopicReq.Name] = coords
 	}
-	tpMetaInfo, ok := topicData[rpcTopicReq.Partition]
+	tpCoord, ok := coords[rpcTopicReq.Partition]
 	if !ok {
-		tpMetaInfo = &TopicCoordinator{disableWrite: true}
-		topicData[rpcTopicReq.Partition] = tpMetaInfo
+		tpCoord = &TopicCoordinator{disableWrite: true}
+		coords[rpcTopicReq.Partition] = tpCoord
 		rpcTopicReq.DisableWrite = true
 	}
-	if rpcTopicReq.Epoch < tpMetaInfo.topicInfo.Epoch {
-		return ErrEpochLessThanCurrent
+	return self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
+}
+
+func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	// set the topic as not writable.
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		return err
 	}
-	// channels and catchup should only be modified in the separate rpc method.
-	rpcTopicReq.Channels = tpMetaInfo.topicInfo.Channels
-	rpcTopicReq.CatchupList = tpMetaInfo.topicInfo.CatchupList
-	tpMetaInfo.topicInfo = rpcTopicReq.TopicPartionMetaInfo
-	self.updateLocalTopic(rpcTopicReq.TopicPartionMetaInfo)
-	if rpcTopicReq.Leader == self.myNode.GetID() {
-		if !self.IsMineLeaderForTopic(rpcTopicReq.Name, rpcTopicReq.Partition) {
-			coordLog.Infof("I am notified to be leader for the topic.")
-			// leader switch need disable write until the lookup notify leader
-			// to accept write.
-			rpcTopicReq.DisableWrite = true
-		}
-		if rpcTopicReq.DisableWrite {
-			topicData[rpcTopicReq.Partition].disableWrite = true
-		}
-		err := self.acquireTopicLeader(rpcTopicReq.TopicPartionMetaInfo)
-		if err != nil {
-			coordLog.Infof("acquire topic leader failed.")
-		}
-	} else if FindSlice(rpcTopicReq.ISR, self.myNode.GetID()) != -1 {
-		coordLog.Infof("I am in isr list.")
-	} else if FindSlice(rpcTopicReq.CatchupList, self.myNode.GetID()) != -1 {
-		coordLog.Infof("I am in catchup list.")
-	} else {
-		coordLog.Infof("Not a topic related to me.")
-		// TODO: check if local has the topic data and decide whether to join
-		// catchup list
+	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if err != nil {
+		return err
 	}
+	tp.disableWrite = false
+	*ret = true
 	return nil
 }
 
-func (self *NsqdCoordinator) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	// set the topic as not writable.
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	if t, ok := self.topicCoords[rpcTopicReq.Name]; ok {
-		if tp, ok := t[rpcTopicReq.Partition]; ok {
-			tp.disableWrite = false
-			return nil
-		}
-	}
-
-	*ret = true
-	return ErrMissingTopicCoord
-}
-
-func (self *NsqdCoordinator) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
 
-	if t, ok := self.topicCoords[rpcTopicReq.Name]; ok {
-		if tp, ok := t[rpcTopicReq.Partition]; ok {
-			tp.disableWrite = true
-			//TODO: wait until the current write finished.
-			return nil
-		}
+	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if err != nil {
+		return err
 	}
+	tp.disableWrite = true
 	*ret = true
-	return ErrMissingTopicCoord
+	return nil
 }
 
 func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
@@ -208,41 +157,33 @@ func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) e
 	return nil
 }
 
-func (self *NsqdCoordinator) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	t, ok := self.topicCoords[rpcTopicReq.Name]
-	if !ok {
-		return ErrMissingTopicCoord
-	}
-	tp, ok := t[rpcTopicReq.Partition]
-	if !ok {
-		return ErrMissingTopicCoord
+	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if err != nil {
+		return err
 	}
 
 	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
-	if FindSlice(tp.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-		go self.catchupFromLeader(tp.topicInfo)
+	if FindSlice(tp.topicInfo.CatchupList, self.nsqdCoord.myNode.GetID()) != -1 {
+		go self.nsqdCoord.catchupFromLeader(tp.topicInfo)
 	}
 
 	return nil
 }
 
-func (self *NsqdCoordinator) UpdateChannelsForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.CheckLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+func (self *NsqdCoordRpcServer) UpdateChannelsForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	t, ok := self.topicCoords[rpcTopicReq.Name]
-	if !ok {
-		return ErrMissingTopicCoord
-	}
-	tp, ok := t[rpcTopicReq.Partition]
-	if !ok {
-		return ErrMissingTopicCoord
+	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if err != nil {
+		return err
 	}
 	tp.topicInfo.Channels = rpcTopicReq.Channels
-	err := self.updateLocalTopicChannels(tp.topicInfo)
+	err = self.nsqdCoord.updateLocalTopicChannels(tp.topicInfo)
 	return err
 }
 
@@ -294,63 +235,72 @@ type RpcPullCommitLogsRsp struct {
 	DataList [][]byte
 }
 
+type RpcTestReq struct {
+	Data string
+}
+
+type RpcTestRsp struct {
+	RspData string
+	RetErr  *CoordErr
+}
+
 func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeaderSession, *CoordErr) {
 	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
-		if topicInfo, ok := v[rpcData.TopicPartition]; ok {
-			if topicInfo.GetLeaderEpoch() != rpcData.TopicLeaderEpoch {
+		if topicCoord, ok := v[rpcData.TopicPartition]; ok {
+			if topicCoord.GetLeaderEpoch() != rpcData.TopicLeaderEpoch {
 				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
 				return nil, ErrEpochMismatch
 			}
-			if topicInfo.GetLeaderSession() != rpcData.TopicSession {
+			if topicCoord.GetLeaderSession() != rpcData.TopicSession {
 				coordLog.Infof("rpc call with wrong session:%v", rpcData)
 				return nil, ErrLeaderSessionMismatch
 			}
-			if !self.localDataStates[topicInfo.topicInfo.Name][topicInfo.topicInfo.Partition] {
-				coordLog.Infof("local data is still loading. %v", topicInfo.topicInfo.GetTopicDesp())
+			if !topicCoord.localDataLoaded {
+				coordLog.Infof("local data is still loading. %v", topicCoord.topicInfo.GetTopicDesp())
 				return nil, ErrLocalNotReadyForWrite
 			}
-			return &topicInfo.topicLeaderSession, nil
+			return &topicCoord.topicLeaderSession, nil
 		}
 	}
 	coordLog.Infof("rpc call with missing topic :%v", rpcData)
 	return nil, ErrMissingTopicCoord
 }
 
-func (self *NsqdCoordinator) UpdateChannelOffset(info RpcChannelOffsetArg, ret *bool) error {
-	_, err := self.checkForRpcCall(info.RpcTopicData)
-	if err != nil {
-		return err
+func (self *NsqdCoordRpcServer) UpdateChannelOffset(info RpcChannelOffsetArg, retErr *CoordErr) error {
+	_, retErr = self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	if retErr != nil {
+		return retErr
 	}
 	// update local channel offset
-	*ret = true
-	err = self.updateChannelOffsetLocal(info.TopicName, info.TopicPartition, info.Channel, info.ChannelOffset)
-	return err
+	retErr = self.nsqdCoord.updateChannelOffsetLocal(info.TopicName, info.TopicPartition, info.Channel, info.ChannelOffset)
+	return retErr
 }
 
 // receive from leader
-func (self *NsqdCoordinator) PutMessage(info RpcPutMessage, retErr *CoordErr) error {
-	_, retErr = self.checkForRpcCall(info.RpcTopicData)
+func (self *NsqdCoordRpcServer) PutMessage(info RpcPutMessage, retErr *CoordErr) error {
+	_, retErr = self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
 	if retErr != nil {
 		return retErr
 	}
 	// do local pub message
-	retErr = self.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
+	retErr = self.nsqdCoord.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
 	return retErr
 }
 
-func (self *NsqdCoordinator) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) {
+func (self *NsqdCoordRpcServer) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) error {
 	*ret = 0
-	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
 	if logMgr == nil {
-		return
+		return nil
 	}
 	*ret = logMgr.GetLastCommitLogID()
+	return nil
 }
 
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
-func (self *NsqdCoordinator) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
-	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
+	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
 	if logMgr == nil {
 		return ErrMissingTopicLog
 	}
@@ -377,8 +327,8 @@ func (self *NsqdCoordinator) GetCommitLogFromOffset(req RpcCommitLogReq, ret *Rp
 	return nil
 }
 
-func (self *NsqdCoordinator) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret *RpcPullCommitLogsRsp) error {
-	logMgr := self.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
+func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret *RpcPullCommitLogsRsp) error {
+	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
 	if logMgr != nil {
 		return ErrMissingTopicLog
 	}
@@ -387,11 +337,21 @@ func (self *NsqdCoordinator) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret
 	ret.Logs, err = logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {
-		d, err := self.readMessageData(l.LogID, l.MsgOffset)
+		d, err := self.nsqdCoord.readMessageData(l.LogID, l.MsgOffset)
 		if err != nil {
 			return err
 		}
 		ret.DataList = append(ret.DataList, d)
 	}
 	return err
+}
+
+func (self *NsqdCoordRpcServer) TestRpcError(req RpcTestReq, ret *RpcTestRsp) error {
+	ret.RspData = req.Data
+	ret.RetErr = &CoordErr{
+		ErrMsg:  req.Data,
+		ErrCode: RpcNoErr,
+		ErrType: CommonErr,
+	}
+	return nil
 }

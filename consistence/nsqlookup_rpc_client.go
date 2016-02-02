@@ -55,7 +55,7 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret RpcRspBase
+	var ret CoordErr
 	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
 }
 
@@ -75,7 +75,7 @@ func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, ni
 	req.ReqSession = session
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret RpcRspBase
+	var ret CoordErr
 	return self.CallWithRetry("NSQLookupdCoordinator.RpcReadyForJoinISR", req, &ret)
 }
 
@@ -84,7 +84,7 @@ func (self *NsqLookupRpcClient) PrepareLeaveFromISR(topic string, partition int,
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret RpcRspBase
+	var ret CoordErr
 	return self.CallWithRetry("NSQLookupdCoordinator.RpcPrepareLeaveFromISR", req, &ret)
 }
 
@@ -93,7 +93,7 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int,
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret RpcRspBase
+	var ret CoordErr
 	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISR", req, &ret)
 }
 
@@ -103,6 +103,6 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partit
 	req.TopicName = topic
 	req.TopicPartition = partition
 	req.LeaderSession = *leaderSession
-	var ret RpcRspBase
+	var ret CoordErr
 	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISRByLeader", req, &ret)
 }

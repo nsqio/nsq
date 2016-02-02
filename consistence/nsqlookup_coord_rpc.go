@@ -27,13 +27,8 @@ type RpcReadyForJoinISR struct {
 	ReqSession string
 }
 
-type RpcRspBase struct {
-	RetCode ErrRPCRetCode
-	ErrInfo error
-}
-
 type RpcRspJoinISR struct {
-	RpcRspBase
+	CoordErr
 	ReqSession string
 }
 
@@ -50,45 +45,39 @@ type RpcReqLeaveFromISRByLeader struct {
 	LeaderSession TopicLeaderSession
 }
 
-func (self *NSQLookupdCoordinator) RequestJoinCatchup(req RpcReqJoinCatchup, ret *RpcRspBase) error {
+func (self *NSQLookupdCoordinator) RequestJoinCatchup(req RpcReqJoinCatchup, ret *CoordErr) error {
 	err := self.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrInfo = err
-	ret.RetCode = GetRpcErrCode(err)
+	ret.ErrMsg = err.Error()
 	return err
 }
 
 func (self *NSQLookupdCoordinator) RequestJoinTopicISR(req RpcReqJoinISR, ret *RpcRspJoinISR) error {
 	session, err := self.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrInfo = err
+	ret.ErrMsg = err.Error()
 	ret.ReqSession = session
-	ret.RetCode = GetRpcErrCode(err)
 	return err
 }
 
-func (self *NSQLookupdCoordinator) ReadyForTopicISR(req RpcReadyForJoinISR, ret *RpcRspBase) error {
+func (self *NSQLookupdCoordinator) ReadyForTopicISR(req RpcReadyForJoinISR, ret *CoordErr) error {
 	err := self.handleReadyForJoinISR(req.TopicName, req.TopicPartition, req.NodeID, req.ReqSession)
-	ret.ErrInfo = err
-	ret.RetCode = GetRpcErrCode(err)
+	ret.ErrMsg = err.Error()
 	return err
 }
 
-func (self *NSQLookupdCoordinator) PrepareLeaveFromISR(req RpcPrepareLeaveFromISR, ret *RpcRspBase) error {
+func (self *NSQLookupdCoordinator) PrepareLeaveFromISR(req RpcPrepareLeaveFromISR, ret *CoordErr) error {
 	err := self.handlePrepareLeaveFromISR(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrInfo = err
-	ret.RetCode = GetRpcErrCode(err)
+	ret.ErrMsg = err.Error()
 	return err
 }
 
-func (self *NSQLookupdCoordinator) RequestLeaveFromISR(req RpcReqLeaveFromISR, ret *RpcRspBase) error {
+func (self *NSQLookupdCoordinator) RequestLeaveFromISR(req RpcReqLeaveFromISR, ret *CoordErr) error {
 	err := self.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
-	ret.ErrInfo = err
-	ret.RetCode = GetRpcErrCode(err)
+	ret.ErrMsg = err.Error()
 	return err
 }
 
-func (self *NSQLookupdCoordinator) RequestLeaveFromISRByLeader(req RpcReqLeaveFromISRByLeader, ret *RpcRspBase) error {
+func (self *NSQLookupdCoordinator) RequestLeaveFromISRByLeader(req RpcReqLeaveFromISRByLeader, ret *CoordErr) error {
 	err := self.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
-	ret.ErrInfo = err
-	ret.RetCode = GetRpcErrCode(err)
+	ret.ErrMsg = err.Error()
 	return err
 }

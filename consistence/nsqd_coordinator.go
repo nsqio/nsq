@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
-	"net/rpc"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,7 +18,7 @@ const (
 type CoordErrType int
 
 const (
-	CommonErr = iota
+	CommonErr CoordErrType = iota
 	NetErr
 	ElectionErr
 	ElectionTmpErr
@@ -86,7 +85,11 @@ var (
 )
 
 func GetTopicPartitionPath(topic string, partition int) string {
-	return topic + "_" + strconv.Itoa(partition)
+	var tmpbuf bytes.Buffer
+	tmpbuf.WriteString(topic)
+	tmpbuf.WriteString("_")
+	tmpbuf.WriteString(strconv.Itoa(partition))
+	return tmpbuf.String()
 }
 
 func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {
@@ -121,10 +124,10 @@ type NsqdCoordinator struct {
 	topicLogMgr     map[string]map[int]*TopicCommitLogMgr
 	flushNotifyChan chan TopicPartitionID
 	stopChan        chan struct{}
-	rpcListener     net.Listener
 	dataRootPath    string
 	localDataStates map[string]map[int]bool
 	localNsqd       *nsqd.NSQD
+	rpcServer       *NsqdCoordRpcServer
 }
 
 func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -134,7 +137,7 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, n
 		RpcPort: rpcport,
 	}
 	nodeInfo.ID = GenNsqdNodeID(&nodeInfo, extraID)
-	return &NsqdCoordinator{
+	nsqdCoord := &NsqdCoordinator{
 		leadership:      nil,
 		topicCoords:     make(map[string]map[int]*TopicCoordinator),
 		myNode:          nodeInfo,
@@ -146,6 +149,9 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, n
 		localDataStates: make(map[string]map[int]bool),
 		localNsqd:       nsqd,
 	}
+
+	nsqdCoord.rpcServer = NewNsqdCoordRpcServer(nsqdCoord)
+	return nsqdCoord
 }
 
 func (self *NsqdCoordinator) getLogMgrWithoutCreate(topic string, partition int) *TopicCommitLogMgr {
@@ -194,20 +200,12 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, error
 }
 
 func (self *NsqdCoordinator) Start() error {
-	return nil
-	rpc.Register(self)
-	var e error
-	self.rpcListener, e = net.Listen("tcp", ":"+self.myNode.RpcPort)
-	if e != nil {
-		coordLog.Warningf("listen rpc error : %v", e.Error())
-		return e
-	}
 	go self.watchNsqLookupd()
 	go self.loadLocalTopicData()
 	go self.checkForUnusedTopics()
 	// for each topic, wait other replicas and sync data with leader,
 	// begin accept client request.
-	rpc.Accept(self.rpcListener)
+	go self.rpcServer.start(self.myNode.NodeIp, self.myNode.RpcPort)
 	return nil
 }
 
@@ -215,9 +213,8 @@ func (self *NsqdCoordinator) Stop() {
 	// give up the leadership on the topic to
 	// allow other isr take over to avoid electing.
 	close(self.stopChan)
-	if self.rpcListener != nil {
-		self.rpcListener.Close()
-	}
+	self.rpcServer.stop()
+	self.rpcServer = nil
 }
 
 func (self *NsqdCoordinator) getLookupConn() (*NsqLookupRpcClient, error) {
@@ -373,7 +370,7 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo TopicPartionMetaInfo) 
 	return err
 }
 
-func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, partition int) bool {
+func (self *NsqdCoordinator) isMineLeaderForTopic(topic string, partition int) bool {
 	t, ok := self.topicCoords[topic]
 	if !ok {
 		return false
@@ -572,6 +569,71 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo) {
 	}
 }
 
+func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
+	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
+		coordLog.Warningf("topic (%v) info epoch is less while update: %v vs %v",
+			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
+		return ErrEpochLessThanCurrent
+	}
+	// channels and catchup should only be modified in the separate rpc method.
+	newTopicInfo.Channels = topicCoord.topicInfo.Channels
+	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
+	topicCoord.topicInfo = *newTopicInfo
+	self.updateLocalTopic(*newTopicInfo)
+	if newTopicInfo.Leader == self.myNode.GetID() {
+		if !self.isMineLeaderForTopic(newTopicInfo.Name, newTopicInfo.Partition) {
+			coordLog.Infof("I am notified to be leader for the topic.")
+			// leader switch need disable write until the lookup notify leader
+			// to accept write.
+			shouldDisableWrite = true
+		}
+		if shouldDisableWrite {
+			topicCoord.disableWrite = true
+		}
+		err := self.acquireTopicLeader(*newTopicInfo)
+		if err != nil {
+			coordLog.Infof("acquire topic leader failed.")
+		}
+	} else if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
+		coordLog.Infof("I am in isr list.")
+	} else if FindSlice(newTopicInfo.CatchupList, self.myNode.GetID()) != -1 {
+		coordLog.Infof("I am in catchup list.")
+	} else {
+		coordLog.Infof("Not a topic related to me.")
+		// TODO: check if local has the topic data and decide whether to join
+		// catchup list
+	}
+	return nil
+
+}
+
+func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLeaderSession *TopicLeaderSession) error {
+	n := newLeaderSession
+	if n.LeaderEpoch < topicCoord.GetLeaderEpoch() {
+		coordLog.Infof("topic partition leadership epoch error.")
+		return ErrEpochLessThanCurrent
+	}
+	topicCoord.topicLeaderSession = *newLeaderSession
+	if n.LeaderNode == nil || n.Session == "" {
+		coordLog.Infof("topic leader is missing : %v", topicCoord.topicInfo.GetTopicDesp())
+	} else if n.LeaderNode.GetID() == self.myNode.GetID() {
+		coordLog.Infof("I become the leader for the topic: %v", topicCoord.topicInfo.GetTopicDesp())
+	} else {
+		coordLog.Infof("topic %v leader changed to :%v. epoch: %v", topicCoord.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
+		// if catching up, pull data from the new leader
+		// if isr, make sure sync to the new leader
+		if FindSlice(topicCoord.topicInfo.ISR, self.myNode.GetID()) != -1 {
+			self.syncToNewLeader(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition, n)
+		} else if FindSlice(topicCoord.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
+			self.catchupFromLeader(topicCoord.topicInfo)
+		} else {
+			// TODO: check if local has the topic data and decide whether to join
+			// catchup list
+		}
+	}
+	return nil
+}
+
 // any modify operation on the topic should check for topic leader.
 func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicCoordinator, error) {
 	if v, ok := self.topicCoords[topic]; ok {
@@ -579,7 +641,7 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 			return topicCoord, nil
 		}
 	}
-	return nil, ErrNotTopicLeader
+	return nil, ErrMissingTopicCoord
 }
 
 func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte) error {
@@ -804,7 +866,7 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 
 // flush cached data to disk. This should be called when topic isr list
 // changed or leader changed.
-func (self *NsqdCoordinator) NotifyFlushData(topic string, partition int) {
+func (self *NsqdCoordinator) notifyFlushData(topic string, partition int) {
 	if len(self.flushNotifyChan) > 1 {
 		return
 	}
