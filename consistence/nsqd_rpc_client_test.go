@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"github.com/absolute8511/nsq/internal/test"
+	"github.com/absolute8511/nsq/nsqd"
 	"testing"
 	"time"
 )
@@ -47,8 +48,8 @@ func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*Topi
 	return nil, nil
 }
 
-func startNsqdRpcWithoutNsqd() *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", "0", "", "./", nil)
+func startNsqdRpc(nsqd *nsqd.NSQD) *NsqdCoordinator {
+	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", "0", "", "./", nsqd)
 	nsqdCoord.leadership = NewFakeNSQDLeadership()
 	err := nsqdCoord.Start()
 	if err != nil {
@@ -60,7 +61,7 @@ func startNsqdRpcWithoutNsqd() *NsqdCoordinator {
 
 func TestNsqdRPCClient(t *testing.T) {
 	coordLog.level = 2
-	nsqdCoord := startNsqdRpcWithoutNsqd()
+	nsqdCoord := startNsqdRpc(nil)
 	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcListener.Addr().String(), time.Second)
 	test.Nil(t, err)
 	var rspInt int32
@@ -68,9 +69,9 @@ func TestNsqdRPCClient(t *testing.T) {
 	test.NotNil(t, err)
 
 	rsp, rpcErr := client.CallRpcTest("reqdata")
-	test.Nil(t, rpcErr.CallErr)
+	test.NotNil(t, rpcErr)
 	test.Equal(t, rsp, "reqdata")
-	test.Equal(t, rpcErr.ReplyErr.ErrCode, RpcNoErr)
-	test.Equal(t, rpcErr.ReplyErr.ErrMsg, "reqdata")
-	test.Equal(t, rpcErr.ReplyErr.ErrType, CommonErr)
+	test.Equal(t, rpcErr.ErrCode, RpcNoErr)
+	test.Equal(t, rpcErr.ErrMsg, "reqdata")
+	test.Equal(t, rpcErr.ErrType, CoordCommonErr)
 }

@@ -13,12 +13,22 @@ type TopicCoordinator struct {
 	disableWrite         bool
 	channelConsumeOffset map[string]ChannelConsumerOffset
 	localDataLoaded      bool
+	logMgr               *TopicCommitLogMgr
 }
 
-func NewTopicCoordinator() *TopicCoordinator {
-	return &TopicCoordinator{
+func NewTopicCoordinator(name string, partition int, basepath string) *TopicCoordinator {
+	tc := &TopicCoordinator{
 		channelConsumeOffset: make(map[string]ChannelConsumerOffset),
 	}
+	tc.topicInfo.Name = name
+	tc.topicInfo.Partition = partition
+	var err error
+	tc.logMgr, err = InitTopicCommitLogMgr(name, partition, basepath, DEFAULT_COMMIT_BUF_SIZE)
+	if err != nil {
+		coordLog.Errorf("topic(%v) failed to init log: %v ", name, err)
+		return nil
+	}
+	return tc
 }
 
 func (self *TopicCoordinator) GetLeaderID() string {
@@ -33,7 +43,7 @@ func (self *TopicCoordinator) GetLeaderEpoch() int32 {
 	return self.topicLeaderSession.LeaderEpoch
 }
 
-func (self *TopicCoordinator) checkWriteForLeader(myID string) error {
+func (self *TopicCoordinator) checkWriteForLeader(myID string) *CoordErr {
 	if self.GetLeaderID() != myID || self.topicInfo.Leader != myID {
 		return ErrNotTopicLeader
 	}
@@ -49,7 +59,7 @@ func (self *TopicCoordinator) checkWriteForLeader(myID string) error {
 	return nil
 }
 
-func (self *TopicCoordinator) refreshTopicCoord() error {
+func (self *TopicCoordinator) refreshTopicCoord() *CoordErr {
 	return nil
 }
 

@@ -80,7 +80,7 @@ func (self *NsqdCoordRpcServer) stop() {
 	}
 }
 
-func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) error {
+func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) *CoordErr {
 	if lookupEpoch < self.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
@@ -289,31 +289,31 @@ func (self *NsqdCoordRpcServer) PutMessage(info RpcPutMessage, retErr *CoordErr)
 
 func (self *NsqdCoordRpcServer) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) error {
 	*ret = 0
-	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if logMgr == nil {
-		return nil
+	tc, err := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	if err != nil {
+		return err
 	}
-	*ret = logMgr.GetLastCommitLogID()
+	*ret = tc.logMgr.GetLastCommitLogID()
 	return nil
 }
 
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
 func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
-	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if logMgr == nil {
-		return ErrMissingTopicLog
+	tc, coorderr := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	if coorderr != nil {
+		return coorderr
 	}
-	logData, err := logMgr.GetCommmitLogFromOffset(req.LogOffset)
+	logData, err := tc.logMgr.GetCommmitLogFromOffset(req.LogOffset)
 	if err != nil {
 		if err != ErrCommitLogOutofBound {
 			return err
 		}
-		ret.LogOffset, err = logMgr.GetLastLogOffset()
+		ret.LogOffset, err = tc.logMgr.GetLastLogOffset()
 		if err != nil {
 			return err
 		}
-		logData, err = logMgr.GetCommmitLogFromOffset(ret.LogOffset)
+		logData, err = tc.logMgr.GetCommmitLogFromOffset(ret.LogOffset)
 
 		if err != nil {
 			return err
@@ -328,13 +328,12 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret 
 }
 
 func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret *RpcPullCommitLogsRsp) error {
-	logMgr := self.nsqdCoord.getLogMgrWithoutCreate(req.TopicName, req.TopicPartition)
-	if logMgr != nil {
-		return ErrMissingTopicLog
+	tc, err := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	if err != nil {
+		return err
 	}
 
-	var err error
-	ret.Logs, err = logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
+	ret.Logs, _ = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {
 		d, err := self.nsqdCoord.readMessageData(l.LogID, l.MsgOffset)
@@ -351,7 +350,7 @@ func (self *NsqdCoordRpcServer) TestRpcError(req RpcTestReq, ret *RpcTestRsp) er
 	ret.RetErr = &CoordErr{
 		ErrMsg:  req.Data,
 		ErrCode: RpcNoErr,
-		ErrType: CommonErr,
+		ErrType: CoordCommonErr,
 	}
 	return nil
 }

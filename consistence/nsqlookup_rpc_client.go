@@ -50,59 +50,64 @@ func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}, re
 	}
 }
 
-func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, nid string) error {
+func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
 	var req RpcReqJoinCatchup
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
+	return convertRpcError(err, &ret)
 }
 
-func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) (string, error) {
+func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) (string, *CoordErr) {
 	var req RpcReqJoinISR
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret RpcRspJoinISR
 	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
-	return ret.ReqSession, err
+	return ret.ReqSession, convertRpcError(err, &ret.CoordErr)
 }
 
-func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, session string) error {
+func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, session string) *CoordErr {
 	var req RpcReadyForJoinISR
 	req.NodeID = nid
 	req.ReqSession = session
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	return self.CallWithRetry("NSQLookupdCoordinator.RpcReadyForJoinISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReadyForJoinISR", req, &ret)
+	return convertRpcError(err, &ret)
 }
 
-func (self *NsqLookupRpcClient) PrepareLeaveFromISR(topic string, partition int, nid string) error {
+func (self *NsqLookupRpcClient) PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr {
 	var req RpcPrepareLeaveFromISR
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	return self.CallWithRetry("NSQLookupdCoordinator.RpcPrepareLeaveFromISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RpcPrepareLeaveFromISR", req, &ret)
+	return convertRpcError(err, &ret)
 }
 
-func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int, nid string) error {
+func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr {
 	var req RpcReqLeaveFromISR
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISR", req, &ret)
+	return convertRpcError(err, &ret)
 }
 
-func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) error {
+func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
 	var req RpcReqLeaveFromISRByLeader
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	req.LeaderSession = *leaderSession
 	var ret CoordErr
-	return self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISRByLeader", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISRByLeader", req, &ret)
+	return convertRpcError(err, &ret)
 }

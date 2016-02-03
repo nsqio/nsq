@@ -18,20 +18,14 @@ type NsqdRpcClient struct {
 	connection *rpc.Client
 }
 
-type RpcCallError struct {
-	CallErr  error
-	ReplyErr *CoordErr
-}
-
-func (self *RpcCallError) Error() string {
-	errStr := ""
-	if self.CallErr != nil {
-		errStr += self.CallErr.Error()
+func convertRpcError(err error, coordErr *CoordErr) *CoordErr {
+	if err != nil {
+		return NewCoordErr(err.Error(), CoordNetErr)
 	}
-	if self.ReplyErr != nil {
-		errStr += self.ReplyErr.Error()
+	if coordErr != nil && coordErr.HasError() {
+		return coordErr
 	}
-	return errStr
+	return nil
 }
 
 func NewNsqdRpcClient(addr string, timeout time.Duration) (*NsqdRpcClient, error) {
@@ -72,7 +66,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 	}
 }
 
-func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) *RpcCallError {
+func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) *CoordErr {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = *leaderSession
@@ -82,34 +76,34 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicP
 	rpcInfo.TopicLeaderEpoch = leaderSession.LeaderEpoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.NotifyTopicLeaderSession", rpcInfo, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicPartionMetaInfo) *RpcCallError {
+func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateTopicInfo", rpcInfo, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *RpcCallError {
+func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.EnableTopicWrite", rpcInfo, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *RpcCallError {
+func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.DisableTopicWrite", rpcInfo, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
 func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) {
@@ -118,25 +112,25 @@ func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) 
 	return &stat, err
 }
 
-func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicPartionMetaInfo) *RpcCallError {
+func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicPartionMetaInfo) *CoordErr {
 	var rpcReq RpcAdminTopicInfo
 	rpcReq.TopicPartionMetaInfo = *info
 	rpcReq.LookupdEpoch = epoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateCatchupForTopic", rpcReq, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicPartionMetaInfo) *RpcCallError {
+func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicPartionMetaInfo) *CoordErr {
 	var rpcReq RpcAdminTopicInfo
 	rpcReq.TopicPartionMetaInfo = *info
 	rpcReq.LookupdEpoch = epoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateChannelsForTopic", rpcReq, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int32, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *RpcCallError {
+func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int32, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
@@ -146,10 +140,10 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int32, info *TopicPar
 	updateInfo.ChannelOffset = offset
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateChannelOffset", updateInfo, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessage(leaderEpoch int32, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) *RpcCallError {
+func (self *NsqdRpcClient) PutMessage(leaderEpoch int32, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
 	var putData RpcPutMessage
 	putData.LogData = log
 	putData.TopicName = info.Name
@@ -159,10 +153,10 @@ func (self *NsqdRpcClient) PutMessage(leaderEpoch int32, info *TopicPartionMetaI
 	putData.TopicLeaderEpoch = leaderEpoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessage", putData, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessages(leaderEpoch int32, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) *RpcCallError {
+func (self *NsqdRpcClient) PutMessages(leaderEpoch int32, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) *CoordErr {
 	var putData RpcPutMessages
 	putData.LogList = loglist
 	putData.TopicName = info.Name
@@ -172,7 +166,7 @@ func (self *NsqdRpcClient) PutMessages(leaderEpoch int32, info *TopicPartionMeta
 	putData.TopicLeaderEpoch = leaderEpoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessages", putData, &retErr)
-	return &RpcCallError{err, &retErr}
+	return convertRpcError(err, &retErr)
 }
 
 func (self *NsqdRpcClient) GetLastCommmitLogID(topicInfo *TopicPartionMetaInfo) (int64, error) {
@@ -206,10 +200,10 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
 	return ret.Logs, ret.DataList, err
 }
 
-func (self *NsqdRpcClient) CallRpcTest(data string) (string, *RpcCallError) {
+func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {
 	var req RpcTestReq
 	req.Data = data
 	var ret RpcTestRsp
 	err := self.CallWithRetry("NsqdCoordRpcServer.TestRpcError", req, &ret)
-	return ret.RspData, &RpcCallError{CallErr: err, ReplyErr: ret.RetErr}
+	return ret.RspData, convertRpcError(err, ret.RetErr)
 }
