@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync/atomic"
 )
 
@@ -57,7 +56,7 @@ type TopicCommitLogMgr struct {
 }
 
 func GetTopicPartitionLogPath(basepath, t string, p int) string {
-	fullpath := filepath.Join(basepath, t+"-"+strconv.Itoa(p)+".commit.log")
+	fullpath := filepath.Join(basepath, GetTopicPartitionFileName(t, p, ".commit.log"))
 	return fullpath
 }
 
@@ -75,7 +74,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	var err error
 	// note: using append mode can make sure write only to end of file
 	// we can do random read without affecting the append behavior
-	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		coordLog.Infof("open topic commit log file error: %v", err)
 		return nil, err

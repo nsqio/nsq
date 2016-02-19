@@ -14,6 +14,7 @@ import (
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/util"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 type NsqdServer struct {
@@ -101,6 +102,10 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 		os.Exit(1)
 	}
 	s.ctx.tlsConfig = tlsConfig
+
+	nsqd.NsqLogger().Logf(version.String("nsqd"))
+	nsqd.NsqLogger().Logf("ID: %d", opts.ID)
+
 	return s
 }
 

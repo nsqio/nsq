@@ -112,9 +112,6 @@ func New(opts *Options) *NSQD {
 		opts.TLSRequired = TLSRequired
 	}
 
-	nsqLog.Logf(version.String("nsqd"))
-	nsqLog.Logf("ID: %d", opts.ID)
-
 	return n
 }
 
@@ -385,9 +382,6 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 
 	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
 
-	// release our global nsqd lock, and switch to a more granular topic lock while we init our
-	// channels from lookupd. This blocks concurrent PutMessages to this topic.
-	t.Lock()
 	n.Unlock()
 
 	// if using lookupd, make a blocking call to get the topics, and immediately create them.
@@ -406,13 +400,6 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	//	}
 	//}
 
-	t.Unlock()
-
-	// NOTE: I would prefer for this to only happen in topic.GetChannel() but we're special
-	// casing the code above so that we can control the locks such that it is impossible
-	// for a message to be written to a (new) topic while we're looking up channels
-	// from lookupd...
-	//
 	// update messagePump state
 	t.NotifyReloadChannels()
 	return t

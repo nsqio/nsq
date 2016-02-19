@@ -69,11 +69,11 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) *CoordErr {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicLeaderSession = *leaderSession
+	rpcInfo.TopicLeaderSession = leaderSession.Session
+	rpcInfo.TopicLeaderEpoch = leaderSession.LeaderEpoch
+	rpcInfo.LeaderNode = leaderSession.LeaderNode
 	rpcInfo.TopicName = topicInfo.Name
 	rpcInfo.TopicPartition = topicInfo.Partition
-	rpcInfo.TopicSession = leaderSession.Session
-	rpcInfo.TopicLeaderEpoch = leaderSession.LeaderEpoch
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.NotifyTopicLeaderSession", rpcInfo, &retErr)
 	return convertRpcError(err, &retErr)
@@ -130,12 +130,13 @@ func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicPartionM
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int32, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
+func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
 	updateInfo.TopicEpoch = info.Epoch
-	updateInfo.TopicLeaderEpoch = leaderEpoch
+	updateInfo.TopicLeaderEpoch = leaderSession.LeaderEpoch
+	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
 	var retErr CoordErr
@@ -143,27 +144,29 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderEpoch int32, info *TopicPar
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessage(leaderEpoch int32, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
+func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
 	var putData RpcPutMessage
 	putData.LogData = log
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessage = message
 	putData.TopicEpoch = info.Epoch
-	putData.TopicLeaderEpoch = leaderEpoch
+	putData.TopicLeaderEpoch = leaderSession.LeaderEpoch
+	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessage", putData, &retErr)
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessages(leaderEpoch int32, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) *CoordErr {
+func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) *CoordErr {
 	var putData RpcPutMessages
 	putData.LogList = loglist
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages
 	putData.TopicEpoch = info.Epoch
-	putData.TopicLeaderEpoch = leaderEpoch
+	putData.TopicLeaderEpoch = leaderSession.LeaderEpoch
+	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessages", putData, &retErr)
 	return convertRpcError(err, &retErr)

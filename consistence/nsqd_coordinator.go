@@ -81,23 +81,32 @@ var (
 	ErrMissingTopicLeaderSession = NewCoordErr("missing topic leader session", CoordElectionErr)
 	ErrLeaderSessionMismatch     = NewCoordErr("leader session mismatch", CoordElectionErr)
 	ErrWriteDisabled             = NewCoordErr("write is disabled on the topic", CoordElectionTmpErr)
-	ErrPubArgError               = NewCoordErr("pub argument error", CoordCommonErr)
+	ErrLeavingISRWait            = NewCoordErr("leaving isr need wait.", CoordElectionTmpErr)
+
+	ErrPubArgError       = NewCoordErr("pub argument error", CoordCommonErr)
+	ErrMissingTopicCoord = NewCoordErr("missing topic coordinator", CoordCommonErr)
+
+	ErrMissingTopicLog           = NewCoordErr("missing topic log ", CoordLocalErr)
 	ErrLocalFallBehind           = NewCoordErr("local data fall behind", CoordElectionErr)
 	ErrLocalForwardThanLeader    = NewCoordErr("local data is more than leader", CoordElectionErr)
 	ErrLocalWriteFailed          = NewCoordErr("write data to local failed", CoordLocalErr)
 	ErrLocalMissingTopic         = NewCoordErr("local topic missing", CoordLocalErr)
-	ErrMissingTopicCoord         = NewCoordErr("missing topic coordinator", CoordCommonErr)
-	ErrMissingTopicLog           = NewCoordErr("missing topic log ", CoordLocalErr)
 	ErrLocalNotReadyForWrite     = NewCoordErr("local topic is not ready for write.", CoordLocalErr)
-	ErrLeavingISRWait            = NewCoordErr("leaving isr need wait.", CoordElectionTmpErr)
+	ErrLocalGetTopicFailed       = NewCoordErr("local topic init failed", CoordLocalErr)
+	ErrLocalInitTopicCoordFailed = NewCoordErr("topic coordinator init failed", CoordLocalErr)
 )
 
-func GetTopicPartitionPath(topic string, partition int) string {
+func GetTopicPartitionFileName(topic string, partition int, suffix string) string {
 	var tmpbuf bytes.Buffer
 	tmpbuf.WriteString(topic)
 	tmpbuf.WriteString("_")
 	tmpbuf.WriteString(strconv.Itoa(partition))
+	tmpbuf.WriteString(suffix)
 	return tmpbuf.String()
+}
+
+func GetTopicPartitionBasePath(rootPath string, topic string, partition int) string {
+	return filepath.Join(rootPath, topic)
 }
 
 func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {
@@ -156,7 +165,7 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, n
 		localNsqd:       nsqd,
 	}
 
-	nsqdCoord.rpcServer = NewNsqdCoordRpcServer(nsqdCoord)
+	nsqdCoord.rpcServer = NewNsqdCoordRpcServer(nsqdCoord, rootPath)
 	return nsqdCoord
 }
 
@@ -351,15 +360,7 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo TopicPartionMetaInfo) 
 	return err
 }
 
-func (self *NsqdCoordinator) isMineLeaderForTopic(topic string, partition int) bool {
-	t, ok := self.topicCoords[topic]
-	if !ok {
-		return false
-	}
-	tp, ok := t[partition]
-	if !ok {
-		return false
-	}
+func (self *NsqdCoordinator) isMineLeaderForTopic(tp *TopicCoordinator) bool {
 	return tp.GetLeaderID() == self.myNode.GetID()
 }
 
@@ -565,9 +566,14 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	newTopicInfo.Channels = topicCoord.topicInfo.Channels
 	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
 	topicCoord.topicInfo = *newTopicInfo
-	self.updateLocalTopic(*newTopicInfo)
+	err := self.updateLocalTopic(*newTopicInfo)
+	if err != nil {
+		return err
+	}
+	topicCoord.localDataLoaded = true
 	if newTopicInfo.Leader == self.myNode.GetID() {
-		if !self.isMineLeaderForTopic(newTopicInfo.Name, newTopicInfo.Partition) {
+		// not leader before and became new leader
+		if topicCoord.GetLeaderID() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.
@@ -671,6 +677,7 @@ retrypub:
 		topicCoord.refreshTopicCoord()
 		err = topicCoord.checkWriteForLeader(self.myNode.GetID())
 		if err != nil {
+			coordLog.Debugf("check write failed: %v", err)
 			goto exitpub
 		}
 		commitLog.Epoch = topicCoord.GetLeaderEpoch()
@@ -686,6 +693,10 @@ retrypub:
 	// If failed, should update ISR and retry.
 	// TODO: optimize send all requests first and then wait all responses
 	for _, nodeID := range isrList {
+		if nodeID == self.myNode.GetID() {
+			success++
+			continue
+		}
 		c, rpcErr := self.acquireRpcClient(nodeID)
 		if rpcErr != nil {
 			coordLog.Infof("get rpc client %v failed: %v", nodeID, rpcErr)
@@ -694,11 +705,12 @@ retrypub:
 			goto retrypub
 		}
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
-		putErr := c.PutMessage(commitLog.Epoch, &topicCoord.topicInfo, commitLog, msg)
+		putErr := c.PutMessage(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, commitLog, msg)
 		if putErr == nil {
 			success++
 		} else {
 			coordLog.Infof("sync write to replica %v failed: %v", nodeID, putErr)
+			err = putErr
 		}
 	}
 
@@ -708,7 +720,7 @@ retrypub:
 			panic(err)
 		}
 	} else {
-		coordLog.Warningf("topic %v sync write %v failed: %v", topic.GetFullName(), msg.ID, err)
+		coordLog.Warningf("topic %v sync write message (id:%v) failed: %v", topic.GetFullName(), msg.ID, err)
 		needRefreshISR = true
 		time.Sleep(time.Millisecond * time.Duration(retryCnt))
 		goto retrypub
@@ -721,11 +733,16 @@ exitpub:
 		}
 	}
 	topic.Unlock()
-	if coordErr, ok := err.(*CoordErr); ok {
-		if coordErr.IsNeedCheckSync() {
-			// TODO: notify to check the sync of this topic
-			// self.syncCheckChan <- topic.GetTopicName()
+	if err != nil {
+		if coordErr, ok := err.(*CoordErr); ok {
+			coordLog.Infof("PutMessageToCluster error: %v", coordErr)
+			if coordErr.IsNeedCheckSync() {
+				// TODO: notify to check the sync of this topic
+				// self.syncCheckChan <- topic.GetTopicName()
+			}
 		}
+	} else {
+		coordLog.Debugf("topic(%v) PutMessageToCluster done: %v", topic.GetFullName(), msg.ID)
 	}
 	return err
 }
@@ -744,6 +761,8 @@ func (self *NsqdCoordinator) putMessageOnSlave(topicName string, partition int, 
 	if err != nil {
 		return err
 	}
+	coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
+
 	logMgr := tc.logMgr
 	if logMgr.IsCommitted(logData.LogID) {
 		coordLog.Infof("pub the already committed log id : %v", logData.LogID)
@@ -751,6 +770,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(topicName string, partition int, 
 	}
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
 	if localErr != nil {
+		coordLog.Infof("pub on slave missing topic : %v", topicName)
 		// TODO: leave the isr and try re-sync with leader
 		return &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
 	}
@@ -847,7 +867,7 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 			continue
 		}
 
-		err = c.UpdateChannelOffset(topicCoord.GetLeaderEpoch(), &topicCoord.topicInfo, channel, offset)
+		err = c.UpdateChannelOffset(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, channel, offset)
 		if err != nil {
 			coordLog.Warningf("node %v update offset failed %v.", nodeID, err)
 		} else {
@@ -874,8 +894,12 @@ func (self *NsqdCoordinator) readMessageData(logID int64, fileOffset int64) ([]b
 	return nil, nil
 }
 
-func (self *NsqdCoordinator) updateLocalTopic(topicInfo TopicPartionMetaInfo) error {
+func (self *NsqdCoordinator) updateLocalTopic(topicInfo TopicPartionMetaInfo) *CoordErr {
 	// check topic exist and prepare on local.
+	t := self.localNsqd.GetTopic(topicInfo.Name, topicInfo.Partition)
+	if t == nil {
+		return ErrLocalGetTopicFailed
+	}
 	return nil
 }
 
