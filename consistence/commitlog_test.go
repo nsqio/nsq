@@ -34,7 +34,7 @@ func TestCommitLogWrite(t *testing.T) {
 	msgRawSize := 10
 	for i := 0; i < num; i++ {
 		var logData CommitLogData
-		logData.LogID = logMgr.NextID()
+		logData.LogID = int64(logMgr.NextID())
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		err = logMgr.AppendCommitLog(&logData, false)
@@ -60,7 +60,7 @@ func TestCommitLogWrite(t *testing.T) {
 	}
 	for i := num; i < num*2; i++ {
 		var logData CommitLogData
-		logData.LogID = logMgr.NextID()
+		logData.LogID = int64(logMgr.NextID())
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		err = logMgr.AppendCommitLog(&logData, false)

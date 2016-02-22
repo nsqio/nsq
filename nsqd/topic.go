@@ -30,6 +30,11 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueueWrite
 	return bq.Put(buf.Bytes())
 }
 
+type MsgIDGenerator interface {
+	NextID() uint64
+	Reset(uint64)
+}
+
 type Topic struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	messageCount uint64
@@ -51,7 +56,8 @@ type Topic struct {
 
 	notifyCall     func(v interface{})
 	option         *Options
-	msgIDCursor    uint64
+	MsgIDCursor    MsgIDGenerator
+	defaultIDSeq   uint64
 	needFlush      int32
 	needNotifyChan bool
 	EnableTrace    bool
@@ -131,7 +137,12 @@ func (t *Topic) Exiting() bool {
 
 func (t *Topic) nextMsgID() MessageID {
 	// TODO: read latest logid and incr. combine the partition id at high.
-	id := atomic.AddUint64(&t.msgIDCursor, 1)
+	id := uint64(0)
+	if t.MsgIDCursor != nil {
+		id = t.MsgIDCursor.NextID()
+	} else {
+		id = atomic.AddUint64(&t.defaultIDSeq, 1)
+	}
 	return MessageID(id)
 }
 
@@ -238,6 +249,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, diffCnt uint64) error {
 	err := t.backend.ResetWriteEnd(vend, diffCnt)
+	atomic.AddUint64(&t.messageCount, ^uint64(diffCnt-1))
 	return err
 }
 
@@ -383,7 +395,11 @@ func updateChannelsEnd(chans map[string]*Channel, e BackendQueueEnd) {
 	}
 }
 
-func (t *Topic) totalSize() int64 {
+func (t *Topic) TotalMessageCnt() uint64 {
+	return atomic.LoadUint64(&t.messageCount)
+}
+
+func (t *Topic) TotalSize() int64 {
 	e := t.backend.GetQueueReadEnd()
 	return int64(e.GetOffset())
 }

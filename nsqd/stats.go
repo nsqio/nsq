@@ -21,8 +21,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	return TopicStats{
 		TopicName:    t.GetFullName(),
 		Channels:     channels,
-		Depth:        t.totalSize(),
-		MessageCount: atomic.LoadUint64(&t.messageCount),
+		Depth:        t.TotalSize(),
+		MessageCount: t.TotalMessageCnt(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}

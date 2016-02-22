@@ -566,7 +566,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	newTopicInfo.Channels = topicCoord.topicInfo.Channels
 	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
 	topicCoord.topicInfo = *newTopicInfo
-	err := self.updateLocalTopic(*newTopicInfo)
+	err := self.updateLocalTopic(topicCoord)
 	if err != nil {
 		return err
 	}
@@ -711,6 +711,9 @@ retrypub:
 		} else {
 			coordLog.Infof("sync write to replica %v failed: %v", nodeID, putErr)
 			err = putErr
+			if !putErr.CanRetry() {
+				goto exitpub
+			}
 		}
 	}
 
@@ -841,7 +844,12 @@ func (self *NsqdCoordinator) putMessagesOnSlave(topicName string, partition int,
 }
 
 func (self *NsqdCoordinator) updateChannelOffsetLocal(topic string, partition int, channel string, offset ChannelConsumerOffset) *CoordErr {
-	self.topicCoords[topic][partition].channelConsumeOffset[channel] = offset
+	topicCoord, err := self.getTopicCoord(topic, partition)
+	if err != nil {
+		return err
+	}
+	topicCoord.channelConsumeOffset[channel] = offset
+
 	return nil
 }
 
@@ -894,11 +902,14 @@ func (self *NsqdCoordinator) readMessageData(logID int64, fileOffset int64) ([]b
 	return nil, nil
 }
 
-func (self *NsqdCoordinator) updateLocalTopic(topicInfo TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdCoordinator) updateLocalTopic(topicCoord *TopicCoordinator) *CoordErr {
 	// check topic exist and prepare on local.
-	t := self.localNsqd.GetTopic(topicInfo.Name, topicInfo.Partition)
+	t := self.localNsqd.GetTopic(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
 	if t == nil {
 		return ErrLocalGetTopicFailed
+	}
+	if t.MsgIDCursor == nil {
+		t.MsgIDCursor = topicCoord.logMgr
 	}
 	return nil
 }

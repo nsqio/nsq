@@ -43,6 +43,10 @@ type Message struct {
 	rawMoveSize BackendOffset
 }
 
+func MessageHeaderBytes() int {
+	return 8 + 8 + 8 + 2
+}
+
 func NewMessage(id MessageID, body []byte) *Message {
 	return &Message{
 		ID:        id,

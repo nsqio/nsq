@@ -98,14 +98,17 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		mgr.pLogID = l.LogID
 		mgr.nLogID = l.LogID + 1000
 	} else {
-		mgr.nLogID = 1
+		mgr.nLogID = int64(uint64(mgr.partition)<<47 + 1)
 	}
 	return mgr, nil
 }
 
-func (self *TopicCommitLogMgr) NextID() int64 {
+func (self *TopicCommitLogMgr) NextID() uint64 {
 	id := atomic.AddInt64(&self.nLogID, 1)
-	return id
+	return uint64(id)
+}
+
+func (self *TopicCommitLogMgr) Reset(id uint64) {
 }
 
 func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, error) {

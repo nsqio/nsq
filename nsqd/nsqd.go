@@ -61,7 +61,9 @@ func New(opts *Options) *NSQD {
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
 		dataPath = cwd
+		opts.DataPath = dataPath
 	}
+	os.MkdirAll(dataPath, 0700)
 
 	nsqLog.Logger = opts.Logger
 	n := &NSQD{
