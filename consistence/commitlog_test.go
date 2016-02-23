@@ -41,7 +41,6 @@ func TestCommitLogWrite(t *testing.T) {
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
 	}
-	logMgr.FlushCommitLogs()
 	lastOffset, err := logMgr.GetLastLogOffset()
 	test.Nil(t, err)
 	lastLog, err := logMgr.GetCommmitLogFromOffset(lastOffset)
@@ -67,7 +66,6 @@ func TestCommitLogWrite(t *testing.T) {
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
 	}
-	logMgr.FlushCommitLogs()
 	lastOffset, err = logMgr.GetLastLogOffset()
 	test.Nil(t, err)
 	lastLog, err = logMgr.GetCommmitLogFromOffset(lastOffset)

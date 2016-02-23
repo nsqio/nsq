@@ -71,7 +71,8 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 	dq.Flush()
 
 	equal(t, dqObj.writeFileNum, int64(1))
-	equal(t, dqObj.writePos, int64(0))
+	equal(t, dqObj.writePos, int64(ml+4))
+	equal(t, int64(dqObj.virtualEnd), 10*(ml+4))
 }
 
 func TestDiskQueueWriterEmpty(t *testing.T) {

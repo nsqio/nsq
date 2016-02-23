@@ -170,7 +170,6 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 	test.Equal(t, topicData1.TotalSize(), msgRawSize)
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
-	tc1.logMgr.FlushCommitLogs()
 	logs, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
@@ -179,7 +178,6 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 	test.Equal(t, topicData2.TotalSize(), msgRawSize)
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
-	tc2.logMgr.FlushCommitLogs()
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
@@ -219,8 +217,6 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 	msgCnt++
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
-	tc1.logMgr.FlushCommitLogs()
-	tc2.logMgr.FlushCommitLogs()
 	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
@@ -261,8 +257,6 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 		msgCnt++
 		topicData1.ForceFlush()
 		topicData2.ForceFlush()
-		tc1.logMgr.FlushCommitLogs()
-		tc2.logMgr.FlushCommitLogs()
 		test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 		logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)

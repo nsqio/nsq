@@ -15,11 +15,12 @@ const (
 )
 
 var (
-	ErrCommitLogWrongID       = errors.New("commit log id is wrong")
-	ErrCommitLogIDNotFound    = errors.New("commit log id is not found")
-	ErrCommitLogOutofBound    = errors.New("commit log offset is out of bound")
-	ErrCommitLogEOF           = errors.New("commit log end of file")
-	ErrCommitLogOffsetInvalid = errors.New("commit log offset is invalid")
+	ErrCommitLogWrongID         = errors.New("commit log id is wrong")
+	ErrCommitLogIDNotFound      = errors.New("commit log id is not found")
+	ErrCommitLogOutofBound      = errors.New("commit log offset is out of bound")
+	ErrCommitLogEOF             = errors.New("commit log end of file")
+	ErrCommitLogOffsetInvalid   = errors.New("commit log offset is invalid")
+	ErrCommitLogPartitionExceed = errors.New("commit log partition id is exceeded")
 )
 
 // message data file + check point file.
@@ -61,6 +62,9 @@ func GetTopicPartitionLogPath(basepath, t string, p int) string {
 }
 
 func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) (*TopicCommitLogMgr, error) {
+	if uint64(p) >= uint64(1)<<(63-47) {
+		return nil, ErrCommitLogPartitionExceed
+	}
 	fullpath := GetTopicPartitionLogPath(basepath, t, p)
 	mgr := &TopicCommitLogMgr{
 		topic:         t,
@@ -112,6 +116,7 @@ func (self *TopicCommitLogMgr) Reset(id uint64) {
 }
 
 func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, error) {
+	self.FlushCommitLogs()
 	err := self.appender.Truncate(offset)
 	if err != nil {
 		return nil, err
@@ -135,6 +140,7 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 }
 
 func (self *TopicCommitLogMgr) GetCommmitLogFromOffset(offset int64) (*CommitLogData, error) {
+	self.FlushCommitLogs()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return nil, err
@@ -164,6 +170,7 @@ func (self *TopicCommitLogMgr) GetCommmitLogFromOffset(offset int64) (*CommitLog
 }
 
 func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
+	self.FlushCommitLogs()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return 0, err
@@ -205,7 +212,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		return ErrCommitLogWrongID
 	}
 	if slave {
-		self.nLogID = l.LogID + 1
+		atomic.StoreInt64(&self.nLogID, l.LogID+1)
 	}
 	if cap(self.committedLogs) == 0 {
 		// no buffer, write to file directly.
@@ -235,6 +242,7 @@ func (self *TopicCommitLogMgr) FlushCommitLogs() {
 }
 
 func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]CommitLogData, error) {
+	self.FlushCommitLogs()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -136,6 +137,7 @@ type NsqdCoordinator struct {
 	leadership      NSQDLeadership
 	lookupLeader    *NsqLookupdNodeInfo
 	topicCoords     map[string]map[int]*TopicCoordinator
+	coordMutex      sync.RWMutex
 	myNode          NsqdNodeInfo
 	nsqdRpcClients  map[string]*NsqdRpcClient
 	flushNotifyChan chan TopicPartitionID
@@ -628,6 +630,8 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 
 // any modify operation on the topic should check for topic leader.
 func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicCoordinator, *CoordErr) {
+	self.coordMutex.RLock()
+	defer self.coordMutex.RUnlock()
 	if v, ok := self.topicCoords[topic]; ok {
 		if topicCoord, ok := v[partition]; ok {
 			return topicCoord, nil
