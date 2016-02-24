@@ -6,6 +6,8 @@
 
 **Upgrading from 0.3.6**: Binaries contain no backwards incompatible changes.
 
+This release has been built with Go 1.6.
+
 Highlights include the various work done to reduce `nsqd` lock contention, significantly improving
 the impact of high load on the `/stats` endpoint, addressing issues with timeouts and failures
 in `nsqadmin` (#700, #701, #703, #709).
@@ -22,7 +24,7 @@ on a successful backend write (#671).
 Features:
 
  * #700/#701/#703/#709 - `nsqd`: reduce lock contention (thanks @zachbadgett @absolute8511)
- * #718 - `nsqd`/`nsqlookupd`: support running as a windows service
+ * #718 - `nsqd`/`nsqlookupd`: support running as a windows service (thanks @judwhite)
  * #706 - `nsqd`: support enabling/disabling block profile via HTTP (thanks @absolute8511)
  * #710 - `nsqd`: support `POST` `/debug/pprof/symbol` (thanks @absolute8511)
  * #662 - `nsqadmin`: add flags for formatting statsd keys (thanks @kesutton)
