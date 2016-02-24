@@ -392,10 +392,11 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			}
 
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
-				// TODO: should FIN automatically, before refactoring,
-				// all message will not wait to confirm if not sending,
+				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
-				subChannel.ConfirmBackendQueue(msg)
+				offset := subChannel.ConfirmBackendQueue(msg)
+				// TODO: sync to replicator.
+				_ = offset
 				continue
 			}
 
@@ -757,14 +758,14 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		nsqd.NsqLogger().Logf("FIN error no channel: %v", nsqd.GetMessageIDFromFullMsgID(*id))
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
 	}
-	err = client.Channel.FinishMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id))
+
+	err = p.ctx.FinishMessage(client.Channel, client.ID, nsqd.GetMessageIDFromFullMsgID(*id))
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
 			err)
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %v failed %s", *id, err.Error()))
 	}
-
 	client.FinishedMessage()
 
 	return nil, nil

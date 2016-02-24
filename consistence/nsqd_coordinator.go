@@ -608,21 +608,32 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		return ErrEpochLessThanCurrent
 	}
 	topicCoord.topicLeaderSession = *newLeaderSession
-	if n.LeaderNode == nil || n.Session == "" {
-		coordLog.Infof("topic leader is missing : %v", topicCoord.topicInfo.GetTopicDesp())
-	} else if n.LeaderNode.GetID() == self.myNode.GetID() {
+
+	topicData, err := self.localNsqd.GetExistingTopic(topicCoord.topicInfo.Name)
+	if err != nil {
+		coordLog.Infof("no topic on local: %v, %v", topicCoord.topicInfo.GetTopicDesp(), err)
+		return ErrLocalMissingTopic
+	}
+
+	if topicCoord.IsMineLeader(self.myNode.GetID()) {
 		coordLog.Infof("I become the leader for the topic: %v", topicCoord.topicInfo.GetTopicDesp())
+		topicData.EnableForMaster()
 	} else {
-		coordLog.Infof("topic %v leader changed to :%v. epoch: %v", topicCoord.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
-		// if catching up, pull data from the new leader
-		// if isr, make sure sync to the new leader
-		if FindSlice(topicCoord.topicInfo.ISR, self.myNode.GetID()) != -1 {
-			self.syncToNewLeader(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition, n)
-		} else if FindSlice(topicCoord.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-			self.catchupFromLeader(topicCoord.topicInfo)
+		topicData.DisableForSlave()
+		if n.LeaderNode == nil || n.Session == "" {
+			coordLog.Infof("topic leader is missing : %v", topicCoord.topicInfo.GetTopicDesp())
 		} else {
-			// TODO: check if local has the topic data and decide whether to join
-			// catchup list
+			coordLog.Infof("topic %v leader changed to :%v. epoch: %v", topicCoord.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
+			// if catching up, pull data from the new leader
+			// if isr, make sure sync to the new leader
+			if FindSlice(topicCoord.topicInfo.ISR, self.myNode.GetID()) != -1 {
+				self.syncToNewLeader(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition, n)
+			} else if FindSlice(topicCoord.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
+				self.catchupFromLeader(topicCoord.topicInfo)
+			} else {
+				// TODO: check if local has the topic data and decide whether to join
+				// catchup list
+			}
 		}
 	}
 	return nil
@@ -763,13 +774,11 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic string, partition int, m
 	return ErrWriteQuorumFailed
 }
 
-func (self *NsqdCoordinator) putMessageOnSlave(topicName string, partition int, logData CommitLogData, msg *nsqd.Message) *CoordErr {
-	tc, err := self.getTopicCoord(topicName, partition)
-	if err != nil {
-		return err
-	}
-	coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
+func (self *NsqdCoordinator) putMessageOnSlave(tc *TopicCoordinator, logData CommitLogData, msg *nsqd.Message) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
 
+	coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
 	logMgr := tc.logMgr
 	if logMgr.IsCommitted(logData.LogID) {
 		coordLog.Infof("pub the already committed log id : %v", logData.LogID)
@@ -796,7 +805,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(topicName string, partition int, 
 	}
 	logErr := logMgr.AppendCommitLog(&logData, true)
 	if logErr != nil {
-		coordLog.Errorf("write commit log on slave failed: %v", err)
+		coordLog.Errorf("write commit log on slave failed: %v", logErr)
 		// TODO: leave the isr and try re-sync with leader
 		return &CoordErr{logErr.Error(), RpcCommonErr, CoordLocalErr}
 	}
@@ -847,39 +856,37 @@ func (self *NsqdCoordinator) putMessagesOnSlave(topicName string, partition int,
 	return nil
 }
 
-func (self *NsqdCoordinator) updateChannelOffsetLocal(topic string, partition int, channel string, offset ChannelConsumerOffset) *CoordErr {
-	topicCoord, err := self.getTopicCoord(topic, partition)
-	if err != nil {
-		return err
-	}
-	topicCoord.channelConsumeOffset[channel] = offset
-
-	return nil
-}
-
-func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition int, channel string, offset ChannelConsumerOffset) *CoordErr {
-	topicCoord, err := self.getTopicCoord(topic, partition)
+func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
+	topicCoord, err := self.getTopicCoord(channel.GetTopicName(), channel.GetTopicPart())
 	if err != nil {
 		return err
 	}
 	if err = topicCoord.checkWriteForLeader(self.myNode.GetID()); err != nil {
 		return err
 	}
-	err = self.updateChannelOffsetLocal(topic, partition, channel, offset)
-	if err != nil {
-		return err
+
+	offset, localErr := channel.FinishMessage(clientID, msgID)
+	if localErr != nil {
+		return localErr
 	}
+	var syncOffset ChannelConsumerOffset
+	syncOffset.OffsetID = int64(msgID)
+	syncOffset.VOffset = int64(offset)
 	// rpc call to slaves
 	successNum := 0
 	isrList := topicCoord.topicInfo.ISR
 	for _, nodeID := range isrList {
+		if nodeID == self.myNode.GetID() {
+			successNum++
+			continue
+		}
 		c, err := self.acquireRpcClient(nodeID)
 		if err != nil {
 			coordLog.Infof("get rpc client failed: %v", err)
 			continue
 		}
 
-		err = c.UpdateChannelOffset(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, channel, offset)
+		err = c.UpdateChannelOffset(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, channel.GetName(), syncOffset)
 		if err != nil {
 			coordLog.Warningf("node %v update offset failed %v.", nodeID, err)
 		} else {
@@ -888,7 +895,31 @@ func (self *NsqdCoordinator) syncChannelOffsetToCluster(topic string, partition 
 	}
 	if successNum != len(isrList) {
 		coordLog.Warningf("some nodes in isr is not synced with channel consumer offset.")
-		return ErrWriteQuorumFailed
+	}
+	// we allow the offset not synced, since it can be sync later without losing any data.
+	// only cause some repeated message consume.
+	return nil
+}
+
+func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *TopicCoordinator, channelName string, offset ChannelConsumerOffset) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
+	if localErr != nil {
+		coordLog.Infof("slave missing topic : %v", topicName)
+		// TODO: leave the isr and try re-sync with leader
+		return &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
+	}
+
+	if topic.GetTopicPart() != partition {
+		coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
+		return ErrLocalMissingTopic
+	}
+	ch := topic.GetChannel(channelName)
+	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+	if err != nil {
+		coordLog.Warningf("update local channel(%v) offset failed: %v", channelName, err)
+		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
 	}
 	return nil
 }
@@ -920,6 +951,11 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *TopicCoordinator) *Coo
 
 func (self *NsqdCoordinator) updateLocalTopicChannels(topicInfo TopicPartionMetaInfo) *CoordErr {
 	return nil
+}
+
+func (self *NsqdCoordinator) handleTopicLeaderChangedLocal() {
+	// close read/write connection if lost the leader,
+	// start accept read/write if become the new leader.
 }
 
 // before shutdown, we transfer the leader to others to reduce

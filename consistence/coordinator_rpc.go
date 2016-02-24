@@ -258,7 +258,7 @@ type RpcTestRsp struct {
 	RetErr  *CoordErr
 }
 
-func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeaderSession, *CoordErr) {
+func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
 		if topicCoord, ok := v[rpcData.TopicPartition]; ok {
 			if topicCoord.GetLeaderEpoch() != rpcData.TopicLeaderEpoch {
@@ -273,7 +273,7 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeader
 				coordLog.Infof("local data is still loading. %v", topicCoord.topicInfo.GetTopicDesp())
 				return nil, ErrLocalNotReadyForWrite
 			}
-			return &topicCoord.topicLeaderSession, nil
+			return topicCoord, nil
 		}
 	}
 	coordLog.Infof("rpc call with missing topic :%v", rpcData)
@@ -281,13 +281,13 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicLeader
 }
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info RpcChannelOffsetArg, retErr *CoordErr) error {
-	_, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
 	if err != nil {
 		*retErr = *err
 		return nil
 	}
 	// update local channel offset
-	err = self.nsqdCoord.updateChannelOffsetLocal(info.TopicName, info.TopicPartition, info.Channel, info.ChannelOffset)
+	err = self.nsqdCoord.updateChannelOffsetOnSlave(tc, info.Channel, info.ChannelOffset)
 	if err != nil {
 		*retErr = *err
 	}
@@ -296,13 +296,13 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info RpcChannelOffsetArg, re
 
 // receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info RpcPutMessage, retErr *CoordErr) error {
-	_, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
 	if err != nil {
 		*retErr = *err
 		return nil
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessageOnSlave(info.TopicName, info.TopicPartition, info.LogData, info.TopicMessage)
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
 	if err != nil {
 		*retErr = *err
 	}

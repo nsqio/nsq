@@ -104,3 +104,11 @@ func (c *context) PutMessage(topic *nsqd.Topic, msg []byte) error {
 func (c *context) forwardPutMessage(topic string, port int, msg []byte) error {
 	return nil
 }
+
+func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
+	if c.nsqdCoord == nil {
+		_, err := ch.FinishMessage(clientID, msgID)
+		return err
+	}
+	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)
+}

@@ -42,6 +42,7 @@ type ReadResult struct {
 type BackendQueueReader interface {
 	ReadChan() <-chan ReadResult
 	ConfirmRead(BackendOffset) error
+	SkipReadToOffset(BackendOffset) error
 	Close() error
 	Depth() int64
 	Delete() error

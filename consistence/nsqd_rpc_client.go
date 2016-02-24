@@ -55,12 +55,15 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 	for {
 		err := self.connection.Call(method, arg, reply)
 		if err == rpc.ErrShutdown {
+			coordLog.Infof("rpc connection closed, error: %v", err)
 			err = self.Reconnect()
 			if err != nil {
 				return err
 			}
 		} else {
-			coordLog.Infof("rpc call %v error: %v", method, err)
+			if err != nil {
+				coordLog.Infof("rpc call %v error: %v", method, err)
+			}
 			return err
 		}
 	}

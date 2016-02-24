@@ -165,9 +165,7 @@ func TestStartup(t *testing.T) {
 	backEnd := topic.backend.GetQueueReadEnd()
 	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
 	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
-	t.Logf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
-	channel1.UpdateQueueEnd(backEnd)
 
 	err = nsqd.PersistMetadata()
 	equal(t, err, nil)

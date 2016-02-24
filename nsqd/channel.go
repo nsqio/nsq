@@ -15,9 +15,9 @@ import (
 type Consumer interface {
 	UnPause()
 	Pause()
-	Close() error
 	TimedOutMessage()
 	Stats() ClientStats
+	Exit()
 	Empty()
 }
 
@@ -73,6 +73,7 @@ type Channel struct {
 	confirmMutex         sync.Mutex
 	waitingConfirm       int32
 	tryReadBackend       chan bool
+	consumeDisabled      int32
 	// stat counters
 	EnableTrace bool
 	//finMsgs     map[MessageID]*Message
@@ -155,9 +156,8 @@ func (c *Channel) GetClientMsgChan() chan *Message {
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.option.MemQueueSize)/10))
 
-	c.inFlightMessages = make(map[MessageID]*Message, pqSize)
-
 	c.inFlightMutex.Lock()
+	c.inFlightMessages = make(map[MessageID]*Message, pqSize)
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	c.inFlightMutex.Unlock()
 
@@ -339,10 +339,26 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 	return nil
 }
 
+func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
+	c.confirmMutex.Lock()
+	if len(c.confirmedMsgs) != 0 {
+		nsqLog.LogWarningf("should empty confirmed queue on slave.")
+	}
+	err := c.backend.SkipReadToOffset(offset)
+	c.currentLastConfirmed = offset
+	if err != nil {
+		if !c.Exiting() {
+			nsqLog.LogErrorf("confirm read failed: %v, offset: %v", err, offset)
+		}
+	}
+	c.confirmMutex.Unlock()
+	return err
+}
+
 // in order not to make the confirm map too large,
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
-func (c *Channel) ConfirmBackendQueue(msg *Message) {
+func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	//c.finMsgs[msg.ID] = msg
@@ -364,7 +380,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) {
 		if !c.Exiting() {
 			nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
 		}
-		return
+		return c.currentLastConfirmed
 	}
 	if reduced && int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
 		select {
@@ -383,13 +399,14 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) {
 		//c.currentLastConfirmed offset
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
+	return c.currentLastConfirmed
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
 	// in inflight queue and also wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
+func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, error) {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		//c.confirmMutex.Lock()
@@ -397,7 +414,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 		//c.confirmMutex.Unlock()
 		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
 			clientID)
-		return err
+		return 0, err
 	}
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
@@ -407,8 +424,8 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
-	c.ConfirmBackendQueue(msg)
-	return nil
+	offset := c.ConfirmBackendQueue(msg)
+	return offset, nil
 }
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:
@@ -506,9 +523,9 @@ func (c *Channel) GetInflightNum() int {
 	return n
 }
 
-func (c *Channel) GetReadOffset() BackendOffset {
+func (c *Channel) GetConfirmedOffset() BackendOffset {
 	if _, ok := c.backend.(*diskQueueReader); ok {
-		return c.backend.(*diskQueueReader).virtualReadOffset
+		return c.backend.(*diskQueueReader).virtualConfirmedOffset
 	}
 	return 0
 }
@@ -590,6 +607,39 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 	c.inFlightMutex.Unlock()
 }
 
+func (c *Channel) DisableConsume(disable bool) {
+	c.Lock()
+	if disable {
+		atomic.StoreInt32(&c.consumeDisabled, 1)
+		for cid, client := range c.clients {
+			client.Exit()
+			delete(c.clients, cid)
+		}
+		c.initPQ()
+		c.waitingRequeueMutex.Lock()
+		for k, _ := range c.waitingRequeueMsgs {
+			delete(c.waitingRequeueMsgs, k)
+		}
+		c.waitingRequeueMutex.Unlock()
+		done := false
+		for !done {
+			select {
+			case <-c.clientMsgChan:
+			case <-c.requeuedMsgChan:
+			default:
+				done = true
+			}
+		}
+	} else {
+		atomic.StoreInt32(&c.consumeDisabled, 0)
+		select {
+		case c.tryReadBackend <- true:
+		default:
+		}
+	}
+	c.Unlock()
+}
+
 // messagePump reads messages from either memory or backend and sends
 // messages to clients over a go chan
 func (c *Channel) messagePump() {
@@ -614,6 +664,11 @@ LOOP:
 			readChan = nil
 		} else {
 			readChan = c.backend.ReadChan()
+		}
+
+		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+			readChan = nil
+			nsqLog.Logf("channel consume is disabled : %v", c.name)
 		}
 
 		if readChan == nil {
@@ -654,6 +709,9 @@ LOOP:
 		}
 
 		if msg == nil {
+			continue
+		}
+		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			continue
 		}
 		msg.Attempts++
@@ -713,31 +771,6 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
 					flightCnt, atomic.LoadInt32(&c.waitingConfirm),
 					c.currentLastConfirmed)
-				//c.confirmMutex.Lock()
-				//nsqLog.LogDebugf("total fin: %v, fin err: %v", len(c.finMsgs), len(c.finErrMsgs))
-				//for _, msg := range c.confirmedMsgs {
-				//	waitID := MessageID(int64(c.currentLastConfirmed)/int64(msg.rawMoveSize) + 1)
-				//	if v, ok := c.finMsgs[waitID]; ok {
-				//		nsqLog.LogDebugf("waitID in finished : %v, %v",
-				//			waitID, v.clientID)
-				//	}
-				//	if v, ok := c.finErrMsgs[waitID]; ok {
-				//		nsqLog.LogDebugf("waitID in fin error list: %v, %v",
-				//			waitID, v)
-				//	}
-				//	if v, ok := c.inFlightMessages[waitID]; ok {
-				//		nsqLog.LogDebugf("waitID in inflight: %v, %v", waitID,
-				//			v.clientID)
-				//	}
-				//	if _, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-				//		nsqLog.LogDebugf("waitID in confirmed: %v", waitID)
-				//	}
-				//	if _, ok := c.waitingRequeueMsgs[waitID]; ok {
-				//		nsqLog.LogDebugf("waitID in requeue: %v", waitID)
-				//	}
-				//	break
-				//}
-				//c.confirmMutex.Unlock()
 			}
 			goto exit
 		}

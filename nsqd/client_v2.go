@@ -155,6 +155,11 @@ func (c *ClientV2) String() string {
 	return c.RemoteAddr().String()
 }
 
+func (c *ClientV2) Exit() {
+	atomic.StoreInt64(&c.InFlightCount, 0)
+	close(c.ExitChan)
+}
+
 func (c *ClientV2) FinalClose() {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()

@@ -257,7 +257,7 @@ func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next di
 	return BackendOffset(int64(vdiff) + left), err
 }
 
-func (d *diskQueueReader) SkipReadToOffset(offset int64) error {
+func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) error {
 	d.RLock()
 	defer d.RUnlock()
 	if d.exitFlag == 1 {
@@ -751,6 +751,10 @@ func (d *diskQueueReader) ioLoop() {
 			}
 			lastDataNeedRead = false
 		case skipInfo := <-d.skipChan:
+			if skipInfo >= d.virtualReadOffset {
+				nsqLog.Logf("reading diskqueue(%s) skipped read %d exceed %d", d.readerMetaName, skipInfo, d.virtualReadOffset)
+				lastDataNeedRead = false
+			}
 			skiperr := d.internalSkipTo(skipInfo)
 			rerr = nil
 			d.skipResponseChan <- skiperr

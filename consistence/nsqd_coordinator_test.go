@@ -100,18 +100,20 @@ func TestNsqdCoordTopicInfoChanged(t *testing.T) {
 func TestNsqdCoordChangeTopicLeader(t *testing.T) {
 }
 
-func TestNsqdCoordPutMessage(t *testing.T) {
+func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 
 	coordLog.level = 2
 	coordLog.logger = &levellogger.GLogger{}
 	opts1 := nsqdNs.NewOptions()
+	opts1.Logger = newTestLogger(t)
+	opts1.LogLevel = 1
 	nsqd1 := mustStartNSQD(opts1)
 	nsqdCoord1 := startNsqdCoord("11111", opts1.DataPath, "id1", nsqd1)
 	//defer nsqdCoord1.Stop()
-	defer nsqd1.Exit()
 	defer os.RemoveAll(opts1.DataPath)
+	defer nsqd1.Exit()
 	nodeInfo1 := NsqdNodeInfo{
 		NodeIp:  "127.0.0.1",
 		TcpPort: "0",
@@ -121,11 +123,13 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 
 	time.Sleep(time.Second)
 	opts2 := nsqdNs.NewOptions()
+	opts2.Logger = newTestLogger(t)
+	opts2.LogLevel = 1
 	nsqd2 := mustStartNSQD(opts2)
 	nsqdCoord2 := startNsqdCoord("11112", opts2.DataPath, "id2", nsqd2)
 	//defer nsqdCoord2.Stop()
-	defer nsqd2.Exit()
 	defer os.RemoveAll(opts2.DataPath)
+	defer nsqd2.Exit()
 	nodeInfo2 := NsqdNodeInfo{
 		NodeIp:  "127.0.0.1",
 		TcpPort: "0",
@@ -230,6 +234,22 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+
+	channel1 := topicData1.GetChannel("ch1")
+	channel2 := topicData2.GetChannel("ch1")
+	test.Equal(t, channel1.Depth(), int64(msgCnt)*msgRawSize)
+	test.Equal(t, channel2.Depth(), int64(msgCnt)*msgRawSize)
+	msgConsumed := 0
+	for i := msgConsumed; i < msgCnt; i++ {
+		msg := <-channel1.GetClientMsgChan()
+		channel1.StartInFlightTimeout(msg, 1, 10)
+		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, msg.ID)
+		test.Nil(t, err)
+
+		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
+	}
+	msgConsumed = msgCnt
+
 	// test write session mismatch
 	leaderSession.TopicLeaderSession = "1234new"
 	ensureTopicLeaderSession(nsqdCoord1, leaderSession)
@@ -272,7 +292,16 @@ func TestNsqdCoordPutMessage(t *testing.T) {
 		logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
 		t.Log(logs)
 	}
-}
-
-func TestNsqdCoordSyncChannelOffset(t *testing.T) {
+	test.Equal(t, int64(channel1.GetChannelEnd()), int64(msgCnt)*msgRawSize)
+	test.Equal(t, int64(channel2.GetChannelEnd()), int64(msgCnt)*msgRawSize)
+	test.Equal(t, int64(channel1.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
+	test.Equal(t, int64(channel2.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
+	for i := msgConsumed; i < msgCnt; i++ {
+		msg := <-channel2.GetClientMsgChan()
+		channel2.StartInFlightTimeout(msg, 1, 10)
+		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
+		test.Nil(t, err)
+		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
+	}
+	msgConsumed = msgCnt
 }

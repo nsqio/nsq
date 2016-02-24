@@ -457,6 +457,22 @@ func (t *Topic) exit(deleted bool) error {
 	return t.backend.Close()
 }
 
+func (t *Topic) DisableForSlave() {
+	t.channelLock.RLock()
+	for _, c := range t.channelMap {
+		c.DisableConsume(true)
+	}
+	t.channelLock.RUnlock()
+}
+
+func (t *Topic) EnableForMaster() {
+	t.channelLock.RLock()
+	for _, c := range t.channelMap {
+		c.DisableConsume(false)
+	}
+	t.channelLock.RUnlock()
+}
+
 func (t *Topic) Empty() error {
 	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
 	return t.backend.Empty()
