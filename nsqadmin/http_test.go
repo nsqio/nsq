@@ -487,8 +487,9 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	topic := nsqds[0].GetTopic(topicName)
 	channel := topic.GetChannel("ch")
 	channel.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
-	equal(t, channel.Depth(), int64(1))
+
 	time.Sleep(100 * time.Millisecond)
+	equal(t, channel.Depth(), int64(1))
 
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
