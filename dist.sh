@@ -30,7 +30,7 @@ goversion=$(go version | awk '{print $3}')
 echo "... running tests"
 ./test.sh
 
-for os in linux darwin freebsd; do
+for os in linux darwin freebsd windows; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
