@@ -33,6 +33,8 @@ var (
 	statsdGaugeFormat   = flagSet.String("statsd-gauge-format", "stats.gauges.%s", "The gauge stats key formatting applied by the implementation of statsd. If no formatting is desired, set this to an empty string.")
 	statsdPrefix        = flagSet.String("statsd-prefix", "nsq.%s", "prefix used for keys sent to statsd (%s for host replacement, must match nsqd)")
 	statsdInterval      = flagSet.Duration("statsd-interval", 60*time.Second, "time interval nsqd is configured to push to statsd (must match nsqd)")
+	messageTailMaxCount = flagSet.Int("message-tail-max-count", 10, "Number of message to attempt to tail when viewing a topic")
+	messageTailMaxWait  = flagSet.Duration("message-tail-max-wait", 250*time.Millisecond, "Number of milliseconds to wait while attempting to tail messages when viewing a topic")
 
 	notificationHTTPEndpoint = flagSet.String("notification-http-endpoint", "", "HTTP endpoint (fully qualified) to which POST notifications of admin actions will be sent")
 

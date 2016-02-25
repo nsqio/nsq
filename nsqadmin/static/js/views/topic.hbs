@@ -218,3 +218,21 @@
         {{/unless}}
     </div>
 </div>
+
+<div class="row message-actions">
+  <div class="col-md-12">
+    <h4>Topic Messages <button class="btn btn-medium btn-primary" data-action="reload-messages">Reload Messages</button></h4>
+    <table class="table table-bordered table-condensed">
+      <tr>
+        <th>Timestamp</th>
+        <th>Message Body</th>
+      </tr>
+      {{#each topic_messages }}
+        <tr>
+          <td>{{this.message_time}}</td>
+          <td style="font-family:monospace;">{{this.message_text}}</td>
+        </tr>
+      {{/each}}
+    </table>
+  </div>
+</div>

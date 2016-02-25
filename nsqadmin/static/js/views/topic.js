@@ -15,7 +15,8 @@ var TopicView = BaseView.extend({
     template: require('./spinner.hbs'),
 
     events: {
-        'click .topic-actions button': 'topicAction'
+        'click .topic-actions button': 'topicAction',
+        'click .message-actions button': 'messageAction'
     },
 
     initialize: function() {
@@ -28,6 +29,11 @@ var TopicView = BaseView.extend({
             }.bind(this))
             .fail(this.handleViewError.bind(this))
             .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));
+    },
+
+    messageAction: function(e) {
+        e.preventDefault();
+        window.location.reload(true);
     },
 
     topicAction: function(e) {
