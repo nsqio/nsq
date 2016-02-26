@@ -215,7 +215,7 @@ Handlebars.registerHelper('nanotohuman', function(n) {
     if (n >= 60000000000) {
         v = Math.floor(n / 60000000000);
         n = n % 60000000000;
-        s = v + 'm';
+        s += v + 'm';
     }
     if (n >= 1000000000) {
         n = round(n / 1000000000, 2);
