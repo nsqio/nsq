@@ -82,6 +82,11 @@ func (d *diskQueueWriter) Put(data []byte) (BackendOffset, int64, error) {
 
 func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) error {
 	d.Lock()
+	defer d.Unlock()
+	if d.needSync {
+		d.sync()
+	}
+
 	if offset > d.virtualEnd {
 		return ErrInvalidOffset
 	}
@@ -89,7 +94,7 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 		nsqLog.Logf("rollback write position can not across file %v, %v, %v", offset, d.virtualEnd, d.writePos)
 		return ErrInvalidOffset
 	}
-	d.writePos = int64(d.virtualEnd - offset)
+	d.writePos -= int64(d.virtualEnd - offset)
 	if d.readablePos > d.writePos {
 		d.readablePos = d.writePos
 	}
@@ -98,7 +103,6 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 	if d.virtualReadableEnd > d.virtualEnd {
 		d.virtualReadableEnd = d.virtualEnd
 	}
-	d.Unlock()
 	return nil
 }
 
@@ -108,30 +112,39 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	if offset > d.virtualEnd {
 		return ErrInvalidOffset
 	}
+	if d.needSync {
+		d.sync()
+	}
 	if offset == 0 {
 		d.virtualEnd = 0
 		d.writePos = 0
 		d.writeFileNum = 0
 		d.readablePos = 0
 		d.virtualReadableEnd = 0
+		atomic.StoreInt64(&d.totalMsgCnt, 0)
 		return nil
 	}
-	for offset < d.virtualEnd-BackendOffset(d.writePos) {
-		nsqLog.Logf("reset write acrossing file %v, %v, %v", offset, d.virtualEnd, d.writePos)
-		d.virtualEnd -= BackendOffset(d.writePos)
-		d.writeFileNum--
-		if d.writeFileNum < 0 {
-			nsqLog.Logf("reset write acrossed the begin %v, %v, %v", offset, d.virtualEnd, d.writeFileNum)
+	newEnd := d.virtualEnd
+	newWriteFileNum := d.writeFileNum
+	newWritePos := d.writePos
+	for offset < newEnd-BackendOffset(newWritePos) {
+		nsqLog.Logf("reset write acrossing file %v, %v, %v, %v", offset, newEnd, newWritePos, newWriteFileNum)
+		newEnd -= BackendOffset(newWritePos)
+		newWriteFileNum--
+		if newWriteFileNum < 0 {
+			nsqLog.Logf("reset write acrossed the begin %v, %v, %v", offset, newEnd, newWriteFileNum)
 			return ErrInvalidOffset
 		}
-		f, err := os.Stat(d.fileName(d.writeFileNum))
+		f, err := os.Stat(d.fileName(newWriteFileNum))
 		if err != nil {
-			nsqLog.LogErrorf("stat data file error %v, %v, %v", offset, d.virtualEnd, d.writeFileNum)
+			nsqLog.LogErrorf("stat data file error %v, %v, %v", offset, newWriteFileNum)
 			return err
 		}
-		d.writePos = f.Size()
+		newWritePos = f.Size()
 	}
-	d.writePos = int64(d.virtualEnd - offset)
+	d.writeFileNum = newWriteFileNum
+	newWritePos -= int64(newEnd - offset)
+	d.writePos = newWritePos
 	if d.readablePos > d.writePos {
 		d.readablePos = d.writePos
 	}
@@ -337,6 +350,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int64, error) {
 			d.writeFile = nil
 		}
 		d.saveFileOffsetMeta()
+		nsqLog.LogDebugf("DISKQUEUE(%s): new file write, last file: %v, %v, %v, %v", d.name, d.writeFileNum, d.writePos, d.virtualEnd, totalCnt)
 
 		d.writeFileNum++
 		d.writePos = 0

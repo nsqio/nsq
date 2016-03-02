@@ -37,6 +37,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.LogID = int64(logMgr.NextID())
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i)
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
@@ -54,6 +55,7 @@ func TestCommitLogWrite(t *testing.T) {
 		if prevLog.LogID > 0 {
 			test.Equal(t, prevLog.LogID+1, logs[0].LogID)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
+			test.Equal(t, prevLog.MsgCnt+1, logs[0].MsgCnt)
 		}
 		prevLog = logs[0]
 	}
@@ -62,6 +64,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.LogID = int64(logMgr.NextID())
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i)
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
@@ -78,6 +81,7 @@ func TestCommitLogWrite(t *testing.T) {
 		if prevLog.LogID > 0 {
 			test.Equal(t, prevLog.LogID+1, logs[0].LogID)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
+			test.Equal(t, prevLog.MsgCnt+int64(1), logs[0].MsgCnt)
 		}
 		prevLog = logs[0]
 	}
