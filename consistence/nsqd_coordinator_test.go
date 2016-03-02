@@ -85,6 +85,17 @@ func TestNsqdCoordLookupdChanged(t *testing.T) {
 	t.Log(commonErr.Error())
 }
 
+func TestNsqdCoordStartup(t *testing.T) {
+	// first startup
+
+	// start as leader
+	// start as isr
+	// start as catchup
+	// start as no remote topic
+	// start as not relevant
+	// start as not relevant but request join isr
+}
+
 func TestNsqdCoordSyncToLeader(t *testing.T) {
 }
 
@@ -94,10 +105,7 @@ func TestNsqdCoordJoinISR(t *testing.T) {
 func TestNsqdCoordLeaveFromISR(t *testing.T) {
 }
 
-func TestNsqdCoordTopicInfoChanged(t *testing.T) {
-}
-
-func TestNsqdCoordChangeTopicLeader(t *testing.T) {
+func TestNsqdCoordCatchup(t *testing.T) {
 }
 
 func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
@@ -187,6 +195,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, len(logs), msgCnt)
 	logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
 
+	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), true)
+	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), false)
 	// test write not leader
 	err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
 	test.NotNil(t, err)
@@ -271,6 +281,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	// leader switch will disable write by default
 	test.NotNil(t, err)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), false)
+	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), true)
 	for i := 0; i < 3; i++ {
 		err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
 		test.Nil(t, err)
@@ -302,6 +314,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
 		test.Nil(t, err)
 		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
+	// test retry write
 }

@@ -45,7 +45,7 @@ func (self *TopicCoordinator) GetLeaderID() string {
 	return self.topicLeaderSession.LeaderNode.GetID()
 }
 
-func (self *TopicCoordinator) IsMineLeader(id string) bool {
+func (self *TopicCoordinator) IsMineLeaderSessionReady(id string) bool {
 	if self.topicLeaderSession.LeaderNode != nil &&
 		self.topicLeaderSession.LeaderNode.GetID() == id &&
 		self.topicLeaderSession.Session != "" {

@@ -34,6 +34,11 @@ type errStore struct {
 	err error
 }
 
+var (
+	ErrTopicPartitionMismatch = errors.New("topic partition mismatch")
+	ErrTopicNotExist          = errors.New("topic does not exist")
+)
+
 type NSQD struct {
 	sync.RWMutex
 
@@ -413,9 +418,36 @@ func (n *NSQD) GetExistingTopic(topicName string) (*Topic, error) {
 	defer n.RUnlock()
 	topic, ok := n.topicMap[topicName]
 	if !ok {
-		return nil, errors.New("topic does not exist")
+		return nil, ErrTopicNotExist
 	}
 	return topic, nil
+}
+
+func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
+	n.RLock()
+	topic, ok := n.topicMap[topicName]
+	if !ok {
+		n.RUnlock()
+		return ErrTopicNotExist
+	}
+	n.RUnlock()
+	if topic.GetTopicPart() != partition {
+		return ErrTopicPartitionMismatch
+	}
+
+	// delete empties all channels and the topic itself before closing
+	// (so that we dont leave any messages around)
+	//
+	// we do this before removing the topic from map below (with no lock)
+	// so that any incoming writes will error and not create a new topic
+	// to enforce ordering
+	topic.Close()
+
+	n.Lock()
+	delete(n.topicMap, topicName)
+	n.Unlock()
+
+	return nil
 }
 
 // DeleteExistingTopic removes a topic only if it exists
@@ -424,7 +456,7 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	topic, ok := n.topicMap[topicName]
 	if !ok {
 		n.RUnlock()
-		return errors.New("topic does not exist")
+		return ErrTopicNotExist
 	}
 	n.RUnlock()
 

@@ -57,8 +57,8 @@ func TestGetChannel(t *testing.T) {
 
 type errorBackendQueue struct{}
 
-func (d *errorBackendQueue) Put([]byte) (BackendOffset, error) {
-	return 0, errors.New("never gonna happen")
+func (d *errorBackendQueue) Put([]byte) (BackendOffset, int64, error) {
+	return 0, 0, errors.New("never gonna happen")
 }
 func (d *errorBackendQueue) ReadChan() chan []byte                     { return nil }
 func (d *errorBackendQueue) Close() error                              { return nil }
@@ -68,11 +68,12 @@ func (d *errorBackendQueue) Empty() error                              { return 
 func (d *errorBackendQueue) Flush() error                              { return nil }
 func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd          { return nil }
 func (d *errorBackendQueue) GetQueueWriteEnd() BackendQueueEnd         { return nil }
-func (d *errorBackendQueue) ResetWriteEnd(BackendOffset, uint64) error { return nil }
+func (d *errorBackendQueue) ResetWriteEnd(BackendOffset, int64) error  { return nil }
+func (d *errorBackendQueue) RollbackWrite(BackendOffset, uint64) error { return nil }
 
 type errorRecoveredBackendQueue struct{ errorBackendQueue }
 
-func (d *errorRecoveredBackendQueue) Put([]byte) (BackendOffset, error) { return 0, nil }
+func (d *errorRecoveredBackendQueue) Put([]byte) (BackendOffset, int64, error) { return 0, 0, nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
@@ -87,7 +88,7 @@ func TestHealth(t *testing.T) {
 	topic.backend = &errorBackendQueue{}
 
 	msg := NewMessage(0, make([]byte, 100))
-	_, _, err := topic.PutMessage(msg)
+	_, _, _, err := topic.PutMessage(msg)
 	nequal(t, err, nil)
 
 	// TODO: health should be topic scoped.
@@ -95,7 +96,7 @@ func TestHealth(t *testing.T) {
 	topic.backend = &errorRecoveredBackendQueue{}
 
 	msg = NewMessage(0, make([]byte, 100))
-	_, _, err = topic.PutMessages([]*Message{msg})
+	_, _, _, err = topic.PutMessages([]*Message{msg})
 	equal(t, err, nil)
 
 	equal(t, nsqd.IsHealthy(), true)
@@ -143,7 +144,7 @@ func TestDeleteLast(t *testing.T) {
 	equal(t, 0, len(topic.channelMap))
 
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	_, _, err = topic.PutMessage(msg)
+	_, _, _, err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	equal(t, nil, err)
 }

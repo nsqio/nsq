@@ -202,7 +202,7 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
 	r.StartLogOffset = startOffset
 	r.LogMaxNum = num
 	var ret RpcPullCommitLogsRsp
-	err := self.CallWithRetry("NsqdCoordRpcServer.PullCommitLogs", r, &ret)
+	err := self.CallWithRetry("NsqdCoordRpcServer.PullCommitLogsAndData", r, &ret)
 	return ret.Logs, ret.DataList, err
 }
 

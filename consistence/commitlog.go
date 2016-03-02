@@ -30,6 +30,7 @@ type CommitLogData struct {
 	// epoch for the topic leader
 	Epoch     int32
 	MsgOffset int64
+	MsgCnt    int64
 }
 
 var emptyLogData CommitLogData
@@ -105,6 +106,12 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		mgr.nLogID = int64(uint64(mgr.partition)<<47 + 1)
 	}
 	return mgr, nil
+}
+
+func (self *TopicCommitLogMgr) Close() {
+	self.FlushCommitLogs()
+	self.appender.Sync()
+	self.appender.Close()
 }
 
 func (self *TopicCommitLogMgr) NextID() uint64 {

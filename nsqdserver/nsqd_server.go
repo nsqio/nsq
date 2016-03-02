@@ -85,8 +85,8 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	ctx.nsqd = nsqdInstance
 	ip, port, err := net.SplitHostPort(opts.TCPAddress)
 	rpcport := ""
-	_ = consistence.NewNsqdCoordinator(ip, port, rpcport, "nsqd-coord", opts.DataPath, nsqdInstance)
-	//ctx.nsqdCoord = nsqCoord
+	nsqCoord = consistence.NewNsqdCoordinator(ip, port, rpcport, "nsqd-coord", opts.DataPath, nsqdInstance)
+	ctx.nsqdCoord = nsqCoord
 
 	s.ctx = ctx
 
@@ -136,6 +136,14 @@ func (s *NsqdServer) Main() {
 	var httpListener net.Listener
 	var httpsListener net.Listener
 
+	if s.ctx.nsqdCoord != nil {
+		err := s.ctx.nsqdCoord.Start()
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("FATAL: start coordinator failed - %v", err)
+			os.Exit(1)
+		}
+	}
+
 	opts := s.ctx.getOpts()
 	tcpListener, err := net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
@@ -176,7 +184,6 @@ func (s *NsqdServer) Main() {
 	})
 
 	s.ctx.nsqd.Start()
-	s.ctx.nsqdCoord.Start()
 
 	s.waitGroup.Wrap(func() {
 		s.lookupLoop(s.ctx.nsqd.MetaNotifyChan, s.ctx.nsqd.OptsNotificationChan, s.exitChan)

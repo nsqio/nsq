@@ -609,7 +609,11 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 
 func (c *Channel) DisableConsume(disable bool) {
 	c.Lock()
+	defer c.Unlock()
 	if disable {
+		if c.consumeDisabled == 1 {
+			return
+		}
 		atomic.StoreInt32(&c.consumeDisabled, 1)
 		for cid, client := range c.clients {
 			client.Exit()
@@ -637,7 +641,6 @@ func (c *Channel) DisableConsume(disable bool) {
 		default:
 		}
 	}
-	c.Unlock()
 }
 
 // messagePump reads messages from either memory or backend and sends

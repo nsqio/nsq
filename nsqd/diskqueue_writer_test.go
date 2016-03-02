@@ -28,7 +28,7 @@ func TestDiskQueueWriter(t *testing.T) {
 	equal(t, dqWriter.totalMsgCnt, int64(0))
 
 	msg := []byte("test")
-	_, err = dqWriter.Put(msg)
+	dqWriter.Put(msg)
 	dqWriter.Flush()
 	end := dqWriter.GetQueueWriteEnd()
 	equal(t, err, nil)
@@ -64,7 +64,7 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 	equal(t, dq.(*diskQueueWriter).totalMsgCnt, int64(0))
 
 	for i := 0; i < 10; i++ {
-		_, err := dq.Put(msg)
+		_, _, err := dq.Put(msg)
 		equal(t, err, nil)
 		equal(t, dqObj.totalMsgCnt, int64(i+1))
 	}
@@ -98,7 +98,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 
 	t.Logf("test begin ... 000\n")
 	for i := 0; i < 100; i++ {
-		_, err = dq.Put(msg)
+		_, _, err = dq.Put(msg)
 		equal(t, err, nil)
 		equal(t, dqObj.totalMsgCnt, int64(i+1))
 	}
@@ -166,7 +166,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	end = dq.GetQueueReadEnd().(*diskQueueEndInfo)
 	dqReader.UpdateQueueEnd(end)
 	for i := 0; i < 100; i++ {
-		_, err := dq.Put(msg)
+		_, _, err := dq.Put(msg)
 		equal(t, err, nil)
 		equal(t, dq.(*diskQueueWriter).totalMsgCnt, int64(i+101))
 	}
@@ -276,6 +276,10 @@ func TestDiskQueueWriterSkipTo(t *testing.T) {
 	//TODO: skip and msg count check
 }
 
+func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
+	//TODO: rollback and reset write end across file test
+}
+
 func TestDiskQueueWriterTorture(t *testing.T) {
 	var wg sync.WaitGroup
 
@@ -309,7 +313,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 				case <-writeExitChan:
 					return
 				default:
-					_, err := dq.Put(msg)
+					_, _, err := dq.Put(msg)
 					if err == nil {
 						atomic.AddInt64(&depth, int64(msgRawSize))
 					} else {
@@ -444,7 +448,7 @@ func benchmarkDiskQueueWriterPut(size int64, syncEvery int64, b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, err := dq.Put(data)
+		_, _, err := dq.Put(data)
 		if err != nil {
 			panic(err)
 		}

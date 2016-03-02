@@ -116,7 +116,31 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		return err
 	}
 	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
+	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
+	myID := self.nsqdCoord.myNode.GetID()
+	if rpcTopicReq.Leader != myID &&
+		FindSlice(rpcTopicReq.ISR, myID) == -1 &&
+		FindSlice(rpcTopicReq.CatchupList, myID) == -1 {
+		if ok {
+			tc, ok := coords[rpcTopicReq.Partition]
+			if ok {
+				self.nsqdCoord.localNsqd.CloseExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
+				coordLog.Infof("topic(%s) is removing from local node since not related", rpcTopicReq.Name)
+				tc.logMgr.Close()
+				delete(coords, rpcTopicReq.Partition)
+			} else {
+				coordLog.Infof("topic(%s) partition mismatch : %v", rpcTopicReq.Name, rpcTopicReq.Partition)
+				self.nsqdCoord.coordMutex.Unlock()
+				return ErrMissingTopicCoord
+			}
+			return nil
+		} else {
+			coordLog.Infof("Not a topic(%s) related to me. isr is : %v", rpcTopicReq.Name, rpcTopicReq.ISR)
+			self.nsqdCoord.coordMutex.Unlock()
+			return ErrTopicNotRelated
+		}
+	}
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
 		self.nsqdCoord.topicCoords[rpcTopicReq.Name] = coords
@@ -126,12 +150,14 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		tpCoord = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
 			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition))
 		if tpCoord == nil {
+			self.nsqdCoord.coordMutex.Unlock()
 			return ErrLocalInitTopicCoordFailed
 		}
 		tpCoord.disableWrite = true
 		coords[rpcTopicReq.Partition] = tpCoord
 		rpcTopicReq.DisableWrite = true
 	}
+	self.nsqdCoord.coordMutex.Unlock()
 	return self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
 }
 
@@ -186,19 +212,6 @@ func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicI
 	}
 
 	return nil
-}
-
-func (self *NsqdCoordRpcServer) UpdateChannelsForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
-	if err != nil {
-		return err
-	}
-	tp.topicInfo.Channels = rpcTopicReq.Channels
-	err = self.nsqdCoord.updateLocalTopicChannels(tp.topicInfo)
-	return err
 }
 
 type RpcTopicData struct {
