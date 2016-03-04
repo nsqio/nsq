@@ -21,11 +21,11 @@ var (
 	ErrExiting             = errors.New("exiting")
 )
 
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueueWriter) (BackendOffset, int64, error) {
+func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueueWriter) (BackendOffset, int32, int64, error) {
 	buf.Reset()
 	_, err := msg.WriteTo(buf)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	return bq.Put(buf.Bytes())
 }
@@ -246,38 +246,45 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	err := t.backend.RollbackWrite(vend, diffCnt)
+	if err == nil {
+		t.updateChannelsEnd()
+	}
 	return err
 }
 
 func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
 	err := t.backend.ResetWriteEnd(vend, totalCnt)
+	if err == nil {
+		t.updateChannelsEnd()
+	}
+
 	return err
 }
 
 // PutMessage writes a Message to the queue
-func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int64, error) {
+func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, int64, error) {
 	t.Lock()
-	id, offset, totalCnt, err := t.PutMessageNoLock(m)
+	id, offset, writeBytes, totalCnt, err := t.PutMessageNoLock(m)
 	t.Unlock()
 	if err != nil {
-		return id, offset, totalCnt, err
+		return id, offset, writeBytes, totalCnt, err
 	}
 	if totalCnt%t.syncEvery == 0 {
 		t.Lock()
 		t.flush(false)
 		t.Unlock()
 	}
-	return id, offset, totalCnt, nil
+	return id, offset, writeBytes, totalCnt, nil
 }
 
-func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int64, error) {
+func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, int64, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		t.Unlock()
-		return 0, 0, 0, errors.New("exiting")
+		return 0, 0, 0, 0, errors.New("exiting")
 	}
 
-	id, offset, totalCnt, err := t.put(m)
-	return id, offset, totalCnt, err
+	id, offset, writeBytes, totalCnt, err := t.put(m)
+	return id, offset, writeBytes, totalCnt, err
 }
 
 func (t *Topic) FlushAsNeedNoLock() {
@@ -295,7 +302,7 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) error {
 	if wend.GetOffset() != offset {
 		return ErrWriteOffsetMismatch
 	}
-	_, _, totalCnt, err := t.put(m)
+	_, _, _, totalCnt, err := t.put(m)
 	if err != nil {
 		return err
 	}
@@ -316,7 +323,7 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) erro
 	}
 
 	for _, m := range msgs {
-		_, _, _, err := t.put(m)
+		_, _, _, _, err := t.put(m)
 		if err != nil {
 			return err
 		}
@@ -329,21 +336,23 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) erro
 }
 
 // PutMessages writes multiple Messages to the queue
-func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int64, error) {
+func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, int64, error) {
 	t.Lock()
 	defer t.Unlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return 0, 0, 0, ErrExiting
+		return 0, 0, 0, 0, ErrExiting
 	}
 
 	firstOffset := BackendOffset(-1)
 	firstMsgID := MessageID(0)
 	totalCnt := int64(0)
+	batchBytes := int32(0)
 	for _, m := range msgs {
-		id, offset, cnt, err := t.put(m)
+		id, offset, bytes, cnt, err := t.put(m)
 		if err != nil {
-			return firstMsgID, firstOffset, cnt, err
+			return firstMsgID, firstOffset, batchBytes, cnt, err
 		}
+		batchBytes += bytes
 		if firstOffset == BackendOffset(-1) {
 			firstOffset = offset
 			firstMsgID = id
@@ -354,41 +363,43 @@ func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int64, e
 	if int64(len(msgs)) >= t.syncEvery {
 		t.flush(false)
 	}
-	return firstMsgID, firstOffset, totalCnt, nil
+	return firstMsgID, firstOffset, batchBytes, totalCnt, nil
 }
 
-func (t *Topic) put(m *Message) (MessageID, BackendOffset, int64, error) {
+func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, int64, error) {
 	if m.ID <= 0 {
 		m.ID = t.nextMsgID()
 	}
-	offset, totalCnt, err := writeMessageToBackend(&t.putBuffer, m, t.backend)
+	offset, writeBytes, totalCnt, err := writeMessageToBackend(&t.putBuffer, m, t.backend)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to write message to backend - %s",
 			t.GetFullName(), err)
-		return m.ID, offset, totalCnt, err
+		return m.ID, offset, writeBytes, totalCnt, err
 	}
 
 	if t.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
 			t.GetFullName())
 	}
-	return m.ID, offset, totalCnt, nil
+	return m.ID, offset, writeBytes, totalCnt, nil
 }
 
-func updateChannelsEnd(chans map[string]*Channel, e BackendQueueEnd) {
-	if e == nil {
-		return
-	}
-	for _, channel := range chans {
-		err := channel.UpdateQueueEnd(e)
-		if err != nil {
-			nsqLog.LogErrorf(
-				"failed to update topic end to channel(%s) - %s",
-				channel.name, err)
+func (t *Topic) updateChannelsEnd() {
+	e := t.backend.GetQueueReadEnd()
+	t.channelLock.RLock()
+	if e != nil {
+		for _, channel := range t.channelMap {
+			err := channel.UpdateQueueEnd(e)
+			if err != nil {
+				nsqLog.LogErrorf(
+					"failed to update topic end to channel(%s) - %s",
+					channel.name, err)
+			}
 		}
 	}
+	t.channelLock.RUnlock()
 }
 
 func (t *Topic) TotalMessageCnt() uint64 {
@@ -485,8 +496,7 @@ func (t *Topic) flush(notifyChan bool) error {
 	if !ok {
 		if notifyChan && t.needNotifyChan {
 			t.needNotifyChan = false
-			e := t.backend.GetQueueReadEnd()
-			updateChannelsEnd(t.channelMap, e)
+			t.updateChannelsEnd()
 		}
 		return nil
 	}
@@ -497,8 +507,7 @@ func (t *Topic) flush(notifyChan bool) error {
 	}
 	if notifyChan {
 		t.needNotifyChan = false
-		e := t.backend.GetQueueReadEnd()
-		updateChannelsEnd(t.channelMap, e)
+		t.updateChannelsEnd()
 	} else {
 		t.needNotifyChan = true
 	}

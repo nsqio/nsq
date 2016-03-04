@@ -67,17 +67,17 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 }
 
 // Put writes a []byte to the queue
-func (d *diskQueueWriter) Put(data []byte) (BackendOffset, int64, error) {
+func (d *diskQueueWriter) Put(data []byte) (BackendOffset, int32, int64, error) {
 	d.Lock()
 
 	if d.exitFlag == 1 {
 		d.Unlock()
-		return 0, 0, errors.New("exiting")
+		return 0, 0, 0, errors.New("exiting")
 	}
-	offset, totalCnt, werr := d.writeOne(data)
+	offset, writeBytes, totalCnt, werr := d.writeOne(data)
 	d.needSync = true
 	d.Unlock()
-	return offset, totalCnt, werr
+	return offset, writeBytes, totalCnt, werr
 }
 
 func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) error {
@@ -287,14 +287,14 @@ func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
 
 // writeOne performs a low level filesystem write for a single []byte
 // while advancing write positions and rolling files, if necessary
-func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int64, error) {
+func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, int64, error) {
 	var err error
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(d.writeFileNum)
 		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
 
 		nsqLog.Logf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
@@ -304,7 +304,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int64, error) {
 			if err != nil {
 				d.writeFile.Close()
 				d.writeFile = nil
-				return 0, 0, err
+				return 0, 0, 0, err
 			}
 		}
 		if d.bufferWriter == nil {
@@ -317,19 +317,19 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int64, error) {
 	dataLen := int32(len(data))
 
 	if dataLen < d.minMsgSize || dataLen > d.maxMsgSize {
-		return 0, 0, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
+		return 0, 0, 0, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
 	}
 
 	err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	_, err = d.bufferWriter.Write(data)
 	if err != nil {
 		d.writeFile.Close()
 		d.writeFile = nil
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	writeOffset := d.virtualEnd
@@ -357,7 +357,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int64, error) {
 		d.readablePos = 0
 	}
 
-	return writeOffset, totalCnt, err
+	return writeOffset, int32(totalBytes), totalCnt, err
 }
 
 func (d *diskQueueWriter) Flush() error {

@@ -23,14 +23,15 @@ var (
 	ErrCommitLogPartitionExceed = errors.New("commit log partition id is exceeded")
 )
 
-// message data file + check point file.
-// message on memory and replica, flush to disk and write the check point file.
 type CommitLogData struct {
 	LogID int64
 	// epoch for the topic leader
 	Epoch     int32
 	MsgOffset int64
-	MsgCnt    int64
+	// size for batch messages
+	MsgSize int32
+	// the total message count for all from begin, not only this batch
+	MsgCnt int64
 }
 
 var emptyLogData CommitLogData

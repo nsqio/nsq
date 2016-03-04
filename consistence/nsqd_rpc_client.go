@@ -175,13 +175,14 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetLastCommmitLogID(topicInfo *TopicPartionMetaInfo) (int64, error) {
+func (self *NsqdRpcClient) GetLastCommmitLogID(topicInfo *TopicPartionMetaInfo) (int64, *CoordErr) {
 	var req RpcCommitLogReq
 	req.TopicName = topicInfo.Name
 	req.TopicPartition = topicInfo.Partition
 	var ret int64
+	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.GetLastCommitLogID", req, &ret)
-	return ret, err
+	return ret, convertRpcError(err, &retErr)
 }
 
 func (self *NsqdRpcClient) GetCommmitLogFromOffset(topicInfo *TopicPartionMetaInfo, offset int64) (int64, CommitLogData, error) {

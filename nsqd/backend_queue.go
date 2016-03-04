@@ -21,7 +21,7 @@ type BackendQueue interface {
 
 // for topic producer
 type BackendQueueWriter interface {
-	Put([]byte) (BackendOffset, int64, error)
+	Put([]byte) (BackendOffset, int32, int64, error)
 	Close() error
 	Delete() error
 	Empty() error

@@ -112,16 +112,33 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 }
 
 func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+	*ret = true
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
 	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
 	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
+	for pid, tc := range coords {
+		if pid != rpcTopicReq.Partition {
+			coordLog.Infof("found another partition %v already exist for this topic %v", pid, rpcTopicReq.Name)
+			if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name); err != nil {
+				coordLog.Infof("local no such topic, we can just remove this coord")
+				tc.logMgr.Close()
+				delete(coords, pid)
+				continue
+			}
+			self.nsqdCoord.coordMutex.Unlock()
+			return ErrTopicCoordExistingAndMismatch
+		}
+	}
 	myID := self.nsqdCoord.myNode.GetID()
 	if rpcTopicReq.Leader != myID &&
 		FindSlice(rpcTopicReq.ISR, myID) == -1 &&
 		FindSlice(rpcTopicReq.CatchupList, myID) == -1 {
+		// a topic info not belong to me,
+		// check if we need to delete local
+		coordLog.Infof("Not a topic(%s) related to me. isr is : %v", rpcTopicReq.Name, rpcTopicReq.ISR)
 		if ok {
 			tc, ok := coords[rpcTopicReq.Partition]
 			if ok {
@@ -129,17 +146,10 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 				coordLog.Infof("topic(%s) is removing from local node since not related", rpcTopicReq.Name)
 				tc.logMgr.Close()
 				delete(coords, rpcTopicReq.Partition)
-			} else {
-				coordLog.Infof("topic(%s) partition mismatch : %v", rpcTopicReq.Name, rpcTopicReq.Partition)
-				self.nsqdCoord.coordMutex.Unlock()
-				return ErrMissingTopicCoord
 			}
-			return nil
-		} else {
-			coordLog.Infof("Not a topic(%s) related to me. isr is : %v", rpcTopicReq.Name, rpcTopicReq.ISR)
-			self.nsqdCoord.coordMutex.Unlock()
-			return ErrTopicNotRelated
 		}
+		self.nsqdCoord.coordMutex.Unlock()
+		return nil
 	}
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
@@ -156,7 +166,9 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		tpCoord.disableWrite = true
 		coords[rpcTopicReq.Partition] = tpCoord
 		rpcTopicReq.DisableWrite = true
+		coordLog.Infof("A new topic coord init on the node: %v", rpcTopicReq.GetTopicDesp())
 	}
+
 	self.nsqdCoord.coordMutex.Unlock()
 	return self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
 }
@@ -371,7 +383,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, 
 	ret.Logs, _ = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {
-		d, err := self.nsqdCoord.readMessageData(l.LogID, l.MsgOffset)
+		d, err := self.nsqdCoord.readTopicRawData(tc, l.MsgOffset, l.MsgSize)
 		if err != nil {
 			return err
 		}
