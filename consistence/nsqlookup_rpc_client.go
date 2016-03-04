@@ -6,13 +6,25 @@ import (
 	"time"
 )
 
+type INsqlookupRemoteProxy interface {
+	Reconnect() error
+	RequestJoinCatchup(topic string, partition int, nid string) *CoordErr
+	RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr
+	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
+	PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr
+	RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr
+	RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
+}
+
+type nsqlookupRemoteProxyCreateFunc func(string, time.Duration) (INsqlookupRemoteProxy, error)
+
 type NsqLookupRpcClient struct {
 	remote     string
 	timeout    time.Duration
 	connection *rpc.Client
 }
 
-func NewNsqLookupRpcClient(addr string, timeout time.Duration) (*NsqLookupRpcClient, error) {
+func NewNsqLookupRpcClient(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return nil, err
@@ -60,20 +72,22 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	return convertRpcError(err, &ret)
 }
 
-func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) (string, *CoordErr) {
+func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr {
 	var req RpcReqJoinISR
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret RpcRspJoinISR
 	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
-	return ret.ReqSession, convertRpcError(err, &ret.CoordErr)
+	return convertRpcError(err, &ret.CoordErr)
 }
 
-func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, session string) *CoordErr {
+func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
 	var req RpcReadyForJoinISR
 	req.NodeID = nid
-	req.ReqSession = session
+	if leaderSession != nil {
+		req.ReqSession = leaderSession.Session
+	}
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr

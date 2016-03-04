@@ -45,6 +45,7 @@ type RpcTopicLeaderSession struct {
 	RpcTopicData
 	LeaderNode   *NsqdNodeInfo
 	LookupdEpoch int
+	WaitReady    bool
 }
 
 type NsqdCoordRpcServer struct {
@@ -107,7 +108,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderEpoch,
 	}
-	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession)
+	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.WaitReady)
 	return err
 }
 
@@ -220,7 +221,10 @@ func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicI
 
 	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
 	if FindSlice(tp.topicInfo.CatchupList, self.nsqdCoord.myNode.GetID()) != -1 {
-		go self.nsqdCoord.catchupFromLeader(tp.topicInfo)
+		select {
+		case self.nsqdCoord.tryCheckUnsynced <- true:
+		default:
+		}
 	}
 
 	return nil
@@ -261,6 +265,7 @@ type RpcCommitLogReq struct {
 type RpcCommitLogRsp struct {
 	LogOffset int64
 	LogData   CommitLogData
+	ErrInfo   CoordErr
 }
 
 type RpcPullCommitLogsReq struct {

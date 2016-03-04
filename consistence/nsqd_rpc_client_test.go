@@ -107,9 +107,17 @@ func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*Topi
 	return nil, errors.New("topic not exist")
 }
 
-func startNsqdCoord(rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD) *NsqdCoordinator {
+func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD) *NsqdCoordinator {
 	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
 	nsqdCoord.leadership = NewFakeNSQDLeadership()
+	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
+		p, err := NewFakeLookupRemoteProxy(addr, to)
+		if err == nil {
+			p.(*fakeLookupRemoteProxy).t = t
+		}
+		return p, err
+	}
+	nsqdCoord.lookupLeader = &NsqLookupdNodeInfo{}
 	err := nsqdCoord.Start()
 	if err != nil {
 		panic(err)
@@ -126,7 +134,7 @@ func TestNsqdRPCClient(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	nsqdCoord := startNsqdCoord("0", tmpDir, "", nil)
+	nsqdCoord := startNsqdCoord(t, "0", tmpDir, "", nil)
 	time.Sleep(time.Second * 2)
 	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcListener.Addr().String(), time.Second)
 	test.Nil(t, err)

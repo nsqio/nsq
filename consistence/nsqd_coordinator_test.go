@@ -12,6 +12,64 @@ import (
 	"time"
 )
 
+type fakeLookupRemoteProxy struct {
+	leaderSession *TopicLeaderSession
+	t             *testing.T
+}
+
+func NewFakeLookupRemoteProxy(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
+	return &fakeLookupRemoteProxy{}, nil
+}
+
+func (self *fakeLookupRemoteProxy) Reconnect() error {
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting join catchup")
+	}
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting join isr")
+	}
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting ready for isr")
+	}
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting prepare leave isr")
+	}
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting leave isr")
+	}
+	return nil
+}
+
+func (self *fakeLookupRemoteProxy) RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
+	if self.t != nil {
+		self.t.Log("requesting leave isr by leader")
+	}
+	if self.leaderSession.IsSame(leaderSession) {
+		return nil
+	}
+	return ErrNotTopicLeader
+}
+
 func mustStartNSQD(opts *nsqdNs.Options) *nsqdNs.NSQD {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
@@ -56,7 +114,7 @@ func ensureTopicLeaderSession(nsqdCoord *NsqdCoordinator, session RpcTopicLeader
 		Session:     session.TopicLeaderSession,
 		LeaderEpoch: session.TopicLeaderEpoch,
 	}
-	err = nsqdCoord.updateTopicLeaderSession(tc, newSession)
+	err = nsqdCoord.updateTopicLeaderSession(tc, newSession, true)
 	if err != nil {
 		panic(err)
 	}
@@ -118,7 +176,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	opts1.Logger = newTestLogger(t)
 	opts1.LogLevel = 1
 	nsqd1 := mustStartNSQD(opts1)
-	nsqdCoord1 := startNsqdCoord("11111", opts1.DataPath, "id1", nsqd1)
+	nsqdCoord1 := startNsqdCoord(t, "11111", opts1.DataPath, "id1", nsqd1)
 	//defer nsqdCoord1.Stop()
 	defer os.RemoveAll(opts1.DataPath)
 	defer nsqd1.Exit()
@@ -134,7 +192,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	opts2.Logger = newTestLogger(t)
 	opts2.LogLevel = 1
 	nsqd2 := mustStartNSQD(opts2)
-	nsqdCoord2 := startNsqdCoord("11112", opts2.DataPath, "id2", nsqd2)
+	nsqdCoord2 := startNsqdCoord(t, "11112", opts2.DataPath, "id2", nsqd2)
 	//defer nsqdCoord2.Stop()
 	defer os.RemoveAll(opts2.DataPath)
 	defer nsqd2.Exit()
