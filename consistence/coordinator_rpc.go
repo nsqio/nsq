@@ -15,9 +15,23 @@ const (
 )
 
 const (
-	RpcErrLeavingISRWait = iota + 10
+	RpcErrLeavingISRWait ErrRPCRetCode = iota + 10
+	RpcErrNotTopicLeader
 	RpcErrNoLeader
-	RpcErrShouldTryLeader
+	RpcErrEpochMismatch
+	RpcErrEpochLessThanCurrent
+	RpcErrWriteQuorumFailed
+	RpcErrCommitLogIDDup
+	RpcErrCommitLogEOF
+	RpcErrCommitLogOutofBound
+	RpcErrMissingTopicLeaderSession
+	RpcErrLeaderSessionMismatch
+	RpcErrWriteDisabled
+	RpcErrTopicNotExist
+	RpcErrMissingTopicCoord
+	RpcErrTopicCoordExistingAndMismatch
+	RpcErrTopicLeaderChanged
+	RpcErrTopicLoading
 )
 
 func FindSlice(in []string, e string) int {
@@ -301,7 +315,7 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordi
 			}
 			if !topicCoord.localDataLoaded {
 				coordLog.Infof("local data is still loading. %v", topicCoord.topicInfo.GetTopicDesp())
-				return nil, ErrLocalNotReadyForWrite
+				return nil, ErrTopicLoading
 			}
 			return topicCoord, nil
 		}
@@ -354,24 +368,31 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req RpcCommitLogReq, ret *int
 func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
 	tc, coorderr := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
 	if coorderr != nil {
-		return coorderr
+		ret.ErrInfo = *coorderr
+		return nil
 	}
 	logData, err := tc.logMgr.GetCommmitLogFromOffset(req.LogOffset)
 	if err != nil {
-		if err != ErrCommitLogOutofBound {
-			return err
-		}
 		ret.LogOffset, err = tc.logMgr.GetLastLogOffset()
 		if err != nil {
-			return err
+			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+			return nil
 		}
 		logData, err = tc.logMgr.GetCommmitLogFromOffset(ret.LogOffset)
 
 		if err != nil {
-			return err
+			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+			return nil
 		}
 		ret.LogData = *logData
-		return ErrCommitLogOutofBound
+		if err == ErrCommitLogOutofBound {
+			ret.ErrInfo = *ErrTopicCommitLogOutofBound
+		} else if err == ErrCommitLogEOF {
+			ret.ErrInfo = *ErrTopicCommitLogEOF
+		} else {
+			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+		}
+		return nil
 	} else {
 		ret.LogOffset = req.LogOffset
 		ret.LogData = *logData

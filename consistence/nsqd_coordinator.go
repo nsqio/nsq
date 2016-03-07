@@ -66,7 +66,7 @@ func (self *CoordErr) HasError() bool {
 	return true
 }
 
-func (self *CoordErr) Is(other *CoordErr) bool {
+func (self *CoordErr) IsEqual(other *CoordErr) bool {
 	if other == nil || self == nil {
 		return false
 	}
@@ -79,6 +79,10 @@ func (self *CoordErr) Is(other *CoordErr) bool {
 		return false
 	}
 
+	if other.ErrCode != RpcCommonErr {
+		return true
+	}
+	// only common error need to check if errmsg is equal
 	if other.ErrMsg == self.ErrMsg {
 		return true
 	}
@@ -98,33 +102,37 @@ func (self *CoordErr) IsNeedCheckSync() bool {
 }
 
 var (
-	ErrNotTopicLeader                = NewCoordErr("not topic leader", CoordElectionErr)
-	ErrEpochMismatch                 = NewCoordErr("commit epoch not match", CoordElectionErr)
-	ErrEpochLessThanCurrent          = NewCoordErr("epoch should be increased", CoordElectionErr)
-	ErrWriteQuorumFailed             = NewCoordErr("write to quorum failed.", CoordElectionTmpErr)
-	ErrCommitLogIDDup                = NewCoordErr("commit id duplicated", CoordElectionErr)
-	ErrMissingTopicLeaderSession     = NewCoordErr("missing topic leader session", CoordElectionErr)
-	ErrLeaderSessionMismatch         = NewCoordErr("leader session mismatch", CoordElectionErr)
-	ErrWriteDisabled                 = NewCoordErr("write is disabled on the topic", CoordElectionTmpErr)
-	ErrLeavingISRWait                = NewCoordErr("leaving isr need wait.", CoordElectionTmpErr)
-	ErrTopicNotExist                 = NewCoordErr("topic is not exist on cluster", CoordClusterErr)
-	ErrTopicCoordExistingAndMismatch = NewCoordErr("topic coordinator existing with a different partition", CoordClusterErr)
-	ErrTopicLeaderChanged            = NewCoordErr("topic leader changed", CoordElectionTmpErr)
+	ErrTopicInfoNotFound = NewCoordErr("topic info not found", CoordClusterErr)
 
-	ErrPubArgError            = NewCoordErr("pub argument error", CoordCommonErr)
-	ErrMissingTopicCoord      = NewCoordErr("missing topic coordinator", CoordCommonErr)
-	ErrTopicNotRelated        = NewCoordErr("topic not related to me", CoordCommonErr)
-	ErrTopicPartitionMismatch = NewCoordErr("topic partition not match", CoordCommonErr)
+	ErrNotTopicLeader                = NewCoordErrWithCode("not topic leader", CoordElectionErr, RpcErrNotTopicLeader)
+	ErrEpochMismatch                 = NewCoordErrWithCode("commit epoch not match", CoordElectionErr, RpcErrEpochMismatch)
+	ErrEpochLessThanCurrent          = NewCoordErrWithCode("epoch should be increased", CoordElectionErr, RpcErrEpochLessThanCurrent)
+	ErrWriteQuorumFailed             = NewCoordErrWithCode("write to quorum failed.", CoordElectionTmpErr, RpcErrWriteQuorumFailed)
+	ErrCommitLogIDDup                = NewCoordErrWithCode("commit id duplicated", CoordElectionErr, RpcErrCommitLogIDDup)
+	ErrMissingTopicLeaderSession     = NewCoordErrWithCode("missing topic leader session", CoordElectionErr, RpcErrMissingTopicLeaderSession)
+	ErrLeaderSessionMismatch         = NewCoordErrWithCode("leader session mismatch", CoordElectionErr, RpcErrLeaderSessionMismatch)
+	ErrWriteDisabled                 = NewCoordErrWithCode("write is disabled on the topic", CoordElectionTmpErr, RpcErrWriteDisabled)
+	ErrLeavingISRWait                = NewCoordErrWithCode("leaving isr need wait.", CoordElectionTmpErr, RpcErrLeavingISRWait)
+	ErrTopicCoordExistingAndMismatch = NewCoordErrWithCode("topic coordinator existing with a different partition", CoordClusterErr, RpcErrTopicCoordExistingAndMismatch)
+	ErrTopicLeaderChanged            = NewCoordErrWithCode("topic leader changed", CoordElectionTmpErr, RpcErrTopicLeaderChanged)
+	ErrTopicCommitLogEOF             = NewCoordErrWithCode("topic commit log end of file", CoordCommonErr, RpcErrCommitLogEOF)
+	ErrTopicCommitLogOutofBound      = NewCoordErrWithCode("topic commit log offset out of bound", CoordCommonErr, RpcErrCommitLogOutofBound)
+	ErrMissingTopicCoord             = NewCoordErrWithCode("missing topic coordinator", CoordClusterErr, RpcErrMissingTopicCoord)
+	ErrTopicLoading                  = NewCoordErrWithCode("topic is still loading data", CoordLocalErr, RpcErrTopicLoading)
 
-	ErrMissingTopicLog           = NewCoordErr("missing topic log ", CoordLocalErr)
-	ErrLocalFallBehind           = NewCoordErr("local data fall behind", CoordElectionErr)
-	ErrLocalForwardThanLeader    = NewCoordErr("local data is more than leader", CoordElectionErr)
-	ErrLocalWriteFailed          = NewCoordErr("write data to local failed", CoordLocalErr)
-	ErrLocalMissingTopic         = NewCoordErr("local topic missing", CoordLocalErr)
-	ErrLocalNotReadyForWrite     = NewCoordErr("local topic is not ready for write.", CoordLocalErr)
-	ErrLocalGetTopicFailed       = NewCoordErr("local topic init failed", CoordLocalErr)
-	ErrLocalInitTopicCoordFailed = NewCoordErr("topic coordinator init failed", CoordLocalErr)
-	ErrLocalTopicDataCorrupt     = NewCoordErr("local topic data corrupt", CoordLocalErr)
+	ErrPubArgError     = NewCoordErr("pub argument error", CoordCommonErr)
+	ErrTopicNotRelated = NewCoordErr("topic not related to me", CoordCommonErr)
+
+	ErrMissingTopicLog             = NewCoordErr("missing topic log ", CoordLocalErr)
+	ErrLocalTopicPartitionMismatch = NewCoordErr("local topic partition not match", CoordLocalErr)
+	ErrLocalFallBehind             = NewCoordErr("local data fall behind", CoordElectionErr)
+	ErrLocalForwardThanLeader      = NewCoordErr("local data is more than leader", CoordElectionErr)
+	ErrLocalWriteFailed            = NewCoordErr("write data to local failed", CoordLocalErr)
+	ErrLocalMissingTopic           = NewCoordErr("local topic missing", CoordLocalErr)
+	ErrLocalNotReadyForWrite       = NewCoordErr("local topic is not ready for write.", CoordLocalErr)
+	ErrLocalGetTopicFailed         = NewCoordErr("local topic init failed", CoordLocalErr)
+	ErrLocalInitTopicCoordFailed   = NewCoordErr("topic coordinator init failed", CoordLocalErr)
+	ErrLocalTopicDataCorrupt       = NewCoordErr("local topic data corrupt", CoordLocalErr)
 )
 
 func GetTopicPartitionFileName(topic string, partition int, suffix string) string {
@@ -337,7 +345,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 		topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
 		if err != nil {
 			coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, err)
-			if err == ErrTopicNotExist {
+			if err == ErrTopicInfoNotFound {
 				self.localNsqd.CloseExistingTopic(topicName, partition)
 			}
 			continue
@@ -615,7 +623,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		}
 
 		leaderOffset, leaderLogData, err := c.GetCommmitLogFromOffset(&topicInfo, offset)
-		if err == ErrCommitLogOutofBound || leaderOffset < offset {
+		if err.IsEqual(ErrTopicCommitLogOutofBound) || err.IsEqual(ErrTopicCommitLogEOF) {
 			coordLog.Infof("local commit log is more than leader while catchup: %v vs %v", offset, leaderOffset)
 			// local log is ahead of the leader, must truncate local data.
 			// truncate commit log and truncate the data file to last log
@@ -628,13 +636,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 			}
 			retryCnt++
 			time.Sleep(time.Second)
-			continue
 		} else {
 			if *localLogData == leaderLogData {
 				break
 			}
+			offset -= int64(GetLogDataSize())
 		}
-		offset -= int64(GetLogDataSize())
 	}
 	coordLog.Infof("local commit log match leader at: %v", offset)
 	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name)
@@ -644,7 +651,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 	}
 	if localTopic.GetTopicPart() != topicInfo.Partition {
 		coordLog.Errorf("local topic partition mismatch:%v vs %v", topicInfo.Partition, localTopic.GetTopicPart())
-		return ErrTopicPartitionMismatch
+		return ErrLocalTopicPartitionMismatch
 	}
 	lastLog, localErr := logMgr.GetCommmitLogFromOffset(offset)
 	if localErr != nil {

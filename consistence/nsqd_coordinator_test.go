@@ -157,13 +157,13 @@ func TestNsqdCoordStartup(t *testing.T) {
 func TestNsqdCoordSyncToLeader(t *testing.T) {
 }
 
-func TestNsqdCoordJoinISR(t *testing.T) {
+func TestNsqdCoordNewISR(t *testing.T) {
 }
 
 func TestNsqdCoordLeaveFromISR(t *testing.T) {
 }
 
-func TestNsqdCoordCatchup(t *testing.T) {
+func TestNsqdCoordNewCatchup(t *testing.T) {
 }
 
 func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
