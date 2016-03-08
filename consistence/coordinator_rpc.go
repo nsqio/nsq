@@ -34,15 +34,6 @@ const (
 	RpcErrTopicLoading
 )
 
-func FindSlice(in []string, e string) int {
-	for i, v := range in {
-		if v == e {
-			return i
-		}
-	}
-	return -1
-}
-
 type NsqdNodeLoadFactor struct {
 	nodeLF        float32
 	topicLeaderLF map[string]map[int]float32
@@ -218,6 +209,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo,
 }
 
 func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
+	// TODO: get local coordinator stats and errors, get local topic data stats
 	if topic == "" {
 		// all topic status
 	}

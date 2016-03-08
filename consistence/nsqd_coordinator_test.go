@@ -55,21 +55,21 @@ func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int,
 		return ErrMissingTopicLeaderSession
 	}
 
-	if leaderSession == nil {
-		// need push the current leadership to the node
-		req := RpcTopicLeaderSession{}
-		req.LeaderNode = localSession[partition].LeaderNode
-		req.LookupdEpoch = self.lookupEpoch
-		req.TopicName = topic
-		req.TopicPartition = partition
-		req.WaitReady = false
-		req.TopicEpoch = localSession[partition].LeaderEpoch
-		req.TopicLeaderEpoch = req.TopicEpoch
-		req.TopicLeaderSession = localSession[partition].Session
-		ret := true
-		self.fakeNsqdCoords[nid].rpcServer.NotifyTopicLeaderSession(req, &ret)
-		return nil
-	}
+	//if leaderSession == nil {
+	//	// need push the current leadership to the node
+	//	req := RpcTopicLeaderSession{}
+	//	req.LeaderNode = localSession[partition].LeaderNode
+	//	req.LookupdEpoch = self.lookupEpoch
+	//	req.TopicName = topic
+	//	req.TopicPartition = partition
+	//	req.WaitReady = false
+	//	req.TopicEpoch = localSession[partition].LeaderEpoch
+	//	req.TopicLeaderEpoch = req.TopicEpoch
+	//	req.TopicLeaderSession = localSession[partition].Session
+	//	ret := true
+	//	self.fakeNsqdCoords[nid].rpcServer.NotifyTopicLeaderSession(req, &ret)
+	//	return nil
+	//}
 	if s, ok := localSession[partition]; ok {
 		if s.IsSame(leaderSession) {
 			return nil

@@ -25,36 +25,6 @@ var (
 	ErrLeavingISRAsLeader = errors.New("node should not leave the isr as leader")
 )
 
-func MergeList(l []string, r []string) []string {
-	tmp := make(map[string]struct{})
-	for _, v := range l {
-		tmp[v] = struct{}{}
-	}
-	for _, v := range r {
-		tmp[v] = struct{}{}
-	}
-	ret := make([]string, 0, len(tmp))
-	for k, _ := range tmp {
-		ret = append(ret, k)
-	}
-	return ret
-}
-
-func FilterList(l []string, filter []string) []string {
-	tmp := make(map[string]struct{})
-	for _, v := range l {
-		tmp[v] = struct{}{}
-	}
-	for _, v := range filter {
-		delete(tmp, v)
-	}
-	ret := make([]string, 0, len(tmp))
-	for k, _ := range tmp {
-		ret = append(ret, k)
-	}
-	return ret
-}
-
 type NodeTopicStats struct {
 	NodeID string
 	// the consumed data (MB) on the leader last hour for each channel in the topic.
