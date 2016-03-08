@@ -13,15 +13,17 @@ import (
 )
 
 type fakeNsqdLeadership struct {
-	clusterID      string
-	regData        map[string]*NsqdNodeInfo
-	fakeTopicsData map[string]map[int]*TopicCoordinator
+	clusterID            string
+	regData              map[string]*NsqdNodeInfo
+	fakeTopicsLeaderData map[string]map[int]*TopicCoordinator
+	fakeTopicsInfo       map[string]map[int]*TopicPartionMetaInfo
 }
 
 func NewFakeNSQDLeadership() NSQDLeadership {
 	return &fakeNsqdLeadership{
-		regData:        make(map[string]*NsqdNodeInfo),
-		fakeTopicsData: make(map[string]map[int]*TopicCoordinator),
+		regData:              make(map[string]*NsqdNodeInfo),
+		fakeTopicsLeaderData: make(map[string]map[int]*TopicCoordinator),
+		fakeTopicsInfo:       make(map[string]map[int]*TopicPartionMetaInfo),
 	}
 }
 
@@ -39,12 +41,30 @@ func (self *fakeNsqdLeadership) Unregister(nodeData NsqdNodeInfo) error {
 	return nil
 }
 
-func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error {
-	t, ok := self.fakeTopicsData[topic]
+func (self *fakeNsqdLeadership) IsNodeTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) bool {
+	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
 		if tc, ok = t[partition]; ok {
 			if tc.topicLeaderSession.LeaderNode != nil {
+				if tc.topicLeaderSession.LeaderNode.GetID() == nodeData.GetID() {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error {
+	t, ok := self.fakeTopicsLeaderData[topic]
+	var tc *TopicCoordinator
+	if ok {
+		if tc, ok = t[partition]; ok {
+			if tc.topicLeaderSession.LeaderNode != nil {
+				if tc.topicLeaderSession.LeaderNode.GetID() == nodeData.GetID() {
+					return nil
+				}
 				return errors.New("topic leader already exist.")
 			}
 			tc.topicLeaderSession.LeaderNode = &nodeData
@@ -79,13 +99,13 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 		tc.topicLeaderSession.LeaderEpoch++
 		tc.topicLeaderSession.Session = nodeData.GetID() + strconv.Itoa(int(tc.topicLeaderSession.LeaderEpoch))
 		tmp[partition] = tc
-		self.fakeTopicsData[topic] = tmp
+		self.fakeTopicsLeaderData[topic] = tmp
 	}
 	return nil
 }
 
 func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int) error {
-	t, ok := self.fakeTopicsData[topic]
+	t, ok := self.fakeTopicsLeaderData[topic]
 	if ok {
 		delete(t, partition)
 	}
@@ -97,14 +117,26 @@ func (self *fakeNsqdLeadership) WatchLookupdLeader(key string, leader chan *NsqL
 }
 
 func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
-	t, ok := self.fakeTopicsData[topic]
+	t, ok := self.fakeTopicsInfo[topic]
 	if ok {
-		tc, ok2 := t[partition]
+		tp, ok2 := t[partition]
 		if ok2 {
-			return &tc.topicInfo, nil
+			return tp, nil
 		}
 	}
 	return nil, errors.New("topic not exist")
+}
+
+func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
+	s, ok := self.fakeTopicsLeaderData[topic]
+	if !ok {
+		return nil, ErrMissingTopicLeaderSession
+	}
+	ss, ok := s[partition]
+	if !ok {
+		return nil, ErrMissingTopicLeaderSession
+	}
+	return &ss.topicLeaderSession, nil
 }
 
 func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -116,6 +148,24 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 			p.(*fakeLookupRemoteProxy).t = t
 		}
 		return p, err
+	}
+	nsqdCoord.lookupLeader = &NsqLookupdNodeInfo{}
+	err := nsqdCoord.Start()
+	if err != nil {
+		panic(err)
+	}
+	time.Sleep(time.Second)
+	return nsqdCoord
+}
+
+func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
+	extraID string, nsqd *nsqd.NSQD, fakeLeadership *fakeNsqdLeadership, fakeLookupProxy *fakeLookupRemoteProxy) *NsqdCoordinator {
+	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	nsqdCoord.leadership = fakeLeadership
+	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
+		fakeLookupProxy.t = t
+		fakeLookupProxy.fakeNsqdCoords[nsqdCoord.myNode.GetID()] = nsqdCoord
+		return fakeLookupProxy, nil
 	}
 	nsqdCoord.lookupLeader = &NsqLookupdNodeInfo{}
 	err := nsqdCoord.Start()

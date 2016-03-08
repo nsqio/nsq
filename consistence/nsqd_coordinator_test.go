@@ -6,19 +6,26 @@ import (
 	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
 
 type fakeLookupRemoteProxy struct {
-	leaderSession *TopicLeaderSession
-	t             *testing.T
+	leaderSessions map[string]map[int]*TopicLeaderSession
+	fakeNsqdCoords map[string]*NsqdCoordinator
+	lookupEpoch    int
+	t              *testing.T
 }
 
 func NewFakeLookupRemoteProxy(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
-	return &fakeLookupRemoteProxy{}, nil
+	return &fakeLookupRemoteProxy{
+		leaderSessions: make(map[string]map[int]*TopicLeaderSession),
+		fakeNsqdCoords: make(map[string]*NsqdCoordinator),
+	}, nil
 }
 
 func (self *fakeLookupRemoteProxy) Reconnect() error {
@@ -43,7 +50,32 @@ func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int,
 	if self.t != nil {
 		self.t.Log("requesting ready for isr")
 	}
-	return nil
+	localSession, ok := self.leaderSessions[topic]
+	if !ok {
+		return ErrMissingTopicLeaderSession
+	}
+
+	if leaderSession == nil {
+		// need push the current leadership to the node
+		req := RpcTopicLeaderSession{}
+		req.LeaderNode = localSession[partition].LeaderNode
+		req.LookupdEpoch = self.lookupEpoch
+		req.TopicName = topic
+		req.TopicPartition = partition
+		req.WaitReady = false
+		req.TopicEpoch = localSession[partition].LeaderEpoch
+		req.TopicLeaderEpoch = req.TopicEpoch
+		req.TopicLeaderSession = localSession[partition].Session
+		ret := true
+		self.fakeNsqdCoords[nid].rpcServer.NotifyTopicLeaderSession(req, &ret)
+		return nil
+	}
+	if s, ok := localSession[partition]; ok {
+		if s.IsSame(leaderSession) {
+			return nil
+		}
+	}
+	return ErrLeaderSessionMismatch
 }
 
 func (self *fakeLookupRemoteProxy) PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr {
@@ -64,7 +96,7 @@ func (self *fakeLookupRemoteProxy) RequestLeaveFromISRByLeader(topic string, par
 	if self.t != nil {
 		self.t.Log("requesting leave isr by leader")
 	}
-	if self.leaderSession.IsSame(leaderSession) {
+	if self.leaderSessions[topic][partition].IsSame(leaderSession) {
 		return nil
 	}
 	return ErrNotTopicLeader
@@ -143,15 +175,117 @@ func TestNsqdCoordLookupdChanged(t *testing.T) {
 	t.Log(commonErr.Error())
 }
 
+func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, string) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 1
+	nsqd := mustStartNSQD(opts)
+	randPort := rand.Int31n(60000-10000) + 10000
+	nodeInfo := NsqdNodeInfo{
+		NodeIp:  "127.0.0.1",
+		TcpPort: "0",
+		RpcPort: strconv.Itoa(int(randPort)),
+	}
+	nodeInfo.ID = GenNsqdNodeID(&nodeInfo, id)
+	return nsqd, int(randPort), &nodeInfo, opts.DataPath
+}
+
 func TestNsqdCoordStartup(t *testing.T) {
 	// first startup
+	topic := "coordTestTopic"
+	partition := 1
 
+	coordLog.level = 2
+	coordLog.logger = &levellogger.GLogger{}
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
+	nsqd4, randPort4, _, data4 := newNsqdNode(t, "id4")
+
+	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
 	// start as leader
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:        topic,
+		Partition:   partition,
+		Leader:      nodeInfo1.GetID(),
+		ISR:         make([]string, 0),
+		CatchupList: make([]string, 0),
+		Epoch:       1,
+		Replica:     3,
+	}
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
+	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
+
+	tmp := make(map[int]*TopicPartionMetaInfo)
+	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.AcquireTopicLeader(topic, partition, *nodeInfo1)
+	tmp[partition] = fakeInfo
+
+	nsqd1.GetTopic(topic, partition)
+	nsqd2.GetTopic(topic, partition)
+	nsqd3.GetTopic(topic, partition)
+	nsqd4.GetTopic(topic, partition)
+
+	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)
+	fakeSession, _ := fakeLeadership.GetTopicLeaderSession(topic, partition)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic] = make(map[int]*TopicLeaderSession)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic][partition] = fakeSession
+
+	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+
+	// wait the node start and acquire leadership
+	time.Sleep(time.Second)
+	// leader startup
+	test.Equal(t, true, fakeLeadership.IsNodeTopicLeader(topic, partition, nodeInfo1))
+	tc, err := nsqdCoord1.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	test.Equal(t, tc.topicInfo, *fakeInfo)
+	test.Equal(t, tc.topicLeaderSession, *fakeSession)
+	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
+	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
+	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
 	// start as isr
+	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data2)
+	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+
+	tc, err = nsqdCoord2.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	test.Equal(t, tc.topicInfo, *fakeInfo)
+	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
+	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
+	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
+
 	// start as catchup
-	// start as no remote topic
+	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data3)
+	defer nsqd3.Exit()
+	tc, err = nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	// wait catchup
+	time.Sleep(time.Second * 3)
+	tc, err = nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	test.Equal(t, tc.topicInfo, *fakeInfo)
+	test.Equal(t, tc.topicLeaderSession, *fakeSession)
+	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
+	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
+	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
+
 	// start as not relevant
-	// start as not relevant but request join isr
+	nsqdCoord4 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data4)
+	defer nsqd4.Exit()
+	tc, err = nsqdCoord4.getTopicCoord(topic, partition)
+	test.NotNil(t, err)
+	// start as no remote topic
 }
 
 func TestNsqdCoordSyncToLeader(t *testing.T) {
@@ -172,36 +306,19 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 
 	coordLog.level = 2
 	coordLog.logger = &levellogger.GLogger{}
-	opts1 := nsqdNs.NewOptions()
-	opts1.Logger = newTestLogger(t)
-	opts1.LogLevel = 1
-	nsqd1 := mustStartNSQD(opts1)
-	nsqdCoord1 := startNsqdCoord(t, "11111", opts1.DataPath, "id1", nsqd1)
-	//defer nsqdCoord1.Stop()
-	defer os.RemoveAll(opts1.DataPath)
-	defer nsqd1.Exit()
-	nodeInfo1 := NsqdNodeInfo{
-		NodeIp:  "127.0.0.1",
-		TcpPort: "0",
-		RpcPort: "11111",
-	}
-	nodeInfo1.ID = GenNsqdNodeID(&nodeInfo1, "id1")
 
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(randPort1), data1, "id1", nsqd1)
+	//defer nsqdCoord1.Stop()
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
 	time.Sleep(time.Second)
-	opts2 := nsqdNs.NewOptions()
-	opts2.Logger = newTestLogger(t)
-	opts2.LogLevel = 1
-	nsqd2 := mustStartNSQD(opts2)
-	nsqdCoord2 := startNsqdCoord(t, "11112", opts2.DataPath, "id2", nsqd2)
+
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(randPort2), data2, "id2", nsqd2)
 	//defer nsqdCoord2.Stop()
-	defer os.RemoveAll(opts2.DataPath)
+	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
-	nodeInfo2 := NsqdNodeInfo{
-		NodeIp:  "127.0.0.1",
-		TcpPort: "0",
-		RpcPort: "11112",
-	}
-	nodeInfo2.ID = GenNsqdNodeID(&nodeInfo2, "id2")
 
 	var topicInitInfo RpcAdminTopicInfo
 	topicInitInfo.Name = topic
@@ -214,7 +331,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	var leaderSession RpcTopicLeaderSession
-	leaderSession.LeaderNode = &nodeInfo1
+	leaderSession.LeaderNode = nodeInfo1
 	leaderSession.TopicLeaderEpoch = 1
 	leaderSession.TopicLeaderSession = "123"
 	leaderSession.TopicName = topic
@@ -326,7 +443,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord2, leaderSession)
 	// test leader changed
 	topicInitInfo.Leader = nsqdCoord2.myNode.GetID()
-	leaderSession.LeaderNode = &nodeInfo2
+	leaderSession.LeaderNode = nodeInfo2
 	leaderSession.TopicLeaderEpoch++
 	leaderSession.TopicEpoch++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)

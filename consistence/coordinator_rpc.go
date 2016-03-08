@@ -112,6 +112,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
+	coordLog.Infof("got leader session notify : %v, leader node info:%v", rpcTopicReq, rpcTopicReq.LeaderNode)
 	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
 	if err != nil {
 		coordLog.Infof("topic partition missing.")
@@ -247,7 +248,7 @@ func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicI
 type RpcTopicData struct {
 	TopicName          string
 	TopicPartition     int
-	TopicEpoch         int
+	TopicEpoch         int32
 	TopicLeaderEpoch   int32
 	TopicLeaderSession string
 }
@@ -406,7 +407,11 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, 
 		return err
 	}
 
-	ret.Logs, _ = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
+	var localErr error
+	ret.Logs, localErr = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
+	if localErr != nil {
+		return localErr
+	}
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {
 		d, err := self.nsqdCoord.readTopicRawData(tc, l.MsgOffset, l.MsgSize)
@@ -415,7 +420,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, 
 		}
 		ret.DataList = append(ret.DataList, d)
 	}
-	return err
+	return nil
 }
 
 func (self *NsqdCoordRpcServer) TestRpcError(req RpcTestReq, ret *RpcTestRsp) error {

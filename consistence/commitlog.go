@@ -129,6 +129,9 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	if err != nil {
 		return nil, err
 	}
+	if offset == 0 {
+		return nil, nil
+	}
 	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
 	n, err := self.appender.ReadAt(b.Bytes(), offset-int64(GetLogDataSize()))
 	if err != nil {
@@ -184,6 +187,9 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 		return 0, err
 	}
 	fsize := f.Size()
+	if fsize == 0 {
+		return 0, nil
+	}
 	num := fsize / int64(GetLogDataSize())
 	roundOffset := (num - 1) * int64(GetLogDataSize())
 	for {
@@ -256,7 +262,9 @@ func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]Comm
 		return nil, err
 	}
 	fsize := f.Size()
-
+	if startOffset == fsize {
+		return nil, nil
+	}
 	if startOffset > fsize-int64(GetLogDataSize()) {
 		return nil, ErrCommitLogOutofBound
 	}

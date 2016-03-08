@@ -16,6 +16,7 @@ type TopicCoordinator struct {
 	channelConsumeOffset map[string]ChannelConsumerOffset
 	localDataLoaded      bool
 	logMgr               *TopicCommitLogMgr
+	catchupRunning       int32
 }
 
 func NewTopicCoordinator(name string, partition int, basepath string) *TopicCoordinator {

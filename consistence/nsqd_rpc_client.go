@@ -137,7 +137,7 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
-	updateInfo.TopicEpoch = info.Epoch
+	updateInfo.TopicEpoch = int32(info.Epoch)
 	updateInfo.TopicLeaderEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
@@ -153,7 +153,7 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessage = message
-	putData.TopicEpoch = info.Epoch
+	putData.TopicEpoch = int32(info.Epoch)
 	putData.TopicLeaderEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
@@ -167,7 +167,7 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages
-	putData.TopicEpoch = info.Epoch
+	putData.TopicEpoch = int32(info.Epoch)
 	putData.TopicLeaderEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr

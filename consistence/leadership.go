@@ -107,6 +107,7 @@ type NSQDLeadership interface {
 	ReleaseTopicLeader(topic string, partition int) error
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 }
 
 type FakeNsqlookupLeadership struct {
