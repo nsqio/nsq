@@ -33,38 +33,38 @@ NOTE: master is our *development* branch and may not be stable at all times.
 ## In Production
 
 <a href="http://bitly.com"><img src="http://nsq.io/static/img/bitly_logo.png" width="84" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://life360.com"><img src="http://nsq.io/static/img/life360_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://hailocab.com"><img src="http://nsq.io/static/img/hailo_logo.png" width="62" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://simplereach.com"><img src="http://nsq.io/static/img/simplereach_logo.png" width="136" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://moz.com"><img src="http://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://path.com"><img src="http://nsq.io/static/img/path_logo.png" width="84" align="middle"/></a><br/>
+<a href="https://www.life360.com/"><img src="http://nsq.io/static/img/life360_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://www.hailoapp.com/"><img src="http://nsq.io/static/img/hailo_logo.png" width="62" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.simplereach.com/"><img src="http://nsq.io/static/img/simplereach_logo.png" width="136" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://moz.com/"><img src="http://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://path.com/"><img src="http://nsq.io/static/img/path_logo.png" width="84" align="middle"/></a><br/>
 
-<a href="http://segment.io"><img src="http://nsq.io/static/img/segmentio_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://eventful.com"><img src="http://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://energyhub.com"><img src="http://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://segment.com/"><img src="http://nsq.io/static/img/segmentio_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://eventful.com/events"><img src="http://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.energyhub.com"><img src="http://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://project-fifo.net"><img src="http://nsq.io/static/img/project_fifo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://trendrr.com"><img src="http://nsq.io/static/img/trendrr_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://reonomy.com"><img src="http://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a><br/>
+<a href="https://reonomy.com/"><img src="http://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a><br/>
 
 <a href="http://hw-ops.com"><img src="http://nsq.io/static/img/heavy_water.png" width="50" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://lytics.io"><img src="http://nsq.io/static/img/lytics.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.getlytics.com/"><img src="http://nsq.io/static/img/lytics.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://mediaforge.com"><img src="http://nsq.io/static/img/rakuten.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://socialradar.com"><img src="http://nsq.io/static/img/socialradar_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://wistia.com"><img src="http://nsq.io/static/img/wistia_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://stripe.com"><img src="http://nsq.io/static/img/stripe_logo.png" width="96" align="middle"/></a><br/>
+<a href="https://stripe.com/"><img src="http://nsq.io/static/img/stripe_logo.png" width="96" align="middle"/></a><br/>
 
-<a href="http://soundest.com"><img src="http://nsq.io/static/img/soundest_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://docker.com"><img src="http://nsq.io/static/img/docker_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://getweave.com"><img src="http://nsq.io/static/img/weave_logo.png" width="94" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://www.soundest.com/"><img src="http://nsq.io/static/img/soundest_logo.png" width="96" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://www.docker.com/"><img src="http://nsq.io/static/img/docker_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.getweave.com/"><img src="http://nsq.io/static/img/weave_logo.png" width="94" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.shipwire.com"><img src="http://nsq.io/static/img/shipwire_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://digg.com"><img src="http://nsq.io/static/img/digg_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://scalabull.com"><img src="http://nsq.io/static/img/scalabull_logo.png" width="97" align="middle"/></a><br/>
+<a href="http://www.scalabull.com/"><img src="http://nsq.io/static/img/scalabull_logo.png" width="97" align="middle"/></a><br/>
 
-<a href="http://augury.com"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://buzzfeed.com"><img src="http://nsq.io/static/img/buzzfeed_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.augury.com/"><img src="http://nsq.io/static/img/augury_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.buzzfeed.com/"><img src="http://nsq.io/static/img/buzzfeed_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://eztable.com"><img src="http://nsq.io/static/img/eztable_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="http://dotabuff.com"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://fastly.com"><img src="http://nsq.io/static/img/fastly_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="http://www.dotabuff.com/"><img src="http://nsq.io/static/img/dotabuff_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://www.fastly.com/"><img src="http://nsq.io/static/img/fastly_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://talky.io"><img src="http://nsq.io/static/img/talky_logo.png" width="97" align="middle"/></a><br/>
 
 <a href="https://groupme.com"><img src="http://nsq.io/static/img/groupme_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
