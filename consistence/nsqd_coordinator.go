@@ -331,9 +331,15 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					if err != nil {
 						coordLog.Warningf("failed to acquire leader : %v", err)
 					}
-				} else if FindSlice(tc.topicInfo.ISR, self.myNode.GetID()) != -1 {
+				}
+				if FindSlice(tc.topicInfo.ISR, self.myNode.GetID()) != -1 {
 					// this will trigger the lookup send the current leadership to me
-					self.notifyReadyForTopicISR(&tc.topicInfo, &tc.topicLeaderSession)
+					topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
+					if err != nil {
+						coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
+					} else {
+						tc.topicLeaderSession = *topicLeaderSession
+					}
 				}
 			}
 			continue
@@ -551,7 +557,7 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaI
 		return err
 	}
 
-	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession)
+	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, topicInfo.ISR)
 }
 
 func (self *NsqdCoordinator) prepareLeaveFromISR(topic string, partition int) *CoordErr {

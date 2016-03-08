@@ -46,7 +46,7 @@ func (self *fakeLookupRemoteProxy) RequestJoinTopicISR(topic string, partition i
 	return nil
 }
 
-func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
+func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, isr []string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting ready for isr")
 	}

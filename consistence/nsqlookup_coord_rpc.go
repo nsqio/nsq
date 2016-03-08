@@ -22,9 +22,10 @@ type RpcReqJoinISR struct {
 	RpcLookupReqBase
 }
 
-type RpcReadyForJoinISR struct {
+type RpcReadyForISR struct {
 	RpcLookupReqBase
-	ReqSession string
+	ReadyISR      []string
+	LeaderSession TopicLeaderSession
 }
 
 type RpcRspJoinISR struct {
@@ -58,8 +59,8 @@ func (self *NSQLookupdCoordinator) RequestJoinTopicISR(req RpcReqJoinISR, ret *R
 	return err
 }
 
-func (self *NSQLookupdCoordinator) ReadyForTopicISR(req RpcReadyForJoinISR, ret *CoordErr) error {
-	err := self.handleReadyForJoinISR(req.TopicName, req.TopicPartition, req.NodeID, req.ReqSession)
+func (self *NSQLookupdCoordinator) ReadyForTopicISR(req RpcReadyForISR, ret *CoordErr) error {
+	err := self.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.ReadyISR)
 	ret.ErrMsg = err.Error()
 	return err
 }

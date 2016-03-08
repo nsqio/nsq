@@ -10,7 +10,7 @@ type INsqlookupRemoteProxy interface {
 	Reconnect() error
 	RequestJoinCatchup(topic string, partition int, nid string) *CoordErr
 	RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr
-	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
+	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, isr []string) *CoordErr
 	PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
@@ -68,7 +68,7 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RequestJoinCatchup", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -78,20 +78,21 @@ func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret RpcRspJoinISR
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqJoinCatchup", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RequestJoinTopicISR", req, &ret)
 	return convertRpcError(err, &ret.CoordErr)
 }
 
-func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
-	var req RpcReadyForJoinISR
+func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, isr []string) *CoordErr {
+	var req RpcReadyForISR
 	req.NodeID = nid
 	if leaderSession != nil {
-		req.ReqSession = leaderSession.Session
+		req.LeaderSession = *leaderSession
 	}
+	req.ReadyISR = isr
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReadyForJoinISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.ReadyForTopicISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -101,7 +102,7 @@ func (self *NsqLookupRpcClient) PrepareLeaveFromISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcPrepareLeaveFromISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.PrepareLeaveFromISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -111,7 +112,7 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISR", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RequestLeaveFromISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -122,6 +123,6 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partit
 	req.TopicPartition = partition
 	req.LeaderSession = *leaderSession
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RpcReqLeaveFromISRByLeader", req, &ret)
+	err := self.CallWithRetry("NSQLookupdCoordinator.RequestLeaveFromISRByLeader", req, &ret)
 	return convertRpcError(err, &ret)
 }

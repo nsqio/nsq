@@ -1364,7 +1364,8 @@ func (self *NSQLookupdCoordinator) handleRequestJoinISR(topic string, partition 
 	return state.waitingSession, nil
 }
 
-func (self *NSQLookupdCoordinator) handleReadyForJoinISR(topic string, partition int, nodeID string, session string) error {
+func (self *NSQLookupdCoordinator) handleReadyForISR(topic string, partition int, nodeID string, leaderSession TopicLeaderSession, isr []string) error {
+	session := leaderSession.Session
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("get topic info failed while sync isr.")
