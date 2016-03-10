@@ -116,7 +116,7 @@ var (
 	ErrLocalWriteFailed            = NewCoordErr("write data to local failed", CoordLocalErr)
 	ErrLocalMissingTopic           = NewCoordErr("local topic missing", CoordLocalErr)
 	ErrLocalNotReadyForWrite       = NewCoordErr("local topic is not ready for write.", CoordLocalErr)
-	ErrLocalGetTopicFailed         = NewCoordErr("local topic init failed", CoordLocalErr)
+	ErrLocalInitTopicFailed        = NewCoordErr("local topic init failed", CoordLocalErr)
 	ErrLocalInitTopicCoordFailed   = NewCoordErr("topic coordinator init failed", CoordLocalErr)
 	ErrLocalTopicDataCorrupt       = NewCoordErr("local topic data corrupt", CoordLocalErr)
 )

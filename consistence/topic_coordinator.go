@@ -19,24 +19,24 @@ type TopicCoordinator struct {
 	catchupRunning       int32
 }
 
-func NewTopicCoordinator(name string, partition int, basepath string) *TopicCoordinator {
+func NewTopicCoordinator(name string, partition int, basepath string) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{
 		channelConsumeOffset: make(map[string]ChannelConsumerOffset),
 	}
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
 	var err error
-	os.MkdirAll(basepath, 0700)
+	err = os.MkdirAll(basepath, 0700)
 	if err != nil {
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
-		return nil
+		return nil, err
 	}
 	tc.logMgr, err = InitTopicCommitLogMgr(name, partition, basepath, DEFAULT_COMMIT_BUF_SIZE)
 	if err != nil {
 		coordLog.Errorf("topic(%v) failed to init log: %v ", name, err)
-		return nil
+		return nil, err
 	}
-	return tc
+	return tc, nil
 }
 
 func (self *TopicCoordinator) GetLeaderID() string {

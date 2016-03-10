@@ -126,7 +126,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 	tpCoord, ok := coords[topicInfo.Partition]
 	if !ok {
 		path := GetTopicPartitionBasePath(nsqdCoord.dataRootPath, topicInfo.Name, topicInfo.Partition)
-		tpCoord = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path)
+		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path)
 		coords[topicInfo.Partition] = tpCoord
 	}
 	err := nsqdCoord.updateTopicInfo(tpCoord, false, &topicInfo.TopicPartionMetaInfo)
@@ -136,15 +136,10 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 	return tpCoord
 }
 
-func ensureTopicLeaderSession(nsqdCoord *NsqdCoordinator, session RpcTopicLeaderSession) {
-	tc, err := nsqdCoord.getTopicCoord(session.TopicName, session.TopicPartition)
+func ensureTopicLeaderSession(nsqdCoord *NsqdCoordinator, topic string, partition int, newSession *TopicLeaderSession) {
+	tc, err := nsqdCoord.getTopicCoord(topic, partition)
 	if err != nil {
 		panic(err)
-	}
-	newSession := &TopicLeaderSession{
-		LeaderNode:  session.LeaderNode,
-		Session:     session.TopicLeaderSession,
-		LeaderEpoch: session.TopicLeaderEpoch,
 	}
 	err = nsqdCoord.updateTopicLeaderSession(tc, newSession, true)
 	if err != nil {
@@ -178,7 +173,7 @@ func TestNsqdCoordLookupdChanged(t *testing.T) {
 func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, string) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 1
+	opts.LogLevel = 2
 	nsqd := mustStartNSQD(opts)
 	randPort := rand.Int31n(60000-10000) + 10000
 	nodeInfo := NsqdNodeInfo{
@@ -203,7 +198,6 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqd4, randPort4, _, data4 := newNsqdNode(t, "id4")
 
 	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
-	// start as leader
 	fakeInfo := &TopicPartionMetaInfo{
 		Name:        topic,
 		Partition:   partition,
@@ -239,6 +233,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	// wait the node start and acquire leadership
 	time.Sleep(time.Second)
 	// leader startup
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
 	test.Equal(t, true, fakeLeadership.IsNodeTopicLeader(topic, partition, nodeInfo1))
 	tc, err := nsqdCoord1.getTopicCoord(topic, partition)
 	test.Nil(t, err)
@@ -254,6 +249,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	defer nsqd2.Exit()
 	time.Sleep(time.Second)
 
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
 	tc, err = nsqdCoord2.getTopicCoord(topic, partition)
 	test.Nil(t, err)
 	test.Equal(t, tc.topicInfo, *fakeInfo)
@@ -288,16 +284,158 @@ func TestNsqdCoordStartup(t *testing.T) {
 	// start as no remote topic
 }
 
-func TestNsqdCoordSyncToLeader(t *testing.T) {
-}
-
-func TestNsqdCoordNewISR(t *testing.T) {
-}
-
 func TestNsqdCoordLeaveFromISR(t *testing.T) {
+	// leave as isr
+	// leave as leader
 }
 
-func TestNsqdCoordNewCatchup(t *testing.T) {
+func TestNsqdCoordCatchup(t *testing.T) {
+	topic := "coordTestTopic"
+	partition := 1
+
+	coordLog.level = 2
+	coordLog.logger = &levellogger.GLogger{}
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
+
+	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:        topic,
+		Partition:   partition,
+		Leader:      nodeInfo1.GetID(),
+		ISR:         make([]string, 0),
+		CatchupList: make([]string, 0),
+		Epoch:       1,
+		Replica:     3,
+	}
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
+	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
+
+	tmp := make(map[int]*TopicPartionMetaInfo)
+	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.AcquireTopicLeader(topic, partition, *nodeInfo1)
+	tmp[partition] = fakeInfo
+
+	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)
+	fakeSession, _ := fakeLeadership.GetTopicLeaderSession(topic, partition)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic] = make(map[int]*TopicLeaderSession)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic][partition] = fakeSession
+
+	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+	time.Sleep(time.Second)
+
+	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data2)
+	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+
+	// create topic on nsqdcoord
+	var topicInitInfo RpcAdminTopicInfo
+	topicInitInfo.TopicPartionMetaInfo = *fakeInfo
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	// notify leadership to nsqdcoord
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+
+	// message header is 26 bytes
+	msgCnt := 0
+	msgRawSize := int64(nsqdNs.MessageHeaderBytes() + 3 + 4)
+	topicData1 := nsqd1.GetTopicIgnPart(topic)
+	for i := 0; i < 20; i++ {
+		err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
+		test.Nil(t, err)
+		msgCnt++
+	}
+	topicData2 := nsqd2.GetTopicIgnPart(topic)
+	topicData1.ForceFlush()
+	topicData2.ForceFlush()
+
+	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
+	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
+	logs1, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs1), msgCnt)
+
+	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
+	tc2, _ := nsqdCoord1.getTopicCoord(topic, partition)
+	logs2, err := tc2.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs2), msgCnt)
+	test.Equal(t, logs1, logs2)
+	t.Log(logs2)
+
+	// start as catchup
+	// 3 kinds of catchup
+	// 1. fall behind, 2. exact same, 3. data more than leader(need rollback)
+	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data3)
+	defer nsqd3.Exit()
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	// wait catchup
+	time.Sleep(time.Second * 3)
+	topicData3 := nsqd3.GetTopicIgnPart(topic)
+	topicData3.ForceFlush()
+	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err := tc3.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+	// catchup again with exact same logs
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	time.Sleep(time.Second * 3)
+	topicData3.ForceFlush()
+	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+	// change leader and make nsqd3 write more than old leader
+	changedInfo := topicInitInfo
+	changedInfo.Leader = nsqdCoord3.myNode.GetID()
+	changedInfo.ISR = make([]string, 0)
+	changedInfo.ISR = append(changedInfo.ISR, nodeInfo3.GetID())
+	changedInfo.Replica = 1
+	changedInfo.CatchupList = make([]string, 0)
+	fakeSession.LeaderNode = nodeInfo3
+	fakeSession.Session = fakeSession.Session + fakeSession.Session
+	fakeSession.LeaderEpoch++
+	ensureTopicOnNsqdCoord(nsqdCoord3, changedInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+	err = nsqdCoord3.PutMessageToCluster(topicData3, []byte("123"))
+	test.Nil(t, err)
+	err = nsqdCoord3.PutMessageToCluster(topicData3, []byte("123"))
+	test.Nil(t, err)
+
+	fakeSession.LeaderNode = nodeInfo1
+	fakeSession.Session = fakeSession.Session
+	fakeSession.LeaderEpoch++
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	time.Sleep(time.Second * 3)
+	topicData3.ForceFlush()
+
+	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
 }
 
 func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
@@ -330,16 +468,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.Replica = 2
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
-	var leaderSession RpcTopicLeaderSession
-	leaderSession.LeaderNode = nodeInfo1
-	leaderSession.TopicLeaderEpoch = 1
-	leaderSession.TopicLeaderSession = "123"
-	leaderSession.TopicName = topic
-	leaderSession.TopicPartition = partition
-	leaderSession.TopicEpoch = 1
+	leaderSession := &TopicLeaderSession{
+		LeaderNode:  nodeInfo1,
+		LeaderEpoch: 1,
+		Session:     "fake123",
+	}
 	// normal test
-	ensureTopicLeaderSession(nsqdCoord1, leaderSession)
-	ensureTopicLeaderSession(nsqdCoord2, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
 	topicData1 := nsqd1.GetTopicIgnPart(topic)
@@ -368,7 +504,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
 	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), true)
 	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), false)
@@ -394,13 +530,13 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.ISR = oldISR
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	// test write epoch mismatch
-	leaderSession.TopicLeaderEpoch++
-	ensureTopicLeaderSession(nsqdCoord2, leaderSession)
+	leaderSession.LeaderEpoch++
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
 	// test leader epoch increase
-	ensureTopicLeaderSession(nsqdCoord1, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.Nil(t, err)
 	msgCnt++
@@ -411,14 +547,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
 	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
 	channel1 := topicData1.GetChannel("ch1")
 	channel2 := topicData2.GetChannel("ch1")
@@ -436,20 +572,19 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	msgConsumed = msgCnt
 
 	// test write session mismatch
-	leaderSession.TopicLeaderSession = "1234new"
-	ensureTopicLeaderSession(nsqdCoord1, leaderSession)
+	leaderSession.Session = "1234new"
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
-	ensureTopicLeaderSession(nsqdCoord2, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	// test leader changed
 	topicInitInfo.Leader = nsqdCoord2.myNode.GetID()
 	leaderSession.LeaderNode = nodeInfo2
-	leaderSession.TopicLeaderEpoch++
-	leaderSession.TopicEpoch++
+	leaderSession.LeaderEpoch++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
-	ensureTopicLeaderSession(nsqdCoord1, leaderSession)
-	ensureTopicLeaderSession(nsqdCoord2, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
 	err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
@@ -469,14 +604,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
-		logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+		logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
 		test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 		logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
-		logs[msgCnt-1].Epoch = leaderSession.TopicLeaderEpoch
+		logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 		t.Log(logs)
 	}
 	test.Equal(t, int64(channel1.GetChannelEnd()), int64(msgCnt)*msgRawSize)
@@ -493,4 +628,16 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	}
 	msgConsumed = msgCnt
 	// test retry write
+}
+
+func TestNsqdCoordLeaderChangeWhileWrite(t *testing.T) {
+	// old leader write and part of the isr got the write,
+	// then leader failed, choose new leader from isr
+	// RESULT: all new isr nodes should be synced
+}
+
+func TestNsqdCoordISRChangedWhileWrite(t *testing.T) {
+	// leader write while network split, and part of isr agreed with write
+	// leader need rollback (or just move leader out from isr and sync with new leader )
+	// RESULT: all new isr nodes should be synced
 }

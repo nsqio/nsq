@@ -44,6 +44,7 @@ type Topic struct {
 	channelMap  map[string]*Channel
 	channelLock sync.RWMutex
 	backend     BackendQueueWriter
+	dataPath    string
 	flushChan   chan int
 	exitFlag    int32
 
@@ -91,6 +92,7 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 	}
 	t.fullName = GetTopicFullName(t.tname, t.partition)
 
+	t.dataPath = opt.DataPath
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true
 		t.backend = newDummyBackendQueueWriter()
@@ -109,6 +111,11 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
+	e := t.backend.GetQueueReadEnd().(*diskQueueEndInfo)
+	return newDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
 }
 
 func (t *Topic) BufferPoolGet(capacity int) *bytes.Buffer {

@@ -96,7 +96,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	if fsize > 0 {
 		num := fsize / int64(GetLogDataSize())
 		roundOffset := (num - 1) * int64(GetLogDataSize())
-		l, err := mgr.GetCommmitLogFromOffset(roundOffset)
+		l, err := mgr.GetCommitLogFromOffset(roundOffset)
 		if err != nil {
 			coordLog.Infof("load file error: %v", err)
 			return nil, err
@@ -150,7 +150,7 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	return &l, nil
 }
 
-func (self *TopicCommitLogMgr) GetCommmitLogFromOffset(offset int64) (*CommitLogData, error) {
+func (self *TopicCommitLogMgr) GetCommitLogFromOffset(offset int64) (*CommitLogData, error) {
 	self.FlushCommitLogs()
 	f, err := self.appender.Stat()
 	if err != nil {
@@ -193,7 +193,7 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 	num := fsize / int64(GetLogDataSize())
 	roundOffset := (num - 1) * int64(GetLogDataSize())
 	for {
-		l, err := self.GetCommmitLogFromOffset(roundOffset)
+		l, err := self.GetCommitLogFromOffset(roundOffset)
 		if err != nil {
 			return 0, err
 		}
@@ -271,7 +271,11 @@ func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]Comm
 	if (startOffset % int64(GetLogDataSize())) != 0 {
 		return nil, ErrCommitLogOffsetInvalid
 	}
-	b := bytes.NewBuffer(make([]byte, GetLogDataSize()*num))
+	needRead := int64(num * GetLogDataSize())
+	if startOffset+needRead > fsize {
+		needRead = fsize - startOffset
+	}
+	b := bytes.NewBuffer(make([]byte, needRead))
 	n, err := self.appender.ReadAt(b.Bytes(), startOffset)
 	if err != nil {
 		if err != io.EOF {

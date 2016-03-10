@@ -1,7 +1,6 @@
 package consistence
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"github.com/absolute8511/nsq/nsqd"
@@ -17,6 +16,7 @@ import (
 const (
 	MAX_WRITE_RETRY   = 10
 	MAX_CATCHUP_RETRY = 5
+	MAX_LOG_PULL      = 16
 )
 
 func GetTopicPartitionFileName(topic string, partition int, suffix string) string {
@@ -37,23 +37,25 @@ type TopicPartitionID struct {
 	TopicPartition int
 }
 
-func DecodeMessagesFromRaw(bufReader *bufio.Reader, msgs []*nsqd.Message, tmpbuf []byte) ([]*nsqd.Message, error) {
-	var msgSize int32
-	buf := tmpbuf[:0]
+func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]*nsqd.Message, error) {
 	msgs = msgs[:0]
-	for {
-		err := binary.Read(bufReader, binary.BigEndian, &msgSize)
-		if err != nil {
-			if err == io.EOF {
-				return msgs, nil
-			}
-			return nil, err
+	size := int32(len(data))
+	current := int32(0)
+	for current < size {
+		if size-current < 4 {
+			return msgs, io.ErrUnexpectedEOF
 		}
-		_, err = io.ReadFull(bufReader, buf)
+		msgSize := int32(binary.BigEndian.Uint32(data[current : current+4]))
+		current += 4
+		if current+msgSize > size {
+			return msgs, io.ErrUnexpectedEOF
+		}
+		buf := data[current : current+msgSize]
 		msg, err := nsqd.DecodeMessage(buf)
 		if err != nil {
-			return nil, err
+			return msgs, err
 		}
+		current += msgSize
 		msgs = append(msgs, msg)
 	}
 	return msgs, nil
@@ -220,21 +222,25 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 		}
 		shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 		if shouldLoad {
+			basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
+			tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath)
+			if err != nil {
+				coordLog.Infof("failed to get topic coordinator:%v-%v, err:%v", topicName, partition, err)
+				continue
+			}
+			tc.topicInfo = *topicInfo
+			topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
+			if err != nil {
+				coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
+			} else {
+				tc.topicLeaderSession = *topicLeaderSession
+			}
 			self.coordMutex.Lock()
 			coords, ok := self.topicCoords[topicInfo.Name]
 			if !ok {
 				coords = make(map[int]*TopicCoordinator)
 				self.topicCoords[topicInfo.Name] = coords
 			}
-			basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
-			tc := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath)
-			tc.topicInfo = *topicInfo
-			topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
-			if err != nil {
-				coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
-				continue
-			}
-			tc.topicLeaderSession = *topicLeaderSession
 			coords[topicInfo.Partition] = tc
 			self.coordMutex.Unlock()
 		} else {
@@ -348,6 +354,7 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 }
 
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
+	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
 	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, self.myNode)
 	if err != nil {
 		coordLog.Infof("failed to acquire leader for topic(%v): %v", topicInfo.Name, err)
@@ -475,6 +482,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		coordLog.Debugf("topic(%v) catching already running", topicInfo.Name)
 		return ErrTopicCatchupAlreadyRunning
 	}
+	defer atomic.StoreInt32(&tc.catchupRunning, 0)
 	coordLog.Infof("local topic begin catchup : %v, isISR: %v", topicInfo.GetTopicDesp(), isISR)
 	logMgr := tc.logMgr
 	offset, logErr := logMgr.GetLastLogOffset()
@@ -496,13 +504,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
-		localLogData, localErr := logMgr.GetCommmitLogFromOffset(offset)
+		localLogData, localErr := logMgr.GetCommitLogFromOffset(offset)
 		if localErr != nil {
 			offset -= int64(GetLogDataSize())
 			continue
 		}
 
-		leaderOffset, leaderLogData, err := c.GetCommmitLogFromOffset(&topicInfo, offset)
+		leaderOffset, leaderLogData, err := c.GetCommitLogFromOffset(&topicInfo, offset)
 		if err.IsEqual(ErrTopicCommitLogOutofBound) || err.IsEqual(ErrTopicCommitLogEOF) {
 			coordLog.Infof("local commit log is more than leader while catchup: %v vs %v", offset, leaderOffset)
 			// local log is ahead of the leader, must truncate local data.
@@ -536,7 +544,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 	localTopic.Lock()
 	defer localTopic.Unlock()
 	if offset > 0 {
-		lastLog, localErr := logMgr.GetCommmitLogFromOffset(offset)
+		lastLog, localErr := logMgr.GetCommitLogFromOffset(offset)
 		if localErr != nil {
 			coordLog.Errorf("failed to get local commit log: %v", localErr)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
@@ -575,10 +583,10 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
-		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition, offset, 100)
+		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition, offset, MAX_LOG_PULL)
 		if rpcErr != nil {
 			// if not network error, something wrong with commit log file, we need return to abort.
-			coordLog.Infof("error while get logs :%v", rpcErr)
+			coordLog.Infof("error while get logs :%v, offset: %v", rpcErr, offset)
 			if retryCnt > MAX_CATCHUP_RETRY {
 				return &CoordErr{rpcErr.Error(), RpcCommonErr, CoordNetErr}
 			}
@@ -588,12 +596,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		} else if len(logs) == 0 {
 			synced = true
 		}
+		coordLog.Infof("pulled logs :%v from offset: %v", len(logs), offset)
 		for i, l := range logs {
 			d := dataList[i]
 			// read and decode all messages
-			newMsgs, localErr = DecodeMessagesFromRaw(bufio.NewReader(bytes.NewReader(d)), newMsgs, tmpBuf)
+			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, tmpBuf)
 			if localErr != nil {
-				coordLog.Infof("Failed to decode message: %v", localErr)
+				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v", localErr, len(d), d)
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			if len(newMsgs) == 1 {
@@ -603,6 +612,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 					return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 				}
 			} else {
+				coordLog.Infof("got batch messages: %v", len(newMsgs))
 				// TODO: do batch put
 			}
 			localErr = logMgr.AppendCommitLog(&l, true)
@@ -616,6 +626,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		if synced && !isISR {
 			// notify nsqlookupd coordinator to add myself to isr list.
 			// if success, the topic leader will disable new write.
+			coordLog.Infof("requesting join isr")
 			err := self.requestJoinTopicISR(&topicInfo)
 			if err != nil {
 				coordLog.Infof("request join isr failed: %v", err)
@@ -653,6 +664,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
 		return ErrEpochLessThanCurrent
 	}
+	coordLog.Infof("updateing the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
 	// channels and catchup should only be modified in the separate rpc method.
 	newTopicInfo.Channels = topicCoord.topicInfo.Channels
 	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
@@ -692,6 +704,8 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
+	coordLog.Infof("updateing the topic leader session: %v", topicCoord.topicInfo.GetTopicDesp())
+
 	topicCoord.topicLeaderSession = *newLeaderSession
 
 	topicData, err := self.localNsqd.GetExistingTopic(topicCoord.topicInfo.Name)
@@ -1015,8 +1029,26 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *TopicCoordinator, ch
 }
 
 func (self *NsqdCoordinator) readTopicRawData(tc *TopicCoordinator, offset int64, size int32) ([]byte, *CoordErr) {
-	//TODO: read directly from local topic data used for pulling data by replicas
-	return nil, nil
+	//read directly from local topic data used for pulling data by replicas
+	t, err := self.localNsqd.GetExistingTopic(tc.topicInfo.Name)
+	if err != nil {
+		return nil, ErrLocalMissingTopic
+	}
+	if t.GetTopicPart() != tc.topicInfo.Partition {
+		return nil, ErrLocalTopicPartitionMismatch
+	}
+	snap := t.GetDiskQueueSnapshot()
+	err = snap.SeekTo(nsqd.BackendOffset(offset))
+	if err != nil {
+		coordLog.Infof("read topic data at offset %v, size: %v, error: %v", offset, size, err)
+		return nil, ErrLocalTopicDataCorrupt
+	}
+	buf, err := snap.ReadRaw(size)
+	if err != nil {
+		coordLog.Infof("read topic data at offset %v error: %v", offset, size, err)
+		return nil, ErrLocalTopicDataCorrupt
+	}
+	return buf, nil
 }
 
 // flush cached data to disk. This should be called when topic isr list
@@ -1032,7 +1064,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *TopicCoordinator) *Coo
 	// check topic exist and prepare on local.
 	t := self.localNsqd.GetTopic(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
 	if t == nil {
-		return ErrLocalGetTopicFailed
+		return ErrLocalInitTopicFailed
 	}
 	if t.MsgIDCursor == nil {
 		t.MsgIDCursor = topicCoord.logMgr

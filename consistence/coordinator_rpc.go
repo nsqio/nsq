@@ -3,6 +3,7 @@ package consistence
 import (
 	"github.com/absolute8511/nsq/nsqd"
 	_ "github.com/valyala/gorpc"
+	"io"
 	"net"
 	"net/rpc"
 )
@@ -109,6 +110,12 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		coordLog.Infof("topic partition missing.")
 		return err
 	}
+	if rpcTopicReq.WaitReady {
+		if !topicCoord.disableWrite {
+			coordLog.Errorf("wait ready should disable write first")
+			rpcTopicReq.WaitReady = false
+		}
+	}
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
@@ -164,9 +171,10 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	}
 	tpCoord, ok := coords[rpcTopicReq.Partition]
 	if !ok {
-		tpCoord = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
+		var localErr error
+		tpCoord, localErr = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
 			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition))
-		if tpCoord == nil {
+		if localErr != nil || tpCoord == nil {
 			self.nsqdCoord.coordMutex.Unlock()
 			return ErrLocalInitTopicCoordFailed
 		}
@@ -364,17 +372,22 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret 
 		ret.ErrInfo = *coorderr
 		return nil
 	}
-	logData, err := tc.logMgr.GetCommmitLogFromOffset(req.LogOffset)
+	logData, err := tc.logMgr.GetCommitLogFromOffset(req.LogOffset)
 	if err != nil {
-		ret.LogOffset, err = tc.logMgr.GetLastLogOffset()
-		if err != nil {
-			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+		var err2 error
+		ret.LogOffset, err2 = tc.logMgr.GetLastLogOffset()
+		if err2 != nil {
+			ret.ErrInfo = *NewCoordErr(err2.Error(), CoordCommonErr)
 			return nil
 		}
-		logData, err = tc.logMgr.GetCommmitLogFromOffset(ret.LogOffset)
+		logData, err2 = tc.logMgr.GetCommitLogFromOffset(ret.LogOffset)
 
-		if err != nil {
-			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+		if err2 != nil {
+			if err2 == ErrCommitLogEOF {
+				ret.ErrInfo = *ErrTopicCommitLogEOF
+			} else {
+				ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+			}
 			return nil
 		}
 		ret.LogData = *logData
@@ -399,12 +412,15 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, 
 		return err
 	}
 
+	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	var localErr error
 	ret.Logs, localErr = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
+		if localErr == io.EOF {
+			return nil
+		}
 		return localErr
 	}
-	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	for _, l := range ret.Logs {
 		d, err := self.nsqdCoord.readTopicRawData(tc, l.MsgOffset, l.MsgSize)
 		if err != nil {

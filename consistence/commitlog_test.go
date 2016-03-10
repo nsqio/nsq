@@ -44,9 +44,12 @@ func TestCommitLogWrite(t *testing.T) {
 	}
 	lastOffset, err := logMgr.GetLastLogOffset()
 	test.Nil(t, err)
-	lastLog, err := logMgr.GetCommmitLogFromOffset(lastOffset)
+	lastLog, err := logMgr.GetCommitLogFromOffset(lastOffset)
 	test.Nil(t, err)
 	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
+	alllogs, err := logMgr.GetCommitLogs(0, num*2)
+	test.Nil(t, err)
+	test.Equal(t, len(alllogs), num)
 	var prevLog CommitLogData
 	for i := 0; i < num; i++ {
 		logs, err := logMgr.GetCommitLogs(int64(i*GetLogDataSize()), 1)
@@ -71,7 +74,7 @@ func TestCommitLogWrite(t *testing.T) {
 	}
 	lastOffset, err = logMgr.GetLastLogOffset()
 	test.Nil(t, err)
-	lastLog, err = logMgr.GetCommmitLogFromOffset(lastOffset)
+	lastLog, err = logMgr.GetCommitLogFromOffset(lastOffset)
 	test.Nil(t, err)
 	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
 	for i := num; i < num*2; i++ {
