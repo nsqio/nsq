@@ -759,7 +759,6 @@ func (d *diskQueueReader) ioLoop() {
 			rerr = nil
 			d.skipResponseChan <- skiperr
 		case endPos := <-d.endUpdatedChan:
-			count++
 			if d.endPos.FileNum != endPos.EndFileNum && endPos.EndPos == 0 {
 				// a new file for the position
 				count = 0
@@ -779,6 +778,8 @@ func (d *diskQueueReader) ioLoop() {
 			d.totalMsgCnt = endPos.TotalMsgCnt
 			d.virtualEnd = endPos.VirtualEnd
 			d.updateDepth()
+			count = 0
+			d.sync()
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:

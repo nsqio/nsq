@@ -713,6 +713,8 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("no topic on local: %v, %v", topicCoord.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
 	}
+	// leader changed (maybe down), we make sure out data is flushed to keep data safe
+	topicData.ForceFlush()
 
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		coordLog.Infof("I become the leader for the topic: %v", topicCoord.topicInfo.GetTopicDesp())
