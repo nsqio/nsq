@@ -34,8 +34,8 @@ for os in linux darwin freebsd windows; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
-    GOOS=$os GOARCH=$arch CGO_ENABLED=0 make
-    make DESTDIR=$BUILD PREFIX=/$TARGET install
+    GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
+        make DESTDIR=$BUILD PREFIX=/$TARGET install
     pushd $BUILD
     if [ "$os" == "linux" ]; then
         cp -r $TARGET/bin $DIR/dist/docker/
