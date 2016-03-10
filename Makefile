@@ -4,6 +4,10 @@ GOFLAGS=
 BINDIR=${PREFIX}/bin
 
 BLDDIR = build
+EXT=
+ifeq (${GOOS},windows)
+    EXT=.exe
+endif
 
 APPS = nsqd nsqlookupd nsqadmin nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat to_nsq
 all: $(APPS)
@@ -33,13 +37,4 @@ clean:
 
 install: $(APPS)
 	install -m 755 -d ${DESTDIR}${BINDIR}
-	install -m 755 $(BLDDIR)/nsqlookupd  ${DESTDIR}${BINDIR}/nsqlookupd
-	install -m 755 $(BLDDIR)/nsqd        ${DESTDIR}${BINDIR}/nsqd
-	install -m 755 $(BLDDIR)/nsqadmin    ${DESTDIR}${BINDIR}/nsqadmin
-	install -m 755 $(BLDDIR)/nsq_pubsub  ${DESTDIR}${BINDIR}/nsq_pubsub
-	install -m 755 $(BLDDIR)/nsq_to_nsq  ${DESTDIR}${BINDIR}/nsq_to_nsq
-	install -m 755 $(BLDDIR)/nsq_to_file ${DESTDIR}${BINDIR}/nsq_to_file
-	install -m 755 $(BLDDIR)/nsq_to_http ${DESTDIR}${BINDIR}/nsq_to_http
-	install -m 755 $(BLDDIR)/nsq_tail    ${DESTDIR}${BINDIR}/nsq_tail
-	install -m 755 $(BLDDIR)/nsq_stat    ${DESTDIR}${BINDIR}/nsq_stat
-	install -m 755 $(BLDDIR)/to_nsq      ${DESTDIR}${BINDIR}/to_nsq
+	for APP in $^ ; do install -m 755 ${BLDDIR}/$$APP ${DESTDIR}${BINDIR}/$$APP${EXT} ; done
