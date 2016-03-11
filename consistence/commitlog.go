@@ -12,6 +12,7 @@ import (
 
 const (
 	DEFAULT_COMMIT_BUF_SIZE = 1024
+	MAX_INCR_ID_BIT         = 50
 )
 
 var (
@@ -64,7 +65,7 @@ func GetTopicPartitionLogPath(basepath, t string, p int) string {
 }
 
 func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) (*TopicCommitLogMgr, error) {
-	if uint64(p) >= uint64(1)<<(63-47) {
+	if uint64(p) >= uint64(1)<<(63-MAX_INCR_ID_BIT) {
 		return nil, ErrCommitLogPartitionExceed
 	}
 	fullpath := GetTopicPartitionLogPath(basepath, t, p)
@@ -104,7 +105,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		mgr.pLogID = l.LogID
 		mgr.nLogID = l.LogID + 1000
 	} else {
-		mgr.nLogID = int64(uint64(mgr.partition)<<47 + 1)
+		mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
 	}
 	return mgr, nil
 }

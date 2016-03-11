@@ -726,7 +726,7 @@ exit:
 	close(c.exitSyncChan)
 }
 
-func (c *Channel) GetChannelStats() string {
+func (c *Channel) GetChannelDebugStats() string {
 	debugStr := ""
 	c.inFlightMutex.Lock()
 	inFlightCount := len(c.inFlightMessages)

@@ -197,7 +197,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, 
 	if err != nil {
 		return err
 	}
-	tp.disableWrite = false
+	tp.DisableWrite(false)
 	*ret = true
 	return nil
 }
@@ -211,7 +211,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo,
 	if err != nil {
 		return err
 	}
-	tp.disableWrite = true
+	tp.DisableWrite(true)
 	*ret = true
 	return nil
 }
@@ -229,7 +229,7 @@ func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicI
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	tp, err := self.nsqdCoord.getTopicCoordData(rpcTopicReq.Name, rpcTopicReq.Partition)
 	if err != nil {
 		return err
 	}
@@ -332,7 +332,7 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info RpcChannelOffsetArg, re
 		return nil
 	}
 	// update local channel offset
-	err = self.nsqdCoord.updateChannelOffsetOnSlave(tc, info.Channel, info.ChannelOffset)
+	err = self.nsqdCoord.updateChannelOffsetOnSlave(tc.GetData(), info.Channel, info.ChannelOffset)
 	if err != nil {
 		*retErr = *err
 	}
@@ -356,7 +356,7 @@ func (self *NsqdCoordRpcServer) PutMessage(info RpcPutMessage, retErr *CoordErr)
 
 func (self *NsqdCoordRpcServer) GetLastCommitLogID(req RpcCommitLogReq, ret *int64) error {
 	*ret = 0
-	tc, err := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	tc, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
 		return err
 	}
@@ -367,20 +367,20 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req RpcCommitLogReq, ret *int
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
 func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret *RpcCommitLogRsp) error {
-	tc, coorderr := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	tcData, coorderr := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if coorderr != nil {
 		ret.ErrInfo = *coorderr
 		return nil
 	}
-	logData, err := tc.logMgr.GetCommitLogFromOffset(req.LogOffset)
+	logData, err := tcData.logMgr.GetCommitLogFromOffset(req.LogOffset)
 	if err != nil {
 		var err2 error
-		ret.LogOffset, err2 = tc.logMgr.GetLastLogOffset()
+		ret.LogOffset, err2 = tcData.logMgr.GetLastLogOffset()
 		if err2 != nil {
 			ret.ErrInfo = *NewCoordErr(err2.Error(), CoordCommonErr)
 			return nil
 		}
-		logData, err2 = tc.logMgr.GetCommitLogFromOffset(ret.LogOffset)
+		logData, err2 = tcData.logMgr.GetCommitLogFromOffset(ret.LogOffset)
 
 		if err2 != nil {
 			if err2 == ErrCommitLogEOF {
@@ -407,14 +407,14 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req RpcCommitLogReq, ret 
 }
 
 func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, ret *RpcPullCommitLogsRsp) error {
-	tc, err := self.nsqdCoord.getTopicCoord(req.TopicName, req.TopicPartition)
+	tcData, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
 		return err
 	}
 
 	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	var localErr error
-	ret.Logs, localErr = tc.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
+	ret.Logs, localErr = tcData.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
 		if localErr == io.EOF {
 			return nil
@@ -422,7 +422,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req RpcPullCommitLogsReq, 
 		return localErr
 	}
 	for _, l := range ret.Logs {
-		d, err := self.nsqdCoord.readTopicRawData(tc, l.MsgOffset, l.MsgSize)
+		d, err := self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, l.MsgOffset, l.MsgSize)
 		if err != nil {
 			return err
 		}

@@ -285,7 +285,67 @@ func TestNsqdCoordStartup(t *testing.T) {
 }
 
 func TestNsqdCoordLeaveFromISR(t *testing.T) {
-	// leave as isr
+	topic := "coordTestTopic"
+	partition := 1
+
+	coordLog.level = 2
+	coordLog.logger = &levellogger.GLogger{}
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
+
+	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:        topic,
+		Partition:   partition,
+		Leader:      nodeInfo1.GetID(),
+		ISR:         make([]string, 0),
+		CatchupList: make([]string, 0),
+		Epoch:       1,
+		Replica:     3,
+	}
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo3.GetID())
+
+	tmp := make(map[int]*TopicPartionMetaInfo)
+	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.AcquireTopicLeader(topic, partition, *nodeInfo1)
+	tmp[partition] = fakeInfo
+
+	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)
+	fakeSession, _ := fakeLeadership.GetTopicLeaderSession(topic, partition)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic] = make(map[int]*TopicLeaderSession)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic][partition] = fakeSession
+
+	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+	time.Sleep(time.Second)
+
+	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data2)
+	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+
+	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data3)
+	defer nsqd3.Exit()
+	time.Sleep(time.Second)
+
+	// create topic on nsqdcoord
+	var topicInitInfo RpcAdminTopicInfo
+	topicInitInfo.TopicPartionMetaInfo = *fakeInfo
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	// notify leadership to nsqdcoord
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	// TODO: leave as isr
+
 	// leave as leader
 }
 
@@ -366,7 +426,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
-	tc2, _ := nsqdCoord1.getTopicCoord(topic, partition)
+	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
 	logs2, err := tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs2), msgCnt)
@@ -422,6 +482,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	err = nsqdCoord3.PutMessageToCluster(topicData3, []byte("123"))
 	test.Nil(t, err)
 
+	// test catchup again with more logs than leader
 	fakeSession.LeaderNode = nodeInfo1
 	fakeSession.Session = fakeSession.Session
 	fakeSession.LeaderEpoch++
@@ -436,6 +497,54 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, len(logs3), msgCnt)
 	test.Equal(t, logs1, logs3)
+
+	// move from catchup to isr
+	topicInitInfo.ISR = append(topicInitInfo.ISR, nodeInfo3.GetID())
+	topicInitInfo.CatchupList = make([]string, 0)
+	topicInitInfo.DisableWrite = true
+
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, true)
+	time.Sleep(time.Second * 3)
+
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	for i := 0; i < 3; i++ {
+		err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
+		test.Nil(t, err)
+		msgCnt++
+	}
+
+	topicData1.ForceFlush()
+	topicData2.ForceFlush()
+	topicData3.ForceFlush()
+
+	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
+	logs1, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs1), msgCnt)
+
+	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
+	logs2, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs2), msgCnt)
+	test.Equal(t, logs1, logs2)
+
+	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+
+	t.Log(logs3)
 }
 
 func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {

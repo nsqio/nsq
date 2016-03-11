@@ -181,15 +181,15 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 func (t *Topic) NotifyReloadChannels() {
 }
 
-func (t *Topic) GetTopicChannelStat(channelName string) string {
+func (t *Topic) GetTopicChannelDebugStat(channelName string) string {
 	statStr := ""
-	t.channelLock.Lock()
+	t.channelLock.RLock()
 	for n, channel := range t.channelMap {
 		if channelName == "" || channelName == n {
-			statStr += channel.GetChannelStats()
+			statStr += channel.GetChannelDebugStats()
 		}
 	}
-	t.channelLock.Unlock()
+	t.channelLock.RUnlock()
 	return statStr
 }
 

@@ -190,7 +190,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 
 	for topicName, topic := range topicMap {
 		partition := topic.GetTopicPart()
-		if tc, err := self.getTopicCoord(topicName, partition); err == nil && tc != nil {
+		if tc, err := self.getTopicCoordData(topicName, partition); err == nil && tc != nil {
 			// already loaded
 			if tc.topicLeaderSession.LeaderNode == nil || tc.topicLeaderSession.Session == "" {
 				if tc.topicInfo.Leader == self.myNode.GetID() {
@@ -200,12 +200,16 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					}
 				}
 				if FindSlice(tc.topicInfo.ISR, self.myNode.GetID()) != -1 {
-					// this will trigger the lookup send the current leadership to me
 					topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
 					if err != nil {
 						coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
 					} else {
-						tc.topicLeaderSession = *topicLeaderSession
+						coord, err := self.getTopicCoord(topicName, partition)
+						if err == nil {
+							if topicLeaderSession.LeaderEpoch >= tc.topicLeaderSession.LeaderEpoch {
+								coord.topicLeaderSession = *topicLeaderSession
+							}
+						}
 					}
 				}
 			}
@@ -278,7 +282,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 	return nil
 }
 
-func (self *NsqdCoordinator) checkLocalTopicForISR(tc *TopicCoordinator) *CoordErr {
+func (self *NsqdCoordinator) checkLocalTopicForISR(tc *coordData) *CoordErr {
 	if tc.topicInfo.Leader == self.myNode.GetID() {
 		// leader should always has the newest local data
 		return nil
@@ -363,12 +367,12 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo)
 	return nil
 }
 
-func (self *NsqdCoordinator) isMineLeaderForTopic(tp *TopicCoordinator) bool {
+func (self *NsqdCoordinator) isMineLeaderForTopic(tp *coordData) bool {
 	return tp.GetLeaderID() == self.myNode.GetID()
 }
 
 // for isr node to check with leader
-func (self *NsqdCoordinator) syncToNewLeader(topicCoord *TopicCoordinator, waitReady bool) {
+func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, waitReady bool) {
 	// If leadership changed, all isr nodes should sync to new leader and check
 	// consistent with leader, after all isr nodes notify ready, the leader can
 	// accept new write.
@@ -432,14 +436,7 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaI
 	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, topicInfo.ISR)
 }
 
-func (self *NsqdCoordinator) prepareLeaveFromISR(topic string, partition int) *CoordErr {
-	c, err := self.getLookupRemoteProxy()
-	if err != nil {
-		return err
-	}
-	return c.PrepareLeaveFromISR(topic, partition, self.myNode.GetID())
-}
-
+// only move from isr to catchup, if restart, we can catchup directly.
 func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *CoordErr {
 	c, err := self.getLookupRemoteProxy()
 	if err != nil {
@@ -456,7 +453,7 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 // TODO: If most of nodes is slow, the leader should check the leader itself and
 // maybe giveup the leadership.
 func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition int, nid string) *CoordErr {
-	topicCoord, err := self.getTopicCoord(topic, partition)
+	topicCoord, err := self.getTopicCoordData(topic, partition)
 	if err != nil {
 		return err
 	}
@@ -484,7 +481,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 	}
 	defer atomic.StoreInt32(&tc.catchupRunning, 0)
 	coordLog.Infof("local topic begin catchup : %v, isISR: %v", topicInfo.GetTopicDesp(), isISR)
-	logMgr := tc.logMgr
+	logMgr := tc.GetData().logMgr
 	offset, logErr := logMgr.GetLastLogOffset()
 	if logErr != nil {
 		coordLog.Warningf("catching failed since log offset read error: %v", logErr)
@@ -500,7 +497,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 	retryCnt := 0
 	for offset > 0 {
 		// if leader changed we abort and wait next time
-		if tc.GetLeaderID() != topicInfo.Leader {
+		if tc.GetData().GetLeaderID() != topicInfo.Leader {
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
@@ -577,9 +574,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 	synced := false
 	newMsgs := make([]*nsqd.Message, 0)
 	tmpBuf := make([]byte, 1000)
-	leaderSession := tc.topicLeaderSession
+	leaderSession := tc.GetData().topicLeaderSession
 	for {
-		if tc.GetLeaderID() != topicInfo.Leader {
+		if tc.GetData().GetLeaderID() != topicInfo.Leader {
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
@@ -659,7 +656,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 }
 
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
+	topicCoord.dataRWMutex.Lock()
 	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
+		topicCoord.dataRWMutex.Unlock()
 		coordLog.Warningf("topic (%v) info epoch is less while update: %v vs %v",
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
 		return ErrEpochLessThanCurrent
@@ -669,22 +668,25 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	newTopicInfo.Channels = topicCoord.topicInfo.Channels
 	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
 	topicCoord.topicInfo = *newTopicInfo
+	topicCoord.localDataLoaded = true
+
 	err := self.updateLocalTopic(topicCoord)
+	topicCoord.dataRWMutex.Unlock()
 	if err != nil {
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
-	topicCoord.localDataLoaded = true
+	tcData := topicCoord.GetData()
 	if newTopicInfo.Leader == self.myNode.GetID() {
 		// not leader before and became new leader
-		if topicCoord.GetLeaderID() != self.myNode.GetID() {
+		if tcData.GetLeaderID() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.
 			shouldDisableWrite = true
 		}
 		if shouldDisableWrite {
-			topicCoord.disableWrite = true
+			topicCoord.DisableWrite(true)
 		}
 		err := self.acquireTopicLeader(newTopicInfo)
 		if err != nil {
@@ -700,41 +702,53 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLeaderSession *TopicLeaderSession, waitReady bool) *CoordErr {
 	n := newLeaderSession
+	topicCoord.dataRWMutex.Lock()
 	if n.LeaderEpoch < topicCoord.GetLeaderEpoch() {
+		topicCoord.dataRWMutex.Unlock()
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
 	coordLog.Infof("updateing the topic leader session: %v", topicCoord.topicInfo.GetTopicDesp())
 
 	topicCoord.topicLeaderSession = *newLeaderSession
+	topicCoord.dataRWMutex.Unlock()
+	tcData := topicCoord.GetData()
 
-	topicData, err := self.localNsqd.GetExistingTopic(topicCoord.topicInfo.Name)
+	topicData, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name)
 	if err != nil {
-		coordLog.Infof("no topic on local: %v, %v", topicCoord.topicInfo.GetTopicDesp(), err)
+		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
 	}
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	topicData.ForceFlush()
 
-	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
-		coordLog.Infof("I become the leader for the topic: %v", topicCoord.topicInfo.GetTopicDesp())
+	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
+		coordLog.Infof("I become the leader for the topic: %v", tcData.topicInfo.GetTopicDesp())
 		topicData.EnableForMaster()
 	} else {
 		topicData.DisableForSlave()
 		if n.LeaderNode == nil || n.Session == "" {
-			coordLog.Infof("topic leader is missing : %v", topicCoord.topicInfo.GetTopicDesp())
+			coordLog.Infof("topic leader is missing : %v", tcData.topicInfo.GetTopicDesp())
 		} else {
-			coordLog.Infof("topic %v leader changed to :%v. epoch: %v", topicCoord.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
+			coordLog.Infof("topic %v leader changed to :%v. epoch: %v", tcData.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
 			// if catching up, pull data from the new leader
 			// if isr, make sure sync to the new leader
-			if FindSlice(topicCoord.topicInfo.ISR, self.myNode.GetID()) != -1 {
-				self.syncToNewLeader(topicCoord, waitReady)
+			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
+				self.syncToNewLeader(tcData, waitReady)
 			} else {
 				self.tryCheckUnsynced <- true
 			}
 		}
 	}
 	return nil
+}
+
+func (self *NsqdCoordinator) getTopicCoordData(topic string, partition int) (*coordData, *CoordErr) {
+	c, err := self.getTopicCoord(topic, partition)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetData(), nil
 }
 
 // any modify operation on the topic should check for topic leader.
@@ -752,22 +766,33 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte) error {
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
-	topicCoord, checkErr := self.getTopicCoord(topicName, partition)
+	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
 		return checkErr
 	}
-	if checkErr = topicCoord.checkWriteForLeader(self.myNode.GetID()); checkErr != nil {
+	coord.writeHold.Lock()
+	defer coord.writeHold.Unlock()
+
+	if coord.exiting {
+		return ErrTopicExiting
+	}
+	if coord.disableWrite {
+		return ErrWriteDisabled
+	}
+
+	tcData := coord.GetData()
+	if checkErr = tcData.checkWriteForLeader(self.myNode.GetID()); checkErr != nil {
 		coordLog.Warningf("topic(%v) check write failed :%v", topicName, checkErr)
 		return checkErr
 	}
-	logMgr := topicCoord.logMgr
+	logMgr := tcData.logMgr
+
 	var err error
 	var commitLog CommitLogData
 	needRefreshISR := false
 	needRollback := false
 	success := 0
 	retryCnt := 0
-	isrList := topicCoord.topicInfo.ISR
 
 	topic.Lock()
 	msg := nsqd.NewMessage(0, body)
@@ -779,7 +804,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 	}
 	needRollback = true
 	commitLog.LogID = int64(id)
-	commitLog.Epoch = topicCoord.GetLeaderEpoch()
+	commitLog.Epoch = tcData.GetLeaderEpoch()
 	commitLog.MsgOffset = int64(offset)
 	commitLog.MsgSize = writeBytes
 	commitLog.MsgCnt = totalCnt
@@ -789,15 +814,15 @@ retrypub:
 		goto exitpub
 	}
 	if needRefreshISR {
-		topicCoord.refreshTopicCoord()
-		err = topicCoord.checkWriteForLeader(self.myNode.GetID())
-		if err != nil {
-			coordLog.Debugf("check write failed: %v", err)
+		tcData = coord.GetData()
+		if err = tcData.checkWriteForLeader(self.myNode.GetID()); err != nil {
+			coordLog.Warningf("topic(%v) check write failed :%v", topicName, err)
 			goto exitpub
 		}
-		commitLog.Epoch = topicCoord.GetLeaderEpoch()
-		isrList = topicCoord.topicInfo.ISR
-		coordLog.Debugf("isr refreshed while write: %v", topicCoord.topicLeaderSession)
+		logMgr = tcData.logMgr
+
+		commitLog.Epoch = tcData.GetLeaderEpoch()
+		coordLog.Debugf("isr refreshed while write: %v", tcData)
 	}
 	success = 0
 	retryCnt++
@@ -807,7 +832,7 @@ retrypub:
 	// also, the coordinator should retry on fail until all nodes in ISR success.
 	// If failed, should update ISR and retry.
 	// TODO: optimize send all requests first and then wait all responses
-	for _, nodeID := range isrList {
+	for _, nodeID := range tcData.topicInfo.ISR {
 		if nodeID == self.myNode.GetID() {
 			success++
 			continue
@@ -820,7 +845,7 @@ retrypub:
 			goto retrypub
 		}
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
-		putErr := c.PutMessage(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, commitLog, msg)
+		putErr := c.PutMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
 		if putErr == nil {
 			success++
 		} else {
@@ -836,7 +861,7 @@ retrypub:
 		}
 	}
 
-	if success == len(isrList) {
+	if success == len(tcData.topicInfo.ISR) {
 		err := logMgr.AppendCommitLog(&commitLog, false)
 		if err != nil {
 			panic(err)
@@ -879,7 +904,14 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic string, partition int, m
 	return ErrWriteQuorumFailed
 }
 
-func (self *NsqdCoordinator) putMessageOnSlave(tc *TopicCoordinator, logData CommitLogData, msg *nsqd.Message) *CoordErr {
+func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData CommitLogData, msg *nsqd.Message) *CoordErr {
+	coord.writeHold.Lock()
+	defer coord.writeHold.Unlock()
+	if coord.exiting {
+		return ErrTopicExitingOnSlave
+	}
+
+	tc := coord.GetData()
 	topicName := tc.topicInfo.Name
 	partition := tc.topicInfo.Partition
 
@@ -924,10 +956,16 @@ func (self *NsqdCoordinator) putMessagesOnSlave(topicName string, partition int,
 	if logData.LogID != int64(msgs[0].ID) {
 		return ErrPubArgError
 	}
-	tc, err := self.getTopicCoord(topicName, partition)
+	coord, err := self.getTopicCoord(topicName, partition)
 	if err != nil {
 		return err
 	}
+	coord.writeHold.Lock()
+	defer coord.writeHold.Unlock()
+	if coord.exiting {
+		return ErrTopicExitingOnSlave
+	}
+	tc := coord.GetData()
 	logMgr := tc.logMgr
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
 	if localErr != nil {
@@ -962,11 +1000,22 @@ func (self *NsqdCoordinator) putMessagesOnSlave(topicName string, partition int,
 }
 
 func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
-	topicCoord, err := self.getTopicCoord(channel.GetTopicName(), channel.GetTopicPart())
+	coord, err := self.getTopicCoord(channel.GetTopicName(), channel.GetTopicPart())
 	if err != nil {
 		return err
 	}
-	if err = topicCoord.checkWriteForLeader(self.myNode.GetID()); err != nil {
+	coord.writeHold.Lock()
+	defer coord.writeHold.Unlock()
+	if coord.exiting {
+		return ErrTopicExiting
+	}
+	if coord.disableWrite {
+		return ErrWriteDisabled
+	}
+
+	tcData := coord.GetData()
+
+	if err = tcData.checkWriteForLeader(self.myNode.GetID()); err != nil {
 		return err
 	}
 
@@ -979,7 +1028,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	syncOffset.VOffset = int64(offset)
 	// rpc call to slaves
 	successNum := 0
-	isrList := topicCoord.topicInfo.ISR
+	isrList := tcData.topicInfo.ISR
 	for _, nodeID := range isrList {
 		if nodeID == self.myNode.GetID() {
 			successNum++
@@ -991,7 +1040,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 			continue
 		}
 
-		err = c.UpdateChannelOffset(&topicCoord.topicLeaderSession, &topicCoord.topicInfo, channel.GetName(), syncOffset)
+		err = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 		if err != nil {
 			coordLog.Warningf("node %v update offset failed %v.", nodeID, err)
 		} else {
@@ -1006,7 +1055,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	return nil
 }
 
-func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *TopicCoordinator, channelName string, offset ChannelConsumerOffset) *CoordErr {
+func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelName string, offset ChannelConsumerOffset) *CoordErr {
 	topicName := tc.topicInfo.Name
 	partition := tc.topicInfo.Partition
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
@@ -1030,13 +1079,13 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *TopicCoordinator, ch
 	return nil
 }
 
-func (self *NsqdCoordinator) readTopicRawData(tc *TopicCoordinator, offset int64, size int32) ([]byte, *CoordErr) {
+func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offset int64, size int32) ([]byte, *CoordErr) {
 	//read directly from local topic data used for pulling data by replicas
-	t, err := self.localNsqd.GetExistingTopic(tc.topicInfo.Name)
+	t, err := self.localNsqd.GetExistingTopic(topic)
 	if err != nil {
 		return nil, ErrLocalMissingTopic
 	}
-	if t.GetTopicPart() != tc.topicInfo.Partition {
+	if t.GetTopicPart() != partition {
 		return nil, ErrLocalTopicPartitionMismatch
 	}
 	snap := t.GetDiskQueueSnapshot()
@@ -1078,29 +1127,26 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *TopicCoordinator) *Coo
 // the unavailable time.
 func (self *NsqdCoordinator) prepareLeavingCluster() {
 	coordLog.Infof("I am prepare leaving the cluster.")
+	self.coordMutex.RLock()
+	defer self.coordMutex.RUnlock()
 	for topicName, topicData := range self.topicCoords {
-		for pid, tpData := range topicData {
-			if FindSlice(tpData.topicInfo.ISR, self.myNode.GetID()) == -1 {
+		for pid, tpCoord := range topicData {
+			tpCoord.Exiting()
+			tcData := tpCoord.GetData()
+			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) == -1 {
 				continue
 			}
-			if len(tpData.topicInfo.ISR)-1 <= tpData.topicInfo.Replica/2 {
-				coordLog.Infof("The isr nodes in topic %v is not enough, waiting...", tpData.topicInfo.GetTopicDesp())
-				// we need notify lookup to add new isr since I am leaving.
-				// wait until isr is enough or timeout.
-				time.Sleep(time.Second * 3)
+			if len(tcData.topicInfo.ISR)-1 <= tcData.topicInfo.Replica/2 {
+				coordLog.Infof("The isr nodes in topic %v is not enough while leaving: %v",
+					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
-			// prepare will handle the leader transfer.
-			err := self.prepareLeaveFromISR(topicName, pid)
-			if err != nil {
-				coordLog.Infof("failed to prepare the leave request: %v", err)
-			}
-
-			if tpData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
+			if tcData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid)
-				coordLog.Infof("The leader for topic %v is transfered.", tpData.topicInfo.GetTopicDesp())
+				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
+			// wait lookup choose new node for isr/leader
 			self.requestLeaveFromISR(topicName, pid)
 		}
 	}
