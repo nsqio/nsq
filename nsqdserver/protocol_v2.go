@@ -399,6 +399,12 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				_ = offset
 				continue
 			}
+			// avoid re-send some confirmed message,
+			// this may happen while the channel reader is reset to old position
+			// due to some retry or leader change.
+			if subChannel.IsConfirmed(msg) {
+				continue
+			}
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()

@@ -12,6 +12,11 @@ import (
 	"github.com/nsqio/nsq/internal/quantile"
 )
 
+var (
+	ErrMsgNotInFlight     = errors.New("Message ID not in flight")
+	ErrMsgAlreadyInFlight = errors.New("Message ID already in flight")
+)
+
 type Consumer interface {
 	UnPause()
 	Pause()
@@ -183,7 +188,7 @@ func (c *Channel) exit(deleted bool) error {
 	defer c.exitMutex.Unlock()
 
 	if !atomic.CompareAndSwapInt32(&c.exitFlag, 0, 1) {
-		return errors.New("exiting")
+		return ErrExiting
 	}
 
 	if deleted {
@@ -308,7 +313,7 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
 	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("exiting")
+		return ErrExiting
 	}
 	c.backend.UpdateQueueEnd(end)
 	atomic.StoreUint64(&c.messageCount, uint64(end.GetTotalMsgCnt()))
@@ -317,25 +322,26 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 
 // TouchMessage resets the timeout for an in-flight message
 func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout time.Duration) error {
-	msg, err := c.popInFlightMessage(clientID, id)
-	if err != nil {
-		return err
+	c.inFlightMutex.Lock()
+	msg, ok := c.inFlightMessages[id]
+	if !ok {
+		c.inFlightMutex.Unlock()
+		nsqLog.Logf("failed while touch: %v, msg not exist", id)
+		return ErrMsgNotInFlight
 	}
-	c.removeFromInFlightPQ(msg)
-
+	if msg.clientID != clientID {
+		c.inFlightMutex.Unlock()
+		return fmt.Errorf("client does not own message : %v vs %v",
+			msg.clientID, clientID)
+	}
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.option.MaxMsgTimeout {
 		// we would have gone over, set to the max
 		newTimeout = msg.deliveryTS.Add(c.option.MaxMsgTimeout)
 	}
-
 	msg.pri = newTimeout.UnixNano()
-	err = c.pushInFlightMessage(msg)
-	if err != nil {
-		return err
-	}
-	c.addToInFlightPQ(msg)
+	c.inFlightMutex.Unlock()
 	return nil
 }
 
@@ -405,13 +411,18 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 	// backend queue to force read the data from disk again.
 }
 
+func (c *Channel) IsConfirmed(msg *Message) bool {
+	c.confirmMutex.Lock()
+	//c.finMsgs[msg.ID] = msg
+	_, ok := c.confirmedMsgs[msg.offset]
+	c.confirmMutex.Unlock()
+	return ok
+}
+
 // FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, error) {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
-		//c.confirmMutex.Lock()
-		//c.finErrMsgs[id] = err.Error()
-		//c.confirmMutex.Unlock()
 		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
 			clientID)
 		return 0, err
@@ -420,7 +431,6 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, er
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
 	}
-	c.removeFromInFlightPQ(msg)
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
@@ -441,8 +451,6 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		if err != nil {
 			return err
 		}
-		c.removeFromInFlightPQ(msg)
-
 		return c.doRequeue(msg)
 	}
 	return nil
@@ -453,13 +461,13 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 		return
 	}
 	idList := make([]MessageID, 0)
-	c.Lock()
+	c.inFlightMutex.Lock()
 	for id, msg := range c.inFlightMessages {
 		if msg.clientID == clientID {
 			idList = append(idList, id)
 		}
 	}
-	c.Unlock()
+	c.inFlightMutex.Unlock()
 	for _, id := range idList {
 		c.RequeueMessage(clientID, id, 0)
 	}
@@ -504,12 +512,10 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	msg.pri = now.Add(timeout).UnixNano()
 	err := c.pushInFlightMessage(msg)
 	if err != nil {
-		nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
+		nsqLog.Logf("push message in flight failed: %v, %v", err,
 			msg.GetFullMsgID())
 		return err
 	}
-	c.addToInFlightPQ(msg)
-
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
 	}
@@ -540,12 +546,12 @@ func (c *Channel) GetChannelEnd() BackendOffset {
 // doRequeue performs the low level operations to requeue a message
 func (c *Channel) doRequeue(m *Message) error {
 	if c.Exiting() {
-		return errors.New("exiting")
+		return ErrExiting
 	}
 	select {
 	case <-c.exitChan:
 		nsqLog.LogDebugf("requeue message failed for existing: %v ", m.ID)
-		return errors.New("exiting")
+		return ErrExiting
 	case c.requeuedMsgChan <- m:
 	default:
 		c.waitingRequeueMutex.Lock()
@@ -565,9 +571,10 @@ func (c *Channel) pushInFlightMessage(msg *Message) error {
 	_, ok := c.inFlightMessages[msg.ID]
 	if ok {
 		c.inFlightMutex.Unlock()
-		return errors.New("ID already in flight")
+		return ErrMsgAlreadyInFlight
 	}
 	c.inFlightMessages[msg.ID] = msg
+	c.inFlightPQ.Push(msg)
 	c.inFlightMutex.Unlock()
 	return nil
 }
@@ -578,33 +585,19 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
 		c.inFlightMutex.Unlock()
-		return nil, errors.New("ID not in flight")
+		return nil, ErrMsgNotInFlight
 	}
 	if msg.clientID != clientID {
-		c.Unlock()
+		c.inFlightMutex.Unlock()
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
 	delete(c.inFlightMessages, id)
+	if msg.index != -1 {
+		c.inFlightPQ.Remove(msg.index)
+	}
 	c.inFlightMutex.Unlock()
 	return msg, nil
-}
-
-func (c *Channel) addToInFlightPQ(msg *Message) {
-	c.inFlightMutex.Lock()
-	c.inFlightPQ.Push(msg)
-	c.inFlightMutex.Unlock()
-}
-
-func (c *Channel) removeFromInFlightPQ(msg *Message) {
-	c.inFlightMutex.Lock()
-	if msg.index == -1 {
-		// this item has already been popped off the pqueue
-		c.inFlightMutex.Unlock()
-		return
-	}
-	c.inFlightPQ.Remove(msg.index)
-	c.inFlightMutex.Unlock()
 }
 
 func (c *Channel) DisableConsume(disable bool) {
@@ -767,22 +760,25 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		c.inFlightMutex.Lock()
 		msg, _ := c.inFlightPQ.PeekAndShift(t)
 		flightCnt := len(c.inFlightMessages)
-		c.inFlightMutex.Unlock()
-
 		if msg == nil {
 			if atomic.LoadInt32(&c.waitingConfirm) > 1 || flightCnt > 1 {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
 					flightCnt, atomic.LoadInt32(&c.waitingConfirm),
 					c.currentLastConfirmed)
 			}
+			c.inFlightMutex.Unlock()
 			goto exit
 		}
 		dirty = true
 
-		_, err := c.popInFlightMessage(msg.clientID, msg.ID)
-		if err != nil {
+		_, ok := c.inFlightMessages[msg.ID]
+		if !ok {
+			c.inFlightMutex.Unlock()
 			goto exit
 		}
+		delete(c.inFlightMessages, msg.ID)
+		c.inFlightMutex.Unlock()
+
 		atomic.AddUint64(&c.timeoutCount, 1)
 		c.RLock()
 		client, ok := c.clients[msg.clientID]
