@@ -78,13 +78,6 @@ func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int,
 	return ErrLeaderSessionMismatch
 }
 
-func (self *fakeLookupRemoteProxy) PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr {
-	if self.t != nil {
-		self.t.Log("requesting prepare leave isr")
-	}
-	return nil
-}
-
 func (self *fakeLookupRemoteProxy) RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting leave isr")

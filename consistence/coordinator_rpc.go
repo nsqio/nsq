@@ -99,15 +99,16 @@ func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) *CoordErr {
 	return nil
 }
 
-func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *bool) error {
-	*ret = true
+func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *CoordErr) error {
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		*ret = *err
 		return err
 	}
 	coordLog.Infof("got leader session notify : %v, leader node info:%v", rpcTopicReq, rpcTopicReq.LeaderNode)
 	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
 	if err != nil {
 		coordLog.Infof("topic partition missing.")
+		*ret = *err
 		return err
 	}
 	if rpcTopicReq.WaitReady {
@@ -122,7 +123,10 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		LeaderEpoch: rpcTopicReq.TopicLeaderEpoch,
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.WaitReady)
-	return err
+	if err != nil {
+		*ret = *err
+	}
+	return nil
 }
 
 func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {

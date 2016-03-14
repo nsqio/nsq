@@ -11,7 +11,6 @@ type INsqlookupRemoteProxy interface {
 	RequestJoinCatchup(topic string, partition int, nid string) *CoordErr
 	RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr
 	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, isr []string) *CoordErr
-	PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
 }
@@ -93,16 +92,6 @@ func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, ni
 	req.TopicPartition = partition
 	var ret CoordErr
 	err := self.CallWithRetry("NSQLookupdCoordinator.ReadyForTopicISR", req, &ret)
-	return convertRpcError(err, &ret)
-}
-
-func (self *NsqLookupRpcClient) PrepareLeaveFromISR(topic string, partition int, nid string) *CoordErr {
-	var req RpcPrepareLeaveFromISR
-	req.NodeID = nid
-	req.TopicName = topic
-	req.TopicPartition = partition
-	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.PrepareLeaveFromISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 

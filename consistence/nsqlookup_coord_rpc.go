@@ -1,11 +1,8 @@
 package consistence
 
 import (
-	"errors"
-)
-
-var (
-	ErrLookupRpc = errors.New("lookup rpc call failed")
+	"net"
+	"net/rpc"
 )
 
 type RpcLookupReqBase struct {
@@ -24,17 +21,14 @@ type RpcReqJoinISR struct {
 
 type RpcReadyForISR struct {
 	RpcLookupReqBase
-	ReadyISR      []string
-	LeaderSession TopicLeaderSession
+	ReadyISR       []string
+	LeaderSession  TopicLeaderSession
+	JoinISRSession string
 }
 
 type RpcRspJoinISR struct {
 	CoordErr
-	ReqSession string
-}
-
-type RpcPrepareLeaveFromISR struct {
-	RpcLookupReqBase
+	JoinISRSession string
 }
 
 type RpcReqLeaveFromISR struct {
@@ -46,39 +40,78 @@ type RpcReqLeaveFromISRByLeader struct {
 	LeaderSession TopicLeaderSession
 }
 
-func (self *NSQLookupdCoordinator) RequestJoinCatchup(req RpcReqJoinCatchup, ret *CoordErr) error {
-	err := self.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrMsg = err.Error()
-	return err
+type NsqLookupCoordRpcServer struct {
+	nsqLookupCoord *NsqLookupCoordinator
+	rpcListener    net.Listener
+	rpcServer      *rpc.Server
 }
 
-func (self *NSQLookupdCoordinator) RequestJoinTopicISR(req RpcReqJoinISR, ret *RpcRspJoinISR) error {
-	session, err := self.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrMsg = err.Error()
-	ret.ReqSession = session
-	return err
+func NewNsqLookupCoordRpcServer(coord *NsqLookupCoordinator) *NsqLookupCoordRpcServer {
+	return &NsqLookupCoordRpcServer{
+		nsqLookupCoord: coord,
+		rpcServer:      rpc.NewServer(),
+	}
 }
 
-func (self *NSQLookupdCoordinator) ReadyForTopicISR(req RpcReadyForISR, ret *CoordErr) error {
-	err := self.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.ReadyISR)
-	ret.ErrMsg = err.Error()
-	return err
+func (self *NsqLookupCoordRpcServer) start(ip, port string) error {
+	e := self.rpcServer.Register(self)
+	if e != nil {
+		panic(e)
+	}
+	self.rpcListener, e = net.Listen("tcp4", ip+":"+port)
+	if e != nil {
+		coordLog.Warningf("listen rpc error : %v", e.Error())
+		return e
+	}
+
+	coordLog.Infof("nsqlookup coordinator rpc listen at : %v", self.rpcListener.Addr())
+	self.rpcServer.Accept(self.rpcListener)
+	return nil
 }
 
-func (self *NSQLookupdCoordinator) PrepareLeaveFromISR(req RpcPrepareLeaveFromISR, ret *CoordErr) error {
-	err := self.handlePrepareLeaveFromISR(req.TopicName, req.TopicPartition, req.NodeID)
-	ret.ErrMsg = err.Error()
-	return err
+func (self *NsqLookupCoordRpcServer) stop() {
+	if self.rpcListener != nil {
+		self.rpcListener.Close()
+	}
 }
 
-func (self *NSQLookupdCoordinator) RequestLeaveFromISR(req RpcReqLeaveFromISR, ret *CoordErr) error {
-	err := self.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
-	ret.ErrMsg = err.Error()
-	return err
+func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req RpcReqJoinCatchup, ret *CoordErr) error {
+	err := self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
 }
 
-func (self *NSQLookupdCoordinator) RequestLeaveFromISRByLeader(req RpcReqLeaveFromISRByLeader, ret *CoordErr) error {
-	err := self.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
-	ret.ErrMsg = err.Error()
-	return err
+func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req RpcReqJoinISR, ret *RpcRspJoinISR) error {
+	session, err := self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
+	if err != nil {
+		ret.CoordErr = *err
+	}
+	ret.JoinISRSession = session
+	return nil
+}
+
+func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req RpcReadyForISR, ret *CoordErr) error {
+	err := self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.ReadyISR, req.JoinISRSession)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
+}
+
+func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req RpcReqLeaveFromISR, ret *CoordErr) error {
+	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
+}
+
+func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req RpcReqLeaveFromISRByLeader, ret *CoordErr) error {
+	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
 }

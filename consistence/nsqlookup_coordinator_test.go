@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-func TestNsqdLookupNewTopic(t *testing.T) {
+func TestNsqLookupNewTopic(t *testing.T) {
 }
 
-func TestNsqdLookupDeleteTopic(t *testing.T) {
+func TestNsqLookupDeleteTopic(t *testing.T) {
 }
