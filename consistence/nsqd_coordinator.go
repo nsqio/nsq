@@ -275,7 +275,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			//}
 		} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 			coordLog.Infof("topic starting as catchup")
-			go self.catchupFromLeader(*topicInfo, false)
+			go self.catchupFromLeader(*topicInfo, "")
 		} else {
 			coordLog.Infof("topic starting as not relevant")
 			if len(topicInfo.ISR) >= topicInfo.Replica {
@@ -340,7 +340,7 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 					continue
 				}
 				if FindSlice(topicMeta.CatchupList, self.myNode.GetID()) != -1 {
-					go self.catchupFromLeader(*topicMeta, false)
+					go self.catchupFromLeader(*topicMeta, "")
 				} else if FindSlice(topicMeta.ISR, self.myNode.GetID()) == -1 {
 					if len(topicMeta.ISR)+len(topicMeta.CatchupList) >= topicMeta.Replica {
 						coordLog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
@@ -381,15 +381,15 @@ func (self *NsqdCoordinator) isMineLeaderForTopic(tp *coordData) bool {
 
 // for isr node to check with leader
 // The lookup will wait all isr sync to new leader during the leader switch
-func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, waitReady bool) *CoordErr {
+func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession string) *CoordErr {
 	// If leadership changed, all isr nodes should sync to new leader and check
 	// consistent with leader, after all isr nodes notify ready, the leader can
 	// accept new write.
 	err := self.checkLocalTopicForISR(topicCoord)
 	if err == ErrLocalFallBehind || err == ErrLocalForwardThanLeader {
-		if waitReady {
+		if joinSession != "" {
 			coordLog.Infof("isr begin sync with new leader")
-			go self.catchupFromLeader(topicCoord.topicInfo, true)
+			go self.catchupFromLeader(topicCoord.topicInfo, joinSession)
 		} else {
 			coordLog.Infof("isr not synced with new leader, should retry catchup")
 			err := self.requestLeaveFromISR(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
@@ -404,8 +404,8 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, waitReady bo
 		coordLog.Infof("check isr with leader err: %v", err)
 		return err
 	}
-	if waitReady && err == nil {
-		self.notifyReadyForTopicISR(&topicCoord.topicInfo, &topicCoord.topicLeaderSession)
+	if joinSession != "" && err == nil {
+		self.notifyReadyForTopicISR(&topicCoord.topicInfo, &topicCoord.topicLeaderSession, joinSession)
 	}
 	return nil
 }
@@ -434,7 +434,7 @@ func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartionMetaInfo
 	return err
 }
 
-func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession) *CoordErr {
+func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	// notify myself is ready for isr list for current session and can accept new write.
 	// The empty session will trigger the lookup send the current leader session.
 	// leader session should contain the (isr list, current leader session, leader epoch), to identify the
@@ -444,7 +444,7 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaI
 		return err
 	}
 
-	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, topicInfo.ISR)
+	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, joinSession)
 }
 
 // only move from isr to catchup, if restart, we can catchup directly.
@@ -479,7 +479,7 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 	return c.RequestLeaveFromISRByLeader(topic, partition, self.myNode.GetID(), &topicCoord.topicLeaderSession)
 }
 
-func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, isISR bool) *CoordErr {
+func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, joinISRSession string) *CoordErr {
 	// get local commit log from check point , and pull newer logs from leader
 	tc, err := self.getTopicCoord(topicInfo.Name, topicInfo.Partition)
 	if err != nil {
@@ -491,7 +491,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		return ErrTopicCatchupAlreadyRunning
 	}
 	defer atomic.StoreInt32(&tc.catchupRunning, 0)
-	coordLog.Infof("local topic begin catchup : %v, isISR: %v", topicInfo.GetTopicDesp(), isISR)
+	coordLog.Infof("local topic begin catchup : %v, join session: %v", topicInfo.GetTopicDesp(), joinISRSession)
 	logMgr := tc.GetData().logMgr
 	offset, logErr := logMgr.GetLastLogOffset()
 	if logErr != nil {
@@ -631,7 +631,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 		}
 		offset += int64(len(logs) * GetLogDataSize())
 
-		if synced && !isISR {
+		if synced && joinISRSession == "" {
 			// notify nsqlookupd coordinator to add myself to isr list.
 			// if success, the topic leader will disable new write.
 			coordLog.Infof("requesting join isr")
@@ -648,13 +648,11 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, i
 				// after we got the notify, we will re-enter with isISR = true
 				return nil
 			}
-		} else if synced && isISR {
+		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
 			logMgr.FlushCommitLogs()
 			coordLog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
-			err := RetryWithTimeout(func() error {
-				return self.notifyReadyForTopicISR(&topicInfo, &leaderSession)
-			})
+			err := self.notifyReadyForTopicISR(&topicInfo, &leaderSession, joinISRSession)
 			if err != nil {
 				coordLog.Infof("notify ready for isr failed: %v", err)
 			} else {
@@ -712,7 +710,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	return nil
 }
 
-func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLeaderSession *TopicLeaderSession, waitReady bool) *CoordErr {
+func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLeaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	n := newLeaderSession
 	topicCoord.dataRWMutex.Lock()
 	if n.LeaderEpoch < topicCoord.GetLeaderEpoch() {
@@ -746,7 +744,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 			// if catching up, pull data from the new leader
 			// if isr, make sure sync to the new leader
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
-				return self.syncToNewLeader(tcData, waitReady)
+				return self.syncToNewLeader(tcData, joinSession)
 			} else {
 				self.tryCheckUnsynced <- true
 			}

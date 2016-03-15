@@ -106,6 +106,7 @@ var (
 	ErrTopicLoading                  = NewCoordErrWithCode("topic is still loading data", CoordLocalErr, RpcErrTopicLoading)
 	ErrTopicExiting                  = NewCoordErr("topic coordinator is exiting", CoordCommonErr)
 	ErrTopicExitingOnSlave           = NewCoordErr("topic coordinator is exiting on slave", CoordTmpErr)
+	ErrTopicCoordStateInvalid        = NewCoordErrWithCode("invalid coordinator state", CoordClusterErr, RpcCommonErr)
 
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)

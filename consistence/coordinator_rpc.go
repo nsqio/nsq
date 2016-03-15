@@ -51,7 +51,7 @@ type RpcTopicLeaderSession struct {
 	RpcTopicData
 	LeaderNode   *NsqdNodeInfo
 	LookupdEpoch int
-	WaitReady    bool
+	JoinSession  string
 }
 
 type NsqdCoordRpcServer struct {
@@ -102,27 +102,26 @@ func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) *CoordErr {
 func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *CoordErr) error {
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		*ret = *err
-		return err
+		return nil
 	}
 	coordLog.Infof("got leader session notify : %v, leader node info:%v", rpcTopicReq, rpcTopicReq.LeaderNode)
 	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
 	if err != nil {
 		coordLog.Infof("topic partition missing.")
 		*ret = *err
-		return err
+		return nil
 	}
-	if rpcTopicReq.WaitReady {
-		if !topicCoord.disableWrite {
-			coordLog.Errorf("wait ready should disable write first")
-			rpcTopicReq.WaitReady = false
-		}
+	if rpcTopicReq.JoinSession != "" && !topicCoord.disableWrite {
+		coordLog.Errorf("join session should disable write first")
+		*ret = *ErrTopicCoordStateInvalid
+		return nil
 	}
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderEpoch,
 	}
-	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.WaitReady)
+	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {
 		*ret = *err
 	}

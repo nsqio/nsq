@@ -24,6 +24,15 @@ var (
 	ErrWaitingJoinISR     = NewCoordErr("The topic is waiting node to join isr", CoordCommonErr)
 )
 
+// new topic can have an advice load factor to give the suggestion about the
+// future load. While the topic data is small the load compute is not precise,
+// so we use the advised load to determine the actual topic load.
+// use 1~10 to advise from lowest to highest. The 1 or 10 should be used with much careful.
+
+const (
+	defaultTopicLoadFactor = 3
+)
+
 type NodeTopicStats struct {
 	NodeID string
 	// the consumed data (MB) on the leader last hour for each channel in the topic.
@@ -155,6 +164,8 @@ type JoinISRState struct {
 	sync.Mutex
 	waitingJoin    bool
 	waitingSession string
+	waitingStart   time.Time
+	readyNodes     map[string]struct{}
 	doneChan       chan struct{}
 }
 
@@ -1245,11 +1256,11 @@ func (self *NsqLookupCoordinator) handleRequestJoinCatchup(topic string, partiti
 func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition int, nodeID string) (string, *CoordErr) {
 	// 1. got join isr request, check valid, should be in catchup list.
 	// 2. notify the topic leader disable write
-	// 3. wait the final sync notify , if timeout just go to end
-	// 4. got final sync finished event, add the node to ISR and remove from
+	// 3. add the node to ISR and remove from
 	// CatchupList.
-	// 5. notify all nodes for the new isr
-	// 6. enable write
+	// 4. insert wait join session, notify all nodes for the new isr
+	// 5. wait on the join session until all the new isr is ready (got the ready notify from isr)
+	// 6. timeout or done, clear current join session, (only keep isr that got ready notify, shoud be quorum), enable write
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("failed to get topic info: %v", err)
@@ -1259,65 +1270,35 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 		coordLog.Infof("join isr node is not in catchup list.")
 		return "", ErrJoinISRInvalid
 	}
-	if _, ok := self.joinISRState[topicInfo.GetTopicDesp()]; !ok {
-		self.joinISRState[topicInfo.GetTopicDesp()] = &JoinISRState{}
-	} else {
-		if self.joinISRState[topicInfo.GetTopicDesp()].waitingJoin {
-			coordLog.Warningf("failed request join isr because another is joining.")
-			return "", ErrJoinISRInvalid
-		}
+	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topicInfo.GetTopicDesp()] = state
 	}
-	state := self.joinISRState[topicInfo.GetTopicDesp()]
-	state.waitingJoin = true
+	leaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
+	if err != nil {
+		coordLog.Infof("failed to get leader session: %v", err)
+		return "", &CoordErr{err.Error(), RpcCommonErr, CoordElectionTmpErr}
+	}
+	state.Lock()
+	defer state.Unlock()
+	if state.waitingJoin {
+		coordLog.Warningf("failed request join isr because another is joining.")
+		return "", ErrJoinISRInvalid
+	}
+	if state.doneChan != nil {
+		close(state.doneChan)
+		state.doneChan = nil
+	}
 
 	err = self.notifyLeaderDisableTopicWrite(topicInfo)
 	if err != nil {
 		coordLog.Infof("try disable write for topic failed: %v", topicInfo.GetTopicDesp())
-		state.waitingJoin = false
 		return "", &CoordErr{err.Error(), RpcCommonErr, CoordElectionTmpErr}
 	}
 
-	state.waitingSession = time.Now().String()
-	if state.doneChan != nil {
-		close(state.doneChan)
-	}
-
-	state.doneChan = make(chan struct{})
-	go self.waitForFinalSyncedISR(topic, partition, nodeID, state)
-	return state.waitingSession, nil
-}
-
-func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int, nodeID string,
-	leaderSession TopicLeaderSession, isr []string, joinISRSession string) *CoordErr {
-	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
-	if err != nil {
-		coordLog.Infof("get topic info failed while sync isr: %v", err.Error())
-		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
-	}
-	// if the node is already in isr, it just confirm the isr state.
-	// This may happen during the leadership switch. we need make sure
-	//  get all isr confirm message before enable the new leader write.
-	if FindSlice(topicInfo.ISR, nodeID) != -1 {
-		self.notifyTopicMetaInfo(topicInfo)
-		//TODO: check the counter for the leader switch
-		return nil
-	}
-
-	// check for state and should lock for the state to prevent others join isr.
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
-	if !ok {
-		coordLog.Warningf("failed join isr because the join state is not set.")
-		return ErrJoinISRInvalid
-	}
-	state.Lock()
-	defer state.Unlock()
-	if !state.waitingJoin || state.waitingSession != joinISRSession {
-		return ErrJoinISRInvalid
-	}
-	if FindSlice(topicInfo.CatchupList, nodeID) == -1 {
-		coordLog.Infof("join isr node is not in catchup list.")
-		return ErrJoinISRInvalid
-	}
+	state.waitingJoin = true
+	state.waitingStart = time.Now()
 
 	newCatchupList := make([]string, 0)
 	for _, nid := range topicInfo.CatchupList {
@@ -1327,36 +1308,127 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 		newCatchupList = append(newCatchupList, nid)
 	}
 	topicInfo.CatchupList = newCatchupList
+	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
+	if err != nil {
+		coordLog.Infof("update catchup failed: %v", err)
+		// continue here to allow the wait goroutine to handle the timeout
+	}
+
 	topicInfo.ISR = append(topicInfo.ISR, nodeID)
 	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("move catchup node to isr failed: %v", err)
-		return &CoordErr{err.Error(), RpcCommonErr, CoordElectionErr}
+		// continue here to allow the wait goroutine to handle the timeout
 	}
 
-	err = self.leadership.UpdateTopicCatchupList(topicInfo.Name, topicInfo.Partition, topicInfo.CatchupList, topicInfo.Epoch)
+	state.waitingSession = topicInfo.Leader
+	for _, s := range topicInfo.ISR {
+		state.waitingSession += s
+	}
+	state.waitingSession += strconv.Itoa(int(topicInfo.Epoch)) + "-" + strconv.Itoa(int(leaderSession.LeaderEpoch))
+	state.waitingSession += state.waitingStart.String()
+
+	state.doneChan = make(chan struct{})
+	state.readyNodes = make(map[string]struct{})
+
+	go self.waitForFinalSyncedISR(*topicInfo, *leaderSession, nodeID, state)
+
+	return state.waitingSession, nil
+}
+
+func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int, nodeID string,
+	leaderSession TopicLeaderSession, joinISRSession string) *CoordErr {
+	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
-		coordLog.Infof("update catchup failed: %v", err)
+		coordLog.Infof("get topic info failed : %v", err.Error())
 		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
 	}
+	if FindSlice(topicInfo.ISR, nodeID) == -1 {
+		coordLog.Infof("got ready for isr but not a isr node: %v, isr is: %v", nodeID, topicInfo.ISR)
+		return ErrJoinISRInvalid
+	}
 
-	oldNodes := make([]string, 0)
-	oldNodes = append(oldNodes, nodeID)
-	self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldNodes)
-	self.notifyCatchupList(topicInfo)
+	// check for state and should lock for the state to prevent others join isr.
+	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	if !ok {
+		coordLog.Warningf("failed join isr because the join state is not set: %v", topicInfo.GetTopicDesp())
+		return ErrJoinISRInvalid
+	}
+	state.Lock()
+	defer state.Unlock()
+	if !state.waitingJoin || state.waitingSession != joinISRSession {
+		coordLog.Infof("state mismatch: %v", state, joinISRSession)
+		return ErrJoinISRInvalid
+	}
 
-	coordLog.Infof("topic %v isr node added %v.", topicInfo.GetTopicDesp(), nodeID)
-	state.waitingJoin = false
-	state.waitingSession = ""
-	close(state.doneChan)
+	coordLog.Infof("topic %v isr node %v ready for new state", topicInfo.GetTopicDesp(), nodeID)
+	state.readyNodes[nodeID] = struct{}{}
+	for _, n := range topicInfo.ISR {
+		if _, ok := state.readyNodes[n]; !ok {
+			coordLog.Infof("node %v still waiting ready", n)
+			return nil
+		}
+	}
+	coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
 	err = self.notifyEnableTopicWrite(topicInfo)
 	if err != nil {
 		coordLog.Warningf("failed to enable write for topic: %v ", topicInfo.GetTopicDesp())
+		return nil
+	}
+	state.waitingJoin = false
+	state.waitingSession = ""
+	if state.doneChan != nil {
+		close(state.doneChan)
+		state.doneChan = nil
 	}
 	return nil
 }
 
-func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topic string, partition int, nodeID string, state *JoinISRState) {
+func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo *TopicPartionMetaInfo, state *JoinISRState, updateISR bool) error {
+	state.Lock()
+	defer state.Unlock()
+	if !state.waitingJoin {
+		return nil
+	}
+	state.waitingJoin = false
+	state.waitingSession = ""
+	coordLog.Infof("reset waiting join state: %v", state.waitingSession)
+	ready := 0
+	for _, n := range topicInfo.ISR {
+		if _, ok := state.readyNodes[n]; ok {
+			ready++
+		}
+	}
+
+	if ready <= topicInfo.Replica/2 {
+		coordLog.Infof("no enough ready isr while reset wait join: %v, expect: %v, actual: %v", state.waitingSession, topicInfo.ISR, state.readyNodes)
+		// even timeout we can not enable this topic since no enough replicas
+		// however, we should clear the join state so that we can try join new isr again
+	} else {
+		// some of isr failed to ready for the new isr state, we need rollback the new isr with the
+		// isr got ready.
+		coordLog.Infof("the join state: expect ready isr : %v, actual ready: %v ", topicInfo.ISR, state.readyNodes)
+		if updateISR && ready != len(topicInfo.ISR) {
+			topicInfo.ISR = make([]string, 0, len(state.readyNodes))
+			for n, _ := range state.readyNodes {
+				topicInfo.ISR = append(topicInfo.ISR, n)
+			}
+			err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+			if err != nil {
+				coordLog.Infof("update topic info failed: %v", err)
+				return err
+			}
+		}
+		err := self.notifyEnableTopicWrite(topicInfo)
+		if err != nil {
+			coordLog.Warningf("failed to enable write :%v", topicInfo.GetTopicDesp())
+		}
+	}
+
+	return nil
+}
+
+func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartionMetaInfo, leaderSession TopicLeaderSession, nodeID string, state *JoinISRState) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 	select {
@@ -1366,23 +1438,7 @@ func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topic string, partition 
 		return
 	}
 
-	state.Lock()
-	defer state.Unlock()
-	if !state.waitingJoin {
-		return
-	}
-	coordLog.Infof("wait timeout for sync isr: %v", state.waitingSession)
-	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
-	if err != nil {
-		coordLog.Infof("get topic info failed :%v", err.Error())
-		return
-	}
-	state.waitingJoin = false
-	state.waitingSession = ""
-	err = self.notifyEnableTopicWrite(topicInfo)
-	if err != nil {
-		coordLog.Warningf("failed to enable write :%v", topicInfo.GetTopicDesp())
-	}
+	self.resetJoinISRState(&topicInfo, state, true)
 }
 
 func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMetaInfo) error {

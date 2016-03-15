@@ -21,7 +21,6 @@ type RpcReqJoinISR struct {
 
 type RpcReadyForISR struct {
 	RpcLookupReqBase
-	ReadyISR       []string
 	LeaderSession  TopicLeaderSession
 	JoinISRSession string
 }
@@ -93,7 +92,7 @@ func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req RpcReqJoinISR, ret 
 }
 
 func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req RpcReadyForISR, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.ReadyISR, req.JoinISRSession)
+	err := self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
 	if err != nil {
 		*ret = *err
 	}
