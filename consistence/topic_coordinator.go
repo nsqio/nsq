@@ -67,15 +67,23 @@ func (self *TopicCoordinator) Exiting() {
 	self.writeHold.Unlock()
 }
 
-func (self *coordData) GetLeaderID() string {
+func (self *coordData) GetLeader() string {
+	return self.topicInfo.Leader
+}
+
+func (self *coordData) GetLeaderSessionID() string {
 	if self.topicLeaderSession.LeaderNode == nil {
 		return ""
 	}
 	return self.topicLeaderSession.LeaderNode.GetID()
 }
 
-func (self *TopicCoordinator) GetLeaderID() string {
-	return self.coordData.GetLeaderID()
+func (self *TopicCoordinator) GetLeader() string {
+	return self.coordData.GetLeader()
+}
+
+func (self *TopicCoordinator) GetLeaderSessionID() string {
+	return self.coordData.GetLeaderSessionID()
 }
 
 func (self *coordData) IsMineLeaderSessionReady(id string) bool {
@@ -100,7 +108,7 @@ func (self *coordData) GetTopicInfoEpoch() int32 {
 }
 
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
-	if self.GetLeaderID() != myID || self.topicInfo.Leader != myID {
+	if self.GetLeaderSessionID() != myID || self.topicInfo.Leader != myID {
 		return ErrNotTopicLeader
 	}
 	if self.topicLeaderSession.Session == "" {

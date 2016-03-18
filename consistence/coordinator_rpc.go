@@ -232,19 +232,6 @@ func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicI
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		return err
 	}
-	tp, err := self.nsqdCoord.getTopicCoordData(rpcTopicReq.Name, rpcTopicReq.Partition)
-	if err != nil {
-		return err
-	}
-
-	tp.topicInfo.CatchupList = rpcTopicReq.CatchupList
-	if FindSlice(tp.topicInfo.CatchupList, self.nsqdCoord.myNode.GetID()) != -1 {
-		select {
-		case self.nsqdCoord.tryCheckUnsynced <- true:
-		default:
-		}
-	}
-
 	return nil
 }
 

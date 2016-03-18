@@ -365,6 +365,15 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 	}
 }
 
+func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
+	err := self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition)
+	if err != nil {
+		coordLog.Infof("failed to release leader for topic(%v): %v", topicInfo.Name, err)
+		return &CoordErr{err.Error(), RpcErrTopicLeaderChanged, CoordElectionErr}
+	}
+	return nil
+}
+
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
 	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
 	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, self.myNode)
@@ -376,7 +385,7 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo)
 }
 
 func (self *NsqdCoordinator) isMineLeaderForTopic(tp *coordData) bool {
-	return tp.GetLeaderID() == self.myNode.GetID()
+	return tp.GetLeader() == self.myNode.GetID()
 }
 
 // for isr node to check with leader
@@ -508,8 +517,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 	retryCnt := 0
 	for offset > 0 {
 		// if leader changed we abort and wait next time
-		if tc.GetData().GetLeaderID() != topicInfo.Leader {
-			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
+		if tc.GetData().GetLeader() != topicInfo.Leader {
+			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetData().GetLeader(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
 		localLogData, localErr := logMgr.GetCommitLogFromOffset(offset)
@@ -587,8 +596,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 	tmpBuf := make([]byte, 1000)
 	leaderSession := tc.GetData().topicLeaderSession
 	for {
-		if tc.GetData().GetLeaderID() != topicInfo.Leader {
-			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetLeaderID(), topicInfo.GetTopicDesp())
+		if tc.GetData().GetLeader() != topicInfo.Leader {
+			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetData().GetLeader(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
 		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition, offset, MAX_LOG_PULL)
@@ -666,6 +675,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 }
 
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
+	tcData := topicCoord.GetData()
 	topicCoord.dataRWMutex.Lock()
 	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
 		topicCoord.dataRWMutex.Unlock()
@@ -674,9 +684,10 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		return ErrEpochLessThanCurrent
 	}
 	coordLog.Infof("updateing the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
-	// channels and catchup should only be modified in the separate rpc method.
-	newTopicInfo.Channels = topicCoord.topicInfo.Channels
-	newTopicInfo.CatchupList = topicCoord.topicInfo.CatchupList
+	if tcData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
+		coordLog.Infof("my leader should release")
+		self.releaseTopicLeader(&tcData.topicInfo)
+	}
 	topicCoord.topicInfo = *newTopicInfo
 	topicCoord.localDataLoaded = true
 
@@ -686,10 +697,9 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
-	tcData := topicCoord.GetData()
 	if newTopicInfo.Leader == self.myNode.GetID() {
 		// not leader before and became new leader
-		if tcData.GetLeaderID() != self.myNode.GetID() {
+		if tcData.GetLeader() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.
@@ -706,6 +716,10 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Infof("I am in isr list.")
 	} else if FindSlice(newTopicInfo.CatchupList, self.myNode.GetID()) != -1 {
 		coordLog.Infof("I am in catchup list.")
+		select {
+		case self.tryCheckUnsynced <- true:
+		default:
+		}
 	}
 	return nil
 }
@@ -746,7 +760,10 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
 				return self.syncToNewLeader(tcData, joinSession)
 			} else {
-				self.tryCheckUnsynced <- true
+				select {
+				case self.tryCheckUnsynced <- true:
+				default:
+				}
 			}
 		}
 	}
