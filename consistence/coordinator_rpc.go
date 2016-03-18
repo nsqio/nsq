@@ -228,13 +228,6 @@ func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) e
 	return nil
 }
 
-func (self *NsqdCoordRpcServer) UpdateCatchupForTopic(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
-	}
-	return nil
-}
-
 type RpcTopicData struct {
 	TopicName          string
 	TopicPartition     int

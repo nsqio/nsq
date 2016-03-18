@@ -116,24 +116,6 @@ func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) 
 	return &stat, err
 }
 
-func (self *NsqdRpcClient) UpdateCatchupForTopic(epoch int, info *TopicPartionMetaInfo) *CoordErr {
-	var rpcReq RpcAdminTopicInfo
-	rpcReq.TopicPartionMetaInfo = *info
-	rpcReq.LookupdEpoch = epoch
-	var retErr CoordErr
-	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateCatchupForTopic", rpcReq, &retErr)
-	return convertRpcError(err, &retErr)
-}
-
-func (self *NsqdRpcClient) UpdateChannelsForTopic(epoch int, info *TopicPartionMetaInfo) *CoordErr {
-	var rpcReq RpcAdminTopicInfo
-	rpcReq.TopicPartionMetaInfo = *info
-	rpcReq.LookupdEpoch = epoch
-	var retErr CoordErr
-	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateChannelsForTopic", rpcReq, &retErr)
-	return convertRpcError(err, &retErr)
-}
-
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name

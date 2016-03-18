@@ -207,11 +207,8 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 // it .
 func (self *NsqLookupCoordinator) NotifyTopicsToSingleNsqdForReload(topics []TopicPartionMetaInfo, nodeID string) {
 	for _, v := range topics {
-		if FindSlice(v.ISR, nodeID) != -1 {
+		if FindSlice(v.ISR, nodeID) != -1 || FindSlice(v.CatchupList, nodeID) != -1 {
 			self.notifySingleNsqdForTopicReload(&v, nodeID)
-		}
-		if FindSlice(v.CatchupList, nodeID) != -1 {
-			self.sendUpdateCatchupToNsqd(self.leaderNode.Epoch, nodeID, &v)
 		}
 		//TODO: check disable write on the nsqd and continue enable the write
 		// if disabled, revokeEnableTopicWrite to allow write
@@ -991,11 +988,6 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
 					continue
 				}
-				err = c.UpdateCatchupForTopic(self.leaderNode.Epoch, topicInfo)
-				if err != nil {
-					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
-					continue
-				}
 			}
 			failList = failList[0:0]
 		}
@@ -1064,7 +1056,6 @@ func (self *NsqLookupCoordinator) notifySingleNsqdForTopicReload(topicInfo *Topi
 	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 	self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nodeID, topicInfo, leaderSession, "")
-	self.sendUpdateCatchupToNsqd(self.leaderNode.Epoch, nodeID, topicInfo)
 	return nil
 }
 
@@ -1113,19 +1104,6 @@ func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch int, nid string, top
 		return err
 	}
 	err = c.UpdateTopicInfo(epoch, topicInfo)
-	if err != nil {
-		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
-	}
-	return err
-}
-
-func (self *NsqLookupCoordinator) sendUpdateCatchupToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo) error {
-	c, err := self.acquireRpcClient(nid)
-	if err != nil {
-		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
-		return err
-	}
-	err = c.UpdateCatchupForTopic(epoch, topicInfo)
 	if err != nil {
 		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 	}
