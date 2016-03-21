@@ -14,7 +14,9 @@ const (
 	CoordElectionErr
 	CoordElectionTmpErr
 	CoordClusterErr
+	CoordSlaveErr
 	CoordLocalErr
+	CoordLocalTmpErr
 	CoordTmpErr
 )
 
@@ -78,12 +80,11 @@ func (self *CoordErr) IsNetErr() bool {
 	return self.ErrType == CoordNetErr
 }
 
-func (self *CoordErr) CanRetry() bool {
-	return self.ErrType == CoordTmpErr || self.ErrType == CoordElectionTmpErr
-}
-
-func (self *CoordErr) IsNeedCheckSync() bool {
-	return self.ErrType == CoordElectionErr
+func (self *CoordErr) CanRetryWrite() bool {
+	return self.ErrType == CoordTmpErr ||
+		self.ErrType == CoordElectionTmpErr ||
+		self.ErrType == CoordLocalTmpErr ||
+		self.ErrType == CoordSlaveErr
 }
 
 var (
@@ -103,10 +104,11 @@ var (
 	ErrTopicCommitLogEOF             = NewCoordErrWithCode("topic commit log end of file", CoordCommonErr, RpcErrCommitLogEOF)
 	ErrTopicCommitLogOutofBound      = NewCoordErrWithCode("topic commit log offset out of bound", CoordCommonErr, RpcErrCommitLogOutofBound)
 	ErrMissingTopicCoord             = NewCoordErrWithCode("missing topic coordinator", CoordClusterErr, RpcErrMissingTopicCoord)
-	ErrTopicLoading                  = NewCoordErrWithCode("topic is still loading data", CoordLocalErr, RpcErrTopicLoading)
-	ErrTopicExiting                  = NewCoordErr("topic coordinator is exiting", CoordCommonErr)
+	ErrTopicLoading                  = NewCoordErrWithCode("topic is still loading data", CoordLocalTmpErr, RpcErrTopicLoading)
+	ErrTopicExiting                  = NewCoordErr("topic coordinator is exiting", CoordLocalTmpErr)
 	ErrTopicExitingOnSlave           = NewCoordErr("topic coordinator is exiting on slave", CoordTmpErr)
 	ErrTopicCoordStateInvalid        = NewCoordErrWithCode("invalid coordinator state", CoordClusterErr, RpcCommonErr)
+	ErrTopicSlaveInvalid             = NewCoordErrWithCode("topic slave has some invalid state", CoordSlaveErr, RpcErrSlaveStateInvalid)
 
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)

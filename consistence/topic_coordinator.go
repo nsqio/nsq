@@ -114,9 +114,6 @@ func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
 	if self.topicLeaderSession.Session == "" {
 		return ErrMissingTopicLeaderSession
 	}
-	if !self.IsISRReadyForWrite() {
-		return ErrWriteQuorumFailed
-	}
 	return nil
 }
 

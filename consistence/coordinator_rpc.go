@@ -33,6 +33,7 @@ const (
 	RpcErrTopicCoordExistingAndMismatch
 	RpcErrTopicLeaderChanged
 	RpcErrTopicLoading
+	RpcErrSlaveStateInvalid
 )
 
 type NsqdNodeLoadFactor struct {
