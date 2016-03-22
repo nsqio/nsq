@@ -916,6 +916,7 @@ retrypub:
 	}
 exitpub:
 	if needLeaveISR {
+		topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
 		coordLog.Infof("topic %v begin leave from isr since write on cluster failed: %v", tcData.topicInfo.GetTopicDesp(), clusterWriteErr)
 		coord.dataRWMutex.Lock()
 		coord.topicInfo.Leader = ""

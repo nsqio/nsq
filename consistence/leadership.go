@@ -92,9 +92,6 @@ type NSQLookupdLeadership interface {
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
 	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error
-	UpdateTopicCatchupList(topic string, partition int, catchupList []string, oldGen int) error
-	CreateChannel(topic string, partition int, channel string) error
-	DeleteChannel(topic string, partition int, channel string) error
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{})
 }
@@ -111,18 +108,24 @@ type NSQDLeadership interface {
 }
 
 type FakeNsqlookupLeadership struct {
-	fakeTopicsData map[string]map[int]*TopicCoordinator
-	fakeNsqdNodes  map[string]NsqdNodeInfo
-	nodeChanged    chan struct{}
-	fakeEpoch      int
-	fakeLeader     *NsqLookupdNodeInfo
+	fakeTopicsData     map[string]map[int]*TopicPartionMetaInfo
+	fakeTopicLeaders   map[string]map[int]*TopicLeaderSession
+	fakeNsqdNodes      map[string]NsqdNodeInfo
+	nodeChanged        chan struct{}
+	fakeEpoch          int
+	fakeLeader         *NsqLookupdNodeInfo
+	leaderChanged      chan struct{}
+	topicLeaderChanged chan struct{}
 }
 
 func NewFakeNsqlookupLeadership() *FakeNsqlookupLeadership {
 	return &FakeNsqlookupLeadership{
-		fakeTopicsData: make(map[string]map[int]*TopicCoordinator),
-		fakeNsqdNodes:  make(map[string]NsqdNodeInfo),
-		nodeChanged:    make(chan struct{}, 1),
+		fakeTopicsData:     make(map[string]map[int]*TopicPartionMetaInfo),
+		fakeTopicLeaders:   make(map[string]map[int]*TopicLeaderSession),
+		fakeNsqdNodes:      make(map[string]NsqdNodeInfo),
+		nodeChanged:        make(chan struct{}, 1),
+		leaderChanged:      make(chan struct{}, 1),
+		topicLeaderChanged: make(chan struct{}, 1),
 	}
 }
 
@@ -142,13 +145,19 @@ func (self *FakeNsqlookupLeadership) Unregister() error {
 func (self *FakeNsqlookupLeadership) Stop() {
 }
 
+func (self *FakeNsqlookupLeadership) changeLookupLeader(newLeader *NsqLookupdNodeInfo) {
+	self.fakeLeader = newLeader
+	self.leaderChanged <- struct{}{}
+}
+
 func (self *FakeNsqlookupLeadership) AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stopChan chan struct{}) {
-	leader <- self.fakeLeader
 	for {
 		select {
 		case <-stopChan:
 			close(leader)
 			return
+		case <-self.leaderChanged:
+			leader <- self.fakeLeader
 		}
 	}
 }
@@ -162,13 +171,14 @@ func (self *FakeNsqlookupLeadership) UpdateLookupEpoch(key string, oldGen int) (
 	return self.fakeEpoch, nil
 }
 
-func (self *FakeNsqlookupLeadership) AddFakedNsqdNode(n NsqdNodeInfo) {
+func (self *FakeNsqlookupLeadership) addFakedNsqdNode(n NsqdNodeInfo) {
 	self.fakeNsqdNodes[n.GetID()] = n
 	self.nodeChanged <- struct{}{}
 }
 
-func (self *FakeNsqlookupLeadership) RemoveFakedNsqdNode(nid string) {
+func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 	delete(self.fakeNsqdNodes, nid)
+	self.nodeChanged <- struct{}{}
 }
 
 func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
@@ -196,7 +206,7 @@ func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartionMetaInfo, error
 	alltopics := make([]TopicPartionMetaInfo, 0)
 	for _, v := range self.fakeTopicsData {
 		for _, topicInfo := range v {
-			alltopics = append(alltopics, topicInfo.topicInfo)
+			alltopics = append(alltopics, *topicInfo)
 		}
 	}
 	return alltopics, nil
@@ -211,23 +221,24 @@ func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (
 	if !ok {
 		return nil, ErrTopicNotCreated
 	}
-	return &tp.topicInfo, nil
+	return tp, nil
 }
 
 func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partition int, replica int) error {
 	t, ok := self.fakeTopicsData[topic]
 	if !ok {
-		t = make(map[int]*TopicCoordinator)
+		t = make(map[int]*TopicPartionMetaInfo)
 		self.fakeTopicsData[topic] = t
 	}
 	_, ok = t[partition]
 	if ok {
 		return ErrAlreadyExist
 	}
-	var newtp TopicCoordinator
-	newtp.topicInfo.Name = topic
-	newtp.topicInfo.Partition = partition
-	newtp.topicInfo.Replica = replica
+	var newtp TopicPartionMetaInfo
+	newtp.Name = topic
+	newtp.Partition = partition
+	newtp.Replica = replica
+	newtp.Epoch = 1
 	t[partition] = &newtp
 	return nil
 }
@@ -235,7 +246,7 @@ func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partitio
 func (self *FakeNsqlookupLeadership) CreateTopic(topic string, partitionNum int, replica int) error {
 	t, ok := self.fakeTopicsData[topic]
 	if !ok {
-		t = make(map[int]*TopicCoordinator)
+		t = make(map[int]*TopicPartionMetaInfo)
 		self.fakeTopicsData[topic] = t
 	}
 	return nil
@@ -268,27 +279,6 @@ func (self *FakeNsqlookupLeadership) DeleteTopic(topic string, partition int) er
 	return nil
 }
 
-func (self *FakeNsqlookupLeadership) UpdateTopicLeader(topic string, partition string, leader string) {
-	var topicInfo TopicPartionMetaInfo
-	topicInfo.Leader = leader
-	topicInfo.ISR = []string{leader}
-	topicInfo.Epoch = 1
-	pid, _ := strconv.Atoi(partition)
-	t, err := self.GetTopicInfo(topic, pid)
-
-	if err != nil {
-		self.CreateTopic(topic, pid+1, 3)
-		self.CreateTopicPartition(topic, pid, 3)
-		self.UpdateTopicNodeInfo(topic, pid, &topicInfo, topicInfo.Epoch)
-	} else {
-		t.Leader = leader
-		if FindSlice(t.ISR, leader) == -1 {
-			t.ISR = append(t.ISR, leader)
-		}
-		t.Epoch++
-	}
-}
-
 // update leader, isr, epoch
 func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error {
 	t, ok := self.fakeTopicsData[topic]
@@ -299,36 +289,46 @@ func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition
 	if !ok {
 		return ErrTopicNotCreated
 	}
-	tp.topicInfo.Leader = topicInfo.Leader
-	tp.topicInfo.ISR = topicInfo.ISR
-	tp.topicInfo.Epoch = topicInfo.Epoch
-	return nil
-}
-
-func (self *FakeNsqlookupLeadership) UpdateTopicCatchupList(topic string, partition int, catchupList []string, oldGen int) error {
-	t, ok := self.fakeTopicsData[topic]
-	if !ok {
-		return ErrTopicNotCreated
+	if tp.Epoch != oldGen {
+		return ErrEpochMismatch
 	}
-	tp, ok := t[partition]
+	tp = topicInfo
+	tp.Epoch++
+	oldGen++
+	return nil
+}
+
+func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, partition int, leader *TopicLeaderSession) {
+	t, ok := self.fakeTopicLeaders[topic]
 	if !ok {
-		return ErrTopicNotCreated
+		t = make(map[int]*TopicLeaderSession)
+		self.fakeTopicLeaders[topic] = t
 	}
-
-	tp.topicInfo.CatchupList = catchupList
-	return nil
-}
-
-func (self *FakeNsqlookupLeadership) CreateChannel(topic string, partition int, channel string) error {
-	return nil
-}
-
-func (self *FakeNsqlookupLeadership) DeleteChannel(topic string, partition int, channel string) error {
-	return nil
+	_, ok = t[partition]
+	if ok {
+		t[partition].LeaderNode = leader.LeaderNode
+		t[partition].Session = leader.Session
+		t[partition].LeaderEpoch++
+		self.topicLeaderChanged <- struct{}{}
+		return
+	}
+	var newtp TopicLeaderSession
+	newtp = *leader
+	t[partition] = &newtp
+	self.topicLeaderChanged <- struct{}{}
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
-	return nil, nil
+	t, ok := self.fakeTopicLeaders[topic]
+	if !ok {
+		return nil, ErrMissingTopicLeaderSession
+	}
+	tp, ok := t[partition]
+	if !ok {
+		return nil, ErrMissingTopicLeaderSession
+	}
+
+	return tp, nil
 }
 
 func (self *FakeNsqlookupLeadership) WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) {
@@ -337,6 +337,9 @@ func (self *FakeNsqlookupLeadership) WatchTopicLeader(topic string, partition in
 		case <-stop:
 			close(leader)
 			return
+		case <-self.topicLeaderChanged:
+			l, _ := self.GetTopicLeaderSession(topic, partition)
+			leader <- l
 		}
 	}
 }

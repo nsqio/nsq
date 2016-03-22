@@ -46,7 +46,7 @@ func (self *fakeLookupRemoteProxy) RequestJoinTopicISR(topic string, partition i
 	return nil
 }
 
-func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, isr []string) *CoordErr {
+func (self *fakeLookupRemoteProxy) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, joinISRSession string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting ready for isr")
 	}
@@ -134,7 +134,7 @@ func ensureTopicLeaderSession(nsqdCoord *NsqdCoordinator, topic string, partitio
 	if err != nil {
 		panic(err)
 	}
-	err = nsqdCoord.updateTopicLeaderSession(tc, newSession, true)
+	err = nsqdCoord.updateTopicLeaderSession(tc, newSession, "")
 	if err != nil {
 		panic(err)
 	}
@@ -233,7 +233,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Equal(t, tc.topicInfo, *fakeInfo)
 	test.Equal(t, tc.topicLeaderSession, *fakeSession)
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
-	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
 	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
 	// start as isr
@@ -247,7 +247,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, tc.topicInfo, *fakeInfo)
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
-	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
 	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
 
@@ -264,7 +264,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Equal(t, tc.topicInfo, *fakeInfo)
 	test.Equal(t, tc.topicLeaderSession, *fakeSession)
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
-	test.Equal(t, tc.GetLeaderID(), nodeInfo1.GetID())
+	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
 	test.Equal(t, tc.GetLeaderEpoch(), fakeSession.LeaderEpoch)
 
@@ -637,10 +637,17 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
-	// test leader epoch increase
+	// leader failed previously, so the leader is invalid
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
+	test.NotNil(t, err)
+	// re-confirm the leader
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.Nil(t, err)
+
 	msgCnt++
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()

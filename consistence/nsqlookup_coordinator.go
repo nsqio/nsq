@@ -282,6 +282,7 @@ func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struc
 		coordLog.Infof("stop watch the topic leader session.")
 	}()
 
+	coordLog.Infof("begin watching the topic %v-%v leader session", name, pid)
 	for {
 		select {
 		case n, ok := <-leaderChan:
@@ -296,7 +297,7 @@ func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struc
 				}
 				coordLog.Warningf("topic leader is missing: %v-%v", name, pid)
 			} else {
-				coordLog.Infof("topic leader is : %v, %v", n, n.LeaderNode)
+				coordLog.Infof("topic leader session changed : %v, %v", n, n.LeaderNode)
 				self.revokeEnableTopicWrite(name, pid, true)
 			}
 		}
@@ -327,6 +328,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 }
 
 func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]map[int]time.Time) {
+	coordLog.Infof("do check topics...")
 	topics, err := self.leadership.ScanTopics()
 	if err != nil {
 		coordLog.Infof("scan topics failed. %v", err)
