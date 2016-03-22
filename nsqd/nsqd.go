@@ -138,24 +138,6 @@ func (n *NSQD) TriggerOptsNotification() {
 	}
 }
 
-//func (n *NSQD) RealTCPAddr() *net.TCPAddr {
-//	n.RLock()
-//	defer n.RUnlock()
-//	return n.tcpListener.Addr().(*net.TCPAddr)
-//}
-//
-//func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
-//	n.RLock()
-//	defer n.RUnlock()
-//	return n.httpListener.Addr().(*net.TCPAddr)
-//}
-//
-//func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
-//	n.RLock()
-//	defer n.RUnlock()
-//	return n.httpsListener.Addr().(*net.TCPAddr)
-//}
-
 func (n *NSQD) SetHealth(err error) {
 	n.errValue.Store(errStore{err: err})
 }

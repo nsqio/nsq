@@ -18,6 +18,7 @@ var (
 	ErrNotNsqLookupLeader = errors.New("Not nsqlookup leader")
 	ErrLeaderElectionFail = errors.New("Leader election failed.")
 	ErrNodeNotFound       = errors.New("node not found")
+	ErrLeaderNodeLost     = errors.New("leader node is lost")
 	ErrJoinISRInvalid     = NewCoordErr("Join ISR failed", CoordCommonErr)
 	ErrJoinISRTimeout     = NewCoordErr("Join ISR timeout", CoordCommonErr)
 	ErrWaitingJoinISR     = NewCoordErr("The topic is waiting node to join isr", CoordCommonErr)
@@ -569,6 +570,11 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		leaderSession, err = self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 		if err != nil {
 			coordLog.Infof("topic leader session still missing")
+			_, ok := self.nsqdNodes[topicInfo.Leader]
+			if !ok {
+				coordLog.Warningf("leader is lost while waiting acknowledge")
+				return ErrLeaderNodeLost
+			}
 			time.Sleep(time.Second)
 			self.notifyTopicMetaInfo(topicInfo)
 		} else {
@@ -749,6 +755,7 @@ func (self *NsqLookupCoordinator) AllocNodeForTopic(topicInfo *TopicPartionMetaI
 		coordLog.Infof("no more no node for topic: %v, excluding nodes: %v, all nodes: %v", topicInfo.GetTopicDesp(), excludeNodes, self.nsqdNodes)
 		return nil, ErrNodeUnavailable
 	}
+	coordLog.Infof("node %v is alloc for topic: %v", chosenNode, topicInfo.GetTopicDesp())
 	return chosenNode, nil
 }
 
@@ -797,41 +804,102 @@ func (self *NsqLookupCoordinator) balanceTopicData(monitorChan chan struct{}) {
 }
 
 // init leader node and isr list for the empty topic
-func (self *NsqLookupCoordinator) AllocTopicLeaderAndISR(replica int) (string, []string, error) {
-	if len(self.nsqdNodes) < replica {
-		return "", nil, ErrNodeUnavailable
+func (self *NsqLookupCoordinator) AllocTopicLeaderAndISR(replica int, partitionNum int, existPart map[int]*TopicPartionMetaInfo) ([]string, [][]string, error) {
+	if len(self.nsqdNodes) < replica || len(self.nsqdNodes) < partitionNum {
+		return nil, nil, ErrNodeUnavailable
+	}
+	if len(self.nsqdNodes) < replica*partitionNum {
+		coordLog.Infof("nodes is less than replica*partition")
+		return nil, nil, ErrNodeUnavailable
+	}
+	existLeaders := make(map[string]struct{})
+	existSlaves := make(map[string]struct{})
+	for _, topicInfo := range existPart {
+		for _, n := range topicInfo.ISR {
+			if n == topicInfo.Leader {
+				existLeaders[n] = struct{}{}
+			} else {
+				existSlaves[n] = struct{}{}
+			}
+		}
 	}
 	nodeTopicStats := make([]NodeTopicStats, 0, len(self.nsqdNodes))
-	var minLeaderStat *NodeTopicStats
 	for _, nodeInfo := range self.nsqdNodes {
 		stats, err := self.getNsqdTopicStat(nodeInfo)
 		if err != nil {
+			coordLog.Infof("got topic status for node %v failed: %v", nodeInfo.GetID(), err)
 			continue
 		}
 		nodeTopicStats = append(nodeTopicStats, *stats)
-		if minLeaderStat == nil {
-			minLeaderStat = stats
-		} else if stats.LeaderLessLoader(minLeaderStat) {
-			minLeaderStat = stats
-		}
 	}
-	isrlist := make([]string, 0, replica)
-	isrlist = append(isrlist, minLeaderStat.NodeID)
+	if len(nodeTopicStats) < partitionNum*replica {
+		return nil, nil, ErrNodeUnavailable
+	}
+	leaderSort := func(l, r *NodeTopicStats) bool {
+		return l.LeaderLessLoader(r)
+	}
+	By(leaderSort).Sort(nodeTopicStats)
+	leaders := make([]string, partitionNum)
+	p := 0
+	currentSelect := 0
+	for p < partitionNum {
+		if elem, ok := existPart[p]; ok {
+			leaders[p] = elem.Leader
+		} else {
+			for {
+				if currentSelect >= len(nodeTopicStats) {
+					coordLog.Infof("not enough nodes for leaders")
+					return nil, nil, ErrNodeUnavailable
+				}
+				nodeInfo := nodeTopicStats[currentSelect]
+				currentSelect++
+				if _, ok := existLeaders[nodeInfo.NodeID]; ok {
+					continue
+				}
+				leaders[p] = nodeInfo.NodeID
+				break
+			}
+		}
+		p++
+	}
+	p = 0
+	currentSelect = 0
 	slaveSort := func(l, r *NodeTopicStats) bool {
 		return l.SlaveLessLoader(r)
 	}
 	By(slaveSort).Sort(nodeTopicStats)
-	for _, s := range nodeTopicStats {
-		if s.NodeID == minLeaderStat.NodeID {
-			continue
+
+	isrlist := make([][]string, partitionNum)
+	for p < partitionNum {
+		isr := make([]string, 0, replica)
+		isr = append(isr, leaders[p])
+		if elem, ok := existPart[p]; ok {
+			isr = elem.ISR
+		} else {
+			for {
+				if currentSelect >= len(nodeTopicStats) {
+					coordLog.Infof("not enough nodes for slaves")
+					return nil, nil, ErrNodeUnavailable
+				}
+				nodeInfo := nodeTopicStats[currentSelect]
+				currentSelect++
+				if nodeInfo.NodeID == leaders[p] {
+					continue
+				}
+				if _, ok := existSlaves[nodeInfo.NodeID]; ok {
+					continue
+				}
+				isr = append(isr, nodeInfo.NodeID)
+				if len(isr) >= replica {
+					break
+				}
+			}
 		}
-		isrlist = append(isrlist, s.NodeID)
-		if len(isrlist) >= replica {
-			break
-		}
+		isrlist[p] = isr
+		p++
 	}
 	coordLog.Infof("topic selected isr : %v", isrlist)
-	return isrlist[0], isrlist, nil
+	return leaders, isrlist, nil
 }
 
 func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, replica int) error {
@@ -848,10 +916,17 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 		}
 	}
 
+	existPart := make(map[int]*TopicPartionMetaInfo)
 	for i := 0; i < partitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i, replica)
 		if err == ErrAlreadyExist {
-			coordLog.Infof("create topic already exist %v-%v: %v", topic, i, err.Error())
+			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
+			t, err := self.leadership.GetTopicInfo(topic, i)
+			if err != nil {
+				coordLog.Warningf("exist topic partition failed to get info: %v", err)
+				return err
+			}
+			existPart[i] = t
 			continue
 		}
 		if err != nil {
@@ -863,19 +938,28 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 			}
 		}
 	}
+	leaders, isrList, err := self.AllocTopicLeaderAndISR(replica, partitionNum, existPart)
+	if err != nil {
+		coordLog.Infof("failed to alloc nodes for topic: %v", err)
+		return err
+	}
+	if len(leaders) != partitionNum || len(isrList) != partitionNum {
+		return ErrNodeUnavailable
+	}
+	if err != nil {
+		coordLog.Infof("failed alloc nodes for topic: %v", err)
+		return err
+	}
 	for i := 0; i < partitionNum; i++ {
-		leader, ISRList, err := self.AllocTopicLeaderAndISR(replica)
-		if err != nil {
-			coordLog.Infof("failed alloc nodes for topic: %v", err)
-			return err
+		if _, ok := existPart[i]; ok {
+			continue
 		}
 		var tmpTopicInfo TopicPartionMetaInfo
-
 		tmpTopicInfo.Name = topic
 		tmpTopicInfo.Partition = i
 		tmpTopicInfo.Replica = replica
-		tmpTopicInfo.ISR = ISRList
-		tmpTopicInfo.Leader = leader
+		tmpTopicInfo.ISR = isrList[i]
+		tmpTopicInfo.Leader = leaders[i]
 
 		err = self.leadership.UpdateTopicNodeInfo(topic, i, &tmpTopicInfo, tmpTopicInfo.Epoch)
 		if err != nil {
