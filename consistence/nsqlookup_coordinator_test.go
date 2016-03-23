@@ -1,7 +1,10 @@
 package consistence
 
 import (
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/test"
 	"math/rand"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -36,19 +39,45 @@ func TestNsqLookupLeadershipChange(t *testing.T) {
 }
 
 func TestNsqLookupNsqdNodesChange(t *testing.T) {
-	coord1, _, node1 := startNsqLookupCoord(t, "test-nsqlookup1")
-	fakeLeadership1 := coord1.leadership.(*FakeNsqlookupLeadership)
-	fakeLeadership1.changeLookupLeader(node1)
+	coordLog.level = 2
+	coordLog.logger = &levellogger.GLogger{}
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
+	nsqd4, randPort4, nodeInfo4, data4 := newNsqdNode(t, "id4")
+
+	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1)
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+	// wait the node start and acquire leadership
 	time.Sleep(time.Second)
-	fakeNsqdNode1 := &NsqdNodeInfo{}
-	fakeNsqdNode2 := &NsqdNodeInfo{}
-	fakeNsqdNode3 := &NsqdNodeInfo{}
-	fakeNsqdNode4 := &NsqdNodeInfo{}
-	fakeLeadership1.addFakedNsqdNode(*fakeNsqdNode1)
-	fakeLeadership1.addFakedNsqdNode(*fakeNsqdNode2)
-	fakeLeadership1.addFakedNsqdNode(*fakeNsqdNode3)
-	fakeLeadership1.addFakedNsqdNode(*fakeNsqdNode4)
+	// start as isr
+	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2)
+	defer os.RemoveAll(data2)
+	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+
+	topic := "test-nsqlookup-topic"
+	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1")
+
+	nsqdCoord1.lookupLeader = lookupNode1
+	nsqdCoord2.lookupLeader = lookupNode1
+
+	fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
+	fakeLeadership1.changeLookupLeader(lookupNode1)
+	time.Sleep(time.Second)
+	fakeLeadership1.addFakedNsqdNode(*nodeInfo1)
+	time.Sleep(time.Second)
+	fakeLeadership1.addFakedNsqdNode(*nodeInfo2)
+	time.Sleep(time.Second)
+	fakeLeadership1.addFakedNsqdNode(*nodeInfo3)
+	time.Sleep(time.Second)
+	fakeLeadership1.addFakedNsqdNode(*nodeInfo4)
+	time.Sleep(time.Second)
 	// test new topic create
+	err := lookupCoord1.CreateTopic(topic, 2, 2)
+	test.Nil(t, err)
+	time.Sleep(time.Second)
 
 	// test new node Add, new isr, new catchup
 

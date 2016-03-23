@@ -474,7 +474,7 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo TopicPartionMetaI
 	if topicNsqdNum < topicInfo.Replica {
 		for i := topicNsqdNum; i < topicInfo.Replica; i++ {
 			// TODO: exclude the current isr and catchup node
-			n, err := self.AllocNodeForTopic(&topicInfo)
+			n, err := self.allocNodeForTopic(&topicInfo)
 			if err != nil {
 				coordLog.Infof("failed to get a new catchup for topic: %v", topicInfo.GetTopicDesp())
 			} else {
@@ -727,7 +727,7 @@ func (self *NsqLookupCoordinator) isHoldingTopicData(topicName string, nid strin
 	return false, nil
 }
 
-func (self *NsqLookupCoordinator) AllocNodeForTopic(topicInfo *TopicPartionMetaInfo) (*NsqdNodeInfo, error) {
+func (self *NsqLookupCoordinator) allocNodeForTopic(topicInfo *TopicPartionMetaInfo) (*NsqdNodeInfo, error) {
 	// collect the nsqd data, check if any node has the topic data already.
 	var chosenNode *NsqdNodeInfo
 	var chosenStat *NodeTopicStats
@@ -806,7 +806,7 @@ func (self *NsqLookupCoordinator) balanceTopicData(monitorChan chan struct{}) {
 }
 
 // init leader node and isr list for the empty topic
-func (self *NsqLookupCoordinator) AllocTopicLeaderAndISR(replica int, partitionNum int, existPart map[int]*TopicPartionMetaInfo) ([]string, [][]string, error) {
+func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(replica int, partitionNum int, existPart map[int]*TopicPartionMetaInfo) ([]string, [][]string, error) {
 	if len(self.nsqdNodes) < replica || len(self.nsqdNodes) < partitionNum {
 		return nil, nil, ErrNodeUnavailable
 	}
@@ -940,7 +940,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 			}
 		}
 	}
-	leaders, isrList, err := self.AllocTopicLeaderAndISR(replica, partitionNum, existPart)
+	leaders, isrList, err := self.allocTopicLeaderAndISR(replica, partitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
 		return err
