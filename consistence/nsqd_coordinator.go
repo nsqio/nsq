@@ -119,14 +119,16 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *Coor
 }
 
 func (self *NsqdCoordinator) Start() error {
-	self.leadership.InitClusterID(self.clusterKey)
-	err := self.leadership.Register(self.myNode)
-	if err != nil {
-		coordLog.Warningf("failed to register nsqd coordinator: %v", err)
-		return err
+	if self.leadership != nil {
+		self.leadership.InitClusterID(self.clusterKey)
+		err := self.leadership.RegisterNsqd(self.myNode)
+		if err != nil {
+			coordLog.Warningf("failed to register nsqd coordinator: %v", err)
+			return err
+		}
 	}
 
-	err = self.loadLocalTopicData()
+	err := self.loadLocalTopicData()
 	if err != nil {
 		return err
 	}
@@ -148,9 +150,11 @@ func (self *NsqdCoordinator) Stop() {
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIp, self.lookupLeader.RpcPort), time.Second)
+	coordLog.Infof("get lookup remote : %v", self.lookupLeader)
 	if err == nil {
 		return c, nil
 	}
+	coordLog.Infof("get lookup remote failed: %v", err)
 	return c, NewCoordErr(err.Error(), CoordNetErr)
 }
 
@@ -307,6 +311,7 @@ func (self *NsqdCoordinator) checkLocalTopicForISR(tc *coordData) *CoordErr {
 	}
 	coordLog.Infof("checking if ISR synced, logid leader: %v, myself:%v", leaderID, logid)
 	if leaderID > logid {
+		coordLog.Infof("this node fall behand, should catchup.")
 		return ErrLocalFallBehind
 	} else if logid > leaderID {
 		coordLog.Infof("this node has more data than leader, should rejoin.")
@@ -394,6 +399,7 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession 
 	// If leadership changed, all isr nodes should sync to new leader and check
 	// consistent with leader, after all isr nodes notify ready, the leader can
 	// accept new write.
+	coordLog.Infof("checking sync state with new leader: %v on node: %v", joinSession, self.myNode.GetID())
 	err := self.checkLocalTopicForISR(topicCoord)
 	if err == ErrLocalFallBehind || err == ErrLocalForwardThanLeader {
 		if joinSession != "" {
@@ -414,7 +420,10 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession 
 		return err
 	}
 	if joinSession != "" && err == nil {
-		self.notifyReadyForTopicISR(&topicCoord.topicInfo, &topicCoord.topicLeaderSession, joinSession)
+		rpcErr := self.notifyReadyForTopicISR(&topicCoord.topicInfo, &topicCoord.topicLeaderSession, joinSession)
+		if rpcErr != nil {
+			coordLog.Infof("notify I am ready for isr failed:%v ", rpcErr)
+		}
 	}
 	return nil
 }
@@ -452,7 +461,6 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaI
 	if err != nil {
 		return err
 	}
-
 	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, joinSession)
 }
 
@@ -685,12 +693,18 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
 		return ErrEpochLessThanCurrent
 	}
-	coordLog.Infof("updateing the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
+	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
 	if tcData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
 		coordLog.Infof("my leader should release")
 		self.releaseTopicLeader(&tcData.topicInfo)
 	}
-	topicCoord.topicInfo = *newTopicInfo
+	needAcquireLeaderSession := true
+	if newTopicInfo.Epoch == topicCoord.topicInfo.Epoch && topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
+		needAcquireLeaderSession = false
+		coordLog.Infof("got the topic info with the same epoch: %v", newTopicInfo)
+	} else {
+		topicCoord.topicInfo = *newTopicInfo
+	}
 	topicCoord.localDataLoaded = true
 
 	err := self.updateLocalTopic(topicCoord)
@@ -710,9 +724,8 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		if shouldDisableWrite {
 			topicCoord.DisableWrite(true)
 		}
-		err := self.acquireTopicLeader(newTopicInfo)
-		if err != nil {
-			coordLog.Infof("acquire topic leader failed.")
+		if needAcquireLeaderSession {
+			go self.acquireTopicLeader(newTopicInfo)
 		}
 	} else if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 		coordLog.Infof("I am in isr list.")
@@ -734,8 +747,11 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
-	coordLog.Infof("updateing the topic leader session: %v", topicCoord.topicInfo.GetTopicDesp())
-	if !topicCoord.topicLeaderSession.IsSame(newLeaderSession) {
+	coordLog.Infof("update the topic leader session: %v", topicCoord.topicInfo.GetTopicDesp())
+	if newLeaderSession == nil {
+		coordLog.Infof("leader session is lost for topic")
+		topicCoord.topicLeaderSession = TopicLeaderSession{}
+	} else if !topicCoord.topicLeaderSession.IsSame(newLeaderSession) {
 		topicCoord.topicLeaderSession = *newLeaderSession
 	}
 	topicCoord.dataRWMutex.Unlock()
@@ -754,14 +770,14 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		topicData.EnableForMaster()
 	} else {
 		topicData.DisableForSlave()
-		if n.LeaderNode == nil || n.Session == "" {
+		if n == nil || n.LeaderNode == nil || n.Session == "" {
 			coordLog.Infof("topic leader is missing : %v", tcData.topicInfo.GetTopicDesp())
 		} else {
 			coordLog.Infof("topic %v leader changed to :%v. epoch: %v", tcData.topicInfo.GetTopicDesp(), n.LeaderNode.GetID(), n.LeaderEpoch)
 			// if catching up, pull data from the new leader
 			// if isr, make sure sync to the new leader
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
-				return self.syncToNewLeader(tcData, joinSession)
+				go self.syncToNewLeader(tcData, joinSession)
 			} else {
 				select {
 				case self.tryCheckUnsynced <- true:

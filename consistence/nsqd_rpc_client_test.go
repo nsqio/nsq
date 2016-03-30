@@ -31,12 +31,12 @@ func (self *fakeNsqdLeadership) InitClusterID(id string) {
 	self.clusterID = id
 }
 
-func (self *fakeNsqdLeadership) Register(nodeData NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) RegisterNsqd(nodeData NsqdNodeInfo) error {
 	self.regData[nodeData.GetID()] = &nodeData
 	return nil
 }
 
-func (self *fakeNsqdLeadership) Unregister(nodeData NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) UnregisterNsqd(nodeData NsqdNodeInfo) error {
 	delete(self.regData, nodeData.GetID())
 	return nil
 }

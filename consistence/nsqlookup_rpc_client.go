@@ -55,7 +55,9 @@ func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}, re
 				return err
 			}
 		} else {
-			coordLog.Infof("rpc call %v error: %v", method, err)
+			if err != nil {
+				coordLog.Infof("rpc call %v error: %v", method, err)
+			}
 			return err
 		}
 	}
@@ -67,7 +69,7 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RequestJoinCatchup", req, &ret)
+	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestJoinCatchup", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -77,7 +79,7 @@ func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret RpcRspJoinISR
-	err := self.CallWithRetry("NSQLookupdCoordinator.RequestJoinTopicISR", req, &ret)
+	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestJoinTopicISR", req, &ret)
 	return convertRpcError(err, &ret.CoordErr)
 }
 
@@ -91,7 +93,7 @@ func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, ni
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.ReadyForTopicISR", req, &ret)
+	err := self.CallWithRetry("NsqLookupCoordRpcServer.ReadyForTopicISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -101,7 +103,7 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RequestLeaveFromISR", req, &ret)
+	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestLeaveFromISR", req, &ret)
 	return convertRpcError(err, &ret)
 }
 
@@ -112,6 +114,6 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partit
 	req.TopicPartition = partition
 	req.LeaderSession = *leaderSession
 	var ret CoordErr
-	err := self.CallWithRetry("NSQLookupdCoordinator.RequestLeaveFromISRByLeader", req, &ret)
+	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestLeaveFromISRByLeader", req, &ret)
 	return convertRpcError(err, &ret)
 }

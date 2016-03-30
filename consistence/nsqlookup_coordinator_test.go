@@ -14,7 +14,7 @@ func startNsqLookupCoord(t *testing.T, id string) (*NsqLookupCoordinator, int, *
 	var n NsqLookupdNodeInfo
 	n.ID = id
 	n.NodeIp = "127.0.0.1"
-	randPort := rand.Int31n(60000-10000) + 10000
+	randPort := rand.Int31n(60000-10000) + 20000
 	n.RpcPort = strconv.Itoa(int(randPort))
 	n.Epoch = 1
 	coord := NewNsqLookupCoordinator("test-nsq-cluster", &n)
@@ -24,6 +24,20 @@ func startNsqLookupCoord(t *testing.T, id string) (*NsqLookupCoordinator, int, *
 		t.Fatal(err)
 	}
 	return coord, int(randPort), &n
+}
+
+func returnErrTestFunc() *CoordErr {
+	var ret CoordErr
+	return convertRpcError(nil, &ret)
+}
+
+func callErrTestFunc() error {
+	return returnErrTestFunc()
+}
+
+func TestErrTest(t *testing.T) {
+	err := callErrTestFunc()
+	test.Nil(t, err)
 }
 
 func TestNsqLookupLeadershipChange(t *testing.T) {
@@ -49,12 +63,19 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1)
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
-	// wait the node start and acquire leadership
 	time.Sleep(time.Second)
 	// start as isr
 	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2)
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+	nsqdCoord3 := startNsqdCoord(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3)
+	defer os.RemoveAll(data3)
+	defer nsqd3.Exit()
+	time.Sleep(time.Second)
+	nsqdCoord4 := startNsqdCoord(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4)
+	defer os.RemoveAll(data4)
+	defer nsqd4.Exit()
 	time.Sleep(time.Second)
 
 	topic := "test-nsqlookup-topic"
@@ -62,6 +83,8 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 
 	nsqdCoord1.lookupLeader = lookupNode1
 	nsqdCoord2.lookupLeader = lookupNode1
+	nsqdCoord3.lookupLeader = lookupNode1
+	nsqdCoord4.lookupLeader = lookupNode1
 
 	fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
 	fakeLeadership1.changeLookupLeader(lookupNode1)
@@ -74,10 +97,18 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	time.Sleep(time.Second)
 	fakeLeadership1.addFakedNsqdNode(*nodeInfo4)
 	time.Sleep(time.Second)
+	nsqdCoord1.leadership = fakeLeadership1
+	nsqdCoord2.leadership = fakeLeadership1
+	nsqdCoord3.leadership = fakeLeadership1
+	nsqdCoord4.leadership = fakeLeadership1
+	nsqdCoord1.lookupRemoteCreateFunc = NewNsqLookupRpcClient
+	nsqdCoord2.lookupRemoteCreateFunc = NewNsqLookupRpcClient
+	nsqdCoord3.lookupRemoteCreateFunc = NewNsqLookupRpcClient
+	nsqdCoord4.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	// test new topic create
 	err := lookupCoord1.CreateTopic(topic, 2, 2)
 	test.Nil(t, err)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 5)
 
 	// test new node Add, new isr, new catchup
 

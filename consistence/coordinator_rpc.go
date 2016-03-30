@@ -105,7 +105,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		*ret = *err
 		return nil
 	}
-	coordLog.Infof("got leader session notify : %v, leader node info:%v", rpcTopicReq, rpcTopicReq.LeaderNode)
+	coordLog.Infof("got leader session notify : %v, leader node info:%v on node: %v", rpcTopicReq, rpcTopicReq.LeaderNode, self.nsqdCoord.myNode.GetID())
 	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
 	if err != nil {
 		coordLog.Infof("topic partition missing.")
@@ -129,12 +129,12 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	return nil
 }
 
-func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
-	*ret = true
+func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
+		*ret = *err
+		return nil
 	}
-	coordLog.Infof("got update request for topic : %v", rpcTopicReq)
+	coordLog.Infof("got update request for topic : %v on node: %v", rpcTopicReq, self.nsqdCoord.myNode.GetID())
 	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
 	for pid, tc := range coords {
@@ -147,7 +147,8 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 				continue
 			}
 			self.nsqdCoord.coordMutex.Unlock()
-			return ErrTopicCoordExistingAndMismatch
+			*ret = *ErrTopicCoordExistingAndMismatch
+			return nil
 		}
 	}
 	myID := self.nsqdCoord.myNode.GetID()
@@ -180,7 +181,8 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition))
 		if localErr != nil || tpCoord == nil {
 			self.nsqdCoord.coordMutex.Unlock()
-			return ErrLocalInitTopicCoordFailed
+			*ret = *ErrLocalInitTopicCoordFailed
+			return nil
 		}
 		tpCoord.disableWrite = true
 		coords[rpcTopicReq.Partition] = tpCoord
@@ -189,41 +191,57 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	}
 
 	self.nsqdCoord.coordMutex.Unlock()
-	return self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
+	err := self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
 }
 
-func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
 	// set the topic as not writable.
+	coordLog.Infof("got enable write for topic : %v", rpcTopicReq)
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
+		*ret = *err
+		return nil
 	}
 	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
 	if err != nil {
-		return err
+		*ret = *err
+		return nil
 	}
 	tp.DisableWrite(false)
-	*ret = true
 	return nil
 }
 
-func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *bool) error {
+func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
+	coordLog.Infof("got disable write for topic : %v", rpcTopicReq)
 	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
-		return err
+		*ret = *err
+		return nil
 	}
 
 	tp, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
 	if err != nil {
-		return err
+		*ret = *err
+		return nil
 	}
 	tp.DisableWrite(true)
-	*ret = true
 	return nil
 }
 
-func (self *NsqdCoordinator) GetTopicStats(topic string, stat *NodeTopicStats) error {
+func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats) error {
 	// TODO: get local coordinator stats and errors, get local topic data stats
 	if topic == "" {
 		// all topic status
+		stat.NodeID = self.nsqdCoord.myNode.GetID()
+		stat.TopicLeaderDataSize = make(map[string]int, len(self.nsqdCoord.topicCoords))
+		stat.TopicTotalDataSize = make(map[string]int, len(self.nsqdCoord.topicCoords))
+		stat.NodeCPUs = 1
+		for name, _ := range self.nsqdCoord.topicCoords {
+			stat.TopicLeaderDataSize[name] = 1
+			stat.TopicTotalDataSize[name] = 1
+		}
 	}
 	// the status of specific topic
 	return nil
