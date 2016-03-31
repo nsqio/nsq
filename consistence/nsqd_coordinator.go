@@ -272,11 +272,6 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 		}
 		if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
 			coordLog.Infof("topic starting as isr .")
-			// trigger the lookup push the newest leadership info
-			//err := self.notifyReadyForTopicISR(topicInfo, nil)
-			//if err != nil {
-			//	coordLog.Warningf("failed to notify ready for isr: %v", err)
-			//}
 		} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 			coordLog.Infof("topic starting as catchup")
 			go self.catchupFromLeader(*topicInfo, "")
@@ -654,25 +649,24 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 			// notify nsqlookupd coordinator to add myself to isr list.
 			// if success, the topic leader will disable new write.
 			coordLog.Infof("I am requesting join isr: %v", self.myNode.GetID())
-			err := self.requestJoinTopicISR(&topicInfo)
-			if err != nil {
-				coordLog.Infof("request join isr failed: %v", err)
-				return err
-			} else {
-				// request done, and the new isr and leader will be notified,
-				// after we got the notify, we will re-enter with isISR = true
-				return nil
-			}
+			go func() {
+				err := self.requestJoinTopicISR(&topicInfo)
+				if err != nil {
+					coordLog.Infof("request join isr failed: %v", err)
+				}
+			}()
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
 			logMgr.FlushCommitLogs()
 			coordLog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
-			rpcErr := self.notifyReadyForTopicISR(&topicInfo, &leaderSession, joinISRSession)
-			if rpcErr != nil {
-				coordLog.Infof("notify ready for isr failed: %v", rpcErr)
-			} else {
-				coordLog.Infof("my node isr synced: %v", topicInfo.GetTopicDesp())
-			}
+			go func() {
+				rpcErr := self.notifyReadyForTopicISR(&topicInfo, &leaderSession, joinISRSession)
+				if rpcErr != nil {
+					coordLog.Infof("notify ready for isr failed: %v", rpcErr)
+				} else {
+					coordLog.Infof("my node isr synced: %v", topicInfo.GetTopicDesp())
+				}
+			}()
 			break
 		}
 	}
@@ -936,10 +930,12 @@ exitpub:
 		coord.topicLeaderSession.LeaderNode = nil
 		coord.dataRWMutex.Unlock()
 		// leave isr
-		tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
-		if tmpErr != nil {
-			coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
-		}
+		go func() {
+			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+			if tmpErr != nil {
+				coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
+			}
+		}()
 	}
 	topic.Unlock()
 	if clusterWriteErr != nil {
@@ -1009,10 +1005,12 @@ exitpubslave:
 	if slavePubErr != nil {
 		coordLog.Infof("I am leaving topic %v from isr since write on slave failed: %v", topicName, slavePubErr)
 		// leave isr
-		tmpErr := self.requestLeaveFromISR(topicName, partition)
-		if tmpErr != nil {
-			coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
-		}
+		go func() {
+			tmpErr := self.requestLeaveFromISR(topicName, partition)
+			if tmpErr != nil {
+				coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
+			}
+		}()
 	}
 	return slavePubErr
 }

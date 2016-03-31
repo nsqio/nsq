@@ -1367,40 +1367,43 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 		coordLog.Warningf("failed join isr because the join state is not set: %v", topicInfo.GetTopicDesp())
 		return ErrJoinISRInvalid
 	}
-	state.Lock()
-	defer state.Unlock()
-	if !state.waitingJoin || state.waitingSession != joinISRSession {
-		coordLog.Infof("state mismatch: %v", state, joinISRSession)
-		return ErrJoinISRInvalid
-	}
-
-	coordLog.Infof("topic %v isr node %v ready for state: %v", topicInfo.GetTopicDesp(), nodeID, joinISRSession)
-	state.readyNodes[nodeID] = struct{}{}
-	for _, n := range topicInfo.ISR {
-		if _, ok := state.readyNodes[n]; !ok {
-			coordLog.Infof("node %v still waiting ready", n)
-			return nil
+	// we go here to allow the rpc call from client can return ok immediately
+	go func() {
+		state.Lock()
+		defer state.Unlock()
+		if !state.waitingJoin || state.waitingSession != joinISRSession {
+			coordLog.Infof("state mismatch: %v", state, joinISRSession)
+			return
 		}
-	}
-	coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
-	rpcErr := self.notifyEnableTopicWrite(topicInfo)
-	if rpcErr != nil {
-		coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
-		go self.triggerCheckTopics(time.Second)
-	}
-	state.waitingJoin = false
-	state.waitingSession = ""
-	if state.doneChan != nil {
-		close(state.doneChan)
-		state.doneChan = nil
-	}
-	if len(topicInfo.ISR) >= topicInfo.Replica && len(topicInfo.CatchupList) > 0 {
-		oldCatchupList := topicInfo.CatchupList
-		coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
-		topicInfo.CatchupList = make([]string, 0)
-		self.notifyTopicMetaInfo(topicInfo)
-		self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
-	}
+
+		coordLog.Infof("topic %v isr node %v ready for state: %v", topicInfo.GetTopicDesp(), nodeID, joinISRSession)
+		state.readyNodes[nodeID] = struct{}{}
+		for _, n := range topicInfo.ISR {
+			if _, ok := state.readyNodes[n]; !ok {
+				coordLog.Infof("node %v still waiting ready", n)
+				return
+			}
+		}
+		coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
+		rpcErr := self.notifyEnableTopicWrite(topicInfo)
+		if rpcErr != nil {
+			coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
+			go self.triggerCheckTopics(time.Second)
+		}
+		state.waitingJoin = false
+		state.waitingSession = ""
+		if state.doneChan != nil {
+			close(state.doneChan)
+			state.doneChan = nil
+		}
+		if len(topicInfo.ISR) >= topicInfo.Replica && len(topicInfo.CatchupList) > 0 {
+			oldCatchupList := topicInfo.CatchupList
+			coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
+			topicInfo.CatchupList = make([]string, 0)
+			self.notifyTopicMetaInfo(topicInfo)
+			self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
+		}
+	}()
 	return nil
 }
 
@@ -1545,7 +1548,7 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
 	}
 
-	self.notifyTopicMetaInfo(topicInfo)
+	go self.notifyTopicMetaInfo(topicInfo)
 	coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo.GetTopicDesp())
 	return nil
 }
