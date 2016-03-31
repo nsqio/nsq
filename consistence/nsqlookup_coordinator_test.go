@@ -46,10 +46,12 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
 	nsqd4, randPort4, nodeInfo4, data4 := newNsqdNode(t, "id4")
+	nsqd5, randPort5, nodeInfo5, data5 := newNsqdNode(t, "id5")
 	nsqdNodeInfoList[nodeInfo1.GetID()] = nodeInfo1
 	nsqdNodeInfoList[nodeInfo2.GetID()] = nodeInfo2
 	nsqdNodeInfoList[nodeInfo3.GetID()] = nodeInfo3
 	nsqdNodeInfoList[nodeInfo4.GetID()] = nodeInfo4
+	nsqdNodeInfoList[nodeInfo5.GetID()] = nodeInfo5
 
 	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1)
 	defer os.RemoveAll(data1)
@@ -68,6 +70,9 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	defer os.RemoveAll(data4)
 	defer nsqd4.Exit()
 	time.Sleep(time.Second)
+	nsqdCoord5 := startNsqdCoord(t, strconv.Itoa(int(randPort5)), data5, "id5", nsqd5)
+	defer os.RemoveAll(data5)
+	defer nsqd5.Exit()
 
 	topic := "test-nsqlookup-topic"
 	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1")
@@ -76,6 +81,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	nsqdCoord2.lookupLeader = lookupNode1
 	nsqdCoord3.lookupLeader = lookupNode1
 	nsqdCoord4.lookupLeader = lookupNode1
+	nsqdCoord5.lookupLeader = lookupNode1
 
 	fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
 	fakeLeadership1.changeLookupLeader(lookupNode1)
@@ -92,15 +98,18 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	nsqdCoord2.leadership = fakeLeadership1
 	nsqdCoord3.leadership = fakeLeadership1
 	nsqdCoord4.leadership = fakeLeadership1
+	nsqdCoord5.leadership = fakeLeadership1
 	nsqdCoord1.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoord2.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoord3.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoord4.lookupRemoteCreateFunc = NewNsqLookupRpcClient
+	nsqdCoord5.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoordList := make(map[string]*NsqdCoordinator)
 	nsqdCoordList[nodeInfo1.GetID()] = nsqdCoord1
 	nsqdCoordList[nodeInfo2.GetID()] = nsqdCoord2
 	nsqdCoordList[nodeInfo3.GetID()] = nsqdCoord3
 	nsqdCoordList[nodeInfo4.GetID()] = nsqdCoord4
+	nsqdCoordList[nodeInfo5.GetID()] = nsqdCoord5
 	// test new topic create
 	err := lookupCoord1.CreateTopic(topic, 2, 2)
 	test.Nil(t, err)
@@ -144,6 +153,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, t0.CatchupList[0], lostNodeID)
 	test.Equal(t, len(t0.ISR), 1)
 	test.Equal(t, len(tc0.topicInfo.ISR), 1)
+	test.Equal(t, t0.Leader, t0.ISR[0])
 
 	// test new catchup and new isr
 	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
@@ -153,11 +163,12 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, len(t0.CatchupList), 0)
 	test.Equal(t, len(t0.ISR), 2)
 	test.Equal(t, len(tc0.topicInfo.ISR), 2)
+	test.Equal(t, t0.Leader, t0.ISR[0])
 
 	// test leader node lost
 	lostNodeID = t0.Leader
 	fakeLeadership1.removeFakedNsqdNode(t0.Leader)
-	fakeLeadership1.ReleaseTopicLeader(topic, 0, tc0.topicLeaderSession.Session)
+	fakeLeadership1.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
 	time.Sleep(time.Second * 5)
 	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
 	t.Log(t0)
@@ -192,7 +203,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	lostNodeID = t0.Leader
 	lostISRID := t0.ISR[1]
 	fakeLeadership1.removeFakedNsqdNode(t0.Leader)
-	fakeLeadership1.ReleaseTopicLeader(topic, 0, tc0.topicLeaderSession.Session)
+	fakeLeadership1.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
 	time.Sleep(time.Millisecond)
 	fakeLeadership1.removeFakedNsqdNode(lostISRID)
 	time.Sleep(time.Second * 5)
@@ -201,6 +212,8 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	time.Sleep(time.Second * 5)
 	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.ISR), 2)
+	test.Equal(t, t0.Leader == t0.ISR[0] || t0.Leader == t0.ISR[1], true)
+
 	t0LeaderCoord = nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
 	tc0, err = t0LeaderCoord.getTopicCoord(topic, 0)
@@ -210,6 +223,37 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	time.Sleep(time.Second * 3)
 
 	// test join isr timeout
+	lostNodeID = t1.ISR[1]
+	fakeLeadership1.removeFakedNsqdNode(lostNodeID)
+	time.Sleep(time.Second * 3)
+	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
+	time.Sleep(time.Millisecond)
+	// with only 2 replica, the isr join fail will not change the isr list
+	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
+	time.Sleep(time.Second * 15)
+	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
+	test.Equal(t, len(t1.ISR), 2)
+	test.Equal(t, t1.Leader == t1.ISR[0] || t1.Leader == t1.ISR[1], true)
+	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
+	// test new topic create
+	topic3 := topic + topic
+	err = lookupCoord1.CreateTopic(topic3, 1, 3)
+	test.Nil(t, err)
+	time.Sleep(time.Second * 5)
+	// with 3 replica, the isr join fail will change the isr list if the isr has the quorum nodes
+	t3, err := fakeLeadership1.GetTopicInfo(topic3, 0)
+	test.Nil(t, err)
+	test.Equal(t, len(t3.ISR), 3)
+	lostNodeID = t3.ISR[1]
+	fakeLeadership1.removeFakedNsqdNode(lostNodeID)
+	time.Sleep(time.Second * 3)
+	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
+	time.Sleep(time.Millisecond)
+	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
+	time.Sleep(time.Second * 10)
+	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
+	test.Equal(t, len(t3.ISR), 2)
+	test.Equal(t, t3.Leader == t3.ISR[0] || t3.Leader == t3.ISR[1], true)
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {

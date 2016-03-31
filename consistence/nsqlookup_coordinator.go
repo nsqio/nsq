@@ -436,9 +436,14 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	if len(failedNodes) == 0 {
 		return
 	}
-	topicInfo.ISR = FilterList(topicInfo.ISR, failedNodes)
+	newISR := FilterList(topicInfo.ISR, failedNodes)
+	if len(newISR) == 0 {
+		coordLog.Infof("no node left in isr if removing failed")
+		return
+	}
+	topicInfo.ISR = newISR
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
-		coordLog.Infof("no enough isr node while removing the failed nodes.")
+		coordLog.Infof("no enough isr node while removing the failed nodes. %v", topicInfo.ISR)
 	}
 	topicInfo.CatchupList = MergeList(topicInfo.CatchupList, failedNodes)
 	coordLog.Infof("topic info updated: %v", topicInfo)
@@ -1066,7 +1071,7 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartionMe
 	state.readyNodes[topicInfo.Leader] = struct{}{}
 
 	coordLog.Infof("isr waiting session init : %v", state)
-	if len(topicInfo.ISR) == 1 {
+	if len(topicInfo.ISR) <= 1 {
 		rpcErr := self.notifyEnableTopicWrite(topicInfo)
 		if rpcErr != nil {
 			coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
@@ -1427,6 +1432,7 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo *TopicPartionMetaI
 		coordLog.Infof("no enough ready isr while reset wait join: %v, expect: %v, actual: %v", state.waitingSession, topicInfo.ISR, state.readyNodes)
 		// even timeout we can not enable this topic since no enough replicas
 		// however, we should clear the join state so that we can try join new isr later
+		go self.triggerCheckTopics(time.Second)
 	} else {
 		// some of isr failed to ready for the new isr state, we need rollback the new isr with the
 		// isr got ready.
@@ -1454,6 +1460,11 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo *TopicPartionMetaI
 				coordLog.Infof("update topic info failed: %v", err)
 				return err
 			}
+			rpcErr := self.notifyTopicMetaInfo(topicInfo)
+			if rpcErr != nil {
+				coordLog.Infof("failed to notify new topic info")
+				return rpcErr
+			}
 		}
 		rpcErr := self.notifyEnableTopicWrite(topicInfo)
 		if rpcErr != nil {
@@ -1466,7 +1477,7 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo *TopicPartionMetaI
 }
 
 func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartionMetaInfo, leaderSession TopicLeaderSession, state *JoinISRState) {
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:

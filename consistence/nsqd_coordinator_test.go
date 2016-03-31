@@ -644,9 +644,6 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
 	// leader failed previously, so the leader is invalid
-	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
-	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
-	test.NotNil(t, err)
 	// re-confirm the leader
 	topicInitInfo.Epoch++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)

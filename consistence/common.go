@@ -109,6 +109,7 @@ var (
 	ErrTopicExitingOnSlave           = NewCoordErr("topic coordinator is exiting on slave", CoordTmpErr)
 	ErrTopicCoordStateInvalid        = NewCoordErrWithCode("invalid coordinator state", CoordClusterErr, RpcCommonErr)
 	ErrTopicSlaveInvalid             = NewCoordErrWithCode("topic slave has some invalid state", CoordSlaveErr, RpcErrSlaveStateInvalid)
+	ErrTopicLeaderSessionInvalid     = NewCoordErrWithCode("topic leader session is invalid", CoordElectionTmpErr, RpcCommonErr)
 
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)

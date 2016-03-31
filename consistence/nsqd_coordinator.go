@@ -365,7 +365,7 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 	}
 }
 
-func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo, session string) *CoordErr {
+func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo, session *TopicLeaderSession) *CoordErr {
 	err := self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, session)
 	if err != nil {
 		coordLog.Infof("failed to release leader for topic(%v): %v", topicInfo.Name, err)
@@ -655,6 +655,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 					coordLog.Infof("request join isr failed: %v", err)
 				}
 			}()
+			break
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
 			logMgr.FlushCommitLogs()
@@ -685,8 +686,8 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
 	if tcData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
-		coordLog.Infof("my leader should release")
-		self.releaseTopicLeader(&tcData.topicInfo, tcData.topicLeaderSession.Session)
+		coordLog.Infof("my leader should release: %v", tcData)
+		self.releaseTopicLeader(&tcData.topicInfo, &tcData.topicLeaderSession)
 	}
 	needAcquireLeaderSession := true
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
@@ -737,7 +738,11 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
-	coordLog.Infof("update the topic leader session: %v", topicCoord.topicInfo.GetTopicDesp())
+	coordLog.Infof("update the topic %v leader session: %v", topicCoord.topicInfo.GetTopicDesp(), newLS)
+	if newLS != nil && newLS.LeaderNode != nil && topicCoord.GetLeader() != newLS.LeaderNode.GetID() {
+		coordLog.Infof("topic leader info not match leader session: %v", topicCoord.GetLeader())
+		return ErrTopicLeaderSessionInvalid
+	}
 	if newLS == nil {
 		coordLog.Infof("leader session is lost for topic")
 		topicCoord.topicLeaderSession = TopicLeaderSession{}
@@ -926,7 +931,6 @@ exitpub:
 		topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
 		coordLog.Infof("topic %v begin leave from isr since write on cluster failed: %v", tcData.topicInfo.GetTopicDesp(), clusterWriteErr)
 		coord.dataRWMutex.Lock()
-		coord.topicInfo.Leader = ""
 		coord.topicLeaderSession.LeaderNode = nil
 		coord.dataRWMutex.Unlock()
 		// leave isr
@@ -1213,7 +1217,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 
 			if tcData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
 				// leader
-				self.leadership.ReleaseTopicLeader(topicName, pid, tcData.topicLeaderSession.Session)
+				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
 			// wait lookup choose new node for isr/leader

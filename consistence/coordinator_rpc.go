@@ -56,10 +56,11 @@ type RpcTopicLeaderSession struct {
 }
 
 type NsqdCoordRpcServer struct {
-	nsqdCoord    *NsqdCoordinator
-	rpcListener  net.Listener
-	rpcServer    *rpc.Server
-	dataRootPath string
+	nsqdCoord      *NsqdCoordinator
+	rpcListener    net.Listener
+	rpcServer      *rpc.Server
+	dataRootPath   string
+	disableRpcTest bool
 }
 
 func NewNsqdCoordRpcServer(coord *NsqdCoordinator, rootPath string) *NsqdCoordRpcServer {
@@ -68,6 +69,11 @@ func NewNsqdCoordRpcServer(coord *NsqdCoordinator, rootPath string) *NsqdCoordRp
 		rpcServer:    rpc.NewServer(),
 		dataRootPath: rootPath,
 	}
+}
+
+// used only for test
+func (self *NsqdCoordRpcServer) toggleDisableRpcTest(disable bool) {
+	self.disableRpcTest = disable
 }
 
 func (self *NsqdCoordRpcServer) start(ip, port string) error {
@@ -92,16 +98,19 @@ func (self *NsqdCoordRpcServer) stop() {
 	}
 }
 
-func (self *NsqdCoordinator) checkLookupForWrite(lookupEpoch int) *CoordErr {
-	if lookupEpoch < self.lookupLeader.Epoch {
+func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch int) *CoordErr {
+	if lookupEpoch < self.nsqdCoord.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
+	}
+	if self.disableRpcTest {
+		return &CoordErr{"rpc disabled", RpcCommonErr, CoordNetErr}
 	}
 	return nil
 }
 
 func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLeaderSession, ret *CoordErr) error {
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		*ret = *err
 		return nil
 	}
@@ -130,7 +139,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 }
 
 func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		*ret = *err
 		return nil
 	}
@@ -201,7 +210,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
 	// set the topic as not writable.
 	coordLog.Infof("got enable write for topic : %v", rpcTopicReq)
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		*ret = *err
 		return nil
 	}
@@ -216,7 +225,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, 
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo, ret *CoordErr) error {
 	coordLog.Infof("got disable write for topic : %v", rpcTopicReq)
-	if err := self.nsqdCoord.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		*ret = *err
 		return nil
 	}
