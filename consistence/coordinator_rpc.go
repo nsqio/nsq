@@ -227,6 +227,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo,
 		return nil
 	}
 	tp.DisableWrite(true)
+	coordLog.Infof("disabled write for topic : %v", rpcTopicReq)
 	return nil
 }
 

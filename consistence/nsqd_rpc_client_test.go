@@ -104,7 +104,7 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 	return nil
 }
 
-func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int) error {
+func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int, session string) error {
 	t, ok := self.fakeTopicsLeaderData[topic]
 	if ok {
 		delete(t, partition)

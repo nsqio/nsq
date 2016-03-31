@@ -82,12 +82,11 @@ func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req RpcReqJoinCatchup, r
 	return nil
 }
 
-func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req RpcReqJoinISR, ret *RpcRspJoinISR) error {
-	session, err := self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
+func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req RpcReqJoinISR, ret *CoordErr) error {
+	err := self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
 	if err != nil {
-		ret.CoordErr = *err
+		*ret = *err
 	}
-	ret.JoinISRSession = session
 	return nil
 }
 

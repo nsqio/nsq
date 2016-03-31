@@ -112,7 +112,7 @@ type NSQDLeadership interface {
 	RegisterNsqd(nodeData NsqdNodeInfo) error
 	UnregisterNsqd(nodeData NsqdNodeInfo) error
 	AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error
-	ReleaseTopicLeader(topic string, partition int) error
+	ReleaseTopicLeader(topic string, partition int, session string) error
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
@@ -234,7 +234,8 @@ func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (
 	if !ok {
 		return nil, ErrTopicNotCreated
 	}
-	return tp.metaInfo, nil
+	tmpInfo := *tp.metaInfo
+	return &tmpInfo, nil
 }
 
 func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partition int, replica int) error {
@@ -309,9 +310,9 @@ func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition
 		return ErrEpochMismatch
 	}
 	newEpoch := tp.metaInfo.Epoch
-	tp.metaInfo = topicInfo
+	*tp.metaInfo = *topicInfo
 	tp.metaInfo.Epoch = newEpoch + 1
-	oldGen++
+	topicInfo.Epoch = tp.metaInfo.Epoch
 	return nil
 }
 
@@ -378,7 +379,15 @@ func (self *FakeNsqlookupLeadership) UnregisterNsqd(nodeData NsqdNodeInfo) error
 func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error {
 	l, err := self.GetTopicLeaderSession(topic, partition)
 	if err == nil {
-		if *l.LeaderNode == nodeData {
+		if l.LeaderNode == nil {
+			l.LeaderNode = &nodeData
+			l.Session = "fake-leader-session"
+			l.LeaderEpoch++
+			t, _ := self.fakeTopics[topic]
+			leaderChanged := t[partition].leaderChanged
+			leaderChanged <- struct{}{}
+			return nil
+		} else if *l.LeaderNode == nodeData {
 			t, _ := self.fakeTopics[topic]
 			leaderChanged := t[partition].leaderChanged
 			leaderChanged <- struct{}{}
@@ -388,15 +397,18 @@ func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition 
 	}
 	leaderSession := &TopicLeaderSession{}
 	leaderSession.LeaderNode = &nodeData
-	leaderSession.Session = "fake-leader-session"
+	leaderSession.Session = "fake-leader-session-" + nodeData.GetID()
 	self.updateTopicLeaderSession(topic, partition, leaderSession)
 	return nil
 }
 
-func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition int) error {
+func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition int, session string) error {
 	l, err := self.GetTopicLeaderSession(topic, partition)
 	if err != nil {
 		return err
+	}
+	if l.Session != session {
+		return ErrLeaderSessionMismatch
 	}
 	l.LeaderNode = nil
 	l.Session = ""

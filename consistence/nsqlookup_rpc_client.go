@@ -78,9 +78,9 @@ func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int,
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret RpcRspJoinISR
+	var ret CoordErr
 	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestJoinTopicISR", req, &ret)
-	return convertRpcError(err, &ret.CoordErr)
+	return convertRpcError(err, &ret)
 }
 
 func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, joinISRSession string) *CoordErr {

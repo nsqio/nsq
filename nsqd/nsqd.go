@@ -259,9 +259,9 @@ func (n *NSQD) PersistMetadata() error {
 		topicData["name"] = topic.GetTopicName()
 		topicData["partition"] = topic.GetTopicPart()
 		channels := []interface{}{}
-		topic.Lock()
+		topic.channelLock.RLock()
 		for _, channel := range topic.channelMap {
-			channel.Lock()
+			channel.RLock()
 			if channel.ephemeral {
 				channel.Unlock()
 				continue
@@ -270,9 +270,9 @@ func (n *NSQD) PersistMetadata() error {
 			channelData["name"] = channel.name
 			channelData["paused"] = channel.IsPaused()
 			channels = append(channels, channelData)
-			channel.Unlock()
+			channel.RUnlock()
 		}
-		topic.Unlock()
+		topic.channelLock.RUnlock()
 		topicData["channels"] = channels
 		topics = append(topics, topicData)
 	}

@@ -158,7 +158,7 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetLastCommmitLogID(topicInfo *TopicPartionMetaInfo) (int64, *CoordErr) {
+func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartionMetaInfo) (int64, *CoordErr) {
 	var req RpcCommitLogReq
 	req.TopicName = topicInfo.Name
 	req.TopicPartition = topicInfo.Partition
