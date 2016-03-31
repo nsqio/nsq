@@ -240,7 +240,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	err = lookupCoord1.CreateTopic(topic3, 1, 3)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
-	// with 3 replica, the isr join fail will change the isr list if the isr has the quorum nodes
+	// with 3 replica, the isr join timeout will change the isr list if the isr has the quorum nodes
 	t3, err := fakeLeadership1.GetTopicInfo(topic3, 0)
 	test.Nil(t, err)
 	test.Equal(t, len(t3.ISR), 3)
