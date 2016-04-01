@@ -45,6 +45,8 @@ type TopicPartionMetaInfo struct {
 	CatchupList []string
 	Epoch       int
 	Replica     int
+	// the suggest load factor for each topic partition.
+	SuggestLF int
 }
 
 func (self *TopicPartionMetaInfo) GetTopicDesp() string {

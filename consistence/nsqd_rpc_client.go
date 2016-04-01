@@ -110,6 +110,17 @@ func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicPartionM
 	return convertRpcError(err, &retErr)
 }
 
+func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartionMetaInfo) bool {
+	var rpcInfo RpcAdminTopicInfo
+	rpcInfo.TopicPartionMetaInfo = *topicInfo
+	var ret bool
+	err := self.CallWithRetry("NsqdCoordRpcServer.IsTopicWriteDisabled", rpcInfo, &ret)
+	if err != nil {
+		return false
+	}
+	return ret
+}
+
 func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) {
 	var stat NodeTopicStats
 	err := self.CallWithRetry("NsqdCoordRpcServer.GetTopicStats", topic, &stat)
