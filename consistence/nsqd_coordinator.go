@@ -676,7 +676,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 }
 
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
-	tcData := topicCoord.GetData()
+	oldData := topicCoord.GetData()
 	topicCoord.dataRWMutex.Lock()
 	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
 		topicCoord.dataRWMutex.Unlock()
@@ -685,9 +685,9 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		return ErrEpochLessThanCurrent
 	}
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
-	if tcData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
-		coordLog.Infof("my leader should release: %v", tcData)
-		self.releaseTopicLeader(&tcData.topicInfo, &tcData.topicLeaderSession)
+	if oldData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
+		coordLog.Infof("my leader should release: %v", oldData)
+		self.releaseTopicLeader(&oldData.topicInfo, &oldData.topicLeaderSession)
 	}
 	needAcquireLeaderSession := true
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
@@ -698,16 +698,16 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		topicCoord.topicInfo = *newTopicInfo
 	}
 	topicCoord.localDataLoaded = true
-
-	err := self.updateLocalTopic(topicCoord)
 	topicCoord.dataRWMutex.Unlock()
+
+	err := self.updateLocalTopic(topicCoord.GetData())
 	if err != nil {
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
 	if newTopicInfo.Leader == self.myNode.GetID() {
 		// not leader before and became new leader
-		if tcData.GetLeader() != self.myNode.GetID() {
+		if oldData.GetLeader() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
 			// leader switch need disable write until the lookup notify leader
 			// to accept write.
@@ -1185,7 +1185,7 @@ func (self *NsqdCoordinator) notifyFlushData(topic string, partition int) {
 	self.flushNotifyChan <- TopicPartitionID{topic, partition}
 }
 
-func (self *NsqdCoordinator) updateLocalTopic(topicCoord *TopicCoordinator) *CoordErr {
+func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) *CoordErr {
 	// check topic exist and prepare on local.
 	t := self.localNsqd.GetTopic(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
 	if t == nil {
