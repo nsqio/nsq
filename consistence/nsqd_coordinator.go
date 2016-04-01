@@ -563,8 +563,6 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 		coordLog.Errorf("local topic partition mismatch:%v vs %v", topicInfo.Partition, localTopic.GetTopicPart())
 		return ErrLocalTopicPartitionMismatch
 	}
-	localTopic.Lock()
-	defer localTopic.Unlock()
 	if offset > 0 {
 		lastLog, localErr := logMgr.GetCommitLogFromOffset(offset)
 		if localErr != nil {
@@ -573,7 +571,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 		}
 		// reset the data file to (lastLog.LogID, lastLog.MsgOffset),
 		// and the next message write position should be updated.
+		localTopic.Lock()
 		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(lastLog.MsgOffset), lastLog.MsgCnt-1)
+		localTopic.Unlock()
 		if err != nil {
 			coordLog.Errorf("failed to reset local topic data: %v", err)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
@@ -584,7 +584,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 	} else {
+		localTopic.Lock()
 		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(0), 0)
+		localTopic.Unlock()
 		if err != nil {
 			coordLog.Errorf("failed to reset local topic data: %v", err)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
@@ -619,19 +621,23 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 			synced = true
 		}
 		coordLog.Infof("pulled logs :%v from offset: %v", len(logs), offset)
+		localTopic.Lock()
+		hasErr := false
 		for i, l := range logs {
 			d := dataList[i]
 			// read and decode all messages
 			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, tmpBuf)
 			if localErr != nil {
 				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v", localErr, len(d), d)
-				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+				hasErr = true
+				break
 			}
 			if len(newMsgs) == 1 {
 				localErr = localTopic.PutMessageOnReplica(newMsgs[0], nsqd.BackendOffset(l.MsgOffset))
 				if localErr != nil {
 					coordLog.Infof("Failed to put message on slave: %v, offset: %v", localErr, l.MsgOffset)
-					return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+					hasErr = true
+					break
 				}
 			} else {
 				coordLog.Infof("got batch messages: %v", len(newMsgs))
@@ -640,8 +646,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 			localErr = logMgr.AppendCommitLog(&l, true)
 			if localErr != nil {
 				coordLog.Infof("Failed to append local log: %v", localErr)
-				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+				hasErr = true
+				break
 			}
+		}
+		localTopic.Unlock()
+		if hasErr {
+			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		offset += int64(len(logs) * GetLogDataSize())
 

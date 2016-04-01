@@ -254,6 +254,8 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
 	test.Equal(t, len(t3.ISR), 2)
 	test.Equal(t, t3.Leader == t3.ISR[0] || t3.Leader == t3.ISR[1], true)
+	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
+	time.Sleep(time.Second * 10)
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {

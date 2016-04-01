@@ -58,7 +58,8 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci *clusterinfo.ClusterInfo
+	ci      *clusterinfo.ClusterInfo
+	exiting bool
 }
 
 func New(opts *Options) *NSQD {
@@ -243,7 +244,7 @@ func (n *NSQD) LoadMetadata() {
 	}
 }
 
-func (n *NSQD) PersistMetadata() error {
+func (n *NSQD) PersistMetadata(currentTopicMap map[string]*Topic) error {
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.GetOpts().DataPath, "nsqd.%d.dat"), n.GetOpts().ID)
@@ -251,7 +252,7 @@ func (n *NSQD) PersistMetadata() error {
 
 	js := make(map[string]interface{})
 	topics := []interface{}{}
-	for _, topic := range n.topicMap {
+	for _, topic := range currentTopicMap {
 		if topic.ephemeral {
 			continue
 		}
@@ -308,15 +309,27 @@ func (n *NSQD) PersistMetadata() error {
 
 func (n *NSQD) Exit() {
 	n.Lock()
-	err := n.PersistMetadata()
+	if n.exiting {
+		n.Unlock()
+		return
+	}
+	n.exiting = true
+	n.Unlock()
+
+	n.RLock()
+	tmpMap := make(map[string]*Topic)
+	for k, t := range n.topicMap {
+		tmpMap[k] = t
+	}
+	n.RUnlock()
+	err := n.PersistMetadata(tmpMap)
 	if err != nil {
 		nsqLog.LogErrorf(" failed to persist metadata - %s", err)
 	}
 	nsqLog.Logf("NSQ: closing topics")
-	for _, topic := range n.topicMap {
+	for _, topic := range tmpMap {
 		topic.Close()
 	}
-	n.Unlock()
 
 	// we want to do this last as it closes the idPump (if closed first it
 	// could potentially starve items in process and deadlock)
@@ -459,10 +472,14 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 
 func (n *NSQD) flushAll() {
 	n.RLock()
-	for _, t := range n.topicMap {
-		t.ForceFlush()
+	tmpMap := make(map[string]*Topic)
+	for k, t := range n.topicMap {
+		tmpMap[k] = t
 	}
 	n.RUnlock()
+	for _, t := range tmpMap {
+		t.ForceFlush()
+	}
 }
 
 func (n *NSQD) Notify(v interface{}) {
@@ -479,12 +496,17 @@ func (n *NSQD) Notify(v interface{}) {
 			if !persist {
 				return
 			}
-			n.Lock()
-			err := n.PersistMetadata()
+			n.RLock()
+			tmpMap := make(map[string]*Topic)
+			for k, t := range n.topicMap {
+				tmpMap[k] = t
+			}
+			n.RUnlock()
+
+			err := n.PersistMetadata(tmpMap)
 			if err != nil {
 				nsqLog.LogErrorf("failed to persist metadata - %s", err)
 			}
-			n.Unlock()
 		}
 	})
 }
@@ -493,14 +515,18 @@ func (n *NSQD) Notify(v interface{}) {
 func (n *NSQD) channels() []*Channel {
 	var channels []*Channel
 	n.RLock()
-	for _, t := range n.topicMap {
-		t.RLock()
+	tmpMap := make(map[string]*Topic)
+	for k, t := range n.topicMap {
+		tmpMap[k] = t
+	}
+	n.RUnlock()
+	for _, t := range tmpMap {
+		t.channelLock.RLock()
 		for _, c := range t.channelMap {
 			channels = append(channels, c)
 		}
-		t.RUnlock()
+		t.channelLock.RUnlock()
 	}
-	n.RUnlock()
 	return channels
 }
 

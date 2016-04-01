@@ -441,7 +441,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return ErrLeaderSessionNotReleased
 	}
 
-	topicInfo, _, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
+	_, _, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
 	if coordErr != nil {
 		coordLog.Infof("prepare join state failed: %v", coordErr)
 		return coordErr
@@ -1586,7 +1586,7 @@ func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMet
 	if newLeader == "" {
 		return ErrLeaderElectionFail
 	}
-	topicInfo, _, state, err := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
+	_, _, state, err := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
 	if err != nil {
 		coordLog.Infof("prepare join state failed: %v", err)
 		return err
