@@ -779,6 +779,9 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		topicData.DisableForSlave()
 		if newLS == nil || newLS.LeaderNode == nil || newLS.Session == "" {
 			coordLog.Infof("topic leader is missing : %v", tcData.topicInfo.GetTopicDesp())
+			if tcData.GetLeader() == self.myNode.GetID() {
+				go self.acquireTopicLeader(&tcData.topicInfo)
+			}
 		} else {
 			coordLog.Infof("topic %v leader changed to :%v. epoch: %v", tcData.topicInfo.GetTopicDesp(), newLS.LeaderNode.GetID(), newLS.LeaderEpoch)
 			// if catching up, pull data from the new leader

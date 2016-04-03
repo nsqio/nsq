@@ -147,7 +147,7 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 		return nil, err
 	}
 
-	self.pLogID = l.LogID
+	atomic.StoreInt64(&self.pLogID, l.LogID)
 	return &l, nil
 }
 
@@ -198,9 +198,9 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if l.LogID == self.pLogID {
+		if l.LogID == atomic.LoadInt64(&self.pLogID) {
 			return roundOffset, nil
-		} else if l.LogID < self.pLogID {
+		} else if l.LogID < atomic.LoadInt64(&self.pLogID) {
 			break
 		}
 		roundOffset -= int64(GetLogDataSize())
@@ -212,18 +212,18 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 }
 
 func (self *TopicCommitLogMgr) GetLastCommitLogID() int64 {
-	return self.pLogID
+	return atomic.LoadInt64(&self.pLogID)
 }
 
 func (self *TopicCommitLogMgr) IsCommitted(id int64) bool {
-	if self.pLogID == id {
+	if atomic.LoadInt64(&self.pLogID) == id {
 		return true
 	}
 	return false
 }
 
 func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) error {
-	if l.LogID <= self.pLogID {
+	if l.LogID <= atomic.LoadInt64(&self.pLogID) {
 		return ErrCommitLogWrongID
 	}
 	if slave {
@@ -241,7 +241,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		}
 		self.committedLogs = append(self.committedLogs, *l)
 	}
-	self.pLogID = l.LogID
+	atomic.StoreInt64(&self.pLogID, l.LogID)
 	return nil
 }
 

@@ -365,10 +365,15 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			}
 		} else {
 			// check topic leader session key.
-			_, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
+			leaderSession, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
 			if err != nil {
 				coordLog.Infof("topic %v leader session not found.", t.GetTopicDesp())
 				// notify the nsqd node to acquire the leader session.
+				self.notifyTopicMetaInfo(&t)
+				continue
+			}
+			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
+				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
 				self.notifyTopicMetaInfo(&t)
 				continue
 			}
@@ -390,9 +395,12 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[t.GetTopicDesp()]
 		self.joinStateMutex.Unlock()
+		state.Lock()
 		if ok && state.waitingJoin {
+			state.Unlock()
 			continue
 		}
+		state.Unlock()
 
 		partitions, ok := waitingMigrateTopic[t.Name]
 		if !ok {
@@ -1131,7 +1139,7 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartionMe
 		}
 		coordLog.Infof("isr join state is ready since only leader in isr")
 	} else {
-		go self.waitForFinalSyncedISR(*topicInfo, *leaderSession, state)
+		go self.waitForFinalSyncedISR(*topicInfo, *leaderSession, state, state.doneChan)
 	}
 	self.notifyTopicLeaderSession(topicInfo, leaderSession, state.waitingSession)
 }
@@ -1558,13 +1566,13 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartionMetaIn
 	return nil
 }
 
-func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartionMetaInfo, leaderSession TopicLeaderSession, state *JoinISRState) {
+func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartionMetaInfo, leaderSession TopicLeaderSession, state *JoinISRState, doneChan chan struct{}) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:
 		coordLog.Infof("wait timeout for sync isr.")
-	case <-state.doneChan:
+	case <-doneChan:
 		return
 	}
 
