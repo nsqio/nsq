@@ -54,9 +54,12 @@ func (self *TopicPartionMetaInfo) GetTopicDesp() string {
 }
 
 type TopicLeaderSession struct {
+	ClusterID   string
+	Topic       string
+	Partition   int
 	LeaderNode  *NsqdNodeInfo
 	Session     string
-	LeaderEpoch int32
+	LeaderEpoch int
 }
 
 func (self *TopicLeaderSession) IsSame(other *TopicLeaderSession) bool {
@@ -87,16 +90,16 @@ type ConsistentStore interface {
 // We need check leader lock session before do any modify to etcd.
 type NSQLookupdLeadership interface {
 	InitClusterID(id string)
-	Register(value NsqLookupdNodeInfo) error
+	Register(value *NsqLookupdNodeInfo) error
 	Unregister() error
 	Stop()
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(key string, oldGen int) (int, error)
-	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
-	ScanTopics() ([]TopicPartionMetaInfo, error)
+	WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{})
+	ScanTopics() ([]*TopicPartionMetaInfo, error)
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
-	CreateTopicPartition(topic string, partition int, replica int) error
+	CreateTopicPartition(topic string, partition int) error
 	CreateTopic(topic string, partitionNum int, replica int) error
 	IsExistTopic(topic string) (bool, error)
 	IsExistTopicPartition(topic string, partitionNum int) (bool, error)
@@ -104,16 +107,17 @@ type NSQLookupdLeadership interface {
 	DeleteTopic(topic string, partition int) error
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
+	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, int)
 	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
-	WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{})
+	WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) error
 }
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
-	RegisterNsqd(nodeData NsqdNodeInfo) error
-	UnregisterNsqd(nodeData NsqdNodeInfo) error
-	AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error
+	Register(nodeData *NsqdNodeInfo) error
+	Unregister(nodeData *NsqdNodeInfo) error
+	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
