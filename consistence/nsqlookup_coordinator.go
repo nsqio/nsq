@@ -88,7 +88,7 @@ func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo) *NsqLookupCo
 	coord := &NsqLookupCoordinator{
 		clusterKey:       cluster,
 		myNode:           *n,
-		leadership:       &FakeNsqlookupLeadership{},
+		leadership:       nil,
 		nsqdNodes:        make(map[string]NsqdNodeInfo),
 		nsqdRpcClients:   make(map[string]*NsqdRpcClient),
 		nsqdNodeFailChan: make(chan struct{}, 1),
@@ -114,11 +114,13 @@ func RetryWithTimeout(fn func() error) error {
 
 // init and register to leader server
 func (self *NsqLookupCoordinator) Start() error {
-	self.leadership.InitClusterID(self.clusterKey)
-	err := self.leadership.Register(self.myNode)
-	if err != nil {
-		coordLog.Warningf("failed to register nsqlookup coordinator: %v", err)
-		return err
+	if self.leadership != nil {
+		self.leadership.InitClusterID(self.clusterKey)
+		err := self.leadership.Register(self.myNode)
+		if err != nil {
+			coordLog.Warningf("failed to register nsqlookup coordinator: %v", err)
+			return err
+		}
 	}
 	self.wg.Add(1)
 	go self.handleLeadership()
@@ -134,7 +136,9 @@ func (self *NsqLookupCoordinator) Stop() {
 
 func (self *NsqLookupCoordinator) handleLeadership() {
 	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
-	go self.leadership.AcquireAndWatchLeader(lookupdLeaderChan, self.stopChan)
+	if self.leadership != nil {
+		go self.leadership.AcquireAndWatchLeader(lookupdLeaderChan, self.stopChan)
+	}
 	defer self.wg.Done()
 	defer close(self.nsqdMonitorChan)
 	for {
@@ -173,19 +177,21 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 	}
 	coordLog.Infof("I am master now.")
 	// reload topic information
-	newTopics, err := self.leadership.ScanTopics()
-	if err != nil {
-		coordLog.Errorf("load topic info failed: %v", err)
-	} else {
-		coordLog.Infof("topic loaded : %v", len(newTopics))
-		self.NotifyTopicsToAllNsqdForReload(newTopics)
-	}
-	for _, t := range newTopics {
-		self.wg.Add(1)
-		go func() {
-			defer self.wg.Done()
-			self.watchTopicLeaderSession(monitorChan, t.Name, t.Partition)
-		}()
+	if self.leadership != nil {
+		newTopics, err := self.leadership.ScanTopics()
+		if err != nil {
+			coordLog.Errorf("load topic info failed: %v", err)
+		} else {
+			coordLog.Infof("topic loaded : %v", len(newTopics))
+			self.NotifyTopicsToAllNsqdForReload(newTopics)
+		}
+		for _, t := range newTopics {
+			self.wg.Add(1)
+			go func() {
+				defer self.wg.Done()
+				self.watchTopicLeaderSession(monitorChan, t.Name, t.Partition)
+			}()
+		}
 	}
 
 	self.wg.Add(1)
@@ -228,7 +234,9 @@ func (self *NsqLookupCoordinator) NotifyTopicsToAllNsqdForReload(topics []TopicP
 
 func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 	nsqdNodesChan := make(chan []NsqdNodeInfo)
-	go self.leadership.WatchNsqdNodes(nsqdNodesChan, monitorChan)
+	if self.leadership != nil {
+		go self.leadership.WatchNsqdNodes(nsqdNodesChan, monitorChan)
+	}
 	defer func() {
 		coordLog.Infof("stop watch the nsqd nodes.")
 	}()
@@ -258,6 +266,9 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 				}
 			}
 
+			if self.leadership == nil {
+				continue
+			}
 			topics, scanErr := self.leadership.ScanTopics()
 			if scanErr != nil {
 				coordLog.Infof("scan topics failed: %v", scanErr)
@@ -282,7 +293,9 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struct{}, name string, pid int) {
 	leaderChan := make(chan *TopicLeaderSession, 1)
 	// close monitor channel should cause the leaderChan closed, so we can quit normally
-	go self.leadership.WatchTopicLeader(name, pid, leaderChan, monitorChan)
+	if self.leadership != nil {
+		go self.leadership.WatchTopicLeader(name, pid, leaderChan, monitorChan)
+	}
 	defer func() {
 		coordLog.Infof("stop watch the topic leader session.")
 	}()
@@ -339,6 +352,9 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 
 func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]map[int]time.Time) {
 	coordLog.Infof("do check topics...")
+	if self.leadership == nil {
+		return
+	}
 	topics, commonErr := self.leadership.ScanTopics()
 	if commonErr != nil {
 		coordLog.Infof("scan topics failed. %v", commonErr)

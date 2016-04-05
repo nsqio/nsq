@@ -400,13 +400,13 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	// message header is 26 bytes
 	msgCnt := 0
 	msgRawSize := int64(nsqdNs.MessageHeaderBytes() + 3 + 4)
-	topicData1 := nsqd1.GetTopicIgnPart(topic)
+	topicData1 := nsqd1.GetTopic(topic, partition)
 	for i := 0; i < 20; i++ {
 		err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 		test.Nil(t, err)
 		msgCnt++
 	}
-	topicData2 := nsqd2.GetTopicIgnPart(topic)
+	topicData2 := nsqd2.GetTopic(topic, partition)
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
 
@@ -436,7 +436,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	// wait catchup
 	time.Sleep(time.Second * 3)
-	topicData3 := nsqd3.GetTopicIgnPart(topic)
+	topicData3 := nsqd3.GetTopic(topic, partition)
 	topicData3.ForceFlush()
 	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
 	test.Nil(t, err)
@@ -584,14 +584,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
-	topicData1 := nsqd1.GetTopicIgnPart(topic)
+	topicData1 := nsqd1.GetTopic(topic, partition)
 	err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.Nil(t, err)
 	// message header is 26 bytes
 	msgCnt := 1
 	msgRawSize := int64(nsqdNs.MessageHeaderBytes() + 3 + 4)
 
-	topicData2 := nsqd2.GetTopicIgnPart(topic)
+	topicData2 := nsqd2.GetTopic(topic, partition)
 
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
