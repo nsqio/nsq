@@ -88,6 +88,7 @@ type ConsistentStore interface {
 }
 
 // We need check leader lock session before do any modify to etcd.
+// Make sure all returned value should be copied to avoid modify by outside.
 type NSQLookupdLeadership interface {
 	InitClusterID(id string)
 	Register(value *NsqLookupdNodeInfo) error
@@ -115,8 +116,8 @@ type NSQLookupdLeadership interface {
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
-	Register(nodeData *NsqdNodeInfo) error
-	Unregister(nodeData *NsqdNodeInfo) error
+	RegisterNsqd(nodeData *NsqdNodeInfo) error
+	UnregisterNsqd(nodeData *NsqdNodeInfo) error
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
