@@ -70,22 +70,21 @@ func (c *context) GetTlsConfig() *tls.Config {
 	return c.tlsConfig
 }
 
-func (c *context) getExistingTopic(name string) (*nsqd.Topic, error) {
-	return c.nsqd.GetExistingTopic(name)
+func (c *context) getExistingTopic(name string, part int) (*nsqd.Topic, error) {
+	return c.nsqd.GetExistingTopic(name, part)
 }
 
 func (c *context) getTopic(name string, part int) *nsqd.Topic {
 	return c.nsqd.GetTopic(name, part)
 }
 
-func (c *context) deleteExistingTopic(name string) error {
-	return c.nsqd.DeleteExistingTopic(name)
+func (c *context) deleteExistingTopic(name string, part int) error {
+	return c.nsqd.DeleteExistingTopic(name, part)
 }
 
 func (c *context) persistMetadata() {
-	c.nsqd.Lock()
-	c.nsqd.PersistMetadata()
-	c.nsqd.Unlock()
+	tmpMap := c.nsqd.GetTopicMapCopy()
+	c.nsqd.PersistMetadata(tmpMap)
 }
 
 func (c *context) checkForMasterWrite(topic *nsqd.Topic) bool {
@@ -95,7 +94,7 @@ func (c *context) checkForMasterWrite(topic *nsqd.Topic) bool {
 func (c *context) PutMessage(topic *nsqd.Topic, msg []byte) error {
 	if c.nsqdCoord == nil {
 		msg := nsqd.NewMessage(0, msg)
-		_, _, err := topic.PutMessage(msg)
+		_, _, _, _, err := topic.PutMessage(msg)
 		return err
 	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)

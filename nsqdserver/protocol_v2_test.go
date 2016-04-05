@@ -1189,24 +1189,37 @@ func TestSampling(t *testing.T) {
 			if err != nil {
 				return
 			}
+			//frameType, data, _ := nsq.UnpackResponse(resp)
+			//if frameType == frameTypeResponse {
+			//	if !bytes.Equal(data, heartbeatBytes) {
+			//		t.Fatalf("got response not heartbeat:" + string(data))
+			//	}
+			//	nsq.Nop().WriteTo(conn)
+			//	continue
+			//}
+			//if frameType != frameTypeMessage {
+			//	t.Fatalf("got something else")
+			//}
+			//msgOut, _ := nsqdNs.DecodeMessage(data)
+			//nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 		}
 	}()
 
 	time.Sleep(time.Second * 15)
-	test.Equal(t, channel.GetReadOffset(),
+	test.Equal(t, channel.GetChannelEnd(),
 		nsqdNs.BackendOffset(num*(4+len(testBody)+10+16)))
-	doneChan := make(chan int)
-	go func() {
-		for {
-			if channel.GetReadOffset() ==
-				channel.GetChannelEnd() {
-				close(doneChan)
-				return
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-	}()
-	<-doneChan
+	//doneChan := make(chan int)
+	//go func() {
+	//	for {
+	//		if channel.GetConfirmedOffset() ==
+	//			channel.GetChannelEnd() {
+	//			close(doneChan)
+	//			return
+	//		}
+	//		time.Sleep(5 * time.Millisecond)
+	//	}
+	//}()
+	//<-doneChan
 
 	numInFlight := channel.GetInflightNum()
 
@@ -1314,7 +1327,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameType, frameTypeError)
 	test.Equal(t, string(data),
-		fmt.Sprintf("E_FIN_FAILED FIN %v failed ID not in flight", msgOut.GetFullMsgID()))
+		fmt.Sprintf("E_FIN_FAILED FIN %v failed Message ID not in flight", msgOut.GetFullMsgID()))
 }
 
 // TODO:

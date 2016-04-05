@@ -84,9 +84,14 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	ctx := &context{}
 	ctx.nsqd = nsqdInstance
 	ip, port, err := net.SplitHostPort(opts.TCPAddress)
-	rpcport := ""
-	nsqCoord = consistence.NewNsqdCoordinator(ip, port, rpcport, "nsqd-coord", opts.DataPath, nsqdInstance)
-	ctx.nsqdCoord = nsqCoord
+	rpcport := opts.RPCPort
+	if rpcport != "" {
+		nsqCoord := consistence.NewNsqdCoordinator(ip, port, rpcport, "nsqd-coord", opts.DataPath, nsqdInstance)
+		ctx.nsqdCoord = nsqCoord
+	} else {
+		nsqd.NsqLogger().LogWarningf("Start without nsqd coordinator enabled")
+		ctx.nsqdCoord = nil
+	}
 
 	s.ctx = ctx
 

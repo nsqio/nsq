@@ -162,7 +162,9 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	// watch the leader of nsqlookupd, always check the leader before response
 	// to the nsqlookup admin operation.
 	nsqlookupLeaderChan := make(chan *NsqLookupdNodeInfo, 1)
-	go self.leadership.WatchLookupdLeader("nsqlookup-leader", nsqlookupLeaderChan, self.stopChan)
+	if self.leadership != nil {
+		go self.leadership.WatchLookupdLeader("nsqlookup-leader", nsqlookupLeaderChan, self.stopChan)
+	}
 	for {
 		select {
 		case <-self.stopChan:
@@ -193,98 +195,95 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 	if self.localNsqd == nil {
 		return nil
 	}
-	self.localNsqd.RLock()
-	topicMap := make(map[string]*nsqd.Topic)
-	for name, t := range self.localNsqd.GetTopicMapRef() {
-		topicMap[name] = t
-	}
-	self.localNsqd.RUnlock()
+	topicMap := self.localNsqd.GetTopicMapCopy()
 
-	for topicName, topic := range topicMap {
-		partition := topic.GetTopicPart()
-		if tc, err := self.getTopicCoordData(topicName, partition); err == nil && tc != nil {
-			// already loaded
-			if tc.topicLeaderSession.LeaderNode == nil || tc.topicLeaderSession.Session == "" {
-				if tc.topicInfo.Leader == self.myNode.GetID() {
-					err := self.acquireTopicLeader(&tc.topicInfo)
-					if err != nil {
-						coordLog.Warningf("failed to acquire leader : %v", err)
+	for topicName, topicParts := range topicMap {
+		for _, topic := range topicParts {
+			partition := topic.GetTopicPart()
+			if tc, err := self.getTopicCoordData(topicName, partition); err == nil && tc != nil {
+				// already loaded
+				if tc.topicLeaderSession.LeaderNode == nil || tc.topicLeaderSession.Session == "" {
+					if tc.topicInfo.Leader == self.myNode.GetID() {
+						err := self.acquireTopicLeader(&tc.topicInfo)
+						if err != nil {
+							coordLog.Warningf("failed to acquire leader : %v", err)
+						}
 					}
-				}
-				if FindSlice(tc.topicInfo.ISR, self.myNode.GetID()) != -1 {
-					topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
-					if err != nil {
-						coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
-					} else {
-						coord, err := self.getTopicCoord(topicName, partition)
-						if err == nil {
-							if topicLeaderSession.LeaderEpoch >= tc.topicLeaderSession.LeaderEpoch {
-								coord.topicLeaderSession = *topicLeaderSession
+					if FindSlice(tc.topicInfo.ISR, self.myNode.GetID()) != -1 {
+						topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
+						if err != nil {
+							coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
+						} else {
+							coord, err := self.getTopicCoord(topicName, partition)
+							if err == nil {
+								if topicLeaderSession.LeaderEpoch >= tc.topicLeaderSession.LeaderEpoch {
+									coord.topicLeaderSession = *topicLeaderSession
+								}
 							}
 						}
 					}
 				}
-			}
-			continue
-		}
-		coordLog.Infof("loading topic: %v-%v", topicName, partition)
-		topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
-		if err != nil {
-			coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, err)
-			if err == ErrTopicInfoNotFound {
-				self.localNsqd.CloseExistingTopic(topicName, partition)
-			}
-			continue
-		}
-		shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
-		if shouldLoad {
-			basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
-			tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath)
-			if err != nil {
-				coordLog.Infof("failed to get topic coordinator:%v-%v, err:%v", topicName, partition, err)
 				continue
 			}
-			tc.topicInfo = *topicInfo
-			topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
+			coordLog.Infof("loading topic: %v-%v", topicName, partition)
+			topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
 			if err != nil {
-				coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
+				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, err)
+				if err == ErrTopicInfoNotFound {
+					self.localNsqd.CloseExistingTopic(topicName, partition)
+				}
+				continue
+			}
+			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
+			if shouldLoad {
+				basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
+				tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath)
+				if err != nil {
+					coordLog.Infof("failed to get topic coordinator:%v-%v, err:%v", topicName, partition, err)
+					continue
+				}
+				tc.topicInfo = *topicInfo
+				topicLeaderSession, err := self.leadership.GetTopicLeaderSession(topicName, partition)
+				if err != nil {
+					coordLog.Infof("failed to get topic leader info:%v-%v, err:%v", topicName, partition, err)
+				} else {
+					tc.topicLeaderSession = *topicLeaderSession
+				}
+				self.coordMutex.Lock()
+				coords, ok := self.topicCoords[topicInfo.Name]
+				if !ok {
+					coords = make(map[int]*TopicCoordinator)
+					self.topicCoords[topicInfo.Name] = coords
+				}
+				coords[topicInfo.Partition] = tc
+				self.coordMutex.Unlock()
 			} else {
-				tc.topicLeaderSession = *topicLeaderSession
+				continue
 			}
-			self.coordMutex.Lock()
-			coords, ok := self.topicCoords[topicInfo.Name]
-			if !ok {
-				coords = make(map[int]*TopicCoordinator)
-				self.topicCoords[topicInfo.Name] = coords
-			}
-			coords[topicInfo.Partition] = tc
-			self.coordMutex.Unlock()
-		} else {
-			continue
-		}
 
-		if topicInfo.Leader == self.myNode.GetID() {
-			coordLog.Infof("topic starting as leader.")
-			err := self.acquireTopicLeader(topicInfo)
-			if err != nil {
-				coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
+			if topicInfo.Leader == self.myNode.GetID() {
+				coordLog.Infof("topic starting as leader.")
+				err := self.acquireTopicLeader(topicInfo)
+				if err != nil {
+					coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
+				}
 			}
-		}
-		if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
-			coordLog.Infof("topic starting as isr .")
-		} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-			coordLog.Infof("topic starting as catchup")
-			go self.catchupFromLeader(*topicInfo, "")
-		} else {
-			coordLog.Infof("topic starting as not relevant")
-			if len(topicInfo.ISR) >= topicInfo.Replica {
-				coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
-				self.localNsqd.CloseExistingTopic(topicName, partition)
-			} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
-				self.requestJoinCatchup(topicName, partition)
+			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
+				coordLog.Infof("topic starting as isr .")
+			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
+				coordLog.Infof("topic starting as catchup")
+				go self.catchupFromLeader(*topicInfo, "")
+			} else {
+				coordLog.Infof("topic starting as not relevant")
+				if len(topicInfo.ISR) >= topicInfo.Replica {
+					coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
+					self.localNsqd.CloseExistingTopic(topicName, partition)
+				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
+					self.requestJoinCatchup(topicName, partition)
+				}
 			}
+			self.markLocalDataState(topicInfo.Name, topicInfo.Partition, true)
 		}
-		self.markLocalDataState(topicInfo.Name, topicInfo.Partition, true)
 	}
 	return nil
 }
@@ -554,7 +553,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 		}
 	}
 	coordLog.Infof("local commit log match leader at: %v", offset)
-	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name)
+	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name, topicInfo.Partition)
 	if localErr != nil {
 		coordLog.Errorf("get local topic failed:%v", localErr)
 		return ErrLocalMissingTopic
@@ -763,7 +762,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	topicCoord.dataRWMutex.Unlock()
 	tcData := topicCoord.GetData()
 
-	topicData, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name)
+	topicData, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if err != nil {
 		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
@@ -991,7 +990,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		return nil
 	}
 	var slavePubErr *CoordErr
-	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("pub on slave missing topic : %v", topicName)
 		// leave the isr and try re-sync with leader
@@ -1051,7 +1050,7 @@ func (self *NsqdCoordinator) putMessagesOnSlave(topicName string, partition int,
 	}
 	tc := coord.GetData()
 	logMgr := tc.logMgr
-	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		// TODO: leave the isr and try re-sync with leader
 		return NewCoordErr(err.Error(), CoordLocalErr)
@@ -1146,7 +1145,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelName string, offset ChannelConsumerOffset) *CoordErr {
 	topicName := tc.topicInfo.Name
 	partition := tc.topicInfo.Partition
-	topic, localErr := self.localNsqd.GetExistingTopic(topicName)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("slave missing topic : %v", topicName)
 		// TODO: leave the isr and try re-sync with leader
@@ -1169,7 +1168,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 
 func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offset int64, size int32) ([]byte, *CoordErr) {
 	//read directly from local topic data used for pulling data by replicas
-	t, err := self.localNsqd.GetExistingTopic(topic)
+	t, err := self.localNsqd.GetExistingTopic(topic, partition)
 	if err != nil {
 		return nil, ErrLocalMissingTopic
 	}

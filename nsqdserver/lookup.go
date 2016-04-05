@@ -130,24 +130,23 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 		case lookupPeer := <-syncTopicChan:
 			var commands []*nsq.Command
 			// build all the commands first so we exit the lock(s) as fast as possible
-			n.ctx.nsqd.RLock()
-			for _, topic := range n.ctx.nsqd.GetTopicMapRef() {
-				topic.RLock()
-				channelMap := topic.GetChannelMap()
-				if len(channelMap) == 0 {
-					commands = append(commands,
-						nsq.Register(topic.GetTopicName(),
-							strconv.Itoa(topic.GetTopicPart()), ""))
-				} else {
-					for _, channel := range channelMap {
+			topicMap := n.ctx.nsqd.GetTopicMapCopy()
+			for _, topicParts := range topicMap {
+				for _, topic := range topicParts {
+					channelMap := topic.GetChannelMapCopy()
+					if len(channelMap) == 0 {
 						commands = append(commands,
-							nsq.Register(channel.GetTopicName(),
-								strconv.Itoa(channel.GetTopicPart()), channel.GetName()))
+							nsq.Register(topic.GetTopicName(),
+								strconv.Itoa(topic.GetTopicPart()), ""))
+					} else {
+						for _, channel := range channelMap {
+							commands = append(commands,
+								nsq.Register(channel.GetTopicName(),
+									strconv.Itoa(channel.GetTopicPart()), channel.GetName()))
+						}
 					}
 				}
-				topic.RUnlock()
 			}
-			n.ctx.nsqd.RUnlock()
 
 			// avoid too much command once, we need sleep here
 			for _, cmd := range commands {

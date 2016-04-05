@@ -216,7 +216,7 @@ func TestCluster(t *testing.T) {
 	channel := channels[0].(string)
 	test.Equal(t, channel, "ch")
 
-	nsqd.DeleteExistingTopic(topicName)
+	nsqd.DeleteExistingTopic(topicName, 0)
 	// allow some time for nsqd to push info to nsqlookupd
 	time.Sleep(350 * time.Millisecond)
 

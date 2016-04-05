@@ -130,8 +130,14 @@ func (t *Topic) BufferPoolPut(b *bytes.Buffer) {
 }
 
 // should be protected by read lock outside
-func (t *Topic) GetChannelMap() map[string]*Channel {
-	return t.channelMap
+func (t *Topic) GetChannelMapCopy() map[string]*Channel {
+	tmpMap := make(map[string]*Channel)
+	t.channelLock.RLock()
+	for k, v := range t.channelMap {
+		tmpMap[k] = v
+	}
+	t.channelLock.RUnlock()
+	return tmpMap
 }
 
 // Exiting returns a boolean indicating if this topic is closed/exiting

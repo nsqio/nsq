@@ -149,7 +149,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	for pid, tc := range coords {
 		if pid != rpcTopicReq.Partition {
 			coordLog.Infof("found another partition %v already exist for this topic %v", pid, rpcTopicReq.Name)
-			if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name); err != nil {
+			if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition); err != nil {
 				coordLog.Infof("local no such topic, we can just remove this coord")
 				tc.logMgr.Close()
 				delete(coords, pid)

@@ -49,7 +49,7 @@ type NSQD struct {
 	errValue  atomic.Value
 	startTime time.Time
 
-	topicMap map[string]*Topic
+	topicMap map[string]map[int]*Topic
 
 	poolSize int
 
@@ -58,8 +58,9 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci      *clusterinfo.ClusterInfo
-	exiting bool
+	ci         *clusterinfo.ClusterInfo
+	exiting    bool
+	persisting int32
 }
 
 func New(opts *Options) *NSQD {
@@ -74,7 +75,7 @@ func New(opts *Options) *NSQD {
 	nsqLog.Logger = opts.Logger
 	n := &NSQD{
 		startTime:            time.Now(),
-		topicMap:             make(map[string]*Topic),
+		topicMap:             make(map[string]map[int]*Topic),
 		exitChan:             make(chan int),
 		MetaNotifyChan:       make(chan interface{}),
 		OptsNotificationChan: make(chan struct{}, 1),
@@ -165,8 +166,27 @@ func (n *NSQD) GetStartTime() time.Time {
 }
 
 // should be protected by read lock
-func (n *NSQD) GetTopicMapRef() map[string]*Topic {
+func (n *NSQD) GetTopicMapRef() map[string]map[int]*Topic {
 	return n.topicMap
+}
+
+func (n *NSQD) GetTopicMapCopy() map[string]map[int]*Topic {
+	tmpMap := make(map[string]map[int]*Topic)
+	n.RLock()
+	for k, topics := range n.topicMap {
+		var tmpTopics map[int]*Topic
+		var ok bool
+		tmpTopics, ok = tmpMap[k]
+		if !ok {
+			tmpTopics = make(map[int]*Topic, len(topics))
+			tmpMap[k] = tmpTopics
+		}
+		for p, t := range topics {
+			tmpTopics[p] = t
+		}
+	}
+	n.RUnlock()
+	return tmpMap
 }
 
 func (n *NSQD) Start() {
@@ -244,7 +264,12 @@ func (n *NSQD) LoadMetadata() {
 	}
 }
 
-func (n *NSQD) PersistMetadata(currentTopicMap map[string]*Topic) error {
+func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error {
+	if !atomic.CompareAndSwapInt32(&n.persisting, 0, 1) {
+		nsqLog.Logf("NSQ: persisting is already running")
+		return nil
+	}
+	defer atomic.StoreInt32(&n.persisting, 0)
 	// persist metadata about what topics/channels we have
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.GetOpts().DataPath, "nsqd.%d.dat"), n.GetOpts().ID)
@@ -252,30 +277,32 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]*Topic) error {
 
 	js := make(map[string]interface{})
 	topics := []interface{}{}
-	for _, topic := range currentTopicMap {
-		if topic.ephemeral {
-			continue
-		}
-		topicData := make(map[string]interface{})
-		topicData["name"] = topic.GetTopicName()
-		topicData["partition"] = topic.GetTopicPart()
-		channels := []interface{}{}
-		topic.channelLock.RLock()
-		for _, channel := range topic.channelMap {
-			channel.RLock()
-			if channel.ephemeral {
-				channel.Unlock()
+	for _, topicParts := range currentTopicMap {
+		for _, topic := range topicParts {
+			if topic.ephemeral {
 				continue
 			}
-			channelData := make(map[string]interface{})
-			channelData["name"] = channel.name
-			channelData["paused"] = channel.IsPaused()
-			channels = append(channels, channelData)
-			channel.RUnlock()
+			topicData := make(map[string]interface{})
+			topicData["name"] = topic.GetTopicName()
+			topicData["partition"] = topic.GetTopicPart()
+			channels := []interface{}{}
+			topic.channelLock.RLock()
+			for _, channel := range topic.channelMap {
+				channel.RLock()
+				if channel.ephemeral {
+					channel.Unlock()
+					continue
+				}
+				channelData := make(map[string]interface{})
+				channelData["name"] = channel.name
+				channelData["paused"] = channel.IsPaused()
+				channels = append(channels, channelData)
+				channel.RUnlock()
+			}
+			topic.channelLock.RUnlock()
+			topicData["channels"] = channels
+			topics = append(topics, topicData)
 		}
-		topic.channelLock.RUnlock()
-		topicData["channels"] = channels
-		topics = append(topics, topicData)
 	}
 	js["version"] = version.Binary
 	js["topics"] = topics
@@ -316,19 +343,16 @@ func (n *NSQD) Exit() {
 	n.exiting = true
 	n.Unlock()
 
-	n.RLock()
-	tmpMap := make(map[string]*Topic)
-	for k, t := range n.topicMap {
-		tmpMap[k] = t
-	}
-	n.RUnlock()
+	tmpMap := n.GetTopicMapCopy()
 	err := n.PersistMetadata(tmpMap)
 	if err != nil {
 		nsqLog.LogErrorf(" failed to persist metadata - %s", err)
 	}
 	nsqLog.Logf("NSQ: closing topics")
-	for _, topic := range tmpMap {
-		topic.Close()
+	for _, topics := range tmpMap {
+		for _, topic := range topics {
+			topic.Close()
+		}
 	}
 
 	// we want to do this last as it closes the idPump (if closed first it
@@ -341,7 +365,7 @@ func (n *NSQD) Exit() {
 }
 
 func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
-	return n.GetTopic(topicName, -1)
+	return n.GetTopic(topicName, 0)
 }
 
 // GetTopic performs a thread safe operation
@@ -352,35 +376,37 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	}
 	// most likely, we already have this topic, so try read lock first.
 	n.RLock()
-	t, ok := n.topicMap[topicName]
-	n.RUnlock()
+	topics, ok := n.topicMap[topicName]
 	if ok {
-		if part != -1 && t.GetTopicPart() != part {
-			nsqLog.LogWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
-			return nil
+		t, ok := topics[part]
+		if ok {
+			n.RUnlock()
+			return t
 		}
-		return t
 	}
+	n.RUnlock()
 
 	n.Lock()
 
-	t, ok = n.topicMap[topicName]
+	topics, ok = n.topicMap[topicName]
 	if ok {
-		n.Unlock()
-		if part != -1 && t.GetTopicPart() != part {
-			nsqLog.LogWarningf("topic part mismatch: %v vs %v", t.GetTopicPart(), part)
-			return nil
+		t, ok := topics[part]
+		if ok {
+			n.Unlock()
+			return t
 		}
-		return t
+	} else {
+		topics = make(map[int]*Topic)
+		n.topicMap[topicName] = topics
 	}
 	if part < 0 {
 		part = 0
 	}
 	deleteCallback := func(t *Topic) {
-		n.DeleteExistingTopic(t.GetTopicName())
+		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
-	t = NewTopic(topicName, part, n.GetOpts(), deleteCallback, n.Notify)
-	n.topicMap[topicName] = t
+	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, n.Notify)
+	topics[part] = t
 
 	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
 
@@ -408,28 +434,35 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 }
 
 // GetExistingTopic gets a topic only if it exists
-func (n *NSQD) GetExistingTopic(topicName string) (*Topic, error) {
+func (n *NSQD) GetExistingTopic(topicName string, part int) (*Topic, error) {
 	n.RLock()
 	defer n.RUnlock()
-	topic, ok := n.topicMap[topicName]
+	topics, ok := n.topicMap[topicName]
+	if !ok {
+		return nil, ErrTopicNotExist
+	}
+	topic, ok := topics[part]
 	if !ok {
 		return nil, ErrTopicNotExist
 	}
 	return topic, nil
 }
 
-func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
-	n.RLock()
-	topic, ok := n.topicMap[topicName]
+func (n *NSQD) deleteTopic(topicName string, part int) {
+	n.Lock()
+	defer n.Unlock()
+	topics, ok := n.topicMap[topicName]
 	if !ok {
-		n.RUnlock()
-		return ErrTopicNotExist
+		return
 	}
-	n.RUnlock()
-	if topic.GetTopicPart() != partition {
-		return ErrTopicPartitionMismatch
-	}
+	delete(topics, part)
+}
 
+func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
+	topic, err := n.GetExistingTopic(topicName, partition)
+	if err != nil {
+		return err
+	}
 	// delete empties all channels and the topic itself before closing
 	// (so that we dont leave any messages around)
 	//
@@ -438,22 +471,16 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	// to enforce ordering
 	topic.Close()
 
-	n.Lock()
-	delete(n.topicMap, topicName)
-	n.Unlock()
-
+	n.deleteTopic(topicName, partition)
 	return nil
 }
 
 // DeleteExistingTopic removes a topic only if it exists
-func (n *NSQD) DeleteExistingTopic(topicName string) error {
-	n.RLock()
-	topic, ok := n.topicMap[topicName]
-	if !ok {
-		n.RUnlock()
-		return ErrTopicNotExist
+func (n *NSQD) DeleteExistingTopic(topicName string, part int) error {
+	topic, err := n.GetExistingTopic(topicName, part)
+	if err != nil {
+		return err
 	}
-	n.RUnlock()
 
 	// delete empties all channels and the topic itself before closing
 	// (so that we dont leave any messages around)
@@ -463,22 +490,16 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	// to enforce ordering
 	topic.Delete()
 
-	n.Lock()
-	delete(n.topicMap, topicName)
-	n.Unlock()
-
+	n.deleteTopic(topicName, part)
 	return nil
 }
 
 func (n *NSQD) flushAll() {
-	n.RLock()
-	tmpMap := make(map[string]*Topic)
-	for k, t := range n.topicMap {
-		tmpMap[k] = t
-	}
-	n.RUnlock()
-	for _, t := range tmpMap {
-		t.ForceFlush()
+	tmpMap := n.GetTopicMapCopy()
+	for _, topics := range tmpMap {
+		for _, t := range topics {
+			t.ForceFlush()
+		}
 	}
 }
 
@@ -496,13 +517,7 @@ func (n *NSQD) Notify(v interface{}) {
 			if !persist {
 				return
 			}
-			n.RLock()
-			tmpMap := make(map[string]*Topic)
-			for k, t := range n.topicMap {
-				tmpMap[k] = t
-			}
-			n.RUnlock()
-
+			tmpMap := n.GetTopicMapCopy()
 			err := n.PersistMetadata(tmpMap)
 			if err != nil {
 				nsqLog.LogErrorf("failed to persist metadata - %s", err)
@@ -514,18 +529,15 @@ func (n *NSQD) Notify(v interface{}) {
 // channels returns a flat slice of all channels in all topics
 func (n *NSQD) channels() []*Channel {
 	var channels []*Channel
-	n.RLock()
-	tmpMap := make(map[string]*Topic)
-	for k, t := range n.topicMap {
-		tmpMap[k] = t
-	}
-	n.RUnlock()
-	for _, t := range tmpMap {
-		t.channelLock.RLock()
-		for _, c := range t.channelMap {
-			channels = append(channels, c)
+	tmpMap := n.GetTopicMapCopy()
+	for _, topics := range tmpMap {
+		for _, t := range topics {
+			t.channelLock.RLock()
+			for _, c := range t.channelMap {
+				channels = append(channels, c)
+			}
+			t.channelLock.RUnlock()
 		}
-		t.channelLock.RUnlock()
 	}
 	return channels
 }

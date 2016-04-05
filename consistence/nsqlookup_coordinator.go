@@ -1682,3 +1682,11 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
 	return nil
 }
+
+func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid string) bool {
+	t, err := self.leadership.GetTopicInfo(topic, part)
+	if err != nil {
+		return false
+	}
+	return t.Leader == nid
+}

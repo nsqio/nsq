@@ -300,6 +300,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	defer nsqdServer.Exit()
 
 	topicName := "test_http_topic_channel2" + strconv.Itoa(int(time.Now().Unix()))
+	topicPart := 0
 	channelName := "ch2"
 
 	nsqd.GetTopicIgnPart(topicName)
@@ -313,7 +314,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Equal(t, string(body), "")
 	test.Equal(t, resp.Header.Get("X-NSQ-Content-Type"), "nsq; version=1.0")
 
-	topic, err := nsqd.GetExistingTopic(topicName)
+	topic, err := nsqd.GetExistingTopic(topicName, topicPart)
 	test.Equal(t, err, nil)
 	test.NotNil(t, topic)
 
@@ -355,8 +356,8 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	_, err = topic.GetExistingChannel(channelName)
 	test.NotNil(t, err)
 
-	nsqd.DeleteExistingTopic(topicName)
-	_, err = nsqd.GetExistingTopic(topicName)
+	nsqd.DeleteExistingTopic(topicName, topicPart)
+	_, err = nsqd.GetExistingTopic(topicName, topicPart)
 	test.NotNil(t, err)
 }
 

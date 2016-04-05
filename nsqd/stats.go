@@ -118,8 +118,10 @@ func (n *NSQD) GetStats() []TopicStats {
 	n.RLock()
 
 	realTopics := make([]*Topic, 0, len(n.topicMap))
-	for _, t := range n.topicMap {
-		realTopics = append(realTopics, t)
+	for _, topicParts := range n.topicMap {
+		for _, t := range topicParts {
+			realTopics = append(realTopics, t)
+		}
 	}
 	n.RUnlock()
 	sort.Sort(TopicsByName{realTopics})

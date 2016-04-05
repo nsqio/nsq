@@ -138,12 +138,12 @@ func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Va
 		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
+	topicName, topicPart, channelName, err := http_api.GetTopicPartitionChannelArgs(reqParams)
 	if err != nil {
 		return nil, nil, "", http_api.Err{400, err.Error()}
 	}
 
-	topic, err := s.ctx.getExistingTopic(topicName)
+	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		nsqd.NsqLogger().Logf("topic not found - %s", topicName)
 		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
@@ -164,7 +164,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 		return nil, nil, http_api.Err{400, err.Error()}
 	}
 
-	topic, err := s.ctx.getExistingTopic(topicName)
+	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, nil, http_api.Err{400, err.Error()}
 	}
@@ -308,7 +308,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
-	_, _, err = topic.PutMessages(msgs)
+	_, _, _, _, err = topic.PutMessages(msgs)
 	s.ctx.setHealth(err)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
@@ -324,12 +324,12 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := http_api.GetTopicArg(reqParams)
+	topicName, topicPart, err := http_api.GetTopicPartitionArgs(reqParams)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
 
-	topic, err := s.ctx.getExistingTopic(topicName)
+	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
@@ -349,12 +349,12 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	topicName, err := http_api.GetTopicArg(reqParams)
+	topicName, topicPart, err := http_api.GetTopicPartitionArgs(reqParams)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
 
-	err = s.ctx.deleteExistingTopic(topicName)
+	err = s.ctx.deleteExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
@@ -418,13 +418,19 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	topicName := reqParams.Get("topic")
+	topicPartStr := reqParams.Get("partition")
+	topicPart, err := strconv.Atoi(topicPartStr)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
 	channelName := reqParams.Get("channel")
 
-	t, err := s.ctx.getExistingTopic(topicName)
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, http_api.Err{404, "Topic not found"}
 	}
-	statStr := t.GetTopicChannelStat(channelName)
+	statStr := t.GetTopicChannelDebugStat(channelName)
 
 	return statStr, nil
 }

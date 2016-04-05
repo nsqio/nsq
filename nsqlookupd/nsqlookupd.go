@@ -19,7 +19,7 @@ type NSQLookupd struct {
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
-	coordinator  *consistence.NSQLookupdCoordinator
+	coordinator  *consistence.NsqLookupCoordinator
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -56,17 +56,21 @@ func (l *NSQLookupd) Main() {
 
 	var node consistence.NsqLookupdNodeInfo
 	node.NodeIp, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
-	_, node.RpcPort, _ = net.SplitHostPort(l.opts.RPCAddress)
-	node.ID = net.JoinHostPort(l.opts.BroadcastAddress, node.HttpPort)
+	if l.opts.RPCAddress != "" {
+		_, node.RpcPort, _ = net.SplitHostPort(l.opts.RPCAddress)
+		node.ID = net.JoinHostPort(l.opts.BroadcastAddress, node.RpcPort)
 
-	l.coordinator = consistence.NewNSQLookupdCoordinator("cluster-id", &node,
-		l.opts.Logger)
-	// set etcd leader manager here
-	// l.coordinator.SetLeadershipMgr(nil)
-	err = l.coordinator.Start()
-	if err != nil {
-		nsqlookupLog.LogErrorf("FATAL: start coordinator failed - %s", err)
-		os.Exit(1)
+		l.coordinator = consistence.NewNsqLookupCoordinator("cluster-id", &node)
+		// set etcd leader manager here
+		// l.coordinator.SetLeadershipMgr(nil)
+		err = l.coordinator.Start()
+		if err != nil {
+			nsqlookupLog.LogErrorf("FATAL: start coordinator failed - %s", err)
+			os.Exit(1)
+		}
+	} else {
+		nsqlookupLog.Logf("lookup start without the coordinator enabled.")
+		l.coordinator = nil
 	}
 	l.Lock()
 	l.httpListener = httpListener

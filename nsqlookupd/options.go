@@ -33,7 +33,6 @@ func NewOptions() *Options {
 	return &Options{
 		TCPAddress:       "0.0.0.0:4160",
 		HTTPAddress:      "0.0.0.0:4161",
-		RPCAddress:       "0.0.0.0:4162",
 		BroadcastAddress: hostname,
 
 		EtcdAddress: "",

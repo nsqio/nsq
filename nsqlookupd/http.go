@@ -388,11 +388,6 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		key := Registration{"channel", topicName, channelName, reg.PartitionID}
 		s.ctx.nsqlookupd.DB.AddRegistration(key)
 	}
-	err = s.ctx.nsqlookupd.coordinator.CreateChannelForAll(topicName, channelName)
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-
 	return nil, nil
 }
 

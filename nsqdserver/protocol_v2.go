@@ -679,17 +679,28 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("SUB topic name %q is not valid", topicName))
 	}
 
-	channelName := string(params[2])
+	partition := 0
+	channelName := ""
+	var err error
+	channelName = string(params[2])
 	if !protocol.IsValidChannelName(channelName) {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL",
 			fmt.Sprintf("SUB channel name %q is not valid", channelName))
+	}
+
+	if len(params) == 4 {
+		partition, err = strconv.Atoi(string(params[3]))
+		if err != nil {
+			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+				fmt.Sprintf("topic partition is not valid: %v", err))
+		}
 	}
 
 	if err := p.CheckAuth(client, "SUB", topicName, channelName); err != nil {
 		return nil, err
 	}
 
-	topic, err := p.ctx.getExistingTopic(topicName)
+	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName)
 		return nil, err
@@ -874,6 +885,14 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("PUB topic name %q is not valid", topicName))
 	}
+	partition := 0
+	if len(params) == 3 {
+		partition, err = strconv.Atoi(string(params[2]))
+		if err != nil {
+			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+				fmt.Sprintf("topic partition is not valid: %v", err))
+		}
+	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
 	if err != nil {
@@ -890,7 +909,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.getOpts().MaxMsgSize))
 	}
 
-	topic, err := p.ctx.getExistingTopic(topicName)
+	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
 		return nil, err
@@ -942,6 +961,14 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("E_BAD_TOPIC MPUB topic name %q is not valid", topicName))
 	}
+	partition := 0
+	if len(params) == 3 {
+		partition, err = strconv.Atoi(string(params[2]))
+		if err != nil {
+			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+				fmt.Sprintf("topic partition is not valid: %v", err))
+		}
+	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
 	if err != nil {
@@ -962,7 +989,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, err
 	}
 
-	topic, err := p.ctx.getExistingTopic(topicName)
+	topic, err := p.ctx.getExistingTopic(topicName, partition)
 
 	if err != nil {
 		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
@@ -984,7 +1011,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
 	// this next call (and no messages will be queued in that case)
-	_, _, err = topic.PutMessages(messages)
+	_, _, _, _, err = topic.PutMessages(messages)
 	p.ctx.setHealth(err)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())

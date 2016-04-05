@@ -16,6 +16,7 @@ type Options struct {
 	ID                     int64    `flag:"worker-id" cfg:"id"`
 	Verbose                bool     `flag:"verbose"`
 	TCPAddress             string   `flag:"tcp-address"`
+	RPCPort                string   `flag:"rpc-port"`
 	HTTPAddress            string   `flag:"http-address"`
 	HTTPSAddress           string   `flag:"https-address"`
 	BroadcastAddress       string   `flag:"broadcast-address"`
