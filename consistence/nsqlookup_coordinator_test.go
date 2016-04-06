@@ -558,8 +558,8 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	fakeLeadership1.removeFakedNsqdNode(lostNodeID)
 	time.Sleep(time.Second * 3)
 	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
-	time.Sleep(time.Millisecond)
-	// with only 2 replica, the isr join fail will not change the isr list
+	time.Sleep(time.Second)
+	// with only 2 replica, the isr join fail should not change the isr list
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
 	time.Sleep(time.Second * 15)
 	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
@@ -586,7 +586,14 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, len(t3.ISR), 2)
 	test.Equal(t, t3.Leader == t3.ISR[0] || t3.Leader == t3.ISR[1], true)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 15)
+	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
+	test.Equal(t, len(t0.ISR), 2)
+	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
+	test.Equal(t, len(t1.ISR), 2)
+	// before migrate really start, the isr should not reach the replica factor
+	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
+	test.Equal(t, len(t3.ISR), 2)
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {

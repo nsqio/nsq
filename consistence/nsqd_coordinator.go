@@ -786,12 +786,16 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 			// if catching up, pull data from the new leader
 			// if isr, make sure sync to the new leader
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
+				coordLog.Infof("I am in isr while update leader session.")
 				go self.syncToNewLeader(tcData, joinSession)
-			} else {
+			} else if FindSlice(tcData.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
+				coordLog.Infof("I am in catchup while update leader session.")
 				select {
 				case self.tryCheckUnsynced <- true:
 				default:
 				}
+			} else {
+				coordLog.Infof("I am not relevant while update leader session.")
 			}
 		}
 	}

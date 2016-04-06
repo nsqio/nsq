@@ -1142,7 +1142,7 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartionMe
 	state.readyNodes = make(map[string]struct{})
 	state.readyNodes[topicInfo.Leader] = struct{}{}
 
-	coordLog.Infof("isr waiting session init : %v", state)
+	coordLog.Infof("topic %v isr waiting session init : %v", topicInfo.GetTopicDesp(), state)
 	if len(topicInfo.ISR) <= 1 {
 		rpcErr := self.notifyEnableTopicWrite(topicInfo)
 		if rpcErr != nil {
@@ -1158,6 +1158,7 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartionMe
 	} else {
 		go self.waitForFinalSyncedISR(*topicInfo, *leaderSession, state, state.doneChan)
 	}
+	self.notifyTopicMetaInfo(topicInfo)
 	self.notifyTopicLeaderSession(topicInfo, leaderSession, state.waitingSession)
 }
 
@@ -1528,7 +1529,7 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartionMetaIn
 		close(state.doneChan)
 		state.doneChan = nil
 	}
-	coordLog.Infof("reset waiting join state: %v", state)
+	coordLog.Infof("topic: %v reset waiting join state: %v", topicInfo.GetTopicDesp(), state)
 	ready := 0
 	for _, n := range topicInfo.ISR {
 		if _, ok := state.readyNodes[n]; ok {
