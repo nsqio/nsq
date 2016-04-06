@@ -74,6 +74,7 @@ func NewNsqdCoordRpcServer(coord *NsqdCoordinator, rootPath string) *NsqdCoordRp
 // used only for test
 func (self *NsqdCoordRpcServer) toggleDisableRpcTest(disable bool) {
 	self.disableRpcTest = disable
+	coordLog.Infof("rpc is disabled on node: %v", self.nsqdCoord.myNode.GetID())
 }
 
 func (self *NsqdCoordRpcServer) start(ip, port string) error {

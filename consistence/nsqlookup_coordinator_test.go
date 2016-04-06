@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"math/rand"
@@ -345,7 +346,7 @@ func startNsqLookupCoord(t *testing.T, id string) (*NsqLookupCoordinator, int, *
 	var n NsqLookupdNodeInfo
 	n.ID = id
 	n.NodeIp = "127.0.0.1"
-	randPort := rand.Int31n(60000-10000) + 20000
+	randPort := rand.Int31n(20000) + 30000
 	n.RpcPort = strconv.Itoa(int(randPort))
 	n.Epoch = 1
 	coord := NewNsqLookupCoordinator("test-nsq-cluster", &n)
@@ -561,11 +562,13 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	time.Sleep(time.Second)
 	// with only 2 replica, the isr join fail should not change the isr list
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
+	go lookupCoord1.triggerCheckTopics(time.Second)
 	time.Sleep(time.Second * 15)
 	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
 	test.Equal(t, len(t1.ISR), 2)
 	test.Equal(t, t1.Leader == t1.ISR[0] || t1.Leader == t1.ISR[1], true)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
+	go lookupCoord1.triggerCheckTopics(time.Second)
 	// test new topic create
 	topic3 := topic + topic
 	err = lookupCoord1.CreateTopic(topic3, 1, 3)
@@ -581,19 +584,23 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Millisecond)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
+	go lookupCoord1.triggerCheckTopics(time.Second)
 	time.Sleep(time.Second * 10)
 	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
 	test.Equal(t, len(t3.ISR), 2)
 	test.Equal(t, t3.Leader == t3.ISR[0] || t3.Leader == t3.ISR[1], true)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
+	go lookupCoord1.triggerCheckTopics(time.Second)
 	time.Sleep(time.Second * 15)
+	glog.Flush()
 	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.ISR), 2)
 	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
 	test.Equal(t, len(t1.ISR), 2)
 	// before migrate really start, the isr should not reach the replica factor
+	// catch up may start early while check leadership or enable topic write
 	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
-	test.Equal(t, len(t3.ISR), 2)
+	test.Equal(t, len(t3.ISR)+len(t3.CatchupList), 3)
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {

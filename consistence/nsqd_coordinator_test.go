@@ -168,7 +168,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 2
 	nsqd := mustStartNSQD(opts)
-	randPort := rand.Int31n(60000-10000) + 10000
+	randPort := rand.Int31n(30000) + 20000
 	nodeInfo := NsqdNodeInfo{
 		NodeIp:  "127.0.0.1",
 		TcpPort: "0",
