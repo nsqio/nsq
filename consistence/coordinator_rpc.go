@@ -129,7 +129,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
-		LeaderEpoch: rpcTopicReq.TopicLeaderEpoch,
+		LeaderEpoch: int(rpcTopicReq.TopicLeaderEpoch),
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {

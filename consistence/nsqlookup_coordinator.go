@@ -116,7 +116,7 @@ func RetryWithTimeout(fn func() error) error {
 func (self *NsqLookupCoordinator) Start() error {
 	if self.leadership != nil {
 		self.leadership.InitClusterID(self.clusterKey)
-		err := self.leadership.Register(self.myNode)
+		err := self.leadership.Register(&self.myNode)
 		if err != nil {
 			coordLog.Warningf("failed to register nsqlookup coordinator: %v", err)
 			return err
@@ -218,22 +218,22 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 
 // for the nsqd node that temporally lost, we need send the related topics to
 // it .
-func (self *NsqLookupCoordinator) NotifyTopicsToSingleNsqdForReload(topics []TopicPartionMetaInfo, nodeID string) {
+func (self *NsqLookupCoordinator) NotifyTopicsToSingleNsqdForReload(topics []*TopicPartionMetaInfo, nodeID string) {
 	for _, v := range topics {
 		if FindSlice(v.ISR, nodeID) != -1 || FindSlice(v.CatchupList, nodeID) != -1 {
-			self.notifySingleNsqdForTopicReload(&v, nodeID)
+			self.notifySingleNsqdForTopicReload(v, nodeID)
 		}
 	}
 }
 
-func (self *NsqLookupCoordinator) NotifyTopicsToAllNsqdForReload(topics []TopicPartionMetaInfo) {
+func (self *NsqLookupCoordinator) NotifyTopicsToAllNsqdForReload(topics []*TopicPartionMetaInfo) {
 	for _, v := range topics {
-		self.notifyAllNsqdsForTopicReload(&v)
+		self.notifyAllNsqdsForTopicReload(v)
 	}
 }
 
 func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
-	nsqdNodesChan := make(chan []NsqdNodeInfo)
+	nsqdNodesChan := make(chan []*NsqdNodeInfo)
 	if self.leadership != nil {
 		go self.leadership.WatchNsqdNodes(nsqdNodesChan, monitorChan)
 	}
@@ -252,7 +252,7 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 			newNodes := make(map[string]NsqdNodeInfo)
 			for _, v := range nodes {
 				coordLog.Infof("nsqd node %v : %v", v.GetID(), v)
-				newNodes[v.GetID()] = v
+				newNodes[v.GetID()] = *v
 			}
 			self.nodesMutex.Lock()
 			self.nsqdNodes = newNodes
@@ -374,7 +374,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		if _, ok := currentNodes[t.Leader]; !ok {
 			needMigrate = true
 			coordLog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
-			coordErr := self.handleTopicLeaderElection(&t, currentNodes)
+			coordErr := self.handleTopicLeaderElection(t, currentNodes)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
 				continue
@@ -385,12 +385,12 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			if err != nil {
 				coordLog.Infof("topic %v leader session not found.", t.GetTopicDesp())
 				// notify the nsqd node to acquire the leader session.
-				self.notifyTopicMetaInfo(&t)
+				self.notifyTopicMetaInfo(t)
 				continue
 			}
 			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
-				self.notifyTopicMetaInfo(&t)
+				self.notifyTopicMetaInfo(t)
 				continue
 			}
 		}
@@ -406,7 +406,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			}
 		}
 		// handle remove this node from ISR
-		self.handleRemoveFailedISRNodes(failedNodes, &t)
+		self.handleRemoveFailedISRNodes(failedNodes, t)
 
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[t.GetTopicDesp()]
@@ -442,7 +442,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		state.Lock()
 		if ok && state.waitingJoin {
 			// no need check if write disabled
-		} else if self.isTopicWriteDisabled(&t) {
+		} else if self.isTopicWriteDisabled(t) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		}
@@ -529,7 +529,7 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	self.notifyTopicMetaInfo(topicInfo)
 }
 
-func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo TopicPartionMetaInfo, currentNodes map[string]NsqdNodeInfo) {
+func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartionMetaInfo, currentNodes map[string]NsqdNodeInfo) {
 	if _, ok := currentNodes[topicInfo.Leader]; !ok {
 		coordLog.Warningf("topic leader node is down: %v", topicInfo)
 		return
@@ -559,7 +559,7 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo TopicPartionMetaI
 	if topicNsqdNum < topicInfo.Replica {
 		for i := topicNsqdNum; i < topicInfo.Replica; i++ {
 			// should exclude the current isr and catchup node
-			n, err := self.allocNodeForTopic(&topicInfo, currentNodes)
+			n, err := self.allocNodeForTopic(topicInfo, currentNodes)
 			if err != nil {
 				coordLog.Infof("failed to get a new catchup for topic: %v", topicInfo.GetTopicDesp())
 			} else {
@@ -569,12 +569,12 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo TopicPartionMetaI
 		}
 	}
 	if catchupChanged {
-		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo, topicInfo.Epoch)
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, int(topicInfo.Epoch))
 		if err != nil {
 			coordLog.Infof("update topic node info failed: %v", err.Error())
 			return
 		}
-		self.notifyTopicMetaInfo(&topicInfo)
+		self.notifyTopicMetaInfo(topicInfo)
 	}
 }
 
@@ -791,7 +791,7 @@ func (self *NsqLookupCoordinator) getExcludeNodesForTopic(topicInfo *TopicPartio
 
 func (self *NsqLookupCoordinator) allocNodeForTopic(topicInfo *TopicPartionMetaInfo, currentNodes map[string]NsqdNodeInfo) (*NsqdNodeInfo, *CoordErr) {
 	// collect the nsqd data, check if any node has the topic data already.
-	var chosenNode *NsqdNodeInfo
+	var chosenNode NsqdNodeInfo
 	var chosenStat *NodeTopicStats
 
 	excludeNodes := self.getExcludeNodesForTopic(topicInfo)
@@ -805,22 +805,22 @@ func (self *NsqLookupCoordinator) allocNodeForTopic(topicInfo *TopicPartionMetaI
 			coordLog.Infof("failed to get topic status for this node: %v", nodeInfo)
 			continue
 		}
-		if chosenNode == nil {
-			chosenNode = &nodeInfo
+		if chosenNode.ID == "" {
+			chosenNode = nodeInfo
 			chosenStat = topicStat
 			continue
 		}
 		if topicStat.SlaveLessLoader(chosenStat) {
-			chosenNode = &nodeInfo
+			chosenNode = nodeInfo
 			chosenStat = topicStat
 		}
 	}
-	if chosenNode == nil {
+	if chosenNode.ID == "" {
 		coordLog.Infof("no more available node for topic: %v, excluding nodes: %v, all nodes: %v", topicInfo.GetTopicDesp(), excludeNodes, currentNodes)
 		return nil, ErrNodeUnavailable
 	}
 	coordLog.Infof("node %v is alloc for topic: %v", chosenNode, topicInfo.GetTopicDesp())
-	return chosenNode, nil
+	return &chosenNode, nil
 }
 
 func (self *NsqLookupCoordinator) getNsqdTopicStat(node NsqdNodeInfo) (*NodeTopicStats, error) {
@@ -879,6 +879,7 @@ func (self *NsqLookupCoordinator) balanceTopicData(monitorChan chan struct{}) {
 // init leader node and isr list for the empty topic
 func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string]NsqdNodeInfo, replica int, partitionNum int, existPart map[int]*TopicPartionMetaInfo) ([]string, [][]string, error) {
 	if len(currentNodes) < replica || len(currentNodes) < partitionNum {
+		coordLog.Infof("nodes %v is less than replica %v or partition %v", len(currentNodes), replica, partitionNum)
 		return nil, nil, ErrNodeUnavailable
 	}
 	if len(currentNodes) < replica*partitionNum {
@@ -1002,7 +1003,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 
 	existPart := make(map[int]*TopicPartionMetaInfo)
 	for i := 0; i < partitionNum; i++ {
-		err := self.leadership.CreateTopicPartition(topic, i, replica)
+		err := self.leadership.CreateTopicPartition(topic, i)
 		if err == ErrAlreadyExist {
 			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
 			t, err := self.leadership.GetTopicInfo(topic, i)

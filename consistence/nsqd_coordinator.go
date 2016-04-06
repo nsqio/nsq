@@ -121,7 +121,7 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *Coor
 func (self *NsqdCoordinator) Start() error {
 	if self.leadership != nil {
 		self.leadership.InitClusterID(self.clusterKey)
-		err := self.leadership.RegisterNsqd(self.myNode)
+		err := self.leadership.RegisterNsqd(&self.myNode)
 		if err != nil {
 			coordLog.Warningf("failed to register nsqd coordinator: %v", err)
 			return err
@@ -375,7 +375,7 @@ func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo,
 
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
 	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
-	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, self.myNode)
+	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, &self.myNode)
 	if err != nil {
 		coordLog.Infof("failed to acquire leader for topic(%v): %v", topicInfo.Name, err)
 		return &CoordErr{err.Error(), RpcNoErr, CoordElectionErr}
@@ -743,7 +743,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLS *TopicLeaderSession, joinSession string) *CoordErr {
 	topicCoord.dataRWMutex.Lock()
-	if newLS.LeaderEpoch < topicCoord.GetLeaderEpoch() {
+	if newLS.LeaderEpoch < int(topicCoord.GetLeaderEpoch()) {
 		topicCoord.dataRWMutex.Unlock()
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
@@ -1238,4 +1238,5 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")
+	self.leadership.UnregisterNsqd(&self.myNode)
 }

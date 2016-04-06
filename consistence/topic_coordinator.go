@@ -100,7 +100,7 @@ func (self *coordData) GetLeaderSession() string {
 }
 
 func (self *coordData) GetLeaderEpoch() int32 {
-	return self.topicLeaderSession.LeaderEpoch
+	return int32(self.topicLeaderSession.LeaderEpoch)
 }
 
 func (self *coordData) GetTopicInfoEpoch() int32 {

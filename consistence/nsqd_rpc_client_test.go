@@ -31,12 +31,12 @@ func (self *fakeNsqdLeadership) InitClusterID(id string) {
 	self.clusterID = id
 }
 
-func (self *fakeNsqdLeadership) RegisterNsqd(nodeData NsqdNodeInfo) error {
-	self.regData[nodeData.GetID()] = &nodeData
+func (self *fakeNsqdLeadership) RegisterNsqd(nodeData *NsqdNodeInfo) error {
+	self.regData[nodeData.GetID()] = nodeData
 	return nil
 }
 
-func (self *fakeNsqdLeadership) UnregisterNsqd(nodeData NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	delete(self.regData, nodeData.GetID())
 	return nil
 }
@@ -56,7 +56,7 @@ func (self *fakeNsqdLeadership) IsNodeTopicLeader(topic string, partition int, n
 	return false
 }
 
-func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error {
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
@@ -67,7 +67,7 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 				}
 				return errors.New("topic leader already exist.")
 			}
-			tc.topicLeaderSession.LeaderNode = &nodeData
+			tc.topicLeaderSession.LeaderNode = nodeData
 			tc.topicLeaderSession.LeaderEpoch++
 			tc.topicLeaderSession.Session = nodeData.GetID() + strconv.Itoa(int(tc.topicLeaderSession.LeaderEpoch))
 			tc.topicInfo.ISR = append(tc.topicInfo.ISR, nodeData.GetID())
@@ -81,7 +81,7 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 			tc.topicInfo.Leader = nodeData.GetID()
 			tc.topicInfo.ISR = append(tc.topicInfo.ISR, nodeData.GetID())
 			tc.topicInfo.Epoch++
-			tc.topicLeaderSession.LeaderNode = &nodeData
+			tc.topicLeaderSession.LeaderNode = nodeData
 			tc.topicLeaderSession.LeaderEpoch++
 			tc.topicLeaderSession.Session = nodeData.GetID() + strconv.Itoa(int(tc.topicLeaderSession.LeaderEpoch))
 			t[partition] = tc
@@ -95,7 +95,7 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 		tc.topicInfo.Leader = nodeData.GetID()
 		tc.topicInfo.ISR = append(tc.topicInfo.ISR, nodeData.GetID())
 		tc.topicInfo.Epoch++
-		tc.topicLeaderSession.LeaderNode = &nodeData
+		tc.topicLeaderSession.LeaderNode = nodeData
 		tc.topicLeaderSession.LeaderEpoch++
 		tc.topicLeaderSession.Session = nodeData.GetID() + strconv.Itoa(int(tc.topicLeaderSession.LeaderEpoch))
 		tmp[partition] = tc
