@@ -209,7 +209,7 @@ func main() {
 	nsqd := nsqd.New(opts)
 
 	nsqd.LoadMetadata()
-	err := nsqd.PersistMetadata()
+	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
