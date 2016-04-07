@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.qima-inc.com/zhoulindong/hauntlock"
+	"github.com/reechou/xlock"
 	"github.com/coreos/go-etcd/etcd"
 )
 
