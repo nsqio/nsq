@@ -27,6 +27,7 @@ type TopicCoordinator struct {
 	catchupRunning int32
 	exiting        bool
 	disableWrite   bool
+	localDataState int32
 }
 
 func NewTopicCoordinator(name string, partition int, basepath string) (*TopicCoordinator, error) {

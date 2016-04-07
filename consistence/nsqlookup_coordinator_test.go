@@ -487,10 +487,15 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, len(tc0.topicInfo.ISR), 1)
 	test.Equal(t, t0.Leader, t0.ISR[0])
 
+	oldTcNum := len(nsqdCoordList[lostNodeID].topicCoords)
+	// clear topic info on failed node, test the reload for failed node
+	nsqdCoordList[lostNodeID].topicCoords = make(map[string]map[int]*TopicCoordinator)
+
 	// test new catchup and new isr
 	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 5)
 
+	test.Equal(t, len(nsqdCoordList[lostNodeID].topicCoords), oldTcNum)
 	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.CatchupList), 0)
 	test.Equal(t, len(t0.ISR), 2)

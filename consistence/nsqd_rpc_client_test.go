@@ -140,7 +140,7 @@ func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition in
 }
 
 func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD) *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	nsqdCoord := NewNsqdCoordinator("test-cluster", "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
 	nsqdCoord.leadership = NewFakeNSQDLeadership()
 	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
 		p, err := NewFakeLookupRemoteProxy(addr, to)
@@ -160,7 +160,7 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 
 func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 	extraID string, nsqd *nsqd.NSQD, fakeLeadership *fakeNsqdLeadership, fakeLookupProxy *fakeLookupRemoteProxy) *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator("127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	nsqdCoord := NewNsqdCoordinator("test-cluster", "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
 	nsqdCoord.leadership = fakeLeadership
 	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
 		fakeLookupProxy.t = t

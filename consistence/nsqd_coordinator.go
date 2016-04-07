@@ -73,13 +73,12 @@ type NsqdCoordinator struct {
 	flushNotifyChan        chan TopicPartitionID
 	stopChan               chan struct{}
 	dataRootPath           string
-	localDataStates        map[string]map[int]bool
 	localNsqd              *nsqd.NSQD
 	rpcServer              *NsqdCoordRpcServer
 	tryCheckUnsynced       chan bool
 }
 
-func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
+func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
 	nodeInfo := NsqdNodeInfo{
 		NodeIp:  ip,
 		TcpPort: tcpport,
@@ -87,6 +86,7 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, n
 	}
 	nodeInfo.ID = GenNsqdNodeID(&nodeInfo, extraID)
 	nsqdCoord := &NsqdCoordinator{
+		clusterKey:             cluster,
 		leadership:             nil,
 		topicCoords:            make(map[string]map[int]*TopicCoordinator),
 		myNode:                 nodeInfo,
@@ -94,7 +94,6 @@ func NewNsqdCoordinator(ip, tcpport, rpcport, extraID string, rootPath string, n
 		flushNotifyChan:        make(chan TopicPartitionID, 2),
 		stopChan:               make(chan struct{}),
 		dataRootPath:           rootPath,
-		localDataStates:        make(map[string]map[int]bool),
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
@@ -143,6 +142,7 @@ func (self *NsqdCoordinator) Start() error {
 func (self *NsqdCoordinator) Stop() {
 	// give up the leadership on the topic to
 	// allow other isr take over to avoid electing.
+	self.prepareLeavingCluster()
 	close(self.stopChan)
 	self.rpcServer.stop()
 	self.rpcServer = nil
@@ -180,15 +180,6 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 			}
 		}
 	}
-}
-
-func (self *NsqdCoordinator) markLocalDataState(topicName string, partition int, loaded bool) {
-	states, ok := self.localDataStates[topicName]
-	if !ok {
-		states = make(map[int]bool)
-		self.localDataStates[topicName] = states
-	}
-	states[partition] = loaded
 }
 
 func (self *NsqdCoordinator) loadLocalTopicData() error {
@@ -282,7 +273,6 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					self.requestJoinCatchup(topicName, partition)
 				}
 			}
-			self.markLocalDataState(topicInfo.Name, topicInfo.Partition, true)
 		}
 	}
 	return nil
@@ -448,7 +438,6 @@ func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartionMetaInfo
 
 func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	// notify myself is ready for isr list for current session and can accept new write.
-	// The empty session will trigger the lookup send the current leader session.
 	// leader session should contain the (isr list, current leader session, leader epoch), to identify the
 	// the different session stage.
 	c, err := self.getLookupRemoteProxy()
@@ -1242,5 +1231,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")
-	self.leadership.UnregisterNsqd(&self.myNode)
+	if self.leadership != nil {
+		self.leadership.UnregisterNsqd(&self.myNode)
+	}
 }
