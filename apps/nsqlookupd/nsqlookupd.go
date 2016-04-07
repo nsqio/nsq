@@ -11,9 +11,9 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/mreiferson/go-options"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 var (

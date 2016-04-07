@@ -591,7 +591,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, t3.Leader == t3.ISR[0] || t3.Leader == t3.ISR[1], true)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
 	go lookupCoord1.triggerCheckTopics(time.Second)
-	time.Sleep(time.Second * 15)
+	time.Sleep(time.Second * 10)
 	glog.Flush()
 	t0, _ = fakeLeadership1.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.ISR), 2)

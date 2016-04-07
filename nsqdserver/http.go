@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/protocol"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
-	"github.com/nsqio/nsq/internal/protocol"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 type httpServer struct {

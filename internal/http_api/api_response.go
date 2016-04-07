@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"errors"
+	"github.com/absolute8511/nsq/internal/app"
 	"github.com/julienschmidt/httprouter"
-	"github.com/nsqio/nsq/internal/app"
 )
 
 var (

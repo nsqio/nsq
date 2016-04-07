@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/nsqio/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/quantile"
 )
 
 const (

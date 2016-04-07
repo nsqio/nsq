@@ -11,10 +11,10 @@ import (
 
 	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/bitly/go-simplejson"
-	"github.com/nsqio/nsq/internal/clusterinfo"
-	"github.com/nsqio/nsq/internal/http_api"
 )
 
 func equal(t *testing.T, act, exp interface{}) {

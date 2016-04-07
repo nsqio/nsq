@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/protocol"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
-	"github.com/nsqio/nsq/internal/clusterinfo"
-	"github.com/nsqio/nsq/internal/http_api"
-	"github.com/nsqio/nsq/internal/protocol"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 func maybeWarnMsg(msgs []string) string {
@@ -208,7 +208,7 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 			if len(producers) == 0 {
 				topicChannels, _ := s.ci.GetLookupdTopicChannels(
-					topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+					topicName, 0, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 				topicChannelMap[topicName] = topicChannels
 			}
 		}

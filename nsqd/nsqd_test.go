@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/bitly/go-simplejson"
-	"github.com/nsqio/nsq/internal/http_api"
 )
 
 func assert(t *testing.T, condition bool, msg string, v ...interface{}) {

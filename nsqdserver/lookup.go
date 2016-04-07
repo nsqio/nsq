@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 func connectCallback(ctx *context, hostname string, syncTopicChan chan *lookupPeer) func(*lookupPeer) {

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nsqio/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/quantile"
 )
 
 var (

@@ -19,11 +19,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nsqio/go-nsq"
-	"github.com/nsqio/nsq/internal/app"
-	"github.com/nsqio/nsq/internal/clusterinfo"
-	"github.com/nsqio/nsq/internal/http_api"
-	"github.com/nsqio/nsq/internal/version"
+	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/app"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/version"
 )
 
 var (
@@ -461,7 +461,7 @@ func main() {
 
 	// TODO: remove, deprecated
 	flag.Var(&nsq.ConfigFlag{cfg}, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/absolute8511/go-nsq#Config)")
 
 	flag.Parse()
 

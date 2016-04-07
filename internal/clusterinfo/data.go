@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/stringy"
 	"github.com/blang/semver"
-	"github.com/nsqio/nsq/internal/stringy"
 )
 
 var v1EndpointVersion semver.Version

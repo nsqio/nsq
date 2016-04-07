@@ -15,11 +15,11 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/app"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/absolute8511/nsq/nsqdserver"
 	"github.com/mreiferson/go-options"
-	"github.com/nsqio/nsq/internal/app"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 type tlsRequiredOption int

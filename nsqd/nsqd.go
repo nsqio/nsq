@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/dirlock"
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/protocol"
+	"github.com/absolute8511/nsq/internal/statsd"
+	"github.com/absolute8511/nsq/internal/util"
+	"github.com/absolute8511/nsq/internal/version"
 	"github.com/bitly/go-simplejson"
-	"github.com/nsqio/nsq/internal/dirlock"
-	"github.com/nsqio/nsq/internal/protocol"
-	"github.com/nsqio/nsq/internal/statsd"
-	"github.com/nsqio/nsq/internal/util"
-	"github.com/nsqio/nsq/internal/version"
 )
 
 const (
