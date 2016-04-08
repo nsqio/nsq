@@ -46,11 +46,30 @@ var AppView = BaseView.extend({
         this.listenTo(Pubsub, 'view:ready', function() {
             $('.rate').each(function(i, el) {
                 var $el = $(el);
-                $.get(AppState.url('/graphite'), {
-                        'metric': 'rate',
-                        'target': $el.attr('target')
-                    })
-                    .done(function(data) { $el.html(data['rate']); })
+                var interval = AppState.get('STATSD_INTERVAL');
+                var q = {
+                    'target': $el.attr('target'),
+                    'from': '-' + (2 * interval) + 'sec',
+                    'until': '-' + interval + 'sec',
+                    'format': 'json',
+                };
+                var formatRate = function(data) {
+                    if (data[0]                     == null ||
+                        data[0]['datapoints'][0]    == null ||
+                        data[0]['datapoints'][0][0] <  0      )
+                    {
+                        return 'N/A';
+                    } else {
+                        return (data[0]['datapoints'][0][0] / interval).toFixed(2);
+                    }
+                };
+                $.ajax({
+                    url: AppState.get('GRAPHITE_URL') + '/render',
+                    data: q,
+                    dataType: 'jsonp',
+                    jsonp: 'jsonp'
+                })
+                    .done(function(data) { $el.html(formatRate(data)) })
                     .fail(function() { $el.html('ERROR'); });
             });
         });
