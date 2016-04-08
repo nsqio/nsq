@@ -179,7 +179,7 @@ func (cfg config) Validate() {
 }
 
 type program struct {
-	nsqdServer *nsqd.NsqdServer
+	nsqdServer *nsqdserver.NsqdServer
 }
 
 func main() {

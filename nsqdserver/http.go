@@ -216,7 +216,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
 
-	if s.ctx.checkForMasterWrite(topic) {
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		err := s.ctx.PutMessage(topic, body)
 		//s.ctx.setHealth(err)
 		if err != nil {
@@ -304,7 +304,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
-	if s.ctx.checkForMasterWrite(topic) {
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		err := s.ctx.PutMessages(topic, msgs)
 		//s.ctx.setHealth(err)
 		if err != nil {
