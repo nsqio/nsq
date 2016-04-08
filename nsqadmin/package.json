@@ -15,6 +15,7 @@
     "gulp-notify": "^1.8.0",
     "gulp-sass": "^2.2.0",
     "gulp-sourcemaps": "^1.6.0",
+    "gulp-task-listing": "^1.0.0",
     "gulp-uglify": "^1.5.3",
     "vinyl-source-stream": "^0.1.1",
     "vinyl-buffer": "^1.0.0"
