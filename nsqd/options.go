@@ -15,6 +15,7 @@ type Options struct {
 	// basic options
 	ID                     int64    `flag:"worker-id" cfg:"id"`
 	Verbose                bool     `flag:"verbose"`
+	ClusterID              string   `flag:"cluster-id"`
 	TCPAddress             string   `flag:"tcp-address"`
 	RPCPort                string   `flag:"rpc-port"`
 	HTTPAddress            string   `flag:"http-address"`
@@ -91,6 +92,7 @@ func NewOptions() *Options {
 	return &Options{
 		ID: defaultID,
 
+		ClusterID:        "clusterid-test-only",
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
 		HTTPSAddress:     "0.0.0.0:4152",

@@ -270,7 +270,7 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("AUTH")):
 		return p.AUTH(client, params)
-	case bytes.Equal(params[0], []byte("CREATE_TOPIC")):
+	case bytes.Equal(params[0], []byte("INTERNAL_CREATE_TOPIC")):
 		return p.CreateTopic(client, params)
 	}
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
@@ -705,6 +705,10 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName)
 		return nil, err
 	}
+	if !p.ctx.checkForMasterWrite(topicName, partition) {
+		return nil, protocol.NewFatalClientErr(nil, "E_FAILED_ON_NOT_MASTER",
+			fmt.Sprintf("sub is allowed only on the master node"))
+	}
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client.ID, client)
 
@@ -774,6 +778,11 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if client.Channel == nil {
 		nsqd.NsqLogger().Logf("FIN error no channel: %v", nsqd.GetMessageIDFromFullMsgID(*id))
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+	}
+
+	if !p.ctx.checkForMasterWrite(client.Channel.GetTopicName(), client.Channel.GetTopicPart()) {
+		return nil, protocol.NewFatalClientErr(nil, "E_FAILED_ON_NOT_MASTER",
+			fmt.Sprintf("FIN is allowed only on the master node"))
 	}
 
 	err = p.ctx.FinishMessage(client.Channel, client.ID, nsqd.GetMessageIDFromFullMsgID(*id))
@@ -865,10 +874,15 @@ func (p *protocolV2) CreateTopic(client *nsqd.ClientV2, params [][]byte) ([]byte
 		return nil, err
 	}
 
+	if p.ctx.nsqdCoord != nil {
+		return nil, protocol.NewClientErr(err, "E_CREATE_TOPIC_FAILED",
+			fmt.Sprintf("CREATE_TOPIC is not allowed here while cluster feature enabled."))
+	}
+
 	topic := p.ctx.getTopic(topicName, partition)
 	if topic == nil {
-		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
-			fmt.Sprintf("CREATE_TOPIC %v failed", ""))
+		return nil, protocol.NewClientErr(err, "E_CREATE_TOPIC_FAILED",
+			fmt.Sprintf("CREATE_TOPIC %v failed", topicName))
 	}
 	return okBytes, nil
 }
@@ -928,7 +942,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, err
 	}
 
-	if p.ctx.checkForMasterWrite(topic) {
+	if p.ctx.checkForMasterWrite(topicName, partition) {
 		err := p.ctx.PutMessage(topic, messageBody)
 		//p.ctx.setHealth(err)
 		if err != nil {
@@ -937,13 +951,9 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		}
 	} else {
 		//forward to master of topic
-		nsqd.NsqLogger().LogDebugf("forward put to master: %v, from %v",
+		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
-		err := p.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), messageBody)
-		if err != nil {
-			nsqd.NsqLogger().LogWarningf("topic %v forward put failed: %v", topic.GetFullName(), err)
-			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
-		}
+		return nil, protocol.NewClientErr(err, "E_FAILED_ON_NOT_MASTER", "Write only allow on master")
 	}
 
 	return okBytes, nil
@@ -1008,15 +1018,19 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, err
 	}
 
-	// if we've made it this far we've validated all the input,
-	// the only possible error is that the topic is exiting during
-	// this next call (and no messages will be queued in that case)
-	_, _, _, _, err = topic.PutMessages(messages)
-	p.ctx.setHealth(err)
-	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())
+	if p.ctx.checkForMasterWrite(topicName, partition) {
+		err := p.ctx.PutMessages(topic, messages)
+		//p.ctx.setHealth(err)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
+		}
+	} else {
+		//forward to master of topic
+		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
+			topic.GetFullName(), client.RemoteAddr)
+		return nil, protocol.NewClientErr(err, "E_FAILED_ON_NOT_MASTER", "Write only allow on master")
 	}
-
 	return okBytes, nil
 }
 

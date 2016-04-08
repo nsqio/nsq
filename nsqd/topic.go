@@ -279,15 +279,7 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, int64, 
 	t.Lock()
 	id, offset, writeBytes, totalCnt, err := t.PutMessageNoLock(m)
 	t.Unlock()
-	if err != nil {
-		return id, offset, writeBytes, totalCnt, err
-	}
-	if totalCnt%t.syncEvery == 0 {
-		t.Lock()
-		t.flush(false)
-		t.Unlock()
-	}
-	return id, offset, writeBytes, totalCnt, nil
+	return id, offset, writeBytes, totalCnt, err
 }
 
 func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, int64, error) {
@@ -297,6 +289,9 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, i
 	}
 
 	id, offset, writeBytes, totalCnt, err := t.put(m)
+	if totalCnt%t.syncEvery == 0 {
+		t.flush(false)
+	}
 	return id, offset, writeBytes, totalCnt, err
 }
 
@@ -348,16 +343,13 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) erro
 	return nil
 }
 
-// PutMessages writes multiple Messages to the queue
-func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, int64, error) {
-	t.Lock()
-	defer t.Unlock()
+func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, int32, int64, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return 0, 0, 0, 0, ErrExiting
 	}
 
-	firstOffset := BackendOffset(-1)
 	firstMsgID := MessageID(0)
+	firstOffset := BackendOffset(-1)
 	totalCnt := int64(0)
 	batchBytes := int32(0)
 	for _, m := range msgs {
@@ -377,6 +369,15 @@ func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, i
 		t.flush(false)
 	}
 	return firstMsgID, firstOffset, batchBytes, totalCnt, nil
+
+}
+
+// PutMessages writes multiple Messages to the queue
+func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, int64, error) {
+	t.Lock()
+	firstMsgID, firstOffset, batchBytes, totalCnt, err := t.PutMessagesNoLock(msgs)
+	t.Unlock()
+	return firstMsgID, firstOffset, batchBytes, totalCnt, err
 }
 
 func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, int64, error) {

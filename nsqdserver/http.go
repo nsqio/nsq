@@ -57,6 +57,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	//router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
@@ -64,8 +66,6 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	//router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
-	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, http_api.DeprecatedAPI, log, http_api.V1))
-	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, http_api.DeprecatedAPI, log, http_api.V1))
 
 	// debug
@@ -224,14 +224,10 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
-		//forward to master of topic
-		nsqd.NsqLogger().LogDebugf("forward put to master: %v, from %v",
+		//TODO: should we forward this to master of topic?
+		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
-		err := s.ctx.forwardPutMessage(topic.GetTopicName(), topic.GetTopicPart(), body)
-		if err != nil {
-			nsqd.NsqLogger().LogWarningf("topic %v forward put failed: %v", topic.GetFullName(), err)
-			return nil, http_api.Err{500, err.Error()}
-		}
+		return nil, http_api.Err{400, "Write Only Allowed on Master"}
 	}
 
 	return "OK", nil
@@ -308,10 +304,18 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
-	_, _, _, _, err = topic.PutMessages(msgs)
-	s.ctx.setHealth(err)
-	if err != nil {
-		return nil, http_api.Err{503, "EXITING"}
+	if s.ctx.checkForMasterWrite(topic) {
+		err := s.ctx.PutMessages(topic, msgs)
+		//s.ctx.setHealth(err)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			return nil, http_api.Err{503, err.Error()}
+		}
+	} else {
+		//should we forward to master of topic?
+		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		return nil, http_api.Err{400, "Write Only Allowed on Master"}
 	}
 
 	return "OK", nil

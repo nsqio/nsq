@@ -60,7 +60,7 @@ func (l *NSQLookupd) Main() {
 		_, node.RpcPort, _ = net.SplitHostPort(l.opts.RPCAddress)
 		node.ID = net.JoinHostPort(l.opts.BroadcastAddress, node.RpcPort)
 
-		l.coordinator = consistence.NewNsqLookupCoordinator("cluster-id", &node)
+		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node)
 		// set etcd leader manager here
 		// l.coordinator.SetLeadershipMgr(nil)
 		err = l.coordinator.Start()

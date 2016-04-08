@@ -155,9 +155,9 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, loglist []CommitLogData, messages []*nsqd.Message) *CoordErr {
+func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, log CommitLogData, messages []*nsqd.Message) *CoordErr {
 	var putData RpcPutMessages
-	putData.LogList = loglist
+	putData.LogData = log
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages

@@ -284,7 +284,7 @@ type RpcChannelOffsetArg struct {
 
 type RpcPutMessages struct {
 	RpcTopicData
-	LogList       []CommitLogData
+	LogData       CommitLogData
 	TopicMessages []*nsqd.Message
 }
 
@@ -370,6 +370,20 @@ func (self *NsqdCoordRpcServer) PutMessage(info RpcPutMessage, retErr *CoordErr)
 	}
 	// do local pub message
 	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
+	if err != nil {
+		*retErr = *err
+	}
+	return nil
+}
+
+func (self *NsqdCoordRpcServer) PutMessages(info RpcPutMessages, retErr *CoordErr) error {
+	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	if err != nil {
+		*retErr = *err
+		return nil
+	}
+	// do local pub message
+	err = self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)
 	if err != nil {
 		*retErr = *err
 	}

@@ -87,8 +87,11 @@ func (c *context) persistMetadata() {
 	c.nsqd.PersistMetadata(tmpMap)
 }
 
-func (c *context) checkForMasterWrite(topic *nsqd.Topic) bool {
-	return true
+func (c *context) checkForMasterWrite(topic string, part int) bool {
+	if c.nsqdCoord == nil {
+		return true
+	}
+	return c.nsqdCoord.IsMineLeaderForTopic(topic, part)
 }
 
 func (c *context) PutMessage(topic *nsqd.Topic, msg []byte) error {
@@ -100,8 +103,12 @@ func (c *context) PutMessage(topic *nsqd.Topic, msg []byte) error {
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
 
-func (c *context) forwardPutMessage(topic string, port int, msg []byte) error {
-	return nil
+func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) error {
+	if c.nsqdCoord == nil {
+		_, _, _, _, err := topic.PutMessages(msgs)
+		return err
+	}
+	return c.nsqdCoord.PutMessagesToCluster(topic, msgs)
 }
 
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {

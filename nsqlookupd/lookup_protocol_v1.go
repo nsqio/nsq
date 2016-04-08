@@ -128,6 +128,8 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 		return nil, err
 	}
 
+	// TODO: check only leader is allowed to register .
+
 	if channel != "" {
 		key := Registration{"channel", topic, channel, pid}
 		if p.ctx.nsqlookupd.DB.AddProducer(key, &Producer{peerInfo: client.peerInfo}) {

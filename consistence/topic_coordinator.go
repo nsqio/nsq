@@ -119,9 +119,6 @@ func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
 }
 
 func (self *TopicCoordinator) checkWriteForLeader(myID string) *CoordErr {
-	if self.disableWrite {
-		return ErrWriteDisabled
-	}
 	return self.coordData.checkWriteForLeader(myID)
 }
 
