@@ -2,6 +2,42 @@
 
 ## Binaries
 
+### 0.3.7 - 2016-02-23
+
+**Upgrading from 0.3.6**: Binaries contain no backwards incompatible changes.
+
+This release has been built with Go 1.6.
+
+Highlights include the various work done to reduce `nsqd` lock contention, significantly improving
+the impact of high load on the `/stats` endpoint, addressing issues with timeouts and failures
+in `nsqadmin` (#700, #701, #703, #709).
+
+Thanks to @judwhite, `nsqd` and `nsqlookupd` now natively support being run as a Windows service
+(#718). We're also now publishing official Windows releases.
+
+`nsqd` will now `flock` its data directory on linux, preventing two `nsqd` from running
+simultaneously pointed at the same path (#583).
+
+On the bugfix side, the most noteworthy change is that `nsqd` will now correctly reset health state
+on a successful backend write (#671).
+
+Features:
+
+ * #700/#701/#703/#709 - `nsqd`: reduce lock contention (thanks @zachbadgett @absolute8511)
+ * #718 - `nsqd`/`nsqlookupd`: support running as a windows service (thanks @judwhite)
+ * #706 - `nsqd`: support enabling/disabling block profile via HTTP (thanks @absolute8511)
+ * #710 - `nsqd`: support `POST` `/debug/pprof/symbol` (thanks @absolute8511)
+ * #662 - `nsqadmin`: add flags for formatting statsd keys (thanks @kesutton)
+ * #583 - `nsqd`: `flock` `--data-path` on linux
+ * #663 - `nsqd`: optimize GUID generation (thanks @ploxiln)
+
+Bugs:
+
+ * #672 - `nsqd`: fix max size accounting in `diskqueue` (thanks @judwhite)
+ * #671 - `nsqd`: reset health on successful backend write (thanks @judwhite)
+ * #615 - `nsqd`: prevent OOM when reading from `nsqlookupd` peer
+ * #664/#666 - dist.sh/Makefile cleanup (thanks @ploxiln)
+
 ### 0.3.6 - 2015-09-24
 
 **Upgrading from 0.3.5**: Binaries contain no backwards incompatible changes.

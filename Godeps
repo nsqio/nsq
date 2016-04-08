@@ -1,6 +1,6 @@
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/nsqio/go-nsq                 cef6982c1150617a77539847950ca63774f0e48c # v1.0.5
+github.com/absolute8511/go-nsq                 8954a172914907e4d57eec541ba1e0771c13d6ee# v1.0.5
 github.com/bitly/go-simplejson          18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da
@@ -8,3 +8,4 @@ github.com/mreiferson/go-snappystream   028eae7ab5c4c9e2d1cb4c4ca1e53259bbe7e504
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
 github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
+github.com/judwhite/go-svc/svc          53bd3020e68399b23994ce23d1130801aa674226

@@ -7,10 +7,9 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -19,6 +18,7 @@ import (
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/absolute8511/nsq/nsqdserver"
+	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
 )
 
@@ -178,7 +178,26 @@ func (cfg config) Validate() {
 	}
 }
 
+type program struct {
+	nsqdServer *nsqd.NsqdServer
+}
+
 func main() {
+	prg := &program{}
+	if err := svc.Run(prg); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (p *program) Init(env svc.Environment) error {
+	if env.IsWindowsService() {
+		dir := filepath.Dir(os.Args[0])
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
+func (p *program) Start() error {
 	flagSet := nsqFlagset()
 	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
@@ -187,11 +206,8 @@ func main() {
 
 	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
 		fmt.Println(version.String("nsqd"))
-		return
+		os.Exit(0)
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
@@ -215,6 +231,13 @@ func main() {
 	}
 	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
 	nsqdServer.Main()
-	<-signalChan
-	nsqdServer.Exit()
+	p.nsqdServer = nsqdServer
+	return nil
+}
+
+func (p *program) Stop() error {
+	if p.nsqdServer != nil {
+		p.nsqdServer.Exit()
+	}
+	return nil
 }
