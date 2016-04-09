@@ -181,6 +181,67 @@ func TestDiskQueueCorruption(t *testing.T) {
 	equal(t, <-dq.ReadChan(), msg)
 }
 
+type md struct {
+	depth        int64
+	readFileNum  int64
+	writeFileNum int64
+	readPos      int64
+	writePos     int64
+}
+
+func readMetaDataFile(fileName string) md {
+	f, err := os.OpenFile(fileName, os.O_RDONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	var ret md
+	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
+		&ret.depth,
+		&ret.readFileNum, &ret.readPos,
+		&ret.writeFileNum, &ret.writePos)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+func TestDiskQueueSyncAfterRead(t *testing.T) {
+	l := newTestLogger(t)
+	dqName := "test_disk_queue_read_after_sync" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	dq := newDiskQueue(dqName, tmpDir, 1<<11, 0, 1<<10, 2500, 50*time.Millisecond, l)
+	defer dq.Close()
+
+	msg := make([]byte, 1000)
+	dq.Put(msg)
+
+	time.Sleep(100 * time.Millisecond)
+
+	d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+	equal(t, d.depth, int64(1))
+	equal(t, d.readFileNum, int64(0))
+	equal(t, d.writeFileNum, int64(0))
+	equal(t, d.readPos, int64(0))
+	equal(t, d.writePos, int64(1004))
+	dq.Put(msg)
+
+	<-dq.ReadChan()
+	time.Sleep(100 * time.Millisecond)
+
+	d = readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+	equal(t, d.depth, int64(1))
+	equal(t, d.readFileNum, int64(0))
+	equal(t, d.writeFileNum, int64(0))
+	equal(t, d.readPos, int64(1004))
+	equal(t, d.writePos, int64(2008))
+}
+
 func TestDiskQueueTorture(t *testing.T) {
 	var wg sync.WaitGroup
 
