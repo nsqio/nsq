@@ -74,6 +74,29 @@ func (t *tlsVersionOption) String() string {
 	return strconv.FormatInt(int64(*t), 10)
 }
 
+type authRequiredOption uint16
+
+func (t *authRequiredOption) Set(s string) error {
+	s = strings.ToLower(s)
+	for _, v := range strings.Split(s, ",") {
+		switch v {
+		case "tcp":
+			*t |= nsqd.FlagTCPProtocol
+		case "http":
+			*t |= nsqd.FlagHTTPProtocol
+		case "https":
+			*t |= nsqd.FlagHTTPSProtocol
+		default:
+			return fmt.Errorf("unknown auth-required value '%s'", v)
+		}
+	}
+	return nil
+}
+
+func (t *authRequiredOption) String() string {
+	return strconv.FormatInt(int64(*t), 10)
+}
+
 func nsqFlagset() *flag.FlagSet {
 	flagSet := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
@@ -88,6 +111,9 @@ func nsqFlagset() *flag.FlagSet {
 
 	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
+
+	var authRequired authRequiredOption
+	flagSet.Var(&authRequired, "auth-required", "protocols which require auth when --auth-http-address is set (can be specified multiple times or comma separated 'tcp,http,https', default 'tcp')")
 
 	flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
 	lookupdTCPAddrs := app.StringArray{}

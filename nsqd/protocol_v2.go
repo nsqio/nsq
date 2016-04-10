@@ -419,7 +419,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		MaxDeflateLevel:     p.ctx.nsqd.getOpts().MaxDeflateLevel,
 		Snappy:              snappy,
 		SampleRate:          client.SampleRate,
-		AuthRequired:        p.ctx.nsqd.IsAuthEnabled(),
+		AuthRequired:        p.ctx.nsqd.IsAuthEnabledTCP(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
 	})
@@ -508,7 +508,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH Already set")
 	}
 
-	if !client.ctx.nsqd.IsAuthEnabled() {
+	if !client.ctx.nsqd.IsAuthEnabledTCP() {
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_DISABLED", "AUTH Disabled")
 	}
 
@@ -541,28 +541,30 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	return nil, nil
-
 }
 
 func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName string) error {
 	// if auth is enabled, the client must have authorized already
 	// compare topic/channel against cached authorization data (refetching if expired)
-	if client.ctx.nsqd.IsAuthEnabled() {
-		if !client.HasAuthorizations() {
-			return protocol.NewFatalClientErr(nil, "E_AUTH_FIRST",
-				fmt.Sprintf("AUTH required before %s", cmd))
-		}
-		ok, err := client.IsAuthorized(topicName, channelName)
-		if err != nil {
-			// we don't want to leak errors contacting the auth server to untrusted clients
-			p.ctx.nsqd.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
-			return protocol.NewFatalClientErr(nil, "E_AUTH_FAILED", "AUTH failed")
-		}
-		if !ok {
-			return protocol.NewFatalClientErr(nil, "E_UNAUTHORIZED",
-				fmt.Sprintf("AUTH failed for %s on %q %q", cmd, topicName, channelName))
-		}
+	if !client.ctx.nsqd.IsAuthEnabledTCP() {
+		return nil
 	}
+
+	if !client.HasAuthorizations() {
+		return protocol.NewFatalClientErr(nil, "E_AUTH_FIRST",
+			fmt.Sprintf("AUTH required before %s", cmd))
+	}
+	ok, err := client.IsAuthorized(topicName, channelName)
+	if err != nil {
+		// we don't want to leak errors contacting the auth server to untrusted clients
+		p.ctx.nsqd.logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
+		return protocol.NewFatalClientErr(nil, "E_AUTH_FAILED", "AUTH failed")
+	}
+	if !ok {
+		return protocol.NewFatalClientErr(nil, "E_UNAUTHORIZED",
+			fmt.Sprintf("AUTH failed for %s on %q %q", cmd, topicName, channelName))
+	}
+
 	return nil
 }
 
