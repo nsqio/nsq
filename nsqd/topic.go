@@ -146,7 +146,6 @@ func (t *Topic) Exiting() bool {
 }
 
 func (t *Topic) nextMsgID() MessageID {
-	// TODO: read latest logid and incr. combine the partition id at high.
 	id := uint64(0)
 	if t.MsgIDCursor != nil {
 		id = t.MsgIDCursor.NextID()
@@ -267,7 +266,9 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 
 func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
 	err := t.backend.ResetWriteEnd(vend, totalCnt)
-	if err == nil {
+	if err != nil {
+		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
+	} else {
 		t.updateChannelsEnd()
 	}
 
@@ -330,14 +331,17 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) erro
 		return ErrWriteOffsetMismatch
 	}
 
+	totalCnt := int64(0)
+	var err error
 	for _, m := range msgs {
-		_, _, _, _, err := t.put(m)
+		_, _, _, totalCnt, err = t.put(m)
 		if err != nil {
+			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
 			return err
 		}
 	}
 
-	if int64(len(msgs)) >= t.syncEvery {
+	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
 		t.flush(false)
 	}
 	return nil
@@ -348,6 +352,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		return 0, 0, 0, 0, ErrExiting
 	}
 
+	wend := t.backend.GetQueueWriteEnd()
 	firstMsgID := MessageID(0)
 	firstOffset := BackendOffset(-1)
 	totalCnt := int64(0)
@@ -355,6 +360,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	for _, m := range msgs {
 		id, offset, bytes, cnt, err := t.put(m)
 		if err != nil {
+			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, cnt, err
 		}
 		batchBytes += bytes
@@ -365,11 +371,10 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		}
 	}
 
-	if int64(len(msgs)) >= t.syncEvery {
+	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
 		t.flush(false)
 	}
 	return firstMsgID, firstOffset, batchBytes, totalCnt, nil
-
 }
 
 // PutMessages writes multiple Messages to the queue

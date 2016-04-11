@@ -632,8 +632,13 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 					break
 				}
 			} else {
-				coordLog.Infof("got batch messages: %v", len(newMsgs))
-				// TODO: do batch put
+				coordLog.Debugf("got batch messages: %v", len(newMsgs))
+				localErr = localTopic.PutMessagesOnReplica(newMsgs, nsqd.BackendOffset(l.MsgOffset))
+				if localErr != nil {
+					coordLog.Infof("Failed to batch put messages on slave: %v, offset: %v", localErr, l.MsgOffset)
+					hasErr = true
+					break
+				}
 			}
 			localErr = logMgr.AppendCommitLog(&l, true)
 			if localErr != nil {
@@ -924,9 +929,8 @@ retrypub:
 	if success == len(tcData.topicInfo.ISR) {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			// TODO: leave isr
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
-			panic(localErr)
+			needLeaveISR = true
 		} else {
 			needLeaveISR = false
 		}
@@ -1068,9 +1072,8 @@ retrypub:
 	if success == len(tcData.topicInfo.ISR) {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			// TODO: leave isr
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
-			panic(localErr)
+			needLeaveISR = true
 		} else {
 			needLeaveISR = false
 		}

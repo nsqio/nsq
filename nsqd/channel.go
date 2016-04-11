@@ -400,14 +400,35 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 		nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
 			len(c.confirmedMsgs), c.currentLastConfirmed)
 
-		//TODO: found the message in the flight with offset c.currentLastConfirmed and
+		//found the message in the flight with offset c.currentLastConfirmed and
 		//requeue to client again. This can force the missed message with
 		//c.currentLastConfirmed offset
+		// TODO: maybe wait timeout to avoid iterator all inflight messages
+		c.inFlightMutex.Lock()
+		var msg *Message
+		for _, msg = range c.inFlightMessages {
+			if msg.offset == c.currentLastConfirmed {
+				nsqLog.Logf("client %v message %v confirm offset %v wait timeout",
+					msg.clientID, msg.ID, msg.offset)
+				delete(c.inFlightMessages, msg.ID)
+				if msg.index != -1 {
+					c.inFlightPQ.Remove(msg.index)
+				}
+				break
+			}
+		}
+		c.inFlightMutex.Unlock()
+		if msg != nil {
+			c.doRequeue(msg)
+		} else {
+			nsqLog.LogErrorf("waiting confirm message offset %v not in inflight", c.currentLastConfirmed)
+		}
+
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 	return c.currentLastConfirmed
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
-	// in inflight queue and also wait confirm. In this way, we need reset
+	// in inflight queue and also not wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
 }
 
@@ -677,12 +698,13 @@ LOOP:
 		case msg = <-c.requeuedMsgChan:
 		case data = <-readChan:
 			if data.err != nil {
-				nsqLog.LogErrorf("failed to read message - %s", err)
+				nsqLog.LogErrorf("failed to read message - %s", data.err)
 				// TODO: fix corrupt file from other replica.
 				// and should handle the confirm offset, since some skipped data
 				// may never be confirmed any more
 				c.backend.(*diskQueueReader).SkipToNext()
 				isSkipped = true
+				time.Sleep(time.Millisecond * 100)
 				continue LOOP
 			}
 			msg, err = decodeMessage(data.data)

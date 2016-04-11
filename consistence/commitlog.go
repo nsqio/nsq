@@ -94,6 +94,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		return nil, err
 	}
 	fsize := f.Size()
+	// read latest logid and incr. combine the partition id at high.
 	if fsize > 0 {
 		num := fsize / int64(GetLogDataSize())
 		roundOffset := (num - 1) * int64(GetLogDataSize())
@@ -103,7 +104,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 			return nil, err
 		}
 		mgr.pLogID = l.LogID
-		mgr.nLogID = l.LogID + 1000
+		mgr.nLogID = l.LogID + 100
 	} else {
 		mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
 	}

@@ -13,16 +13,17 @@ import (
 
 type Options struct {
 	// basic options
-	ID                     int64    `flag:"worker-id" cfg:"id"`
-	Verbose                bool     `flag:"verbose"`
-	ClusterID              string   `flag:"cluster-id"`
-	TCPAddress             string   `flag:"tcp-address"`
-	RPCPort                string   `flag:"rpc-port"`
-	HTTPAddress            string   `flag:"http-address"`
-	HTTPSAddress           string   `flag:"https-address"`
-	BroadcastAddress       string   `flag:"broadcast-address"`
-	NSQLookupdTCPAddresses []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
-	AuthHTTPAddresses      []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	ID                      int64    `flag:"worker-id" cfg:"id"`
+	Verbose                 bool     `flag:"verbose"`
+	ClusterID               string   `flag:"cluster-id"`
+	ClusterLeadershipIPList []string `flag:"cluster-leadership-iplist"`
+	TCPAddress              string   `flag:"tcp-address"`
+	RPCPort                 string   `flag:"rpc-port"`
+	HTTPAddress             string   `flag:"http-address"`
+	HTTPSAddress            string   `flag:"https-address"`
+	BroadcastAddress        string   `flag:"broadcast-address"`
+	NSQLookupdTCPAddresses  []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses       []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
