@@ -989,12 +989,17 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 	return leaders, isrlist, nil
 }
 
-func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, replica int) error {
+func (self *NsqLookupCoordinator) IsMineLeader() bool {
+	return self.leaderNode.GetID() == self.myNode.GetID()
+}
+
+func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, replica int, suggestLF int) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("not leader while create topic")
 		return ErrNotNsqLookupLeader
 	}
 
+	// TODO: handle default load factor
 	coordLog.Infof("create topic: %v-%v, replica: %v", topic, partitionNum, replica)
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, partitionNum, replica)

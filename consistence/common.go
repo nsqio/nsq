@@ -139,6 +139,18 @@ func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {
 	return tmpbuf.String()
 }
 
+func GenNsqLookupNodeID(n *NsqLookupdNodeInfo, extra string) string {
+	var tmpbuf bytes.Buffer
+	tmpbuf.WriteString(n.NodeIp)
+	tmpbuf.WriteString(":")
+	tmpbuf.WriteString(n.RpcPort)
+	tmpbuf.WriteString(":")
+	tmpbuf.WriteString(n.HttpPort)
+	tmpbuf.WriteString(":")
+	tmpbuf.WriteString(extra)
+	return tmpbuf.String()
+}
+
 func ExtractRpcAddrFromID(nid string) string {
 	pos1 := strings.Index(nid, ":")
 	pos2 := strings.Index(nid[pos1+1:], ":")

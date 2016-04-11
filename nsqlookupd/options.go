@@ -12,7 +12,7 @@ type Options struct {
 
 	TCPAddress       string `flag:"tcp-address"`
 	HTTPAddress      string `flag:"http-address"`
-	RPCAddress       string `flag:"rpc-address"`
+	RPCPort          string `flag:"rpc-port"`
 	BroadcastAddress string `flag:"broadcast-address"`
 
 	EtcdAddress string `flag:"etcd-address"`
@@ -36,7 +36,7 @@ func NewOptions() *Options {
 		BroadcastAddress: hostname,
 
 		EtcdAddress: "",
-		ClusterID:   "nsq-test-cluster",
+		ClusterID:   "nsq-clusterid-test-only",
 
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,

@@ -93,7 +93,7 @@ func NewOptions() *Options {
 	return &Options{
 		ID: defaultID,
 
-		ClusterID:        "clusterid-test-only",
+		ClusterID:        "nsq-clusterid-test-only",
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
 		HTTPSAddress:     "0.0.0.0:4152",

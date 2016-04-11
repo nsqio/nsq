@@ -19,6 +19,7 @@ import (
 const (
 	MAX_PARTITION_NUM = 255
 	MAX_REPLICATOR    = 5
+	MAX_LOAD_FACTOR   = 100
 )
 
 func GetValidPartitionNum(numStr string) (int, error) {
@@ -54,6 +55,17 @@ func GetValidReplicator(r string) (int, error) {
 	return 0, errors.New("INVALID_REPLICATOR")
 }
 
+func GetValidSuggestLF(r string) (int, error) {
+	num, err := strconv.Atoi(r)
+	if err != nil {
+		return 0, err
+	}
+	if num >= 0 && num <= MAX_LOAD_FACTOR {
+		return num, nil
+	}
+	return 0, errors.New("INVALID_SUGGEST_LOADFACTOR")
+}
+
 type httpServer struct {
 	ctx    *Context
 	router http.Handler
@@ -80,6 +92,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -89,19 +102,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	//router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/topic/tombstone", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.V1))
 
-	// deprecated, v1 negotiate
 	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/tombstone_topic_producer", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/tombstone_topic_producer", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.NegotiateVersion))
-
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof", pprof.Index)
 	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
@@ -143,6 +144,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	// TODO: forward request if not leader
 	topics := s.ctx.nsqlookupd.DB.FindRegistrations("topic", "*", "", "*").Keys()
 	return map[string]interface{}{
 		"topics": topics,
@@ -280,7 +282,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	pnumStr := reqParams.Get("partition_num")
 	if pnumStr == "" {
-		pnumStr = "3"
+		pnumStr = "2"
 	}
 	pnum, err := GetValidPartitionNum(pnumStr)
 	if err != nil {
@@ -288,15 +290,31 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 	replicatorStr := reqParams.Get("replicator")
 	if replicatorStr == "" {
-		replicatorStr = "3"
+		replicatorStr = "2"
 	}
 	replicator, err := GetValidReplicator(replicatorStr)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_REPLICATOR"}
 	}
-	nsqlookupLog.Logf("DB: adding topic(%s)", topicName)
-	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator)
+
+	suggestLFStr := reqParams.Get("suggestload")
+	if suggestLFStr == "" {
+		suggestLFStr = "0"
+	}
+	suggestLF, err := GetValidSuggestLF(suggestLFStr)
 	if err != nil {
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_LOAD_FACTOR"}
+	}
+
+	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
+		nsqlookupLog.LogDebugf("forward create topic (%s) from remote %v to leader", topicName, req.RemoteAddr)
+		// TODO: if not forward request, forward to leader
+		return nil, nil
+	}
+	nsqlookupLog.Logf("DB: adding topic(%s)", topicName)
+	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator, suggestLF)
+	if err != nil {
+		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)
 		return nil, http_api.Err{400, err.Error()}
 	}
 	for i := 0; i < pnum; i++ {
@@ -308,8 +326,8 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// not support currently.
-	return nil, http_api.Err{501, "DELETE not Implemented"}
+	// TODO: not support currently.
+	return nil, http_api.Err{501, "DELETE topic not Implemented"}
 
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -320,14 +338,19 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	if topicName == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
+	partStr := reqParams.Get("partition")
+	if partStr == "" {
+		partStr = "0"
+	}
 
-	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
+	// TODO: handle delete topic for cluster
+	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", partStr)
 	for _, registration := range registrations {
 		nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}
 
-	registrations = s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
+	registrations = s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", partStr)
 	for _, registration := range registrations {
 		nsqlookupLog.Logf("DB: removing topic(%s)", topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
@@ -364,64 +387,6 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 	return nil, nil
 }
 
-func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-	tpid := reqParams.Get("partition")
-	if tpid == "" {
-		tpid = "*"
-	}
-
-	regs := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", tpid)
-	if len(regs) == 0 {
-		return nil, http_api.Err{400, "TOPIC_NOT_FOUND"}
-	}
-	for _, reg := range regs {
-		nsqlookupLog.Logf("DB: adding channel(%s) in topic(%s)-pid:%s", channelName, topicName, reg.PartitionID)
-		key := Registration{"channel", topicName, channelName, reg.PartitionID}
-		s.ctx.nsqlookupd.DB.AddRegistration(key)
-	}
-	return nil, nil
-}
-
-func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// not support currently.
-	return nil, http_api.Err{501, "DELETE not Implemented"}
-
-	reqParams, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-	tpid := reqParams.Get("partition")
-	if tpid == "" {
-		tpid = "*"
-	}
-
-	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, channelName, tpid)
-	if len(registrations) == 0 {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
-	}
-
-	nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s)-pid:%s", channelName, topicName, tpid)
-	for _, registration := range registrations {
-		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
-	}
-
-	return nil, nil
-}
-
 type node struct {
 	RemoteAddress    string              `json:"remote_address"`
 	Hostname         string              `json:"hostname"`
@@ -432,6 +397,12 @@ type node struct {
 	Tombstones       []bool              `json:"tombstones"`
 	Topics           []string            `json:"topics"`
 	Partitions       map[string][]string `json:"partitions"`
+}
+
+// return all lookup nodes that registered on etcd, and mark the master/slave info
+func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	// TODO
+	return nil, nil
 }
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

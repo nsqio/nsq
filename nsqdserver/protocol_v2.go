@@ -271,7 +271,7 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	case bytes.Equal(params[0], []byte("AUTH")):
 		return p.AUTH(client, params)
 	case bytes.Equal(params[0], []byte("INTERNAL_CREATE_TOPIC")):
-		return p.CreateTopic(client, params)
+		return p.internalCreateTopic(client, params)
 	}
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -395,7 +395,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
 				offset := subChannel.ConfirmBackendQueue(msg)
-				// TODO: sync to replicator.
+				// TODO: sync to replica nodes.
 				_ = offset
 				continue
 			}
@@ -852,7 +852,7 @@ func (p *protocolV2) NOP(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	return nil, nil
 }
 
-func (p *protocolV2) CreateTopic(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	var err error
 
 	if len(params) < 3 {

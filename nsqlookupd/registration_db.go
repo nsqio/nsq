@@ -70,7 +70,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 	}
 }
 
-func (r *RegistrationDB) AddProducerClient(k Registration, p *Producer) bool {
+func (r *RegistrationDB) addProducerClient(k Registration, p *Producer) bool {
 	r.Lock()
 	defer r.Unlock()
 	producers := r.registrationMap[k]
@@ -95,7 +95,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	if err != nil || pid < 0 {
 		return false
 	}
-	return r.AddProducerClient(k, p)
+	return r.addProducerClient(k, p)
 }
 
 // remove a producer from a registration

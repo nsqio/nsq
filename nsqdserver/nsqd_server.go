@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/absolute8511/nsq/internal/http_api"
@@ -86,7 +87,7 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	ip, port, err := net.SplitHostPort(opts.TCPAddress)
 	rpcport := opts.RPCPort
 	if rpcport != "" {
-		nsqCoord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, "nsqd-coord", opts.DataPath, nsqdInstance)
+		nsqCoord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)
 		ctx.nsqdCoord = nsqCoord
 	} else {
 		nsqd.NsqLogger().LogWarningf("Start without nsqd coordinator enabled")

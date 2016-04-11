@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -128,7 +129,18 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 		return nil, err
 	}
 
-	// TODO: check only leader is allowed to register .
+	// only leader is allowed to register .
+	if p.ctx.nsqlookupd.coordinator != nil {
+		pidNum, err := strconv.Atoi(pid)
+		if err != nil {
+			nsqlookupLog.LogDebugf("got invalid pid: %v from slave node: %v", pid, client)
+			return nil, err
+		}
+		if !p.ctx.nsqlookupd.coordinator.IsTopicLeader(topic, pidNum, client.peerInfo.Id) {
+			nsqlookupLog.LogDebugf("got register key: %v pid: %v from slave node: %v", topic, pid, client)
+			return []byte("OK"), nil
+		}
+	}
 
 	if channel != "" {
 		key := Registration{"channel", topic, channel, pid}
@@ -210,7 +222,8 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	// body is a json structure with producer information
-	peerInfo := PeerInfo{Id: client.RemoteAddr().String()}
+	// Id should be identified by the client.
+	peerInfo := PeerInfo{Id: ""}
 	err = json.Unmarshal(body, &peerInfo)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
@@ -219,7 +232,8 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	peerInfo.RemoteAddress = client.RemoteAddr().String()
 
 	// require all fields
-	if peerInfo.BroadcastAddress == "" || peerInfo.TCPPort == 0 || peerInfo.HTTPPort == 0 || peerInfo.Version == "" {
+	if peerInfo.Id == "" || peerInfo.BroadcastAddress == "" || peerInfo.TCPPort == 0 || peerInfo.HTTPPort == 0 || peerInfo.Version == "" {
+		nsqlookupLog.Logf("identify info missing: %v", peerInfo)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
@@ -229,7 +243,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		client, peerInfo.BroadcastAddress, peerInfo.TCPPort, peerInfo.HTTPPort, peerInfo.Version)
 
 	client.peerInfo = &peerInfo
-	if p.ctx.nsqlookupd.DB.AddProducerClient(Registration{"client", "", "", ""}, &Producer{peerInfo: client.peerInfo}) {
+	if p.ctx.nsqlookupd.DB.addProducerClient(Registration{"client", "", "", ""}, &Producer{peerInfo: client.peerInfo}) {
 		nsqlookupLog.Logf("DB: client(%s) REGISTER category:%s key:%s subkey:%s", client, "client", "", "")
 	}
 
@@ -241,7 +255,6 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	hostname, err := os.Hostname()
 	if err != nil {
 		nsqlookupLog.LogErrorf("ERROR: unable to get hostname %s", err)
-		return nil, err
 	}
 	data["broadcast_address"] = p.ctx.nsqlookupd.opts.BroadcastAddress
 	data["hostname"] = hostname

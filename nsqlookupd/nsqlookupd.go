@@ -56,12 +56,12 @@ func (l *NSQLookupd) Main() {
 
 	var node consistence.NsqLookupdNodeInfo
 	node.NodeIp, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
-	if l.opts.RPCAddress != "" {
-		_, node.RpcPort, _ = net.SplitHostPort(l.opts.RPCAddress)
-		node.ID = net.JoinHostPort(l.opts.BroadcastAddress, node.RpcPort)
+	if l.opts.RPCPort != "" {
+		node.RpcPort = l.opts.RPCPort
+		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 
 		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node)
-		// set etcd leader manager here
+		// TODO: set etcd leader manager here
 		// l.coordinator.SetLeadershipMgr(nil)
 		err = l.coordinator.Start()
 		if err != nil {

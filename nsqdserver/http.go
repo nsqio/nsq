@@ -192,8 +192,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		nsqd.NsqLogger().Logf("get topic err: %v", err)
-		// TODO: forward request to the right nsqd node.
-		return nil, err
+		return nil, http_api.Err{404, "Topic not found"}
 	}
 
 	readMax := req.ContentLength + 1

@@ -481,6 +481,9 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 	if c.Exiting() {
 		return
 	}
+	if atomic.LoadInt32(&c.consumeDisabled) == 1 {
+		return
+	}
 	idList := make([]MessageID, 0)
 	c.inFlightMutex.Lock()
 	for id, msg := range c.inFlightMessages {
@@ -649,6 +652,9 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 	} else {
+		// TODO: we need reset backend read position to confirm position
+		// since we dropped all inflight and requeue data while disable consume.
+		// currentLastConfirmed should be handled also.
 		atomic.StoreInt32(&c.consumeDisabled, 0)
 		select {
 		case c.tryReadBackend <- true:
@@ -779,6 +785,9 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 
 	dirty := false
 	for {
+		if atomic.LoadInt32(&c.consumeDisabled) == 1 {
+			goto exit
+		}
 		c.inFlightMutex.Lock()
 		msg, _ := c.inFlightPQ.PeekAndShift(t)
 		flightCnt := len(c.inFlightMessages)
