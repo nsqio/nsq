@@ -37,7 +37,7 @@ func (t *tlsRequiredOption) Set(s string) error {
 	return err
 }
 
-func (t *tlsRequiredOption) Get() interface{} { return *t }
+func (t *tlsRequiredOption) Get() interface{} { return int(*t) }
 
 func (t *tlsRequiredOption) String() string {
 	return strconv.FormatInt(int64(*t), 10)
@@ -67,7 +67,7 @@ func (t *tlsVersionOption) Set(s string) error {
 }
 
 func (t *tlsVersionOption) Get() interface{} {
-	return *t
+	return uint16(*t)
 }
 
 func (t *tlsVersionOption) String() string {
