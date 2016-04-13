@@ -75,14 +75,7 @@ type Options struct {
 }
 
 func NewOptions() *Options {
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	h := md5.New()
-	io.WriteString(h, hostname)
-	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
+	hostname, defaultID := HostnameWorkerId()
 
 	return &Options{
 		ID: defaultID,
@@ -132,4 +125,21 @@ func NewOptions() *Options {
 
 		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
+}
+
+func HostnameWorkerId() (hostname string, workerID int64) {
+	var err error
+	hostname, err = os.Hostname()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	workerID = DefaultWorkerID(hostname)
+	return
+}
+
+func DefaultWorkerID(hostname string) int64 {
+	h := md5.New()
+	io.WriteString(h, hostname)
+	return int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 }
