@@ -624,14 +624,17 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 	return msg, nil
 }
 
+func (c *Channel) IsConsumeDisabled() bool {
+	return atomic.LoadInt32(&c.consumeDisabled) == 1
+}
+
 func (c *Channel) DisableConsume(disable bool) {
 	c.Lock()
 	defer c.Unlock()
 	if disable {
-		if c.consumeDisabled == 1 {
+		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 1, 0) {
 			return
 		}
-		atomic.StoreInt32(&c.consumeDisabled, 1)
 		for cid, client := range c.clients {
 			client.Exit()
 			delete(c.clients, cid)
@@ -661,6 +664,7 @@ func (c *Channel) DisableConsume(disable bool) {
 		default:
 		}
 	}
+	c.notifyCall(c)
 }
 
 // messagePump reads messages from either memory or backend and sends

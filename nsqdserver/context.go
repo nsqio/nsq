@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+const (
+	FailedOnNotLeader = consistence.ErrFailedOnNotLeader
+)
+
 type context struct {
 	clientIDSequence int64
 	nsqd             *nsqd.NSQD

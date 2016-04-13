@@ -136,6 +136,10 @@ func (self *NsqLookupCoordinator) Stop() {
 	self.wg.Wait()
 }
 
+func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
+	return self.leadership.GetAllLookupdNodes()
+}
+
 func (self *NsqLookupCoordinator) handleLeadership() {
 	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
 	if self.leadership != nil {

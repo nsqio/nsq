@@ -24,6 +24,7 @@ type NsqLookupdNodeInfo struct {
 	ID       string
 	NodeIp   string
 	HttpPort string
+	TcpPort  string
 	RpcPort  string
 	Epoch    int
 }
@@ -94,6 +95,7 @@ type NSQLookupdLeadership interface {
 	Register(value *NsqLookupdNodeInfo) error
 	Unregister() error
 	Stop()
+	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(key string, oldGen int) (int, error)
@@ -120,6 +122,7 @@ type NSQDLeadership interface {
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
+	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)

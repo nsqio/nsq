@@ -64,7 +64,7 @@ func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]
 type NsqdCoordinator struct {
 	clusterKey             string
 	leadership             NSQDLeadership
-	lookupLeader           *NsqLookupdNodeInfo
+	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
@@ -158,6 +158,14 @@ func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *Coo
 	return c, NewCoordErr(err.Error(), CoordNetErr)
 }
 
+func (self *NsqdCoordinator) GetCurrentLookupd() NsqLookupdNodeInfo {
+	return self.lookupLeader
+}
+
+func (self *NsqdCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
+	return self.leadership.GetAllLookupdNodes()
+}
+
 func (self *NsqdCoordinator) watchNsqLookupd() {
 	// watch the leader of nsqlookupd, always check the leader before response
 	// to the nsqlookup admin operation.
@@ -176,7 +184,7 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 			if n.GetID() != self.lookupLeader.GetID() ||
 				n.Epoch != self.lookupLeader.Epoch {
 				coordLog.Infof("nsqlookup leader changed: %v", n)
-				self.lookupLeader = n
+				self.lookupLeader = *n
 			}
 		}
 	}

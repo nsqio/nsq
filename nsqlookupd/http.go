@@ -401,7 +401,15 @@ type node struct {
 
 // return all lookup nodes that registered on etcd, and mark the master/slave info
 func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO
+	if s.ctx.nsqlookupd.coordinator != nil {
+		nodes, err := s.ctx.nsqlookupd.coordinator.GetAllLookupdNodes()
+		if err != nil {
+			return nil, http_api.Err{500, err.Error()}
+		}
+		return map[string]interface{}{
+			"lookupds": nodes,
+		}, nil
+	}
 	return nil, nil
 }
 

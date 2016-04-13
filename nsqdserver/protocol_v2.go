@@ -20,6 +20,11 @@ import (
 	"github.com/absolute8511/nsq/nsqd"
 )
 
+const (
+	E_INVALID         = "E_INVALID"
+	E_TOPIC_NOT_EXIST = "E_TOPIC_NOT_EXIST"
+)
+
 const maxTimeout = time.Hour
 
 const (
@@ -273,7 +278,7 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	case bytes.Equal(params[0], []byte("INTERNAL_CREATE_TOPIC")):
 		return p.internalCreateTopic(client, params)
 	}
-	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
+	return nil, protocol.NewFatalClientErr(nil, E_INVALID, fmt.Sprintf("invalid command %s", params[0]))
 }
 
 func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
@@ -430,7 +435,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 	var err error
 
 	if atomic.LoadInt32(&client.State) != stateInit {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot IDENTIFY in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot IDENTIFY in current state")
 	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
@@ -570,11 +575,11 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 
 func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != stateInit {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot AUTH in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot AUTH in current state")
 	}
 
 	if len(params) != 1 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH invalid number of parameters")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "AUTH invalid number of parameters")
 	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
@@ -599,7 +604,7 @@ func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	}
 
 	if client.HasAuthorizations() {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH Already set")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "AUTH Already set")
 	}
 
 	if !p.ctx.isAuthEnabled() {
@@ -662,15 +667,15 @@ func (p *protocolV2) CheckAuth(client *nsqd.ClientV2, cmd, topicName, channelNam
 
 func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != stateInit {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot SUB in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot SUB in current state")
 	}
 
 	if client.HeartbeatInterval <= 0 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot SUB with heartbeats disabled")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot SUB with heartbeats disabled")
 	}
 
 	if len(params) < 3 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "SUB insufficient number of parameters")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "SUB insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
@@ -703,10 +708,10 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName)
-		return nil, err
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error)
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
-		return nil, protocol.NewFatalClientErr(nil, "E_FAILED_ON_NOT_MASTER",
+		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader,
 			fmt.Sprintf("sub is allowed only on the master node"))
 	}
 	channel := topic.GetChannel(channelName)
@@ -732,14 +737,14 @@ func (p *protocolV2) RDY(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if state != stateSubscribed {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot RDY in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot RDY in current state")
 	}
 
 	count := int64(1)
 	if len(params) > 1 {
 		b10, err := protocol.ByteToBase10(params[1])
 		if err != nil {
-			return nil, protocol.NewFatalClientErr(err, "E_INVALID",
+			return nil, protocol.NewFatalClientErr(err, E_INVALID,
 				fmt.Sprintf("RDY could not parse count %s", params[1]))
 		}
 		count = int64(b10)
@@ -748,7 +753,7 @@ func (p *protocolV2) RDY(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if count < 0 || count > p.ctx.getOpts().MaxRdyCount {
 		// this needs to be a fatal error otherwise clients would have
 		// inconsistent state
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID",
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID,
 			fmt.Sprintf("RDY count %d out of range 0-%d", count, p.ctx.getOpts().MaxRdyCount))
 	}
 
@@ -761,27 +766,27 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
 		nsqd.NsqLogger().Logf("FIN error at state: %v", state)
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot FIN in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot FIN in current state")
 	}
 
 	if len(params) < 2 {
 		nsqd.NsqLogger().Logf("FIN error params: %v", params)
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "FIN insufficient number of params")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "FIN insufficient number of params")
 	}
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error: %v, %v", params[1], err)
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 	}
 
 	if client.Channel == nil {
 		nsqd.NsqLogger().Logf("FIN error no channel: %v", nsqd.GetMessageIDFromFullMsgID(*id))
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
 
 	if !p.ctx.checkForMasterWrite(client.Channel.GetTopicName(), client.Channel.GetTopicPart()) {
-		return nil, protocol.NewFatalClientErr(nil, "E_FAILED_ON_NOT_MASTER",
+		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader,
 			fmt.Sprintf("FIN is allowed only on the master node"))
 	}
 
@@ -800,32 +805,32 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot REQ in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot REQ in current state")
 	}
 
 	if len(params) < 3 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "REQ insufficient number of params")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "REQ insufficient number of params")
 	}
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 	}
 
 	timeoutMs, err := protocol.ByteToBase10(params[2])
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_INVALID",
+		return nil, protocol.NewFatalClientErr(err, E_INVALID,
 			fmt.Sprintf("REQ could not parse timeout %s", params[2]))
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
 	if timeoutDuration < 0 || timeoutDuration > p.ctx.getOpts().MaxReqTimeout {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID",
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID,
 			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.ctx.getOpts().MaxReqTimeout))
 	}
 
 	if client.Channel == nil {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
 	err = client.Channel.RequeueMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration)
 	if err != nil {
@@ -840,7 +845,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 func (p *protocolV2) CLS(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != stateSubscribed {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot CLS in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot CLS in current state")
 	}
 
 	client.StartClose()
@@ -856,7 +861,7 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 	var err error
 
 	if len(params) < 3 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "CREATE_TOPIC insufficient number of parameters")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "CREATE_TOPIC insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
@@ -891,7 +896,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	var err error
 
 	if len(params) < 2 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "PUB insufficient number of parameters")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "PUB insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
@@ -923,12 +928,6 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.getOpts().MaxMsgSize))
 	}
 
-	topic, err := p.ctx.getExistingTopic(topicName, partition)
-	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, err
-	}
-
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 	defer topic.BufferPoolPut(messageBodyBuffer)
@@ -942,6 +941,12 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, err
 	}
 
+	topic, err := p.ctx.getExistingTopic(topicName, partition)
+	if err != nil {
+		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
+		return nil, protocol.NewClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
+	}
+
 	if p.ctx.checkForMasterWrite(topicName, partition) {
 		err := p.ctx.PutMessage(topic, messageBody)
 		//p.ctx.setHealth(err)
@@ -953,7 +958,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
-		return nil, protocol.NewClientErr(err, "E_FAILED_ON_NOT_MASTER", "Write only allow on master")
+		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "Write only allow on master")
 	}
 
 	return okBytes, nil
@@ -963,7 +968,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	var err error
 
 	if len(params) < 2 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "MPUB insufficient number of parameters")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "MPUB insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
@@ -1000,10 +1005,9 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	}
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
-
 	if err != nil {
 		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, err
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error)
 	}
 
 	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,
@@ -1029,7 +1033,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
-		return nil, protocol.NewClientErr(err, "E_FAILED_ON_NOT_MASTER", "Write only allow on master")
+		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "Write only allow on master")
 	}
 	return okBytes, nil
 }
@@ -1037,16 +1041,16 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "cannot TOUCH in current state")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot TOUCH in current state")
 	}
 
 	if len(params) < 2 {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "TOUCH insufficient number of params")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "TOUCH insufficient number of params")
 	}
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 	}
 
 	client.LockRead()
@@ -1054,7 +1058,7 @@ func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, erro
 	client.UnlockRead()
 
 	if client.Channel == nil {
-		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "No channel")
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
 	err = client.Channel.TouchMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id), msgTimeout)
 	if err != nil {
@@ -1127,7 +1131,7 @@ func readLen(r io.Reader, tmp []byte) (int32, error) {
 
 func enforceTLSPolicy(client *nsqd.ClientV2, p *protocolV2, command []byte) error {
 	if p.ctx.getOpts().TLSRequired != TLSNotRequired && atomic.LoadInt32(&client.TLS) != 1 {
-		return protocol.NewFatalClientErr(nil, "E_INVALID",
+		return protocol.NewFatalClientErr(nil, E_INVALID,
 			fmt.Sprintf("cannot %s in current state (TLS required)", command))
 	}
 	return nil

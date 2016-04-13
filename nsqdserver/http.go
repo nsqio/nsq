@@ -145,8 +145,8 @@ func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Va
 
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
-		nsqd.NsqLogger().Logf("topic not found - %s", topicName)
-		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
+		nsqd.NsqLogger().Logf("topic not found - %s, %v", topicName, err)
+		return nil, nil, "", http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 
 	return reqParams, topic, channelName, err
@@ -166,7 +166,8 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
-		return nil, nil, http_api.Err{400, err.Error()}
+		nsqd.NsqLogger().Logf("topic not found - %s, %v", topicName, err)
+		return nil, nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 
 	if topicPart != topic.GetTopicPart() {
@@ -192,7 +193,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		nsqd.NsqLogger().Logf("get topic err: %v", err)
-		return nil, http_api.Err{404, "Topic not found"}
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 
 	readMax := req.ContentLength + 1
@@ -226,7 +227,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		//TODO: should we forward this to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
-		return nil, http_api.Err{400, "Write Only Allowed on Master"}
+		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
 	return "OK", nil
@@ -314,7 +315,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		//should we forward to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
-		return nil, http_api.Err{400, "Write Only Allowed on Master"}
+		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
 	return "OK", nil
@@ -334,7 +335,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 
 	err = topic.Empty()
@@ -359,7 +360,7 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	err = s.ctx.deleteExistingTopic(topicName, topicPart)
 	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 
 	return nil, nil
@@ -431,7 +432,7 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 
 	t, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
-		return nil, http_api.Err{404, "Topic not found"}
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 	statStr := t.GetTopicChannelDebugStat(channelName)
 

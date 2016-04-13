@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+const (
+	ErrFailedOnNotLeader = "E_FAILED_ON_NOT_LEADER"
+)
+
 type CoordErrType int
 
 const (
