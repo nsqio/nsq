@@ -75,13 +75,14 @@ func (t *tlsVersionOption) String() string {
 }
 
 func nsqFlagset() *flag.FlagSet {
+	hostname, defaultId := nsqd.HostnameWorkerId()
 	flagSet := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
 	// basic options
 	flagSet.String("config", "", "path to config file")
 	flagSet.Bool("version", false, "print version string")
 	flagSet.Bool("verbose", false, "enable verbose logging")
-	flagSet.Int64("worker-id", 0, "unique seed for message ID generation (int) in range [0,4096) (will default to a hash of hostname)")
+	flagSet.Int64("worker-id", defaultId, "unique seed for message ID generation (int) in range [0,4096) (will default to a hash of hostname)")
 	flagSet.String("https-address", "", "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("http-address", "0.0.0.0:4151", "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("tcp-address", "0.0.0.0:4150", "<addr>:<port> to listen on for TCP clients")
@@ -89,7 +90,7 @@ func nsqFlagset() *flag.FlagSet {
 	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 
-	flagSet.String("broadcast-address", "", "address that will be registered with lookupd (defaults to the OS hostname)")
+	flagSet.String("broadcast-address", hostname, "address that will be registered with lookupd (defaults to the OS hostname)")
 	lookupdTCPAddrs := app.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 
@@ -133,6 +134,8 @@ func nsqFlagset() *flag.FlagSet {
 	flagSet.String("tls-root-ca-file", "", "path to certificate authority file")
 	var tlsRequired tlsRequiredOption
 	var tlsMinVersion tlsVersionOption
+	tlsRequired.Set("false")
+	tlsMinVersion.Set("tls1.0")
 	flagSet.Var(&tlsRequired, "tls-required", "require TLS for client connections (true, false, tcp-https)")
 	flagSet.Var(&tlsMinVersion, "tls-min-version", "minimum SSL/TLS version acceptable ('ssl3.0', 'tls1.0', 'tls1.1', or 'tls1.2')")
 
