@@ -11,7 +11,9 @@ import (
 )
 
 func TestConfigFlagParsing(t *testing.T) {
-	flagSet := nsqFlagset()
+	opts := nsqd.NewOptions()
+
+	flagSet := nsqdFlagSet(opts)
 	flagSet.Parse([]string{})
 
 	var cfg config
@@ -22,7 +24,6 @@ func TestConfigFlagParsing(t *testing.T) {
 	toml.DecodeReader(f, &cfg)
 	cfg.Validate()
 
-	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
 	nsqd.New(opts)
 
