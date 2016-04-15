@@ -1,7 +1,7 @@
 #!/bin/bash
 # call this script with an email address (valid or not).
 # like:
-# ./makecert.sh foo@foo.com
+# ./cert.sh foo@foo.com
 # Found: https://gist.github.com/ncw/9253562#file-makecert-sh
 
 if [ "$1" == "" ]; then
