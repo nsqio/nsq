@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"time"
 )
 
@@ -66,6 +65,16 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
+// decodeMessage deserializes data (as []byte) and creates a new Message
+// message format:
+// [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
+// |       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)
+// |       8-byte         ||    ||                 16-byte                      || N-byte
+// ------------------------------------------------------------------------------------------...
+//   nanosecond timestamp    ^^                   message ID                       message body
+//                        (uint16)
+//                         2-byte
+//                        attempts
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
 
@@ -75,18 +84,8 @@ func decodeMessage(b []byte) (*Message, error) {
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
 	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
-
-	buf := bytes.NewBuffer(b[10:])
-
-	_, err := io.ReadFull(buf, msg.ID[:])
-	if err != nil {
-		return nil, err
-	}
-
-	msg.Body, err = ioutil.ReadAll(buf)
-	if err != nil {
-		return nil, err
-	}
+	copy(msg.ID[:], b[10:10+MsgIDLength])
+	msg.Body = b[10+MsgIDLength:]
 
 	return &msg, nil
 }
