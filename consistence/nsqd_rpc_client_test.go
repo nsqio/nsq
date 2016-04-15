@@ -56,6 +56,11 @@ func (self *fakeNsqdLeadership) IsNodeTopicLeader(topic string, partition int, n
 	return false
 }
 
+func (self *fakeNsqdLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
+	v := make([]NsqLookupdNodeInfo, 0)
+	return v, nil
+}
+
 func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error {
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
@@ -149,7 +154,7 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 		}
 		return p, err
 	}
-	nsqdCoord.lookupLeader = &NsqLookupdNodeInfo{}
+	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
 	err := nsqdCoord.Start()
 	if err != nil {
 		panic(err)
@@ -167,7 +172,7 @@ func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 		fakeLookupProxy.fakeNsqdCoords[nsqdCoord.myNode.GetID()] = nsqdCoord
 		return fakeLookupProxy, nil
 	}
-	nsqdCoord.lookupLeader = &NsqLookupdNodeInfo{}
+	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
 	err := nsqdCoord.Start()
 	if err != nil {
 		panic(err)

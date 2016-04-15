@@ -18,22 +18,24 @@ type fakeTopicData struct {
 }
 
 type FakeNsqlookupLeadership struct {
-	fakeTopics    map[string]map[int]*fakeTopicData
-	topicReplica  map[string]int
-	fakeNsqdNodes map[string]NsqdNodeInfo
-	nodeChanged   chan struct{}
-	fakeEpoch     int
-	fakeLeader    *NsqLookupdNodeInfo
-	leaderChanged chan struct{}
+	fakeTopics           map[string]map[int]*fakeTopicData
+	topicReplica         map[string]int
+	fakeNsqdNodes        map[string]NsqdNodeInfo
+	nodeChanged          chan struct{}
+	fakeEpoch            int
+	fakeLeader           *NsqLookupdNodeInfo
+	leaderChanged        chan struct{}
+	leaderSessionChanged chan *TopicLeaderSession
 }
 
 func NewFakeNsqlookupLeadership() *FakeNsqlookupLeadership {
 	return &FakeNsqlookupLeadership{
-		fakeTopics:    make(map[string]map[int]*fakeTopicData),
-		topicReplica:  make(map[string]int),
-		fakeNsqdNodes: make(map[string]NsqdNodeInfo),
-		nodeChanged:   make(chan struct{}, 1),
-		leaderChanged: make(chan struct{}, 1),
+		fakeTopics:           make(map[string]map[int]*fakeTopicData),
+		topicReplica:         make(map[string]int),
+		fakeNsqdNodes:        make(map[string]NsqdNodeInfo),
+		nodeChanged:          make(chan struct{}, 1),
+		leaderChanged:        make(chan struct{}, 1),
+		leaderSessionChanged: make(chan *TopicLeaderSession, 1),
 	}
 }
 
@@ -56,6 +58,12 @@ func (self *FakeNsqlookupLeadership) Stop() {
 func (self *FakeNsqlookupLeadership) changeLookupLeader(newLeader *NsqLookupdNodeInfo) {
 	self.fakeLeader = newLeader
 	self.leaderChanged <- struct{}{}
+}
+
+func (self *FakeNsqlookupLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
+	v := make([]NsqLookupdNodeInfo, 0)
+	v = append(v, *self.fakeLeader)
+	return v, nil
 }
 
 func (self *FakeNsqlookupLeadership) AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stopChan chan struct{}) {
@@ -91,28 +99,28 @@ func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 	self.nodeChanged <- struct{}{}
 }
 
-func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{}) {
+func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
 	for {
 		select {
 		case <-stop:
 			close(nsqds)
 			return
 		case <-self.nodeChanged:
-			nodes := make([]*NsqdNodeInfo, 0)
+			nodes := make([]NsqdNodeInfo, 0)
 			for _, v := range self.fakeNsqdNodes {
 				n := v
-				nodes = append(nodes, &n)
+				nodes = append(nodes, n)
 			}
 			nsqds <- nodes
 		}
 	}
 }
 
-func (self *FakeNsqlookupLeadership) ScanTopics() ([]*TopicPartionMetaInfo, error) {
-	alltopics := make([]*TopicPartionMetaInfo, 0)
+func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartionMetaInfo, error) {
+	alltopics := make([]TopicPartionMetaInfo, 0)
 	for _, v := range self.fakeTopics {
 		for _, topicInfo := range v {
-			alltopics = append(alltopics, topicInfo.metaInfo)
+			alltopics = append(alltopics, *topicInfo.metaInfo)
 		}
 	}
 	return alltopics, nil
@@ -236,13 +244,13 @@ func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, part
 		tp.leaderSession.LeaderNode = leader.LeaderNode
 		tp.leaderSession.Session = leader.Session
 		tp.leaderSession.LeaderEpoch++
-		tp.leaderChanged <- struct{}{}
+		self.leaderSessionChanged <- leader
 		return
 	}
 	var newtp TopicLeaderSession
 	newtp = *leader
 	t[partition].leaderSession = &newtp
-	tp.leaderChanged <- struct{}{}
+	self.leaderSessionChanged <- &newtp
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
@@ -262,17 +270,17 @@ func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partiti
 	return tp.leaderSession, nil
 }
 
-func (self *FakeNsqlookupLeadership) WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) error {
-	t, _ := self.fakeTopics[topic]
-	leaderChanged := t[partition].leaderChanged
+func (self *FakeNsqlookupLeadership) WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error {
 	for {
 		select {
 		case <-stop:
 			close(leader)
 			return nil
-		case <-leaderChanged:
-			l, _ := self.GetTopicLeaderSession(topic, partition)
-			leader <- l
+		case s := <-self.leaderSessionChanged:
+			if s == nil {
+				continue
+			}
+			leader <- s
 		}
 	}
 	return nil
@@ -409,11 +417,11 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	topic := "test-nsqlookup-topic"
 	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1")
 
-	nsqdCoord1.lookupLeader = lookupNode1
-	nsqdCoord2.lookupLeader = lookupNode1
-	nsqdCoord3.lookupLeader = lookupNode1
-	nsqdCoord4.lookupLeader = lookupNode1
-	nsqdCoord5.lookupLeader = lookupNode1
+	nsqdCoord1.lookupLeader = *lookupNode1
+	nsqdCoord2.lookupLeader = *lookupNode1
+	nsqdCoord3.lookupLeader = *lookupNode1
+	nsqdCoord4.lookupLeader = *lookupNode1
+	nsqdCoord5.lookupLeader = *lookupNode1
 
 	fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
 	fakeLeadership1.changeLookupLeader(lookupNode1)
@@ -443,7 +451,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	nsqdCoordList[nodeInfo4.GetID()] = nsqdCoord4
 	nsqdCoordList[nodeInfo5.GetID()] = nsqdCoord5
 	// test new topic create
-	err := lookupCoord1.CreateTopic(topic, 2, 2)
+	err := lookupCoord1.CreateTopic(topic, 2, 2, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
 
@@ -576,7 +584,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	go lookupCoord1.triggerCheckTopics(time.Second)
 	// test new topic create
 	topic3 := topic + topic
-	err = lookupCoord1.CreateTopic(topic3, 1, 3)
+	err = lookupCoord1.CreateTopic(topic3, 1, 3, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
 	// with 3 replica, the isr join timeout will change the isr list if the isr has the quorum nodes
