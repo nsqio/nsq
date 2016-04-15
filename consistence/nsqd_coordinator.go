@@ -808,6 +808,21 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	return nil
 }
 
+// since only one master is allowed on the same topic, we can get it.
+func (self *NsqdCoordinator) GetMasterTopicCoordData(topic string) (int, *coordData, error) {
+	self.coordMutex.RLock()
+	defer self.coordMutex.RUnlock()
+	if v, ok := self.topicCoords[topic]; ok {
+		for pid, tc := range v {
+			tcData := tc.GetData()
+			if tcData.GetLeaderSessionID() == self.myNode.GetID() && tcData.GetLeader() == self.myNode.GetID() {
+				return pid, tcData, nil
+			}
+		}
+	}
+	return -1, nil, ErrMissingTopicCoord
+}
+
 func (self *NsqdCoordinator) getTopicCoordData(topic string, partition int) (*coordData, *CoordErr) {
 	c, err := self.getTopicCoord(topic, partition)
 	if err != nil {

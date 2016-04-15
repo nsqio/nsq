@@ -62,7 +62,7 @@ type Topic struct {
 	syncEvery      int64
 	putBuffer      bytes.Buffer
 	bp             sync.Pool
-	masterEnabled  int32
+	writeDisabled  int32
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -484,12 +484,12 @@ func (t *Topic) exit(deleted bool) error {
 	return t.backend.Close()
 }
 
-func (t *Topic) IsMasterEnabled() bool {
-	return atomic.LoadInt32(&t.masterEnabled) == 1
+func (t *Topic) IsWriteDisabled() bool {
+	return atomic.LoadInt32(&t.writeDisabled) == 1
 }
 
 func (t *Topic) DisableForSlave() {
-	atomic.StoreInt32(&t.masterEnabled, 0)
+	atomic.StoreInt32(&t.writeDisabled, 1)
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(true)
@@ -505,7 +505,7 @@ func (t *Topic) EnableForMaster() {
 		c.DisableConsume(false)
 	}
 	t.channelLock.RUnlock()
-	atomic.StoreInt32(&t.masterEnabled, 1)
+	atomic.StoreInt32(&t.writeDisabled, 0)
 	// notify re-register to lookup
 	t.notifyCall(t)
 }

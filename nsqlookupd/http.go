@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"errors"
+	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
@@ -144,7 +145,6 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO: forward request if not leader
 	topics := s.ctx.nsqlookupd.DB.FindRegistrations("topic", "*", "", "*").Keys()
 	return map[string]interface{}{
 		"topics": topics,
@@ -198,6 +198,12 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if accessMode != "w" && accessMode != "r" {
 		return nil, http_api.Err{400, "INVALID_ACCESS_MODE"}
 	}
+	// check consistent level
+	// The reported info in the register db may not consistent,
+	// if the client need a strong consistent result, we check the db result with
+	// the leadership info from etcd.
+	checkConsistent := reqParams.Get("consistent")
+
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", topicPartition)
 	if len(registrations) == 0 {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
@@ -215,23 +221,26 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if len(producers) == 0 {
 			continue
 		}
-		// TODO: only for test
-		if len(producers) == 1 && len(registrations) == 1 {
-			allProducers[producers[0].peerInfo.Id] = producers[0]
-			continue
+		if len(producers) > 1 {
+			nsqlookupLog.LogDebugf("found %v producers for topic: %v", len(producers), r)
 		}
-		// filter by leader
-		var leaderProducer *Producer
-		for _, p := range producers {
-			pid, _ := strconv.Atoi(r.PartitionID)
-			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, p.peerInfo.Id) {
-				leaderProducer = p
-				break
+		if checkConsistent != "" || len(producers) > 1 {
+			// check leader only the client need consistent
+			var leaderProducer *Producer
+			for _, p := range producers {
+				pid, _ := strconv.Atoi(r.PartitionID)
+				if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, p.peerInfo.Id) {
+					leaderProducer = p
+					break
+				}
 			}
-		}
-		if leaderProducer != nil {
-			partitionProducers[r.PartitionID] = leaderProducer.peerInfo
-			allProducers[leaderProducer.peerInfo.Id] = leaderProducer
+			if leaderProducer != nil {
+				partitionProducers[r.PartitionID] = leaderProducer.peerInfo
+				allProducers[leaderProducer.peerInfo.Id] = leaderProducer
+			}
+		} else {
+			partitionProducers[r.PartitionID] = producers[0].peerInfo
+			allProducers[producers[0].peerInfo.Id] = producers[0]
 		}
 	}
 	producers := make(Producers, 0, len(allProducers))
@@ -307,11 +316,11 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
-		nsqlookupLog.LogDebugf("forward create topic (%s) from remote %v to leader", topicName, req.RemoteAddr)
-		// TODO: if not forward request, forward to leader
-		return nil, nil
+		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
+		return nil, http_api.Err{400, consistence.ErrFailedOnNotLeader}
 	}
-	nsqlookupLog.Logf("DB: adding topic(%s)", topicName)
+
+	nsqlookupLog.Logf("creating topic(%s) with partition %v replicator: %v load: %v", topicName, pnum, replicator, suggestLF)
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator, suggestLF)
 	if err != nil {
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)

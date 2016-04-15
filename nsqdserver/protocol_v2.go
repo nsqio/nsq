@@ -708,7 +708,7 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName)
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error)
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader,
@@ -928,6 +928,12 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.getOpts().MaxMsgSize))
 	}
 
+	topic, err := p.ctx.getExistingTopic(topicName, partition)
+	if err != nil {
+		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
+	}
+
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 	defer topic.BufferPoolPut(messageBodyBuffer)
@@ -939,12 +945,6 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
 		return nil, err
-	}
-
-	topic, err := p.ctx.getExistingTopic(topicName, partition)
-	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, protocol.NewClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
 	}
 
 	if p.ctx.checkForMasterWrite(topicName, partition) {
@@ -1007,7 +1007,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error)
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
 	}
 
 	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,

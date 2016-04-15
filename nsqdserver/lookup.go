@@ -55,7 +55,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 	var lookupPeers []*lookupPeer
 	var lookupAddrs []string
 	syncTopicChan := make(chan *lookupPeer)
-	connect := true
+	changed := true
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -68,10 +68,11 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 	allHosts := make([]string, 0)
 	discoveryAddrs := make([]string, 0)
 	for {
-		if connect {
+		if changed {
 			allHosts = allHosts[:0]
 			allHosts = append(allHosts, n.ctx.getOpts().NSQLookupdTCPAddresses...)
 			allHosts = append(allHosts, discoveryAddrs...)
+			nsqd.NsqLogger().Logf("all lookup hosts: %v", allHosts)
 
 			var tmpPeers []*lookupPeer
 			var tmpAddrs []string
@@ -100,7 +101,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 				lookupAddrs = append(lookupAddrs, host)
 			}
 			n.lookupPeers.Store(lookupPeers)
-			connect = false
+			changed = false
 		}
 
 		select {
@@ -116,15 +117,28 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 			}
 			// discovery the new lookup
 			if n.ctx.nsqdCoord != nil {
-				discoveried, err := n.ctx.nsqdCoord.GetAllLookupdNodes()
+				newDiscoveried, err := n.ctx.nsqdCoord.GetAllLookupdNodes()
 				if err != nil {
 					nsqd.NsqLogger().Logf("discovery lookup failed: %v", err)
 				} else {
+					if len(newDiscoveried) != len(discoveryAddrs) {
+						changed = true
+					} else {
+						for _, l := range newDiscoveried {
+							if !in(net.JoinHostPort(l.NodeIp, l.TcpPort), discoveryAddrs) {
+								changed = true
+								break
+							}
+						}
+					}
+					if !changed {
+						continue
+					}
 					discoveryAddrs = discoveryAddrs[:0]
-					for _, l := range discoveried {
+					for _, l := range newDiscoveried {
 						discoveryAddrs = append(discoveryAddrs, net.JoinHostPort(l.NodeIp, l.TcpPort))
 					}
-					nsqd.NsqLogger().Logf("discovery lookup nodes: %v", discoveryAddrs)
+					nsqd.NsqLogger().LogDebugf("discovery lookup nodes: %v", discoveryAddrs)
 				}
 			}
 		case val := <-metaNotifyChan:
@@ -149,7 +163,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
 				topic := val.(*nsqd.Topic)
-				if topic.Exiting() == true || !topic.IsMasterEnabled() {
+				if topic.Exiting() == true || topic.IsWriteDisabled() {
 					cmd = nsq.UnRegister(topic.GetTopicName(),
 						strconv.Itoa(topic.GetTopicPart()), "")
 				} else {
@@ -185,7 +199,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 			topicMap := n.ctx.nsqd.GetTopicMapCopy()
 			for _, topicParts := range topicMap {
 				for _, topic := range topicParts {
-					if !topic.IsMasterEnabled() {
+					if topic.IsWriteDisabled() {
 						continue
 					}
 					channelMap := topic.GetChannelMapCopy()
@@ -206,20 +220,22 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err)
-					go func() {
-						time.Sleep(time.Second * 3)
-						select {
-						case syncTopicChan <- lookupPeer:
-						case <-exitChan:
-							return
-						}
-					}()
+					if in(lookupPeer.addr, allHosts) {
+						go func() {
+							time.Sleep(time.Second * 3)
+							select {
+							case syncTopicChan <- lookupPeer:
+							case <-exitChan:
+								return
+							}
+						}()
+					}
 					break
 				}
 				time.Sleep(time.Millisecond * 100)
 			}
 		case <-optsNotifyChan:
-			connect = true
+			changed = true
 		case <-exitChan:
 
 			goto exit

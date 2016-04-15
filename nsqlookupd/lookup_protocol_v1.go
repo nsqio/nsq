@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -127,19 +126,6 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 	topic, channel, pid, err := getTopicChan("REGISTER", params)
 	if err != nil {
 		return nil, err
-	}
-
-	// only leader is allowed to register .
-	if p.ctx.nsqlookupd.coordinator != nil {
-		pidNum, err := strconv.Atoi(pid)
-		if err != nil {
-			nsqlookupLog.LogDebugf("got invalid pid: %v from slave node: %v", pid, client)
-			return nil, err
-		}
-		if !p.ctx.nsqlookupd.coordinator.IsTopicLeader(topic, pidNum, client.peerInfo.Id) {
-			nsqlookupLog.LogDebugf("got register key: %v pid: %v from slave node: %v", topic, pid, client)
-			return []byte("OK"), nil
-		}
 	}
 
 	if channel != "" {
