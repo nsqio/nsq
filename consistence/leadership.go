@@ -99,8 +99,9 @@ type NSQLookupdLeadership interface {
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(key string, oldGen int) (int, error)
-	WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{}) // update
-	ScanTopics() ([]*TopicPartionMetaInfo, error) // update
+	// cluster nsqd node
+	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
+	ScanTopics() ([]TopicPartionMetaInfo, error)
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	CreateTopicPartition(topic string, partition int) error
 	CreateTopic(topic string, partitionNum int, replica int) error
@@ -112,17 +113,22 @@ type NSQLookupdLeadership interface {
 	// Note: update should do check-and-set to avoid unexpected override.
 	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, int)
 	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error
+	// get leadership information
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
-	WatchTopicLeader(topic string, partition int, leader chan *TopicLeaderSession, stop chan struct{}) error
+	// watch any leadership lock change for all topic partitions, should return the token used later by release.
+	WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error
 }
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
+	// get the topic leadership lock.
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error
+	// release the lock using the acquired session.
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
-	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
+	// all registered lookup nodes.
+	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
