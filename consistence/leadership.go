@@ -95,12 +95,12 @@ type NSQLookupdLeadership interface {
 	Register(value *NsqLookupdNodeInfo) error
 	Unregister() error
 	Stop()
-	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
+	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(key string, oldGen int) (int, error)
-	WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{})
-	ScanTopics() ([]*TopicPartionMetaInfo, error)
+	WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{}) // update
+	ScanTopics() ([]*TopicPartionMetaInfo, error) // update
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	CreateTopicPartition(topic string, partition int) error
 	CreateTopic(topic string, partitionNum int, replica int) error
@@ -118,11 +118,11 @@ type NSQLookupdLeadership interface {
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
-	RegisterNsqd(nodeData *NsqdNodeInfo) error
+	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
-	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
+	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
 	WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)

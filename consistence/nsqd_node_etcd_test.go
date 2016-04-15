@@ -11,7 +11,7 @@ const (
 )
 
 func TestNodeRe(t *testing.T) {
-	nodeMgr := NewNsqdEtcdMgr(NewEtcdClient(EtcdHost))
+	nodeMgr := NewNsqdEtcdMgr(EtcdHost)
 	nodeMgr.InitClusterID("cluster-1")
 	ID := "1"
 	nodeInfo := &NsqdNodeInfo{

@@ -13,8 +13,12 @@ import (
 	"path"
 	"strconv"
 
-	"github.com/reechou/xlock"
+	etcdlock "github.com/reechou/xlock"
 	"github.com/coreos/go-etcd/etcd"
+)
+
+const (
+	ETCD_TTL = 15
 )
 
 type NsqdEtcdMgr struct {
@@ -22,15 +26,16 @@ type NsqdEtcdMgr struct {
 	clusterID string
 	topicRoot string
 
-	topicLockMap map[string]*haunt_lock.HauntTimingRWLock
+	topicLockMap map[string]*etcdlock.HauntTimingRWLock
 
 	watchLookupdLeaderStopCh chan bool
 }
 
-func NewNsqdEtcdMgr(client *etcd.Client) *NsqdEtcdMgr {
+func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
+	client := NewEtcdClient(host)
 	return &NsqdEtcdMgr{
 		client:                   client,
-		topicLockMap:             make(map[string]*haunt_lock.HauntTimingRWLock),
+		topicLockMap:             make(map[string]*etcdlock.HauntTimingRWLock),
 		watchLookupdLeaderStopCh: make(chan bool, 1),
 	}
 }
@@ -40,7 +45,7 @@ func (self *NsqdEtcdMgr) InitClusterID(id string) {
 	self.topicRoot = self.createTopicRootPath()
 }
 
-func (self *NsqdEtcdMgr) Register(nodeData *NsqdNodeInfo) error {
+func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	value, err := json.Marshal(nodeData)
 	if err != nil {
 		return err
@@ -52,7 +57,7 @@ func (self *NsqdEtcdMgr) Register(nodeData *NsqdNodeInfo) error {
 	return nil
 }
 
-func (self *NsqdEtcdMgr) Unregister(nodeData *NsqdNodeInfo) error {
+func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	// clear
 	close(self.watchLookupdLeaderStopCh)
 	for k, v := range self.topicLockMap {
@@ -73,7 +78,7 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		return err
 	}
 	topicKey := self.createTopicLockKey(topic, partition)
-	lock := haunt_lock.NewHauntTimingRWLock(self.client, haunt_lock.H_LOCK_WRITE, ETCD_LOCK_NSQ_NAMESPACE, topicKey, string(valueB), 15)
+	lock := etcdlock.NewHauntTimingRWLock(self.client, etcdlock.H_LOCK_WRITE, ETCD_LOCK_NSQ_NAMESPACE, topicKey, string(valueB), 15)
 	err = lock.Lock()
 	if err != nil {
 		return err
