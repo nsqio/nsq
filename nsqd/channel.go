@@ -12,6 +12,7 @@ import (
 
 	"github.com/nsqio/nsq/internal/pqueue"
 	"github.com/nsqio/nsq/internal/quantile"
+	"github.com/nsqio/nsq/internal/util"
 )
 
 type Consumer interface {
@@ -47,9 +48,12 @@ type Channel struct {
 
 	memoryMsgChan chan *Message
 	clientMsgChan chan *Message
-	exitChan      chan int
-	exitFlag      int32
-	exitMutex     sync.RWMutex
+	savedMsgChan  chan *Message
+
+	exitChan  chan int
+	exitFlag  int32
+	exitMutex sync.RWMutex
+	waitGroup util.WaitGroupWrapper
 
 	// state tracking
 	clients        map[int64]Consumer
@@ -82,6 +86,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		name:           channelName,
 		memoryMsgChan:  make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
 		clientMsgChan:  make(chan *Message),
+		savedMsgChan:   make(chan *Message, 1),
 		exitChan:       make(chan int),
 		clients:        make(map[int64]Consumer),
 		deleteCallback: deleteCallback,
@@ -112,7 +117,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 			ctx.nsqd.getOpts().Logger)
 	}
 
-	go c.messagePump()
+	c.waitGroup.Wrap(func() { c.messagePump() })
 
 	c.ctx.nsqd.Notify(c)
 
@@ -196,15 +201,10 @@ func (c *Channel) Empty() error {
 		client.Empty()
 	}
 
-	clientMsgChan := c.clientMsgChan
 	for {
 		select {
-		case _, ok := <-clientMsgChan:
-			if !ok {
-				// c.clientMsgChan may be closed while in this loop
-				// so just remove it from the select so we can make progress
-				clientMsgChan = nil
-			}
+		case <-c.clientMsgChan:
+		case <-c.savedMsgChan:
 		case <-c.memoryMsgChan:
 		default:
 			goto finish
@@ -222,8 +222,8 @@ func (c *Channel) flush() error {
 
 	// messagePump is responsible for closing the channel it writes to
 	// this will read until it's closed (exited)
-	for msg := range c.clientMsgChan {
-		c.ctx.nsqd.logf("CHANNEL(%s): recovered buffered message from clientMsgChan", c.name)
+	for msg := range c.savedMsgChan {
+		c.ctx.nsqd.logf("CHANNEL(%s): recovered buffered message from savedMsgChan", c.name)
 		writeMessageToBackend(&msgBuf, msg, c.backend)
 	}
 
@@ -300,11 +300,6 @@ func (c *Channel) IsPaused() bool {
 
 // PutMessage writes a Message to the queue
 func (c *Channel) PutMessage(m *Message) error {
-	c.RLock()
-	defer c.RUnlock()
-	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	err := c.put(m)
 	if err != nil {
 		return err
@@ -543,17 +538,11 @@ func (c *Channel) messagePump() {
 	var buf []byte
 	var err error
 
+	backendChan := c.backend.ReadChan()
 	for {
-		// do an extra check for closed exit before we select on all the memory/backend/exitChan
-		// this solves the case where we are closed and something else is draining clientMsgChan into
-		// backend. we don't want to reverse that
-		if atomic.LoadInt32(&c.exitFlag) == 1 {
-			goto exit
-		}
-
 		select {
 		case msg = <-c.memoryMsgChan:
-		case buf = <-c.backend.ReadChan():
+		case buf = <-backendChan:
 			msg, err = decodeMessage(buf)
 			if err != nil {
 				c.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
@@ -566,7 +555,14 @@ func (c *Channel) messagePump() {
 		msg.Attempts++
 
 		atomic.StoreInt32(&c.bufferedCount, 1)
-		c.clientMsgChan <- msg
+		select {
+		case c.clientMsgChan <- msg:
+		case <-c.exitChan:
+			// stuff this message into a temporary channel
+			// to be picked up by the exit code paths
+			c.savedMsgChan <- msg
+			goto exit
+		}
 		atomic.StoreInt32(&c.bufferedCount, 0)
 		// the client will call back to mark as in-flight w/ its info
 	}

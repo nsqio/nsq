@@ -119,14 +119,14 @@ func (d *diskQueue) ReadChan() chan []byte {
 // Put writes a []byte to the queue
 func (d *diskQueue) Put(data []byte) error {
 	d.RLock()
-	defer d.RUnlock()
-
 	if d.exitFlag == 1 {
+		d.RUnlock()
 		return errors.New("exiting")
 	}
-
 	d.writeChan <- data
-	return <-d.writeResponseChan
+	err := <-d.writeResponseChan
+	d.RUnlock()
+	return err
 }
 
 // Close cleans up the queue and persists metadata

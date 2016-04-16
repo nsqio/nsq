@@ -21,10 +21,11 @@ type Topic struct {
 	channelMap        map[string]*Channel
 	backend           BackendQueue
 	memoryMsgChan     chan *Message
-	exitChan          chan int
 	channelUpdateChan chan int
-	waitGroup         util.WaitGroupWrapper
-	exitFlag          int32
+
+	exitChan  chan int
+	waitGroup util.WaitGroupWrapper
+	exitFlag  int32
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
@@ -153,14 +154,12 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) error {
-	t.RLock()
-	defer t.RUnlock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	err := t.put(m)
 	if err != nil {
 		return err
+	}
+	if t.Exiting() {
+		return errors.New("exiting")
 	}
 	atomic.AddUint64(&t.messageCount, 1)
 	return nil
@@ -168,16 +167,14 @@ func (t *Topic) PutMessage(m *Message) error {
 
 // PutMessages writes multiple Messages to the queue
 func (t *Topic) PutMessages(msgs []*Message) error {
-	t.RLock()
-	defer t.RUnlock()
-	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		return errors.New("exiting")
-	}
 	for _, m := range msgs {
 		err := t.put(m)
 		if err != nil {
 			return err
 		}
+	}
+	if t.Exiting() {
+		return errors.New("exiting")
 	}
 	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
 	return nil
