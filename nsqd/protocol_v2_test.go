@@ -1518,6 +1518,71 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	}
 }
 
+func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
+	var wg sync.WaitGroup
+	b.StopTimer()
+	opts := NewOptions()
+	size := 200
+	batchSize := int(opts.MaxBodySize) / (size + 4)
+	opts.Logger = test.NewTestLogger(b)
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	msg := make([]byte, size)
+	batch := make([][]byte, batchSize)
+	for i := range batch {
+		batch[i] = msg
+	}
+	b.SetBytes(int64(len(msg)))
+	b.StartTimer()
+
+	for j := 0; j < numTopics; j++ {
+		topicName := fmt.Sprintf("bench_v2_pub_multi_topic_%d_%d", j, time.Now().Unix())
+		wg.Add(1)
+		go func() {
+			conn, err := mustConnectNSQD(tcpAddr)
+			if err != nil {
+				panic(err.Error())
+			}
+			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+
+			num := b.N / numTopics / batchSize
+			for i := 0; i < num; i++ {
+				cmd, _ := nsq.MultiPublish(topicName, batch)
+				_, err := cmd.WriteTo(rw)
+				if err != nil {
+					panic(err.Error())
+				}
+				err = rw.Flush()
+				if err != nil {
+					panic(err.Error())
+				}
+				resp, err := nsq.ReadResponse(rw)
+				if err != nil {
+					panic(err.Error())
+				}
+				_, data, _ := nsq.UnpackResponse(resp)
+				if !bytes.Equal(data, []byte("OK")) {
+					panic("invalid response")
+				}
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	b.StopTimer()
+	nsqd.Exit()
+}
+
+func BenchmarkProtocolV2PubMultiTopic1(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 1) }
+func BenchmarkProtocolV2PubMultiTopic2(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 2) }
+func BenchmarkProtocolV2PubMultiTopic4(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 4) }
+func BenchmarkProtocolV2PubMultiTopic8(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 8) }
+func BenchmarkProtocolV2PubMultiTopic16(b *testing.B) { benchmarkProtocolV2PubMultiTopic(b, 16) }
+func BenchmarkProtocolV2PubMultiTopic32(b *testing.B) { benchmarkProtocolV2PubMultiTopic(b, 32) }
+
 func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
