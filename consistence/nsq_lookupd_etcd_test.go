@@ -33,7 +33,7 @@ func TestLookupd(t *testing.T) {
 	ID2 := "l-1"
 	topic := "topic-1"
 
-	nodeMgr := NewNsqdEtcdMgr(NewEtcdClient(EtcdHost))
+	nodeMgr := NewNsqdEtcdMgr(EtcdHost)
 	nodeMgr.InitClusterID("cluster-1")
 	nodeInfo := &NsqdNodeInfo{
 		ID:      ID,
@@ -41,7 +41,7 @@ func TestLookupd(t *testing.T) {
 		TcpPort: "2222",
 		RpcPort: "2223",
 	}
-	err := nodeMgr.Register(nodeInfo)
+	err := nodeMgr.RegisterNsqd(nodeInfo)
 	if err != nil {
 		fmt.Println("Node register error:", err.Error())
 		return
@@ -218,7 +218,7 @@ func TestLookupd(t *testing.T) {
 		fmt.Println("release topic leader success.")
 	}
 
-	err = nodeMgr.Unregister(nodeInfo)
+	err = nodeMgr.UnregisterNsqd(nodeInfo)
 	if err != nil {
 		fmt.Println("Node unregister error:", err.Error())
 		return

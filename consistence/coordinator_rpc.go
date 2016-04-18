@@ -130,7 +130,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
-		LeaderEpoch: int(rpcTopicReq.TopicLeaderEpoch),
+		LeaderEpoch: int(rpcTopicReq.TopicLeaderSessionEpoch),
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {
@@ -147,24 +147,26 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	coordLog.Infof("got update request for topic : %v on node: %v", rpcTopicReq, self.nsqdCoord.myNode.GetID())
 	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
-	for pid, tc := range coords {
-		if !self.nsqdCoord.IsMineLeaderForTopic(rpcTopicReq.Name, pid) {
-			continue
-		}
-		if pid != rpcTopicReq.Partition {
-			coordLog.Infof("found another partition %v already exist master for this topic %v", pid, rpcTopicReq.Name)
-			if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition); err != nil {
-				coordLog.Infof("local no such topic, we can just remove this coord")
-				tc.logMgr.Close()
-				delete(coords, pid)
+	myID := self.nsqdCoord.myNode.GetID()
+	if rpcTopicReq.Leader == myID {
+		for pid, tc := range coords {
+			if tc.GetData().GetLeader() != myID {
 				continue
 			}
-			self.nsqdCoord.coordMutex.Unlock()
-			*ret = *ErrTopicCoordExistingAndMismatch
-			return nil
+			if pid != rpcTopicReq.Partition {
+				coordLog.Infof("found another partition %v already exist master for this topic %v", pid, rpcTopicReq.Name)
+				if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition); err != nil {
+					coordLog.Infof("local no such topic, we can just remove this coord")
+					tc.logMgr.Close()
+					delete(coords, pid)
+					continue
+				}
+				self.nsqdCoord.coordMutex.Unlock()
+				*ret = *ErrTopicCoordExistingAndMismatch
+				return nil
+			}
 		}
 	}
-	myID := self.nsqdCoord.myNode.GetID()
 	if rpcTopicReq.Leader != myID &&
 		FindSlice(rpcTopicReq.ISR, myID) == -1 &&
 		FindSlice(rpcTopicReq.CatchupList, myID) == -1 {
@@ -271,11 +273,11 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 }
 
 type RpcTopicData struct {
-	TopicName          string
-	TopicPartition     int
-	TopicEpoch         int32
-	TopicLeaderEpoch   int32
-	TopicLeaderSession string
+	TopicName               string
+	TopicPartition          int
+	TopicEpoch              int32
+	TopicLeaderSessionEpoch int32
+	TopicLeaderSession      string
 }
 
 type RpcChannelOffsetArg struct {
@@ -331,7 +333,7 @@ type RpcTestRsp struct {
 func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
 		if topicCoord, ok := v[rpcData.TopicPartition]; ok {
-			if topicCoord.GetTopicEpoch() != rpcData.TopicLeaderEpoch {
+			if topicCoord.GetTopicEpoch() != rpcData.TopicEpoch {
 				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
 				return nil, ErrEpochMismatch
 			}

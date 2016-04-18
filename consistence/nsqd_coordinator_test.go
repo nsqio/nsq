@@ -122,6 +122,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path)
 		coords[topicInfo.Partition] = tpCoord
 	}
+	ensureTopicDisableWrite(nsqdCoord, topicInfo.Name, topicInfo.Partition, true)
 	err := nsqdCoord.updateTopicInfo(tpCoord, false, &topicInfo.TopicPartionMetaInfo)
 	if err != nil {
 		panic(err)
@@ -511,6 +512,8 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	time.Sleep(time.Second * 3)
 
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
 	for i := 0; i < 3; i++ {
 		err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 		test.Nil(t, err)
@@ -637,6 +640,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.ISR = oldISR
 	topicInitInfo.Epoch++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	// test write epoch mismatch
 	leaderSession.LeaderEpoch++
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
@@ -651,6 +655,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.Nil(t, err)
 
@@ -706,6 +711,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
 	// leader switch will disable write by default
 	test.NotNil(t, err)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
 	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), false)
 	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), true)
@@ -730,6 +736,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		logs[msgCnt-1].Epoch = int32(leaderSession.LeaderEpoch)
 		t.Log(logs)
 	}
+	topicData2.ForceFlush()
 	test.Equal(t, int64(channel1.GetChannelEnd()), int64(msgCnt)*msgRawSize)
 	test.Equal(t, int64(channel2.GetChannelEnd()), int64(msgCnt)*msgRawSize)
 	test.Equal(t, int64(channel1.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
@@ -739,11 +746,11 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		channel2.StartInFlightTimeout(msg, 1, 10)
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
 		test.Nil(t, err)
-		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
 		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
-	// test retry write
+	// TODO: test retry write
 }
 
 func TestNsqdCoordLeaderChangeWhileWrite(t *testing.T) {

@@ -418,12 +418,14 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[t.GetTopicDesp()]
 		self.joinStateMutex.Unlock()
-		state.Lock()
-		if ok && state.waitingJoin {
+		if ok && state != nil {
+			state.Lock()
+			wj := state.waitingJoin
 			state.Unlock()
-			continue
+			if wj {
+				continue
+			}
 		}
-		state.Unlock()
 
 		partitions, ok := waitingMigrateTopic[t.Name]
 		if !ok {
@@ -446,14 +448,19 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		}
 		// check if the topic write disabled, and try enable if possible. There is a chance to
 		// notify the topic enable write with failure, which may cause the write state is not ok.
-		state.Lock()
-		if ok && state.waitingJoin {
-			// no need check if write disabled
-		} else if self.isTopicWriteDisabled(&t) {
+		if ok && state != nil {
+			state.Lock()
+			wj := state.waitingJoin
+			state.Unlock()
+			if wj {
+				continue
+			}
+		}
+		// check if write disabled
+		if self.isTopicWriteDisabled(&t) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		}
-		state.Unlock()
 	}
 }
 
@@ -1521,7 +1528,7 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 	self.joinStateMutex.Lock()
 	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
 	self.joinStateMutex.Unlock()
-	if !ok {
+	if !ok || state == nil {
 		coordLog.Warningf("failed join isr because the join state is not set: %v", topicInfo.GetTopicDesp())
 		return ErrJoinISRInvalid
 	}

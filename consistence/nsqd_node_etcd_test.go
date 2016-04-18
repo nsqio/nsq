@@ -20,13 +20,13 @@ func TestNodeRe(t *testing.T) {
 		TcpPort: "2222",
 		RpcPort: "2223",
 	}
-	err := nodeMgr.Register(nodeInfo)
+	err := nodeMgr.RegisterNsqd(nodeInfo)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 	time.Sleep(30 * time.Second)
-	err = nodeMgr.Unregister(nodeInfo)
+	err = nodeMgr.UnregisterNsqd(nodeInfo)
 	if err != nil {
 		fmt.Println(err.Error())
 		return

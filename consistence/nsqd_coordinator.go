@@ -703,16 +703,17 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
 		return ErrEpochLessThanCurrent
 	}
-	// if any of isr or leader is changed, the write disabled should be set first.
+	// if any of new node in isr or leader is changed, the write disabled should be set first.
 	if newTopicInfo.Epoch != topicCoord.topicInfo.Epoch {
 		if !disableWrite {
-			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) != len(topicCoord.topicInfo.ISR) {
+			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) > len(topicCoord.topicInfo.ISR) {
 				coordLog.Errorf("should disable the write before changing the leader or isr of topic")
 				return ErrTopicCoordStateInvalid
 			}
-			for i, newNode := range newTopicInfo.ISR {
-				if newNode != topicCoord.topicInfo.ISR[i] {
-					coordLog.Errorf("should disable the write before changing the leader or isr of topic")
+			// note: removing failed node no need to disable write.
+			for _, newNode := range newTopicInfo.ISR {
+				if FindSlice(topicCoord.topicInfo.ISR, newNode) == -1 {
+					coordLog.Errorf("should disable the write before adding new ISR node ")
 					return ErrTopicCoordStateInvalid
 				}
 			}

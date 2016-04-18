@@ -101,7 +101,7 @@ var (
 	ErrCommitLogIDDup                = NewCoordErrWithCode("commit id duplicated", CoordElectionErr, RpcErrCommitLogIDDup)
 	ErrMissingTopicLeaderSession     = NewCoordErrWithCode("missing topic leader session", CoordElectionErr, RpcErrMissingTopicLeaderSession)
 	ErrLeaderSessionMismatch         = NewCoordErrWithCode("leader session mismatch", CoordElectionErr, RpcErrLeaderSessionMismatch)
-	ErrWriteDisabled                 = NewCoordErrWithCode("write is disabled on the topic", CoordElectionTmpErr, RpcErrWriteDisabled)
+	ErrWriteDisabled                 = NewCoordErrWithCode("write is disabled on the topic", CoordElectionErr, RpcErrWriteDisabled)
 	ErrLeavingISRWait                = NewCoordErrWithCode("leaving isr need wait.", CoordElectionTmpErr, RpcErrLeavingISRWait)
 	ErrTopicCoordExistingAndMismatch = NewCoordErrWithCode("topic coordinator existing with a different partition", CoordClusterErr, RpcErrTopicCoordExistingAndMismatch)
 	ErrTopicLeaderChanged            = NewCoordErrWithCode("topic leader changed", CoordElectionTmpErr, RpcErrTopicLeaderChanged)

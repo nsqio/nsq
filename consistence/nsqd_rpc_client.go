@@ -73,7 +73,7 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicP
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = leaderSession.Session
-	rpcInfo.TopicLeaderEpoch = int32(leaderSession.LeaderEpoch)
+	rpcInfo.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
 	rpcInfo.LeaderNode = leaderSession.LeaderNode
 	rpcInfo.JoinSession = joinSession
 	rpcInfo.TopicName = topicInfo.Name
@@ -132,7 +132,7 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
 	updateInfo.TopicEpoch = int32(info.Epoch)
-	updateInfo.TopicLeaderEpoch = int32(leaderSession.LeaderEpoch)
+	updateInfo.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
@@ -148,7 +148,7 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	putData.TopicPartition = info.Partition
 	putData.TopicMessage = message
 	putData.TopicEpoch = int32(info.Epoch)
-	putData.TopicLeaderEpoch = int32(leaderSession.LeaderEpoch)
+	putData.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessage", putData, &retErr)
@@ -162,7 +162,7 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages
 	putData.TopicEpoch = int32(info.Epoch)
-	putData.TopicLeaderEpoch = int32(leaderSession.LeaderEpoch)
+	putData.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessages", putData, &retErr)
