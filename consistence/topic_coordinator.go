@@ -92,7 +92,7 @@ func (self *coordData) GetLeaderSession() string {
 	return self.topicLeaderSession.Session
 }
 
-func (self *coordData) GetTopicLeaderSessionEpoch() int32 {
+func (self *coordData) GetLeaderSessionEpoch() int32 {
 	return int32(self.topicLeaderSession.LeaderEpoch)
 }
 

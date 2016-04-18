@@ -235,7 +235,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
 	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
-	test.Equal(t, tc.GetLeaderEpoch(), int32(fakeSession.LeaderEpoch))
+	test.Equal(t, tc.GetLeaderSessionEpoch(), int32(fakeSession.LeaderEpoch))
 	// start as isr
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
@@ -249,7 +249,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
 	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
-	test.Equal(t, tc.GetLeaderEpoch(), int32(fakeSession.LeaderEpoch))
+	test.Equal(t, tc.GetLeaderSessionEpoch(), int32(fakeSession.LeaderEpoch))
 
 	// start as catchup
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
@@ -266,7 +266,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	test.Equal(t, tc.topicLeaderSession.IsSame(fakeSession), true)
 	test.Equal(t, tc.GetLeaderSessionID(), nodeInfo1.GetID())
 	test.Equal(t, tc.GetLeaderSession(), fakeSession.Session)
-	test.Equal(t, tc.GetLeaderEpoch(), int32(fakeSession.LeaderEpoch))
+	test.Equal(t, tc.GetLeaderSessionEpoch(), int32(fakeSession.LeaderEpoch))
 
 	// start as not relevant
 	nsqdCoord4 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))

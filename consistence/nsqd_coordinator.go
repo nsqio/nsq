@@ -767,7 +767,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLS *TopicLeaderSession, joinSession string) *CoordErr {
 	topicCoord.dataRWMutex.Lock()
-	if newLS.LeaderEpoch < int(topicCoord.GetTopicLeaderSessionEpoch()) {
+	if newLS.LeaderEpoch < int(topicCoord.GetLeaderSessionEpoch()) {
 		topicCoord.dataRWMutex.Unlock()
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
