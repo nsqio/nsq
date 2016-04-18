@@ -79,14 +79,6 @@ func (self *coordData) GetLeaderSessionID() string {
 	return self.topicLeaderSession.LeaderNode.GetID()
 }
 
-func (self *TopicCoordinator) GetLeader() string {
-	return self.coordData.GetLeader()
-}
-
-func (self *TopicCoordinator) GetLeaderSessionID() string {
-	return self.coordData.GetLeaderSessionID()
-}
-
 func (self *coordData) IsMineLeaderSessionReady(id string) bool {
 	if self.topicLeaderSession.LeaderNode != nil &&
 		self.topicLeaderSession.LeaderNode.GetID() == id &&
@@ -100,11 +92,11 @@ func (self *coordData) GetLeaderSession() string {
 	return self.topicLeaderSession.Session
 }
 
-func (self *coordData) GetLeaderEpoch() int32 {
+func (self *coordData) GetTopicLeaderSessionEpoch() int32 {
 	return int32(self.topicLeaderSession.LeaderEpoch)
 }
 
-func (self *coordData) GetTopicInfoEpoch() int32 {
+func (self *coordData) GetTopicEpoch() int32 {
 	return int32(self.topicInfo.Epoch)
 }
 
@@ -118,14 +110,6 @@ func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
 	return nil
 }
 
-func (self *TopicCoordinator) checkWriteForLeader(myID string) *CoordErr {
-	return self.coordData.checkWriteForLeader(myID)
-}
-
 func (self *coordData) IsISRReadyForWrite() bool {
 	return len(self.topicInfo.ISR) > self.topicInfo.Replica/2
-}
-
-func (self *TopicCoordinator) IsISRReadyForWrite() bool {
-	return self.coordData.IsISRReadyForWrite()
 }

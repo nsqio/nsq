@@ -765,6 +765,22 @@ func (self *NsqLookupCoordinator) getNsqdLastCommitLogID(nid string, topicInfo *
 	return c.GetLastCommitLogID(topicInfo)
 }
 
+func (self *NsqLookupCoordinator) checkISRLogConsistence(topicInfo *TopicPartionMetaInfo) *CoordErr {
+	logid := int64(-1)
+	for _, nid := range topicInfo.ISR {
+		tmp, err := self.getNsqdLastCommitLogID(nid, topicInfo)
+		if err != nil {
+			return err
+		}
+		if logid == -1 {
+			logid = tmp
+		} else if tmp != logid {
+			return ErrTopicCommitLogNotConsistent
+		}
+	}
+	return nil
+}
+
 func (self *NsqLookupCoordinator) getExcludeNodesForTopic(topicInfo *TopicPartionMetaInfo) map[string]struct{} {
 	excludeNodes := make(map[string]struct{})
 	excludeNodes[topicInfo.Leader] = struct{}{}
@@ -1455,6 +1471,12 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 			go self.triggerCheckTopics(time.Second)
 			return
 		}
+		if rpcErr = self.notifyISRDisableTopicWrite(topicInfo); rpcErr != nil {
+			coordLog.Infof("try disable isr write for topic %v failed: %v", topicInfo, rpcErr)
+			go self.triggerCheckTopics(time.Second * 3)
+			return
+		}
+
 		state.isLeadershipWait = false
 
 		newCatchupList := make([]string, 0)
@@ -1520,8 +1542,13 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 				return
 			}
 		}
+		// check the newest log for isr to make sure consistence.
+		rpcErr := self.checkISRLogConsistence(topicInfo)
+		if rpcErr != nil {
+			return
+		}
 		coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
-		rpcErr := self.notifyEnableTopicWrite(topicInfo)
+		rpcErr = self.notifyEnableTopicWrite(topicInfo)
 		if rpcErr != nil {
 			coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
 			go self.triggerCheckTopics(time.Second * 3)
@@ -1602,7 +1629,13 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartionMetaIn
 				return rpcErr
 			}
 		}
-		rpcErr := self.notifyEnableTopicWrite(&topicInfo)
+
+		// check the newest log for isr to make sure consistence.
+		rpcErr := self.checkISRLogConsistence(&topicInfo)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		rpcErr = self.notifyEnableTopicWrite(&topicInfo)
 		if rpcErr != nil {
 			coordLog.Warningf("failed to enable write :%v, %v", topicInfo.GetTopicDesp(), rpcErr)
 			go self.triggerCheckTopics(time.Second * 3)

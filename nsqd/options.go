@@ -13,17 +13,17 @@ import (
 
 type Options struct {
 	// basic options
-	ID                      int64    `flag:"worker-id" cfg:"id"`
-	Verbose                 bool     `flag:"verbose"`
-	ClusterID               string   `flag:"cluster-id"`
-	ClusterLeadershipIPList []string `flag:"cluster-leadership-iplist"`
-	TCPAddress              string   `flag:"tcp-address"`
-	RPCPort                 string   `flag:"rpc-port"`
-	HTTPAddress             string   `flag:"http-address"`
-	HTTPSAddress            string   `flag:"https-address"`
-	BroadcastAddress        string   `flag:"broadcast-address"`
-	NSQLookupdTCPAddresses  []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
-	AuthHTTPAddresses       []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	ID                         int64    `flag:"worker-id" cfg:"id"`
+	Verbose                    bool     `flag:"verbose"`
+	ClusterID                  string   `flag:"cluster-id"`
+	ClusterLeadershipAddresses []string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
+	TCPAddress                 string   `flag:"tcp-address"`
+	RPCPort                    string   `flag:"rpc-port"`
+	HTTPAddress                string   `flag:"http-address"`
+	HTTPSAddress               string   `flag:"https-address"`
+	BroadcastAddress           string   `flag:"broadcast-address"`
+	NSQLookupdTCPAddresses     []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses          []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -93,11 +93,12 @@ func NewOptions() *Options {
 	return &Options{
 		ID: defaultID,
 
-		ClusterID:        "nsq-clusterid-test-only",
-		TCPAddress:       "0.0.0.0:4150",
-		HTTPAddress:      "0.0.0.0:4151",
-		HTTPSAddress:     "0.0.0.0:4152",
-		BroadcastAddress: hostname,
+		ClusterID:                  "nsq-clusterid-test-only",
+		ClusterLeadershipAddresses: make([]string, 0),
+		TCPAddress:                 "0.0.0.0:4150",
+		HTTPAddress:                "0.0.0.0:4151",
+		HTTPSAddress:               "0.0.0.0:4152",
+		BroadcastAddress:           hostname,
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),

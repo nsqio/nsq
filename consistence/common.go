@@ -107,6 +107,7 @@ var (
 	ErrTopicLeaderChanged            = NewCoordErrWithCode("topic leader changed", CoordElectionTmpErr, RpcErrTopicLeaderChanged)
 	ErrTopicCommitLogEOF             = NewCoordErrWithCode("topic commit log end of file", CoordCommonErr, RpcErrCommitLogEOF)
 	ErrTopicCommitLogOutofBound      = NewCoordErrWithCode("topic commit log offset out of bound", CoordCommonErr, RpcErrCommitLogOutofBound)
+	ErrTopicCommitLogNotConsistent   = NewCoordErrWithCode("topic commit log is not consistent", CoordClusterErr, RpcCommonErr)
 	ErrMissingTopicCoord             = NewCoordErrWithCode("missing topic coordinator", CoordClusterErr, RpcErrMissingTopicCoord)
 	ErrTopicLoading                  = NewCoordErrWithCode("topic is still loading data", CoordLocalTmpErr, RpcErrTopicLoading)
 	ErrTopicExiting                  = NewCoordErr("topic coordinator is exiting", CoordLocalTmpErr)

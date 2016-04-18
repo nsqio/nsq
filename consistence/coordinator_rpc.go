@@ -148,8 +148,11 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
 	for pid, tc := range coords {
+		if !self.nsqdCoord.IsMineLeaderForTopic(rpcTopicReq.Name, pid) {
+			continue
+		}
 		if pid != rpcTopicReq.Partition {
-			coordLog.Infof("found another partition %v already exist for this topic %v", pid, rpcTopicReq.Name)
+			coordLog.Infof("found another partition %v already exist master for this topic %v", pid, rpcTopicReq.Name)
 			if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition); err != nil {
 				coordLog.Infof("local no such topic, we can just remove this coord")
 				tc.logMgr.Close()
@@ -328,7 +331,7 @@ type RpcTestRsp struct {
 func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
 		if topicCoord, ok := v[rpcData.TopicPartition]; ok {
-			if topicCoord.GetLeaderEpoch() != rpcData.TopicLeaderEpoch {
+			if topicCoord.GetTopicEpoch() != rpcData.TopicLeaderEpoch {
 				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
 				return nil, ErrEpochMismatch
 			}

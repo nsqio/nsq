@@ -15,8 +15,8 @@ type Options struct {
 	RPCPort          string `flag:"rpc-port"`
 	BroadcastAddress string `flag:"broadcast-address"`
 
-	EtcdAddress string `flag:"etcd-address"`
-	ClusterID   string `flag:"cluster-id"`
+	ClusterID                  string   `flag:"cluster-id"`
+	ClusterLeadershipAddresses []string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
@@ -35,8 +35,8 @@ func NewOptions() *Options {
 		HTTPAddress:      "0.0.0.0:4161",
 		BroadcastAddress: hostname,
 
-		EtcdAddress: "",
-		ClusterID:   "nsq-clusterid-test-only",
+		ClusterLeadershipAddresses: make([]string, 0),
+		ClusterID:                  "nsq-clusterid-test-only",
 
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
