@@ -378,6 +378,29 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
 			needMigrate = true
 		}
+
+		aliveCount := 0
+		failedNodes := make([]string, 0)
+		for _, replica := range t.ISR {
+			if replica == t.Leader {
+				// leader fail will be handled while leader election.
+				continue
+			}
+			if _, ok := currentNodes[replica]; !ok {
+				coordLog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
+				needMigrate = true
+				failedNodes = append(failedNodes, replica)
+			} else {
+				aliveCount++
+			}
+		}
+
+		// handle remove this node from ISR
+		coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
+		if coordErr != nil {
+			continue
+		}
+
 		if _, ok := currentNodes[t.Leader]; !ok {
 			needMigrate = true
 			coordLog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
@@ -401,19 +424,6 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 				continue
 			}
 		}
-		aliveCount := 0
-		failedNodes := make([]string, 0)
-		for _, replica := range t.ISR {
-			if _, ok := currentNodes[replica]; !ok {
-				coordLog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
-				needMigrate = true
-				failedNodes = append(failedNodes, replica)
-			} else {
-				aliveCount++
-			}
-		}
-		// handle remove this node from ISR
-		self.handleRemoveFailedISRNodes(failedNodes, &t)
 
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[t.GetTopicDesp()]
@@ -508,7 +518,6 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	if coordErr != nil {
 		return coordErr
 	}
-	topicInfo.Leader = newLeader
 
 	coordErr = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
 	if coordErr != nil {
@@ -520,14 +529,14 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	return nil
 }
 
-func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartionMetaInfo) {
+func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	if len(failedNodes) == 0 {
-		return
+		return nil
 	}
 	newISR := FilterList(topicInfo.ISR, failedNodes)
 	if len(newISR) == 0 {
 		coordLog.Infof("no node left in isr if removing failed")
-		return
+		return nil
 	}
 	topicInfo.ISR = newISR
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
@@ -538,9 +547,10 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("update topic node isr failed: %v", err.Error())
-		return
+		return &CoordErr{err.Error(), RpcNoErr, CoordNetErr}
 	}
 	self.notifyTopicMetaInfo(topicInfo)
+	return nil
 }
 
 func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartionMetaInfo, currentNodes map[string]NsqdNodeInfo) {
@@ -657,12 +667,30 @@ func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartion
 }
 
 func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *TopicPartionMetaInfo, newLeader string, newestLogID int64) *CoordErr {
-	topicInfo.Leader = newLeader
-	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+	if topicInfo.Leader == newLeader {
+		coordLog.Infof("topic new leader is the same with old: %v", topicInfo)
+		return ErrLeaderElectionFail
+	}
+	newTopicInfo := *topicInfo
+	newTopicInfo.ISR = make([]string, 0)
+	for _, nid := range topicInfo.ISR {
+		if nid == topicInfo.Leader {
+			continue
+		}
+		newTopicInfo.ISR = append(newTopicInfo.ISR, nid)
+	}
+	newTopicInfo.CatchupList = make([]string, 0)
+	for _, nid := range topicInfo.CatchupList {
+		newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, nid)
+	}
+	newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, topicInfo.Leader)
+	newTopicInfo.Leader = newLeader
+	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &newTopicInfo, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("update topic node info failed: %v", err)
 		return &CoordErr{err.Error(), RpcNoErr, CoordCommonErr}
 	}
+	*topicInfo = newTopicInfo
 	self.notifyTopicMetaInfo(topicInfo)
 
 	var leaderSession *TopicLeaderSession

@@ -301,20 +301,18 @@ func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition 
 			l.LeaderNode = nodeData
 			l.Session = "fake-leader-session" + nodeData.GetID()
 			l.LeaderEpoch++
-			t, _ := self.fakeTopics[topic]
-			leaderChanged := t[partition].leaderChanged
-			leaderChanged <- struct{}{}
+			self.leaderSessionChanged <- l
 			coordLog.Infof("leader session update to : %v", l)
 			return nil
 		} else if *l.LeaderNode == *nodeData {
-			t, _ := self.fakeTopics[topic]
-			leaderChanged := t[partition].leaderChanged
-			leaderChanged <- struct{}{}
+			self.leaderSessionChanged <- l
 			return nil
 		}
 		return ErrLeaderSessionAlreadyExist
 	}
 	leaderSession := &TopicLeaderSession{}
+	leaderSession.Topic = topic
+	leaderSession.Partition = partition
 	leaderSession.LeaderNode = nodeData
 	leaderSession.Session = "fake-leader-session-" + nodeData.GetID()
 	self.updateTopicLeaderSession(topic, partition, leaderSession)
@@ -334,9 +332,7 @@ func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition 
 	l.LeaderNode = nil
 	l.Session = ""
 	l.LeaderEpoch++
-	t, _ := self.fakeTopics[topic]
-	leaderChanged := t[partition].leaderChanged
-	leaderChanged <- struct{}{}
+	self.leaderSessionChanged <- l
 	return nil
 }
 
