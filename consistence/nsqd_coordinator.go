@@ -694,6 +694,11 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
 	oldData := topicCoord.GetData()
 	topicCoord.writeHold.Lock()
+	if FindSlice(oldData.topicInfo.ISR, self.myNode.GetID()) == -1 &&
+		FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
+		coordLog.Infof("I am notified to be a new node in ISR: %v", self.myNode.GetID())
+		topicCoord.disableWrite = true
+	}
 	disableWrite := topicCoord.disableWrite
 	topicCoord.writeHold.Unlock()
 	topicCoord.dataRWMutex.Lock()
@@ -705,7 +710,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 	// if any of new node in isr or leader is changed, the write disabled should be set first on isr nodes.
 	if newTopicInfo.Epoch != topicCoord.topicInfo.Epoch {
-		if !disableWrite && FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
+		if !disableWrite && newTopicInfo.Leader != "" && FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) > len(topicCoord.topicInfo.ISR) {
 				coordLog.Errorf("should disable the write before changing the leader or isr of topic")
 				return ErrTopicCoordStateInvalid
@@ -728,6 +733,8 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		needAcquireLeaderSession = false
 		coordLog.Infof("leader keep unchanged: %v", newTopicInfo)
+	} else {
+		coordLog.Infof("leader session not ready: %v", topicCoord.topicLeaderSession)
 	}
 	if topicCoord.topicInfo.Epoch != newTopicInfo.Epoch {
 		topicCoord.topicInfo = *newTopicInfo
@@ -1209,6 +1216,9 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		return ErrWriteDisabled
 	}
 
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
 	var slavePubErr *CoordErr
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
@@ -1277,6 +1287,10 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 
 	if coord.disableWrite {
 		return ErrWriteDisabled
+	}
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
 	}
 	var slavePubErr *CoordErr
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
@@ -1381,6 +1395,11 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelName string, offset ChannelConsumerOffset) *CoordErr {
 	topicName := tc.topicInfo.Name
 	partition := tc.topicInfo.Partition
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
+
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("slave missing topic : %v", topicName)

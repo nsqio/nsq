@@ -34,6 +34,8 @@ const (
 	RpcErrTopicLeaderChanged
 	RpcErrTopicLoading
 	RpcErrSlaveStateInvalid
+	RpcErrTopicCoordStateInvalid
+	RpcErrWriteOnNonISR
 )
 
 type NsqdNodeLoadFactor struct {
@@ -123,9 +125,11 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		return nil
 	}
 	if rpcTopicReq.JoinSession != "" && !topicCoord.disableWrite {
-		coordLog.Errorf("join session should disable write first")
-		*ret = *ErrTopicCoordStateInvalid
-		return nil
+		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
+			coordLog.Errorf("join session should disable write first")
+			*ret = *ErrTopicCoordStateInvalid
+			return nil
+		}
 	}
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
@@ -331,25 +335,25 @@ type RpcTestRsp struct {
 }
 
 func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
-	if v, ok := self.topicCoords[rpcData.TopicName]; ok {
-		if topicCoord, ok := v[rpcData.TopicPartition]; ok {
-			if topicCoord.GetTopicEpoch() != rpcData.TopicEpoch {
-				coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
-				return nil, ErrEpochMismatch
-			}
-			if topicCoord.GetLeaderSession() != rpcData.TopicLeaderSession {
-				coordLog.Infof("rpc call with wrong session:%v", rpcData)
-				return nil, ErrLeaderSessionMismatch
-			}
-			if !topicCoord.localDataLoaded {
-				coordLog.Infof("local data is still loading. %v", topicCoord.topicInfo.GetTopicDesp())
-				return nil, ErrTopicLoading
-			}
-			return topicCoord, nil
-		}
+	topicCoord, err := self.getTopicCoord(rpcData.TopicName, rpcData.TopicPartition)
+	if err != nil || topicCoord == nil {
+		coordLog.Infof("rpc call with missing topic :%v", rpcData)
+		return nil, ErrMissingTopicCoord
 	}
-	coordLog.Infof("rpc call with missing topic :%v", rpcData)
-	return nil, ErrMissingTopicCoord
+	tcData := topicCoord.GetData()
+	if tcData.GetTopicEpoch() != rpcData.TopicEpoch {
+		coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
+		return nil, ErrEpochMismatch
+	}
+	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
+		coordLog.Infof("rpc call with wrong session:%v", rpcData)
+		return nil, ErrLeaderSessionMismatch
+	}
+	if !tcData.localDataLoaded {
+		coordLog.Infof("local data is still loading. %v", tcData.topicInfo.GetTopicDesp())
+		return nil, ErrTopicLoading
+	}
+	return topicCoord, nil
 }
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info RpcChannelOffsetArg, retErr *CoordErr) error {

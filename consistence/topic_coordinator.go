@@ -79,6 +79,10 @@ func (self *coordData) GetLeaderSessionID() string {
 	return self.topicLeaderSession.LeaderNode.GetID()
 }
 
+func (self *coordData) IsMineISR(id string) bool {
+	return FindSlice(self.topicInfo.ISR, id) != -1
+}
+
 func (self *coordData) IsMineLeaderSessionReady(id string) bool {
 	if self.topicLeaderSession.LeaderNode != nil &&
 		self.topicLeaderSession.LeaderNode.GetID() == id &&

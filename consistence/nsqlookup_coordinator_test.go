@@ -305,7 +305,7 @@ func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition 
 			coordLog.Infof("leader session update to : %v", l)
 			return nil
 		} else if *l.LeaderNode == *nodeData {
-			self.leaderSessionChanged <- l
+			// leader unchange.
 			return nil
 		}
 		return ErrLeaderSessionAlreadyExist
@@ -568,7 +568,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	fakeLeadership1.removeFakedNsqdNode(lostNodeID)
 	time.Sleep(time.Second * 3)
 	fakeLeadership1.addFakedNsqdNode(*nsqdNodeInfoList[lostNodeID])
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 5)
 	// with only 2 replica, the isr join fail should not change the isr list
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
 	go lookupCoord1.triggerCheckTopics(time.Second)
@@ -578,6 +578,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	test.Equal(t, t1.Leader == t1.ISR[0] || t1.Leader == t1.ISR[1], true)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(false)
 	go lookupCoord1.triggerCheckTopics(time.Second)
+	time.Sleep(time.Second * 3)
 	// test new topic create
 	topic3 := topic + topic
 	err = lookupCoord1.CreateTopic(topic3, 1, 3, 0)
@@ -607,7 +608,7 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 	t1, _ = fakeLeadership1.GetTopicInfo(topic, 1)
 	test.Equal(t, len(t1.ISR), 2)
 	// before migrate really start, the isr should not reach the replica factor
-	// catch up may start early while check leadership or enable topic write
+	// however, catch up may start early while check leadership or enable topic write
 	t3, _ = fakeLeadership1.GetTopicInfo(topic3, 0)
 	test.Equal(t, len(t3.ISR)+len(t3.CatchupList), 3)
 }

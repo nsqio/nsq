@@ -106,6 +106,7 @@ func DecodeMessage(b []byte) (*Message, error) {
 	return decodeMessage(b)
 }
 
+// note: the message body is using the origin buffer, so never modify the buffer after decode.
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
 
@@ -118,6 +119,6 @@ func decodeMessage(b []byte) (*Message, error) {
 	msg.ID = MessageID(binary.BigEndian.Uint64(b[10:18]))
 	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
 
-	msg.Body = append(msg.Body, b[26:]...)
+	msg.Body = b[26:]
 	return &msg, nil
 }

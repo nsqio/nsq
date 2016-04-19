@@ -379,17 +379,28 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			needMigrate = true
 		}
 
+		self.joinStateMutex.Lock()
+		state, ok := self.joinISRState[t.GetTopicDesp()]
+		self.joinStateMutex.Unlock()
+		if ok && state != nil {
+			state.Lock()
+			wj := state.waitingJoin
+			state.Unlock()
+			if wj {
+				continue
+			}
+		}
+
 		aliveCount := 0
 		failedNodes := make([]string, 0)
 		for _, replica := range t.ISR {
-			if replica == t.Leader {
-				// leader fail will be handled while leader election.
-				continue
-			}
 			if _, ok := currentNodes[replica]; !ok {
 				coordLog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
 				needMigrate = true
-				failedNodes = append(failedNodes, replica)
+				if replica != t.Leader {
+					// leader fail will be handled while leader election.
+					failedNodes = append(failedNodes, replica)
+				}
 			} else {
 				aliveCount++
 			}
@@ -421,18 +432,6 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
 				self.notifyISRTopicMetaInfo(&t)
-				continue
-			}
-		}
-
-		self.joinStateMutex.Lock()
-		state, ok := self.joinISRState[t.GetTopicDesp()]
-		self.joinStateMutex.Unlock()
-		if ok && state != nil {
-			state.Lock()
-			wj := state.waitingJoin
-			state.Unlock()
-			if wj {
 				continue
 			}
 		}
@@ -519,6 +518,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return coordErr
 	}
 
+	coordLog.Infof("topic %v leader election result: %v", topicInfo, newLeader)
 	coordErr = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
 	if coordErr != nil {
 		return coordErr
@@ -549,7 +549,7 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 		coordLog.Infof("update topic node isr failed: %v", err.Error())
 		return &CoordErr{err.Error(), RpcNoErr, CoordNetErr}
 	}
-	self.notifyTopicMetaInfo(topicInfo)
+	go self.notifyTopicMetaInfo(topicInfo)
 	return nil
 }
 
@@ -685,6 +685,13 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 	}
 	newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, topicInfo.Leader)
 	newTopicInfo.Leader = newLeader
+
+	rpcErr := self.notifyLeaderDisableTopicWrite(&newTopicInfo)
+	if rpcErr != nil {
+		coordLog.Infof("disable write failed while make new leader: %v", rpcErr)
+		return rpcErr
+	}
+
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &newTopicInfo, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("update topic node info failed: %v", err)
@@ -696,7 +703,7 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 	var leaderSession *TopicLeaderSession
 	for {
 		leaderSession, err = self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
-		if err != nil {
+		if err != nil || leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 			coordLog.Infof("topic leader session still missing")
 			self.nodesMutex.RLock()
 			_, ok := self.nsqdNodes[topicInfo.Leader]
@@ -1140,6 +1147,10 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 		coordLog.Infof("get topic info failed : %v", err.Error())
 		return err
 	}
+	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
+		coordLog.Infof("ignore since not enough isr : %v", topicInfo)
+		return ErrTopicISRNotEnough
+	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
 	if err != nil {
 		coordLog.Infof("failed to get leader session: %v", err)
@@ -1204,9 +1215,19 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartionMe
 
 	coordLog.Infof("topic %v isr waiting session init : %v", topicInfo.GetTopicDesp(), state)
 	if len(topicInfo.ISR) <= 1 {
-		rpcErr := self.notifyEnableTopicWrite(topicInfo)
+		rpcErr := self.notifyISRTopicMetaInfo(topicInfo)
 		if rpcErr != nil {
-			coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
+			return
+		}
+
+		self.notifyTopicLeaderSession(topicInfo, leaderSession, state.waitingSession)
+		if len(topicInfo.ISR) > topicInfo.Replica/2 {
+			rpcErr = self.notifyEnableTopicWrite(topicInfo)
+			if rpcErr != nil {
+				coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
+			}
+		} else {
+			coordLog.Infof("leaving the topic %v without enable write since not enough replicas.", topicInfo)
 		}
 		state.waitingJoin = false
 		state.waitingSession = ""
@@ -1355,8 +1376,12 @@ func (self *NsqLookupCoordinator) notifyOldNsqdsForTopicMetaInfo(topicInfo *Topi
 }
 
 func (self *NsqLookupCoordinator) notifySingleNsqdForTopicReload(topicInfo TopicPartionMetaInfo, nodeID string) *CoordErr {
+	// TODO: maybe should disable write if reload node is in isr.
 	rpcErr := self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nodeID, &topicInfo)
 	if rpcErr != nil {
+		if rpcErr.IsEqual(ErrTopicCoordStateInvalid) {
+			go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, false)
+		}
 		return rpcErr
 	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
@@ -1367,10 +1392,14 @@ func (self *NsqLookupCoordinator) notifySingleNsqdForTopicReload(topicInfo Topic
 }
 
 func (self *NsqLookupCoordinator) notifyAllNsqdsForTopicReload(topicInfo TopicPartionMetaInfo) *CoordErr {
-	rpcErr := self.notifyTopicMetaInfo(&topicInfo)
+	rpcErr := self.notifyISRTopicMetaInfo(&topicInfo)
 	if rpcErr != nil {
+		if rpcErr.IsEqual(ErrTopicCoordStateInvalid) {
+			go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, false)
+		}
 		return rpcErr
 	}
+	self.notifyTopicMetaInfo(&topicInfo)
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 	if err == nil {
 		self.notifyTopicLeaderSession(&topicInfo, leaderSession, "")
@@ -1523,18 +1552,20 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 		}
 		topicInfo.CatchupList = newCatchupList
 		topicInfo.ISR = append(topicInfo.ISR, nodeID)
+
+		// new node should disable write also.
+		if rpcErr = self.notifyISRDisableTopicWrite(topicInfo); rpcErr != nil {
+			coordLog.Infof("try disable isr write for topic %v failed: %v", topicInfo, rpcErr)
+			go self.triggerCheckTopics(time.Second * 3)
+			return
+		}
+
 		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 		if err != nil {
 			coordLog.Infof("move catchup node to isr failed: %v", err)
 			// continue here to allow the wait goroutine to handle the timeout
 		}
 		self.notifyTopicMetaInfo(topicInfo)
-
-		if rpcErr = self.notifyISRDisableTopicWrite(topicInfo); rpcErr != nil {
-			coordLog.Infof("try disable isr write for topic %v failed: %v", topicInfo, rpcErr)
-			go self.triggerCheckTopics(time.Second * 3)
-		}
-
 		self.initJoinStateAndWait(topicInfo, leaderSession, state)
 	}()
 	return nil
@@ -1583,10 +1614,14 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 			return
 		}
 		coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
-		rpcErr = self.notifyEnableTopicWrite(topicInfo)
-		if rpcErr != nil {
-			coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
-			go self.triggerCheckTopics(time.Second * 3)
+		if len(topicInfo.ISR) > topicInfo.Replica/2 {
+			rpcErr = self.notifyEnableTopicWrite(topicInfo)
+			if rpcErr != nil {
+				coordLog.Warningf("failed to enable write for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
+				go self.triggerCheckTopics(time.Second * 3)
+			}
+		} else {
+			coordLog.Infof("leaving the topic %v without enable write since not enough replicas.", topicInfo)
 		}
 		state.waitingJoin = false
 		state.waitingSession = ""
@@ -1657,7 +1692,7 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartionMetaIn
 				coordLog.Infof("update topic info failed: %v", err)
 				return err
 			}
-			rpcErr := self.notifyTopicMetaInfo(&topicInfo)
+			rpcErr := self.notifyISRTopicMetaInfo(&topicInfo)
 			if rpcErr != nil {
 				coordLog.Infof("failed to notify new topic info: %v", topicInfo)
 				go self.triggerCheckTopics(time.Second)
@@ -1777,6 +1812,19 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 			return ErrNotTopicLeader
 		}
 	}
+
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	self.joinStateMutex.Unlock()
+	if ok && state != nil {
+		state.Lock()
+		wj := state.waitingJoin
+		state.Unlock()
+		if wj {
+			return ErrLeavingISRWait
+		}
+	}
+
 	newISR := make([]string, 0, len(topicInfo.ISR)-1)
 	for _, n := range topicInfo.ISR {
 		if n == nodeID {
