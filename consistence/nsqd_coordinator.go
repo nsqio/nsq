@@ -1469,9 +1469,20 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) *CoordErr {
 // the unavailable time.
 func (self *NsqdCoordinator) prepareLeavingCluster() {
 	coordLog.Infof("I am prepare leaving the cluster.")
+	tmpTopicCoords := make(map[string]map[int]*TopicCoordinator, len(self.topicCoords))
 	self.coordMutex.RLock()
-	defer self.coordMutex.RUnlock()
-	for topicName, topicData := range self.topicCoords {
+	for t, v := range self.topicCoords {
+		tmp, ok := tmpTopicCoords[t]
+		if !ok {
+			tmp = make(map[int]*TopicCoordinator)
+			tmpTopicCoords[t] = tmp
+		}
+		for pid, coord := range v {
+			tmp[pid] = coord
+		}
+	}
+	self.coordMutex.RUnlock()
+	for topicName, topicData := range tmpTopicCoords {
 		for pid, tpCoord := range topicData {
 			tpCoord.Exiting()
 			tcData := tpCoord.GetData()

@@ -1254,12 +1254,16 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 			return
 		case <-ticker.C:
 			failList := make(map[string]RpcFailedInfo, 0)
+			var currentNodes map[string]NsqdNodeInfo
 			self.failedRpcMutex.Lock()
 			for _, v := range self.failedRpcList {
 				failList[v.nodeID+v.topic+strconv.Itoa(v.partition)] = v
 			}
 			if len(failList) > 0 {
 				coordLog.Infof("failed rpc total: %v, %v", len(self.failedRpcList), len(failList))
+				self.nodesMutex.RLock()
+				currentNodes = self.nsqdNodes
+				self.nodesMutex.RUnlock()
 			}
 			self.failedRpcList = self.failedRpcList[0:0]
 			self.failedRpcMutex.Unlock()
@@ -1270,6 +1274,10 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 				if err != nil {
 					// TODO: ignore if not exist on etcd
 					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					continue
+				}
+				if _, ok := currentNodes[info.nodeID]; !ok {
+					coordLog.Infof("retry cancelled since node not exist: %v", info)
 					continue
 				}
 				c, rpcErr := self.acquireRpcClient(info.nodeID)
