@@ -209,6 +209,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
 			t.option, deleteCallback, t.notifyCall)
 		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
+		if t.IsWriteDisabled() {
+			channel.DisableConsume(true)
+		}
 		t.channelMap[channelName] = channel
 		nsqLog.Logf("TOPIC(%s): new channel(%s), end: %v", t.GetFullName(),
 			channel.name, channel.backend.Depth())

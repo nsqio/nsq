@@ -168,3 +168,10 @@ func TestChannelHealth(t *testing.T) {
 	// is set/loaded.
 	channel.exitChan <- 1
 }
+
+func TestChannelSkip(t *testing.T) {
+	// TODO: backward and forward
+}
+
+func TestChannelResetReadEnd(t *testing.T) {
+}

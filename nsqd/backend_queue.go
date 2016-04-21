@@ -47,5 +47,5 @@ type BackendQueueReader interface {
 	Close() error
 	Depth() int64
 	Delete() error
-	UpdateQueueEnd(BackendQueueEnd)
+	UpdateQueueEnd(BackendQueueEnd) error
 }

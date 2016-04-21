@@ -137,7 +137,7 @@ func TestStartup(t *testing.T) {
 	}()
 
 	// verify nsqd metadata shows no topics
-	err := nsqd.PersistMetadata()
+	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	equal(t, err, nil)
 	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopicIgnPart(topicName) // will not persist if `flagLoading`
@@ -146,7 +146,7 @@ func TestStartup(t *testing.T) {
 	topics, err := metaData.Get("topics").Array()
 	equal(t, err, nil)
 	equal(t, len(topics), 0)
-	nsqd.DeleteExistingTopic(topicName)
+	nsqd.DeleteExistingTopic(topicName, 0)
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
@@ -167,7 +167,7 @@ func TestStartup(t *testing.T) {
 	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
 	channel1 := topic.GetChannel("ch1")
 
-	err = nsqd.PersistMetadata()
+	err = nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	equal(t, err, nil)
 	t.Logf("read %d msgs", iterations/2)
 	equal(t, channel1.Depth(), int64(iterations)*msgRawSize)
@@ -266,7 +266,7 @@ func TestPauseMetadata(t *testing.T) {
 	topic := nsqd.GetTopicIgnPart(topicName)
 	channel := topic.GetChannel("ch")
 	atomic.StoreInt32(&nsqd.isLoading, 0)
-	nsqd.PersistMetadata()
+	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 
 	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
@@ -275,7 +275,7 @@ func TestPauseMetadata(t *testing.T) {
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
 
-	nsqd.PersistMetadata()
+	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, true)
 
@@ -283,7 +283,7 @@ func TestPauseMetadata(t *testing.T) {
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, true)
 
-	nsqd.PersistMetadata()
+	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
 	equal(t, b, false)
 }

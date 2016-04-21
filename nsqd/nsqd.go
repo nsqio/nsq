@@ -365,6 +365,18 @@ func (n *NSQD) Exit() {
 }
 
 func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
+	n.RLock()
+	topics, ok := n.topicMap[topicName]
+	if ok {
+		if len(topics) > 0 {
+			for _, t := range topics {
+				n.RUnlock()
+				return t
+			}
+		}
+	}
+	n.RUnlock()
+
 	return n.GetTopic(topicName, 0)
 }
 
@@ -456,6 +468,9 @@ func (n *NSQD) deleteTopic(topicName string, part int) {
 		return
 	}
 	delete(topics, part)
+	if len(topics) == 0 {
+		delete(n.topicMap, topicName)
+	}
 }
 
 func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {

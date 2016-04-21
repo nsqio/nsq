@@ -123,7 +123,7 @@ func TestDeletes(t *testing.T) {
 	channel2 := topic.GetChannel("ch2")
 	nequal(t, nil, channel2)
 
-	err = nsqd.DeleteExistingTopic("test")
+	err = nsqd.DeleteExistingTopic("test", topic.GetTopicPart())
 	equal(t, nil, err)
 	equal(t, 0, len(topic.channelMap))
 	equal(t, 0, len(nsqd.topicMap))
@@ -162,6 +162,10 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topic := nsqd.GetTopic(topicName, 0)
 
 	equal(t, topic.backend.(*diskQueueWriter).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+}
+
+func TestTopicResetWriteEnd(t *testing.T) {
+	// TODO
 }
 
 func BenchmarkTopicPut(b *testing.B) {

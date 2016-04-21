@@ -1400,6 +1400,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		return ErrTopicWriteOnNonISR
 	}
 
+	coordLog.Debugf("got update channel(%v) offset on slave : %v", channelName, offset)
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("slave missing topic : %v", topicName)
@@ -1413,9 +1414,13 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	}
 	ch := topic.GetChannel(channelName)
 	ch.DisableConsume(true)
+	currentEnd := ch.GetChannelEnd()
+	if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+		topic.ForceFlush()
+	}
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
 	if err != nil {
-		coordLog.Warningf("update local channel(%v) offset failed: %v", channelName, err)
+		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v", channelName, offset, err, currentEnd)
 		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
 	}
 	return nil

@@ -82,5 +82,6 @@ func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset) error {
 	return nil
 }
 
-func (d *dummyBackendQueue) UpdateQueueEnd(end BackendQueueEnd) {
+func (d *dummyBackendQueue) UpdateQueueEnd(end BackendQueueEnd) error {
+	return nil
 }

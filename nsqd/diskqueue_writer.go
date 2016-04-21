@@ -94,6 +94,7 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 		nsqLog.Logf("rollback write position can not across file %v, %v, %v", offset, d.virtualEnd, d.writePos)
 		return ErrInvalidOffset
 	}
+	nsqLog.LogDebugf("rollback from %v to %v, roll cnt: %v", d.virtualEnd, offset, diffCnt)
 	d.writePos -= int64(d.virtualEnd - offset)
 	if d.readablePos > d.writePos {
 		d.readablePos = d.writePos
@@ -115,6 +116,7 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	if d.needSync {
 		d.sync()
 	}
+	nsqLog.Logf("reset write end from %v to %v, reset to totalCnt: %v", d.virtualEnd, offset, totalCnt)
 	if offset == 0 {
 		d.virtualEnd = 0
 		d.writePos = 0
@@ -137,7 +139,7 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 		}
 		f, err := os.Stat(d.fileName(newWriteFileNum))
 		if err != nil {
-			nsqLog.LogErrorf("stat data file error %v, %v, %v", offset, newWriteFileNum)
+			nsqLog.LogErrorf("stat data file error %v, %v", offset, newWriteFileNum)
 			return err
 		}
 		newWritePos = f.Size()

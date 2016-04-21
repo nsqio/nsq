@@ -37,7 +37,6 @@ type Consumer interface {
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	requeueCount uint64
-	messageCount uint64
 	timeoutCount uint64
 
 	sync.RWMutex
@@ -310,14 +309,7 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	if end == nil {
 		return nil
 	}
-	c.exitMutex.RLock()
-	defer c.exitMutex.RUnlock()
-	if atomic.LoadInt32(&c.exitFlag) == 1 {
-		return ErrExiting
-	}
-	c.backend.UpdateQueueEnd(end)
-	atomic.StoreUint64(&c.messageCount, uint64(end.GetTotalMsgCnt()))
-	return nil
+	return c.backend.UpdateQueueEnd(end)
 }
 
 // TouchMessage resets the timeout for an in-flight message
@@ -346,6 +338,8 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 }
 
 func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
+	// TODO: confirm on slave may exceed the current end, because the buffered write
+	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
 	if len(c.confirmedMsgs) != 0 {
 		nsqLog.LogWarningf("should empty confirmed queue on slave.")
@@ -372,8 +366,8 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 	reduced := false
 	for {
 		if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-			//nsqLog.LogDebugf("move confirm: %v, msg: %v",
-			//    c.currentLastConfirmed, m.ID)
+			nsqLog.LogDebugf("move confirm: %v, msg: %v",
+				c.currentLastConfirmed, m.ID)
 			c.currentLastConfirmed += m.rawMoveSize
 			delete(c.confirmedMsgs, m.offset)
 			reduced = true
@@ -635,6 +629,7 @@ func (c *Channel) DisableConsume(disable bool) {
 		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 1, 0) {
 			return
 		}
+		nsqLog.Logf("channel %v disabled for consume", c.name)
 		for cid, client := range c.clients {
 			client.Exit()
 			delete(c.clients, cid)
@@ -645,26 +640,48 @@ func (c *Channel) DisableConsume(disable bool) {
 			delete(c.waitingRequeueMsgs, k)
 		}
 		c.waitingRequeueMutex.Unlock()
+		c.confirmMutex.Lock()
+		c.confirmedMsgs = make(map[BackendOffset]*Message)
+		c.confirmMutex.Unlock()
+
 		done := false
 		for !done {
 			select {
-			case <-c.clientMsgChan:
+			case m := <-c.clientMsgChan:
+				nsqLog.Logf("ignored a read message %v at offset %v while disable consume", m.ID, m.offset)
 			case <-c.requeuedMsgChan:
 			default:
 				done = true
 			}
 		}
 	} else {
-		// TODO: we need reset backend read position to confirm position
+		nsqLog.Logf("channel %v enabled for consume", c.name)
+		// we need reset backend read position to confirm position
 		// since we dropped all inflight and requeue data while disable consume.
-		// currentLastConfirmed should be handled also.
 		atomic.StoreInt32(&c.consumeDisabled, 0)
+
+		done := false
+		for !done {
+			select {
+			case m := <-c.clientMsgChan:
+				nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.offset)
+			case <-c.requeuedMsgChan:
+			default:
+				done = true
+			}
+		}
+
+		c.resetReaderToConfirmed()
 		select {
 		case c.tryReadBackend <- true:
 		default:
 		}
 	}
 	c.notifyCall(c)
+}
+
+func (c *Channel) resetReaderToConfirmed() {
+	c.backend.SkipReadToOffset(c.currentLastConfirmed)
 }
 
 // messagePump reads messages from either memory or backend and sends

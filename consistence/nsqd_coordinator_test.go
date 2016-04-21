@@ -687,6 +687,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, msg.ID)
 		test.Nil(t, err)
 
+		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
 		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
@@ -737,15 +738,23 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		t.Log(logs)
 	}
 	topicData2.ForceFlush()
+	time.Sleep(time.Second)
 	test.Equal(t, int64(channel1.GetChannelEnd()), int64(msgCnt)*msgRawSize)
 	test.Equal(t, int64(channel2.GetChannelEnd()), int64(msgCnt)*msgRawSize)
 	test.Equal(t, int64(channel1.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
 	test.Equal(t, int64(channel2.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
+	test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
+	test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
+	channel2.EnableTrace = true
+	channel1.EnableTrace = true
+	topicData1.EnableTrace = true
+	topicData2.EnableTrace = true
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel2.GetClientMsgChan()
 		channel2.StartInFlightTimeout(msg, 1, 10)
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
 		test.Nil(t, err)
+		time.Sleep(time.Millisecond)
 		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
 		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
 	}
