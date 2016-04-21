@@ -97,8 +97,8 @@ func New(opts *Options) *NSQD {
 		os.Exit(1)
 	}
 
-	if opts.ID < 0 || opts.ID >= 1024 {
-		nsqLog.LogErrorf("FATAL: --worker-id must be [0,1024)")
+	if opts.ID < 0 || opts.ID >= MAX_NODE_ID {
+		nsqLog.LogErrorf("FATAL: --worker-id must be [0,%d)", MAX_NODE_ID)
 		os.Exit(1)
 	}
 

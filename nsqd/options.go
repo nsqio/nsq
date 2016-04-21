@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+const (
+	MAX_NODE_ID = 1024 * 1024
+)
+
 type Options struct {
 	// basic options
 	ID                         int64    `flag:"worker-id" cfg:"id"`
@@ -88,7 +92,7 @@ func NewOptions() *Options {
 
 	h := md5.New()
 	io.WriteString(h, hostname)
-	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
+	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % MAX_NODE_ID)
 
 	return &Options{
 		ID: defaultID,
