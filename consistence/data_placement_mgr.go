@@ -36,6 +36,7 @@ func (self *NodeTopicStats) GetNodeLoadFactor() float64 {
 	return leaderLf + float64(totalDataSize)/2.00
 }
 
+// TODO: handle recent avg load in 24hr.
 func (self *NodeTopicStats) GetNodeLeaderLoadFactor() (*NodeTopicStats, float64) {
 	perCpuStat := self.GetPerCPUStats()
 	totalConsumed := 0
