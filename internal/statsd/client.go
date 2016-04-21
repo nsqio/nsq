@@ -24,8 +24,8 @@ func (c *Client) String() string {
 	return c.addr
 }
 
-func (c *Client) CreateSocket() error {
-	conn, err := net.DialTimeout("udp", c.addr, time.Second)
+func (c *Client) CreateSocket(protocol string) error {
+	conn, err := net.DialTimeout(protocol, c.addr, time.Second)
 	if err != nil {
 		return err
 	}

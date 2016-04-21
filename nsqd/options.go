@@ -60,6 +60,7 @@ type Options struct {
 	// statsd integration
 	StatsdAddress  string        `flag:"statsd-address"`
 	StatsdPrefix   string        `flag:"statsd-prefix"`
+	StatsdProtocol string        `flag:"statsd-protocol"`
 	StatsdInterval time.Duration `flag:"statsd-interval" arg:"1s"`
 	StatsdMemStats bool          `flag:"statsd-mem-stats"`
 
@@ -132,6 +133,7 @@ func NewOptions() *Options {
 		MaxConfirmWin:          500,
 
 		StatsdPrefix:   "nsq.%s",
+		StatsdProtocol: "udp",
 		StatsdInterval: 60 * time.Second,
 		StatsdMemStats: true,
 

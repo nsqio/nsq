@@ -178,9 +178,6 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO: one day I'd really like to just error on chunked requests
-	// to be able to fail "too big" requests before we even read
-
 	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -234,9 +231,6 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO: one day I'd really like to just error on chunked requests
-	// to be able to fail "too big" requests before we even read
-
 	if req.ContentLength > s.ctx.getOpts().MaxBodySize {
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}

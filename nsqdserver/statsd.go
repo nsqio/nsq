@@ -36,9 +36,9 @@ func (n *NsqdServer) statsdLoop() {
 			goto exit
 		case <-ticker.C:
 			client := statsd.NewClient(opts.StatsdAddress, opts.StatsdPrefix)
-			err := client.CreateSocket()
+			err := client.CreateSocket(opts.StatsdProtocol)
 			if err != nil {
-				nsqd.NsqLogger().LogErrorf("failed to create UDP socket to statsd(%s)", client)
+				nsqd.NsqLogger().LogErrorf("failed to create %v socket to statsd(%s)", opts.StatsdProtocol, client)
 				continue
 			}
 
