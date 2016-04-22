@@ -13,8 +13,8 @@ import (
 	"path"
 	"strconv"
 
-	etcdlock "github.com/reechou/xlock"
 	"github.com/coreos/go-etcd/etcd"
+	etcdlock "github.com/reechou/xlock"
 	"time"
 )
 
@@ -84,7 +84,7 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		Topic:       topic,
 		Partition:   partition,
 		LeaderNode:  nodeData,
-		Session:     hostname+strconv.FormatInt(time.Now().Unix(), 10),
+		Session:     hostname + strconv.FormatInt(time.Now().Unix(), 10),
 		LeaderEpoch: epoch,
 	}
 	valueB, err := json.Marshal(topicLeaderSession)

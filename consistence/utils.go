@@ -8,9 +8,9 @@
 package consistence
 
 import (
-	"strings"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/coreos/go-etcd/etcd"
 )

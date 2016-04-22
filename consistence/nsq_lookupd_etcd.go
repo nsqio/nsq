@@ -9,15 +9,14 @@ package consistence
 
 import (
 	"encoding/json"
-	"fmt"
 	"path"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 
-	etcdlock "github.com/reechou/xlock"
 	"github.com/coreos/go-etcd/etcd"
+	etcdlock "github.com/reechou/xlock"
 )
 
 const (
@@ -57,14 +56,14 @@ type NsqLookupdEtcdMgr struct {
 
 func NewNsqLookupdEtcdMgr(client *etcd.Client) *NsqLookupdEtcdMgr {
 	return &NsqLookupdEtcdMgr{
-		client:                  client,
-		ifTopicChanged:          true,
-		watchTopicLeaderStopCh:  make(chan bool, 1),
-		watchTopicsStopCh:       make(chan bool, 1),
-		watchNsqdNodesStopCh:    make(chan bool, 1),
-		topicMetaMap:            make(map[string]TopicMetaInfo),
-		watchTopicLeaderChanMap: make(map[string]WatchTopicLeaderInfo),
-		watchTopicLeaderChan:    make(chan *WatchTopicLeaderInfo, 1),
+		client:                    client,
+		ifTopicChanged:            true,
+		watchTopicLeaderStopCh:    make(chan bool, 1),
+		watchTopicsStopCh:         make(chan bool, 1),
+		watchNsqdNodesStopCh:      make(chan bool, 1),
+		topicMetaMap:              make(map[string]TopicMetaInfo),
+		watchTopicLeaderChanMap:   make(map[string]*WatchTopicLeaderInfo),
+		watchTopicLeaderEventChan: make(chan *WatchTopicLeaderInfo, 1),
 	}
 }
 
@@ -256,7 +255,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 	}
 }
 
-func (self *NsqLookupdEtcdMgr) scanTopics() ([]*TopicPartionMetaInfo, error) {
+func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
 	rsp, err := self.client.Get(self.createTopicRootPath(), false, true)
 	if err != nil {
 		return nil, err
@@ -317,7 +316,7 @@ func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int)
 	select {
 	case self.watchTopicLeaderEventChan <- watchTopicLeaderInfo:
 	default:
-		return
+		return nil
 	}
 	return nil
 }
