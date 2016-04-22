@@ -9,6 +9,8 @@ var (
 	ErrLeaderSessionAlreadyExist = errors.New("leader session already exist")
 )
 
+type EpochType int64
+
 type NsqdNodeInfo struct {
 	ID      string
 	NodeIp  string
@@ -26,7 +28,7 @@ type NsqLookupdNodeInfo struct {
 	HttpPort string
 	TcpPort  string
 	RpcPort  string
-	Epoch    int
+	Epoch    EpochType
 }
 
 func (self *NsqLookupdNodeInfo) GetID() string {
@@ -44,7 +46,7 @@ type TopicPartionMetaInfo struct {
 	Leader      string
 	ISR         []string
 	CatchupList []string
-	Epoch       int
+	Epoch       EpochType
 	Replica     int
 	// the suggest load factor for each topic partition.
 	SuggestLF int
@@ -60,7 +62,7 @@ type TopicLeaderSession struct {
 	Partition   int
 	LeaderNode  *NsqdNodeInfo
 	Session     string
-	LeaderEpoch int
+	LeaderEpoch EpochType
 }
 
 func (self *TopicLeaderSession) IsSame(other *TopicLeaderSession) bool {
@@ -95,10 +97,11 @@ type NSQLookupdLeadership interface {
 	Register(value *NsqLookupdNodeInfo) error
 	Unregister() error
 	Stop()
+	GetClusterEpoch() (EpochType, error)
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
-	UpdateLookupEpoch(oldGen int) (int, error)
+	UpdateLookupEpoch(oldGen EpochType) (EpochType, error)
 	// cluster nsqd node
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
 	ScanTopics() ([]TopicPartionMetaInfo, error)
@@ -124,7 +127,7 @@ type NSQDLeadership interface {
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
 	// get the topic leadership lock.
-	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch int, topicLeader chan *TopicLeaderSession) error
+	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType, topicLeader chan *TopicLeaderSession) error
 	// release the lock using the acquired session.
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	// all registered lookup nodes.

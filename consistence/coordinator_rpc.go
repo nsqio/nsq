@@ -46,14 +46,14 @@ type NsqdNodeLoadFactor struct {
 
 type RpcAdminTopicInfo struct {
 	TopicPartionMetaInfo
-	LookupdEpoch int
+	LookupdEpoch EpochType
 	DisableWrite bool
 }
 
 type RpcTopicLeaderSession struct {
 	RpcTopicData
 	LeaderNode   *NsqdNodeInfo
-	LookupdEpoch int
+	LookupdEpoch EpochType
 	JoinSession  string
 }
 
@@ -101,7 +101,7 @@ func (self *NsqdCoordRpcServer) stop() {
 	}
 }
 
-func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch int) *CoordErr {
+func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *CoordErr {
 	if lookupEpoch < self.nsqdCoord.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
@@ -134,7 +134,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
-		LeaderEpoch: int(rpcTopicReq.TopicLeaderSessionEpoch),
+		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {
@@ -283,8 +283,8 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 type RpcTopicData struct {
 	TopicName               string
 	TopicPartition          int
-	TopicEpoch              int32
-	TopicLeaderSessionEpoch int32
+	TopicEpoch              EpochType
+	TopicLeaderSessionEpoch EpochType
 	TopicLeaderSession      string
 }
 
