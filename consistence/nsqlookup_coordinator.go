@@ -1746,6 +1746,7 @@ func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMet
 	// try
 	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo, currentNodes)
 	if err != nil {
+		// TODO: triggle to add catchup.
 		return err
 	}
 	if newLeader == "" {

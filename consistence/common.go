@@ -121,6 +121,7 @@ var (
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)
 	ErrTopicCatchupAlreadyRunning = NewCoordErr("topic is already running catchup", CoordCommonErr)
+	ErrTopicArgError              = NewCoordErr("topic argument error", CoordCommonErr)
 
 	ErrMissingTopicLog             = NewCoordErr("missing topic log ", CoordLocalErr)
 	ErrLocalTopicPartitionMismatch = NewCoordErr("local topic partition not match", CoordLocalErr)

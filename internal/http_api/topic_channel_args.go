@@ -46,18 +46,18 @@ func GetTopicChannelArgs(rp getter) (string, string, error) {
 func GetTopicPartitionArgs(rp getter) (string, int, error) {
 	topicName, err := GetTopicArg(rp)
 	if err != nil {
-		return "", 0, err
+		return "", -1, err
 	}
 
 	topicPartStr := rp.Get("partition")
-	topicPart := 0
+	topicPart := -1
 	if topicPartStr == "" {
-		topicPart = 0
+		topicPart = -1
 	} else {
 		var err error
 		topicPart, err = strconv.Atoi(topicPartStr)
 		if err != nil {
-			return "", 0, err
+			return "", -1, err
 		}
 	}
 	return topicName, topicPart, nil
@@ -66,15 +66,15 @@ func GetTopicPartitionArgs(rp getter) (string, int, error) {
 func GetTopicPartitionChannelArgs(rp getter) (string, int, string, error) {
 	topicName, topicPart, err := GetTopicPartitionArgs(rp)
 	if err != nil {
-		return "", 0, "", err
+		return "", -1, "", err
 	}
 	channelName := rp.Get("channel")
 	if channelName == "" {
-		return "", 0, "", errors.New("MISSING_ARG_CHANNEL")
+		return "", -1, "", errors.New("MISSING_ARG_CHANNEL")
 	}
 
 	if !protocol.IsValidChannelName(channelName) {
-		return "", 0, "", errors.New("INVALID_ARG_CHANNEL")
+		return "", -1, "", errors.New("INVALID_ARG_CHANNEL")
 	}
 
 	return topicName, topicPart, channelName, nil
