@@ -8,10 +8,15 @@
 package consistence
 
 import (
-	"strings"
 	"net/url"
+	"os"
+	"strings"
 
 	"github.com/coreos/go-etcd/etcd"
+)
+
+var (
+	hostname string
 )
 
 func NewEtcdClient(etcdHost string) *etcd.Client {
@@ -40,4 +45,8 @@ func initEtcdPeers(machines []string) error {
 func CheckKeyIfExist(err error) bool {
 	etcdErr, ok := err.(*etcd.EtcdError)
 	return ok && etcdErr != nil && etcdErr.ErrorCode == 100
+}
+
+func init() {
+	hostname, _ = os.Hostname()
 }
