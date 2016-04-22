@@ -23,6 +23,7 @@ mkdir -p $DIR/.godeps
 export GOPATH=$DIR/.godeps:$GOPATH
 GOPATH=$DIR/.godeps gpm install
 
+GOFLAGS='-ldflags="-s -w"'
 arch=$(go env GOARCH)
 version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
@@ -35,7 +36,7 @@ for os in linux darwin freebsd windows; do
     BUILD=$(mktemp -d -t nsq)
     TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        make DESTDIR=$BUILD PREFIX=/$TARGET install
+        make DESTDIR=$BUILD PREFIX=/$TARGET GOFLAGS="$GOFLAGS" install
     pushd $BUILD
     if [ "$os" == "linux" ]; then
         cp -r $TARGET/bin $DIR/dist/docker/
