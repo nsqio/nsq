@@ -22,7 +22,7 @@ type FakeNsqlookupLeadership struct {
 	topicReplica         map[string]int
 	fakeNsqdNodes        map[string]NsqdNodeInfo
 	nodeChanged          chan struct{}
-	fakeEpoch            int
+	fakeEpoch            EpochType
 	fakeLeader           *NsqLookupdNodeInfo
 	leaderChanged        chan struct{}
 	leaderSessionChanged chan *TopicLeaderSession

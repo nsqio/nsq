@@ -69,11 +69,11 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 	}
 }
 
-func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
+func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch EpochType, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = leaderSession.Session
-	rpcInfo.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
+	rpcInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	rpcInfo.LeaderNode = leaderSession.LeaderNode
 	rpcInfo.JoinSession = joinSession
 	rpcInfo.TopicName = topicInfo.Name
@@ -83,7 +83,7 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch int, topicInfo *TopicP
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) UpdateTopicInfo(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
@@ -92,7 +92,7 @@ func (self *NsqdRpcClient) UpdateTopicInfo(epoch int, topicInfo *TopicPartionMet
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) EnableTopicWrite(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
@@ -101,7 +101,7 @@ func (self *NsqdRpcClient) EnableTopicWrite(epoch int, topicInfo *TopicPartionMe
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) DisableTopicWrite(epoch int, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) DisableTopicWrite(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartionMetaInfo = *topicInfo
@@ -131,8 +131,8 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
-	updateInfo.TopicEpoch = int32(info.Epoch)
-	updateInfo.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
+	updateInfo.TopicEpoch = info.Epoch
+	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
@@ -147,8 +147,8 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessage = message
-	putData.TopicEpoch = int32(info.Epoch)
-	putData.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
+	putData.TopicEpoch = info.Epoch
+	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessage", putData, &retErr)
@@ -161,8 +161,8 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages
-	putData.TopicEpoch = int32(info.Epoch)
-	putData.TopicLeaderSessionEpoch = int32(leaderSession.LeaderEpoch)
+	putData.TopicEpoch = info.Epoch
+	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.PutMessages", putData, &retErr)

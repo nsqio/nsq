@@ -96,12 +96,12 @@ func (self *coordData) GetLeaderSession() string {
 	return self.topicLeaderSession.Session
 }
 
-func (self *coordData) GetLeaderSessionEpoch() int32 {
-	return int32(self.topicLeaderSession.LeaderEpoch)
+func (self *coordData) GetLeaderSessionEpoch() EpochType {
+	return self.topicLeaderSession.LeaderEpoch
 }
 
-func (self *coordData) GetTopicEpoch() int32 {
-	return int32(self.topicInfo.Epoch)
+func (self *coordData) GetTopicEpoch() EpochType {
+	return self.topicInfo.Epoch
 }
 
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {

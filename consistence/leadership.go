@@ -115,7 +115,7 @@ type NSQLookupdLeadership interface {
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
 	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, int)
-	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error
+	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen EpochType) error
 	// get leadership information
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.

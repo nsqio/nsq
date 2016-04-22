@@ -171,7 +171,7 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	// to the nsqlookup admin operation.
 	nsqlookupLeaderChan := make(chan *NsqLookupdNodeInfo, 1)
 	if self.leadership != nil {
-		go self.leadership.WatchLookupdLeader("nsqlookup-leader", nsqlookupLeaderChan, self.stopChan)
+		go self.leadership.WatchLookupdLeader(nsqlookupLeaderChan, self.stopChan)
 	}
 	for {
 		select {
@@ -373,9 +373,13 @@ func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo,
 
 func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
 	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
-	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, &self.myNode)
+	// TODO: leader channel should be closed if not success,
+	// how to handle acquire twice by the same node?
+	leaderChan := make(chan *TopicLeaderSession, 1)
+	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, &self.myNode, topicInfo.Epoch, leaderChan)
 	if err != nil {
 		coordLog.Infof("failed to acquire leader for topic(%v): %v", topicInfo.Name, err)
+		close(leaderChan)
 		return &CoordErr{err.Error(), RpcNoErr, CoordElectionErr}
 	}
 	return nil
@@ -775,7 +779,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLS *TopicLeaderSession, joinSession string) *CoordErr {
 	topicCoord.dataRWMutex.Lock()
-	if newLS.LeaderEpoch < int(topicCoord.GetLeaderSessionEpoch()) {
+	if newLS.LeaderEpoch < topicCoord.GetLeaderSessionEpoch() {
 		topicCoord.dataRWMutex.Unlock()
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent

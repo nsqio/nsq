@@ -593,7 +593,7 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartionMeta
 		}
 	}
 	if catchupChanged {
-		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, int(topicInfo.Epoch))
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 		if err != nil {
 			coordLog.Infof("update topic node info failed: %v", err.Error())
 			return
@@ -1430,7 +1430,7 @@ func (self *NsqLookupCoordinator) addRetryFailedRpc(topic string, partition int,
 	self.failedRpcMutex.Unlock()
 }
 
-func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo,
+func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch EpochType, nid string, topicInfo *TopicPartionMetaInfo,
 	leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	c, err := self.acquireRpcClient(nid)
 	if err != nil {
@@ -1444,7 +1444,7 @@ func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid st
 	return err
 }
 
-func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch EpochType, nid string, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	c, rpcErr := self.acquireRpcClient(nid)
 	if rpcErr != nil {
 		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
