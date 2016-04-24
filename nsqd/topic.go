@@ -52,17 +52,16 @@ type Topic struct {
 	deleteCallback func(*Topic)
 	deleter        sync.Once
 
-	notifyCall     func(v interface{})
-	option         *Options
-	MsgIDCursor    MsgIDGenerator
-	defaultIDSeq   uint64
-	needFlush      int32
-	needNotifyChan bool
-	EnableTrace    bool
-	syncEvery      int64
-	putBuffer      bytes.Buffer
-	bp             sync.Pool
-	writeDisabled  int32
+	notifyCall    func(v interface{})
+	option        *Options
+	MsgIDCursor   MsgIDGenerator
+	defaultIDSeq  uint64
+	needFlush     int32
+	EnableTrace   bool
+	syncEvery     int64
+	putBuffer     bytes.Buffer
+	bp            sync.Pool
+	writeDisabled int32
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -104,8 +103,7 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(opt.MaxMsgSize)+minValidMsgLength,
-			opt.SyncEvery,
-			opt.SyncTimeout)
+			opt.SyncEvery)
 	}
 
 	t.notifyCall(t)
@@ -475,6 +473,7 @@ func (t *Topic) exit(deleted bool) error {
 
 	// write anything leftover to disk
 	t.flush(true)
+	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {
 		err := channel.Close()
@@ -483,6 +482,7 @@ func (t *Topic) exit(deleted bool) error {
 			nsqLog.Logf(" channel(%s) close - %s", channel.name, err)
 		}
 	}
+	t.channelLock.RUnlock()
 
 	return t.backend.Close()
 }
@@ -527,8 +527,7 @@ func (t *Topic) ForceFlush() {
 func (t *Topic) flush(notifyChan bool) error {
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
 	if !ok {
-		if notifyChan && t.needNotifyChan {
-			t.needNotifyChan = false
+		if notifyChan {
 			t.updateChannelsEnd()
 		}
 		return nil
@@ -539,10 +538,7 @@ func (t *Topic) flush(notifyChan bool) error {
 		return err
 	}
 	if notifyChan {
-		t.needNotifyChan = false
 		t.updateChannelsEnd()
-	} else {
-		t.needNotifyChan = true
 	}
 	return err
 }

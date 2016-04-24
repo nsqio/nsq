@@ -10,7 +10,6 @@ import (
 	"path"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 var (
@@ -47,7 +46,7 @@ type diskQueueWriter struct {
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64, syncTimeout time.Duration) BackendQueueWriter {
+	syncEvery int64) BackendQueueWriter {
 
 	d := diskQueueWriter{
 		name:            name,

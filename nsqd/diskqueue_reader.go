@@ -77,8 +77,7 @@ type diskQueueReader struct {
 	maxBytesPerFile int64 // currently this cannot change once created
 	minMsgSize      int32
 	maxMsgSize      int32
-	syncEvery       int64         // number of writes per fsync
-	syncTimeout     time.Duration // duration of time per fsync
+	syncEvery       int64 // number of writes per fsync
 	exitFlag        int32
 	needSync        bool
 
@@ -131,7 +130,6 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		confirmChan:            make(chan BackendOffset),
 		confirmResponseChan:    make(chan error),
 		syncEvery:              syncEvery,
-		syncTimeout:            syncTimeout,
 		autoSkipError:          autoSkip,
 	}
 
@@ -196,6 +194,7 @@ func (d *diskQueueReader) exit(deleted bool) error {
 
 	d.exitFlag = 1
 	close(d.exitChan)
+	nsqLog.Logf("diskqueue(%s) exiting ", d.readerMetaName)
 	// ensure that ioLoop has exited
 	<-d.exitSyncChan
 
@@ -225,6 +224,16 @@ func (d *diskQueueReader) ConfirmRead(offset BackendOffset) error {
 	}
 	d.confirmChan <- offset
 	return <-d.confirmResponseChan
+}
+
+func (d *diskQueueReader) Flush() {
+	d.RLock()
+	defer d.RUnlock()
+	if d.exitFlag == 1 {
+		return
+	}
+	d.endUpdatedChan <- nil
+	<-d.endUpdatedResponseChan
 }
 
 func (d *diskQueueReader) updateDepth() {
@@ -727,7 +736,7 @@ func (d *diskQueueReader) ioLoop() {
 		maxConfirmWin = BackendOffset(d.maxBytesPerFile)
 	}
 
-	syncTicker := time.NewTicker(d.syncTimeout)
+	defer close(d.exitSyncChan)
 
 	for {
 		// dont sync all the time :)
@@ -809,6 +818,12 @@ func (d *diskQueueReader) ioLoop() {
 			}
 			d.skipResponseChan <- skiperr
 		case endPos := <-d.endUpdatedChan:
+			if endPos == nil {
+				count = 0
+				d.sync()
+				d.endUpdatedResponseChan <- nil
+				continue
+			}
 			if d.endPos.FileNum != endPos.EndFileNum && endPos.EndPos == 0 {
 				// a new file for the position
 				count = 0
@@ -837,11 +852,6 @@ func (d *diskQueueReader) ioLoop() {
 			count++
 			d.confirmResponseChan <- d.internalConfirm(confirmInfo)
 
-		case <-syncTicker.C:
-			if count > 0 {
-				count = 0
-				d.needSync = true
-			}
 		case <-d.exitChan:
 			goto exit
 		}
@@ -849,6 +859,4 @@ func (d *diskQueueReader) ioLoop() {
 
 exit:
 	nsqLog.Logf("DISKQUEUE(%s): closing ... ioLoop", d.readerMetaName)
-	syncTicker.Stop()
-	close(d.exitSyncChan)
 }
