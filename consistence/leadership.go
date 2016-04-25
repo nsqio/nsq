@@ -114,6 +114,7 @@ type NSQLookupdLeadership interface {
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
 	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, EpochType)
+	// the epoch in topicInfo should be updated to the new epoch
 	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen EpochType) error
 	// get leadership information
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
