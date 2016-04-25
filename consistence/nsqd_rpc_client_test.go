@@ -61,7 +61,7 @@ func (self *fakeNsqdLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, erro
 	return v, nil
 }
 
-func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType, leaderChan chan *TopicLeaderSession) error {
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
@@ -117,7 +117,7 @@ func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int, 
 	return nil
 }
 
-func (self *fakeNsqdLeadership) WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
+func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
 	return nil
 }
 

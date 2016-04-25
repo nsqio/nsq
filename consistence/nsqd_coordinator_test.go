@@ -207,7 +207,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 
 	tmp := make(map[int]*TopicPartionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
-	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1)
+	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch, nil)
 	tmp[partition] = fakeInfo
 
 	nsqd1.GetTopic(topic, partition)
@@ -304,7 +304,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 
 	tmp := make(map[int]*TopicPartionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
-	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1)
+	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch, nil)
 	tmp[partition] = fakeInfo
 
 	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)
@@ -369,7 +369,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	tmp := make(map[int]*TopicPartionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
-	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1)
+	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch, nil)
 	tmp[partition] = fakeInfo
 
 	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)

@@ -184,6 +184,9 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		if ok {
 			tc, ok := coords[rpcTopicReq.Partition]
 			if ok {
+				if tc.GetData().topicInfo.Leader == myID {
+					self.nsqdCoord.releaseTopicLeader(&tc.GetData().topicInfo, &tc.topicLeaderSession)
+				}
 				self.nsqdCoord.localNsqd.CloseExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
 				coordLog.Infof("topic(%s) is removing from local node since not related", rpcTopicReq.Name)
 				tc.logMgr.Close()
