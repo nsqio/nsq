@@ -83,9 +83,14 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.String("config", "", "path to config file")
 	flagSet.Int64("worker-id", opts.ID, "unique seed for message ID generation (int) in range [0,4096) (will default to a hash of hostname)")
 
+	flagSet.String("cluster-id", opts.ClusterID, "cluster id for nsq")
+	clusterLeadershipAddresses := app.StringArray{}
+	flagSet.Var(&clusterLeadershipAddresses, "cluster-leadership-addresses", "cluster leadership server list for nsq")
+
 	flagSet.String("https-address", opts.HTTPSAddress, "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("tcp-address", opts.TCPAddress, "<addr>:<port> to listen on for TCP clients")
+	flagSet.String("rpc-port", opts.RPCPort, "<port> to listen on for RPC communication")
 	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 	flagSet.String("broadcast-address", opts.BroadcastAddress, "address that will be registered with lookupd (defaults to the OS hostname)")
@@ -116,7 +121,8 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int64("max-confirm-win", opts.MaxConfirmWin, "maximum confirm window (in bytes)")
 
 	// statsd integration options
-	flagSet.String("statsd-address", opts.StatsdAddress, "UDP <addr>:<port> of a statsd daemon for pushing stats")
+	flagSet.String("statsd-address", opts.StatsdAddress, " <addr>:<port> of a statsd daemon for pushing stats")
+	flagSet.String("statsd-protocol", opts.StatsdProtocol, "protocol of a statsd daemon for pushing stats")
 	flagSet.String("statsd-interval", opts.StatsdInterval.String(), "duration between pushing to statsd")
 	flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
 	flagSet.String("statsd-prefix", opts.StatsdPrefix, "prefix used for keys sent to statsd (%s for host replacement)")

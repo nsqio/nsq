@@ -55,7 +55,7 @@ func (l *NSQLookupd) Main() {
 	}
 
 	var node consistence.NsqLookupdNodeInfo
-	node.NodeIp, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
+	node.NodeIp, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
 	if l.opts.RPCPort != "" {
 		node.RpcPort = l.opts.RPCPort
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")

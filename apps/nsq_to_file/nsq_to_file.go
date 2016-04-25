@@ -45,7 +45,6 @@ var (
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
-	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 	topics           = app.StringArray{}
 
@@ -54,7 +53,6 @@ var (
 )
 
 func init() {
-	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 	flag.Var(&topics, "topic", "nsq topic (may be given multiple times)")
 }
@@ -372,11 +370,6 @@ func newConsumerFileLogger(topic string, cfg *nsq.Config) (*ConsumerFileLogger, 
 
 	consumer.AddHandler(f)
 
-	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
 	if err != nil {
 		log.Fatal(err)
@@ -476,11 +469,8 @@ func main() {
 
 	var topicsFromNSQLookupd bool
 
-	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
+	if len(lookupdHTTPAddrs) == 0 {
 		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required.")
-	}
-	if len(nsqdTCPAddrs) != 0 && len(lookupdHTTPAddrs) != 0 {
-		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	if *gzipLevel < 1 || *gzipLevel > 9 {

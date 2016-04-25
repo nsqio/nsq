@@ -153,7 +153,7 @@ func GenNsqLookupNodeID(n *NsqLookupdNodeInfo, extra string) string {
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(n.RpcPort)
 	tmpbuf.WriteString(":")
-	tmpbuf.WriteString(n.HttpPort)
+	tmpbuf.WriteString(n.TcpPort)
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(extra)
 	return tmpbuf.String()

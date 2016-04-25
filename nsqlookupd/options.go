@@ -21,7 +21,8 @@ type Options struct {
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
 
-	Logger levellogger.Logger
+	LogLevel int32 `flag:"log-level" cfg:"log_level"`
+	Logger   levellogger.Logger
 }
 
 func NewOptions() *Options {
@@ -41,6 +42,7 @@ func NewOptions() *Options {
 		InactiveProducerTimeout: 300 * time.Second,
 		TombstoneLifetime:       45 * time.Second,
 
-		Logger: &levellogger.GLogger{},
+		LogLevel: 1,
+		Logger:   &levellogger.GLogger{},
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/judwhite/go-svc/svc"
@@ -25,15 +26,20 @@ var (
 
 	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
 	httpAddress      = flagSet.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
-	rpcAddress       = flagSet.String("rpc-address", "0.0.0.0:4162", "<addr>:<port> to listen on for RCP call")
+	rpcPort          = flagSet.String("rpc-port", "", ":<port> to listen on for Rpc call")
 	broadcastAddress = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 
-	etcdAddress = flagSet.String("etcd-address", "", "<addr1>:<port1>, <addr2>:<port2>  the etcd server list")
-	clusterID   = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")
+	clusterLeadershipAddresses = app.StringArray{}
+	clusterID                  = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")
 
 	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
+	logLevel                = flagSet.Int("log-level", 1, "log verbose level")
 )
+
+func init() {
+	flagSet.Var(&clusterLeadershipAddresses, "cluster-leadership-addresses", " the cluster leadership server list")
+}
 
 type program struct {
 	nsqlookupd *nsqlookupd.NSQLookupd
@@ -56,6 +62,7 @@ func (p *program) Init(env svc.Environment) error {
 
 func (p *program) Start() error {
 	glog.InitWithFlag(flagSet)
+
 	flagSet.Parse(os.Args[1:])
 
 	if *showVersion {

@@ -41,7 +41,6 @@ var (
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
 	mode        = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
 
-	nsqdTCPAddrs        = app.StringArray{}
 	lookupdHTTPAddrs    = app.StringArray{}
 	destNsqdTCPAddrs    = app.StringArray{}
 	whitelistJSONFields = app.StringArray{}
@@ -54,7 +53,6 @@ var (
 )
 
 func init() {
-	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 
@@ -302,11 +300,8 @@ func main() {
 		log.Fatal("--channel is invalid")
 	}
 
-	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
-		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required")
-	}
-	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
+	if len(lookupdHTTPAddrs) == 0 {
+		log.Fatal("--lookupd-http-address required")
 	}
 
 	if len(destNsqdTCPAddrs) == 0 {
@@ -379,11 +374,6 @@ func main() {
 
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
 		go handler.responder()
-	}
-
-	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
