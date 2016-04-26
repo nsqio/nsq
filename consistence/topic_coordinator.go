@@ -16,6 +16,7 @@ type coordData struct {
 	channelConsumeOffset map[string]ChannelConsumerOffset
 	localDataLoaded      bool
 	logMgr               *TopicCommitLogMgr
+	forceLeave           bool
 }
 
 type TopicCoordinator struct {
@@ -105,6 +106,9 @@ func (self *coordData) GetTopicEpoch() EpochType {
 }
 
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
+	if self.forceLeave {
+		return ErrNotTopicLeader
+	}
 	if self.GetLeaderSessionID() != myID || self.topicInfo.Leader != myID {
 		return ErrNotTopicLeader
 	}

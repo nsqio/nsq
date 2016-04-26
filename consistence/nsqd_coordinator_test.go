@@ -645,8 +645,18 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	leaderSession.LeaderEpoch++
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 
+	waitDone := make(chan int)
+	go func() {
+		time.Sleep(time.Second)
+		tc, _ := nsqdCoord1.getTopicCoord(topic, partition)
+		tc.forceLeave = true
+		time.Sleep(time.Second)
+		tc.forceLeave = false
+		close(waitDone)
+	}()
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
+	<-waitDone
 	// leader failed previously, so the leader is invalid
 	// re-confirm the leader
 	topicInitInfo.Epoch++
@@ -695,8 +705,21 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	// test write session mismatch
 	leaderSession.Session = "1234new"
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+
+	waitDone = make(chan int)
+	go func() {
+		time.Sleep(time.Second)
+		tc, _ := nsqdCoord1.getTopicCoord(topic, partition)
+		tc.forceLeave = true
+		time.Sleep(time.Second)
+		tc.forceLeave = false
+		close(waitDone)
+	}()
+
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
+	<-waitDone
+
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	// test leader changed
 	topicInitInfo.Leader = nsqdCoord2.myNode.GetID()

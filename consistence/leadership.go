@@ -23,11 +23,12 @@ func (self *NsqdNodeInfo) GetID() string {
 }
 
 type NsqLookupdNodeInfo struct {
-	ID      string
-	NodeIp  string
-	TcpPort string
-	RpcPort string
-	Epoch   EpochType
+	ID       string
+	NodeIp   string
+	TcpPort  string
+	HttpPort string
+	RpcPort  string
+	Epoch    EpochType
 }
 
 func (self *NsqLookupdNodeInfo) GetID() string {

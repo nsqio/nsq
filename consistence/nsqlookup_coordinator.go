@@ -140,6 +140,10 @@ func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, er
 	return self.leadership.GetAllLookupdNodes()
 }
 
+func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
+	return self.leaderNode
+}
+
 func (self *NsqLookupCoordinator) handleLeadership() {
 	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
 	if self.leadership != nil {
@@ -1639,10 +1643,20 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 		}
 		if len(topicInfo.ISR) >= topicInfo.Replica && len(topicInfo.CatchupList) > 0 {
 			oldCatchupList := topicInfo.CatchupList
-			coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
 			topicInfo.CatchupList = make([]string, 0)
-			self.notifyTopicMetaInfo(topicInfo)
-			self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
+			err := self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
+			if err != nil {
+				coordLog.Infof("removing catchup failed : %v", err)
+				topicInfo.CatchupList = oldCatchupList
+			} else {
+				coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
+				err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+				if err != nil {
+					coordLog.Infof("update catchup info failed while removing catchup: %v", err)
+				} else {
+					self.notifyTopicMetaInfo(topicInfo)
+				}
+			}
 		}
 	}()
 	return nil

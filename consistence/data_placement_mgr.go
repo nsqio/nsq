@@ -9,6 +9,8 @@ import (
 // so we use the advised load to determine the actual topic load.
 // use 1~10 to advise from lowest to highest. The 1 or 10 should be used with much careful.
 
+// TODO: support topic move from one to another by manual.
+
 const (
 	defaultTopicLoadFactor = 3
 )

@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"github.com/absolute8511/nsq/nsqd"
+	// TODO: use the gorpc for performance and timeout
 	_ "github.com/valyala/gorpc"
 	"io"
 	"net"
