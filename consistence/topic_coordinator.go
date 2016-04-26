@@ -3,6 +3,7 @@ package consistence
 import (
 	"os"
 	"sync"
+	"time"
 )
 
 type ChannelConsumerOffset struct {
@@ -17,6 +18,7 @@ type coordData struct {
 	localDataLoaded      bool
 	logMgr               *TopicCommitLogMgr
 	forceLeave           bool
+	disableWrite         bool
 }
 
 type TopicCoordinator struct {
@@ -27,7 +29,6 @@ type TopicCoordinator struct {
 	writeHold      sync.Mutex
 	catchupRunning int32
 	exiting        bool
-	disableWrite   bool
 	localDataState int32
 }
 
@@ -58,9 +59,29 @@ func (self *TopicCoordinator) GetData() *coordData {
 }
 
 func (self *TopicCoordinator) DisableWrite(disable bool) {
+	// hold the write lock to wait the current write finish.
 	self.writeHold.Lock()
+	self.dataRWMutex.Lock()
 	self.disableWrite = disable
+	self.dataRWMutex.Unlock()
 	self.writeHold.Unlock()
+}
+
+func (self *TopicCoordinator) DisableWriteWithTimeout(disable bool) *CoordErr {
+	// hold the write lock to wait the current write finish.
+	begin := time.Now()
+	var err *CoordErr
+	self.writeHold.Lock()
+	if time.Now().After(begin.Add(time.Second * 3)) {
+		// timeout for waiting
+		err = ErrOperationExpired
+	} else {
+		self.dataRWMutex.Lock()
+		self.disableWrite = disable
+		self.dataRWMutex.Unlock()
+	}
+	self.writeHold.Unlock()
+	return err
 }
 
 func (self *TopicCoordinator) Exiting() {

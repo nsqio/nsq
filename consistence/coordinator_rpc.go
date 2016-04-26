@@ -125,7 +125,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		*ret = *err
 		return nil
 	}
-	if rpcTopicReq.JoinSession != "" && !topicCoord.disableWrite {
+	if rpcTopicReq.JoinSession != "" && !topicCoord.GetData().disableWrite {
 		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
 			coordLog.Errorf("join session should disable write first")
 			*ret = *ErrTopicCoordStateInvalid
@@ -237,7 +237,10 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, 
 		*ret = *err
 		return nil
 	}
-	tp.DisableWrite(false)
+	err = tp.DisableWriteWithTimeout(false)
+	if err != nil {
+		*ret = *err
+	}
 	return nil
 }
 
@@ -253,7 +256,10 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo,
 		*ret = *err
 		return nil
 	}
-	tp.DisableWrite(true)
+	err = tp.DisableWriteWithTimeout(true)
+	if err != nil {
+		*ret = *err
+	}
 	return nil
 }
 
@@ -263,7 +269,7 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq RpcAdminTopicIn
 		*ret = false
 		return nil
 	}
-	*ret = tp.disableWrite
+	*ret = tp.GetData().disableWrite
 	return nil
 }
 
