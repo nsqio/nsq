@@ -80,7 +80,7 @@ func TestLookupd(t *testing.T) {
 	fmt.Println("--- sleep 5 second ---")
 	time.Sleep(5 * time.Second)
 
-	err = nodeMgr.AcquireTopicLeader(topic, 0, nodeInfo)
+	err = nodeMgr.AcquireTopicLeader(topic, 0, nodeInfo, 100)
 	if err != nil {
 		fmt.Println("AcquireTopicLeader error:", err.Error())
 		return
@@ -134,33 +134,11 @@ func TestLookupd(t *testing.T) {
 	}
 	fmt.Println("Topic Node Info gen:", oldGen)
 
-	// create topic catchup list
-	catchupList := []string{"127.0.0.1"}
-	err, oldGenC := lookupdMgr.CreateTopicCatchupList(topic, 0, catchupList)
-	if err != nil {
-		fmt.Println("CreateTopicCatchupList error:", err.Error())
-		return
-	}
-	fmt.Println("Topic catchup gen:", oldGenC)
-
 	// update
 	err = lookupdMgr.UpdateTopicNodeInfo(topic, 0, topicNodeInfo, oldGen)
 	if err != nil {
 		fmt.Println("UpdateTopicNodeInfo error:", err.Error())
 		return
-	}
-
-	err = lookupdMgr.UpdateTopicCatchupList(topic, 0, catchupList, oldGenC)
-	if err != nil {
-		fmt.Println("UpdateTopicCatchupList error:", err.Error())
-		return
-	}
-	err = lookupdMgr.CreateChannel(topic, 0, "channel-1")
-	if err != nil {
-		fmt.Println("CreateChannel error:", err.Error())
-		return
-	} else {
-		fmt.Println("create channel [channel-1] success topic:", topic)
 	}
 
 	// get
@@ -182,15 +160,6 @@ func TestLookupd(t *testing.T) {
 	// time sleep
 	fmt.Println("--- sleep 10 second ---")
 	time.Sleep(10 * time.Second)
-
-	// delete channel
-	err = lookupdMgr.DeleteChannel(topic, 0, "channel-1")
-	if err != nil {
-		fmt.Println("DeleteChannel error:", err.Error())
-		return
-	} else {
-		fmt.Println("delete channel success.")
-	}
 
 	// delete topic
 	err = lookupdMgr.DeleteTopic(topic, 0)
