@@ -215,8 +215,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 				}
 			}
 
-			// avoid too much command once, we need sleep here
-			for _, cmd := range commands {
+			for index, cmd := range commands {
 				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s", lookupPeer, cmd)
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
@@ -233,7 +232,10 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 					}
 					break
 				}
-				time.Sleep(time.Millisecond * 100)
+				// avoid too much command once, we need sleep here
+				if index%10 == 0 {
+					time.Sleep(time.Millisecond * 10)
+				}
 			}
 		case <-optsNotifyChan:
 			changed = true
