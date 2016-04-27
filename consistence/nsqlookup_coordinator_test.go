@@ -313,7 +313,7 @@ func (self *FakeNsqlookupLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) erro
 	return nil
 }
 
-func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType, leaderChan chan *TopicLeaderSession) error {
+func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error {
 	l, err := self.GetTopicLeaderSession(topic, partition)
 	if err == nil {
 		if l.LeaderNode == nil {
@@ -405,7 +405,7 @@ func TestNsqLookupNsqdNodesChangeWithFake(t *testing.T) {
 }
 
 func TestNsqLookupNsqdNodesChange(t *testing.T) {
-	//testNsqLookupNsqdNodesChange(t, false)
+	testNsqLookupNsqdNodesChange(t, false)
 }
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {

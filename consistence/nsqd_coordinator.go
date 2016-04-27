@@ -379,32 +379,13 @@ func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo)
 	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
 	// TODO: leader channel should be closed if not success,
 	// how to handle acquire twice by the same node?
-	leaderChan := make(chan *TopicLeaderSession, 1)
-	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, &self.myNode, topicInfo.Epoch, leaderChan)
+	err := self.leadership.AcquireTopicLeader(topicInfo.Name, topicInfo.Partition, &self.myNode, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("failed to acquire leader for topic(%v): %v", topicInfo.Name, err)
-		close(leaderChan)
 		return &CoordErr{err.Error(), RpcNoErr, CoordElectionErr}
 	}
 
-	go func() {
-		for {
-			select {
-			case l, ok := <-leaderChan:
-				if !ok {
-					coordLog.Infof("topic leader watch exit: ", topicInfo.Name)
-					return
-				}
-				coordLog.Infof("topic %v leader changed: %v", topicInfo.Name, l)
-				if l.LeaderNode.GetID() != self.myNode.GetID() {
-					self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, nil)
-				}
-			case <-self.stopChan:
-				self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, nil)
-				return
-			}
-		}
-	}()
+	coordLog.Infof("acquiring leader for topic(%v) success", topicInfo.Name)
 	return nil
 }
 
