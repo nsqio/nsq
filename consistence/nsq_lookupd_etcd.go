@@ -272,7 +272,7 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
 			if err = json.Unmarshal([]byte(node.Value), &topicInfo); err != nil {
 				continue
 			}
-			topicInfo.Epoch = int(rsp.Node.ModifiedIndex)
+			topicInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 			self.topicMetaInfos = append(self.topicMetaInfos, topicInfo)
 		}
 	}

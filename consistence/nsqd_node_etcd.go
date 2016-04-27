@@ -40,7 +40,7 @@ func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
 	client := NewEtcdClient(host)
 	return &NsqdEtcdMgr{
 		client:       client,
-		topicLockMap: make(map[string]*MasterChanInfo),
+		topicLockMap: make(map[string]*etcdlock.SeizeLock),
 	}
 }
 
@@ -76,7 +76,7 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	return nil
 }
 
-func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch int) error {
+func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error {
 	topicLeaderSession := &TopicLeaderSession{
 		ClusterID:   self.clusterID,
 		Topic:       topic,
@@ -204,7 +204,7 @@ func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartio
 	if err = json.Unmarshal([]byte(rsp.Node.Value), &topicInfo); err != nil {
 		return nil, err
 	}
-	topicInfo.Epoch = int(rsp.Node.ModifiedIndex)
+	topicInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 	return &topicInfo, nil
 }
 
