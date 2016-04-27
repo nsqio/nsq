@@ -206,7 +206,8 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
 	var buf bytes.Buffer
-	var clientMsgChan chan *Message
+	var memoryMsgChan chan *Message
+	var backendMsgChan chan []byte
 	var subChannel *Channel
 	// NOTE: `flusherChan` is used to bound message latency for
 	// the pathological case of a channel on a low volume topic
@@ -236,7 +237,8 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	for {
 		if subChannel == nil || !client.IsReadyForMessages() {
 			// the client is not ready to receive messages...
-			clientMsgChan = nil
+			memoryMsgChan = nil
+			backendMsgChan = nil
 			flusherChan = nil
 			// force flush
 			client.writeLock.Lock()
@@ -249,12 +251,14 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 		} else if flushed {
 			// last iteration we flushed...
 			// do not select on the flusher ticker channel
-			clientMsgChan = subChannel.clientMsgChan
+			memoryMsgChan = subChannel.memoryMsgChan
+			backendMsgChan = subChannel.backend.ReadChan()
 			flusherChan = nil
 		} else {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
-			clientMsgChan = subChannel.clientMsgChan
+			memoryMsgChan = subChannel.memoryMsgChan
+			backendMsgChan = subChannel.backend.ReadChan()
 			flusherChan = outputBufferTicker.C
 		}
 
@@ -300,14 +304,30 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			if err != nil {
 				goto exit
 			}
-		case msg, ok := <-clientMsgChan:
-			if !ok {
-				goto exit
-			}
-
+		case b := <-backendMsgChan:
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				continue
 			}
+
+			msg, err := decodeMessage(b)
+			if err != nil {
+				p.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
+				continue
+			}
+			msg.Attempts++
+
+			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
+			client.SendingMessage()
+			err = p.SendMessage(client, msg, &buf)
+			if err != nil {
+				goto exit
+			}
+			flushed = false
+		case msg := <-memoryMsgChan:
+			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
+				continue
+			}
+			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()

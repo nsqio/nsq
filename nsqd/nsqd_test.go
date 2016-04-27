@@ -87,6 +87,8 @@ func API(endpoint string) (data *simplejson.Json, err error) {
 }
 
 func TestStartup(t *testing.T) {
+	var msg *Message
+
 	iterations := 300
 	doneExitChan := make(chan int)
 
@@ -133,7 +135,11 @@ func TestStartup(t *testing.T) {
 
 	t.Logf("read %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
-		msg := <-channel1.clientMsgChan
+		select {
+		case msg = <-channel1.memoryMsgChan:
+		case b := <-channel1.backend.ReadChan():
+			msg, _ = decodeMessage(b)
+		}
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
@@ -189,7 +195,11 @@ func TestStartup(t *testing.T) {
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
-		msg := <-channel1.clientMsgChan
+		select {
+		case msg = <-channel1.memoryMsgChan:
+		case b := <-channel1.backend.ReadChan():
+			msg, _ = decodeMessage(b)
+		}
 		t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
@@ -228,7 +238,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 
 	msg := NewMessage(<-nsqd.idChan, body)
 	topic.PutMessage(msg)
-	msg = <-ephemeralChannel.clientMsgChan
+	msg = <-ephemeralChannel.memoryMsgChan
 	equal(t, msg.Body, body)
 
 	ephemeralChannel.RemoveClient(client.ID)

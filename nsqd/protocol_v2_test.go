@@ -182,10 +182,13 @@ func TestMultipleConsumerV2(t *testing.T) {
 		equal(t, err, nil)
 
 		go func(c net.Conn) {
-			resp, _ := nsq.ReadResponse(c)
-			_, data, _ := nsq.UnpackResponse(resp)
-			recvdMsg, _ := decodeMessage(data)
-			msgChan <- recvdMsg
+			resp, err := nsq.ReadResponse(c)
+			equal(t, err, nil)
+			_, data, err := nsq.UnpackResponse(resp)
+			equal(t, err, nil)
+			msg, err := decodeMessage(data)
+			equal(t, err, nil)
+			msgChan <- msg
 		}(conn)
 	}
 
@@ -401,9 +404,9 @@ func TestPausing(t *testing.T) {
 	topic.PutMessage(msg)
 
 	// allow the client to possibly get a message, the test would hang indefinitely
-	// if pausing was not working on the internal clientMsgChan read
+	// if pausing was not working
 	time.Sleep(50 * time.Millisecond)
-	msg = <-channel.clientMsgChan
+	msg = <-channel.memoryMsgChan
 	equal(t, msg.Body, []byte("test body2"))
 
 	// unpause the channel... the client should now be pushed a message
