@@ -38,6 +38,7 @@ type NsqLookupdEtcdMgr struct {
 	client            *etcd.Client
 	clusterID         string
 	topicRoot         string
+	clusterPath       string
 	leaderSessionPath string
 	leaderStr         string
 	lookupdRootPath   string
@@ -54,7 +55,8 @@ type NsqLookupdEtcdMgr struct {
 	watchNsqdNodesStopCh   chan bool
 }
 
-func NewNsqLookupdEtcdMgr(client *etcd.Client) *NsqLookupdEtcdMgr {
+func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
+	client := NewEtcdClient(host)
 	return &NsqLookupdEtcdMgr{
 		client:                    client,
 		ifTopicChanged:            true,
@@ -70,6 +72,7 @@ func NewNsqLookupdEtcdMgr(client *etcd.Client) *NsqLookupdEtcdMgr {
 func (self *NsqLookupdEtcdMgr) InitClusterID(id string) {
 	self.clusterID = id
 	self.topicRoot = self.createTopicRootPath()
+	self.clusterPath = self.createClusterPath()
 	self.leaderSessionPath = self.createLookupdLeaderPath()
 	self.lookupdRootPath = self.createLookupdRootPath()
 	go self.watchTopics()
@@ -108,6 +111,14 @@ func (self *NsqLookupdEtcdMgr) Stop() {
 	if self.watchTopicsStopCh != nil {
 		close(self.watchTopicsStopCh)
 	}
+}
+
+func (self *NsqLookupdEtcdMgr) GetClusterEpoch() (EpochType, error) {
+	rsp, err := self.client.Get(self.clusterPath, false, false)
+	if err != nil {
+		return 0, err
+	}
+	return EpochType(rsp.Node.ModifiedIndex), nil
 }
 
 func (self *NsqLookupdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
@@ -170,11 +181,11 @@ func (self *NsqLookupdEtcdMgr) CheckIfLeader(session string) bool {
 	return false
 }
 
-func (self *NsqLookupdEtcdMgr) UpdateLookupEpoch(key string, oldGen int) (int, error) {
+func (self *NsqLookupdEtcdMgr) UpdateLookupEpoch(oldGen EpochType) (EpochType, error) {
 	return 0, nil
 }
 
-func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop chan struct{}) {
+func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
 	watchCh := make(chan *etcd.Response, 1)
 	watchFailCh := make(chan bool, 1)
 	watchStopCh := make(chan bool, 1)
@@ -206,12 +217,12 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []*NsqdNodeInfo, stop c
 	}
 }
 
-func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]*NsqdNodeInfo, error) {
+func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]NsqdNodeInfo, error) {
 	rsp, err := self.client.Get(self.createNsqdRootPath(), false, false)
 	if err != nil {
 		return nil, err
 	}
-	nsqdNodes := make([]*NsqdNodeInfo, 0)
+	nsqdNodes := make([]NsqdNodeInfo, 0)
 	for _, node := range rsp.Node.Nodes {
 		if node.Dir {
 			continue
@@ -221,7 +232,7 @@ func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]*NsqdNodeInfo, error) {
 		if err != nil {
 			continue
 		}
-		nsqdNodes = append(nsqdNodes, &nodeInfo)
+		nsqdNodes = append(nsqdNodes, nodeInfo)
 	}
 	return nsqdNodes, nil
 }
@@ -382,7 +393,7 @@ func (self *NsqLookupdEtcdMgr) DeleteTopic(topic string, partition int) error {
 	return nil
 }
 
-func (self *NsqLookupdEtcdMgr) CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, int) {
+func (self *NsqLookupdEtcdMgr) CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, EpochType) {
 	value, err := json.Marshal(topicInfo)
 	if err != nil {
 		return err, 0
@@ -391,10 +402,10 @@ func (self *NsqLookupdEtcdMgr) CreateTopicNodeInfo(topic string, partition int, 
 	if err != nil {
 		return err, 0
 	}
-	return nil, int(rsp.Node.ModifiedIndex)
+	return nil, EpochType(rsp.Node.ModifiedIndex)
 }
 
-func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error {
+func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen EpochType) error {
 	value, err := json.Marshal(topicInfo)
 	if err != nil {
 		return err
@@ -533,6 +544,10 @@ func (self *NsqLookupdEtcdMgr) watch(key string, watchCh chan *etcd.Response, wa
 	} else {
 		watchFailCh <- true
 	}
+}
+
+func (self *NsqLookupdEtcdMgr) createClusterPath() string {
+	return path.Join("/", NSQ_ROOT_DIR, self.clusterID)
 }
 
 func (self *NsqLookupdEtcdMgr) createLookupdPath(value *NsqLookupdNodeInfo) string {

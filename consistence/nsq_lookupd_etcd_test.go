@@ -49,7 +49,7 @@ func TestLookupd(t *testing.T) {
 		fmt.Printf("Nsqd Node[%s] register success.\n", nodeInfo.ID)
 	}
 
-	lookupdMgr := NewNsqLookupdEtcdMgr(NewEtcdClient(EtcdHost))
+	lookupdMgr := NewNsqLookupdEtcdMgr(EtcdHost)
 	lookupdMgr.InitClusterID("cluster-1")
 	lookupdInfo := &NsqLookupdNodeInfo{
 		ID:       ID2,
@@ -179,7 +179,7 @@ func TestLookupd(t *testing.T) {
 		fmt.Println("unregister lookup mgr success.")
 	}
 
-	err = nodeMgr.ReleaseTopicLeader(topic, 0)
+	err = nodeMgr.ReleaseTopicLeader(topic, 0, nil)
 	if err != nil {
 		fmt.Println("ReleaseTopicLeader error:", err.Error())
 		return

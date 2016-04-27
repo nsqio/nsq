@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/coreos/go-etcd/etcd"
 	etcdlock "github.com/reechou/xlock"
-	"time"
 )
 
 const (
@@ -133,15 +133,23 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 //	}
 //}
 
-func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int) error {
+func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
 	topicKey := self.createTopicLockKey(topic, partition)
 	v, ok := self.topicLockMap[topicKey]
 	if ok {
-		v.Unlock()
+		err := v.Unlock()
+		if err != nil {
+			if err == etcdlock.ErrEtcdBad {
+				return err
+			}
+		}
 		delete(self.topicLockMap, topicKey)
+
+		return err
 	} else {
 		return fmt.Errorf("topicLockMap key[%s] not found.", topicKey)
 	}
+
 	return nil
 }
 
