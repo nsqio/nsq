@@ -74,6 +74,17 @@ func (c *context) GetTlsConfig() *tls.Config {
 	return c.tlsConfig
 }
 
+func (c *context) getDefaultPartition(topic string) int {
+	if c.nsqdCoord != nil {
+		pid, _, err := c.nsqdCoord.GetMasterTopicCoordData(topic)
+		if err != nil {
+			return -1
+		}
+		return pid
+	}
+	return c.nsqd.GetTopicDefaultPart(topic)
+}
+
 func (c *context) getExistingTopic(name string, part int) (*nsqd.Topic, error) {
 	return c.nsqd.GetExistingTopic(name, part)
 }

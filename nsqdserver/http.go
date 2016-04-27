@@ -143,6 +143,10 @@ func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Va
 		return nil, nil, "", http_api.Err{400, err.Error()}
 	}
 
+	if topicPart == -1 {
+		topicPart = s.ctx.getDefaultPartition(topicName)
+	}
+
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		nsqd.NsqLogger().Logf("topic not found - %s, %v", topicName, err)
@@ -162,6 +166,10 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 	topicName, topicPart, err := http_api.GetTopicPartitionArgs(reqParams)
 	if err != nil {
 		return nil, nil, http_api.Err{400, err.Error()}
+	}
+
+	if topicPart == -1 {
+		topicPart = s.ctx.getDefaultPartition(topicName)
 	}
 
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
@@ -327,6 +335,9 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 		return nil, http_api.Err{400, err.Error()}
 	}
 
+	if topicPart == -1 {
+		topicPart = s.ctx.getDefaultPartition(topicName)
+	}
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
@@ -352,6 +363,9 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, err.Error()}
 	}
 
+	if topicPart == -1 {
+		topicPart = s.ctx.getDefaultPartition(topicName)
+	}
 	err = s.ctx.deleteExistingTopic(topicName, topicPart)
 	if err != nil {
 		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}

@@ -140,6 +140,10 @@ func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, er
 	return self.leadership.GetAllLookupdNodes()
 }
 
+func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
+	return self.leaderNode
+}
+
 func (self *NsqLookupCoordinator) handleLeadership() {
 	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
 	if self.leadership != nil {
@@ -593,7 +597,7 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartionMeta
 		}
 	}
 	if catchupChanged {
-		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, int(topicInfo.Epoch))
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
 		if err != nil {
 			coordLog.Infof("update topic node info failed: %v", err.Error())
 			return
@@ -1430,7 +1434,7 @@ func (self *NsqLookupCoordinator) addRetryFailedRpc(topic string, partition int,
 	self.failedRpcMutex.Unlock()
 }
 
-func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo,
+func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch EpochType, nid string, topicInfo *TopicPartionMetaInfo,
 	leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	c, err := self.acquireRpcClient(nid)
 	if err != nil {
@@ -1444,7 +1448,7 @@ func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch int, nid st
 	return err
 }
 
-func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch int, nid string, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch EpochType, nid string, topicInfo *TopicPartionMetaInfo) *CoordErr {
 	c, rpcErr := self.acquireRpcClient(nid)
 	if rpcErr != nil {
 		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
@@ -1639,10 +1643,20 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 		}
 		if len(topicInfo.ISR) >= topicInfo.Replica && len(topicInfo.CatchupList) > 0 {
 			oldCatchupList := topicInfo.CatchupList
-			coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
 			topicInfo.CatchupList = make([]string, 0)
-			self.notifyTopicMetaInfo(topicInfo)
-			self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
+			err := self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
+			if err != nil {
+				coordLog.Infof("removing catchup failed : %v", err)
+				topicInfo.CatchupList = oldCatchupList
+			} else {
+				coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
+				err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, topicInfo, topicInfo.Epoch)
+				if err != nil {
+					coordLog.Infof("update catchup info failed while removing catchup: %v", err)
+				} else {
+					self.notifyTopicMetaInfo(topicInfo)
+				}
+			}
 		}
 	}()
 	return nil
@@ -1746,6 +1760,7 @@ func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMet
 	// try
 	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo, currentNodes)
 	if err != nil {
+		// TODO: triggle to add catchup.
 		return err
 	}
 	if newLeader == "" {

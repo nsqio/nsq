@@ -364,6 +364,21 @@ func (n *NSQD) Exit() {
 	nsqLog.Logf("NSQ: exited")
 }
 
+func (n *NSQD) GetTopicDefaultPart(topicName string) int {
+	n.RLock()
+	topics, ok := n.topicMap[topicName]
+	if ok {
+		if len(topics) > 0 {
+			for _, t := range topics {
+				n.RUnlock()
+				return t.GetTopicPart()
+			}
+		}
+	}
+	n.RUnlock()
+	return -1
+}
+
 func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
 	n.RLock()
 	topics, ok := n.topicMap[topicName]
@@ -383,7 +398,7 @@ func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string, part int) *Topic {
-	if part > MAX_TOPIC_PARTITION {
+	if part > MAX_TOPIC_PARTITION || part < 0 {
 		return nil
 	}
 	// most likely, we already have this topic, so try read lock first.

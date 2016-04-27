@@ -684,7 +684,7 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("SUB topic name %q is not valid", topicName))
 	}
 
-	partition := 0
+	partition := -1
 	channelName := ""
 	var err error
 	channelName = string(params[2])
@@ -703,6 +703,10 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	if err := p.CheckAuth(client, "SUB", topicName, channelName); err != nil {
 		return nil, err
+	}
+
+	if partition == -1 {
+		partition = p.ctx.getDefaultPartition(topicName)
 	}
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
@@ -879,6 +883,10 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 		return nil, err
 	}
 
+	if partition < 0 {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION", "partition should not less than 0")
+	}
+
 	if p.ctx.nsqdCoord != nil {
 		return nil, protocol.NewClientErr(err, "E_CREATE_TOPIC_FAILED",
 			fmt.Sprintf("CREATE_TOPIC is not allowed here while cluster feature enabled."))
@@ -904,13 +912,17 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("PUB topic name %q is not valid", topicName))
 	}
-	partition := 0
+	partition := -1
 	if len(params) == 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 				fmt.Sprintf("topic partition is not valid: %v", err))
 		}
+	}
+
+	if partition == -1 {
+		partition = p.ctx.getDefaultPartition(topicName)
 	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
@@ -976,13 +988,17 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("E_BAD_TOPIC MPUB topic name %q is not valid", topicName))
 	}
-	partition := 0
+	partition := -1
 	if len(params) == 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 				fmt.Sprintf("topic partition is not valid: %v", err))
 		}
+	}
+
+	if partition == -1 {
+		partition = p.ctx.getDefaultPartition(topicName)
 	}
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)

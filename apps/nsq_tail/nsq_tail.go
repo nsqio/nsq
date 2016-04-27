@@ -19,16 +19,15 @@ var (
 	showVersion = flag.Bool("version", false, "print version string")
 
 	topic         = flag.String("topic", "", "NSQ topic")
+	partition     = flag.Int("partition", -1, "NSQ topic partition")
 	channel       = flag.String("channel", "", "NSQ channel")
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 
-	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 )
 
 func init() {
-	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
@@ -75,11 +74,8 @@ func main() {
 		log.Fatal("--topic is required")
 	}
 
-	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
+	if len(lookupdHTTPAddrs) == 0 {
 		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required")
-	}
-	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -93,17 +89,12 @@ func main() {
 	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 
-	consumer, err := nsq.NewConsumer(*topic, *channel, cfg)
+	consumer, err := nsq.NewPartitionConsumer(*topic, *partition, *channel, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	consumer.AddHandler(&TailHandler{totalMessages: *totalMessages})
-
-	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
 	if err != nil {

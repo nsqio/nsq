@@ -61,7 +61,7 @@ func (self *fakeNsqdLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, erro
 	return v, nil
 }
 
-func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) error {
+func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType, leaderChan chan *TopicLeaderSession) error {
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
@@ -117,7 +117,7 @@ func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int, 
 	return nil
 }
 
-func (self *fakeNsqdLeadership) WatchLookupdLeader(key string, leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
+func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
 	return nil
 }
 
@@ -144,15 +144,19 @@ func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition in
 	return &ss.topicLeaderSession, nil
 }
 
-func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD) *NsqdCoordinator {
+func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD, useFake bool) *NsqdCoordinator {
 	nsqdCoord := NewNsqdCoordinator("test-cluster", "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
-	nsqdCoord.leadership = NewFakeNSQDLeadership()
-	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
-		p, err := NewFakeLookupRemoteProxy(addr, to)
-		if err == nil {
-			p.(*fakeLookupRemoteProxy).t = t
+	if useFake {
+		nsqdCoord.leadership = NewFakeNSQDLeadership()
+		nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
+			p, err := NewFakeLookupRemoteProxy(addr, to)
+			if err == nil {
+				p.(*fakeLookupRemoteProxy).t = t
+			}
+			return p, err
 		}
-		return p, err
+	} else {
+		nsqdCoord.leadership = NewNsqdEtcdMgr(testEtcdServers)
 	}
 	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
 	err := nsqdCoord.Start()
@@ -189,7 +193,7 @@ func TestNsqdRPCClient(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	nsqdCoord := startNsqdCoord(t, "0", tmpDir, "", nil)
+	nsqdCoord := startNsqdCoord(t, "0", tmpDir, "", nil, true)
 	time.Sleep(time.Second * 2)
 	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcListener.Addr().String(), time.Second)
 	test.Nil(t, err)

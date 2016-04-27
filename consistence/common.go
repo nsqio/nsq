@@ -121,6 +121,8 @@ var (
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)
 	ErrTopicCatchupAlreadyRunning = NewCoordErr("topic is already running catchup", CoordCommonErr)
+	ErrTopicArgError              = NewCoordErr("topic argument error", CoordCommonErr)
+	ErrOperationExpired           = NewCoordErr("operation has expired since wait too long", CoordCommonErr)
 
 	ErrMissingTopicLog             = NewCoordErr("missing topic log ", CoordLocalErr)
 	ErrLocalTopicPartitionMismatch = NewCoordErr("local topic partition not match", CoordLocalErr)
@@ -152,7 +154,7 @@ func GenNsqLookupNodeID(n *NsqLookupdNodeInfo, extra string) string {
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(n.RpcPort)
 	tmpbuf.WriteString(":")
-	tmpbuf.WriteString(n.HttpPort)
+	tmpbuf.WriteString(n.TcpPort)
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(extra)
 	return tmpbuf.String()

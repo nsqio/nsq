@@ -3,6 +3,7 @@ package consistence
 import (
 	"os"
 	"sync"
+	"time"
 )
 
 type ChannelConsumerOffset struct {
@@ -16,6 +17,8 @@ type coordData struct {
 	channelConsumeOffset map[string]ChannelConsumerOffset
 	localDataLoaded      bool
 	logMgr               *TopicCommitLogMgr
+	forceLeave           bool
+	disableWrite         bool
 }
 
 type TopicCoordinator struct {
@@ -26,7 +29,6 @@ type TopicCoordinator struct {
 	writeHold      sync.Mutex
 	catchupRunning int32
 	exiting        bool
-	disableWrite   bool
 	localDataState int32
 }
 
@@ -57,9 +59,29 @@ func (self *TopicCoordinator) GetData() *coordData {
 }
 
 func (self *TopicCoordinator) DisableWrite(disable bool) {
+	// hold the write lock to wait the current write finish.
 	self.writeHold.Lock()
+	self.dataRWMutex.Lock()
 	self.disableWrite = disable
+	self.dataRWMutex.Unlock()
 	self.writeHold.Unlock()
+}
+
+func (self *TopicCoordinator) DisableWriteWithTimeout(disable bool) *CoordErr {
+	// hold the write lock to wait the current write finish.
+	begin := time.Now()
+	var err *CoordErr
+	self.writeHold.Lock()
+	if time.Now().After(begin.Add(time.Second * 3)) {
+		// timeout for waiting
+		err = ErrOperationExpired
+	} else {
+		self.dataRWMutex.Lock()
+		self.disableWrite = disable
+		self.dataRWMutex.Unlock()
+	}
+	self.writeHold.Unlock()
+	return err
 }
 
 func (self *TopicCoordinator) Exiting() {
@@ -96,15 +118,18 @@ func (self *coordData) GetLeaderSession() string {
 	return self.topicLeaderSession.Session
 }
 
-func (self *coordData) GetLeaderSessionEpoch() int32 {
-	return int32(self.topicLeaderSession.LeaderEpoch)
+func (self *coordData) GetLeaderSessionEpoch() EpochType {
+	return self.topicLeaderSession.LeaderEpoch
 }
 
-func (self *coordData) GetTopicEpoch() int32 {
-	return int32(self.topicInfo.Epoch)
+func (self *coordData) GetTopicEpoch() EpochType {
+	return self.topicInfo.Epoch
 }
 
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
+	if self.forceLeave {
+		return ErrNotTopicLeader
+	}
 	if self.GetLeaderSessionID() != myID || self.topicInfo.Leader != myID {
 		return ErrNotTopicLeader
 	}

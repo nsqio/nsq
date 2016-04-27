@@ -27,7 +27,7 @@ var (
 type CommitLogData struct {
 	LogID int64
 	// epoch for the topic leader
-	Epoch     int32
+	Epoch     EpochType
 	MsgOffset int64
 	// size for batch messages
 	MsgSize int32

@@ -9,6 +9,8 @@ var (
 	ErrLeaderSessionAlreadyExist = errors.New("leader session already exist")
 )
 
+type EpochType int64
+
 type NsqdNodeInfo struct {
 	ID      string
 	NodeIp  string
@@ -23,10 +25,10 @@ func (self *NsqdNodeInfo) GetID() string {
 type NsqLookupdNodeInfo struct {
 	ID       string
 	NodeIp   string
-	HttpPort string
 	TcpPort  string
+	HttpPort string
 	RpcPort  string
-	Epoch    int
+	Epoch    EpochType
 }
 
 func (self *NsqLookupdNodeInfo) GetID() string {
@@ -44,7 +46,7 @@ type TopicPartionMetaInfo struct {
 	Leader      string
 	ISR         []string
 	CatchupList []string
-	Epoch       int
+	Epoch       EpochType
 	Replica     int
 	// the suggest load factor for each topic partition.
 	SuggestLF int
@@ -60,7 +62,7 @@ type TopicLeaderSession struct {
 	Partition   int
 	LeaderNode  *NsqdNodeInfo
 	Session     string
-	LeaderEpoch int
+	LeaderEpoch EpochType
 }
 
 func (self *TopicLeaderSession) IsSame(other *TopicLeaderSession) bool {
@@ -95,10 +97,11 @@ type NSQLookupdLeadership interface {
 	Register(value *NsqLookupdNodeInfo) error
 	Unregister() error
 	Stop()
+	GetClusterEpoch() (EpochType, error)
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
-	UpdateLookupEpoch(oldGen int) (int, error)
+	UpdateLookupEpoch(oldGen EpochType) (EpochType, error)
 	// cluster nsqd node
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
 	ScanTopics() ([]TopicPartionMetaInfo, error)
@@ -111,8 +114,9 @@ type NSQLookupdLeadership interface {
 	DeleteTopic(topic string, partition int) error
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
-	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, int)
-	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen int) error
+	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, EpochType)
+	// the epoch in topicInfo should be updated to the new epoch
+	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen EpochType) error
 	// get leadership information
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.

@@ -84,7 +84,7 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	s := &NsqdServer{}
 	ctx := &context{}
 	ctx.nsqd = nsqdInstance
-	ip, port, err := net.SplitHostPort(opts.TCPAddress)
+	ip, port, _ := net.SplitHostPort(opts.TCPAddress)
 	rpcport := opts.RPCPort
 	if rpcport != "" {
 		nsqCoord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)

@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"github.com/absolute8511/nsq/nsqd"
+	// TODO: use the gorpc for performance and timeout
 	_ "github.com/valyala/gorpc"
 	"io"
 	"net"
@@ -46,14 +47,14 @@ type NsqdNodeLoadFactor struct {
 
 type RpcAdminTopicInfo struct {
 	TopicPartionMetaInfo
-	LookupdEpoch int
+	LookupdEpoch EpochType
 	DisableWrite bool
 }
 
 type RpcTopicLeaderSession struct {
 	RpcTopicData
 	LeaderNode   *NsqdNodeInfo
-	LookupdEpoch int
+	LookupdEpoch EpochType
 	JoinSession  string
 }
 
@@ -101,7 +102,7 @@ func (self *NsqdCoordRpcServer) stop() {
 	}
 }
 
-func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch int) *CoordErr {
+func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *CoordErr {
 	if lookupEpoch < self.nsqdCoord.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
 		return ErrEpochMismatch
@@ -124,7 +125,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		*ret = *err
 		return nil
 	}
-	if rpcTopicReq.JoinSession != "" && !topicCoord.disableWrite {
+	if rpcTopicReq.JoinSession != "" && !topicCoord.GetData().disableWrite {
 		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
 			coordLog.Errorf("join session should disable write first")
 			*ret = *ErrTopicCoordStateInvalid
@@ -134,7 +135,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 	newSession := &TopicLeaderSession{
 		LeaderNode:  rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
-		LeaderEpoch: int(rpcTopicReq.TopicLeaderSessionEpoch),
+		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {
@@ -149,6 +150,10 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		return nil
 	}
 	coordLog.Infof("got update request for topic : %v on node: %v", rpcTopicReq, self.nsqdCoord.myNode.GetID())
+	if rpcTopicReq.Partition < 0 {
+		return ErrTopicArgError
+	}
+
 	self.nsqdCoord.coordMutex.Lock()
 	coords, ok := self.nsqdCoord.topicCoords[rpcTopicReq.Name]
 	myID := self.nsqdCoord.myNode.GetID()
@@ -180,6 +185,9 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		if ok {
 			tc, ok := coords[rpcTopicReq.Partition]
 			if ok {
+				if tc.GetData().topicInfo.Leader == myID {
+					self.nsqdCoord.releaseTopicLeader(&tc.GetData().topicInfo, &tc.topicLeaderSession)
+				}
 				self.nsqdCoord.localNsqd.CloseExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
 				coordLog.Infof("topic(%s) is removing from local node since not related", rpcTopicReq.Name)
 				tc.logMgr.Close()
@@ -229,7 +237,10 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq RpcAdminTopicInfo, 
 		*ret = *err
 		return nil
 	}
-	tp.DisableWrite(false)
+	err = tp.DisableWriteWithTimeout(false)
+	if err != nil {
+		*ret = *err
+	}
 	return nil
 }
 
@@ -245,7 +256,10 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq RpcAdminTopicInfo,
 		*ret = *err
 		return nil
 	}
-	tp.DisableWrite(true)
+	err = tp.DisableWriteWithTimeout(true)
+	if err != nil {
+		*ret = *err
+	}
 	return nil
 }
 
@@ -255,7 +269,7 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq RpcAdminTopicIn
 		*ret = false
 		return nil
 	}
-	*ret = tp.disableWrite
+	*ret = tp.GetData().disableWrite
 	return nil
 }
 
@@ -279,8 +293,8 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 type RpcTopicData struct {
 	TopicName               string
 	TopicPartition          int
-	TopicEpoch              int32
-	TopicLeaderSessionEpoch int32
+	TopicEpoch              EpochType
+	TopicLeaderSessionEpoch EpochType
 	TopicLeaderSession      string
 }
 

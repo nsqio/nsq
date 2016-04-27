@@ -48,7 +48,6 @@ var (
 
 	getAddrs         = app.StringArray{}
 	postAddrs        = app.StringArray{}
-	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 
 	// TODO: remove, deprecated
@@ -61,7 +60,6 @@ var (
 func init() {
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
-	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 }
 
@@ -196,11 +194,8 @@ func main() {
 		}
 	}
 
-	if len(nsqdTCPAddrs) == 0 && len(lookupdHTTPAddrs) == 0 {
+	if len(lookupdHTTPAddrs) == 0 {
 		log.Fatal("--nsqd-tcp-address or --lookupd-http-address required")
-	}
-	if len(nsqdTCPAddrs) > 0 && len(lookupdHTTPAddrs) > 0 {
-		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
 	if len(getAddrs) == 0 && len(postAddrs) == 0 {
@@ -299,11 +294,6 @@ func main() {
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 	consumer.AddConcurrentHandlers(handler, *numPublishers)
-
-	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
 	if err != nil {

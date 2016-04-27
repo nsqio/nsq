@@ -415,8 +415,10 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 		if err != nil {
 			return nil, http_api.Err{500, err.Error()}
 		}
+		leader := s.ctx.nsqlookupd.coordinator.GetLookupLeader()
 		return map[string]interface{}{
-			"lookupds": nodes,
+			"lookupdnodes":  nodes,
+			"lookupdleader": leader,
 		}, nil
 	}
 	return nil, nil
