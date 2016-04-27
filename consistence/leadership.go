@@ -124,7 +124,7 @@ type NSQDLeadership interface {
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
 	// get the topic leadership lock.
-	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch int, topicLeader chan *TopicLeaderSession) error
+	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch int) error
 	// release the lock using the acquired session.
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	// all registered lookup nodes.
