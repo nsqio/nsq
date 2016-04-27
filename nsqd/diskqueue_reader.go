@@ -845,7 +845,7 @@ func (d *diskQueueReader) ioLoop() {
 			d.updateDepth()
 			count = 0
 			d.sync()
-			nsqLog.LogDebugf("read end updated to : %v", endPos)
+			//nsqLog.LogDebugf("read end updated to : %v", endPos)
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:

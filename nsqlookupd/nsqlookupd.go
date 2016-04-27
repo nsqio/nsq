@@ -24,6 +24,8 @@ type NSQLookupd struct {
 
 func New(opts *Options) *NSQLookupd {
 	nsqlookupLog.Logger = opts.Logger
+	nsqlookupLog.SetLevel(opts.LogLevel)
+
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),

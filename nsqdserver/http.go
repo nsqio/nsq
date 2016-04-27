@@ -47,6 +47,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
 
 	// v1 negotiate
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
@@ -107,6 +108,23 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{500, health}
 	}
 	return health, nil
+}
+
+func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	levelStr := reqParams.Get("loglevel")
+	if levelStr == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_LEVEL"}
+	}
+	level, err := strconv.Atoi(levelStr)
+	if err != nil {
+		return nil, http_api.Err{400, "BAD_LEVEL_STRING"}
+	}
+	nsqd.NsqLogger().SetLevel(int32(level))
+	return nil, nil
 }
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

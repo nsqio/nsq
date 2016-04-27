@@ -175,6 +175,7 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
+		nsqlookupLog.Logf("lookup topic param error : %v", err.Error())
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -206,6 +207,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", topicPartition)
 	if len(registrations) == 0 {
+		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 	partitionProducers := make(map[string]*PeerInfo)
