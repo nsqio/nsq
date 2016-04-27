@@ -1276,7 +1276,7 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 				coordLog.Infof("retry failed rpc call for topic: %v", info)
 				topicInfo, err := self.leadership.GetTopicInfo(info.topic, info.partition)
 				if err != nil {
-					// TODO: ignore if not exist on etcd
+					// TODO: ignore if the error is not exist key on etcd
 					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
 					continue
 				}
@@ -1510,7 +1510,7 @@ func (self *NsqLookupCoordinator) prepareJoinState(topic string, partition int) 
 
 func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition int, nodeID string) *CoordErr {
 	// 1. got join isr request, check valid, should be in catchup list.
-	// 2. notify the topic leader disable write
+	// 2. notify the topic leader disable write then disable other isr
 	// 3. add the node to ISR and remove from CatchupList.
 	// 4. insert wait join session, notify all nodes for the new isr
 	// 5. wait on the join session until all the new isr is ready (got the ready notify from isr)
