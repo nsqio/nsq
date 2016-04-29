@@ -66,6 +66,7 @@ func (self *FakeNsqlookupLeadership) Unregister(v *NsqLookupdNodeInfo) error {
 }
 
 func (self *FakeNsqlookupLeadership) Stop() {
+	close(self.exitChan)
 }
 
 func (self *FakeNsqlookupLeadership) changeLookupLeader(newLeader *NsqLookupdNodeInfo) {

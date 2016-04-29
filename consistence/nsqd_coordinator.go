@@ -1458,7 +1458,7 @@ func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offse
 	}
 	buf, err := snap.ReadRaw(size)
 	if err != nil {
-		coordLog.Infof("read topic data at offset %v error: %v", offset, size, err)
+		coordLog.Infof("read topic data at offset %v, size:%v, error: %v", offset, size, err)
 		return nil, ErrLocalTopicDataCorrupt
 	}
 	return buf, nil
