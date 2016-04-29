@@ -4,6 +4,7 @@ import (
 	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -408,7 +409,7 @@ func TestNsqLookupLeadershipChange(t *testing.T) {
 	_ = coord2
 }
 
-func TestNsqLookupNsqdNodesChangeWithFake(t *testing.T) {
+func TestFakeNsqLookupNsqdNodesChange(t *testing.T) {
 	testNsqLookupNsqdNodesChange(t, true)
 }
 
@@ -419,6 +420,9 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	coordLog.level = 2
 	coordLog.logger = &levellogger.GLogger{}
+
+	SetEtcdMgrLogger(log.New(os.Stderr, "go-x-lock", log.LstdFlags))
+
 	nsqdNodeInfoList := make(map[string]*NsqdNodeInfo)
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
