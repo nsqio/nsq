@@ -146,11 +146,11 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 }
 
 func (self *NsqLookupCoordinator) handleLeadership() {
+	defer self.wg.Done()
 	lookupdLeaderChan := make(chan *NsqLookupdNodeInfo)
 	if self.leadership != nil {
 		go self.leadership.AcquireAndWatchLeader(lookupdLeaderChan, self.stopChan)
 	}
-	defer self.wg.Done()
 	defer close(self.nsqdMonitorChan)
 	for {
 		select {

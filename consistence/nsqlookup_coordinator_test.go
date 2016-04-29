@@ -100,14 +100,21 @@ func (self *FakeNsqlookupLeadership) UpdateLookupEpoch(oldGen EpochType) (EpochT
 func (self *FakeNsqlookupLeadership) addFakedNsqdNode(n NsqdNodeInfo) {
 	self.fakeNsqdNodes[n.GetID()] = n
 	coordLog.Infof("add fake node: %v", n)
-	self.nodeChanged <- struct{}{}
+	select {
+	case self.nodeChanged <- struct{}{}:
+	default:
+	}
+
 	self.clusterEpoch++
 }
 
 func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 	delete(self.fakeNsqdNodes, nid)
 	coordLog.Infof("remove fake node: %v", nid)
-	self.nodeChanged <- struct{}{}
+	select {
+	case self.nodeChanged <- struct{}{}:
+	default:
+	}
 	self.clusterEpoch++
 }
 
@@ -427,28 +434,23 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, useFakeLeadership)
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
-	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 	// start as isr
 	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, useFakeLeadership)
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
-	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord3 := startNsqdCoord(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, useFakeLeadership)
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
-	defer nsqdCoord3.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord4 := startNsqdCoord(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4, useFakeLeadership)
 	defer os.RemoveAll(data4)
 	defer nsqd4.Exit()
-	defer nsqdCoord4.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord5 := startNsqdCoord(t, strconv.Itoa(int(randPort5)), data5, "id5", nsqd5, useFakeLeadership)
 	defer os.RemoveAll(data5)
 	defer nsqd5.Exit()
-	defer nsqdCoord5.Stop()
 
 	topic := "test-nsqlookup-topic"
 	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1", useFakeLeadership)
@@ -483,7 +485,17 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nsqdCoordList[nodeInfo2.GetID()] = nsqdCoord2
 	nsqdCoordList[nodeInfo3.GetID()] = nsqdCoord3
 	nsqdCoordList[nodeInfo4.GetID()] = nsqdCoord4
-	nsqdCoordList[nodeInfo5.GetID()] = nsqdCoord5
+	//nsqdCoordList[nodeInfo5.GetID()] = nsqdCoord5
+	for _, nsqdCoord := range nsqdCoordList {
+		err := nsqdCoord.Start()
+		if err != nil {
+			panic(err)
+		}
+		time.Sleep(time.Second)
+	}
+	for _, nsqdCoord := range nsqdCoordList {
+		defer nsqdCoord.Stop()
+	}
 	// test new topic create
 	lookupCoord1.leadership.DeleteTopic(topic, 0)
 	lookupCoord1.leadership.DeleteTopic(topic, 1)

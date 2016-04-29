@@ -555,17 +555,19 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	coordLog.logger = &levellogger.GLogger{}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
-	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(randPort1), data1, "id1", nsqd1, true)
-	//defer nsqdCoord1.Stop()
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(randPort1), data1, "id1", nsqd1, true)
+	nsqdCoord1.Start()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
-	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(randPort2), data2, "id2", nsqd2, true)
-	//defer nsqdCoord2.Stop()
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(randPort2), data2, "id2", nsqd2, true)
+	nsqdCoord2.Start()
+	defer nsqdCoord2.Stop()
 
 	var topicInitInfo RpcAdminTopicInfo
 	topicInitInfo.Name = topic

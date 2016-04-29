@@ -160,11 +160,6 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 		nsqdCoord.leadership.UnregisterNsqd(&nsqdCoord.myNode)
 	}
 	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
-	err := nsqdCoord.Start()
-	if err != nil {
-		panic(err)
-	}
-	time.Sleep(time.Second)
 	return nsqdCoord
 }
 
@@ -195,6 +190,8 @@ func TestNsqdRPCClient(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	nsqdCoord := startNsqdCoord(t, "0", tmpDir, "", nil, true)
+	nsqdCoord.Start()
+	defer nsqdCoord.Stop()
 	time.Sleep(time.Second * 2)
 	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcListener.Addr().String(), time.Second)
 	test.Nil(t, err)
