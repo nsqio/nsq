@@ -192,14 +192,21 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqd4, randPort4, _, data4 := newNsqdNode(t, "id4")
 
 	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
-	fakeInfo := &TopicPartionMetaInfo{
-		Name:        topic,
-		Partition:   partition,
+	meta := TopicMetaInfo{
+		Replica:      3,
+		PartitionNum: 1,
+	}
+	fakeReplicaInfo := &TopicPartitionReplicaInfo{
 		Leader:      nodeInfo1.GetID(),
 		ISR:         make([]string, 0),
 		CatchupList: make([]string, 0),
 		Epoch:       1,
-		Replica:     3,
+	}
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:                      topic,
+		Partition:                 partition,
+		TopicMetaInfo:             meta,
+		TopicPartitionReplicaInfo: *fakeReplicaInfo,
 	}
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
@@ -289,15 +296,23 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
 
 	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
-	fakeInfo := &TopicPartionMetaInfo{
-		Name:        topic,
-		Partition:   partition,
+	meta := TopicMetaInfo{
+		Replica:      3,
+		PartitionNum: 1,
+	}
+	fakeReplicaInfo := &TopicPartitionReplicaInfo{
 		Leader:      nodeInfo1.GetID(),
 		ISR:         make([]string, 0),
 		CatchupList: make([]string, 0),
 		Epoch:       1,
-		Replica:     3,
 	}
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:                      topic,
+		Partition:                 partition,
+		TopicMetaInfo:             meta,
+		TopicPartitionReplicaInfo: *fakeReplicaInfo,
+	}
+
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo3.GetID())
@@ -354,15 +369,23 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
 
 	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
-	fakeInfo := &TopicPartionMetaInfo{
-		Name:        topic,
-		Partition:   partition,
+	meta := TopicMetaInfo{
+		Replica:      3,
+		PartitionNum: 1,
+	}
+	fakeReplicaInfo := &TopicPartitionReplicaInfo{
 		Leader:      nodeInfo1.GetID(),
 		ISR:         make([]string, 0),
 		CatchupList: make([]string, 0),
 		Epoch:       1,
-		Replica:     3,
 	}
+	fakeInfo := &TopicPartionMetaInfo{
+		Name:                      topic,
+		Partition:                 partition,
+		TopicMetaInfo:             meta,
+		TopicPartitionReplicaInfo: *fakeReplicaInfo,
+	}
+
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())

@@ -123,10 +123,10 @@ func TestLookupd(t *testing.T) {
 	fmt.Println("topic -", topic, "partition-0 IfExist:", ok)
 
 	// create topic node info
-	topicNodeInfo := &TopicPartionMetaInfo{
-		Leader: "127.0.0.1",
-		ISR:    []string{"127.0.0.1"},
-	}
+	topicNodeInfo := &TopicPartionMetaInfo{}
+	topicNodeInfo.Leader = "127.0.0.1"
+	topicNodeInfo.ISR = []string{"127.0.0.1"}
+
 	err, oldGen := lookupdMgr.CreateTopicNodeInfo(topic, 0, topicNodeInfo)
 	if err != nil {
 		fmt.Println("CreateTopicNodeInfo error:", err.Error())

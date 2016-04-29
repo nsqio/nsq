@@ -1499,7 +1499,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
-			if tcData.topicLeaderSession.LeaderNode.GetID() == self.myNode.GetID() {
+			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
