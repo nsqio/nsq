@@ -212,6 +212,7 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 			return
 		case <-self.watchNsqdNodesStopCh:
 			close(watchStopCh)
+			close(nsqds)
 			return
 		}
 	}
@@ -466,6 +467,7 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 				v.watchStopCh <- true
 				<-v.stoppedCh
 			}
+			close(leader)
 			return nil
 		}
 	}
