@@ -145,7 +145,7 @@ func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition in
 }
 
 func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD, useFake bool) *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator("test-cluster", "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	nsqdCoord := NewNsqdCoordinator(TEST_NSQ_CLUSTER_NAME, "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
 	if useFake {
 		nsqdCoord.leadership = NewFakeNSQDLeadership()
 		nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
