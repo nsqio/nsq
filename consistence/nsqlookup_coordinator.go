@@ -234,6 +234,7 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 // for the nsqd node that temporally lost, we need send the related topics to
 // it .
 func (self *NsqLookupCoordinator) NotifyTopicsToSingleNsqdForReload(topics []TopicPartionMetaInfo, nodeID string) {
+	coordLog.Infof("reload topics %v for node: %v", topics, nodeID)
 	for _, v := range topics {
 		if FindSlice(v.ISR, nodeID) != -1 || FindSlice(v.CatchupList, nodeID) != -1 {
 			self.notifySingleNsqdForTopicReload(v, nodeID)
@@ -1078,7 +1079,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 
 	// TODO: handle default load factor
 	meta := TopicMetaInfo{partitionNum, replica, suggestLF}
-	coordLog.Infof("create topic: %v-%v, replica: %v", topic, partitionNum, replica)
+	coordLog.Infof("create topic: %v, with partition %v, replica: %v", topic, partitionNum, replica)
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
@@ -1134,6 +1135,8 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 			continue
 		}
 		tmpTopicInfo := TopicPartionMetaInfo{}
+		tmpTopicInfo.Name = topic
+		tmpTopicInfo.Partition = i
 		tmpTopicInfo.TopicMetaInfo = meta
 		tmpTopicInfo.TopicPartitionReplicaInfo = tmpTopicReplicaInfo
 		rpcErr := self.notifyTopicMetaInfo(&tmpTopicInfo)
@@ -1377,6 +1380,9 @@ func (self *NsqLookupCoordinator) notifyISRTopicMetaInfo(topicInfo *TopicPartion
 func (self *NsqLookupCoordinator) notifyTopicMetaInfo(topicInfo *TopicPartionMetaInfo) *CoordErr {
 	others := getOthersExceptLeader(topicInfo)
 	coordLog.Infof("notify topic meta info changed: %v", topicInfo)
+	if topicInfo.Name == "" {
+		coordLog.Infof("==== notify topic name is empty")
+	}
 	rpcErr := self.doNotifyToTopicLeaderThenOthers(topicInfo.Leader, others, func(nid string) *CoordErr {
 		return self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nid, topicInfo)
 	})
@@ -1782,7 +1788,7 @@ func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMet
 	state.Lock()
 	defer state.Unlock()
 	if state.waitingJoin {
-		coordLog.Warningf("failed because another is waiting join.")
+		coordLog.Warningf("failed transfer leader because another is waiting join.")
 		return ErrLeavingISRWait
 	}
 	if state.doneChan != nil {
@@ -1828,7 +1834,7 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 		return nil
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
-		coordLog.Infof("no enough isr node, leaving should wait.")
+		coordLog.Infof("no enough isr node, graceful leaving should wait.")
 		go self.triggerCheckTopics(time.Second)
 		return ErrLeavingISRWait
 	}
@@ -1850,6 +1856,9 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	if ok && state != nil {
 		state.Lock()
 		wj := state.waitingJoin
+		if wj {
+			coordLog.Infof("isr node is waiting for join session %v, graceful leaving should wait.", state.waitingSession)
+		}
 		state.Unlock()
 		if wj {
 			return ErrLeavingISRWait

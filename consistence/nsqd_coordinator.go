@@ -164,11 +164,10 @@ func (self *NsqdCoordinator) Stop() {
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIp, self.lookupLeader.RpcPort), time.Second)
-	coordLog.Infof("get lookup remote : %v", self.lookupLeader)
 	if err == nil {
 		return c, nil
 	}
-	coordLog.Infof("get lookup remote failed: %v", err)
+	coordLog.Infof("get lookup remote %v failed: %v", self.lookupLeader, err)
 	return c, NewCoordErr(err.Error(), CoordNetErr)
 }
 
@@ -239,6 +238,9 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				continue
 			}
 			coordLog.Infof("loading topic: %v-%v", topicName, partition)
+			if topicName == "" {
+				continue
+			}
 			topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
 			if err != nil {
 				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, err)
@@ -711,6 +713,10 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
 	oldData := topicCoord.GetData()
+	if oldData.topicInfo.Name == "" {
+		coordLog.Infof("empty topic name not allowed")
+		return ErrTopicArgError
+	}
 	if FindSlice(oldData.topicInfo.ISR, self.myNode.GetID()) == -1 &&
 		FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 		coordLog.Infof("I am notified to be a new node in ISR: %v", self.myNode.GetID())
@@ -740,6 +746,11 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			}
 		}
 	}
+	if topicCoord.exiting {
+		coordLog.Infof("update the topic info: %v while exiting.", oldData.topicInfo.GetTopicDesp())
+		return nil
+	}
+
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
 	if oldData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
 		coordLog.Infof("my leader should release: %v", oldData)
@@ -749,7 +760,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		needAcquireLeaderSession = false
 		coordLog.Infof("leader keep unchanged: %v", newTopicInfo)
-	} else {
+	} else if topicCoord.GetLeader() == self.myNode.GetID() {
 		coordLog.Infof("leader session not ready: %v", topicCoord.topicLeaderSession)
 	}
 	if topicCoord.topicInfo.Epoch != newTopicInfo.Epoch {
@@ -809,6 +820,10 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	}
 	topicCoord.dataRWMutex.Unlock()
 	tcData := topicCoord.GetData()
+	if topicCoord.exiting {
+		coordLog.Infof("update the topic info: %v while exiting.", tcData.topicInfo.GetTopicDesp())
+		return nil
+	}
 
 	topicData, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if err != nil {

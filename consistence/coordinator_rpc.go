@@ -150,7 +150,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 		return nil
 	}
 	coordLog.Infof("got update request for topic : %v on node: %v", rpcTopicReq, self.nsqdCoord.myNode.GetID())
-	if rpcTopicReq.Partition < 0 {
+	if rpcTopicReq.Partition < 0 || rpcTopicReq.Name == "" {
 		return ErrTopicArgError
 	}
 

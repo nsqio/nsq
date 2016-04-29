@@ -177,6 +177,7 @@ func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partitio
 	fakeData.metaInfo = &newtp
 	fakeData.leaderChanged = make(chan struct{}, 1)
 	t[partition] = &fakeData
+	coordLog.Infof("topic partition init: %v-%v, %v", topic, partition, newtp)
 	self.clusterEpoch++
 	return nil
 }
@@ -442,6 +443,10 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	topic := "test-nsqlookup-topic"
 	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1", useFakeLeadership)
+	lookupCoord1.leadership.DeleteTopic(topic, 0)
+	lookupCoord1.leadership.DeleteTopic(topic, 1)
+	topic3 := topic + topic
+	lookupCoord1.leadership.DeleteTopic(topic3, 0)
 	defer lookupCoord1.Stop()
 
 	lookupLeadership := lookupCoord1.leadership
@@ -481,12 +486,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		}
 		time.Sleep(time.Second)
 	}
-	for _, nsqdCoord := range nsqdCoordList {
-		defer nsqdCoord.Stop()
-	}
 	// test new topic create
-	lookupCoord1.leadership.DeleteTopic(topic, 0)
-	lookupCoord1.leadership.DeleteTopic(topic, 1)
 	err := lookupCoord1.CreateTopic(topic, 2, 2, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
@@ -621,8 +621,6 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	go lookupCoord1.triggerCheckTopics(time.Second)
 	time.Sleep(time.Second * 3)
 	// test new topic create
-	topic3 := topic + topic
-	lookupCoord1.leadership.DeleteTopic(topic3, 0)
 	err = lookupCoord1.CreateTopic(topic3, 1, 3, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
@@ -653,6 +651,34 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	// however, catch up may start early while check leadership or enable topic write
 	t3, _ = lookupLeadership.GetTopicInfo(topic3, 0)
 	test.Equal(t, len(t3.ISR)+len(t3.CatchupList), 3)
+
+	t0IsrNum := 2
+	t1IsrNum := 2
+	for _, nsqdCoord := range nsqdCoordList {
+		failedID := nsqdCoord.myNode.GetID()
+		nsqdCoord.Stop()
+		if t0IsrNum > 1 {
+			if FindSlice(t0.ISR, failedID) != -1 {
+				t0IsrNum--
+			}
+		}
+		if t1IsrNum > 1 {
+			if FindSlice(t1.ISR, failedID) != -1 {
+				t1IsrNum--
+			}
+		}
+
+		time.Sleep(time.Second * 5)
+		t0, _ = lookupLeadership.GetTopicInfo(topic, 0)
+		// we have no failed node in isr or we got the last failed node leaving in isr.
+		test.Equal(t, FindSlice(t0.ISR, failedID) == -1 || (len(t0.ISR) == 1 && t0.ISR[0] == failedID), true)
+		test.Equal(t, len(t0.ISR), t0IsrNum)
+		t1, _ = lookupLeadership.GetTopicInfo(topic, 1)
+		test.Equal(t, FindSlice(t1.ISR, failedID) == -1 || (len(t1.ISR) == 1 && t1.ISR[0] == failedID), true)
+		test.Equal(t, len(t1.ISR), t1IsrNum)
+		t.Log(t0)
+		t.Log(t1)
+	}
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {
