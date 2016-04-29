@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	testEtcdServers = "192.168.66.202:2379"
+	testEtcdServers       = "192.168.66.202:2379"
+	TEST_NSQ_CLUSTER_NAME = "test-nsq-cluster"
 )
 
 type fakeTopicData struct {
@@ -370,12 +371,12 @@ func (self *FakeNsqlookupLeadership) WatchLookupdLeader(leader chan *NsqLookupdN
 
 func startNsqLookupCoord(t *testing.T, id string, useFakeLeadership bool) (*NsqLookupCoordinator, int, *NsqLookupdNodeInfo) {
 	var n NsqLookupdNodeInfo
-	n.ID = id
 	n.NodeIp = "127.0.0.1"
 	randPort := rand.Int31n(20000) + 30000
 	n.RpcPort = strconv.Itoa(int(randPort))
 	n.Epoch = 1
-	coord := NewNsqLookupCoordinator("test-nsq-cluster", &n)
+	n.ID = GenNsqLookupNodeID(&n, "")
+	coord := NewNsqLookupCoordinator(TEST_NSQ_CLUSTER_NAME, &n)
 	if useFakeLeadership {
 		coord.leadership = NewFakeNsqlookupLeadership()
 	} else {
@@ -426,30 +427,36 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nsqdCoord1 := startNsqdCoord(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, useFakeLeadership)
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 	// start as isr
 	nsqdCoord2 := startNsqdCoord(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, useFakeLeadership)
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord3 := startNsqdCoord(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, useFakeLeadership)
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord4 := startNsqdCoord(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4, useFakeLeadership)
 	defer os.RemoveAll(data4)
 	defer nsqd4.Exit()
+	defer nsqdCoord4.Stop()
 	time.Sleep(time.Second)
 	nsqdCoord5 := startNsqdCoord(t, strconv.Itoa(int(randPort5)), data5, "id5", nsqd5, useFakeLeadership)
 	defer os.RemoveAll(data5)
 	defer nsqd5.Exit()
+	defer nsqdCoord5.Stop()
 
 	topic := "test-nsqlookup-topic"
 	lookupCoord1, _, lookupNode1 := startNsqLookupCoord(t, "test-nsqlookup1", useFakeLeadership)
+	defer lookupCoord1.Stop()
 
-	fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
 	lookupLeadership := lookupCoord1.leadership
 	if useFakeLeadership {
+		fakeLeadership1 := lookupCoord1.leadership.(*FakeNsqlookupLeadership)
 		nsqdCoord1.lookupLeader = *lookupNode1
 		nsqdCoord2.lookupLeader = *lookupNode1
 		nsqdCoord3.lookupLeader = *lookupNode1
@@ -458,20 +465,14 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 		fakeLeadership1.changeLookupLeader(lookupNode1)
 		time.Sleep(time.Second)
-		fakeLeadership1.addFakedNsqdNode(*nodeInfo1)
-		time.Sleep(time.Second)
-		fakeLeadership1.addFakedNsqdNode(*nodeInfo2)
-		time.Sleep(time.Second)
-		fakeLeadership1.addFakedNsqdNode(*nodeInfo3)
-		time.Sleep(time.Second)
-		fakeLeadership1.addFakedNsqdNode(*nodeInfo4)
-		time.Sleep(time.Second)
 		nsqdCoord1.leadership = fakeLeadership1
 		nsqdCoord2.leadership = fakeLeadership1
 		nsqdCoord3.leadership = fakeLeadership1
 		nsqdCoord4.leadership = fakeLeadership1
 		nsqdCoord5.leadership = fakeLeadership1
 	}
+
+	time.Sleep(time.Second)
 	nsqdCoord1.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoord2.lookupRemoteCreateFunc = NewNsqLookupRpcClient
 	nsqdCoord3.lookupRemoteCreateFunc = NewNsqLookupRpcClient
@@ -484,6 +485,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nsqdCoordList[nodeInfo4.GetID()] = nsqdCoord4
 	nsqdCoordList[nodeInfo5.GetID()] = nsqdCoord5
 	// test new topic create
+	lookupCoord1.leadership.DeleteTopic(topic, 0)
+	lookupCoord1.leadership.DeleteTopic(topic, 1)
 	err := lookupCoord1.CreateTopic(topic, 2, 2, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
@@ -618,6 +621,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	time.Sleep(time.Second * 3)
 	// test new topic create
 	topic3 := topic + topic
+	lookupCoord1.leadership.DeleteTopic(topic3, 0)
 	err = lookupCoord1.CreateTopic(topic3, 1, 3, 0)
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
@@ -651,4 +655,5 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {
+
 }

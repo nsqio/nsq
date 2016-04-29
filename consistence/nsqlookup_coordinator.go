@@ -129,10 +129,11 @@ func (self *NsqLookupCoordinator) Start() error {
 }
 
 func (self *NsqLookupCoordinator) Stop() {
+	close(self.stopChan)
 	self.leadership.Unregister()
 	self.leadership.Stop()
-	close(self.stopChan)
-	self.nsqlookupRpcServer.stop()
+	// TODO: exit should avoid while test.
+	//self.nsqlookupRpcServer.stop()
 	self.wg.Wait()
 }
 
