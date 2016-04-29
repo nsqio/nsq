@@ -5,7 +5,7 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"io/ioutil"
-	"os"
+	_ "os"
 	"strconv"
 	"testing"
 	"time"
@@ -21,13 +21,16 @@ func TestCommitLogWrite(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	//defer os.RemoveAll(tmpDir)
 	coordLog.logger = newTestLogger(t)
 	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
 
 	test.Nil(t, err)
 	test.Equal(t, logMgr.pLogID, int64(0))
 	test.Equal(t, logMgr.nLogID > logMgr.pLogID, true)
+	t.Logf("%v", logMgr)
+	t.Logf("%v", &logMgr.pLogID)
+	t.Logf("%v", tmpDir)
 	test.Equal(t, logMgr.GetLastCommitLogID(), int64(0))
 
 	num := 100
