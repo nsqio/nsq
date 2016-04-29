@@ -9,6 +9,7 @@ package consistence
 
 import (
 	"encoding/json"
+	"log"
 	"path"
 	"strconv"
 	"strings"
@@ -53,6 +54,10 @@ type NsqLookupdEtcdMgr struct {
 	watchTopicLeaderStopCh chan bool
 	watchTopicsStopCh      chan bool
 	watchNsqdNodesStopCh   chan bool
+}
+
+func SetEtcdMgrLogger(l *log.Logger) {
+	etcdlock.SetLogger(l)
 }
 
 func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
