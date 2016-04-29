@@ -156,7 +156,7 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 			return p, err
 		}
 	} else {
-		nsqdCoord.leadership = NewNsqdEtcdMgr(testEtcdServers)
+		nsqdCoord.SetLeadershipMgr(NewNsqdEtcdMgr(testEtcdServers))
 		nsqdCoord.leadership.UnregisterNsqd(&nsqdCoord.myNode)
 	}
 	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}

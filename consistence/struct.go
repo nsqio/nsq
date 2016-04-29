@@ -26,11 +26,6 @@ const (
 	ETCD_LOCK_NSQ_NAMESPACE = "nsq"
 )
 
-type TopicMetaInfo struct {
-	PartitionNum int
-	Replica      int
-}
-
 type TopicReplicasInfo struct {
 	Leader string
 	ISR    []string

@@ -58,7 +58,7 @@ func (self *FakeNsqlookupLeadership) Register(value *NsqLookupdNodeInfo) error {
 	return nil
 }
 
-func (self *FakeNsqlookupLeadership) Unregister() error {
+func (self *FakeNsqlookupLeadership) Unregister(v *NsqLookupdNodeInfo) error {
 	self.fakeLeader = nil
 	return nil
 }
@@ -388,7 +388,8 @@ func startNsqLookupCoord(t *testing.T, id string, useFakeLeadership bool) (*NsqL
 	if useFakeLeadership {
 		coord.leadership = NewFakeNsqlookupLeadership()
 	} else {
-		coord.leadership = NewNsqLookupdEtcdMgr(testEtcdServers)
+		coord.SetLeadershipMgr(NewNsqLookupdEtcdMgr(testEtcdServers))
+		coord.leadership.Unregister(&coord.myNode)
 	}
 	err := coord.Start()
 	if err != nil {

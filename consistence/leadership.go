@@ -39,17 +39,27 @@ func (self *NsqLookupdNodeInfo) GetID() string {
 // topicEpoch increase while leader or isr changed. (seems not really needed?)
 // lookupEpoch increase while lookup leader changed.
 
-type TopicPartionMetaInfo struct {
-	Name        string
-	Partition   int
-	Channels    []string
+type TopicMetaInfo struct {
+	PartitionNum int
+	Replica      int
+	// the suggest load factor for each topic partition.
+	SuggestLF int
+	// other options
+}
+
+type TopicPartitionReplicaInfo struct {
 	Leader      string
 	ISR         []string
 	CatchupList []string
+	Channels    []string
 	Epoch       EpochType
-	Replica     int
-	// the suggest load factor for each topic partition.
-	SuggestLF int
+}
+
+type TopicPartionMetaInfo struct {
+	Name      string
+	Partition int
+	TopicMetaInfo
+	TopicPartitionReplicaInfo
 }
 
 func (self *TopicPartionMetaInfo) GetTopicDesp() string {
@@ -95,7 +105,7 @@ type ConsistentStore interface {
 type NSQLookupdLeadership interface {
 	InitClusterID(id string)
 	Register(value *NsqLookupdNodeInfo) error
-	Unregister() error
+	Unregister(value *NsqLookupdNodeInfo) error
 	Stop()
 	GetClusterEpoch() (EpochType, error)
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
@@ -106,17 +116,16 @@ type NSQLookupdLeadership interface {
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
 	ScanTopics() ([]TopicPartionMetaInfo, error)
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	CreateTopic(topic string, meta *TopicMetaInfo) error
 	CreateTopicPartition(topic string, partition int) error
-	CreateTopic(topic string, partitionNum int, replica int) error
 	IsExistTopic(topic string) (bool, error)
-	IsExistTopicPartition(topic string, partitionNum int) (bool, error)
-	GetTopicPartitionNum(topic string) (int, error)
+	IsExistTopicPartition(topic string, partition int) (bool, error)
+	GetTopicMetaInfo(topic string) (TopicMetaInfo, error)
 	DeleteTopic(topic string, partition int) error
 	// update leader, isr, epoch
 	// Note: update should do check-and-set to avoid unexpected override.
-	CreateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo) (error, EpochType)
 	// the epoch in topicInfo should be updated to the new epoch
-	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartionMetaInfo, oldGen EpochType) error
+	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartitionReplicaInfo, oldGen EpochType) error
 	// get leadership information
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.

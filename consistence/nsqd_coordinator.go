@@ -103,8 +103,18 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
 	}
 
+	if nsqdCoord.leadership != nil {
+		nsqdCoord.leadership.InitClusterID(nsqdCoord.clusterKey)
+	}
 	nsqdCoord.rpcServer = NewNsqdCoordRpcServer(nsqdCoord, rootPath)
 	return nsqdCoord
+}
+
+func (self *NsqdCoordinator) SetLeadershipMgr(l NSQDLeadership) {
+	self.leadership = l
+	if self.leadership != nil {
+		self.leadership.InitClusterID(self.clusterKey)
+	}
 }
 
 func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *CoordErr) {
@@ -123,7 +133,6 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *Coor
 
 func (self *NsqdCoordinator) Start() error {
 	if self.leadership != nil {
-		self.leadership.InitClusterID(self.clusterKey)
 		err := self.leadership.RegisterNsqd(&self.myNode)
 		if err != nil {
 			coordLog.Warningf("failed to register nsqd coordinator: %v", err)
