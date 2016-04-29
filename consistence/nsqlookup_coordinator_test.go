@@ -33,6 +33,7 @@ type FakeNsqlookupLeadership struct {
 	leaderChanged        chan struct{}
 	leaderSessionChanged chan *TopicLeaderSession
 	clusterEpoch         EpochType
+	exitChan             chan struct{}
 }
 
 func NewFakeNsqlookupLeadership() *FakeNsqlookupLeadership {
@@ -43,6 +44,7 @@ func NewFakeNsqlookupLeadership() *FakeNsqlookupLeadership {
 		nodeChanged:          make(chan struct{}, 1),
 		leaderChanged:        make(chan struct{}, 1),
 		leaderSessionChanged: make(chan *TopicLeaderSession, 1),
+		exitChan:             make(chan struct{}),
 	}
 }
 
@@ -68,7 +70,11 @@ func (self *FakeNsqlookupLeadership) Stop() {
 
 func (self *FakeNsqlookupLeadership) changeLookupLeader(newLeader *NsqLookupdNodeInfo) {
 	self.fakeLeader = newLeader
-	self.leaderChanged <- struct{}{}
+	select {
+	case self.leaderChanged <- struct{}{}:
+	case <-self.exitChan:
+		return
+	}
 }
 
 func (self *FakeNsqlookupLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
@@ -78,13 +84,17 @@ func (self *FakeNsqlookupLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo,
 }
 
 func (self *FakeNsqlookupLeadership) AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stopChan chan struct{}) {
+	defer close(leader)
 	for {
 		select {
 		case <-stopChan:
-			close(leader)
 			return
 		case <-self.leaderChanged:
-			leader <- self.fakeLeader
+			select {
+			case leader <- self.fakeLeader:
+			case <-self.exitChan:
+				return
+			}
 		}
 	}
 }
@@ -120,10 +130,10 @@ func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 }
 
 func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
+	defer close(nsqds)
 	for {
 		select {
 		case <-stop:
-			close(nsqds)
 			return
 		case <-self.nodeChanged:
 			nodes := make([]NsqdNodeInfo, 0)
@@ -131,7 +141,11 @@ func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, s
 				n := v
 				nodes = append(nodes, n)
 			}
-			nsqds <- nodes
+			select {
+			case nsqds <- nodes:
+			case <-self.exitChan:
+				return
+			}
 		}
 	}
 }
@@ -252,7 +266,10 @@ func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, part
 		tp.leaderSession.LeaderNode = leader.LeaderNode
 		tp.leaderSession.Session = leader.Session
 		tp.leaderSession.LeaderEpoch++
-		self.leaderSessionChanged <- leader
+		select {
+		case self.leaderSessionChanged <- leader:
+		default:
+		}
 		return
 	}
 	self.clusterEpoch++
@@ -280,16 +297,20 @@ func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partiti
 }
 
 func (self *FakeNsqlookupLeadership) WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error {
+	defer close(leader)
 	for {
 		select {
 		case <-stop:
-			close(leader)
 			return nil
 		case s := <-self.leaderSessionChanged:
 			if s == nil {
 				continue
 			}
-			leader <- s
+			select {
+			case leader <- s:
+			case <-self.exitChan:
+				return nil
+			}
 		}
 	}
 	return nil
@@ -312,7 +333,10 @@ func (self *FakeNsqlookupLeadership) AcquireTopicLeader(topic string, partition 
 			l.LeaderNode = nodeData
 			l.Session = "fake-leader-session" + nodeData.GetID()
 			l.LeaderEpoch++
-			self.leaderSessionChanged <- l
+			select {
+			case self.leaderSessionChanged <- l:
+			default:
+			}
 			coordLog.Infof("leader session update to : %v", l)
 			return nil
 		} else if *l.LeaderNode == *nodeData {
@@ -344,7 +368,10 @@ func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition 
 	l.LeaderNode = nil
 	l.Session = ""
 	l.LeaderEpoch++
-	self.leaderSessionChanged <- l
+	select {
+	case self.leaderSessionChanged <- l:
+	default:
+	}
 	self.clusterEpoch++
 	return nil
 }
