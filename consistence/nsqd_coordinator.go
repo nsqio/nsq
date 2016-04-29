@@ -725,9 +725,10 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	disableWrite := topicCoord.GetData().disableWrite
 	topicCoord.dataRWMutex.Lock()
 	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
-		topicCoord.dataRWMutex.Unlock()
 		coordLog.Warningf("topic (%v) info epoch is less while update: %v vs %v",
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
+
+		topicCoord.dataRWMutex.Unlock()
 		return ErrEpochLessThanCurrent
 	}
 	// if any of new node in isr or leader is changed, the write disabled should be set first on isr nodes.
@@ -735,12 +736,14 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		if !disableWrite && newTopicInfo.Leader != "" && FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) > len(topicCoord.topicInfo.ISR) {
 				coordLog.Errorf("should disable the write before changing the leader or isr of topic")
+				topicCoord.dataRWMutex.Unlock()
 				return ErrTopicCoordStateInvalid
 			}
 			// note: removing failed node no need to disable write.
 			for _, newNode := range newTopicInfo.ISR {
 				if FindSlice(topicCoord.topicInfo.ISR, newNode) == -1 {
 					coordLog.Errorf("should disable the write before adding new ISR node ")
+					topicCoord.dataRWMutex.Unlock()
 					return ErrTopicCoordStateInvalid
 				}
 			}
@@ -748,6 +751,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 	if topicCoord.exiting {
 		coordLog.Infof("update the topic info: %v while exiting.", oldData.topicInfo.GetTopicDesp())
+		topicCoord.dataRWMutex.Unlock()
 		return nil
 	}
 
@@ -810,6 +814,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	coordLog.Infof("update the topic %v leader session: %v", topicCoord.topicInfo.GetTopicDesp(), newLS)
 	if newLS != nil && newLS.LeaderNode != nil && topicCoord.GetLeader() != newLS.LeaderNode.GetID() {
 		coordLog.Infof("topic leader info not match leader session: %v", topicCoord.GetLeader())
+		topicCoord.dataRWMutex.Unlock()
 		return ErrTopicLeaderSessionInvalid
 	}
 	if newLS == nil {

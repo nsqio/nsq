@@ -277,7 +277,10 @@ func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, part
 	var newtp TopicLeaderSession
 	newtp = *leader
 	t[partition].leaderSession = &newtp
-	self.leaderSessionChanged <- &newtp
+	select {
+	case self.leaderSessionChanged <- &newtp:
+	default:
+	}
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
