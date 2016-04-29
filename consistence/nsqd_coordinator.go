@@ -148,8 +148,9 @@ func (self *NsqdCoordinator) Stop() {
 	// allow other isr take over to avoid electing.
 	self.prepareLeavingCluster()
 	close(self.stopChan)
-	self.rpcServer.stop()
-	self.rpcServer = nil
+	// TODO: rpc exit should be avoid in test.
+	//self.rpcServer.stop()
+	//self.rpcServer = nil
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
