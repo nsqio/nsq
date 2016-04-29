@@ -430,7 +430,7 @@ func TestFakeNsqLookupNsqdNodesChange(t *testing.T) {
 }
 
 func TestNsqLookupNsqdNodesChange(t *testing.T) {
-	//testNsqLookupNsqdNodesChange(t, false)
+	testNsqLookupNsqdNodesChange(t, false)
 }
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
