@@ -176,6 +176,20 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 
 	key := self.createLookupdLeaderPath()
 
+	rsp, err := self.client.Get(key, false, false)
+	if err == nil {
+		var lookupdInfo NsqLookupdNodeInfo
+		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
+		if err == nil {
+			select {
+			case leader <- &lookupdInfo:
+			case <-stop:
+				close(leader)
+				return
+			}
+		}
+	}
+
 	go self.watch(key, watchCh, watchStopCh, watchFailCh)
 
 	for {
@@ -263,18 +277,6 @@ func (self *NsqdEtcdMgr) createTopicInfoPath(topic string, partition int) string
 
 func (self *NsqdEtcdMgr) createTopicLeaderPath(topic string, partition int) string {
 	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_LEADER_SESSION)
-}
-
-func (self *NsqdEtcdMgr) createTopicReplicasPath(topic string, partition int) string {
-	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_REPLICAS)
-}
-
-func (self *NsqdEtcdMgr) createTopicCatchupPath(topic string, partition int) string {
-	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_CATCHUP)
-}
-
-func (self *NsqdEtcdMgr) createTopicChannelsPath(topic string, partition int) string {
-	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_CHANNELS)
 }
 
 func (self *NsqdEtcdMgr) createTopicLockKey(topic string, partition int) string {

@@ -98,7 +98,8 @@ func TestLookupd(t *testing.T) {
 	}
 
 	// create topic
-	err = lookupdMgr.CreateTopic(topic, 1, 1)
+	metaInfo := &TopicMetaInfo{PartitionNum: 1, Replica: 1}
+	err = lookupdMgr.CreateTopic(topic, metaInfo)
 	if err != nil {
 		fmt.Println("CreateTopic error:", err.Error())
 		return
@@ -123,19 +124,12 @@ func TestLookupd(t *testing.T) {
 	fmt.Println("topic -", topic, "partition-0 IfExist:", ok)
 
 	// create topic node info
-	topicNodeInfo := &TopicPartionMetaInfo{}
+	topicNodeInfo := &TopicPartitionReplicaInfo{}
 	topicNodeInfo.Leader = "127.0.0.1"
 	topicNodeInfo.ISR = []string{"127.0.0.1"}
 
-	err, oldGen := lookupdMgr.CreateTopicNodeInfo(topic, 0, topicNodeInfo)
-	if err != nil {
-		fmt.Println("CreateTopicNodeInfo error:", err.Error())
-		return
-	}
-	fmt.Println("Topic Node Info gen:", oldGen)
-
 	// update
-	err = lookupdMgr.UpdateTopicNodeInfo(topic, 0, topicNodeInfo, oldGen)
+	err = lookupdMgr.UpdateTopicNodeInfo(topic, 0, topicNodeInfo, 0)
 	if err != nil {
 		fmt.Println("UpdateTopicNodeInfo error:", err.Error())
 		return
@@ -171,7 +165,7 @@ func TestLookupd(t *testing.T) {
 	}
 
 	lookupdMgr.Stop()
-	err = lookupdMgr.Unregister()
+	err = lookupdMgr.Unregister(lookupdInfo)
 	if err != nil {
 		fmt.Println("unregister error:", err.Error())
 		return

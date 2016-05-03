@@ -402,9 +402,9 @@ func startNsqLookupCoord(t *testing.T, id string, useFakeLeadership bool) (*NsqL
 	if useFakeLeadership {
 		coord.leadership = NewFakeNsqlookupLeadership()
 	} else {
-		//coord.SetLeadershipMgr(NewNsqLookupdEtcdMgr(testEtcdServers))
-		//coord.leadership.Unregister(&coord.myNode)
-		panic("not test")
+		coord.SetLeadershipMgr(NewNsqLookupdEtcdMgr(testEtcdServers))
+		coord.leadership.Unregister(&coord.myNode)
+		//panic("not test")
 	}
 	err := coord.Start()
 	if err != nil {
