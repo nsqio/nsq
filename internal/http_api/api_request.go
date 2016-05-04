@@ -116,76 +116,76 @@ retry:
 
 // GETV1 is a helper function to perform a V1 HTTP request
 // and parse our NSQ daemon's expected response format, with deadlines.
-func (c *Client) GETV1(endpoint string, v interface{}) error {
+func (c *Client) GETV1(endpoint string, v interface{}) (int, error) {
 retry:
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
 
 	resp, err := c.c.Do(req)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		return err
+		return resp.StatusCode, err
 	}
 	if resp.StatusCode != 200 {
 		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
 			endpoint, err = httpsEndpoint(endpoint, body)
 			if err != nil {
-				return err
+				return resp.StatusCode, err
 			}
 			goto retry
 		}
-		return fmt.Errorf("got response %s %q", resp.Status, body)
+		return resp.StatusCode, fmt.Errorf("got response %s %q", resp.Status, body)
 	}
 	err = json.Unmarshal(body, &v)
 	if err != nil {
-		return err
+		return resp.StatusCode, err
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
 // PostV1 is a helper function to perform a V1 HTTP request
 // and parse our NSQ daemon's expected response format, with deadlines.
-func (c *Client) POSTV1(endpoint string) error {
+func (c *Client) POSTV1(endpoint string) (int, error) {
 retry:
 	req, err := http.NewRequest("POST", endpoint, nil)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
 
 	resp, err := c.c.Do(req)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		return err
+		return resp.StatusCode, err
 	}
 	if resp.StatusCode != 200 {
 		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
 			endpoint, err = httpsEndpoint(endpoint, body)
 			if err != nil {
-				return err
+				return resp.StatusCode, err
 			}
 			goto retry
 		}
-		return fmt.Errorf("got response %s %q", resp.Status, body)
+		return resp.StatusCode, fmt.Errorf("got response %s %q", resp.Status, body)
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
 func httpsEndpoint(endpoint string, body []byte) (string, error) {

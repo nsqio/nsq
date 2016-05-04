@@ -882,7 +882,7 @@ func (c *ClusterInfo) versionPivotNSQLookupd(addrs []string, deprecatedURI strin
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, qs)
 		c.logf("CI: querying nsqlookupd %s", endpoint)
-		err := c.client.POSTV1(endpoint)
+		_, err := c.client.POSTV1(endpoint)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -906,7 +906,7 @@ func (c *ClusterInfo) versionPivotProducers(pl Producers, deprecatedURI string, 
 
 		endpoint := fmt.Sprintf("http://%s/%s?%s", p.HTTPAddress(), uri, qs)
 		c.logf("CI: querying nsqd %s", endpoint)
-		err := c.client.POSTV1(endpoint)
+		_, err := c.client.POSTV1(endpoint)
 		if err != nil {
 			errs = append(errs, err)
 			continue

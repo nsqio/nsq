@@ -401,6 +401,10 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	if part > MAX_TOPIC_PARTITION || part < 0 {
 		return nil
 	}
+	if topicName == "" {
+		nsqLog.Logf("TOPIC name is empty")
+		return nil
+	}
 	// most likely, we already have this topic, so try read lock first.
 	n.RLock()
 	topics, ok := n.topicMap[topicName]
