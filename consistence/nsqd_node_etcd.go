@@ -34,13 +34,18 @@ type NsqdEtcdMgr struct {
 	lookupdRoot string
 
 	topicLockMap map[string]*etcdlock.SeizeLock
+
+	nodeKey       string
+	nodeValue     string
+	refreshStopCh chan bool
 }
 
 func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
 	client := NewEtcdClient(host)
 	return &NsqdEtcdMgr{
-		client:       client,
-		topicLockMap: make(map[string]*etcdlock.SeizeLock),
+		client:        client,
+		topicLockMap:  make(map[string]*etcdlock.SeizeLock),
+		refreshStopCh: make(chan bool, 1),
 	}
 }
 
@@ -55,11 +60,30 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	if err != nil {
 		return err
 	}
-	_, err = self.client.Create(self.createNsqdNodePath(nodeData), string(value), 0)
+	self.nodeKey = self.createNsqdNodePath(nodeData)
+	self.nodeValue = string(value)
+	_, err = self.client.Create(self.nodeKey, self.nodeValue, ETCD_TTL)
 	if err != nil {
 		return err
 	}
+	// start refresh node
+	go self.refresh()
+
 	return nil
+}
+
+func (self *NsqdEtcdMgr) refresh() {
+	for {
+		select {
+		case <-self.refreshStopCh:
+			return
+		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
+			_, err := self.client.Update(self.nodeKey, self.nodeValue, ETCD_TTL)
+			if err != nil {
+				logger.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
+			}
+		}
+	}
 }
 
 func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
@@ -73,6 +97,9 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	// stop refresh
+	close(self.refreshStopCh)
+
 	return nil
 }
 
@@ -185,7 +212,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			case leader <- &lookupdInfo:
 			case <-stop:
 				close(leader)
-				return
+				return nil
 			}
 		}
 	}

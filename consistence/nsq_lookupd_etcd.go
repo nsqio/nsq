@@ -9,7 +9,6 @@ package consistence
 
 import (
 	"encoding/json"
-	"log"
 	"path"
 	"strconv"
 	"strings"
@@ -47,17 +46,16 @@ type NsqLookupdEtcdMgr struct {
 	topicMetaMap      map[string]*TopicMetaInfo
 	ifTopicChanged    bool
 	nodeInfo          *NsqLookupdNodeInfo
+	nodeKey           string
+	nodeValue         string
 
 	watchTopicLeaderChanMap   map[string]*WatchTopicLeaderInfo
 	watchTopicLeaderEventChan chan *WatchTopicLeaderInfo
 
+	refreshStopCh          chan bool
 	watchTopicLeaderStopCh chan bool
 	watchTopicsStopCh      chan bool
 	watchNsqdNodesStopCh   chan bool
-}
-
-func SetEtcdMgrLogger(l *log.Logger) {
-	etcdlock.SetLogger(l)
 }
 
 func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
@@ -71,6 +69,7 @@ func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
 		topicMetaMap:              make(map[string]*TopicMetaInfo),
 		watchTopicLeaderChanMap:   make(map[string]*WatchTopicLeaderInfo),
 		watchTopicLeaderEventChan: make(chan *WatchTopicLeaderInfo, 1),
+		refreshStopCh:             make(chan bool, 1),
 	}
 }
 
@@ -90,11 +89,30 @@ func (self *NsqLookupdEtcdMgr) Register(value *NsqLookupdNodeInfo) error {
 		return err
 	}
 	self.leaderStr = string(valueB)
-	_, err = self.client.Create(self.createLookupdPath(value), self.leaderStr, 0)
+	self.nodeKey = self.createLookupdPath(value)
+	self.nodeValue = string(valueB)
+	_, err = self.client.Create(self.nodeKey, self.nodeValue, ETCD_TTL)
 	if err != nil {
 		return err
 	}
+	// start to refresh
+	go self.refresh()
+
 	return nil
+}
+
+func (self *NsqLookupdEtcdMgr) refresh() {
+	for {
+		select {
+		case <-self.refreshStopCh:
+			return
+		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
+			_, err := self.client.Update(self.nodeKey, self.nodeValue, ETCD_TTL)
+			if err != nil {
+				logger.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
+			}
+		}
+	}
 }
 
 func (self *NsqLookupdEtcdMgr) Unregister(value *NsqLookupdNodeInfo) error {
@@ -102,6 +120,9 @@ func (self *NsqLookupdEtcdMgr) Unregister(value *NsqLookupdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	// stop to refresh
+	close(self.refreshStopCh)
+
 	return nil
 }
 
@@ -514,6 +535,7 @@ func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, 
 	if err != nil {
 		return err
 	}
+	logger.Infof("Update_topic info: %s %d %s", topic, partition, string(value))
 	if oldGen == 0 {
 		rsp, err := self.client.Create(self.createTopicInfoPath(topic, partition), string(value), 0)
 		if err != nil {
