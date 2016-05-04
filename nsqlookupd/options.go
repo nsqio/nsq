@@ -19,7 +19,6 @@ type Options struct {
 	ClusterLeadershipAddresses []string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
-	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
 
 	LogLevel int32 `flag:"log-level" cfg:"log_level"`
 	Logger   levellogger.Logger
@@ -40,7 +39,6 @@ func NewOptions() *Options {
 		ClusterID:                  "nsq-clusterid-test-only",
 
 		InactiveProducerTimeout: 300 * time.Second,
-		TombstoneLifetime:       45 * time.Second,
 
 		LogLevel: 1,
 		Logger:   &levellogger.GLogger{},

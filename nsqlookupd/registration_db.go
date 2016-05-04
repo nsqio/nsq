@@ -10,17 +10,16 @@ import (
 
 type RegistrationDB struct {
 	sync.RWMutex
-	registrationMap map[Registration]Producers
+	registrationChannelMap map[string]ChannelRegistrations
+	registrationTopicMap   map[string]TopicRegistrations
+	registrationNodeMap    map[string]*PeerInfo
 }
 
-type Registration struct {
-	Category    string
-	Key         string
-	SubKey      string
+type ChannelReg struct {
 	PartitionID string
+	PeerId      string
+	Channel     string
 }
-
-type Registrations []Registration
 
 type PeerInfo struct {
 	lastUpdate       int64
@@ -40,6 +39,7 @@ type Producer struct {
 }
 
 type Producers []*Producer
+type PeerInfoList []*PeerInfo
 
 func (p *Producer) String() string {
 	return fmt.Sprintf("%s [%d, %d]", p.peerInfo.BroadcastAddress, p.peerInfo.TCPPort, p.peerInfo.HTTPPort)
@@ -50,224 +50,311 @@ func (p *Producer) Tombstone() {
 	p.tombstonedAt = time.Now()
 }
 
-func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
-	return p.tombstoned && time.Now().Sub(p.tombstonedAt) < lifetime
+func (p *Producer) IsTombstoned() bool {
+	return p.tombstoned
 }
+
+type TopicProducerReg struct {
+	PartitionID  string
+	ProducerNode *Producer
+}
+
+type ChannelRegistrations []ChannelReg
+type TopicRegistrations []TopicProducerReg
 
 func NewRegistrationDB() *RegistrationDB {
 	return &RegistrationDB{
-		registrationMap: make(map[Registration]Producers),
+		registrationChannelMap: make(map[string]ChannelRegistrations),
+		registrationTopicMap:   make(map[string]TopicRegistrations),
+		registrationNodeMap:    make(map[string]*PeerInfo),
 	}
 }
 
 // add a registration key
-func (r *RegistrationDB) AddRegistration(k Registration) {
+func (r *RegistrationDB) AddChannelReg(topic string, k ChannelReg) bool {
 	r.Lock()
 	defer r.Unlock()
-	_, ok := r.registrationMap[k]
+	channels, ok := r.registrationChannelMap[topic]
 	if !ok {
-		r.registrationMap[k] = Producers{}
+		channels = make(ChannelRegistrations, 0)
+		r.registrationChannelMap[topic] = channels
 	}
-}
-
-func (r *RegistrationDB) addProducerClient(k Registration, p *Producer) bool {
-	r.Lock()
-	defer r.Unlock()
-	producers := r.registrationMap[k]
-	found := false
-	for _, producer := range producers {
-		if producer.peerInfo.Id == p.peerInfo.Id {
-			found = true
+	for _, ch := range channels {
+		if ch == k {
+			return false
 		}
 	}
-	if found == false {
-		r.registrationMap[k] = append(producers, p)
-	}
-	return !found
+	channels = append(channels, k)
+	r.registrationChannelMap[topic] = channels
+	return true
 }
 
-// add a producer to a registration
-func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
-	if k.PartitionID == "" {
+func (r *RegistrationDB) FindChannelRegs(topic string, pid string) ChannelRegistrations {
+	results := ChannelRegistrations{}
+	r.RLock()
+	defer r.RUnlock()
+	channels, ok := r.registrationChannelMap[topic]
+	if !ok {
+		return results
+	}
+	for _, ch := range channels {
+		if ch.IsMatch(pid, "*", "*") {
+			results = append(results, ch)
+		}
+	}
+	return results
+}
+
+func (r *RegistrationDB) RemoveChannelReg(topic string, k ChannelReg) bool {
+	r.Lock()
+	defer r.Unlock()
+	channels, ok := r.registrationChannelMap[topic]
+	if !ok {
 		return false
 	}
-	pid, err := strconv.Atoi(k.PartitionID)
+	cleaned := ChannelRegistrations{}
+	removed := false
+	for _, ch := range channels {
+		if ch.IsMatch(k.PartitionID, k.PeerId, k.Channel) {
+			removed = true
+		} else {
+			cleaned = append(cleaned, ch)
+		}
+	}
+	if removed {
+		r.registrationChannelMap[topic] = cleaned
+	}
+	return removed
+}
+
+func (r *RegistrationDB) addPeerClient(id string, p *PeerInfo) bool {
+	r.Lock()
+	defer r.Unlock()
+	_, ok := r.registrationNodeMap[id]
+	if ok {
+		return false
+	}
+	r.registrationNodeMap[id] = p
+	return true
+}
+
+func (r *RegistrationDB) FindPeerClients() PeerInfoList {
+	r.RLock()
+	defer r.RUnlock()
+	retList := make(PeerInfoList, 0, len(r.registrationNodeMap))
+	for _, r := range r.registrationNodeMap {
+		retList = append(retList, r)
+	}
+	return retList
+}
+
+func (r *RegistrationDB) AddTopicProducer(topic string, pidStr string, p *Producer) bool {
+	if pidStr == "" {
+		return false
+	}
+	pid, err := strconv.Atoi(pidStr)
 	if err != nil || pid < 0 {
 		return false
 	}
-	return r.addProducerClient(k, p)
-}
 
-// remove a producer from a registration
-func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	r.Lock()
 	defer r.Unlock()
-	producers, ok := r.registrationMap[k]
+	producers, ok := r.registrationTopicMap[topic]
 	if !ok {
-		return false, 0
+		producers = TopicRegistrations{}
+		r.registrationTopicMap[topic] = producers
+	}
+	exist := false
+	for _, producerReg := range producers {
+		if producerReg.PartitionID == pidStr &&
+			producerReg.ProducerNode.peerInfo.Id == p.peerInfo.Id {
+			exist = true
+			break
+		}
+	}
+	if !exist {
+		r.registrationTopicMap[topic] = append(producers, TopicProducerReg{pidStr, p})
+	}
+	return !exist
+}
+
+// remove all topic producers and channels related with peer id
+func (r *RegistrationDB) RemoveAllByPeerId(id string) {
+	r.Lock()
+	defer r.Unlock()
+	for topic, producers := range r.registrationTopicMap {
+		removed := false
+		cleaned := TopicRegistrations{}
+		for _, producer := range producers {
+			if producer.ProducerNode.peerInfo.Id != id {
+				cleaned = append(cleaned, producer)
+			} else {
+				removed = true
+			}
+		}
+		if removed {
+			// Note: this leaves keys in the DB even if they have empty lists
+			r.registrationTopicMap[topic] = cleaned
+		}
+	}
+	for topic, chRegs := range r.registrationChannelMap {
+		removed := false
+		cleaned := ChannelRegistrations{}
+		for _, reg := range chRegs {
+			if reg.PeerId == id {
+				removed = true
+			} else {
+				cleaned = append(cleaned, reg)
+			}
+		}
+		if removed {
+			r.registrationChannelMap[topic] = cleaned
+		}
+	}
+	delete(r.registrationNodeMap, id)
+}
+
+func (r *RegistrationDB) RemoveTopicProducer(topic string, pid string, id string) bool {
+	r.Lock()
+	defer r.Unlock()
+	producers, ok := r.registrationTopicMap[topic]
+	if !ok {
+		return false
 	}
 	removed := false
-	cleaned := Producers{}
-	for _, producer := range producers {
-		if producer.peerInfo.Id != id {
-			cleaned = append(cleaned, producer)
-		} else {
+	for idx, producerReg := range producers {
+		if producerReg.PartitionID == pid &&
+			producerReg.ProducerNode.peerInfo.Id == id {
 			removed = true
+			producers[idx] = producers[len(producers)-1]
+			producers = producers[:len(producers)-1]
+			break
 		}
 	}
-	// Note: this leaves keys in the DB even if they have empty lists
-	r.registrationMap[k] = cleaned
-	return removed, len(cleaned)
+	if removed {
+		r.registrationTopicMap[topic] = producers
+	}
+	return removed
 }
 
-// remove a Registration and all it's producers
-func (r *RegistrationDB) RemoveRegistration(k Registration) {
-	r.Lock()
-	defer r.Unlock()
-	delete(r.registrationMap, k)
+func (r *RegistrationDB) needFilter(key string, subKey string) bool {
+	return key == "*" || subKey == "*"
 }
 
-func (r *RegistrationDB) needFilter(key string, subkey string, pid string) bool {
-	return key == "*" || subkey == "*" || pid == "*"
-}
-
-func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string, pid string) Registrations {
+func (r *RegistrationDB) FindTopics() []string {
 	r.RLock()
 	defer r.RUnlock()
-	if !r.needFilter(key, subkey, pid) {
-		k := Registration{category, key, subkey, pid}
-		if _, ok := r.registrationMap[k]; ok {
-			return Registrations{k}
-		}
-		return Registrations{}
-	}
-	results := Registrations{}
-	for k := range r.registrationMap {
-		if !k.IsMatch(category, key, subkey, pid) {
-			continue
-		}
+	results := make([]string, 0, len(r.registrationTopicMap))
+	for k, _ := range r.registrationTopicMap {
 		results = append(results, k)
 	}
 	return results
 }
 
-func (r *RegistrationDB) FindProducers(category string, key string, subkey string, pid string) Producers {
+func (r *RegistrationDB) FindPeerTopics(id string) map[string]TopicRegistrations {
 	r.RLock()
 	defer r.RUnlock()
-	if !r.needFilter(key, subkey, pid) {
-		k := Registration{category, key, subkey, pid}
-		return r.registrationMap[k]
+	results := make(map[string]TopicRegistrations)
+	for k, regs := range r.registrationTopicMap {
+		ret, _ := results[k]
+		for _, reg := range regs {
+			if reg.ProducerNode.peerInfo != nil && reg.ProducerNode.peerInfo.Id == id {
+				ret = append(ret, reg)
+			}
+		}
+		if len(ret) > 0 {
+			results[k] = ret
+		}
 	}
+	return results
+}
 
-	results := Producers{}
-	for k, producers := range r.registrationMap {
-		if !k.IsMatch(category, key, subkey, pid) {
+func (r *RegistrationDB) FindTopicProducers(topic string, pid string) TopicRegistrations {
+	r.RLock()
+	defer r.RUnlock()
+
+	results := TopicRegistrations{}
+	producers, ok := r.registrationTopicMap[topic]
+	if !ok {
+		return results
+	}
+	for _, producerReg := range producers {
+		if pid != "*" && pid != producerReg.PartitionID {
 			continue
 		}
-		for _, producer := range producers {
-			found := false
-			for _, p := range results {
-				if producer.peerInfo.Id == p.peerInfo.Id {
-					found = true
-				}
-			}
-			if found == false {
-				results = append(results, producer)
-			}
-		}
+		results = append(results, producerReg)
 	}
 	return results
 }
 
-func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
-	r.RLock()
-	defer r.RUnlock()
-	results := Registrations{}
-	for k, producers := range r.registrationMap {
-		for _, p := range producers {
-			if p.peerInfo.Id == id {
-				results = append(results, k)
-				break
-			}
-		}
-	}
-	return results
-}
+// Note: if you want the topics or channels related to some node, you can just
+// directly query the node.
+// The lookup should handle the query related to more than one node.
 
-func (k Registration) IsMatch(category string, key string, subkey string, pid string) bool {
-	if category != k.Category {
-		return false
-	}
-	if key != "*" && k.Key != key {
-		return false
-	}
-	if subkey != "*" && k.SubKey != subkey {
-		return false
-	}
+func (k ChannelReg) IsMatch(pid string, peerId string, ch string) bool {
 	if pid != "*" && k.PartitionID != pid {
+		return false
+	}
+	if peerId != "*" && k.PeerId != peerId {
+		return false
+	}
+	if ch != "*" && k.Channel != ch {
 		return false
 	}
 	return true
 }
 
-func (rr Registrations) Filter(category string, key string, subkey string, pid string) Registrations {
-	output := Registrations{}
-	for _, k := range rr {
-		if k.IsMatch(category, key, subkey, pid) {
-			output = append(output, k)
-		}
-	}
-	return output
-}
-
-func (rr Registrations) Keys() []string {
+func (rr ChannelRegistrations) Channels() []string {
 	keys := make([]string, 0, len(rr))
 	dupCheck := make(map[string]struct{}, len(keys)*2)
 	for _, k := range rr {
-		if _, ok := dupCheck[k.Key]; ok {
+		if _, ok := dupCheck[k.Channel]; ok {
 			continue
 		}
-		keys = append(keys, k.Key)
-		dupCheck[k.Key] = struct{}{}
+		keys = append(keys, k.Channel)
+		dupCheck[k.Channel] = struct{}{}
 	}
 	return keys
 }
 
-func (rr Registrations) SubKeys() []string {
-	subkeys := make([]string, 0, len(rr))
-	dupCheck := make(map[string]struct{}, len(subkeys)*2)
-	for _, k := range rr {
-		if _, ok := dupCheck[k.SubKey]; ok {
+func (pp TopicRegistrations) FilterByActive(inactivityTimeout time.Duration, filterTomb bool) TopicRegistrations {
+	now := time.Now()
+	results := TopicRegistrations{}
+	for _, p := range pp {
+		cur := time.Unix(0, atomic.LoadInt64(&p.ProducerNode.peerInfo.lastUpdate))
+		if now.Sub(cur) > inactivityTimeout {
 			continue
 		}
-		subkeys = append(subkeys, k.SubKey)
-		dupCheck[k.SubKey] = struct{}{}
+		if filterTomb && p.ProducerNode.IsTombstoned() {
+			continue
+		}
+		results = append(results, p)
 	}
-	return subkeys
+	return results
 }
 
-func (rr Registrations) PartitionIDStrs() []string {
-	pids := make([]string, len(rr))
-	for i, k := range rr {
-		pids[i] = k.PartitionID
+func (pp PeerInfoList) FilterByActive(inactivityTimeout time.Duration) PeerInfoList {
+	now := time.Now()
+	results := PeerInfoList{}
+	for _, p := range pp {
+		cur := time.Unix(0, atomic.LoadInt64(&p.lastUpdate))
+		if now.Sub(cur) > inactivityTimeout {
+			continue
+		}
+		results = append(results, p)
 	}
-	return pids
+	return results
 }
 
-func (rr Registrations) PartitionIDs() []int {
-	pids := make([]int, len(rr))
-	for i, k := range rr {
-		pids[i], _ = strconv.Atoi(k.PartitionID)
-	}
-	return pids
-}
-
-func (pp Producers) FilterByActive(inactivityTimeout time.Duration, tombstoneLifetime time.Duration) Producers {
+func (pp Producers) FilterByActive(inactivityTimeout time.Duration, filterTomb bool) Producers {
 	now := time.Now()
 	results := Producers{}
 	for _, p := range pp {
 		cur := time.Unix(0, atomic.LoadInt64(&p.peerInfo.lastUpdate))
-		if now.Sub(cur) > inactivityTimeout || p.IsTombstoned(tombstoneLifetime) {
+		if now.Sub(cur) > inactivityTimeout {
+			continue
+		}
+		if filterTomb && p.IsTombstoned() {
 			continue
 		}
 		results = append(results, p)

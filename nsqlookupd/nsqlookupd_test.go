@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
-	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/levellogger"
@@ -121,7 +120,15 @@ func identify(t *testing.T, conn net.Conn, address string, tcpPort int, httpPort
 
 func API(endpoint string) (data *simplejson.Json, err error) {
 	d := make(map[string]interface{})
-	err = http_api.NewClient(nil).NegotiateV1(endpoint, &d)
+	_, err = http_api.NewClient(nil).GETV1(endpoint, &d)
+	data = simplejson.New()
+	data.SetPath(nil, d)
+	return
+}
+
+func APIwithRetCode(endpoint string) (data *simplejson.Json, code int, err error) {
+	d := make(map[string]interface{})
+	code, err = http_api.NewClient(nil).GETV1(endpoint, &d)
 	data = simplejson.New()
 	data.SetPath(nil, d)
 	return
@@ -133,12 +140,6 @@ func TestBasicLookupd(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
-	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
-	equal(t, len(topics), 0)
-
 	topicName := "connectmsg"
 
 	conn := mustConnectLookupd(t, tcpAddr)
@@ -148,7 +149,6 @@ func TestBasicLookupd(t *testing.T) {
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	v, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
@@ -162,12 +162,9 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(returnedProducers), 1)
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
+	topics := nsqlookupd.DB.FindTopicProducers(topicName, "*")
 	equal(t, len(topics), 1)
-
-	producers := nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
-	equal(t, len(producers), 1)
-	producer := producers[0]
+	producer := topics[0].ProducerNode
 
 	equal(t, producer.peerInfo.BroadcastAddress, "ip.address")
 	equal(t, producer.peerInfo.Hostname, "ip.address")
@@ -189,6 +186,7 @@ func TestBasicLookupd(t *testing.T) {
 	equal(t, err, nil)
 	returnedChannels, err := data.Get("channels").Array()
 	equal(t, err, nil)
+	t.Logf("got returnedChannels %v", returnedChannels)
 	equal(t, len(returnedChannels), 1)
 
 	returnedProducers, err = data.Get("producers").Array()
@@ -219,13 +217,11 @@ func TestBasicLookupd(t *testing.T) {
 	conn.Close()
 	time.Sleep(10 * time.Millisecond)
 
-	// now there should be no producers, but still topic/channel entries
+	// now there should be no producers
 	data, err = API(endpoint)
-
-	equal(t, err, nil)
 	returnedChannels, err = data.Get("channels").Array()
 	equal(t, err, nil)
-	equal(t, len(returnedChannels), 1)
+	equal(t, len(returnedChannels), 0)
 	returnedProducers, err = data.Get("producers").Array()
 	equal(t, err, nil)
 	equal(t, len(returnedProducers), 0)
@@ -237,7 +233,7 @@ func TestChannelUnregister(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
+	topics := nsqlookupd.DB.FindTopics()
 	equal(t, len(topics), 0)
 
 	topicName := "channel_unregister"
@@ -245,23 +241,19 @@ func TestChannelUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
-	equal(t, len(topics), 1)
+	topicRegs := nsqlookupd.DB.FindTopicProducers(topicName, "*")
+	equal(t, len(topicRegs), 1)
 
-	channels := nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
+	channels := nsqlookupd.DB.FindChannelRegs(topicName, "*")
 	equal(t, len(channels), 1)
 
 	nsq.UnRegister(topicName, "0", "ch1").WriteTo(conn)
@@ -269,13 +261,13 @@ func TestChannelUnregister(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, v, []byte("OK"))
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
-	equal(t, len(topics), 1)
+	topicRegs = nsqlookupd.DB.FindTopicProducers(topicName, "*")
+	equal(t, len(topicRegs), 1)
 
 	// we should still have mention of the topic even though there is no producer
 	// (ie. we haven't *deleted* the channel, just unregistered as a producer)
-	channels = nsqlookupd.DB.FindRegistrations("channel", topicName, "*", "*")
-	equal(t, len(channels), 1)
+	channels = nsqlookupd.DB.FindChannelRegs(topicName, "*")
+	equal(t, len(channels), 0)
 
 	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err := API(endpoint)
@@ -288,7 +280,6 @@ func TestChannelUnregister(t *testing.T) {
 func TestTombstoneRecover(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.TombstoneLifetime = 50 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
@@ -298,30 +289,33 @@ func TestTombstoneRecover(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
 	nsq.Register(topicName2, "0", "channel2").WriteTo(conn)
-	fakeLeadership.UpdateTopicLeader(topicName2, "0", "ip.address")
 	_, err = nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.NewClient(nil).POSTV1(endpoint)
+	_, err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
+	// available by default access mode
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err := API(endpoint)
 	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
+	equal(t, len(producers), 1)
+
+	// unavailable by write access mode
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s&access=w", httpAddr, topicName)
+	data, err = API(endpoint)
+	equal(t, err, nil)
+	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 0)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName2)
@@ -342,7 +336,6 @@ func TestTombstoneRecover(t *testing.T) {
 func TestTombstoneUnregister(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.TombstoneLifetime = 50 * time.Millisecond
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
@@ -351,11 +344,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -363,10 +352,10 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.NewClient(nil).POSTV1(endpoint)
+	_, err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
-	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s&access=w", httpAddr, topicName)
 	data, err := API(endpoint)
 	equal(t, err, nil)
 	producers, _ := data.Get("producers").Array()
@@ -378,7 +367,7 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	time.Sleep(55 * time.Millisecond)
 
-	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s&access=w", httpAddr, topicName)
 	data, err = API(endpoint)
 	equal(t, err, nil)
 	producers, _ = data.Get("producers").Array()
@@ -399,11 +388,7 @@ func TestInactiveNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -436,13 +421,9 @@ func TestTombstonedNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
-	fakeLeadership.UpdateTopicLeader(topicName, "0", "ip.address")
 
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
@@ -457,7 +438,7 @@ func TestTombstonedNodes(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
-	err = http_api.NewClient(nil).POSTV1(endpoint)
+	_, err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
 	producers, _ = ci.GetLookupdProducers(lookupdHTTPAddrs)
@@ -473,8 +454,8 @@ func TestTopicPartitions(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	topics := nsqlookupd.DB.FindRegistrations("topic", "*", "*", "*")
-	equal(t, len(topics), 0)
+	topicList := nsqlookupd.DB.FindTopics()
+	equal(t, len(topicList), 0)
 
 	topicName := "topic_partitions"
 
@@ -484,9 +465,6 @@ func TestTopicPartitions(t *testing.T) {
 	conn_p2_ip := "ip.address.p2"
 	fakeVer := "fake-version"
 
-	fakeLeadership := consistence.NewFakeNsqlookupLeadership()
-	nsqlookupd.coordinator.SetLeadershipMgr(fakeLeadership)
-
 	tcpPort := 5000
 	httpPort := 5555
 	identify(t, conn_p1, conn_p1_ip, tcpPort, httpPort, fakeVer)
@@ -494,8 +472,6 @@ func TestTopicPartitions(t *testing.T) {
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn_p1)
 	nsq.Register(topicName, "1", "channel1").WriteTo(conn_p2)
-
-	fakeLeadership.UpdateTopicLeader(topicName, "0", conn_p1_ip)
 
 	v, err := nsq.ReadResponse(conn_p1)
 	equal(t, err, nil)
@@ -521,22 +497,20 @@ func TestTopicPartitions(t *testing.T) {
 		equal(t, len(plist), 1)
 	}
 
-	topics = nsqlookupd.DB.FindRegistrations("topic", topicName, "", "*")
+	topics := nsqlookupd.DB.FindTopicProducers(topicName, "*")
 	equal(t, len(topics), 2)
-	topic_p1 := nsqlookupd.DB.FindRegistrations("topic", topicName, "", "0")
+	topic_p1 := nsqlookupd.DB.FindTopicProducers(topicName, "0")
 	equal(t, len(topic_p1), 1)
-	topic_p2 := nsqlookupd.DB.FindRegistrations("topic", topicName, "", "1")
+	topic_p2 := nsqlookupd.DB.FindTopicProducers(topicName, "1")
 	equal(t, len(topic_p2), 1)
 
-	producers := nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
-	equal(t, len(producers), 2)
-	producer := producers[0]
+	producer := topics[0].ProducerNode
 
 	if producer.peerInfo.BroadcastAddress == conn_p1_ip {
 		equal(t, producer.peerInfo.Hostname, conn_p1_ip)
 		equal(t, producer.peerInfo.TCPPort, tcpPort)
 		equal(t, producer.peerInfo.HTTPPort, httpPort)
-		producer = producers[1]
+		producer = topics[1].ProducerNode
 
 		equal(t, producer.peerInfo.BroadcastAddress, conn_p2_ip)
 		equal(t, producer.peerInfo.Hostname, conn_p2_ip)
@@ -547,7 +521,7 @@ func TestTopicPartitions(t *testing.T) {
 		equal(t, producer.peerInfo.Hostname, conn_p2_ip)
 		equal(t, producer.peerInfo.TCPPort, tcpPort)
 		equal(t, producer.peerInfo.HTTPPort, httpPort)
-		producer = producers[1]
+		producer = topics[1].ProducerNode
 
 		equal(t, producer.peerInfo.BroadcastAddress, conn_p1_ip)
 		equal(t, producer.peerInfo.Hostname, conn_p1_ip)
@@ -564,8 +538,8 @@ func TestTopicPartitions(t *testing.T) {
 	equal(t, err, nil)
 	equal(t, len(returnedTopics), 1)
 
-	// test get topic partition 2 producer without leader
-	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
+	// test get first topic partition
+	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s&partition=0", httpAddr, topicName)
 	data, err = API(endpoint)
 
 	equal(t, err, nil)
@@ -575,24 +549,23 @@ func TestTopicPartitions(t *testing.T) {
 
 	retPartitions, err := data.Get("partitions").Map()
 	equal(t, err, nil)
-	equal(t, len(retPartitions), 1)
 	t.Logf("got returnedPartitions %v", retPartitions)
+	equal(t, len(retPartitions), 1)
 	partData := simplejson.New()
 	partData.SetPath(nil, retPartitions["0"])
 	broadcastaddress_p1, err := partData.Get("broadcast_address").String()
 	equal(t, err, nil)
 	equal(t, broadcastaddress_p1, conn_p1_ip)
 
-	// test get topic partition 2 producer with updated leader
-	fakeLeadership.UpdateTopicLeader(topicName, "1", conn_p2_ip)
+	// test get topic all partitions
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = API(endpoint)
 	equal(t, err, nil)
 
 	retPartitions, err = data.Get("partitions").Map()
 	equal(t, err, nil)
-	equal(t, len(retPartitions), 2)
 	t.Logf("got returnedPartitions %v", retPartitions)
+	equal(t, len(retPartitions), 2)
 	partData.SetPath(nil, retPartitions["1"])
 	broadcastaddress_p2, err := partData.Get("broadcast_address").String()
 	equal(t, err, nil)

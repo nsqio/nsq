@@ -167,7 +167,7 @@ func TestCluster(t *testing.T) {
 	nsqd.GetTopicIgnPart(topicName)
 
 	url := fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", httpAddr, topicName)
-	err = http_api.NewClient(nil).POSTV1(url)
+	_, err = http_api.NewClient(nil).POSTV1(url)
 	test.Equal(t, err, nil)
 
 	// allow some time for nsqd to push info to nsqlookupd
@@ -178,7 +178,7 @@ func TestCluster(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	t.Logf("debug data: %v", data)
-	topicData := data.Get("topic:" + topicName + "::" + partitionStr)
+	topicData := data.Get("topic:" + topicName)
 	producers, _ := topicData.Array()
 	test.Equal(t, len(producers), 1)
 
@@ -188,7 +188,7 @@ func TestCluster(t *testing.T) {
 	test.Equal(t, producer.Get("tcp_port").MustInt(), tcpAddr.Port)
 	test.Equal(t, producer.Get("tombstoned").MustBool(), false)
 
-	channelData := data.Get("channel:" + topicName + ":ch:" + partitionStr)
+	channelData := data.Get("channel:" + topicName + ":" + partitionStr)
 	producers, _ = channelData.Array()
 	test.Equal(t, len(producers), 1)
 
@@ -201,7 +201,6 @@ func TestCluster(t *testing.T) {
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", lookupd.RealHTTPAddr(), topicName)
 	data, err = API(endpoint)
 
-	t.Logf("debug data: %v", data)
 	producers, _ = data.Get("producers").Array()
 	test.Equal(t, len(producers), 1)
 
@@ -233,9 +232,9 @@ func TestCluster(t *testing.T) {
 
 	test.Equal(t, err, nil)
 
-	producers, _ = data.Get("topic:" + topicName + ":" + partitionStr).Array()
+	producers, _ = data.Get("topic:" + topicName).Array()
 	test.Equal(t, len(producers), 0)
 
-	producers, _ = data.Get("channel:" + topicName + ":ch" + partitionStr).Array()
+	producers, _ = data.Get("channel:" + topicName + ":" + partitionStr).Array()
 	test.Equal(t, len(producers), 0)
 }

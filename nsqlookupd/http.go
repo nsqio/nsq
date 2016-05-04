@@ -145,7 +145,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	topics := s.ctx.nsqlookupd.DB.FindRegistrations("topic", "*", "", "*").Keys()
+	topics := s.ctx.nsqlookupd.DB.FindTopics()
 	return map[string]interface{}{
 		"topics": topics,
 	}, nil
@@ -166,7 +166,7 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 	if topicPartition == "" {
 		topicPartition = "*"
 	}
-	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", topicPartition).SubKeys()
+	channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, topicPartition).Channels()
 	return map[string]interface{}{
 		"channels": channels,
 	}, nil
@@ -205,44 +205,38 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	// the leadership info from etcd.
 	checkConsistent := reqParams.Get("consistent")
 
-	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", topicPartition)
+	registrations := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, topicPartition)
 	if len(registrations) == 0 {
 		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 	partitionProducers := make(map[string]*PeerInfo)
 	allProducers := make(map[string]*Producer, len(registrations))
-	filterTombTime := s.ctx.nsqlookupd.opts.TombstoneLifetime
+	// note: tombstone has been changed : the tomb is used for producer.
+	// tombstone node is filter so that any new data will not be put to this node,
+	// but the consumer can still consume the old data until no data to avoid the data lost
+	// while put some node offline.
+	filterTomb := true
 	if accessMode == "r" {
-		filterTombTime = 0
+		filterTomb = false
 	}
+	registrations = registrations.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
+		filterTomb)
 	for _, r := range registrations {
-		producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "", r.PartitionID)
-		producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
-			filterTombTime)
-		if len(producers) == 0 {
-			continue
-		}
-		if len(producers) > 1 {
-			nsqlookupLog.LogDebugf("found %v producers for topic: %v", len(producers), r)
-		}
-		if checkConsistent != "" || len(producers) > 1 {
+		if checkConsistent != "" {
 			// check leader only the client need consistent
 			var leaderProducer *Producer
-			for _, p := range producers {
-				pid, _ := strconv.Atoi(r.PartitionID)
-				if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, p.peerInfo.Id) {
-					leaderProducer = p
-					break
-				}
+			pid, _ := strconv.Atoi(r.PartitionID)
+			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.Id) {
+				leaderProducer = r.ProducerNode
+				break
 			}
 			if leaderProducer != nil {
 				partitionProducers[r.PartitionID] = leaderProducer.peerInfo
 				allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 			}
 		} else {
-			partitionProducers[r.PartitionID] = producers[0].peerInfo
-			allProducers[producers[0].peerInfo.Id] = producers[0]
+			partitionProducers[r.PartitionID] = r.ProducerNode.peerInfo
+			allProducers[r.ProducerNode.peerInfo.Id] = r.ProducerNode
 		}
 	}
 	producers := make(Producers, 0, len(allProducers))
@@ -251,7 +245,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	}
 
 	// maybe channels should be under topic partitions?
-	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", topicPartition).SubKeys()
+	channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, topicPartition).Channels()
 	return map[string]interface{}{
 		"channels":   channels,
 		"producers":  producers.PeerInfo(),
@@ -328,10 +322,6 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)
 		return nil, http_api.Err{400, err.Error()}
 	}
-	for i := 0; i < pnum; i++ {
-		key := Registration{"topic", topicName, "", strconv.Itoa(i)}
-		s.ctx.nsqlookupd.DB.AddRegistration(key)
-	}
 
 	return nil, nil
 }
@@ -355,16 +345,18 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	// TODO: handle delete topic for cluster
-	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*", partStr)
+	registrations := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, partStr)
 	for _, registration := range registrations {
-		nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
-		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
+		nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s-%s)", registration.Channel, topicName, partStr)
+		s.ctx.nsqlookupd.DB.RemoveChannelReg(topicName, registration)
 	}
 
-	registrations = s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "", partStr)
-	for _, registration := range registrations {
-		nsqlookupLog.Logf("DB: removing topic(%s)", topicName)
-		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
+	topicRegs := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, partStr)
+	for _, reg := range topicRegs {
+		nsqlookupLog.Logf("DB: removing topic(%s) producer: %v", topicName, partStr, reg)
+		if reg.ProducerNode.peerInfo != nil {
+			s.ctx.nsqlookupd.DB.RemoveTopicProducer(topicName, partStr, reg.ProducerNode.peerInfo.Id)
+		}
 	}
 
 	return nil, nil
@@ -387,10 +379,15 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 	}
 
 	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
-	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "", "*")
-	for _, p := range producers {
+	producerRegs := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, "*")
+	for _, reg := range producerRegs {
+		p := reg.ProducerNode
+		if p.peerInfo == nil {
+			continue
+		}
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
 		if thisNode == node {
+			nsqlookupLog.Logf("DB: setting tombstone  producer %v", p)
 			p.Tombstone()
 		}
 	}
@@ -428,36 +425,35 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// dont filter out tombstoned nodes
-	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "", "").FilterByActive(
-		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
+	producers := s.ctx.nsqlookupd.DB.FindPeerClients().FilterByActive(
+		s.ctx.nsqlookupd.opts.InactiveProducerTimeout)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {
-		regs := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.Id).Filter("topic", "*", "", "*")
-		topics := regs.Keys()
+		regMap := s.ctx.nsqlookupd.DB.FindPeerTopics(p.Id)
+		topics := make([]string, 0, len(regMap))
 		partitions := make(map[string][]string)
-		for _, r := range regs {
-			partitions[r.Key] = append(partitions[r.Key], r.PartitionID)
-		}
-
-		// for each topic find the producer that matches this peer
-		// to add tombstone information
-		tombstones := make([]bool, len(topics))
-		for j, t := range topics {
-			topicProducers := s.ctx.nsqlookupd.DB.FindProducers("topic", t, "", "*")
-			for _, tp := range topicProducers {
-				if tp.peerInfo == p.peerInfo {
-					tombstones[j] = tp.IsTombstoned(s.ctx.nsqlookupd.opts.TombstoneLifetime)
+		tombstones := make([]bool, len(regMap))
+		j := 0
+		for t, regs := range regMap {
+			topics = append(topics, t)
+			for _, reg := range regs {
+				partitions[t] = append(partitions[t], reg.PartitionID)
+				// for each topic find the producer that matches this peer
+				// to add tombstone information
+				if reg.ProducerNode.peerInfo.Id == p.Id {
+					tombstones[j] = reg.ProducerNode.IsTombstoned()
 				}
 			}
+			j++
 		}
 
 		nodes[i] = &node{
-			RemoteAddress:    p.peerInfo.RemoteAddress,
-			Hostname:         p.peerInfo.Hostname,
-			BroadcastAddress: p.peerInfo.BroadcastAddress,
-			TCPPort:          p.peerInfo.TCPPort,
-			HTTPPort:         p.peerInfo.HTTPPort,
-			Version:          p.peerInfo.Version,
+			RemoteAddress:    p.RemoteAddress,
+			Hostname:         p.Hostname,
+			BroadcastAddress: p.BroadcastAddress,
+			TCPPort:          p.TCPPort,
+			HTTPPort:         p.HTTPPort,
+			Version:          p.Version,
 			Tombstones:       tombstones,
 			Topics:           topics,
 			Partitions:       partitions,
@@ -474,10 +470,12 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 	defer s.ctx.nsqlookupd.DB.RUnlock()
 
 	data := make(map[string][]map[string]interface{})
-	for r, producers := range s.ctx.nsqlookupd.DB.registrationMap {
-		key := r.Category + ":" + r.Key + ":" + r.SubKey + ":" + r.PartitionID
-		for _, p := range producers {
+	for topic, topicRegs := range s.ctx.nsqlookupd.DB.registrationTopicMap {
+		key := "topic" + ":" + topic
+		for _, reg := range topicRegs {
+			p := reg.ProducerNode
 			m := map[string]interface{}{
+				"partitionID":       reg.PartitionID,
 				"id":                p.peerInfo.Id,
 				"hostname":          p.peerInfo.Hostname,
 				"broadcast_address": p.peerInfo.BroadcastAddress,
@@ -492,5 +490,30 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 		}
 	}
 
+	for topic, regs := range s.ctx.nsqlookupd.DB.registrationChannelMap {
+		for _, reg := range regs {
+			key := "channel" + ":" + topic + ":" + reg.PartitionID
+			m := map[string]interface{}{
+				"partitionID": reg.PartitionID,
+				"channelName": reg.Channel,
+				"peerId":      reg.PeerId,
+			}
+			data[key] = append(data[key], m)
+		}
+	}
+
+	for id, p := range s.ctx.nsqlookupd.DB.registrationNodeMap {
+		key := "peerInfo:" + id
+		m := map[string]interface{}{
+			"id":                p.Id,
+			"hostname":          p.Hostname,
+			"broadcast_address": p.BroadcastAddress,
+			"tcp_port":          p.TCPPort,
+			"http_port":         p.HTTPPort,
+			"version":           p.Version,
+			"last_update":       atomic.LoadInt64(&p.lastUpdate),
+		}
+		data[key] = append(data[key], m)
+	}
 	return data, nil
 }
