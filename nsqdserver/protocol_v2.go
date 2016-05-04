@@ -711,12 +711,11 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName)
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
+		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName, err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
-		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader,
-			fmt.Sprintf("sub is allowed only on the master node"))
+		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
 	channel.AddClient(client.ID, client)
@@ -790,8 +789,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if !p.ctx.checkForMasterWrite(client.Channel.GetTopicName(), client.Channel.GetTopicPart()) {
-		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader,
-			fmt.Sprintf("FIN is allowed only on the master node"))
+		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 
 	err = p.ctx.FinishMessage(client.Channel, client.ID, nsqd.GetMessageIDFromFullMsgID(*id))
@@ -942,8 +940,8 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
+		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName, err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
@@ -970,7 +968,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
-		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "Write only allow on master")
+		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 
 	return okBytes, nil
@@ -1022,8 +1020,8 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName)
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, err.Error())
+		nsqd.NsqLogger().Logf("PUB to not existing topic: %v, %v", topicName, err.Error())
+		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
 	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,
@@ -1049,7 +1047,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
-		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "Write only allow on master")
+		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 	return okBytes, nil
 }

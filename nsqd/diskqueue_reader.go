@@ -843,8 +843,7 @@ func (d *diskQueueReader) ioLoop() {
 			d.totalMsgCnt = endPos.TotalMsgCnt
 			d.virtualEnd = endPos.VirtualEnd
 			d.updateDepth()
-			count = 0
-			d.sync()
+			count++
 			//nsqLog.LogDebugf("read end updated to : %v", endPos)
 			d.endUpdatedResponseChan <- nil
 
