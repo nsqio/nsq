@@ -379,6 +379,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(waitingMigrateTopic map[string]m
 		coordLog.Infof("scan topics failed. %v", commonErr)
 		return
 	}
+	coordLog.Debugf("scan found topics: %v", topics)
 	// TODO: check partition number for topic, maybe failed to create
 	// some partition when creating topic.
 	self.nodesMutex.RLock()
