@@ -182,6 +182,14 @@ func (c *Channel) Close() error {
 	return c.exit(false)
 }
 
+func (c *Channel) IsWaitingMoreData() bool {
+	d, ok := c.backend.(*diskQueueReader)
+	if ok {
+		return atomic.LoadInt32(&d.waitingMoreData) == 1
+	}
+	return false
+}
+
 func (c *Channel) exit(deleted bool) error {
 	c.exitMutex.Lock()
 	defer c.exitMutex.Unlock()

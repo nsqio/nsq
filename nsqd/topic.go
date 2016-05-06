@@ -293,15 +293,25 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, i
 
 	id, offset, writeBytes, totalCnt, err := t.put(m)
 	if totalCnt%t.syncEvery == 0 {
-		t.flush(false)
+		t.flush(true)
+	} else {
+		t.flushForChannels()
 	}
 	return id, offset, writeBytes, totalCnt, err
 }
 
-func (t *Topic) FlushAsNeedNoLock() {
-	cnt := t.TotalMessageCnt()
-	if cnt%uint64(t.syncEvery) == 0 {
-		t.flush(false)
+func (t *Topic) flushForChannels() {
+	needFlush := false
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		if ch.IsWaitingMoreData() {
+			needFlush = true
+			break
+		}
+	}
+	t.channelLock.RUnlock()
+	if needFlush {
+		t.flush(true)
 	}
 }
 
@@ -374,7 +384,9 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	}
 
 	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
-		t.flush(false)
+		t.flush(true)
+	} else {
+		t.flushForChannels()
 	}
 	return firstMsgID, firstOffset, batchBytes, totalCnt, nil
 }

@@ -104,6 +104,7 @@ type diskQueueReader struct {
 	autoSkipError          bool
 	confirmChan            chan BackendOffset
 	confirmResponseChan    chan error
+	waitingMoreData        int32
 }
 
 // newDiskQueue instantiates a new instance of diskQueueReader, retrieving metadata
@@ -237,11 +238,16 @@ func (d *diskQueueReader) Flush() {
 }
 
 func (d *diskQueueReader) updateDepth() {
+	newDepth := int64(0)
 	if d.confirmedOffset.FileNum > d.endPos.FileNum {
 		atomic.StoreInt64(&d.depth, 0)
-		return
+	} else {
+		newDepth = int64(d.virtualEnd - d.virtualConfirmedOffset)
+		atomic.StoreInt64(&d.depth, newDepth)
 	}
-	atomic.StoreInt64(&d.depth, int64(d.virtualEnd-d.virtualConfirmedOffset))
+	if newDepth == 0 {
+		atomic.StoreInt32(&d.waitingMoreData, 1)
+	}
 }
 
 func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next diskQueueOffset) (BackendOffset, error) {
@@ -837,6 +843,9 @@ func (d *diskQueueReader) ioLoop() {
 			if (d.readPos.FileNum == endPos.EndFileNum) && (d.readPos.Pos > endPos.EndPos) {
 				d.readPos.Pos = endPos.EndPos
 				d.virtualReadOffset = endPos.VirtualEnd
+			}
+			if endPos.VirtualEnd > d.virtualConfirmedOffset {
+				atomic.StoreInt32(&d.waitingMoreData, 0)
 			}
 			d.endPos.Pos = endPos.EndPos
 			d.endPos.FileNum = endPos.EndFileNum
