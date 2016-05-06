@@ -11,7 +11,6 @@ const (
 	NSQ_ROOT_DIR               = "NSQMetaData"
 	NSQ_TOPIC_DIR              = "Topics"
 	NSQ_TOPIC_META             = "TopicMeta"
-	NSQ_TOPIC_INFO             = "TopicInfo"
 	NSQ_TOPIC_REPLICA_INFO     = "ReplicaInfo"
 	NSQ_TOPIC_LEADER_SESSION   = "LeaderSession"
 	NSQ_NODE_DIR               = "NsqdNodes"

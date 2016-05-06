@@ -14,8 +14,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/coreos/go-etcd/etcd"
+	"golang.org/x/net/context"
 	etcdlock "github.com/reechou/xlock"
+	"github.com/coreos/go-etcd/etcd"
 )
 
 const (
@@ -28,7 +29,8 @@ type MasterChanInfo struct {
 }
 
 type NsqdEtcdMgr struct {
-	client      *etcd.Client
+	eClient     *etcd.Client
+	client      *EtcdClient
 	clusterID   string
 	topicRoot   string
 	lookupdRoot string
@@ -41,8 +43,10 @@ type NsqdEtcdMgr struct {
 }
 
 func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
-	client := NewEtcdClient(host)
+	eClient := NewEtcdClient(host)
+	client := NewEClient(host)
 	return &NsqdEtcdMgr{
+		eClient:       eClient,
 		client:        client,
 		topicLockMap:  make(map[string]*etcdlock.SeizeLock),
 		refreshStopCh: make(chan bool, 1),
@@ -62,7 +66,7 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	}
 	self.nodeKey = self.createNsqdNodePath(nodeData)
 	self.nodeValue = string(value)
-	_, err = self.client.Create(self.nodeKey, self.nodeValue, ETCD_TTL)
+	_, err = self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 	if err != nil {
 		return err
 	}
@@ -78,7 +82,7 @@ func (self *NsqdEtcdMgr) refresh() {
 		case <-self.refreshStopCh:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
-			_, err := self.client.Update(self.nodeKey, self.nodeValue, ETCD_TTL)
+			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
 				logger.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
 			}
@@ -100,6 +104,8 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	// stop refresh
 	close(self.refreshStopCh)
 
+	logger.Infof("[UnregisterNsqd] cluser[%s] node[%s]", self.clusterID, nodeData.ID)
+
 	return nil
 }
 
@@ -117,15 +123,18 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		return err
 	}
 	topicKey := self.createTopicLeaderPath(topic, partition)
-	lock := etcdlock.NewSeizeLock(self.client, topicKey, string(valueB), ETCD_TTL)
+	lock := etcdlock.NewSeizeLock(self.eClient, topicKey, string(valueB), ETCD_TTL)
 	err = lock.Lock()
 	if err != nil {
+		logger.Errorf("[AcquireTopicLeader] topic_key[%s] lock error: %s", topicKey, err.Error())
 		if err == etcdlock.ErrSeizeLockAg {
 			return nil
 		}
 		return err
 	}
+	logger.Infof("[AcquireTopicLeader] topic_key[%s] lock success.", topicKey)
 	self.topicLockMap[topicKey] = lock
+	logger.Infof("[AcquireTopicLeader] map: %v", self.topicLockMap)
 
 	return nil
 }
@@ -161,19 +170,24 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 //}
 
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
-	topicKey := self.createTopicLockKey(topic, partition)
+	logger.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] leader", topic, partition)
+	logger.Infof("[ReleaseTopicLeader] map: %v", self.topicLockMap)
+	topicKey := self.createTopicLeaderPath(topic, partition)
 	v, ok := self.topicLockMap[topicKey]
 	if ok {
 		err := v.Unlock()
 		if err != nil {
+			logger.Errorf("[ReleaseTopicLeader] unlock error: %s", err.Error())
 			if err == etcdlock.ErrEtcdBad {
 				return err
 			}
 		}
 		delete(self.topicLockMap, topicKey)
+		logger.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] success.", topic, partition)
 
 		return err
 	} else {
+		logger.Errorf("[ReleaseTopicLeader] topicLockMap key[%s] not found.", topicKey)
 		return fmt.Errorf("topicLockMap key[%s] not found.", topicKey)
 	}
 
@@ -197,14 +211,11 @@ func (self *NsqdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
 }
 
 func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
-	watchCh := make(chan *etcd.Response, 1)
-	watchFailCh := make(chan bool, 1)
-	watchStopCh := make(chan bool, 1)
-
 	key := self.createLookupdLeaderPath()
 
 	rsp, err := self.client.Get(key, false, false)
 	if err == nil {
+		logger.Infof("[WatchLookupdLeader] key: %s value: %s", rsp.Node.Key, rsp.Node.Value)
 		var lookupdInfo NsqLookupdNodeInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 		if err == nil {
@@ -215,27 +226,48 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 				return nil
 			}
 		}
+	} else {
+		logger.Infof("[WatchLookupdLeader] get error: %s", err.Error())
 	}
 
-	go self.watch(key, watchCh, watchStopCh, watchFailCh)
-
-	for {
+	watcher := self.client.Watch(key, 0, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
 		select {
-		case rsp := <-watchCh:
-			if rsp == nil {
-				continue
+		case <-stop:
+			cancel()
+		}
+	}()
+	for {
+		rsp, err = watcher.Next(ctx)
+		if err != nil {
+			if err == context.Canceled {
+				logger.Infof("watch key[%s] canceled.", key)
+				close(leader)
+				return nil
+			} else {
+				logger.Errorf("watcher key[%s] error: %s", key, err.Error())
+				time.Sleep(5 * time.Second)
 			}
-			var lookupdInfo NsqLookupdNodeInfo
+			continue
+		}
+		if rsp == nil {
+			continue
+		}
+		var lookupdInfo NsqLookupdNodeInfo
+		if rsp.Action == "expire" || rsp.Action == "delete" {
+			logger.Infof("key[%s] action[%s]", key, rsp.Action)
+		} else if rsp.Action == "create" || rsp.Action == "update" || rsp.Action == "set" {
 			err := json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 			if err != nil {
 				continue
 			}
-			leader <- &lookupdInfo
-		case <-watchFailCh:
-			watchCh = make(chan *etcd.Response, 1)
-			go self.watch(key, watchCh, watchStopCh, watchFailCh)
+		} else {
+			continue
+		}
+		select {
+		case leader <- &lookupdInfo:
 		case <-stop:
-			close(watchStopCh)
 			close(leader)
 			return nil
 		}
@@ -245,15 +277,31 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 }
 
 func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
-	rsp, err := self.client.Get(self.createTopicInfoPath(topic, partition), false, false)
+	var topicInfo TopicPartionMetaInfo
+	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
 		return nil, err
 	}
-	var topicInfo TopicPartionMetaInfo
-	if err = json.Unmarshal([]byte(rsp.Node.Value), &topicInfo); err != nil {
+	var mInfo TopicMetaInfo
+	err = json.Unmarshal([]byte(rsp.Node.Value), &mInfo)
+	if err != nil {
 		return nil, err
 	}
-	topicInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
+	topicInfo.TopicMetaInfo = mInfo
+
+	rsp, err = self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
+	if err != nil {
+		return nil, err
+	}
+	var rInfo TopicPartitionReplicaInfo
+	if err = json.Unmarshal([]byte(rsp.Node.Value), &rInfo); err != nil {
+		return nil, err
+	}
+	rInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
+	topicInfo.TopicPartitionReplicaInfo = rInfo
+	topicInfo.Name = topic
+	topicInfo.Partition = partition
+
 	return &topicInfo, nil
 }
 
@@ -269,21 +317,20 @@ func (self *NsqdEtcdMgr) GetTopicLeaderSession(topic string, partition int) (*To
 	return &topicLeaderSession, nil
 }
 
-func (self *NsqdEtcdMgr) watch(key string, watchCh chan *etcd.Response, watchStopCh chan bool, watchFailCh chan bool) {
-	_, err := self.client.Watch(key, 0, true, watchCh, watchStopCh)
-	if err == etcd.ErrWatchStoppedByUser {
-		return
-	} else {
-		watchFailCh <- true
-	}
-}
-
 func (self *NsqdEtcdMgr) createNsqdNodePath(nodeData *NsqdNodeInfo) string {
 	return path.Join("/", NSQ_ROOT_DIR, self.clusterID, NSQ_NODE_DIR, "Node-"+nodeData.ID)
 }
 
 func (self *NsqdEtcdMgr) createTopicRootPath() string {
 	return path.Join("/", NSQ_ROOT_DIR, self.clusterID, NSQ_TOPIC_DIR)
+}
+
+func (self *NsqdEtcdMgr) createTopicMetaPath(topic string) string {
+	return path.Join(self.topicRoot, topic, NSQ_TOPIC_META)
+}
+
+func (self *NsqdEtcdMgr) createTopicReplicaInfoPath(topic string, partition int) string {
+	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_REPLICA_INFO)
 }
 
 func (self *NsqdEtcdMgr) createLookupdRootPath() string {
@@ -298,14 +345,6 @@ func (self *NsqdEtcdMgr) createTopicPartitionPath(topic string, partition int) s
 	return path.Join(self.topicRoot, topic, strconv.Itoa(partition))
 }
 
-func (self *NsqdEtcdMgr) createTopicInfoPath(topic string, partition int) string {
-	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_INFO)
-}
-
 func (self *NsqdEtcdMgr) createTopicLeaderPath(topic string, partition int) string {
 	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_LEADER_SESSION)
-}
-
-func (self *NsqdEtcdMgr) createTopicLockKey(topic string, partition int) string {
-	return self.clusterID + "/" + topic + "|" + strconv.Itoa(partition)
 }

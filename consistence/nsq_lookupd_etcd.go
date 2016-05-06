@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-etcd/etcd"
+//	"golang.org/x/net/context"
 	etcdlock "github.com/reechou/xlock"
 )
 
@@ -312,53 +313,22 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 }
 
 func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
-	rsp, err := self.client.Get(self.topicRoot, false, true)
+	self.Lock()
+	self.ifTopicChanged = false
+	self.Unlock()
+
+	rsp, err := self.client.Get(self.topicRoot, true, true)
 	if err != nil {
+		self.Lock()
+		self.ifTopicChanged = true
+		self.Unlock()
 		return nil, err
 	}
 
 	topicMetaMap := make(map[string]TopicMetaInfo)
 	topicReplicasMap := make(map[string]map[string]TopicPartitionReplicaInfo)
-	for _, node := range rsp.Node.Nodes {
-		if node.Dir {
-			continue
-		}
-		_, key := path.Split(node.Key)
-		if key == NSQ_TOPIC_INFO {
-			var rInfo TopicPartitionReplicaInfo
-			if err = json.Unmarshal([]byte(node.Value), &rInfo); err != nil {
-				continue
-			}
-			rInfo.Epoch = EpochType(node.ModifiedIndex)
-			keys := strings.Split(node.Key, "/")
-			keyLen := len(keys)
-			if keyLen < 3 {
-				continue
-			}
-			topicName := keys[keyLen-3]
-			partition := keys[keyLen-2]
-			v, ok := topicReplicasMap[topicName]
-			if ok {
-				v[partition] = rInfo
-			} else {
-				pMap := make(map[string]TopicPartitionReplicaInfo)
-				pMap[partition] = rInfo
-				topicReplicasMap[topicName] = pMap
-			}
-		} else if key == NSQ_TOPIC_META {
-			var mInfo TopicMetaInfo
-			if err = json.Unmarshal([]byte(node.Value), &mInfo); err != nil {
-				continue
-			}
-			keys := strings.Split(node.Key, "/")
-			keyLen := len(keys)
-			if keyLen < 2 {
-				continue
-			}
-			topicName := keys[keyLen-2]
-			topicMetaMap[topicName] = mInfo
-		}
-	}
+	self.processTopicNode(rsp.Node.Nodes, topicMetaMap, topicReplicasMap)
+	logger.Infof("scantopic %d", len(topicMetaMap))
 
 	topicMetaInfos := make([]TopicPartionMetaInfo, 0)
 	for k, v := range topicReplicasMap {
@@ -381,11 +351,56 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
 	}
 
 	self.Lock()
-	self.ifTopicChanged = false
 	self.topicMetaInfos = topicMetaInfos
 	self.Unlock()
 
 	return self.topicMetaInfos, nil
+}
+
+func (self *NsqLookupdEtcdMgr) processTopicNode(nodes etcd.Nodes, topicMetaMap map[string]TopicMetaInfo, topicReplicasMap map[string]map[string]TopicPartitionReplicaInfo) {
+	for _, node := range nodes {
+		if node.Nodes != nil {
+			self.processTopicNode(node.Nodes, topicMetaMap, topicReplicasMap)
+		}
+		if node.Dir {
+			continue
+		}
+		_, key := path.Split(node.Key)
+		if key == NSQ_TOPIC_REPLICA_INFO {
+			var rInfo TopicPartitionReplicaInfo
+			if err := json.Unmarshal([]byte(node.Value), &rInfo); err != nil {
+				continue
+			}
+			rInfo.Epoch = EpochType(node.ModifiedIndex)
+			keys := strings.Split(node.Key, "/")
+			keyLen := len(keys)
+			if keyLen < 3 {
+				continue
+			}
+			topicName := keys[keyLen-3]
+			partition := keys[keyLen-2]
+			v, ok := topicReplicasMap[topicName]
+			if ok {
+				v[partition] = rInfo
+			} else {
+				pMap := make(map[string]TopicPartitionReplicaInfo)
+				pMap[partition] = rInfo
+				topicReplicasMap[topicName] = pMap
+			}
+		} else if key == NSQ_TOPIC_META {
+			var mInfo TopicMetaInfo
+			if err := json.Unmarshal([]byte(node.Value), &mInfo); err != nil {
+				continue
+			}
+			keys := strings.Split(node.Key, "/")
+			keyLen := len(keys)
+			if keyLen < 2 {
+				continue
+			}
+			topicName := keys[keyLen-2]
+			topicMetaMap[topicName] = mInfo
+		}
+	}
 }
 
 func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
@@ -408,7 +423,7 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	} else {
 		topicInfo.TopicMetaInfo = *metaInfo
 	}
-	rsp, err := self.client.Get(self.createTopicInfoPath(topic, partition), false, false)
+	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -425,12 +440,7 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 }
 
 func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int) error {
-	replicaInfo := &TopicPartitionReplicaInfo{}
-	value, err := json.Marshal(replicaInfo)
-	if err != nil {
-		return err
-	}
-	_, err = self.client.Create(self.createTopicReplicaInfoPath(topic, partition), string(value), 0)
+	_, err := self.client.CreateDir(self.createTopicPartitionPath(topic, partition), 0)
 	if err != nil {
 		return err
 	}
@@ -535,16 +545,16 @@ func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, 
 	if err != nil {
 		return err
 	}
-	logger.Infof("Update_topic info: %s %d %s", topic, partition, string(value))
+	logger.Infof("Update_topic info: %s %d %s %d", topic, partition, string(value), oldGen)
 	if oldGen == 0 {
-		rsp, err := self.client.Create(self.createTopicInfoPath(topic, partition), string(value), 0)
+		rsp, err := self.client.Create(self.createTopicReplicaInfoPath(topic, partition), string(value), 0)
 		if err != nil {
 			return err
 		}
 		topicInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 		return nil
 	}
-	rsp, err := self.client.CompareAndSwap(self.createTopicInfoPath(topic, partition), string(value), 0, "", uint64(oldGen))
+	rsp, err := self.client.CompareAndSwap(self.createTopicReplicaInfoPath(topic, partition), string(value), 0, "", uint64(oldGen))
 	if err != nil {
 		return err
 	}
@@ -581,6 +591,7 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 				self.Lock()
 				self.watchTopicLeaderChanMap[topicLeaderSession] = event
 				self.Unlock()
+				logger.Infof("[WatchTopicLeader]create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
 				go self.watchTopicLeaderSession(event, leader)
 			} else if event.event == EVENT_WATCH_TOPIC_L_DELETE {
 				// del from watch topic leader map
@@ -623,7 +634,8 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 				if rsp == nil {
 					continue
 				}
-				if rsp.Action == "expire" || rsp.Action == "delete" {
+				logger.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s]", rsp.Node.Key, rsp.Action, rsp.Node.Value)
+				if rsp.Action == "compareAndDelete" || rsp.Action == "delete" || rsp.Action == "expire" {
 					keys := strings.Split(rsp.Node.Key, "/")
 					keyLen := len(keys)
 					if keyLen < 3 {
@@ -633,12 +645,13 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 					if err != nil {
 						continue
 					}
+					logger.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] leader deleted.", keys[keyLen-3], partition)
 					topicLeaderSession := &TopicLeaderSession{
 						Topic:     keys[keyLen-3],
 						Partition: partition,
 					}
 					leader <- topicLeaderSession
-				} else {
+				} else if rsp.Action == "create" {
 					var topicLeaderSession TopicLeaderSession
 					if err := json.Unmarshal([]byte(rsp.Node.Value), &topicLeaderSession); err != nil {
 						continue
@@ -721,10 +734,6 @@ func (self *NsqLookupdEtcdMgr) createTopicPartitionPath(topic string, partition 
 
 func (self *NsqLookupdEtcdMgr) createTopicReplicaInfoPath(topic string, partition int) string {
 	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_REPLICA_INFO)
-}
-
-func (self *NsqLookupdEtcdMgr) createTopicInfoPath(topic string, partition int) string {
-	return path.Join(self.topicRoot, topic, strconv.Itoa(partition), NSQ_TOPIC_INFO)
 }
 
 func (self *NsqLookupdEtcdMgr) createTopicLeaderSessionPath(topic string, partition int) string {
