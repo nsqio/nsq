@@ -655,7 +655,6 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartionMe
 		if err != nil {
 			coordLog.Infof("get leader session error: %v", err)
 		}
-		return nil
 		if err == ErrLeaderSessionNotExist {
 			return nil
 		}
