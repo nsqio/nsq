@@ -7,6 +7,7 @@ import (
 
 var (
 	ErrLeaderSessionAlreadyExist = errors.New("leader session already exist")
+	ErrLeaderSessionNotExist     = errors.New("session not exist")
 )
 
 type EpochType int64
@@ -107,26 +108,35 @@ type NSQLookupdLeadership interface {
 	Register(value *NsqLookupdNodeInfo) error
 	Unregister(value *NsqLookupdNodeInfo) error
 	Stop()
+	// the cluster root modify index
 	GetClusterEpoch() (EpochType, error)
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) // add
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(oldGen EpochType) (EpochType, error)
-	// cluster nsqd node
+	// watching the cluster nsqd node, should return the newest for the first time.
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
+	// get all topics info, should cache the newest to improve performance.
 	ScanTopics() ([]TopicPartionMetaInfo, error)
+	// should return both the meta info for topic and the replica info for topic partition
+	// epoch should be updated while return
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	// create and write the meta info to topic meta node
 	CreateTopic(topic string, meta *TopicMetaInfo) error
+	// create topic partition path
 	CreateTopicPartition(topic string, partition int) error
 	IsExistTopic(topic string) (bool, error)
 	IsExistTopicPartition(topic string, partition int) (bool, error)
+	// get topic meta info only
 	GetTopicMetaInfo(topic string) (TopicMetaInfo, error)
 	DeleteTopic(topic string, partition int) error
-	// update leader, isr, epoch
+	//
+	// update the replica info about leader, isr, epoch for partition
 	// Note: update should do check-and-set to avoid unexpected override.
 	// the epoch in topicInfo should be updated to the new epoch
+	// if no topic partition replica info node should create only once.
 	UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartitionReplicaInfo, oldGen EpochType) error
-	// get leadership information
+	// get leadership information, if not exist should return ErrLeaderSessionNotExist as error
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.
 	WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error
@@ -136,13 +146,15 @@ type NSQDLeadership interface {
 	InitClusterID(id string)
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
-	// get the topic leadership lock.
+	// get the topic leadership lock and no need to retry if the lock already exist
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error
 	// stop the lock keep-alive and release the lock using the acquired session.
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	// all registered lookup nodes.
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
+	// get the newest lookup leader and watch the change of it.
 	WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
 	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	// get leadership information, if not exist should return ErrLeaderSessionNotExist as error
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 }

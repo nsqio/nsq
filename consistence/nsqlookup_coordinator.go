@@ -13,7 +13,7 @@ import (
 var (
 	ErrAlreadyExist             = errors.New("already exist")
 	ErrTopicNotCreated          = errors.New("topic is not created")
-	ErrSessionNotExist          = errors.New("session not exist")
+	ErrWaitingLeaderRelease     = errors.New("leader session is still alive")
 	ErrNotNsqLookupLeader       = errors.New("Not nsqlookup leader")
 	ErrLeaderNodeLost           = NewCoordErr("leader node is lost", CoordTmpErr)
 	ErrNodeNotFound             = NewCoordErr("node not found", CoordCommonErr)
@@ -648,10 +648,16 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartionMeta
 func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartionMetaInfo) error {
 	err := RetryWithTimeout(func() error {
 		_, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
-		if err == ErrSessionNotExist {
+		if err == nil {
+			time.Sleep(time.Second)
+			return ErrWaitingLeaderRelease
+		}
+		if err != nil {
+			coordLog.Infof("get leader session error: %v", err)
+		}
+		if err == ErrLeaderSessionNotExist {
 			return nil
 		}
-		time.Sleep(time.Second)
 		return err
 	})
 	return err

@@ -1,4 +1,3 @@
-
 package consistence
 
 import (
@@ -59,13 +58,13 @@ func (self *EtcdClient) Set(key string, value string, ttl uint64) (*client.Respo
 		refresh = true
 	}
 	setOptions := &client.SetOptions{
-		TTL:     time.Duration(ttl)*time.Second,
+		TTL:     time.Duration(ttl) * time.Second,
 		Refresh: refresh,
 	}
 	return self.kapi.Set(context.Background(), key, value, setOptions)
 }
 
-func (self *EtcdClient) Watch(key string, waitIndex uint64, recursive bool) (client.Watcher) {
+func (self *EtcdClient) Watch(key string, waitIndex uint64, recursive bool) client.Watcher {
 	watchOptions := &client.WatcherOptions{
 		AfterIndex: waitIndex,
 		Recursive:  recursive,

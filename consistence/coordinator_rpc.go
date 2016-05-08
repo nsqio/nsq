@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/rpc"
+	"runtime"
 )
 
 type ErrRPCRetCode int
@@ -277,13 +278,23 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 	// TODO: get local coordinator stats and errors, get local topic data stats
 	if topic == "" {
 		// all topic status
+		topicStats := self.nsqdCoord.localNsqd.GetStats()
 		stat.NodeID = self.nsqdCoord.myNode.GetID()
-		stat.TopicLeaderDataSize = make(map[string]int, len(self.nsqdCoord.topicCoords))
-		stat.TopicTotalDataSize = make(map[string]int, len(self.nsqdCoord.topicCoords))
-		stat.NodeCPUs = 1
-		for name, _ := range self.nsqdCoord.topicCoords {
-			stat.TopicLeaderDataSize[name] = 1
-			stat.TopicTotalDataSize[name] = 1
+		stat.ChannelConsumedData = make(map[string]int64, len(topicStats))
+		stat.TopicLeaderDataSize = make(map[string]int64, len(topicStats))
+		stat.TopicTotalDataSize = make(map[string]int64, len(topicStats))
+		stat.TopicPubQPS = nil
+		stat.TopicChannelSubQPS = nil
+		stat.NodeCPUs = runtime.NumCPU()
+		for _, ts := range topicStats {
+			stat.TopicTotalDataSize[ts.TopicName] = ts.BackendDepth
+			if ts.IsLeader {
+				stat.TopicLeaderDataSize[ts.TopicName] = ts.BackendDepth
+			}
+			for _, chStat := range ts.Channels {
+				stat.ChannelConsumedData[ts.TopicName] += chStat.BackendDepth
+				stat.ChannelHourlyConsumedData[ts.TopicName] += chStat.HourlySubSize
+			}
 		}
 	}
 	// the status of specific topic

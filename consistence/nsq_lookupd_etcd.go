@@ -15,8 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/etcd/client"
 	"github.com/coreos/go-etcd/etcd"
-//	"golang.org/x/net/context"
+	//	"golang.org/x/net/context"
 	etcdlock "github.com/reechou/xlock"
 )
 
@@ -565,6 +566,9 @@ func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, 
 func (self *NsqLookupdEtcdMgr) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
 	rsp, err := self.client.Get(self.createTopicLeaderSessionPath(topic, partition), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrLeaderSessionNotExist
+		}
 		return nil, err
 	}
 	var topicLeaderSession TopicLeaderSession
