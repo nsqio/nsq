@@ -8,11 +8,13 @@ import (
 )
 
 type TopicStats struct {
-	TopicName    string         `json:"topic_name"`
-	Channels     []ChannelStats `json:"channels"`
-	Depth        int64          `json:"depth"`
-	BackendDepth int64          `json:"backend_depth"`
-	MessageCount uint64         `json:"message_count"`
+	TopicName     string         `json:"topic_name"`
+	Channels      []ChannelStats `json:"channels"`
+	Depth         int64          `json:"depth"`
+	BackendDepth  int64          `json:"backend_depth"`
+	MessageCount  uint64         `json:"message_count"`
+	IsLeader      bool           `json:"is_leader"`
+	HourlyPubSize int64          `json:"hourly_pubsize"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
@@ -22,6 +24,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		TopicName:    t.GetFullName(),
 		Channels:     channels,
 		Depth:        t.TotalSize(),
+		BackendDepth: t.TotalSize(),
 		MessageCount: t.TotalMessageCnt(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
@@ -29,9 +32,14 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 }
 
 type ChannelStats struct {
-	ChannelName   string        `json:"channel_name"`
-	Depth         int64         `json:"depth"`
-	BackendDepth  int64         `json:"backend_depth"`
+	ChannelName string `json:"channel_name"`
+	// message size need to consume
+	Depth int64 `json:"depth"`
+	// message count need to consume
+	DepthCnt     int64 `json:"depth_cnt"`
+	BackendDepth int64 `json:"backend_depth"`
+	// total size sub past hour on this channel
+	HourlySubSize int64         `json:"hourly_subsize"`
 	InFlightCount int           `json:"in_flight_count"`
 	DeferredCount int           `json:"deferred_count"`
 	MessageCount  uint64        `json:"message_count"`
@@ -45,15 +53,18 @@ type ChannelStats struct {
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 	return ChannelStats{
-		ChannelName:   c.name,
+		ChannelName: c.name,
+		// the message bytes need to be consumed
 		Depth:         c.Depth(),
 		BackendDepth:  c.backend.Depth(),
 		InFlightCount: len(c.inFlightMessages),
-		MessageCount:  uint64(c.GetChannelEnd()),
-		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
-		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
-		Clients:       clients,
-		Paused:        c.IsPaused(),
+		// this is total message count need consume.
+		// may diff with topic total size since some is in buffer.
+		MessageCount: uint64(c.GetChannelEnd()),
+		RequeueCount: atomic.LoadUint64(&c.requeueCount),
+		TimeoutCount: atomic.LoadUint64(&c.timeoutCount),
+		Clients:      clients,
+		Paused:       c.IsPaused(),
 
 		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}
