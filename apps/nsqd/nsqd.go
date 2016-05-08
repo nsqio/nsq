@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -177,7 +178,7 @@ type program struct {
 
 func main() {
 	prg := &program{}
-	if err := svc.Run(prg); err != nil {
+	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
 		log.Fatal(err)
 	}
 }
