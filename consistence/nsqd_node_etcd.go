@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"time"
 
-	"golang.org/x/net/context"
-	etcdlock "github.com/reechou/xlock"
 	"github.com/coreos/go-etcd/etcd"
+	etcdlock "github.com/reechou/xlock"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -46,10 +46,9 @@ func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
 	eClient := NewEtcdClient(host)
 	client := NewEClient(host)
 	return &NsqdEtcdMgr{
-		eClient:       eClient,
-		client:        client,
-		topicLockMap:  make(map[string]*etcdlock.SeizeLock),
-		refreshStopCh: make(chan bool, 1),
+		eClient:      eClient,
+		client:       client,
+		topicLockMap: make(map[string]*etcdlock.SeizeLock),
 	}
 }
 
@@ -70,16 +69,20 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	if self.refreshStopCh != nil {
+		close(self.refreshStopCh)
+	}
+	self.refreshStopCh = make(chan bool, 1)
 	// start refresh node
-	go self.refresh()
+	go self.refresh(self.refreshStopCh)
 
 	return nil
 }
 
-func (self *NsqdEtcdMgr) refresh() {
+func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 	for {
 		select {
-		case <-self.refreshStopCh:
+		case <-stopChan:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
@@ -102,7 +105,10 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 		return err
 	}
 	// stop refresh
-	close(self.refreshStopCh)
+	if self.refreshStopCh != nil {
+		close(self.refreshStopCh)
+		self.refreshStopCh = nil
+	}
 
 	logger.Infof("[UnregisterNsqd] cluser[%s] node[%s]", self.clusterID, nodeData.ID)
 

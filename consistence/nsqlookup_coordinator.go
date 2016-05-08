@@ -528,7 +528,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return ErrLeaderSessionNotReleased
 	}
 
-	_, _, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
+	_, _, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition, false)
 	if coordErr != nil {
 		coordLog.Infof("prepare join state failed: %v", coordErr)
 		return coordErr
@@ -655,6 +655,7 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartionMe
 		if err != nil {
 			coordLog.Infof("get leader session error: %v", err)
 		}
+		return nil
 		if err == ErrLeaderSessionNotExist {
 			return nil
 		}
@@ -1530,7 +1531,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinCatchup(topic string, partiti
 	return nil
 }
 
-func (self *NsqLookupCoordinator) prepareJoinState(topic string, partition int) (*TopicPartionMetaInfo, *TopicLeaderSession, *JoinISRState, *CoordErr) {
+func (self *NsqLookupCoordinator) prepareJoinState(topic string, partition int, checkLeaderSession bool) (*TopicPartionMetaInfo, *TopicLeaderSession, *JoinISRState, *CoordErr) {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("failed to get topic info: %v", err)
@@ -1539,7 +1540,9 @@ func (self *NsqLookupCoordinator) prepareJoinState(topic string, partition int) 
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
 	if err != nil {
 		coordLog.Infof("failed to get leader session: %v", err)
-		return nil, nil, nil, &CoordErr{err.Error(), RpcCommonErr, CoordElectionTmpErr}
+		if checkLeaderSession {
+			return nil, nil, nil, &CoordErr{err.Error(), RpcCommonErr, CoordElectionTmpErr}
+		}
 	}
 
 	self.joinStateMutex.Lock()
@@ -1560,7 +1563,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 	// 4. insert wait join session, notify all nodes for the new isr
 	// 5. wait on the join session until all the new isr is ready (got the ready notify from isr)
 	// 6. timeout or done, clear current join session, (only keep isr that got ready notify, shoud be quorum), enable write
-	topicInfo, leaderSession, state, coordErr := self.prepareJoinState(topic, partition)
+	topicInfo, leaderSession, state, coordErr := self.prepareJoinState(topic, partition, true)
 	if coordErr != nil {
 		coordLog.Infof("failed to prepare join state: %v", coordErr)
 		return coordErr
@@ -1814,7 +1817,7 @@ func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartionMet
 	if newLeader == "" {
 		return ErrLeaderElectionFail
 	}
-	_, _, state, err := self.prepareJoinState(topicInfo.Name, topicInfo.Partition)
+	_, _, state, err := self.prepareJoinState(topicInfo.Name, topicInfo.Partition, true)
 	if err != nil {
 		coordLog.Infof("prepare join state failed: %v", err)
 		return err

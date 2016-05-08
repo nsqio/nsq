@@ -617,6 +617,9 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	// test old leader failed and begin elect new and then new leader failed
 	lostNodeID = t0.Leader
 	lostISRID := t0.ISR[1]
+	if lostISRID == lostNodeID {
+		lostISRID = t0.ISR[0]
+	}
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	if useFakeLeadership {
 		nsqdCoordList[lostNodeID].leadership.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
