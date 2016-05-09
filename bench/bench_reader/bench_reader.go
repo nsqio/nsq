@@ -15,15 +15,13 @@ import (
 )
 
 var (
-	runfor      = flag.Duration("runfor", 10*time.Second, "duration of time to run")
-	tcpAddress  = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
-	lookupAddrs = flag.String("lookup-addr", "127.0.0.1:4161", "nsq lookup address")
-	etcdAddrs   = flag.String("etcd-addr", "", "etcd server address")
-	size        = flag.Int("size", 200, "size of messages")
-	topic       = flag.String("topic", "sub_bench", "topic to receive messages on")
-	channel     = flag.String("channel", "ch", "channel to receive messages on")
-	deadline    = flag.String("deadline", "", "deadline to start the benchmark run")
-	rdy         = flag.Int("rdy", 2500, "RDY count to use")
+	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
+	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
+	size       = flag.Int("size", 200, "size of messages")
+	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
+	channel    = flag.String("channel", "ch", "channel to receive messages on")
+	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
+	rdy        = flag.Int("rdy", 2500, "RDY count to use")
 )
 
 var totalMsgCount int64
@@ -33,24 +31,6 @@ func main() {
 	var wg sync.WaitGroup
 
 	log.SetPrefix("[bench_reader] ")
-
-	conn, err := net.DialTimeout("tcp", *tcpAddress, time.Second)
-	if err != nil {
-		panic(err.Error())
-	}
-	conn.Write(nsq.MagicV2)
-	nsq.CreateTopic(*topic, 0).WriteTo(conn)
-	resp, err := nsq.ReadResponse(conn)
-	if err != nil {
-		panic(err.Error())
-	}
-	frameType, data, err := nsq.UnpackResponse(resp)
-	if err != nil {
-		panic(err.Error())
-	}
-	if frameType == nsq.FrameTypeError {
-		panic(string(data))
-	}
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)

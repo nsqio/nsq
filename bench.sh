@@ -23,8 +23,8 @@ trap cleanup INT TERM EXIT
 
 sleep 0.3
 echo "# creating topic/channel"
-curl --silent 'http://127.0.0.1:4151/create_topic?topic=sub_bench' >/dev/null 2>&1
-curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' >/dev/null 2>&1
+curl -X PUT --silent 'http://127.0.0.1:4151/topic/create?topic=sub_bench' >/dev/null 2>&1
+#curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' >/dev/null 2>&1
 
 echo "# compiling bench_reader/bench_writer"
 pushd bench >/dev/null

@@ -249,14 +249,16 @@ func (c *ClusterInfo) GetLookupdProducers(lookupdHTTPAddrs []string) (Producers,
 
 // GetLookupdTopicProducers returns Producers of all the nsqd for a given topic by
 // unioning the nodes returned from the given lookupd
-func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) (Producers, error) {
+func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []string) (Producers, map[string]Producers, error) {
 	var producers Producers
+	partitionProducers := make(map[string]Producers)
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
 
 	type respType struct {
-		Producers Producers `json:"producers"`
+		Producers          Producers            `json:"producers"`
+		partitionProducers map[string]*Producer `json:"partitions"`
 	}
 
 	for _, addr := range lookupdHTTPAddrs {
@@ -287,17 +289,28 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 				producers = append(producers, p)
 			skip:
 			}
+			for pid, p := range resp.partitionProducers {
+				producers := partitionProducers[pid]
+				for _, pp := range producers {
+					if p.HTTPAddress() == pp.HTTPAddress() {
+						goto skip2
+					}
+				}
+				producers = append(producers, p)
+				partitionProducers[pid] = producers
+			skip2:
+			}
 		}(addr)
 	}
 	wg.Wait()
 
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
+		return nil, nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
 	if len(errs) > 0 {
-		return producers, ErrList(errs)
+		return producers, partitionProducers, ErrList(errs)
 	}
-	return producers, nil
+	return producers, partitionProducers, nil
 }
 
 // GetNSQDTopics returns a []string containing all the topics produced by the given nsqd
@@ -693,7 +706,7 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 		}
 
 		// create the channel on all the nsqd that produce the topic
-		producers, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		producers, _, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
 		if err != nil {
 			pe, ok := err.(PartialErr)
 			if !ok {
@@ -864,7 +877,8 @@ func (c *ClusterInfo) GetProducers(lookupdHTTPAddrs []string, nsqdHTTPAddrs []st
 
 func (c *ClusterInfo) GetTopicProducers(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) (Producers, error) {
 	if len(lookupdHTTPAddrs) != 0 {
-		return c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		p, _, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		return p, err
 	}
 	return c.GetNSQDTopicProducers(topicName, nsqdHTTPAddrs)
 }

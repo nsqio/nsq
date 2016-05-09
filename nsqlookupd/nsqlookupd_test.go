@@ -182,8 +182,9 @@ func TestBasicLookupd(t *testing.T) {
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s", httpAddr, topicName)
 	data, err = API(endpoint)
-
 	equal(t, err, nil)
+	tmp, _ := data.MarshalJSON()
+	t.Logf("got lookup data :%v", string(tmp))
 	returnedChannels, err := data.Get("channels").Array()
 	equal(t, err, nil)
 	t.Logf("got returnedChannels %v", returnedChannels)
@@ -606,8 +607,11 @@ func TestTopicPartitions(t *testing.T) {
 	conn_p2.Close()
 }
 
-// TODO: test performance for db
 func TestTopicChannelRegUnReg(t *testing.T) {
+}
+
+// TODO: test performance for db
+func BenchmarkTopicProducerLookup(t *testing.B) {
 }
 
 func BenchmarkTopicChannelRegUnReg(b *testing.B) {

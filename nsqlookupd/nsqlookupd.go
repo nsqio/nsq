@@ -63,8 +63,9 @@ func (l *NSQLookupd) Main() {
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 
 		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node)
-		// TODO: set etcd leader manager here
-		// l.coordinator.SetLeadershipMgr(nil)
+		// set etcd leader manager here
+		leadership := consistence.NewNsqLookupdEtcdMgr(l.opts.ClusterLeadershipAddresses)
+		l.coordinator.SetLeadershipMgr(leadership)
 		err = l.coordinator.Start()
 		if err != nil {
 			nsqlookupLog.LogErrorf("FATAL: start coordinator failed - %s", err)

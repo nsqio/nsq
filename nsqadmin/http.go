@@ -204,7 +204,7 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 			goto respond
 		}
 		for _, topicName := range topics {
-			producers, _ := s.ci.GetLookupdTopicProducers(
+			producers, _, _ := s.ci.GetLookupdTopicProducers(
 				topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 			if len(producers) == 0 {
 				topicChannels, _ := s.ci.GetLookupdTopicChannels(
@@ -667,7 +667,7 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 		Target     string       `json:"target"`
 		DataPoints [][]*float64 `json:"datapoints"`
 	}
-	err = s.client.GETV1(url, &response)
+	_, err = s.client.GETV1(url, &response)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}

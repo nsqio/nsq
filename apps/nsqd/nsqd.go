@@ -84,8 +84,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int64("worker-id", opts.ID, "unique seed for message ID generation (int) in range [0,4096) (will default to a hash of hostname)")
 
 	flagSet.String("cluster-id", opts.ClusterID, "cluster id for nsq")
-	clusterLeadershipAddresses := app.StringArray{}
-	flagSet.Var(&clusterLeadershipAddresses, "cluster-leadership-addresses", "cluster leadership server list for nsq")
+	flagSet.String("cluster-leadership-addresses", opts.ClusterLeadershipAddresses, "cluster leadership server list for nsq")
 
 	flagSet.String("https-address", opts.HTTPSAddress, "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")

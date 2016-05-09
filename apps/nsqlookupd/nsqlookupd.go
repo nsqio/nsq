@@ -10,7 +10,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/glog"
-	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/judwhite/go-svc/svc"
@@ -29,7 +28,7 @@ var (
 	rpcPort          = flagSet.String("rpc-port", "", ":<port> to listen on for Rpc call")
 	broadcastAddress = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 
-	clusterLeadershipAddresses = app.StringArray{}
+	clusterLeadershipAddresses = flagSet.String("cluster-leadership-addresses", "", " the cluster leadership server list")
 	clusterID                  = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")
 
 	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
@@ -38,7 +37,6 @@ var (
 )
 
 func init() {
-	flagSet.Var(&clusterLeadershipAddresses, "cluster-leadership-addresses", " the cluster leadership server list")
 }
 
 type program struct {

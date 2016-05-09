@@ -64,7 +64,7 @@ func statLoop(interval time.Duration, topic string, channel string,
 		var err error
 
 		if len(lookupdHTTPAddrs) != 0 {
-			producers, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
+			producers, _, err = ci.GetLookupdTopicProducers(topic, lookupdHTTPAddrs)
 		} else {
 			producers, err = ci.GetNSQDTopicProducers(topic, nsqdHTTPAddrs)
 		}

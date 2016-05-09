@@ -20,7 +20,7 @@ type Options struct {
 	ID                         int64    `flag:"worker-id" cfg:"id"`
 	Verbose                    bool     `flag:"verbose"`
 	ClusterID                  string   `flag:"cluster-id"`
-	ClusterLeadershipAddresses []string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
+	ClusterLeadershipAddresses string   `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 	TCPAddress                 string   `flag:"tcp-address"`
 	RPCPort                    string   `flag:"rpc-port"`
 	HTTPAddress                string   `flag:"http-address"`
@@ -99,7 +99,7 @@ func NewOptions() *Options {
 		ID: defaultID,
 
 		ClusterID:                  "nsq-clusterid-test-only",
-		ClusterLeadershipAddresses: make([]string, 0),
+		ClusterLeadershipAddresses: "",
 		TCPAddress:                 "0.0.0.0:4150",
 		HTTPAddress:                "0.0.0.0:4151",
 		HTTPSAddress:               "0.0.0.0:4152",
