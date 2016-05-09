@@ -629,6 +629,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	time.Sleep(time.Second * 5)
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	nsqdCoordList[lostISRID].leadership.RegisterNsqd(nsqdNodeInfoList[lostISRID])
+	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 5)
 	t0, _ = lookupLeadership.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.ISR), 2)

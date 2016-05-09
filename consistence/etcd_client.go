@@ -52,6 +52,14 @@ func (self *EtcdClient) Delete(key string, recursive bool) (*client.Response, er
 	return self.kapi.Delete(context.Background(), key, delOptions)
 }
 
+func (self *EtcdClient) CreateDir(key string, ttl uint64) (*client.Response, error) {
+	setOptions := &client.SetOptions{
+		TTL: time.Duration(ttl) * time.Second,
+		Dir: true,
+	}
+	return self.kapi.Set(context.Background(), key, "", setOptions)
+}
+
 func (self *EtcdClient) Set(key string, value string, ttl uint64) (*client.Response, error) {
 	refresh := false
 	if ttl > 0 {
@@ -60,6 +68,20 @@ func (self *EtcdClient) Set(key string, value string, ttl uint64) (*client.Respo
 	setOptions := &client.SetOptions{
 		TTL:     time.Duration(ttl) * time.Second,
 		Refresh: refresh,
+	}
+	return self.kapi.Set(context.Background(), key, value, setOptions)
+}
+
+func (self *EtcdClient) CompareAndSwap(key string, value string, ttl uint64, prevValue string, prevIndex uint64) (*client.Response, error) {
+	refresh := false
+	if ttl > 0 {
+		refresh = true
+	}
+	setOptions := &client.SetOptions{
+		PrevValue: prevValue,
+		PrevIndex: prevIndex,
+		TTL:       time.Duration(ttl) * time.Second,
+		Refresh:   refresh,
 	}
 	return self.kapi.Set(context.Background(), key, value, setOptions)
 }

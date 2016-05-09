@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 const (
@@ -30,5 +32,29 @@ func TestNodeRe(t *testing.T) {
 	if err != nil {
 		fmt.Println(err.Error())
 		return
+	}
+}
+
+func TestETCDWatch(t *testing.T) {
+	client := NewEClient(EtcdHost)
+	watcher := client.Watch("q11", 0, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(10 * time.Second)
+		cancel()
+	}()
+
+	for {
+		rsp, err := watcher.Next(ctx)
+		if err != nil {
+			if err == context.Canceled {
+				fmt.Println("watch canceled")
+				return
+			} else {
+				time.Sleep(5 * time.Second)
+			}
+			continue
+		}
+		fmt.Println(rsp.Action, rsp.Node.Key, rsp.Node.Value)
 	}
 }
