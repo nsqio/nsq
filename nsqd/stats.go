@@ -8,24 +8,28 @@ import (
 )
 
 type TopicStats struct {
-	TopicName     string         `json:"topic_name"`
-	Channels      []ChannelStats `json:"channels"`
-	Depth         int64          `json:"depth"`
-	BackendDepth  int64          `json:"backend_depth"`
-	MessageCount  uint64         `json:"message_count"`
-	IsLeader      bool           `json:"is_leader"`
-	HourlyPubSize int64          `json:"hourly_pubsize"`
+	TopicName      string         `json:"topic_name"`
+	TopicFullName  string         `json:"topic_full_name"`
+	TopicPartition int            `json:"topic_partition"`
+	Channels       []ChannelStats `json:"channels"`
+	Depth          int64          `json:"depth"`
+	BackendDepth   int64          `json:"backend_depth"`
+	MessageCount   uint64         `json:"message_count"`
+	IsLeader       bool           `json:"is_leader"`
+	HourlyPubSize  int64          `json:"hourly_pubsize"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	return TopicStats{
-		TopicName:    t.GetFullName(),
-		Channels:     channels,
-		Depth:        t.TotalSize(),
-		BackendDepth: t.TotalSize(),
-		MessageCount: t.TotalMessageCnt(),
+		TopicName:      t.GetTopicName(),
+		TopicFullName:  t.GetFullName(),
+		TopicPartition: t.GetTopicPart(),
+		Channels:       channels,
+		Depth:          t.TotalSize(),
+		BackendDepth:   t.TotalSize(),
+		MessageCount:   t.TotalMessageCnt(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}

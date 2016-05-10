@@ -117,6 +117,10 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	return s
 }
 
+func (s *NsqdServer) GetNsqdInstance() *nsqd.NSQD {
+	return s.ctx.nsqd
+}
+
 func (s *NsqdServer) Exit() {
 	if s.ctx.nsqdCoord != nil {
 		s.ctx.nsqdCoord.Stop()

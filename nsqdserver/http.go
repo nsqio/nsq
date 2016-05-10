@@ -473,6 +473,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 	formatString := reqParams.Get("format")
 	topicName := reqParams.Get("topic")
+	topicPart := reqParams.Get("partition")
 	channelName := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
@@ -486,6 +487,10 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		// Find the desired-topic-index:
 		for _, topicStats := range stats {
 			if topicStats.TopicName == topicName {
+				if len(topicPart) > 0 && strconv.Itoa(topicStats.TopicPartition) != topicPart {
+					nsqd.NsqLogger().Logf("ignored stats topic partition mismatch - %v, %v", topicPart, topicStats.TopicPartition)
+					continue
+				}
 				// If we WERE given a channel-name, remove stats for all the other channels:
 				if len(channelName) > 0 {
 					// Find the desired-channel:

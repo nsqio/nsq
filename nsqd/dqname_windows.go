@@ -3,7 +3,7 @@
 package nsqd
 
 // On Windows, file names cannot contain colons.
-func getBackendReaderName(topicName, channelName string) string {
+func getBackendReaderName(topicName string, part int, channelName string) string {
 	// backend names, for uniqueness, automatically include the topic... <topic>;<channel>
 	backendName := GetTopicFullName(topicName, part) + ";" + channelName
 	return backendName

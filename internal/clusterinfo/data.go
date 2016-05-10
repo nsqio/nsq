@@ -278,6 +278,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 				return
 			}
 
+			c.logf("CI: querying nsqlookupd return %v", resp)
 			lock.Lock()
 			defer lock.Unlock()
 			for _, p := range resp.Producers {
@@ -290,14 +291,14 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 			skip:
 			}
 			for pid, p := range resp.partitionProducers {
-				producers := partitionProducers[pid]
-				for _, pp := range producers {
+				partproducers := partitionProducers[pid]
+				for _, pp := range partproducers {
 					if p.HTTPAddress() == pp.HTTPAddress() {
 						goto skip2
 					}
 				}
-				producers = append(producers, p)
-				partitionProducers[pid] = producers
+				partproducers = append(partproducers, p)
+				partitionProducers[pid] = partproducers
 			skip2:
 			}
 		}(addr)
@@ -584,6 +585,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 				lock.Unlock()
 				return
 			}
+			c.logf("CI: querying nsqd return %v, %v", resp.Topics[0], selectedTopic)
 
 			lock.Lock()
 			defer lock.Unlock()
