@@ -282,8 +282,8 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 	return nil
 }
 
-func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
-	var topicInfo TopicPartionMetaInfo
+func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
+	var topicInfo TopicPartitionMetaInfo
 	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
 		return nil, err

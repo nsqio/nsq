@@ -12,7 +12,7 @@ type ChannelConsumerOffset struct {
 }
 
 type coordData struct {
-	topicInfo            TopicPartionMetaInfo
+	topicInfo            TopicPartitionMetaInfo
 	topicLeaderSession   TopicLeaderSession
 	channelConsumeOffset map[string]ChannelConsumerOffset
 	localDataLoaded      bool

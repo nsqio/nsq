@@ -56,14 +56,14 @@ type TopicPartitionReplicaInfo struct {
 	Epoch       EpochType
 }
 
-type TopicPartionMetaInfo struct {
+type TopicPartitionMetaInfo struct {
 	Name      string
 	Partition int
 	TopicMetaInfo
 	TopicPartitionReplicaInfo
 }
 
-func (self *TopicPartionMetaInfo) GetTopicDesp() string {
+func (self *TopicPartitionMetaInfo) GetTopicDesp() string {
 	return self.Name + "-" + strconv.Itoa(self.Partition)
 }
 
@@ -117,10 +117,10 @@ type NSQLookupdLeadership interface {
 	// watching the cluster nsqd node, should return the newest for the first time.
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
 	// get all topics info, should cache the newest to improve performance.
-	ScanTopics() ([]TopicPartionMetaInfo, error)
+	ScanTopics() ([]TopicPartitionMetaInfo, error)
 	// should return both the meta info for topic and the replica info for topic partition
 	// epoch should be updated while return
-	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error)
 	// create and write the meta info to topic meta node
 	CreateTopic(topic string, meta *TopicMetaInfo) error
 	// create topic partition path
@@ -154,7 +154,7 @@ type NSQDLeadership interface {
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)
 	// get the newest lookup leader and watch the change of it.
 	WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error
-	GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error)
+	GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error)
 	// get leadership information, if not exist should return ErrLeaderSessionNotExist as error
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 }

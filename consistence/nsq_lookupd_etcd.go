@@ -17,8 +17,8 @@ import (
 
 	"github.com/coreos/etcd/client"
 	"github.com/coreos/go-etcd/etcd"
-	"golang.org/x/net/context"
 	etcdlock "github.com/reechou/xlock"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -45,7 +45,7 @@ type NsqLookupdEtcdMgr struct {
 	leaderSessionPath string
 	leaderStr         string
 	lookupdRootPath   string
-	topicMetaInfos    []TopicPartionMetaInfo
+	topicMetaInfos    []TopicPartitionMetaInfo
 	topicMetaMap      map[string]*TopicMetaInfo
 	ifTopicChanged    bool
 	nodeInfo          *NsqLookupdNodeInfo
@@ -291,7 +291,7 @@ func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]NsqdNodeInfo, error) {
 	return nsqdNodes, nil
 }
 
-func (self *NsqLookupdEtcdMgr) ScanTopics() ([]TopicPartionMetaInfo, error) {
+func (self *NsqLookupdEtcdMgr) ScanTopics() ([]TopicPartitionMetaInfo, error) {
 	if self.ifTopicChanged {
 		return self.scanTopics()
 	}
@@ -326,7 +326,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 	}
 }
 
-func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
+func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
 	self.Lock()
 	self.ifTopicChanged = false
 	self.Unlock()
@@ -343,7 +343,7 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
 	topicReplicasMap := make(map[string]map[string]TopicPartitionReplicaInfo)
 	self.processTopicNode(rsp.Node.Nodes, topicMetaMap, topicReplicasMap)
 
-	topicMetaInfos := make([]TopicPartionMetaInfo, 0)
+	topicMetaInfos := make([]TopicPartitionMetaInfo, 0)
 	for k, v := range topicReplicasMap {
 		topicMeta, ok := topicMetaMap[k]
 		if !ok {
@@ -354,7 +354,7 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartionMetaInfo, error) {
 			if err != nil {
 				continue
 			}
-			var topicInfo TopicPartionMetaInfo
+			var topicInfo TopicPartitionMetaInfo
 			topicInfo.Name = k
 			topicInfo.Partition = partition
 			topicInfo.TopicMetaInfo = topicMeta
@@ -416,8 +416,8 @@ func (self *NsqLookupdEtcdMgr) processTopicNode(nodes client.Nodes, topicMetaMap
 	}
 }
 
-func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
-	var topicInfo TopicPartionMetaInfo
+func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
+	var topicInfo TopicPartitionMetaInfo
 	metaInfo, ok := self.topicMetaMap[topic]
 	if !ok {
 		rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)

@@ -123,7 +123,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 		coords[topicInfo.Partition] = tpCoord
 	}
 	ensureTopicDisableWrite(nsqdCoord, topicInfo.Name, topicInfo.Partition, true)
-	err := nsqdCoord.updateTopicInfo(tpCoord, false, &topicInfo.TopicPartionMetaInfo)
+	err := nsqdCoord.updateTopicInfo(tpCoord, false, &topicInfo.TopicPartitionMetaInfo)
 	if err != nil {
 		panic(err)
 	}
@@ -202,7 +202,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 		CatchupList: make([]string, 0),
 		Epoch:       1,
 	}
-	fakeInfo := &TopicPartionMetaInfo{
+	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
 		Partition:                 partition,
 		TopicMetaInfo:             meta,
@@ -212,7 +212,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
 
-	tmp := make(map[int]*TopicPartionMetaInfo)
+	tmp := make(map[int]*TopicPartitionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
@@ -306,7 +306,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 		CatchupList: make([]string, 0),
 		Epoch:       1,
 	}
-	fakeInfo := &TopicPartionMetaInfo{
+	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
 		Partition:                 partition,
 		TopicMetaInfo:             meta,
@@ -317,7 +317,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo3.GetID())
 
-	tmp := make(map[int]*TopicPartionMetaInfo)
+	tmp := make(map[int]*TopicPartitionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
@@ -344,7 +344,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 
 	// create topic on nsqdcoord
 	var topicInitInfo RpcAdminTopicInfo
-	topicInitInfo.TopicPartionMetaInfo = *fakeInfo
+	topicInitInfo.TopicPartitionMetaInfo = *fakeInfo
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
@@ -379,7 +379,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 		CatchupList: make([]string, 0),
 		Epoch:       1,
 	}
-	fakeInfo := &TopicPartionMetaInfo{
+	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
 		Partition:                 partition,
 		TopicMetaInfo:             meta,
@@ -390,7 +390,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
 
-	tmp := make(map[int]*TopicPartionMetaInfo)
+	tmp := make(map[int]*TopicPartitionMetaInfo)
 	fakeLeadership.fakeTopicsInfo[topic] = tmp
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
@@ -412,7 +412,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	// create topic on nsqdcoord
 	var topicInitInfo RpcAdminTopicInfo
-	topicInitInfo.TopicPartionMetaInfo = *fakeInfo
+	topicInitInfo.TopicPartitionMetaInfo = *fakeInfo
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	// notify leadership to nsqdcoord

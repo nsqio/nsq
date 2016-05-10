@@ -47,7 +47,7 @@ type NsqdNodeLoadFactor struct {
 }
 
 type RpcAdminTopicInfo struct {
-	TopicPartionMetaInfo
+	TopicPartitionMetaInfo
 	LookupdEpoch EpochType
 	DisableWrite bool
 }
@@ -219,7 +219,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	}
 
 	self.nsqdCoord.coordMutex.Unlock()
-	err := self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartionMetaInfo)
+	err := self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartitionMetaInfo)
 	if err != nil {
 		*ret = *err
 	}

@@ -16,14 +16,14 @@ type fakeNsqdLeadership struct {
 	clusterID            string
 	regData              map[string]*NsqdNodeInfo
 	fakeTopicsLeaderData map[string]map[int]*TopicCoordinator
-	fakeTopicsInfo       map[string]map[int]*TopicPartionMetaInfo
+	fakeTopicsInfo       map[string]map[int]*TopicPartitionMetaInfo
 }
 
 func NewFakeNSQDLeadership() NSQDLeadership {
 	return &fakeNsqdLeadership{
 		regData:              make(map[string]*NsqdNodeInfo),
 		fakeTopicsLeaderData: make(map[string]map[int]*TopicCoordinator),
-		fakeTopicsInfo:       make(map[string]map[int]*TopicPartionMetaInfo),
+		fakeTopicsInfo:       make(map[string]map[int]*TopicPartitionMetaInfo),
 	}
 }
 
@@ -121,7 +121,7 @@ func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeIn
 	return nil
 }
 
-func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
+func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
 	t, ok := self.fakeTopicsInfo[topic]
 	if ok {
 		tp, ok2 := t[partition]

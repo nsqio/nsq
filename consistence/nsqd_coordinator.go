@@ -378,7 +378,7 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 	}
 }
 
-func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo, session *TopicLeaderSession) *CoordErr {
+func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartitionMetaInfo, session *TopicLeaderSession) *CoordErr {
 	err := self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, session)
 	if err != nil {
 		coordLog.Infof("failed to release leader for topic(%v): %v", topicInfo.Name, err)
@@ -387,7 +387,7 @@ func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartionMetaInfo,
 	return nil
 }
 
-func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdCoordinator) acquireTopicLeader(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	coordLog.Infof("acquiring leader for topic(%v): %v", topicInfo.Name, self.myNode.GetID())
 	// TODO: leader channel should be closed if not success,
 	// how to handle acquire twice by the same node?
@@ -458,7 +458,7 @@ func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) *Co
 	return err
 }
 
-func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	// request change catchup to isr list and wait for nsqlookupd response to temp disable all new write.
 	c, err := self.getLookupRemoteProxy()
 	if err != nil {
@@ -468,7 +468,7 @@ func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartionMetaInfo
 	return err
 }
 
-func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
+func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartitionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	// notify myself is ready for isr list for current session and can accept new write.
 	// leader session should contain the (isr list, current leader session, leader epoch), to identify the
 	// the different session stage.
@@ -511,7 +511,7 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 	return c.RequestLeaveFromISRByLeader(topic, partition, self.myNode.GetID(), &topicCoord.topicLeaderSession)
 }
 
-func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, joinISRSession string) *CoordErr {
+func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo, joinISRSession string) *CoordErr {
 	// get local commit log from check point , and pull newer logs from leader
 	tc, err := self.getTopicCoord(topicInfo.Name, topicInfo.Partition)
 	if err != nil {
@@ -711,7 +711,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartionMetaInfo, j
 	return nil
 }
 
-func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartitionMetaInfo) *CoordErr {
 	oldData := topicCoord.GetData()
 	if oldData.topicInfo.Name == "" {
 		coordLog.Infof("empty topic name not allowed")

@@ -69,7 +69,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}, reply i
 	}
 }
 
-func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch EpochType, topicInfo *TopicPartionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
+func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch EpochType, topicInfo *TopicPartitionMetaInfo, leaderSession *TopicLeaderSession, joinSession string) *CoordErr {
 	var rpcInfo RpcTopicLeaderSession
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = leaderSession.Session
@@ -83,36 +83,36 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch EpochType, topicInfo *
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) UpdateTopicInfo(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) UpdateTopicInfo(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicPartionMetaInfo = *topicInfo
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.UpdateTopicInfo", rpcInfo, &retErr)
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) EnableTopicWrite(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) EnableTopicWrite(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicPartionMetaInfo = *topicInfo
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.EnableTopicWrite", rpcInfo, &retErr)
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) DisableTopicWrite(epoch EpochType, topicInfo *TopicPartionMetaInfo) *CoordErr {
+func (self *NsqdRpcClient) DisableTopicWrite(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
-	rpcInfo.TopicPartionMetaInfo = *topicInfo
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.DisableTopicWrite", rpcInfo, &retErr)
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartionMetaInfo) bool {
+func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartitionMetaInfo) bool {
 	var rpcInfo RpcAdminTopicInfo
-	rpcInfo.TopicPartionMetaInfo = *topicInfo
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
 	var ret bool
 	err := self.CallWithRetry("NsqdCoordRpcServer.IsTopicWriteDisabled", rpcInfo, &ret)
 	if err != nil {
@@ -127,7 +127,7 @@ func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) 
 	return &stat, err
 }
 
-func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
+func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
@@ -141,7 +141,7 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
+func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
 	var putData RpcPutMessage
 	putData.LogData = log
 	putData.TopicName = info.Name
@@ -155,7 +155,7 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *TopicPartionMetaInfo, log CommitLogData, messages []*nsqd.Message) *CoordErr {
+func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, messages []*nsqd.Message) *CoordErr {
 	var putData RpcPutMessages
 	putData.LogData = log
 	putData.TopicName = info.Name
@@ -169,7 +169,7 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	return convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartionMetaInfo) (int64, *CoordErr) {
+func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo) (int64, *CoordErr) {
 	var req RpcCommitLogReq
 	req.TopicName = topicInfo.Name
 	req.TopicPartition = topicInfo.Partition
@@ -179,7 +179,7 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartionMetaInfo) (
 	return ret, convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartionMetaInfo, offset int64) (int64, CommitLogData, *CoordErr) {
+func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, offset int64) (int64, CommitLogData, *CoordErr) {
 	var req RpcCommitLogReq
 	req.LogOffset = offset
 	req.TopicName = topicInfo.Name

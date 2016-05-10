@@ -18,7 +18,7 @@ const (
 )
 
 type fakeTopicData struct {
-	metaInfo      *TopicPartionMetaInfo
+	metaInfo      *TopicPartitionMetaInfo
 	leaderSession *TopicLeaderSession
 	leaderChanged chan struct{}
 }
@@ -151,8 +151,8 @@ func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, s
 	}
 }
 
-func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartionMetaInfo, error) {
-	alltopics := make([]TopicPartionMetaInfo, 0)
+func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartitionMetaInfo, error) {
+	alltopics := make([]TopicPartitionMetaInfo, 0)
 	for _, v := range self.fakeTopics {
 		for _, topicInfo := range v {
 			alltopics = append(alltopics, *topicInfo.metaInfo)
@@ -161,7 +161,7 @@ func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartionMetaInfo, error
 	return alltopics, nil
 }
 
-func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (*TopicPartionMetaInfo, error) {
+func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return nil, ErrTopicNotCreated
@@ -183,7 +183,7 @@ func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partitio
 	if ok {
 		return ErrAlreadyExist
 	}
-	var newtp TopicPartionMetaInfo
+	var newtp TopicPartitionMetaInfo
 	newtp.Name = topic
 	newtp.Partition = partition
 	newtp.TopicMetaInfo = self.fakeTopicMetaInfo[topic]
