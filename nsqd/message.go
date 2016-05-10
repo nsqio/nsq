@@ -39,8 +39,9 @@ type Message struct {
 	pri        int64
 	index      int
 	//for backend queue
-	offset      BackendOffset
-	rawMoveSize BackendOffset
+	offset         BackendOffset
+	rawMoveSize    BackendOffset
+	notifyContinue chan int
 }
 
 func MessageHeaderBytes() int {

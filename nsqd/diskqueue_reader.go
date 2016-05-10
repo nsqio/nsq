@@ -563,8 +563,10 @@ CheckFileOpen:
 	// (where readFileNum, readPos will actually be advanced)
 	oldPos := d.readPos
 	d.readPos.Pos = d.readPos.Pos + totalBytes
-	nsqLog.LogDebugf("=== read move forward: %v, %v, %v", oldPos,
-		d.virtualReadOffset, d.readPos)
+	if nsqLog.Level() > 2 {
+		nsqLog.LogDebugf("=== read move forward: %v, %v, %v", oldPos,
+			d.virtualReadOffset, d.readPos)
+	}
 
 	d.virtualReadOffset += BackendOffset(totalBytes)
 
@@ -853,7 +855,9 @@ func (d *diskQueueReader) ioLoop() {
 			d.virtualEnd = endPos.VirtualEnd
 			d.updateDepth()
 			count++
-			//nsqLog.LogDebugf("read end updated to : %v", endPos)
+			if nsqLog.Level() > 2 {
+				nsqLog.LogDebugf("read end updated to : %v", endPos)
+			}
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:

@@ -82,6 +82,7 @@ type Channel struct {
 	EnableTrace bool
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
+	requireOrder bool
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -374,12 +375,16 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	//c.finMsgs[msg.ID] = msg
+	if msg.offset < c.currentLastConfirmed {
+		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, c.currentLastConfirmed)
+		return c.currentLastConfirmed
+	}
 	c.confirmedMsgs[msg.offset] = msg
 	reduced := false
 	for {
 		if m, ok := c.confirmedMsgs[c.currentLastConfirmed]; ok {
-			nsqLog.LogDebugf("move confirm: %v, msg: %v",
-				c.currentLastConfirmed, m.ID)
+			nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
+				c.currentLastConfirmed, c.currentLastConfirmed+m.rawMoveSize, m.ID)
 			c.currentLastConfirmed += m.rawMoveSize
 			delete(c.confirmedMsgs, m.offset)
 			reduced = true
@@ -387,49 +392,52 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 			break
 		}
 	}
-	err := c.backend.ConfirmRead(c.currentLastConfirmed)
-	if err != nil {
-		if !c.Exiting() {
-			nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
+	if reduced {
+		err := c.backend.ConfirmRead(c.currentLastConfirmed)
+		if err != nil {
+			if !c.Exiting() {
+				nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
+			}
+			return c.currentLastConfirmed
 		}
-		return c.currentLastConfirmed
-	}
-	if reduced && int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
-		select {
-		case c.tryReadBackend <- true:
-		default:
-		}
-	}
-	if msg.offset < c.currentLastConfirmed {
-		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, c.currentLastConfirmed)
-	} else if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
-		nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
-			len(c.confirmedMsgs), c.currentLastConfirmed)
-
-		//found the message in the flight with offset c.currentLastConfirmed and
-		//requeue to client again. This can force the missed message with
-		//c.currentLastConfirmed offset
-		// TODO: maybe wait timeout to avoid iterator all inflight messages
-		c.inFlightMutex.Lock()
-		var msg *Message
-		for _, msg = range c.inFlightMessages {
-			if msg.offset == c.currentLastConfirmed {
-				nsqLog.Logf("client %v message %v confirm offset %v wait timeout",
-					msg.clientID, msg.ID, msg.offset)
-				delete(c.inFlightMessages, msg.ID)
-				if msg.index != -1 {
-					c.inFlightPQ.Remove(msg.index)
-				}
-				break
+		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
+			select {
+			case c.tryReadBackend <- true:
+			default:
 			}
 		}
-		c.inFlightMutex.Unlock()
-		if msg != nil {
-			c.doRequeue(msg)
-		} else {
-			nsqLog.LogErrorf("waiting confirm message offset %v not in inflight", c.currentLastConfirmed)
-		}
+	}
+	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
+		if c.EnableTrace || nsqLog.Level() > 1 {
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
+				len(c.confirmedMsgs), c.currentLastConfirmed)
 
+			//found the message in the flight with offset c.currentLastConfirmed and
+			//requeue to client again. This can force the missed message with
+			//c.currentLastConfirmed offset
+			c.inFlightMutex.Lock()
+			var reqMsg *Message
+			for _, msg := range c.inFlightMessages {
+				if msg.offset == c.currentLastConfirmed {
+					nsqLog.Logf("client %v message %v confirm offset %v wait too long %v ",
+						msg.clientID, msg.ID, msg.offset, msg.pri-time.Now().UnixNano())
+					//delete(c.inFlightMessages, msg.ID)
+					//if msg.index != -1 {
+					//	c.inFlightPQ.Remove(msg.index)
+					//}
+					reqMsg = msg
+					break
+				}
+			}
+			c.inFlightMutex.Unlock()
+			if reqMsg != nil {
+				//nsqLog.Logf("client %v message %v confirm offset %v requeued",
+				//	reqMsg.clientID, reqMsg.ID, reqMsg.offset)
+				//c.doRequeue(reqMsg)
+			} else {
+				nsqLog.LogWarningf("waiting confirm message offset %v not in inflight, current requeue: %v", c.currentLastConfirmed, len(c.requeuedMsgChan))
+			}
+		}
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 	return c.currentLastConfirmed
@@ -457,11 +465,20 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, er
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
+	} else if nsqLog.Level() > 1 {
+		nsqLog.Logf("message %v, offset:%v, finished from client %v",
+			msg.ID, msg.offset, clientID)
 	}
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
 	offset := c.ConfirmBackendQueue(msg)
+	if msg.notifyContinue != nil {
+		select {
+		case msg.notifyContinue <- 1:
+		case <-c.exitChan:
+		}
+	}
 	return offset, nil
 }
 
@@ -542,12 +559,14 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	msg.pri = now.Add(timeout).UnixNano()
 	err := c.pushInFlightMessage(msg)
 	if err != nil {
-		nsqLog.Logf("push message in flight failed: %v, %v", err,
+		nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
 			msg.GetFullMsgID())
 		return err
 	}
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
+	} else if nsqLog.Level() > 1 {
+		nsqLog.LogDebugf("message %v sending to client %v in flight, offset: %v", msg.ID, clientID, msg.offset)
 	}
 	return nil
 }
@@ -589,8 +608,16 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
+	if m.notifyContinue != nil {
+		select {
+		case m.notifyContinue <- 1:
+		case <-c.exitChan:
+		}
+	}
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v requeued.", m.GetFullMsgID())
+	} else if nsqLog.Level() > 1 {
+		nsqLog.Logf("message %v requeued from client %v, offset: %v", m.ID, m.clientID, m.offset)
 	}
 	return nil
 }
@@ -706,6 +733,7 @@ func (c *Channel) messagePump() {
 	isSkipped := false
 	var readChan <-chan ReadResult
 	maxWin := int32(c.option.MaxConfirmWin)
+	continuNotifyChan := make(chan int, 1)
 
 LOOP:
 	for {
@@ -716,7 +744,8 @@ LOOP:
 			goto exit
 		}
 
-		if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
+		if atomic.LoadInt32(&c.waitingConfirm) > maxWin ||
+			len(c.requeuedMsgChan) > 0 {
 			readChan = nil
 		} else {
 			readChan = c.backend.ReadChan()
@@ -771,11 +800,23 @@ LOOP:
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			continue
 		}
+		if c.requireOrder {
+			msg.notifyContinue = continuNotifyChan
+		} else {
+			msg.notifyContinue = nil
+		}
 		msg.Attempts++
 		select {
 		case c.clientMsgChan <- msg:
 		case <-c.exitChan:
 			goto exit
+		}
+		if c.requireOrder {
+			select {
+			case <-msg.notifyContinue:
+			case <-c.exitChan:
+				goto exit
+			}
 		}
 		msg = nil
 		// the client will call back to mark as in-flight w/ its info

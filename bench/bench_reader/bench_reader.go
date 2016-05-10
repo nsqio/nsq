@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	runfor     = flag.Duration("runfor", 10*time.Second, "duration of time to run")
+	runfor     = flag.Duration("runfor", 15*time.Second, "duration of time to run")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
 	size       = flag.Int("size", 200, "size of messages")
 	topic      = flag.String("topic", "sub_bench", "topic to receive messages on")
@@ -77,6 +77,7 @@ func subWorker(td time.Duration, workers int, tcpAddr string, topic string, chan
 	ci := make(map[string]interface{})
 	ci["short_id"] = "test"
 	ci["long_id"] = "test"
+	ci["msg_timeout"] = 3000
 	cmd, _ := nsq.Identify(ci)
 	cmd.WriteTo(rw)
 	nsq.Subscribe(topic, channel).WriteTo(rw)
@@ -91,6 +92,16 @@ func subWorker(td time.Duration, workers int, tcpAddr string, topic string, chan
 		time.Sleep(td)
 		conn.Close()
 	}()
+	shouldFlush := int32(0)
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			atomic.StoreInt32(&shouldFlush, 1)
+			if err := rw.Flush(); err != nil {
+				return
+			}
+		}
+	}()
 	for {
 		resp, err := nsq.ReadResponse(rw)
 		if err != nil {
@@ -104,8 +115,12 @@ func subWorker(td time.Duration, workers int, tcpAddr string, topic string, chan
 			panic(err.Error())
 		}
 		if frameType == nsq.FrameTypeError {
-			panic(string(data))
+			log.Println(string(data))
+			rw.Flush()
+			continue
 		} else if frameType == nsq.FrameTypeResponse {
+			log.Println(string(data))
+			rw.Flush()
 			continue
 		}
 		msg, err := nsq.DecodeMessage(data)

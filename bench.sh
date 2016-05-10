@@ -11,19 +11,19 @@ echo "# compiling/running nsqd"
 pushd apps/nsqd >/dev/null
 go build
 rm -f *.dat
-./nsqd --mem-queue-size=$memQueueSize --data-path=$dataPath >/dev/null 2>&1 &
+./nsqd --alsologtostderr=true --log-level=2 --mem-queue-size=$memQueueSize --data-path=$dataPath >./bench-nsqd.log 2>&1 &
 nsqd_pid=$!
 popd >/dev/null
 
 cleanup() {
-    kill -9 $nsqd_pid
-    rm -f nsqd/*.dat
+    kill -s SIGINT $nsqd_pid
+    #rm -f nsqd/*.dat
 }
 trap cleanup INT TERM EXIT
 
 sleep 0.3
 echo "# creating topic/channel"
-curl -X PUT --silent 'http://127.0.0.1:4151/topic/create?topic=sub_bench' >/dev/null 2>&1
+#curl -X PUT --silent 'http://127.0.0.1:4151/topic/create?topic=sub_bench' >/dev/null 2>&1
 #curl --silent 'http://127.0.0.1:4151/create_channel?topic=sub_bench&channel=ch' >/dev/null 2>&1
 
 echo "# compiling bench_reader/bench_writer"
