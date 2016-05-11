@@ -135,11 +135,14 @@ func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*Topi
 func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
 	s, ok := self.fakeTopicsLeaderData[topic]
 	if !ok {
-		return nil, ErrMissingTopicLeaderSession
+		return nil, ErrLeaderSessionNotExist
 	}
 	ss, ok := s[partition]
 	if !ok {
-		return nil, ErrMissingTopicLeaderSession
+		return nil, ErrLeaderSessionNotExist
+	}
+	if ss.topicLeaderSession.LeaderNode == nil || ss.topicLeaderSession.Session == "" {
+		return nil, ErrLeaderSessionNotExist
 	}
 	return &ss.topicLeaderSession, nil
 }

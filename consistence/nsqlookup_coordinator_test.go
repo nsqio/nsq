@@ -286,15 +286,15 @@ func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, part
 func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
 	t, ok := self.fakeTopics[topic]
 	if !ok {
-		return nil, ErrMissingTopicLeaderSession
+		return nil, ErrLeaderSessionNotExist
 	}
 	tp, ok := t[partition]
 	if !ok {
-		return nil, ErrMissingTopicLeaderSession
+		return nil, ErrLeaderSessionNotExist
 	}
 
-	if tp.leaderSession == nil {
-		return nil, ErrMissingTopicLeaderSession
+	if tp.leaderSession == nil || tp.leaderSession.Session == "" {
+		return nil, ErrLeaderSessionNotExist
 	}
 
 	return tp.leaderSession, nil
@@ -367,6 +367,7 @@ func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition 
 	}
 	coordLog.Infof("try release leader session with: %v", session)
 	if !l.IsSame(session) {
+		coordLog.Infof("failed release with mismatch session : %v", l)
 		return ErrLeaderSessionMismatch
 	}
 	l.LeaderNode = nil
@@ -580,10 +581,11 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	// test leader node lost
 	lostNodeID = t0.Leader
-	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	if useFakeLeadership {
 		nsqdCoordList[lostNodeID].leadership.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
 	}
+	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
+	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 5)
 	t0, _ = lookupLeadership.GetTopicInfo(topic, 0)
 	t.Log(t0)

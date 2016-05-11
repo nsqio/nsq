@@ -641,8 +641,13 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartitionMe
 // make sure the previous leader is not holding its leader session.
 func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartitionMetaInfo) error {
 	err := RetryWithTimeout(func() error {
-		_, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
+		s, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 		if err == nil {
+			// the leader data is clean, we treat as no leader
+			if s.LeaderNode == nil && s.Session == "" {
+				coordLog.Infof("leader session is clean: %v", s)
+				return nil
+			}
 			time.Sleep(time.Second)
 			return ErrWaitingLeaderRelease
 		}
