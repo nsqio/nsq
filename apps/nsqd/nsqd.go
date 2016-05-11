@@ -186,6 +186,7 @@ type program struct {
 }
 
 func main() {
+	defer glog.Flush()
 	prg := &program{}
 	if err := svc.Run(prg, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGINT); err != nil {
 		log.Fatal(err)
@@ -225,7 +226,12 @@ func (p *program) Start() error {
 	}
 	cfg.Validate()
 
-	defer glog.Flush()
+	go func() {
+		for {
+			glog.Flush()
+			time.Sleep(time.Second * 3)
+		}
+	}()
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)
