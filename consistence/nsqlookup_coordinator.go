@@ -2,7 +2,6 @@ package consistence
 
 import (
 	"errors"
-	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/cenkalti/backoff"
 	"net"
 	"strconv"
@@ -82,11 +81,6 @@ type NsqLookupCoordinator struct {
 	nsqlookupRpcServer *NsqLookupCoordRpcServer
 	wg                 sync.WaitGroup
 	nsqdMonitorChan    chan struct{}
-}
-
-func SetCoordLogger(log levellogger.Logger, level int32) {
-	coordLog.logger = log
-	coordLog.level = level
 }
 
 func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo) *NsqLookupCoordinator {
@@ -1105,15 +1099,14 @@ func (self *NsqLookupCoordinator) IsMineLeader() bool {
 	return self.leaderNode.GetID() == self.myNode.GetID()
 }
 
-func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, replica int, suggestLF int) error {
+func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("not leader while create topic")
 		return ErrNotNsqLookupLeader
 	}
 
 	// TODO: handle default load factor
-	meta := TopicMetaInfo{partitionNum, replica, suggestLF}
-	coordLog.Infof("create topic: %v, with partition %v, replica: %v", topic, partitionNum, replica)
+	coordLog.Infof("create topic: %v, with meta: %v", meta)
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
@@ -1123,7 +1116,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 	}
 
 	existPart := make(map[int]*TopicPartitionMetaInfo)
-	for i := 0; i < partitionNum; i++ {
+	for i := 0; i < meta.PartitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i)
 		if err == ErrAlreadyExist {
 			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
@@ -1143,19 +1136,19 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, partitionNum int, re
 	self.nodesMutex.RLock()
 	currentNodes := self.nsqdNodes
 	self.nodesMutex.RUnlock()
-	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, replica, partitionNum, existPart)
+	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
 		return err
 	}
-	if len(leaders) != partitionNum || len(isrList) != partitionNum {
+	if len(leaders) != meta.PartitionNum || len(isrList) != meta.PartitionNum {
 		return ErrNodeUnavailable
 	}
 	if err != nil {
 		coordLog.Infof("failed alloc nodes for topic: %v", err)
 		return err
 	}
-	for i := 0; i < partitionNum; i++ {
+	for i := 0; i < meta.PartitionNum; i++ {
 		if _, ok := existPart[i]; ok {
 			continue
 		}

@@ -46,6 +46,7 @@ type TopicMetaInfo struct {
 	// the suggest load factor for each topic partition.
 	SuggestLF int
 	// other options
+	SyncEvery int
 }
 
 type TopicPartitionReplicaInfo struct {

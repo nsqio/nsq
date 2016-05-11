@@ -113,6 +113,10 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 			opt.E2EProcessingLatencyPercentiles,
 		)
 	}
+	syncEvery := opt.SyncEvery
+	if syncEvery < 1 {
+		syncEvery = 1
+	}
 
 	c.initPQ()
 
@@ -128,7 +132,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(opt.MaxMsgSize)+minValidMsgLength,
-			opt.SyncEvery,
+			syncEvery,
 			opt.SyncTimeout,
 			false)
 

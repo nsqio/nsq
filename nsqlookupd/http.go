@@ -268,6 +268,7 @@ func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "BAD_LEVEL_STRING"}
 	}
 	nsqlookupLog.SetLevel(int32(level))
+	consistence.SetCoordLogLevel(int32(level))
 	return nil, nil
 }
 
@@ -311,6 +312,15 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_LOAD_FACTOR"}
 	}
+	syncEveryStr := reqParams.Get("syncdisk")
+	if syncEveryStr == "" {
+		syncEveryStr = "0"
+	}
+	syncEvery, err := strconv.Atoi(syncEveryStr)
+	if err != nil {
+		nsqlookupLog.Logf("error sync disk param: %v, %v", syncEvery, err)
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_SYNC_DISK"}
+	}
 
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
@@ -318,7 +328,12 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	nsqlookupLog.Logf("creating topic(%s) with partition %v replicator: %v load: %v", topicName, pnum, replicator, suggestLF)
-	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, pnum, replicator, suggestLF)
+	meta := consistence.TopicMetaInfo{}
+	meta.PartitionNum = pnum
+	meta.Replica = replicator
+	meta.SuggestLF = suggestLF
+	meta.SyncEvery = syncEvery
+	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, meta)
 	if err != nil {
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)
 		return nil, http_api.Err{400, err.Error()}

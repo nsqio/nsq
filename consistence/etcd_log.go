@@ -1,9 +1,9 @@
-
 package consistence
 
 import (
-	"log"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 
 	etcdlock "github.com/reechou/xlock"
@@ -60,4 +60,9 @@ func (p *EtcdLogger) Errorf(f string, args ...interface{}) {
 		}
 		p.log.Print(msg)
 	}
+}
+
+func init() {
+	// Default logger uses the go default log.
+	SetEtcdMgrLogger(log.New(os.Stderr, "etcd-leadership", log.LstdFlags))
 }

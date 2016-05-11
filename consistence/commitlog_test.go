@@ -22,7 +22,7 @@ func TestCommitLogWrite(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	coordLog.logger = newTestLogger(t)
+	coordLog.Logger = newTestLogger(t)
 	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
 
 	test.Nil(t, err)

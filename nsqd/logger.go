@@ -4,7 +4,7 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
-var nsqLog = levellogger.NewLevelLogger(1, &levellogger.GLogger{})
+var nsqLog = levellogger.NewLevelLogger(levellogger.LOG_INFO, &levellogger.GLogger{})
 
 func NsqLogger() *levellogger.LevelLogger {
 	return nsqLog
