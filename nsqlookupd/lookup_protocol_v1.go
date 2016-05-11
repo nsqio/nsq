@@ -259,7 +259,7 @@ func (p *LookupProtocolV1) PING(client *ClientV1, params []string) ([]byte, erro
 		// we could get a PING before other commands on the same client connection
 		cur := time.Unix(0, atomic.LoadInt64(&client.peerInfo.lastUpdate))
 		now := time.Now()
-		nsqlookupLog.Logf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.Id,
+		nsqlookupLog.LogDebugf("CLIENT(%s): pinged (last ping %s)", client.peerInfo.Id,
 			now.Sub(cur))
 		atomic.StoreInt64(&client.peerInfo.lastUpdate, now.UnixNano())
 	}

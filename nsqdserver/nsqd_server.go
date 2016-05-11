@@ -80,6 +80,25 @@ func buildTLSConfig(opts *nsqd.Options) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+func getIPv4ForInterfaceName(ifname string) string {
+	interfaces, _ := net.Interfaces()
+	for _, inter := range interfaces {
+		if inter.Name == ifname {
+			if addrs, err := inter.Addrs(); err == nil {
+				for _, addr := range addrs {
+					switch ip := addr.(type) {
+					case *net.IPNet:
+						if ip.IP.DefaultMask() != nil {
+							return ip.IP.String()
+						}
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	s := &NsqdServer{}
 	ctx := &context{}
@@ -87,6 +106,17 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	ip, port, _ := net.SplitHostPort(opts.TCPAddress)
 	rpcport := opts.RPCPort
 	if rpcport != "" {
+		if opts.BroadcastAddress != "" {
+			ip = opts.BroadcastAddress
+		} else if opts.BroadcastInterface != "" {
+			ip = getIPv4ForInterfaceName(opts.BroadcastInterface)
+		}
+		if ip == "0.0.0.0" || ip == "" {
+			nsqd.NsqLogger().LogErrorf("can not decide the broadcast ip")
+			os.Exit(1)
+		}
+		nsqd.NsqLogger().Logf("Start with broadcast: %s", ip)
+
 		coord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)
 		l := consistence.NewNsqdEtcdMgr(opts.ClusterLeadershipAddresses)
 		coord.SetLeadershipMgr(l)

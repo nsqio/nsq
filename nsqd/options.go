@@ -26,6 +26,7 @@ type Options struct {
 	HTTPAddress                string   `flag:"http-address"`
 	HTTPSAddress               string   `flag:"https-address"`
 	BroadcastAddress           string   `flag:"broadcast-address"`
+	BroadcastInterface         string   `flag:"broadcast-interface"`
 	NSQLookupdTCPAddresses     []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
 	AuthHTTPAddresses          []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
 
@@ -104,6 +105,7 @@ func NewOptions() *Options {
 		HTTPAddress:                "0.0.0.0:4151",
 		HTTPSAddress:               "0.0.0.0:4152",
 		BroadcastAddress:           hostname,
+		BroadcastInterface:         "eth0",
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),

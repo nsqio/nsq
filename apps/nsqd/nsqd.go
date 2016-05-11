@@ -94,6 +94,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	authHTTPAddresses := app.StringArray{}
 	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
 	flagSet.String("broadcast-address", opts.BroadcastAddress, "address that will be registered with lookupd (defaults to the OS hostname)")
+	flagSet.String("broadcast-interface", opts.BroadcastInterface, "address that will be registered with lookupd (defaults to the OS hostname)")
 	lookupdTCPAddrs := app.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 

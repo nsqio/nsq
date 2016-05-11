@@ -263,11 +263,11 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 				return
 			}
 			// check if any nsqd node changed.
-			coordLog.Infof("Current nsqd nodes: %v", len(nodes))
+			coordLog.Debugf("Current nsqd nodes: %v", len(nodes))
 			oldNodes := self.nsqdNodes
 			newNodes := make(map[string]NsqdNodeInfo)
 			for _, v := range nodes {
-				coordLog.Infof("nsqd node %v : %v", v.GetID(), v)
+				//coordLog.Infof("nsqd node %v : %v", v.GetID(), v)
 				newNodes[v.GetID()] = v
 			}
 			self.nodesMutex.Lock()

@@ -35,6 +35,25 @@ func New(opts *Options) *NSQLookupd {
 	return n
 }
 
+func getIPv4ForInterfaceName(ifname string) string {
+	interfaces, _ := net.Interfaces()
+	for _, inter := range interfaces {
+		if inter.Name == ifname {
+			if addrs, err := inter.Addrs(); err == nil {
+				for _, addr := range addrs {
+					switch ip := addr.(type) {
+					case *net.IPNet:
+						if ip.IP.DefaultMask() != nil {
+							return ip.IP.String()
+						}
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
 
@@ -60,6 +79,16 @@ func (l *NSQLookupd) Main() {
 	var node consistence.NsqLookupdNodeInfo
 	node.NodeIp, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
 	if l.opts.RPCPort != "" {
+		if l.opts.BroadcastAddress != "" {
+			node.NodeIp = l.opts.BroadcastAddress
+		} else if l.opts.BroadcastInterface != "" {
+			node.NodeIp = getIPv4ForInterfaceName(l.opts.BroadcastInterface)
+		}
+		if node.NodeIp == "0.0.0.0" || node.NodeIp == "" {
+			nsqlookupLog.LogErrorf("can not decide the broadcast ip")
+			os.Exit(1)
+		}
+		nsqlookupLog.Logf("Start with broadcast ip:%s", node.NodeIp)
 		node.RpcPort = l.opts.RPCPort
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 

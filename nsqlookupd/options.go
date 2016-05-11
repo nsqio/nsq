@@ -10,10 +10,11 @@ import (
 type Options struct {
 	Verbose bool `flag:"verbose"`
 
-	TCPAddress       string `flag:"tcp-address"`
-	HTTPAddress      string `flag:"http-address"`
-	RPCPort          string `flag:"rpc-port"`
-	BroadcastAddress string `flag:"broadcast-address"`
+	TCPAddress         string `flag:"tcp-address"`
+	HTTPAddress        string `flag:"http-address"`
+	RPCPort            string `flag:"rpc-port"`
+	BroadcastAddress   string `flag:"broadcast-address"`
+	BroadcastInterface string `flag:"broadcast-interface"`
 
 	ClusterID                  string `flag:"cluster-id"`
 	ClusterLeadershipAddresses string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
@@ -31,9 +32,10 @@ func NewOptions() *Options {
 	}
 
 	return &Options{
-		TCPAddress:       "0.0.0.0:4160",
-		HTTPAddress:      "0.0.0.0:4161",
-		BroadcastAddress: hostname,
+		TCPAddress:         "0.0.0.0:4160",
+		HTTPAddress:        "0.0.0.0:4161",
+		BroadcastAddress:   hostname,
+		BroadcastInterface: "eth0",
 
 		ClusterLeadershipAddresses: "",
 		ClusterID:                  "nsq-clusterid-test-only",
