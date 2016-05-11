@@ -363,18 +363,18 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 			return
 		case <-ticker.C:
 			if self.leadership == nil {
-				return
+				continue
 			}
 			topics, commonErr := self.leadership.ScanTopics()
 			if commonErr != nil {
 				coordLog.Infof("scan topics failed. %v", commonErr)
-				return
+				continue
 			}
 			coordLog.Debugf("scan found topics: %v", topics)
 			self.doCheckTopics(topics, waitingMigrateTopic)
 		case failedInfo := <-self.checkTopicFailChan:
 			if self.leadership == nil {
-				return
+				continue
 			}
 			topics := []TopicPartitionMetaInfo{}
 			var err error
@@ -382,7 +382,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				topics, err = self.leadership.ScanTopics()
 				if err != nil {
 					coordLog.Infof("scan topics failed. %v", err)
-					return
+					continue
 				}
 			} else {
 				coordLog.Infof("check single topic : %v ", failedInfo)
@@ -390,7 +390,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				t, err = self.leadership.GetTopicInfo(failedInfo.TopicName, failedInfo.TopicPartition)
 				if err != nil {
 					coordLog.Infof("get topic info failed: %v, %v", failedInfo, err)
-					return
+					continue
 				}
 				topics = append(topics, *t)
 			}
