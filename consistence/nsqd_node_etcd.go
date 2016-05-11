@@ -87,7 +87,7 @@ func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
-				logger.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
+				coordLog.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
 			}
 		}
 	}
@@ -110,7 +110,7 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 		self.refreshStopCh = nil
 	}
 
-	logger.Infof("[UnregisterNsqd] cluser[%s] node[%s]", self.clusterID, nodeData.ID)
+	coordLog.Infof("[UnregisterNsqd] cluser[%s] node[%s]", self.clusterID, nodeData.ID)
 
 	return nil
 }
@@ -132,15 +132,15 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 	lock := etcdlock.NewSeizeLock(self.eClient, topicKey, string(valueB), ETCD_TTL)
 	err = lock.Lock()
 	if err != nil {
-		logger.Errorf("[AcquireTopicLeader] topic_key[%s] lock error: %s", topicKey, err.Error())
+		coordLog.Errorf("[AcquireTopicLeader] topic_key[%s] lock error: %s", topicKey, err.Error())
 		if err == etcdlock.ErrSeizeLockAg {
 			return nil
 		}
 		return err
 	}
-	logger.Infof("[AcquireTopicLeader] topic_key[%s] lock success.", topicKey)
+	coordLog.Infof("[AcquireTopicLeader] topic_key[%s] lock success.", topicKey)
 	self.topicLockMap[topicKey] = lock
-	logger.Infof("[AcquireTopicLeader] map: %v", self.topicLockMap)
+	coordLog.Infof("[AcquireTopicLeader] map: %v", self.topicLockMap)
 
 	return nil
 }
@@ -176,24 +176,24 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 //}
 
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
-	logger.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] leader", topic, partition)
-	logger.Infof("[ReleaseTopicLeader] map: %v", self.topicLockMap)
+	coordLog.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] leader", topic, partition)
+	coordLog.Infof("[ReleaseTopicLeader] map: %v", self.topicLockMap)
 	topicKey := self.createTopicLeaderPath(topic, partition)
 	v, ok := self.topicLockMap[topicKey]
 	if ok {
 		err := v.Unlock()
 		if err != nil {
-			logger.Errorf("[ReleaseTopicLeader] unlock error: %s", err.Error())
+			coordLog.Errorf("[ReleaseTopicLeader] unlock error: %s", err.Error())
 			if err == etcdlock.ErrEtcdBad {
 				return err
 			}
 		}
 		delete(self.topicLockMap, topicKey)
-		logger.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] success.", topic, partition)
+		coordLog.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] success.", topic, partition)
 
 		return err
 	} else {
-		logger.Errorf("[ReleaseTopicLeader] topicLockMap key[%s] not found.", topicKey)
+		coordLog.Errorf("[ReleaseTopicLeader] topicLockMap key[%s] not found.", topicKey)
 		return fmt.Errorf("topicLockMap key[%s] not found.", topicKey)
 	}
 
@@ -221,7 +221,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 
 	rsp, err := self.client.Get(key, false, false)
 	if err == nil {
-		logger.Infof("[WatchLookupdLeader] key: %s value: %s", rsp.Node.Key, rsp.Node.Value)
+		coordLog.Infof("[WatchLookupdLeader] key: %s value: %s", rsp.Node.Key, rsp.Node.Value)
 		var lookupdInfo NsqLookupdNodeInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 		if err == nil {
@@ -233,7 +233,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			}
 		}
 	} else {
-		logger.Infof("[WatchLookupdLeader] get error: %s", err.Error())
+		coordLog.Infof("[WatchLookupdLeader] get error: %s", err.Error())
 	}
 
 	watcher := self.client.Watch(key, 0, true)
@@ -248,11 +248,11 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 		rsp, err = watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				logger.Infof("watch key[%s] canceled.", key)
+				coordLog.Infof("watch key[%s] canceled.", key)
 				close(leader)
 				return nil
 			} else {
-				logger.Errorf("watcher key[%s] error: %s", key, err.Error())
+				coordLog.Errorf("watcher key[%s] error: %s", key, err.Error())
 				time.Sleep(5 * time.Second)
 			}
 			continue
@@ -262,7 +262,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 		}
 		var lookupdInfo NsqLookupdNodeInfo
 		if rsp.Action == "expire" || rsp.Action == "delete" {
-			logger.Infof("key[%s] action[%s]", key, rsp.Action)
+			coordLog.Infof("key[%s] action[%s]", key, rsp.Action)
 		} else if rsp.Action == "create" || rsp.Action == "update" || rsp.Action == "set" {
 			err := json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 			if err != nil {

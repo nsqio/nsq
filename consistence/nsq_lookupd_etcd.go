@@ -114,7 +114,7 @@ func (self *NsqLookupdEtcdMgr) refresh() {
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
-				logger.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
+				coordLog.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
 			}
 		}
 	}
@@ -246,11 +246,11 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 		rsp, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				logger.Infof("[WatchNsqdNodes] watch key[%s] canceled.", key)
+				coordLog.Infof("[WatchNsqdNodes] watch key[%s] canceled.", key)
 				close(nsqds)
 				return
 			} else {
-				logger.Errorf("[WatchNsqdNodes] watcher key[%s] error: %s", key, err.Error())
+				coordLog.Errorf("[WatchNsqdNodes] watcher key[%s] error: %s", key, err.Error())
 				time.Sleep(5 * time.Second)
 			}
 			continue
@@ -312,10 +312,10 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 		_, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				logger.Infof("[watchTopics] watch key[%s] canceled.", self.topicRoot)
+				coordLog.Infof("[watchTopics] watch key[%s] canceled.", self.topicRoot)
 				return
 			} else {
-				logger.Errorf("[watchTopics] watcher key[%s] error: %s", self.topicRoot, err.Error())
+				coordLog.Errorf("[watchTopics] watcher key[%s] error: %s", self.topicRoot, err.Error())
 				time.Sleep(5 * time.Second)
 			}
 			continue
@@ -557,7 +557,7 @@ func (self *NsqLookupdEtcdMgr) UpdateTopicNodeInfo(topic string, partition int, 
 	if err != nil {
 		return err
 	}
-	logger.Infof("Update_topic info: %s %d %s %d", topic, partition, string(value), oldGen)
+	coordLog.Infof("Update_topic info: %s %d %s %d", topic, partition, string(value), oldGen)
 	if oldGen == 0 {
 		rsp, err := self.client.Create(self.createTopicReplicaInfoPath(topic, partition), string(value), 0)
 		if err != nil {
@@ -606,7 +606,7 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 				self.Lock()
 				self.watchTopicLeaderChanMap[topicLeaderSession] = event
 				self.Unlock()
-				logger.Infof("[WatchTopicLeader]create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
+				coordLog.Infof("[WatchTopicLeader]create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
 				go self.watchTopicLeaderSession(event, leader)
 			}
 		case <-stop:
@@ -643,11 +643,11 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 		rsp, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				logger.Infof("[watchTopicLeaderSession] watch key[%s] canceled.", topicLeaderSessionPath)
+				coordLog.Infof("[watchTopicLeaderSession] watch key[%s] canceled.", topicLeaderSessionPath)
 				watchTopicLeaderInfo.stoppedCh <- true
 				return
 			} else {
-				logger.Errorf("[watchTopicLeaderSession] watcher key[%s] error: %s", topicLeaderSessionPath, err.Error())
+				coordLog.Errorf("[watchTopicLeaderSession] watcher key[%s] error: %s", topicLeaderSessionPath, err.Error())
 				time.Sleep(5 * time.Second)
 			}
 			continue
@@ -655,7 +655,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 		if rsp == nil {
 			continue
 		}
-		logger.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s]", rsp.Node.Key, rsp.Action, rsp.Node.Value)
+		coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s]", rsp.Node.Key, rsp.Action, rsp.Node.Value)
 		if rsp.Action == "compareAndDelete" || rsp.Action == "delete" || rsp.Action == "expire" {
 			keys := strings.Split(rsp.Node.Key, "/")
 			keyLen := len(keys)
@@ -666,7 +666,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			if err != nil {
 				continue
 			}
-			logger.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] leader deleted.", keys[keyLen-3], partition)
+			coordLog.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] leader deleted.", keys[keyLen-3], partition)
 			topicLeaderSession := &TopicLeaderSession{
 				Topic:     keys[keyLen-3],
 				Partition: partition,
