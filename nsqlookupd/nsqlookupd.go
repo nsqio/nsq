@@ -38,6 +38,7 @@ func New(opts *Options) *NSQLookupd {
 func getIPv4ForInterfaceName(ifname string) string {
 	interfaces, _ := net.Interfaces()
 	for _, inter := range interfaces {
+		nsqlookupLog.Logf("found interface: %s", inter.Name)
 		if inter.Name == ifname {
 			if addrs, err := inter.Addrs(); err == nil {
 				for _, addr := range addrs {
@@ -79,13 +80,17 @@ func (l *NSQLookupd) Main() {
 	var node consistence.NsqLookupdNodeInfo
 	node.NodeIp, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
 	if l.opts.RPCPort != "" {
-		if l.opts.BroadcastAddress != "" {
-			node.NodeIp = l.opts.BroadcastAddress
-		} else if l.opts.BroadcastInterface != "" {
+		nsqlookupLog.Logf("broadcast option: %s, %s", l.opts.BroadcastAddress, l.opts.BroadcastInterface)
+		if l.opts.BroadcastInterface != "" {
 			node.NodeIp = getIPv4ForInterfaceName(l.opts.BroadcastInterface)
 		}
+		if node.NodeIp == "" {
+			node.NodeIp = l.opts.BroadcastAddress
+		} else {
+			l.opts.BroadcastAddress = node.NodeIp
+		}
 		if node.NodeIp == "0.0.0.0" || node.NodeIp == "" {
-			nsqlookupLog.LogErrorf("can not decide the broadcast ip")
+			nsqlookupLog.LogErrorf("can not decide the broadcast ip: %v", node.NodeIp)
 			os.Exit(1)
 		}
 		nsqlookupLog.Logf("Start with broadcast ip:%s", node.NodeIp)

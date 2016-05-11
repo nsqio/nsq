@@ -83,6 +83,7 @@ func buildTLSConfig(opts *nsqd.Options) (*tls.Config, error) {
 func getIPv4ForInterfaceName(ifname string) string {
 	interfaces, _ := net.Interfaces()
 	for _, inter := range interfaces {
+		nsqd.NsqLogger().Logf("found interface: %s", inter.Name)
 		if inter.Name == ifname {
 			if addrs, err := inter.Addrs(); err == nil {
 				for _, addr := range addrs {
@@ -106,13 +107,17 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	ip, port, _ := net.SplitHostPort(opts.TCPAddress)
 	rpcport := opts.RPCPort
 	if rpcport != "" {
-		if opts.BroadcastAddress != "" {
-			ip = opts.BroadcastAddress
-		} else if opts.BroadcastInterface != "" {
+		nsqd.NsqLogger().Logf("broadcast option: %s, %s", opts.BroadcastAddress, opts.BroadcastInterface)
+		if opts.BroadcastInterface != "" {
 			ip = getIPv4ForInterfaceName(opts.BroadcastInterface)
 		}
+		if ip == "" {
+			ip = opts.BroadcastAddress
+		} else {
+			opts.BroadcastAddress = ip
+		}
 		if ip == "0.0.0.0" || ip == "" {
-			nsqd.NsqLogger().LogErrorf("can not decide the broadcast ip")
+			nsqd.NsqLogger().LogErrorf("can not decide the broadcast ip: %v", ip)
 			os.Exit(1)
 		}
 		nsqd.NsqLogger().Logf("Start with broadcast: %s", ip)
