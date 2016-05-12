@@ -4,188 +4,185 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"github.com/absolute8511/nsq/internal/test"
 )
 
-func processLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) {
-	for {
-		select {
-		case l := <-leader:
-			fmt.Println("lookupd new leader:", l.ID, l.NodeIp)
-		case <-stop:
-			return
-		}
-	}
-}
-
-func processTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) {
-	for {
-		select {
-		case l := <-leader:
-			fmt.Println("topic:", l.Topic, "partition:", l.Partition, "Leader Node:", l.LeaderNode)
-		case <-stop:
-			return
-		}
-	}
-}
-
 func TestLookupd(t *testing.T) {
-	ID := "n-1"
-	ID2 := "l-1"
-	topic := "topic-1"
+	ClusterID := "ree-cluster-1"
+	NsqdID := "n-1"
+	LookupId1 := "l-1"
+	LookupId2 := "l-2"
+
+	stop := make(chan struct{})
 
 	nodeMgr := NewNsqdEtcdMgr(EtcdHost)
-	nodeMgr.InitClusterID("cluster-1")
+	nodeMgr.InitClusterID(ClusterID)
 	nodeInfo := &NsqdNodeInfo{
-		ID:      ID,
+		ID:      NsqdID,
 		NodeIp:  "127.0.0.1",
 		TcpPort: "2222",
 		RpcPort: "2223",
 	}
 	err := nodeMgr.RegisterNsqd(nodeInfo)
-	if err != nil {
-		fmt.Println("Node register error:", err.Error())
-		return
-	} else {
-		fmt.Printf("Nsqd Node[%s] register success.\n", nodeInfo.ID)
-	}
+	test.Nil(t, err)
+	fmt.Printf("Nsqd Node[%s] register success.\n", nodeInfo.ID)
 
 	lookupdMgr := NewNsqLookupdEtcdMgr(EtcdHost)
-	lookupdMgr.InitClusterID("cluster-1")
+	lookupdMgr.InitClusterID(ClusterID)
 	lookupdInfo := &NsqLookupdNodeInfo{
-		ID:       ID2,
+		ID:       LookupId1,
 		NodeIp:   "127.0.0.1",
 		HttpPort: "8090",
 	}
 	err = lookupdMgr.Register(lookupdInfo)
-	if err != nil {
-		fmt.Println("register error:", err.Error())
-		return
-	} else {
-		fmt.Printf("Nsqd Lookupd Node[%s] register success.\n", lookupdInfo.ID)
+	test.Nil(t, err)
+	fmt.Printf("Nsqd Lookupd Node[%s] register success.\n", lookupdInfo.ID)
+
+	// watch topic leaders
+	topicLeaders := make(chan *TopicLeaderSession)
+	go lookupdMgr.WatchTopicLeader(topicLeaders, stop)
+	luWatchTopicLeaderStopped := make(chan bool)
+	go func() {
+		for {
+			select {
+			case leader, ok := <-topicLeaders:
+				if ok {
+					fmt.Printf("watch topic leader: topic[%s] patition[%d] leader: %v\n", leader.Topic, leader.Partition, leader)
+				} else {
+					fmt.Printf("[lookup node 1] close the chan topicLeaders.\n")
+					close(luWatchTopicLeaderStopped)
+					return
+				}
+			}
+		}
+	}()
+
+	lookupdMgr2 := NewNsqLookupdEtcdMgr(EtcdHost)
+	lookupdMgr2.InitClusterID(ClusterID)
+	lookupdInfo2 := &NsqLookupdNodeInfo{
+		ID:       LookupId2,
+		NodeIp:   "127.0.0.1",
+		HttpPort: "8091",
 	}
+	err = lookupdMgr2.Register(lookupdInfo2)
+	test.Nil(t, err)
+	fmt.Printf("Nsqd Lookupd Node[%s] register success.\n", lookupdInfo2.ID)
 
-	leader := make(chan *NsqLookupdNodeInfo, 1)
-	leaderStop := make(chan struct{}, 1)
-	go processLookupdLeader(leader, leaderStop)
-	fmt.Println("--- sleep 5 second ---")
-	time.Sleep(5 * time.Second)
-	lookupdMgr.AcquireAndWatchLeader(leader, leaderStop)
+	// get all lookup nodes
+	lookupList, err := nodeMgr.GetAllLookupdNodes()
+	test.Nil(t, err)
+	fmt.Printf("Get all lookup nodes: %v\n", lookupList)
+	test.Equal(t, len(lookupList), 2)
 
-	fmt.Println("start to watch topic leader...")
-	// watch topic
-	topicLeaderCh := make(chan *TopicLeaderSession, 1)
-	topicLeaderStop := make(chan struct{}, 1)
-	go lookupdMgr.WatchTopicLeader(topicLeaderCh, topicLeaderStop)
-	go processTopicLeader(topicLeaderCh, topicLeaderStop)
-	fmt.Println("--- sleep 5 second ---")
-	time.Sleep(5 * time.Second)
+	// nsqd watch lookup leader
+	lookupLeaderCh := make(chan *NsqLookupdNodeInfo)
+	go nodeMgr.WatchLookupdLeader(lookupLeaderCh, stop)
+	nodeWatchLookupLeaderStopped := make(chan bool)
+	go func() {
+		for {
+			select {
+			case leader, ok := <-lookupLeaderCh:
+				if ok {
+					fmt.Printf("[nsqd node] watch lookup leader: %v\n", leader)
+				} else {
+					fmt.Println("[nsqd node] watch lookup leader for loop stop.")
+					close(nodeWatchLookupLeaderStopped)
+					return
+				}
+			}
+		}
+	}()
 
-	err = nodeMgr.AcquireTopicLeader(topic, 0, nodeInfo, 100)
-	if err != nil {
-		fmt.Println("AcquireTopicLeader error:", err.Error())
-		return
-	} else {
-		fmt.Printf("Nsqd Node[%s] acquire leader of topic[%s] success.\n", nodeInfo.ID, topic)
+	// lookup acquire and watch leader
+	luLeader1 := make(chan *NsqLookupdNodeInfo)
+	lookupdMgr.AcquireAndWatchLeader(luLeader1, stop)
+	luAcquireWatchLeaderStopped := make(chan bool)
+	go func() {
+		for {
+			select {
+			case leader, ok := <-luLeader1:
+				if ok {
+					fmt.Printf("[lookup node 1] watch lookup leader: %v\n", leader)
+				} else {
+					fmt.Println("[lookup node 1] watch lookup leader for loop stop.")
+					close(luAcquireWatchLeaderStopped)
+					return
+				}
+			}
+		}
+	}()
+//	luLeader2 := make(chan *NsqLookupdNodeInfo)
+//	lookupdMgr2.AcquireAndWatchLeader(luLeader2, stop)
+//	go func() {
+//		for {
+//			select {
+//			case <-stop:
+//				fmt.Println("[lookup node 2] watch lookup leader for loop stop.")
+//				return
+//			case leader := <-luLeader2:
+//				fmt.Printf("[lookup node 2] watch lookup leader: %v\n", leader)
+//			}
+//		}
+//	}()
+
+	// lookup node 1 create topic
+	topicName := "ree-topic"
+	partition := 0
+	err = lookupdMgr.CreateTopicPartition(topicName, partition)
+	test.Nil(t, err)
+	fmt.Printf("[lookup node 1] topic[%s] partition[%d] create topic partition success.\n", topicName, partition)
+
+	topicMetainfo := &TopicMetaInfo{
+		PartitionNum: 2,
+		Replica:      2,
 	}
-
-	// create topic partition
-	err = lookupdMgr.CreateTopicPartition(topic, 0)
-	if err != nil {
-		fmt.Println("CreateTopicPartition error:", err.Error())
-		return
-	} else {
-		fmt.Printf("create topic[%s] partition-0 success.\n", topic)
+	err = lookupdMgr.CreateTopic(topicName, topicMetainfo)
+	test.Nil(t, err)
+	// lookup node 1 update topic info
+	topicReplicasInfo := &TopicPartitionReplicaInfo{
+		Leader:      "127.0.0.1:2223",
+		ISR:         []string{"1111"},
+		CatchupList: []string{"2222"},
+		Channels:    []string{"3333"},
 	}
+	err = lookupdMgr.UpdateTopicNodeInfo(topicName, partition, topicReplicasInfo, 0)
 
-	// create topic
-	metaInfo := &TopicMetaInfo{PartitionNum: 1, Replica: 1}
-	err = lookupdMgr.CreateTopic(topic, metaInfo)
-	if err != nil {
-		fmt.Println("CreateTopic error:", err.Error())
-		return
-	} else {
-		fmt.Printf("create topic[%s] success\n", topic)
-	}
+	// nsqd node 1 get topic info
+	topicInfo, err := nodeMgr.GetTopicInfo(topicName, partition)
+	test.Nil(t, err)
+	fmt.Printf("[nsqd node 1] get topic info: %v\n", topicInfo)
 
-	// topic if exist
-	ok, err := lookupdMgr.IsExistTopic(topic)
-	if err != nil {
-		fmt.Println("IsExistTopic error:", err.Error())
-		return
-	}
-	fmt.Println("topic -", topic, "IfExist:", ok)
+	// nsqd node 1 acquire topic leader
+	err = nodeMgr.AcquireTopicLeader(topicName, partition, nodeInfo, 0)
+	test.Nil(t, err)
 
-	// topic partition if exist
-	ok, err = lookupdMgr.IsExistTopicPartition(topic, 0)
-	if err != nil {
-		fmt.Println("IsExistTopicPartition error:", err.Error())
-		return
-	}
-	fmt.Println("topic -", topic, "partition-0 IfExist:", ok)
+	// lookup node 1 get topic leader session
+	topicLeaderS, err := lookupdMgr.GetTopicLeaderSession(topicName, partition)
+	test.Nil(t, err)
+	fmt.Printf("[lookup node 1] topic[%s] get topic leader session leader: %v\n", topicName, topicLeaderS)
 
-	// create topic node info
-	topicNodeInfo := &TopicPartitionReplicaInfo{}
-	topicNodeInfo.Leader = "127.0.0.1"
-	topicNodeInfo.ISR = []string{"127.0.0.1"}
+	go func() {
+		<-luWatchTopicLeaderStopped
+		fmt.Printf("lookup watch topic leader loop stopped.\n")
+	}()
+	go func() {
+		<-nodeWatchLookupLeaderStopped
+		fmt.Printf("node watch lookup leader loop stopped.\n")
+	}()
+	go func() {
+		<-luAcquireWatchLeaderStopped
+		fmt.Printf("lookup acquire and watch leader loop stopped.\n")
+	}()
 
-	// update
-	err = lookupdMgr.UpdateTopicNodeInfo(topic, 0, topicNodeInfo, 0)
-	if err != nil {
-		fmt.Println("UpdateTopicNodeInfo error:", err.Error())
-		return
-	}
+	time.Sleep(3 * time.Second)
+	close(stop)
 
-	// get
-	// topic leader session
-	topicLeader, err := lookupdMgr.GetTopicLeaderSession(topic, 0)
-	if err != nil {
-		fmt.Println("GetTopicLeaderSession error:", err.Error())
-		return
-	}
-	fmt.Println("Topic Leader:", topicLeader)
-	// topic info
-	topicInfo, err := lookupdMgr.GetTopicInfo(topic, 0)
-	if err != nil {
-		fmt.Println("GetTopicInfo error:", err.Error())
-		return
-	}
-	fmt.Println("Topic Info:", topicInfo)
+	time.Sleep(15 * time.Second)
 
-	// time sleep
-	fmt.Println("--- sleep 10 second ---")
-	time.Sleep(10 * time.Second)
-
-	// delete topic
-	err = lookupdMgr.DeleteTopic(topic, 0)
-	if err != nil {
-		fmt.Println("DeleteTopic error:", err.Error())
-		return
-	} else {
-		fmt.Println("delete topic success.")
-	}
-
-	lookupdMgr.Stop()
+	err = lookupdMgr2.Unregister(lookupdInfo2)
+	test.Nil(t, err)
 	err = lookupdMgr.Unregister(lookupdInfo)
-	if err != nil {
-		fmt.Println("unregister error:", err.Error())
-		return
-	} else {
-		fmt.Println("unregister lookup mgr success.")
-	}
-
-	err = nodeMgr.ReleaseTopicLeader(topic, 0, nil)
-	if err != nil {
-		fmt.Println("ReleaseTopicLeader error:", err.Error())
-		return
-	} else {
-		fmt.Println("release topic leader success.")
-	}
-
+	test.Nil(t, err)
 	err = nodeMgr.UnregisterNsqd(nodeInfo)
-	if err != nil {
-		fmt.Println("Node unregister error:", err.Error())
-		return
-	} else {
-		fmt.Println("nsqd node unregister success.")
-	}
+	test.Nil(t, err)
 }
