@@ -585,7 +585,6 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 				lock.Unlock()
 				return
 			}
-			c.logf("CI: querying nsqd return %v, %v", resp.Topics[0], selectedTopic)
 
 			lock.Lock()
 			defer lock.Unlock()
