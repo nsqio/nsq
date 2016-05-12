@@ -325,6 +325,15 @@ func (self *FakeNsqlookupLeadership) RegisterNsqd(nodeData *NsqdNodeInfo) error 
 }
 
 func (self *FakeNsqlookupLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
+	for name, tps := range self.fakeTopics {
+		for pid, t := range tps {
+			if t.leaderSession != nil && t.leaderSession.LeaderNode != nil {
+				if t.leaderSession.LeaderNode.GetID() == nodeData.GetID() {
+					self.ReleaseTopicLeader(name, pid, t.leaderSession)
+				}
+			}
+		}
+	}
 	self.removeFakedNsqdNode(nodeData.GetID())
 	return nil
 }
@@ -578,9 +587,6 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	// test leader node lost
 	lostNodeID = t0.Leader
-	if useFakeLeadership {
-		nsqdCoordList[lostNodeID].leadership.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
-	}
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 5)
@@ -620,9 +626,6 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		lostISRID = t0.ISR[0]
 	}
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
-	if useFakeLeadership {
-		nsqdCoordList[lostNodeID].leadership.ReleaseTopicLeader(topic, 0, &tc0.topicLeaderSession)
-	}
 	time.Sleep(time.Millisecond)
 	nsqdCoordList[lostISRID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostISRID])
 	time.Sleep(time.Second * 5)

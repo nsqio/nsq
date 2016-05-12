@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 )
 
@@ -57,6 +58,7 @@ type TopicCommitLogMgr struct {
 	path          string
 	committedLogs []CommitLogData
 	appender      *os.File
+	sync.Mutex
 }
 
 func GetTopicPartitionLogPath(basepath, t string, p int) string {
@@ -112,9 +114,11 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 }
 
 func (self *TopicCommitLogMgr) Close() {
-	self.FlushCommitLogs()
+	self.Lock()
+	self.flushCommitLogsNoLock()
 	self.appender.Sync()
 	self.appender.Close()
+	self.Unlock()
 }
 
 func (self *TopicCommitLogMgr) NextID() uint64 {
@@ -126,7 +130,9 @@ func (self *TopicCommitLogMgr) Reset(id uint64) {
 }
 
 func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, error) {
-	self.FlushCommitLogs()
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
 	err := self.appender.Truncate(offset)
 	if err != nil {
 		return nil, err
@@ -152,8 +158,8 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	return &l, nil
 }
 
-func (self *TopicCommitLogMgr) GetCommitLogFromOffset(offset int64) (*CommitLogData, error) {
-	self.FlushCommitLogs()
+func (self *TopicCommitLogMgr) getCommitLogFromOffsetNoLock(offset int64) (*CommitLogData, error) {
+	self.flushCommitLogsNoLock()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return nil, err
@@ -182,8 +188,17 @@ func (self *TopicCommitLogMgr) GetCommitLogFromOffset(offset int64) (*CommitLogD
 	return &l, err
 }
 
+func (self *TopicCommitLogMgr) GetCommitLogFromOffset(offset int64) (*CommitLogData, error) {
+	self.Lock()
+	ret, err := self.getCommitLogFromOffsetNoLock(offset)
+	self.Unlock()
+	return ret, err
+}
+
 func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
-	self.FlushCommitLogs()
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return 0, err
@@ -195,7 +210,7 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 	num := fsize / int64(GetLogDataSize())
 	roundOffset := (num - 1) * int64(GetLogDataSize())
 	for {
-		l, err := self.GetCommitLogFromOffset(roundOffset)
+		l, err := self.getCommitLogFromOffsetNoLock(roundOffset)
 		if err != nil {
 			return 0, err
 		}
@@ -227,6 +242,8 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	if l.LogID <= atomic.LoadInt64(&self.pLogID) {
 		return ErrCommitLogWrongID
 	}
+	self.Lock()
+	defer self.Unlock()
 	if slave {
 		atomic.StoreInt64(&self.nLogID, l.LogID+1)
 	}
@@ -238,7 +255,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		}
 	} else {
 		if len(self.committedLogs) >= cap(self.committedLogs) {
-			self.FlushCommitLogs()
+			self.flushCommitLogsNoLock()
 		}
 		self.committedLogs = append(self.committedLogs, *l)
 	}
@@ -246,7 +263,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	return nil
 }
 
-func (self *TopicCommitLogMgr) FlushCommitLogs() {
+func (self *TopicCommitLogMgr) flushCommitLogsNoLock() {
 	// write buffered commit logs to file.
 	for _, v := range self.committedLogs {
 		err := binary.Write(self.appender, binary.BigEndian, v)
@@ -257,8 +274,16 @@ func (self *TopicCommitLogMgr) FlushCommitLogs() {
 	self.committedLogs = self.committedLogs[0:0]
 }
 
+func (self *TopicCommitLogMgr) FlushCommitLogs() {
+	self.Lock()
+	self.flushCommitLogsNoLock()
+	self.Unlock()
+}
+
 func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]CommitLogData, error) {
-	self.FlushCommitLogs()
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
 	f, err := self.appender.Stat()
 	if err != nil {
 		return nil, err
@@ -298,6 +323,8 @@ func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]Comm
 }
 
 func (self *TopicCommitLogMgr) GetCommitLogsReverse(startIndex int64, num int) ([]CommitLogData, error) {
+	self.Lock()
+	defer self.Unlock()
 	ret := make([]CommitLogData, 0, num)
 	for i := startIndex; i < int64(len(self.committedLogs)); i++ {
 		ret = append(ret, self.committedLogs[len(self.committedLogs)-int(i)-1])

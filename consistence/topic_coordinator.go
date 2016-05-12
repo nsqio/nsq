@@ -32,7 +32,7 @@ type TopicCoordinator struct {
 	localDataState int32
 }
 
-func NewTopicCoordinator(name string, partition int, basepath string) (*TopicCoordinator, error) {
+func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{}
 	tc.channelConsumeOffset = make(map[string]ChannelConsumerOffset)
 	tc.topicInfo.Name = name
@@ -43,7 +43,11 @@ func NewTopicCoordinator(name string, partition int, basepath string) (*TopicCoo
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
 		return nil, err
 	}
-	tc.logMgr, err = InitTopicCommitLogMgr(name, partition, basepath, DEFAULT_COMMIT_BUF_SIZE)
+	buf := syncEvery - 1
+	if buf < 0 {
+		buf = DEFAULT_COMMIT_BUF_SIZE
+	}
+	tc.logMgr, err = InitTopicCommitLogMgr(name, partition, basepath, buf)
 	if err != nil {
 		coordLog.Errorf("topic(%v) failed to init log: %v ", name, err)
 		return nil, err

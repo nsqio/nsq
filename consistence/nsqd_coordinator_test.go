@@ -119,7 +119,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 	tpCoord, ok := coords[topicInfo.Partition]
 	if !ok {
 		path := GetTopicPartitionBasePath(nsqdCoord.dataRootPath, topicInfo.Name, topicInfo.Partition)
-		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path)
+		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0)
 		coords[topicInfo.Partition] = tpCoord
 	}
 	ensureTopicDisableWrite(nsqdCoord, topicInfo.Name, topicInfo.Partition, true)

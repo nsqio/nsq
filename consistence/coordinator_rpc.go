@@ -206,7 +206,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq RpcAdminTopicInfo, r
 	if !ok {
 		var localErr error
 		tpCoord, localErr = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
-			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition))
+			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition), rpcTopicReq.SyncEvery)
 		if localErr != nil || tpCoord == nil {
 			self.nsqdCoord.coordMutex.Unlock()
 			*ret = *ErrLocalInitTopicCoordFailed

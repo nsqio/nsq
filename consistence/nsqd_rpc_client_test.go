@@ -118,6 +118,11 @@ func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int, 
 }
 
 func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) error {
+	select {
+	case <-stop:
+		close(leader)
+		return nil
+	}
 	return nil
 }
 

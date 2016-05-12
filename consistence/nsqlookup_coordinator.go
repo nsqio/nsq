@@ -1111,7 +1111,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	}
 
 	// TODO: handle default load factor
-	coordLog.Infof("create topic: %v, with meta: %v", meta)
+	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {

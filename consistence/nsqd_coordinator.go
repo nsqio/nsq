@@ -80,6 +80,7 @@ type NsqdCoordinator struct {
 	localNsqd              *nsqd.NSQD
 	rpcServer              *NsqdCoordRpcServer
 	tryCheckUnsynced       chan bool
+	wg                     sync.WaitGroup
 }
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -144,11 +145,15 @@ func (self *NsqdCoordinator) Start() error {
 	if err != nil {
 		return err
 	}
+	self.wg.Add(1)
 	go self.watchNsqLookupd()
+	self.wg.Add(1)
 	go self.checkForUnsyncedTopics()
 	// for each topic, wait other replicas and sync data with leader,
 	// begin accept client request.
 	go self.rpcServer.start(self.myNode.NodeIp, self.myNode.RpcPort)
+	self.wg.Add(1)
+	go self.periodFlushCommitLogs()
 	return nil
 }
 
@@ -160,6 +165,32 @@ func (self *NsqdCoordinator) Stop() {
 	// TODO: rpc exit should be avoid in test.
 	//self.rpcServer.stop()
 	//self.rpcServer = nil
+	self.wg.Wait()
+}
+
+func (self *NsqdCoordinator) periodFlushCommitLogs() {
+	defer self.wg.Done()
+	flushTicker := time.NewTicker(time.Second)
+	doFlush := func() {
+		self.coordMutex.RLock()
+		for _, tc := range self.topicCoords {
+			for _, tpc := range tc {
+				tcData := tpc.GetData()
+				tcData.logMgr.FlushCommitLogs()
+			}
+		}
+		self.coordMutex.RUnlock()
+	}
+	for {
+		select {
+		case <-flushTicker.C:
+			doFlush()
+		case <-self.stopChan:
+			time.Sleep(time.Second)
+			doFlush()
+			return
+		}
+	}
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
@@ -186,10 +217,9 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	if self.leadership != nil {
 		go self.leadership.WatchLookupdLeader(nsqlookupLeaderChan, self.stopChan)
 	}
+	defer self.wg.Done()
 	for {
 		select {
-		case <-self.stopChan:
-			return
 		case n, ok := <-nsqlookupLeaderChan:
 			if !ok {
 				return
@@ -252,7 +282,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
 				basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
-				tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath)
+				tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath, topicInfo.SyncEvery)
 				if err != nil {
 					coordLog.Infof("failed to get topic coordinator:%v-%v, err:%v", topicName, partition, err)
 					continue
@@ -330,6 +360,7 @@ func (self *NsqdCoordinator) checkLocalTopicForISR(tc *coordData) *CoordErr {
 
 func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 	ticker := time.NewTicker(time.Minute * 10)
+	defer self.wg.Done()
 	doWork := func() {
 		// check local topic for coordinator
 		self.loadLocalTopicData()
@@ -837,6 +868,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	}
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	topicData.ForceFlush()
+	tcData.logMgr.FlushCommitLogs()
 
 	coordLog.Infof("topic leader session: %v", tcData.topicLeaderSession)
 	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
@@ -1511,6 +1543,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 		for pid, tpCoord := range topicData {
 			tpCoord.Exiting()
 			tcData := tpCoord.GetData()
+			tcData.logMgr.FlushCommitLogs()
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) == -1 {
 				continue
 			}
