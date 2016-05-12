@@ -329,6 +329,7 @@ func (self *FakeNsqlookupLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) erro
 		for pid, t := range tps {
 			if t.leaderSession != nil && t.leaderSession.LeaderNode != nil {
 				if t.leaderSession.LeaderNode.GetID() == nodeData.GetID() {
+					coordLog.Infof("!!!!! releasing the topic leader %v while unregister.", t.leaderSession)
 					self.ReleaseTopicLeader(name, pid, t.leaderSession)
 				}
 			}
@@ -631,6 +632,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	time.Sleep(time.Second * 5)
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	nsqdCoordList[lostISRID].leadership.RegisterNsqd(nsqdNodeInfoList[lostISRID])
+	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
+	time.Sleep(time.Second * 5)
 	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 5)
 	t0, _ = lookupLeadership.GetTopicInfo(topic, 0)

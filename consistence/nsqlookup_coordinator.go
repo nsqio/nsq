@@ -297,6 +297,7 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 					if scanErr == nil {
 						self.NotifyTopicsToSingleNsqdForReload(topics, newID)
 					}
+					check = true
 				}
 			}
 			if check {
