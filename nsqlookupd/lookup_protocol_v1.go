@@ -226,8 +226,8 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 
 	atomic.StoreInt64(&peerInfo.lastUpdate, time.Now().UnixNano())
 
-	nsqlookupLog.Logf("CLIENT(%s): IDENTIFY Address:%s TCP:%d HTTP:%d Version:%s",
-		client, peerInfo.BroadcastAddress, peerInfo.TCPPort, peerInfo.HTTPPort, peerInfo.Version)
+	nsqlookupLog.Logf("CLIENT(%s): IDENTIFY peer: %v ",
+		client, peerInfo)
 
 	client.peerInfo = &peerInfo
 	if p.ctx.nsqlookupd.DB.addPeerClient(peerInfo.Id, client.peerInfo) {
