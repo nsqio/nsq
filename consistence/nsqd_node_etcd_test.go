@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"github.com/absolute8511/nsq/internal/test"
 )
 
 const (
@@ -15,7 +16,7 @@ const (
 func TestNodeRe(t *testing.T) {
 	nodeMgr := NewNsqdEtcdMgr(EtcdHost)
 	nodeMgr.InitClusterID("cluster-1")
-	ID := "1"
+	ID := "ree-test-1"
 	nodeInfo := &NsqdNodeInfo{
 		ID:      ID,
 		NodeIp:  "127.0.0.1",
@@ -23,16 +24,10 @@ func TestNodeRe(t *testing.T) {
 		RpcPort: "2223",
 	}
 	err := nodeMgr.RegisterNsqd(nodeInfo)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
+	test.Nil(t, err)
 	time.Sleep(30 * time.Second)
 	err = nodeMgr.UnregisterNsqd(nodeInfo)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
+	test.Nil(t, err)
 }
 
 func TestETCDWatch(t *testing.T) {
