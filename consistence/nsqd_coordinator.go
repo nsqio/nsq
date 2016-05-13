@@ -1220,6 +1220,10 @@ exitpub:
 		}()
 	}
 	doLocalExit(clusterWriteErr)
+	if clusterWriteErr == nil {
+		// should return nil since the return type error is different with *CoordErr
+		return nil
+	}
 	return clusterWriteErr
 }
 

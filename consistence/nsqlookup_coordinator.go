@@ -1124,6 +1124,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	existPart := make(map[int]*TopicPartitionMetaInfo)
 	for i := 0; i < meta.PartitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i)
+		// TODO: handle already exist not by error
 		if err == ErrAlreadyExist {
 			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
 			t, err := self.leadership.GetTopicInfo(topic, i)

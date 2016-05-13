@@ -16,7 +16,7 @@ import (
 func connectCallback(ctx *context, hostname string, syncTopicChan chan *lookupPeer, exitChan chan int) func(*lookupPeer) {
 	return func(lp *lookupPeer) {
 		ci := make(map[string]interface{})
-		ci["id"] = strconv.Itoa(int(ctx.nsqd.GetOpts().ID))
+		ci["id"] = strconv.Itoa(int(ctx.nsqd.GetOpts().ID)) + ":" + strconv.Itoa(ctx.realTCPAddr().Port)
 		ci["version"] = version.Binary
 		ci["tcp_port"] = ctx.realTCPAddr().Port
 		ci["http_port"] = ctx.realHTTPAddr().Port
