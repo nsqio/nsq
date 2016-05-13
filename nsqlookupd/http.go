@@ -223,21 +223,19 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	registrations = registrations.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
 		filterTomb)
 	for _, r := range registrations {
+		var leaderProducer *Producer
 		if checkConsistent != "" {
 			// check leader only the client need consistent
-			var leaderProducer *Producer
 			pid, _ := strconv.Atoi(r.PartitionID)
 			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.Id) {
 				leaderProducer = r.ProducerNode
-				break
-			}
-			if leaderProducer != nil {
-				partitionProducers[r.PartitionID] = leaderProducer.peerInfo
-				allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 			}
 		} else {
-			partitionProducers[r.PartitionID] = r.ProducerNode.peerInfo
-			allProducers[r.ProducerNode.peerInfo.Id] = r.ProducerNode
+			leaderProducer = r.ProducerNode
+		}
+		if leaderProducer != nil {
+			partitionProducers[r.PartitionID] = leaderProducer.peerInfo
+			allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 		}
 	}
 	producers := make(Producers, 0, len(allProducers))

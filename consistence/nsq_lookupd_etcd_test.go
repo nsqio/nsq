@@ -2,9 +2,9 @@ package consistence
 
 import (
 	"fmt"
+	"github.com/absolute8511/nsq/internal/test"
 	"testing"
 	"time"
-	"github.com/absolute8511/nsq/internal/test"
 )
 
 func TestLookupd(t *testing.T) {
@@ -19,7 +19,7 @@ func TestLookupd(t *testing.T) {
 	nodeMgr.InitClusterID(ClusterID)
 	nodeInfo := &NsqdNodeInfo{
 		ID:      NsqdID,
-		NodeIp:  "127.0.0.1",
+		NodeIP:  "127.0.0.1",
 		TcpPort: "2222",
 		RpcPort: "2223",
 	}
@@ -31,7 +31,7 @@ func TestLookupd(t *testing.T) {
 	lookupdMgr.InitClusterID(ClusterID)
 	lookupdInfo := &NsqLookupdNodeInfo{
 		ID:       LookupId1,
-		NodeIp:   "127.0.0.1",
+		NodeIP:   "127.0.0.1",
 		HttpPort: "8090",
 	}
 	err = lookupdMgr.Register(lookupdInfo)
@@ -61,7 +61,7 @@ func TestLookupd(t *testing.T) {
 	lookupdMgr2.InitClusterID(ClusterID)
 	lookupdInfo2 := &NsqLookupdNodeInfo{
 		ID:       LookupId2,
-		NodeIp:   "127.0.0.1",
+		NodeIP:   "127.0.0.1",
 		HttpPort: "8091",
 	}
 	err = lookupdMgr2.Register(lookupdInfo2)
@@ -111,19 +111,19 @@ func TestLookupd(t *testing.T) {
 			}
 		}
 	}()
-//	luLeader2 := make(chan *NsqLookupdNodeInfo)
-//	lookupdMgr2.AcquireAndWatchLeader(luLeader2, stop)
-//	go func() {
-//		for {
-//			select {
-//			case <-stop:
-//				fmt.Println("[lookup node 2] watch lookup leader for loop stop.")
-//				return
-//			case leader := <-luLeader2:
-//				fmt.Printf("[lookup node 2] watch lookup leader: %v\n", leader)
-//			}
-//		}
-//	}()
+	//	luLeader2 := make(chan *NsqLookupdNodeInfo)
+	//	lookupdMgr2.AcquireAndWatchLeader(luLeader2, stop)
+	//	go func() {
+	//		for {
+	//			select {
+	//			case <-stop:
+	//				fmt.Println("[lookup node 2] watch lookup leader for loop stop.")
+	//				return
+	//			case leader := <-luLeader2:
+	//				fmt.Printf("[lookup node 2] watch lookup leader: %v\n", leader)
+	//			}
+	//		}
+	//	}()
 
 	// lookup node 1 create topic
 	topicName := "ree-topic"

@@ -109,7 +109,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
-				nsqd.NsqLogger().Logf("LOOKUPD(%s): sending heartbeat", lookupPeer)
+				nsqd.NsqLogger().LogDebugf("LOOKUPD(%s): sending heartbeat", lookupPeer)
 				cmd := nsq.Ping()
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
@@ -126,7 +126,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 						changed = true
 					} else {
 						for _, l := range newDiscoveried {
-							if !in(net.JoinHostPort(l.NodeIp, l.TcpPort), discoveryAddrs) {
+							if !in(net.JoinHostPort(l.NodeIP, l.TcpPort), discoveryAddrs) {
 								changed = true
 								break
 							}
@@ -137,7 +137,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 					}
 					discoveryAddrs = discoveryAddrs[:0]
 					for _, l := range newDiscoveried {
-						discoveryAddrs = append(discoveryAddrs, net.JoinHostPort(l.NodeIp, l.TcpPort))
+						discoveryAddrs = append(discoveryAddrs, net.JoinHostPort(l.NodeIP, l.TcpPort))
 					}
 					nsqd.NsqLogger().LogDebugf("discovery lookup nodes: %v", discoveryAddrs)
 				}

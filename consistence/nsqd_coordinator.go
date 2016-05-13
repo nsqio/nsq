@@ -85,7 +85,7 @@ type NsqdCoordinator struct {
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
 	nodeInfo := NsqdNodeInfo{
-		NodeIp:  ip,
+		NodeIP:  ip,
 		TcpPort: tcpport,
 		RpcPort: rpcport,
 	}
@@ -151,7 +151,7 @@ func (self *NsqdCoordinator) Start() error {
 	go self.checkForUnsyncedTopics()
 	// for each topic, wait other replicas and sync data with leader,
 	// begin accept client request.
-	go self.rpcServer.start(self.myNode.NodeIp, self.myNode.RpcPort)
+	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
 	self.wg.Add(1)
 	go self.periodFlushCommitLogs()
 	return nil
@@ -194,7 +194,7 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIp, self.lookupLeader.RpcPort), time.Second)
+	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIP, self.lookupLeader.RpcPort), time.Second)
 	if err == nil {
 		return c, nil
 	}
@@ -832,6 +832,12 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		default:
 		}
 	}
+	return nil
+}
+
+func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordErr {
+	coordLog.Infof("I am notified to acquire topic leader %v.", coord.topicInfo)
+	go self.acquireTopicLeader(&coord.topicInfo)
 	return nil
 }
 

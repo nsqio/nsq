@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
 	"github.com/absolute8511/nsq/internal/test"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -19,7 +19,7 @@ func TestNodeRe(t *testing.T) {
 	ID := "ree-test-1"
 	nodeInfo := &NsqdNodeInfo{
 		ID:      ID,
-		NodeIp:  "127.0.0.1",
+		NodeIP:  "127.0.0.1",
 		TcpPort: "2222",
 		RpcPort: "2223",
 	}

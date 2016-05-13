@@ -128,7 +128,7 @@ func (self *NsqLookupCoordinator) Start() error {
 	}
 	self.wg.Add(1)
 	go self.handleLeadership()
-	go self.nsqlookupRpcServer.start(self.myNode.NodeIp, self.myNode.RpcPort)
+	go self.nsqlookupRpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
 	return nil
 }
 
@@ -462,11 +462,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				coordLog.Infof("topic %v leader session not found.", t.GetTopicDesp())
 				// notify the nsqd node to acquire the leader session.
 				self.notifyISRTopicMetaInfo(&t)
+				self.notifyAcquireTopicLeader(&t)
 				continue
 			}
 			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
 				self.notifyISRTopicMetaInfo(&t)
+				self.notifyAcquireTopicLeader(&t)
 				continue
 			}
 		}
@@ -728,6 +730,9 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 	}
 	newTopicInfo.CatchupList = make([]string, 0)
 	for _, nid := range topicInfo.CatchupList {
+		if nid == topicInfo.Leader {
+			continue
+		}
 		newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, nid)
 	}
 	newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, topicInfo.Leader)
@@ -745,6 +750,7 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		coordLog.Infof("update topic node info failed: %v", err)
 		return &CoordErr{err.Error(), RpcNoErr, CoordCommonErr}
 	}
+	coordLog.Infof("make new topic leader info : %v", newTopicInfo)
 	*topicInfo = newTopicInfo
 	self.notifyTopicMetaInfo(topicInfo)
 
@@ -761,6 +767,7 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 				return ErrLeaderNodeLost
 			}
 			self.notifyISRTopicMetaInfo(topicInfo)
+			self.notifyAcquireTopicLeader(topicInfo)
 			time.Sleep(time.Second)
 		} else {
 			coordLog.Infof("topic leader session found: %v", leaderSession)
@@ -785,7 +792,7 @@ func (self *NsqLookupCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, 
 			return nil, ErrNodeNotFound
 		}
 		var err error
-		c, err = NewNsqdRpcClient(net.JoinHostPort(n.NodeIp, n.RpcPort), RPC_TIMEOUT)
+		c, err = NewNsqdRpcClient(net.JoinHostPort(n.NodeIP, n.RpcPort), RPC_TIMEOUT)
 		if err != nil {
 			coordLog.Infof("rpc node %v client init failed : %v", nid, err)
 			return nil, &CoordErr{err.Error(), RpcNoErr, CoordNetErr}
@@ -1117,27 +1124,32 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
 			coordLog.Infof("create topic key %v failed :%v", topic, err)
-			return err
+			oldMeta, getErr := self.leadership.GetTopicMetaInfo(topic)
+			if getErr != nil {
+				coordLog.Infof("get topic key %v failed :%v", topic, getErr)
+				return err
+			}
+			if oldMeta != meta {
+				coordLog.Infof("topic meta not the same with exist :%v, old: %v", topic, oldMeta)
+				return err
+			}
 		}
 	}
 
 	existPart := make(map[int]*TopicPartitionMetaInfo)
 	for i := 0; i < meta.PartitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i)
-		// TODO: handle already exist not by error
-		if err == ErrAlreadyExist {
-			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
+		if err != nil {
+			coordLog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
+			// handle already exist
 			t, err := self.leadership.GetTopicInfo(topic, i)
 			if err != nil {
 				coordLog.Warningf("exist topic partition failed to get info: %v", err)
 				return err
 			}
+			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
 			existPart[i] = t
 			continue
-		}
-		if err != nil {
-			coordLog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
-			return err
 		}
 	}
 	self.nodesMutex.RLock()
@@ -1195,6 +1207,9 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
 		coordLog.Infof("ignore since not enough isr : %v", topicInfo)
+		if len(topicInfo.CatchupList) > 0 {
+			go self.notifyTopicMetaInfo(topicInfo)
+		}
 		return ErrTopicISRNotEnough
 	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
@@ -1401,6 +1416,17 @@ func (self *NsqLookupCoordinator) notifyTopicLeaderSession(topicInfo *TopicParti
 	return err
 }
 
+func (self *NsqLookupCoordinator) notifyAcquireTopicLeader(topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	rpcErr := self.doNotifyToSingleNsqdNode(topicInfo.Leader, func(nid string) *CoordErr {
+		return self.sendAcquireTopicLeaderToNsqd(self.leaderNode.Epoch, nid, topicInfo)
+	})
+	if rpcErr != nil {
+		coordLog.Infof("notify leader to acquire leader failed: %v", rpcErr)
+	}
+	return rpcErr
+
+}
+
 func (self *NsqLookupCoordinator) notifyISRTopicMetaInfo(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	rpcErr := self.doNotifyToNsqdNodes(topicInfo.ISR, func(nid string) *CoordErr {
 		return self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nid, topicInfo)
@@ -1491,6 +1517,15 @@ func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch EpochType, 
 		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 	}
 	return err
+}
+
+func (self *NsqLookupCoordinator) sendAcquireTopicLeaderToNsqd(epoch EpochType, nid string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	c, rpcErr := self.acquireRpcClient(nid)
+	if rpcErr != nil {
+		return rpcErr
+	}
+	rpcErr = c.NotifyAcquireTopicLeader(epoch, topicInfo)
+	return rpcErr
 }
 
 func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch EpochType, nid string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
@@ -1871,6 +1906,9 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
 		coordLog.Infof("no enough isr node, graceful leaving should wait.")
+		if len(topicInfo.CatchupList) > 0 {
+			go self.notifyTopicMetaInfo(topicInfo)
+		}
 		go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 		return ErrLeavingISRWait
 	}
