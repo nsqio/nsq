@@ -519,12 +519,6 @@ func (self *NsqLookupCoordinator) isTopicWriteDisabled(topicInfo *TopicPartition
 }
 
 func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPartitionMetaInfo, currentNodes map[string]NsqdNodeInfo) *CoordErr {
-	err := self.waitOldLeaderRelease(topicInfo)
-	if err != nil {
-		coordLog.Infof("Leader is not released: %v", topicInfo)
-		return ErrLeaderSessionNotReleased
-	}
-
 	_, _, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition, false)
 	if coordErr != nil {
 		coordLog.Infof("prepare join state failed: %v", coordErr)
@@ -543,6 +537,11 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	state.waitingJoin = false
 	state.waitingSession = ""
 
+	coordErr = self.notifyLeaderDisableTopicWrite(topicInfo)
+	if coordErr != nil {
+		coordLog.Infof("disable write failed while elect leader: %v", coordErr)
+		// the leader maybe down, so we can ignore this error safely.
+	}
 	coordErr = self.notifyISRDisableTopicWrite(topicInfo)
 	if coordErr != nil {
 		coordLog.Infof("failed notify disable write while election: %v", coordErr)
@@ -555,6 +554,11 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return coordErr
 	}
 
+	err := self.waitOldLeaderRelease(topicInfo)
+	if err != nil {
+		coordLog.Infof("Leader is not released: %v", topicInfo)
+		return ErrLeaderSessionNotReleased
+	}
 	coordLog.Infof("topic %v leader election result: %v", topicInfo, newLeader)
 	coordErr = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
 	if coordErr != nil {
@@ -636,9 +640,10 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartitionMe
 			coordLog.Infof("update topic node info failed: %v", err.Error())
 			return
 		}
+		self.notifyTopicMetaInfo(topicInfo)
+	} else {
+		self.notifyCatchupTopicMetaInfo(topicInfo)
 	}
-	coordLog.Infof("notify meta info for migrate: %v", topicInfo)
-	self.notifyTopicMetaInfo(topicInfo)
 }
 
 // make sure the previous leader is not holding its leader session.
@@ -1207,9 +1212,7 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
 		coordLog.Infof("ignore since not enough isr : %v", topicInfo)
-		if len(topicInfo.CatchupList) > 0 {
-			go self.notifyTopicMetaInfo(topicInfo)
-		}
+		go self.notifyCatchupTopicMetaInfo(topicInfo)
 		return ErrTopicISRNotEnough
 	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topic, partition)
@@ -1437,6 +1440,16 @@ func (self *NsqLookupCoordinator) notifyISRTopicMetaInfo(topicInfo *TopicPartiti
 	return rpcErr
 }
 
+func (self *NsqLookupCoordinator) notifyCatchupTopicMetaInfo(topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	rpcErr := self.doNotifyToNsqdNodes(topicInfo.CatchupList, func(nid string) *CoordErr {
+		return self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nid, topicInfo)
+	})
+	if rpcErr != nil {
+		coordLog.Infof("notify catchup for topic meta info failed: %v", rpcErr)
+	}
+	return rpcErr
+}
+
 func (self *NsqLookupCoordinator) notifyTopicMetaInfo(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	others := getOthersExceptLeader(topicInfo)
 	coordLog.Infof("notify topic meta info changed: %v", topicInfo)
@@ -1660,7 +1673,6 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 			coordLog.Infof("move catchup node to isr failed: %v", err)
 			// continue here to allow the wait goroutine to handle the timeout
 		}
-		self.notifyTopicMetaInfo(topicInfo)
 		self.initJoinStateAndWait(topicInfo, leaderSession, state)
 	}()
 	return nil
@@ -1835,82 +1847,31 @@ func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartition
 	self.resetJoinISRState(topicInfo, state, true)
 }
 
-func (self *NsqLookupCoordinator) transferTopicLeader(topicInfo *TopicPartitionMetaInfo) *CoordErr {
-	if len(topicInfo.ISR) < 2 {
-		return ErrNodeUnavailable
-	}
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
-	// try
-	newLeader, newestLogID, err := self.chooseNewLeaderFromISR(topicInfo, currentNodes)
-	if err != nil {
-		// TODO: triggle to add catchup.
-		return err
-	}
-	if newLeader == "" {
-		return ErrLeaderElectionFail
-	}
-	_, _, state, err := self.prepareJoinState(topicInfo.Name, topicInfo.Partition, true)
-	if err != nil {
-		coordLog.Infof("prepare join state failed: %v", err)
-		return err
-	}
-	state.Lock()
-	defer state.Unlock()
-	if state.waitingJoin {
-		coordLog.Warningf("failed transfer leader because another is waiting join.")
-		return ErrLeavingISRWait
-	}
-	if state.doneChan != nil {
-		close(state.doneChan)
-		state.doneChan = nil
-	}
-	state.waitingJoin = false
-	state.waitingSession = ""
-
-	rpcErr := self.notifyLeaderDisableTopicWrite(topicInfo)
-	if rpcErr != nil {
-		coordLog.Infof("disable write failed while transfer leader: %v", rpcErr)
-		return rpcErr
-	}
-	newLeader, newestLogID, err = self.chooseNewLeaderFromISR(topicInfo, currentNodes)
-	if err != nil {
-		return err
-	}
-
-	if rpcErr = self.notifyISRDisableTopicWrite(topicInfo); rpcErr != nil {
-		coordLog.Infof("try disable isr write for topic %v failed: %v", topicInfo, rpcErr)
-		go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second*3)
-	}
-
-	return self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
-}
-
 func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int, leader *TopicLeaderSession, nodeID string) *CoordErr {
+	// how to avoid the node be chosen as the new isr node??
+	// currently this node is available on etcd.
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("get topic info failed :%v", err)
 		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
-	}
-	if topicInfo.Leader == nodeID {
-		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader", nodeID)
-		coordErr := self.transferTopicLeader(topicInfo)
-		if coordErr != nil {
-			coordLog.Warningf("the leader can not be transferred currently: %v", coordErr)
-			return coordErr
-		}
 	}
 	if FindSlice(topicInfo.ISR, nodeID) == -1 {
 		return nil
 	}
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
 		coordLog.Infof("no enough isr node, graceful leaving should wait.")
-		if len(topicInfo.CatchupList) > 0 {
-			go self.notifyTopicMetaInfo(topicInfo)
-		}
+		go self.notifyCatchupTopicMetaInfo(topicInfo)
 		go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 		return ErrLeavingISRWait
+	}
+
+	if topicInfo.Leader == nodeID {
+		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader", nodeID)
+		self.nodesMutex.RLock()
+		currentNodes := self.nsqdNodes
+		self.nodesMutex.RUnlock()
+		go self.handleTopicLeaderElection(topicInfo, currentNodes)
+		return nil
 	}
 
 	if leader != nil {

@@ -256,7 +256,7 @@ func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition
 	tp.metaInfo.Epoch = newEpoch + 1
 	topicInfo.Epoch = tp.metaInfo.Epoch
 	self.clusterEpoch++
-	coordLog.Infof("topic %v info updated: %v", self.fakeTopics[topic][partition].metaInfo)
+	coordLog.Infof("topic %v-%v info updated: %v", topic, partition, self.fakeTopics[topic][partition].metaInfo)
 	return nil
 }
 
@@ -625,6 +625,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	time.Sleep(time.Second * 3)
 
 	// test old leader failed and begin elect new and then new leader failed
+	coordLog.Warningf("============= begin test old leader failed and then new leader failed ====")
 	lostNodeID = t0.Leader
 	lostISRID := t0.ISR[1]
 	if lostISRID == lostNodeID {
@@ -669,7 +670,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 3)
 	// test new topic create
-	coordLog.Warningf("=== begin test 3 replicas ====")
+	coordLog.Warningf("============= begin test 3 replicas ====")
 	err = lookupCoord1.CreateTopic(topic3, TopicMetaInfo{1, 3, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
@@ -703,8 +704,25 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	t0IsrNum := 2
 	t1IsrNum := 2
-	coordLog.Warningf("=== begin test quit ====")
-	for _, nsqdCoord := range nsqdCoordList {
+	coordLog.Warningf("========== begin test quit ====")
+
+	quitList := make([]*NsqdCoordinator, 0)
+	quitList = append(quitList, nsqdCoordList[t0.Leader])
+	if t1.Leader != t0.Leader {
+		quitList = append(quitList, nsqdCoordList[t1.Leader])
+	}
+	if t3.Leader != t0.Leader && t3.Leader != t1.Leader {
+		quitList = append(quitList, nsqdCoordList[t3.Leader])
+	}
+	for id, nsqdCoord := range nsqdCoordList {
+		if id == t0.Leader || id == t1.Leader || id == t3.Leader {
+			continue
+		}
+		quitList = append(quitList, nsqdCoord)
+	}
+	test.Equal(t, len(nsqdCoordList), len(quitList))
+
+	for _, nsqdCoord := range quitList {
 		failedID := nsqdCoord.myNode.GetID()
 		nsqdCoord.Stop()
 		if t0IsrNum > 1 {
@@ -728,8 +746,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		t.Log(t1)
 		test.Equal(t, FindSlice(t1.ISR, failedID) == -1 || (len(t1.ISR) == 1 && t1.ISR[0] == failedID), true)
 		test.Equal(t, len(t1.ISR), t1IsrNum)
-		t.Log(t0)
-		t.Log(t1)
+		t3, _ = lookupLeadership.GetTopicInfo(topic3, 0)
+		test.Equal(t, FindSlice(t3.ISR, failedID) == -1 || (len(t3.ISR) == 1 && t3.ISR[0] == failedID), true)
 	}
 }
 

@@ -516,9 +516,7 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 	if err != nil {
 		return err
 	}
-	c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
-
-	return nil
+	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
 }
 
 // this should only be called by leader to remove slow node in isr.
@@ -1562,13 +1560,30 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
+			// TODO: if we release leader first, we can not transfer the leader properly,
+			// if we leave isr first, we would get the state that the leader not in isr
+			// wait lookup choose new node for isr/leader
+			retry := 3
+			for retry > 0 {
+				retry--
+				err := self.requestLeaveFromISR(topicName, pid)
+				if err == nil {
+					break
+				}
+				if err != nil && err.IsEqual(ErrLeavingISRWait) {
+					coordLog.Infof("======= should wait leaving from isr")
+					time.Sleep(time.Second)
+				} else {
+					coordLog.Infof("======= request leave isr failed: %v", err)
+					time.Sleep(time.Millisecond * 100)
+				}
+			}
+
 			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
-			// wait lookup choose new node for isr/leader
-			self.requestLeaveFromISR(topicName, pid)
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")
