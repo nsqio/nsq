@@ -1376,6 +1376,7 @@ func (self *NsqLookupCoordinator) doNotifyToNsqdNodes(nodes []string, notifyRpcF
 	for _, n := range nodes {
 		node, ok := currentNodes[n]
 		if !ok {
+			coordLog.Infof("notify to nsqd node %v failed since node not found", node)
 			return ErrNodeNotFound
 		}
 		err := notifyRpcFunc(node.GetID())
