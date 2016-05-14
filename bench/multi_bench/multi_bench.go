@@ -276,6 +276,7 @@ func subWorker(td time.Duration, lookupAddr string, topic string, channel string
 	go func() {
 		time.Sleep(td)
 		consumer.Stop()
+		<-consumer.StopChan
 		close(done)
 	}()
 	consumer.ConnectToNSQLookupd(lookupAddr)

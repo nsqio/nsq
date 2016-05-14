@@ -501,7 +501,7 @@ CheckFileOpen:
 			return result
 		}
 
-		nsqLog.Logf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
+		nsqLog.LogDebugf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
 
 		if d.readPos.Pos > 0 {
 			_, result.err = d.readFile.Seek(d.readPos.Pos, 0)
@@ -769,6 +769,8 @@ func (d *diskQueueReader) ioLoop() {
 				//nsqLog.LogDebugf("too much waiting confirm :%v, %v",
 				//d.virtualConfirmedOffset, d.virtualReadOffset)
 			}
+			// TODO: on slave node, the readOne is no need, since no consume is allowed.
+			// we can totally remove this goroutine to handle the data read.
 			if !lastDataNeedRead {
 				if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
 					dataRead = d.readOne()
@@ -814,7 +816,7 @@ func (d *diskQueueReader) ioLoop() {
 			skiperr := d.internalSkipTo(skipInfo)
 			if skiperr == nil {
 				if skipInfo >= d.virtualReadOffset {
-					nsqLog.Logf("reading diskqueue(%s) skipped read %d exceed %d", d.readerMetaName, skipInfo, d.virtualReadOffset)
+					nsqLog.LogDebugf("reading diskqueue(%s) skipped read %d exceed %d", d.readerMetaName, skipInfo, d.virtualReadOffset)
 					lastDataNeedRead = false
 					// try consume the data myself since no need to wait other read.
 					select {
