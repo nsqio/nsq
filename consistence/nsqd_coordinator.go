@@ -802,7 +802,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	topicCoord.localDataLoaded = true
 	topicCoord.dataRWMutex.Unlock()
 
-	err := self.updateLocalTopic(topicCoord.GetData())
+	localTopic, err := self.updateLocalTopic(topicCoord.GetData())
 	if err != nil {
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
@@ -821,13 +821,16 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		if needAcquireLeaderSession {
 			go self.acquireTopicLeader(newTopicInfo)
 		}
-	} else if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
-		coordLog.Infof("I am in isr list.")
-	} else if FindSlice(newTopicInfo.CatchupList, self.myNode.GetID()) != -1 {
-		coordLog.Infof("I am in catchup list.")
-		select {
-		case self.tryCheckUnsynced <- true:
-		default:
+	} else {
+		localTopic.DisableForSlave()
+		if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
+			coordLog.Infof("I am in isr list.")
+		} else if FindSlice(newTopicInfo.CatchupList, self.myNode.GetID()) != -1 {
+			coordLog.Infof("I am in catchup list.")
+			select {
+			case self.tryCheckUnsynced <- true:
+			default:
+			}
 		}
 	}
 	return nil
@@ -1518,16 +1521,16 @@ func (self *NsqdCoordinator) notifyFlushData(topic string, partition int) {
 	}
 }
 
-func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) *CoordErr {
+func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) (*nsqd.Topic, *CoordErr) {
 	// check topic exist and prepare on local.
-	t := self.localNsqd.GetTopic(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
+	t := self.localNsqd.GetTopicWithDisabled(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
 	if t == nil {
-		return ErrLocalInitTopicFailed
+		return nil, ErrLocalInitTopicFailed
 	}
 	if t.MsgIDCursor == nil {
 		t.MsgIDCursor = topicCoord.logMgr
 	}
-	return nil
+	return t, nil
 }
 
 // before shutdown, we transfer the leader to others to reduce

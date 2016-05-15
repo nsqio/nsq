@@ -69,7 +69,7 @@ func GetTopicFullName(topic string, part int) string {
 }
 
 // Topic constructor
-func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Topic), notify func(v interface{})) *Topic {
+func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Topic), writeDisabled int32, notify func(v interface{})) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -83,6 +83,7 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 		syncEvery:      opt.SyncEvery,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
+		writeDisabled:  writeDisabled,
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1
@@ -205,7 +206,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			t.DeleteExistingChannel(c.name)
 		}
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
-			t.option, deleteCallback, t.notifyCall)
+			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
 		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)

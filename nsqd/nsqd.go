@@ -395,9 +395,17 @@ func (n *NSQD) GetTopicIgnPart(topicName string) *Topic {
 	return n.GetTopic(topicName, 0)
 }
 
+func (n *NSQD) GetTopicWithDisabled(topicName string, part int) *Topic {
+	return n.internalGetTopic(topicName, part, 1)
+}
+
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string, part int) *Topic {
+	return n.internalGetTopic(topicName, part, 0)
+}
+
+func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Topic {
 	if part > MAX_TOPIC_PARTITION || part < 0 {
 		return nil
 	}
@@ -436,7 +444,7 @@ func (n *NSQD) GetTopic(topicName string, part int) *Topic {
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
-	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, n.Notify)
+	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify)
 	topics[part] = t
 
 	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())

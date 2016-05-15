@@ -87,7 +87,7 @@ type Channel struct {
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, part int, channelName string, opt *Options,
-	deleteCallback func(*Channel), notify func(v interface{})) *Channel {
+	deleteCallback func(*Channel), consumeDisabled int32, notify func(v interface{})) *Channel {
 
 	c := &Channel{
 		topicName:          topicName,
@@ -102,10 +102,11 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 		confirmedMsgs:      make(map[BackendOffset]*Message),
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
-		tryReadBackend: make(chan bool, 1),
-		deleteCallback: deleteCallback,
-		option:         opt,
-		notifyCall:     notify,
+		tryReadBackend:  make(chan bool, 1),
+		deleteCallback:  deleteCallback,
+		option:          opt,
+		notifyCall:      notify,
+		consumeDisabled: consumeDisabled,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
