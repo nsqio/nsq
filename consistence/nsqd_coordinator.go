@@ -85,7 +85,7 @@ type NsqdCoordinator struct {
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
 	nodeInfo := NsqdNodeInfo{
-		NodeIp:  ip,
+		NodeIP:  ip,
 		TcpPort: tcpport,
 		RpcPort: rpcport,
 	}
@@ -151,7 +151,7 @@ func (self *NsqdCoordinator) Start() error {
 	go self.checkForUnsyncedTopics()
 	// for each topic, wait other replicas and sync data with leader,
 	// begin accept client request.
-	go self.rpcServer.start(self.myNode.NodeIp, self.myNode.RpcPort)
+	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
 	self.wg.Add(1)
 	go self.periodFlushCommitLogs()
 	return nil
@@ -194,7 +194,7 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIp, self.lookupLeader.RpcPort), time.Second)
+	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIP, self.lookupLeader.RpcPort), time.Second)
 	if err == nil {
 		return c, nil
 	}
@@ -516,9 +516,7 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 	if err != nil {
 		return err
 	}
-	c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
-
-	return nil
+	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
 }
 
 // this should only be called by leader to remove slow node in isr.
@@ -832,6 +830,12 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		default:
 		}
 	}
+	return nil
+}
+
+func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordErr {
+	coordLog.Infof("I am notified to acquire topic leader %v.", coord.topicInfo)
+	go self.acquireTopicLeader(&coord.topicInfo)
 	return nil
 }
 
@@ -1220,6 +1224,10 @@ exitpub:
 		}()
 	}
 	doLocalExit(clusterWriteErr)
+	if clusterWriteErr == nil {
+		// should return nil since the return type error is different with *CoordErr
+		return nil
+	}
 	return clusterWriteErr
 }
 
@@ -1552,13 +1560,30 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
+			// TODO: if we release leader first, we can not transfer the leader properly,
+			// if we leave isr first, we would get the state that the leader not in isr
+			// wait lookup choose new node for isr/leader
+			retry := 3
+			for retry > 0 {
+				retry--
+				err := self.requestLeaveFromISR(topicName, pid)
+				if err == nil {
+					break
+				}
+				if err != nil && err.IsEqual(ErrLeavingISRWait) {
+					coordLog.Infof("======= should wait leaving from isr")
+					time.Sleep(time.Second)
+				} else {
+					coordLog.Infof("======= request leave isr failed: %v", err)
+					time.Sleep(time.Millisecond * 100)
+				}
+			}
+
 			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
-			// wait lookup choose new node for isr/leader
-			self.requestLeaveFromISR(topicName, pid)
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")

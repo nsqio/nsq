@@ -52,9 +52,15 @@ type RpcAdminTopicInfo struct {
 	DisableWrite bool
 }
 
+type RpcAcquireTopicLeaderReq struct {
+	RpcTopicData
+	LeaderNodeID string
+	LookupdEpoch EpochType
+}
+
 type RpcTopicLeaderSession struct {
 	RpcTopicData
-	LeaderNode   *NsqdNodeInfo
+	LeaderNode   NsqdNodeInfo
 	LookupdEpoch EpochType
 	JoinSession  string
 }
@@ -134,11 +140,39 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq RpcTopicLea
 		}
 	}
 	newSession := &TopicLeaderSession{
-		LeaderNode:  rpcTopicReq.LeaderNode,
+		LeaderNode:  &rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,
 	}
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
+	if err != nil {
+		*ret = *err
+	}
+	return nil
+}
+
+func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq RpcAcquireTopicLeaderReq, ret *CoordErr) error {
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		*ret = *err
+		return nil
+	}
+	if rpcTopicReq.TopicPartition < 0 || rpcTopicReq.TopicName == "" {
+		return ErrTopicArgError
+	}
+	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
+	if err != nil {
+		coordLog.Infof("topic partition missing.")
+		*ret = *err
+		return nil
+	}
+	tcData := topicCoord.GetData()
+	if tcData.GetTopicEpoch() != rpcTopicReq.TopicEpoch ||
+		tcData.GetLeader() != rpcTopicReq.LeaderNodeID ||
+		tcData.GetLeader() != self.nsqdCoord.myNode.GetID() {
+		coordLog.Infof("not topic leader while acquire leader: %v, %v", tcData, rpcTopicReq)
+		return nil
+	}
+	err = self.nsqdCoord.notifyAcquireTopicLeader(tcData)
 	if err != nil {
 		*ret = *err
 	}

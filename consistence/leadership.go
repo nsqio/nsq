@@ -14,7 +14,7 @@ type EpochType int64
 
 type NsqdNodeInfo struct {
 	ID      string
-	NodeIp  string
+	NodeIP  string
 	TcpPort string
 	RpcPort string
 }
@@ -25,7 +25,7 @@ func (self *NsqdNodeInfo) GetID() string {
 
 type NsqLookupdNodeInfo struct {
 	ID       string
-	NodeIp   string
+	NodeIP   string
 	TcpPort  string
 	HttpPort string
 	RpcPort  string

@@ -171,7 +171,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	nsqd := mustStartNSQD(opts)
 	randPort := rand.Int31n(30000) + 20000
 	nodeInfo := NsqdNodeInfo{
-		NodeIp:  "127.0.0.1",
+		NodeIP:  "127.0.0.1",
 		TcpPort: "0",
 		RpcPort: strconv.Itoa(int(randPort)),
 	}

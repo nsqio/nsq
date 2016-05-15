@@ -74,12 +74,26 @@ func (self *NsqdRpcClient) NotifyTopicLeaderSession(epoch EpochType, topicInfo *
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicLeaderSession = leaderSession.Session
 	rpcInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
-	rpcInfo.LeaderNode = leaderSession.LeaderNode
+	if leaderSession.LeaderNode != nil {
+		rpcInfo.LeaderNode = *leaderSession.LeaderNode
+	}
 	rpcInfo.JoinSession = joinSession
 	rpcInfo.TopicName = topicInfo.Name
 	rpcInfo.TopicPartition = topicInfo.Partition
 	var retErr CoordErr
 	err := self.CallWithRetry("NsqdCoordRpcServer.NotifyTopicLeaderSession", rpcInfo, &retErr)
+	return convertRpcError(err, &retErr)
+}
+
+func (self *NsqdRpcClient) NotifyAcquireTopicLeader(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	var rpcInfo RpcAcquireTopicLeaderReq
+	rpcInfo.LookupdEpoch = epoch
+	rpcInfo.TopicName = topicInfo.Name
+	rpcInfo.TopicPartition = topicInfo.Partition
+	rpcInfo.TopicEpoch = topicInfo.Epoch
+	rpcInfo.LeaderNodeID = topicInfo.Leader
+	var retErr CoordErr
+	err := self.CallWithRetry("NsqdCoordRpcServer.NotifyAcquireTopicLeader", rpcInfo, &retErr)
 	return convertRpcError(err, &retErr)
 }
 

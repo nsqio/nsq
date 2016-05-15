@@ -123,13 +123,12 @@ func startBenchSub() {
 
 	goChan := make(chan int)
 	rdyChan := make(chan int)
-	index := 0
 	for j := 0; j < *concurrency; j++ {
 		wg.Add(1)
 		go func(id int, topic string) {
 			subWorker(*runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
 			wg.Done()
-		}(j, topics[index%len(topics)])
+		}(j, topics[j%len(topics)])
 		<-rdyChan
 	}
 
@@ -277,6 +276,7 @@ func subWorker(td time.Duration, lookupAddr string, topic string, channel string
 	go func() {
 		time.Sleep(td)
 		consumer.Stop()
+		<-consumer.StopChan
 		close(done)
 	}()
 	consumer.ConnectToNSQLookupd(lookupAddr)

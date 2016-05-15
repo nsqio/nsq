@@ -666,10 +666,11 @@ func (c *Channel) IsConsumeDisabled() bool {
 }
 
 func (c *Channel) DisableConsume(disable bool) {
+	defer c.notifyCall(c)
 	c.Lock()
 	defer c.Unlock()
 	if disable {
-		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 1, 0) {
+		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 0, 1) {
 			return
 		}
 		nsqLog.Logf("channel %v disabled for consume", c.name)
@@ -720,7 +721,6 @@ func (c *Channel) DisableConsume(disable bool) {
 		default:
 		}
 	}
-	c.notifyCall(c)
 }
 
 func (c *Channel) resetReaderToConfirmed() {

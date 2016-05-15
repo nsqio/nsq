@@ -138,7 +138,7 @@ var (
 
 func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {
 	var tmpbuf bytes.Buffer
-	tmpbuf.WriteString(n.NodeIp)
+	tmpbuf.WriteString(n.NodeIP)
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(n.RpcPort)
 	tmpbuf.WriteString(":")
@@ -150,7 +150,7 @@ func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {
 
 func GenNsqLookupNodeID(n *NsqLookupdNodeInfo, extra string) string {
 	var tmpbuf bytes.Buffer
-	tmpbuf.WriteString(n.NodeIp)
+	tmpbuf.WriteString(n.NodeIP)
 	tmpbuf.WriteString(":")
 	tmpbuf.WriteString(n.RpcPort)
 	tmpbuf.WriteString(":")

@@ -715,6 +715,9 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
+		// we need disable topic here to trigger a notify, maybe we failed to notify lookup last time.
+		topic.DisableForSlave()
+		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.RemoteAddr())
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)

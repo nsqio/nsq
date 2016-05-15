@@ -78,22 +78,23 @@ func (l *NSQLookupd) Main() {
 	}
 
 	var node consistence.NsqLookupdNodeInfo
-	node.NodeIp, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
+	_, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
+	node.NodeIP, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
 	if l.opts.RPCPort != "" {
 		nsqlookupLog.Logf("broadcast option: %s, %s", l.opts.BroadcastAddress, l.opts.BroadcastInterface)
 		if l.opts.BroadcastInterface != "" {
-			node.NodeIp = getIPv4ForInterfaceName(l.opts.BroadcastInterface)
+			node.NodeIP = getIPv4ForInterfaceName(l.opts.BroadcastInterface)
 		}
-		if node.NodeIp == "" {
-			node.NodeIp = l.opts.BroadcastAddress
+		if node.NodeIP == "" {
+			node.NodeIP = l.opts.BroadcastAddress
 		} else {
-			l.opts.BroadcastAddress = node.NodeIp
+			l.opts.BroadcastAddress = node.NodeIP
 		}
-		if node.NodeIp == "0.0.0.0" || node.NodeIp == "" {
-			nsqlookupLog.LogErrorf("can not decide the broadcast ip: %v", node.NodeIp)
+		if node.NodeIP == "0.0.0.0" || node.NodeIP == "" {
+			nsqlookupLog.LogErrorf("can not decide the broadcast ip: %v", node.NodeIP)
 			os.Exit(1)
 		}
-		nsqlookupLog.Logf("Start with broadcast ip:%s", node.NodeIp)
+		nsqlookupLog.Logf("Start with broadcast ip:%s", node.NodeIP)
 		node.RpcPort = l.opts.RPCPort
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 

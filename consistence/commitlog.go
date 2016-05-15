@@ -126,6 +126,7 @@ func (self *TopicCommitLogMgr) NextID() uint64 {
 	return uint64(id)
 }
 
+// reset the nextid
 func (self *TopicCommitLogMgr) Reset(id uint64) {
 }
 
@@ -138,6 +139,7 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 		return nil, err
 	}
 	if offset == 0 {
+		atomic.StoreInt64(&self.pLogID, 0)
 		return nil, nil
 	}
 	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
