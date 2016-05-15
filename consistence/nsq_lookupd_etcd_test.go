@@ -128,6 +128,8 @@ func TestLookupd(t *testing.T) {
 	// lookup node 1 create topic
 	topicName := "ree-topic"
 	partition := 0
+	// delete topic if exist
+	lookupdMgr.DeleteTopic(topicName, partition)
 	err = lookupdMgr.CreateTopicPartition(topicName, partition)
 	test.Nil(t, err)
 	fmt.Printf("[lookup node 1] topic[%s] partition[%d] create topic partition success.\n", topicName, partition)
