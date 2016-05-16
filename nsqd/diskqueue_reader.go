@@ -20,9 +20,13 @@ var (
 	ErrOffsetTypeMismatch = errors.New("offset type mismatch")
 )
 
+type diskQueueOffset struct {
+	FileNum int64
+	Pos     int64
+}
+
 type diskQueueEndInfo struct {
-	EndFileNum  int64
-	EndPos      int64
+	EndOffset   diskQueueOffset
 	VirtualEnd  BackendOffset
 	TotalMsgCnt int64
 }
@@ -40,11 +44,6 @@ func (d *diskQueueEndInfo) IsSame(other BackendQueueEnd) bool {
 	return false
 }
 
-type diskQueueOffset struct {
-	FileNum int64
-	Pos     int64
-}
-
 func (d *diskQueueOffset) GreatThan(o *diskQueueOffset) bool {
 	if d.FileNum > o.FileNum {
 		return true
@@ -60,13 +59,11 @@ func (d *diskQueueOffset) GreatThan(o *diskQueueOffset) bool {
 type diskQueueReader struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	readPos           diskQueueOffset
-	endPos            diskQueueOffset
 	virtualReadOffset BackendOffset
-	virtualEnd        BackendOffset
+	queueEndInfo      diskQueueEndInfo
 	// left message number for read
 	depth int64
 	// total need to read
-	totalMsgCnt int64
 
 	sync.RWMutex
 
@@ -97,6 +94,8 @@ type diskQueueReader struct {
 	skipChan         chan BackendOffset
 	skipResponseChan chan error
 
+	readEndResponseChan    chan diskQueueEndInfo
+	readEndChan            chan int
 	endUpdatedChan         chan *diskQueueEndInfo
 	endUpdatedResponseChan chan error
 	exitChan               chan int
@@ -124,6 +123,8 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		skipReadErrChan:        make(chan diskQueueOffset),
 		skipChan:               make(chan BackendOffset),
 		skipResponseChan:       make(chan error),
+		readEndChan:            make(chan int),
+		readEndResponseChan:    make(chan diskQueueEndInfo),
 		endUpdatedChan:         make(chan *diskQueueEndInfo),
 		endUpdatedResponseChan: make(chan error),
 		exitChan:               make(chan int),
@@ -162,6 +163,14 @@ func (d *diskQueueReader) Depth() int64 {
 
 func (d *diskQueueReader) ReadChan() <-chan ReadResult {
 	return d.readResultChan
+}
+
+func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
+	d.RLock()
+	d.readEndChan <- 1
+	e := <-d.readEndResponseChan
+	d.RUnlock()
+	return &e
 }
 
 // Put writes a []byte to the queue
@@ -239,10 +248,10 @@ func (d *diskQueueReader) Flush() {
 
 func (d *diskQueueReader) updateDepth() {
 	newDepth := int64(0)
-	if d.confirmedOffset.FileNum > d.endPos.FileNum {
+	if d.confirmedOffset.FileNum > d.queueEndInfo.EndOffset.FileNum {
 		atomic.StoreInt64(&d.depth, 0)
 	} else {
-		newDepth = int64(d.virtualEnd - d.virtualConfirmedOffset)
+		newDepth = int64(d.queueEndInfo.VirtualEnd - d.virtualConfirmedOffset)
 		atomic.StoreInt64(&d.depth, newDepth)
 	}
 	if newDepth == 0 {
@@ -300,7 +309,7 @@ func (d *diskQueueReader) SkipToEnd() error {
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
-	d.skipChan <- d.virtualEnd
+	d.skipChan <- d.queueEndInfo.VirtualEnd
 	return <-d.skipResponseChan
 }
 
@@ -409,7 +418,7 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 		d.readFile.Close()
 		d.readFile = nil
 	}
-	newPos := d.endPos
+	newPos := d.queueEndInfo.EndOffset
 	var err error
 	if voffset < d.virtualReadOffset {
 		nsqLog.Logf("internal skip backward : %v, current: %v", voffset, d.virtualReadOffset)
@@ -422,13 +431,13 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 			return ErrMoveOffsetInvalid
 		}
 	}
-	if voffset > d.virtualEnd {
+	if voffset > d.queueEndInfo.VirtualEnd {
 		nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
 		return ErrMoveOffsetInvalid
-	} else if voffset == d.virtualEnd {
-		newPos = d.endPos
+	} else if voffset == d.queueEndInfo.VirtualEnd {
+		newPos = d.queueEndInfo.EndOffset
 	} else {
-		newPos, err = d.stepOffset(d.virtualReadOffset, d.readPos, voffset-d.virtualReadOffset, d.virtualEnd, d.endPos)
+		newPos, err = d.stepOffset(d.virtualReadOffset, d.readPos, voffset-d.virtualReadOffset, d.queueEndInfo.VirtualEnd, d.queueEndInfo.EndOffset)
 		if err != nil {
 			nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
 			return err
@@ -450,7 +459,7 @@ func (d *diskQueueReader) skipToNextFile() error {
 		d.readFile.Close()
 		d.readFile = nil
 	}
-	if d.readPos.FileNum >= d.endPos.FileNum {
+	if d.readPos.FileNum >= d.queueEndInfo.EndOffset.FileNum {
 		return d.skipToEndofFile()
 	}
 
@@ -471,8 +480,8 @@ func (d *diskQueueReader) skipToEndofFile() error {
 		d.readFile = nil
 	}
 
-	d.readPos = d.endPos
-	d.virtualReadOffset = d.virtualEnd
+	d.readPos = d.queueEndInfo.EndOffset
+	d.virtualReadOffset = d.queueEndInfo.VirtualEnd
 	if d.confirmedOffset != d.readPos {
 		nsqLog.LogErrorf("skip confirm from %v to %v.", d.confirmedOffset, d.readPos)
 	}
@@ -514,7 +523,7 @@ CheckFileOpen:
 
 		d.reader = bufio.NewReader(d.readFile)
 	}
-	if d.readPos.FileNum < d.endPos.FileNum {
+	if d.readPos.FileNum < d.queueEndInfo.EndOffset.FileNum {
 		stat, result.err = d.readFile.Stat()
 		if result.err != nil {
 			return result
@@ -574,7 +583,7 @@ CheckFileOpen:
 	// as the first 8 bytes (at creation time) ensuring that
 	// the value can change without affecting runtime
 	isEnd := false
-	if d.readPos.FileNum < d.endPos.FileNum {
+	if d.readPos.FileNum < d.queueEndInfo.EndOffset.FileNum {
 		stat, result.err = d.readFile.Stat()
 		if result.err == nil {
 			isEnd = d.readPos.Pos >= stat.Size()
@@ -628,9 +637,9 @@ func (d *diskQueueReader) retrieveMetaData() error {
 	defer f.Close()
 
 	_, err = fmt.Fscanf(f, "%d\n%d,%d,%d\n%d,%d,%d\n",
-		&d.totalMsgCnt,
+		&d.queueEndInfo.TotalMsgCnt,
 		&d.confirmedOffset.FileNum, &d.confirmedOffset.Pos, &d.virtualConfirmedOffset,
-		&d.endPos.FileNum, &d.endPos.Pos, &d.virtualEnd)
+		&d.queueEndInfo.EndOffset.FileNum, &d.queueEndInfo.EndOffset.Pos, &d.queueEndInfo.VirtualEnd)
 	if err != nil {
 		return err
 	}
@@ -656,9 +665,9 @@ func (d *diskQueueReader) persistMetaData() error {
 	}
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n%d,%d,%d\n",
-		d.totalMsgCnt,
+		d.queueEndInfo.TotalMsgCnt,
 		d.confirmedOffset.FileNum, d.confirmedOffset.Pos, d.virtualConfirmedOffset,
-		d.endPos.FileNum, d.endPos.Pos, d.virtualEnd)
+		d.queueEndInfo.EndOffset.FileNum, d.queueEndInfo.EndOffset.Pos, d.queueEndInfo.VirtualEnd)
 	if err != nil {
 		f.Close()
 		return err
@@ -680,15 +689,15 @@ func (d *diskQueueReader) fileName(fileNum int64) string {
 }
 
 func (d *diskQueueReader) checkTailCorruption() {
-	if d.readPos.FileNum < d.endPos.FileNum || d.readPos.Pos < d.endPos.Pos {
+	if d.readPos.FileNum < d.queueEndInfo.EndOffset.FileNum || d.readPos.Pos < d.queueEndInfo.EndOffset.Pos {
 		return
 	}
 
 	// we reach file end, the readPos should be exactly at the end of file.
-	if d.readPos != d.endPos {
+	if d.readPos != d.queueEndInfo.EndOffset {
 		nsqLog.LogErrorf(
 			"diskqueue(%s) read to end at readPos != endPos (%v > %v), corruption, skipping to end ...",
-			d.readerMetaName, d.readPos, d.endPos)
+			d.readerMetaName, d.readPos, d.queueEndInfo.EndOffset)
 		d.skipToEndofFile()
 		d.needSync = true
 	}
@@ -700,9 +709,9 @@ func (d *diskQueueReader) handleReadError() {
 	newRead := d.readPos
 	newRead.FileNum++
 	newRead.Pos = 0
-	if newRead.GreatThan(&d.endPos) {
-		newRead = d.endPos
-		d.virtualReadOffset = d.virtualEnd
+	if newRead.GreatThan(&d.queueEndInfo.EndOffset) {
+		newRead = d.queueEndInfo.EndOffset
+		d.virtualReadOffset = d.queueEndInfo.VirtualEnd
 	} else {
 		vdiff, err := d.getVirtualOffsetDistance(d.readPos, newRead)
 		if err != nil {
@@ -772,7 +781,7 @@ func (d *diskQueueReader) ioLoop() {
 			// TODO: on slave node, the readOne is no need, since no consume is allowed.
 			// we can totally remove this goroutine to handle the data read.
 			if !lastDataNeedRead {
-				if (d.readPos.FileNum < d.endPos.FileNum) || (d.readPos.Pos < d.endPos.Pos) {
+				if (d.readPos.FileNum < d.queueEndInfo.EndOffset.FileNum) || (d.readPos.Pos < d.queueEndInfo.EndOffset.Pos) {
 					dataRead = d.readOne()
 					rerr = dataRead.err
 					if rerr != nil {
@@ -827,6 +836,8 @@ func (d *diskQueueReader) ioLoop() {
 				}
 			}
 			d.skipResponseChan <- skiperr
+		case <-d.readEndChan:
+			d.readEndResponseChan <- d.queueEndInfo
 		case endPos := <-d.endUpdatedChan:
 			if endPos == nil {
 				count = 0
@@ -834,27 +845,24 @@ func (d *diskQueueReader) ioLoop() {
 				d.endUpdatedResponseChan <- nil
 				continue
 			}
-			if d.endPos.FileNum != endPos.EndFileNum && endPos.EndPos == 0 {
+			if d.queueEndInfo.EndOffset.FileNum != endPos.EndOffset.FileNum && endPos.EndOffset.Pos == 0 {
 				// a new file for the position
 				count = 0
 				d.needSync = true
 			}
-			if d.readPos.FileNum > endPos.EndFileNum {
-				d.readPos.FileNum = endPos.EndFileNum
-				d.readPos.Pos = endPos.EndPos
+			if d.readPos.FileNum > endPos.EndOffset.FileNum {
+				d.readPos.FileNum = endPos.EndOffset.FileNum
+				d.readPos.Pos = endPos.EndOffset.Pos
 				d.virtualReadOffset = endPos.VirtualEnd
 			}
-			if (d.readPos.FileNum == endPos.EndFileNum) && (d.readPos.Pos > endPos.EndPos) {
-				d.readPos.Pos = endPos.EndPos
+			if (d.readPos.FileNum == endPos.EndOffset.FileNum) && (d.readPos.Pos > endPos.EndOffset.Pos) {
+				d.readPos.Pos = endPos.EndOffset.Pos
 				d.virtualReadOffset = endPos.VirtualEnd
 			}
 			if endPos.VirtualEnd > d.virtualConfirmedOffset {
 				atomic.StoreInt32(&d.waitingMoreData, 0)
 			}
-			d.endPos.Pos = endPos.EndPos
-			d.endPos.FileNum = endPos.EndFileNum
-			d.totalMsgCnt = endPos.TotalMsgCnt
-			d.virtualEnd = endPos.VirtualEnd
+			d.queueEndInfo = *endPos
 			d.updateDepth()
 			count++
 			if nsqLog.Level() > 2 {

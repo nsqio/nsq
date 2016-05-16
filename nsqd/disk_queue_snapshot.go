@@ -60,17 +60,17 @@ func (d *DiskQueueSnapshot) UpdateQueueEnd(e BackendQueueEnd) {
 	if d.exitFlag == 1 {
 		return
 	}
-	if d.readPos.FileNum > endPos.EndFileNum {
-		d.readPos.FileNum = endPos.EndFileNum
-		d.readPos.Pos = endPos.EndPos
+	if d.readPos.FileNum > endPos.EndOffset.FileNum {
+		d.readPos.FileNum = endPos.EndOffset.FileNum
+		d.readPos.Pos = endPos.EndOffset.Pos
 		d.virtualReadOffset = endPos.VirtualEnd
 	}
-	if (d.readPos.FileNum == endPos.EndFileNum) && (d.readPos.Pos > endPos.EndPos) {
-		d.readPos.Pos = endPos.EndPos
+	if (d.readPos.FileNum == endPos.EndOffset.FileNum) && (d.readPos.Pos > endPos.EndOffset.Pos) {
+		d.readPos.Pos = endPos.EndOffset.Pos
 		d.virtualReadOffset = endPos.VirtualEnd
 	}
-	d.endPos.Pos = endPos.EndPos
-	d.endPos.FileNum = endPos.EndFileNum
+	d.endPos.Pos = endPos.EndOffset.Pos
+	d.endPos.FileNum = endPos.EndOffset.FileNum
 	d.virtualEnd = endPos.VirtualEnd
 }
 

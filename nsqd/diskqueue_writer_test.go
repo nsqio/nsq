@@ -34,10 +34,10 @@ func TestDiskQueueWriter(t *testing.T) {
 	end := dqWriter.GetQueueWriteEnd()
 	equal(t, err, nil)
 	equal(t, dqWriter.totalMsgCnt, int64(1))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(0))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
-	equal(t, end.(*diskQueueEndInfo).EndPos, int64(len(msg)+4))
-	equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(0))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, int64(len(msg)+4))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, true)
 	dqReader.UpdateQueueEnd(end)
@@ -106,10 +106,10 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	dq.Flush()
 	end2 := dq.GetQueueReadEnd().(*diskQueueEndInfo)
 	equal(t, int64(end2.VirtualEnd), int64(100*msgRawSize))
-	equal(t, int64(end2.EndFileNum), int64(100/(maxBytesPerFile/msgRawSize+1)))
+	equal(t, int64(end2.EndOffset.FileNum), int64(100/(maxBytesPerFile/msgRawSize+1)))
 
-	equal(t, int64(end2.EndPos), int64(msgRawSize)*(100-
-		end2.EndFileNum*int64(maxBytesPerFile/msgRawSize+1)))
+	equal(t, int64(end2.EndOffset.Pos), int64(msgRawSize)*(100-
+		end2.EndOffset.FileNum*int64(maxBytesPerFile/msgRawSize+1)))
 
 	dqReader.UpdateQueueEnd(dq.GetQueueReadEnd())
 
@@ -137,15 +137,15 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	err = dqReader.(*diskQueueReader).SkipToEnd()
 	equal(t, err, nil)
 	equal(t, dqReader.(*diskQueueReader).readPos,
-		dqReader.(*diskQueueReader).endPos)
-	equal(t, dqReader.(*diskQueueReader).virtualEnd,
+		dqReader.(*diskQueueReader).queueEndInfo.EndOffset)
+	equal(t, dqReader.(*diskQueueReader).queueEndInfo.VirtualEnd,
 		dqReader.(*diskQueueReader).virtualReadOffset)
 
 	dqReader.ConfirmRead(BackendOffset(-1))
 	equal(t, dqReader.(*diskQueueReader).virtualReadOffset, dqReader.(*diskQueueReader).virtualConfirmedOffset)
 	equal(t, dqReader.(*diskQueueReader).readPos, dqReader.(*diskQueueReader).confirmedOffset)
 	equal(t, dqReader.(*diskQueueReader).readPos,
-		dqReader.(*diskQueueReader).endPos)
+		dqReader.(*diskQueueReader).queueEndInfo.EndOffset)
 	equal(t, dqReader.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(100*msgRawSize))
 
@@ -155,7 +155,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	dqReader.UpdateQueueEnd(end)
 	dqReader.(*diskQueueReader).SkipToEnd()
 	equal(t, dqReader.(*diskQueueReader).readPos,
-		dqReader.(*diskQueueReader).endPos)
+		dqReader.(*diskQueueReader).queueEndInfo.EndOffset)
 	dqReader.Close()
 
 	for i := int64(0); i <= numFiles; i++ {
@@ -177,11 +177,11 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	time.Sleep(time.Second)
 	equal(t, int64(end.VirtualEnd), int64(200*msgRawSize))
 	equal(t,
-		dqReader.(*diskQueueReader).virtualEnd, end.VirtualEnd)
+		dqReader.(*diskQueueReader).queueEndInfo.VirtualEnd, end.VirtualEnd)
 	equal(t, dqReader.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(100*msgRawSize))
 	equal(t,
-		dqReader.(*diskQueueReader).endPos.GreatThan(&dqReader.(*diskQueueReader).readPos),
+		dqReader.(*diskQueueReader).queueEndInfo.EndOffset.GreatThan(&dqReader.(*diskQueueReader).readPos),
 		true)
 
 	for i := 0; i < 100; i++ {
@@ -191,7 +191,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	equal(t, dqReader.(*diskQueueReader).virtualReadOffset, dqReader.(*diskQueueReader).virtualConfirmedOffset)
 	equal(t, dqReader.(*diskQueueReader).readPos, dqReader.(*diskQueueReader).confirmedOffset)
 	equal(t, dqReader.(*diskQueueReader).readPos,
-		dqReader.(*diskQueueReader).endPos)
+		dqReader.(*diskQueueReader).queueEndInfo.EndOffset)
 	equal(t, dqReader.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(200*msgRawSize))
 
@@ -304,11 +304,11 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 		equal(t, end.(*diskQueueEndInfo).VirtualEnd, BackendOffset((cnt+1)*(len(msg)+4)))
 		equal(t, end.(*diskQueueEndInfo).TotalMsgCnt, int64(cnt+1))
 
-		equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(end.GetOffset()/1024))
-		equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
-		leftPos := int64(end.GetOffset()) - 1024*end.(*diskQueueEndInfo).EndFileNum
-		equal(t, end.(*diskQueueEndInfo).EndPos, leftPos)
-		equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+		equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(end.GetOffset()/1024))
+		equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
+		leftPos := int64(end.GetOffset()) - 1024*end.(*diskQueueEndInfo).EndOffset.FileNum
+		equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, leftPos)
+		equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 	}
 
 	oldEnd := dqWriter.GetQueueWriteEnd()
@@ -317,11 +317,11 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 	equal(t, dqWriter.totalMsgCnt, int64(totalCnt-1))
 	end := dqWriter.GetQueueWriteEnd()
 	equal(t, end.GetOffset(), oldEnd.GetOffset()-BackendOffset(len(msg)+4))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, oldEnd.(*diskQueueEndInfo).EndFileNum)
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, oldEnd.(*diskQueueEndInfo).EndOffset.FileNum)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
 	leftPos := int64(end.GetOffset()) - 1024*dqWriter.writeFileNum
-	equal(t, end.(*diskQueueEndInfo).EndPos, leftPos)
-	equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, leftPos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 
 	resetOffset := int64((len(msg) + 4) * totalCnt / 2)
 	err = dqWriter.ResetWriteEnd(BackendOffset(resetOffset), int64(totalCnt/2))
@@ -329,18 +329,18 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 	equal(t, dqWriter.totalMsgCnt, int64(totalCnt/2))
 	end = dqWriter.GetQueueWriteEnd()
 	equal(t, end.GetOffset(), BackendOffset(resetOffset))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(resetOffset/1024))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(resetOffset/1024))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
 	leftPos = resetOffset - int64(dqWriter.writeFileNum*1024)
-	equal(t, end.(*diskQueueEndInfo).EndPos, leftPos)
-	equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, leftPos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 	err = dqWriter.ResetWriteEnd(0, 0)
 	end = dqWriter.GetQueueWriteEnd()
 	equal(t, end.GetOffset(), BackendOffset(0))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(0))
-	equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
-	equal(t, end.(*diskQueueEndInfo).EndPos, int64(0))
-	equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(0))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, int64(0))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 	for cnt := 0; cnt < totalCnt; cnt++ {
 		dqWriter.Put(msg)
 		dqWriter.Flush()
@@ -350,11 +350,11 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 		equal(t, end.(*diskQueueEndInfo).VirtualEnd, BackendOffset((cnt+1)*(len(msg)+4)))
 		equal(t, end.(*diskQueueEndInfo).TotalMsgCnt, int64(cnt+1))
 
-		equal(t, end.(*diskQueueEndInfo).EndFileNum, int64(end.GetOffset()/1024))
-		equal(t, end.(*diskQueueEndInfo).EndFileNum, dqWriter.writeFileNum)
-		leftPos := int64(end.GetOffset()) - 1024*end.(*diskQueueEndInfo).EndFileNum
-		equal(t, end.(*diskQueueEndInfo).EndPos, leftPos)
-		equal(t, end.(*diskQueueEndInfo).EndPos, dqWriter.writePos)
+		equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(end.GetOffset()/1024))
+		equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.writeFileNum)
+		leftPos := int64(end.GetOffset()) - 1024*end.(*diskQueueEndInfo).EndOffset.FileNum
+		equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, leftPos)
+		equal(t, end.(*diskQueueEndInfo).EndOffset.Pos, dqWriter.writePos)
 	}
 
 }
@@ -421,7 +421,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	dqReader.UpdateQueueEnd(e)
 	time.Sleep(time.Second * 1)
 	equal(t, dqReader.Depth(), depth)
-	equal(t, dqReader.(*diskQueueReader).virtualEnd, BackendOffset(depth))
+	equal(t, dqReader.(*diskQueueReader).queueEndInfo.VirtualEnd, BackendOffset(depth))
 	equal(t, dqReader.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(0))
 

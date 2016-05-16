@@ -262,8 +262,8 @@ func (d *diskQueueWriter) saveFileOffsetMeta() {
 func (d *diskQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
 	d.RLock()
 	e := &diskQueueEndInfo{}
-	e.EndFileNum = d.writeFileNum
-	e.EndPos = d.writePos
+	e.EndOffset.FileNum = d.writeFileNum
+	e.EndOffset.Pos = d.writePos
 	e.TotalMsgCnt = d.totalMsgCnt
 	e.VirtualEnd = d.virtualEnd
 	d.RUnlock()
@@ -279,8 +279,8 @@ func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 
 func (d *diskQueueWriter) internalGetQueueReadEnd() BackendQueueEnd {
 	e := &diskQueueEndInfo{}
-	e.EndFileNum = d.writeFileNum
-	e.EndPos = d.readablePos
+	e.EndOffset.FileNum = d.writeFileNum
+	e.EndOffset.Pos = d.readablePos
 	e.TotalMsgCnt = d.totalMsgCnt
 	e.VirtualEnd = d.virtualReadableEnd
 	return e

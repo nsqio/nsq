@@ -30,6 +30,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Depth:          t.TotalSize(),
 		BackendDepth:   t.TotalSize(),
 		MessageCount:   t.TotalMessageCnt(),
+		IsLeader:       !t.IsWriteDisabled(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}
@@ -64,7 +65,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		InFlightCount: len(c.inFlightMessages),
 		// this is total message count need consume.
 		// may diff with topic total size since some is in buffer.
-		MessageCount: uint64(c.GetChannelEnd()),
+		MessageCount: uint64(c.backend.GetQueueReadEnd().GetTotalMsgCnt()),
 		RequeueCount: atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount: atomic.LoadUint64(&c.timeoutCount),
 		Clients:      clients,

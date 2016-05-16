@@ -171,7 +171,7 @@ func TestStartup(t *testing.T) {
 	equal(t, err, nil)
 	t.Logf("read %d msgs", iterations/2)
 	equal(t, channel1.Depth(), int64(iterations)*msgRawSize)
-	equal(t, channel1.backend.(*diskQueueReader).virtualEnd,
+	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.VirtualEnd,
 		BackendOffset(channel1.Depth()))
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
@@ -232,7 +232,7 @@ func TestStartup(t *testing.T) {
 
 	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(int64(iterations/2)*msgRawSize))
-	equal(t, channel1.backend.(*diskQueueReader).virtualEnd,
+	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.VirtualEnd,
 		backEnd.GetOffset())
 
 	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)

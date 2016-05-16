@@ -41,6 +41,10 @@ func (d *dummyBackendQueue) Delete() error {
 	return nil
 }
 
+func (d *dummyBackendQueue) GetQueueReadEnd() BackendQueueEnd {
+	return nil
+}
+
 func (d *dummyBackendQueue) Depth() int64 {
 	return int64(0)
 }

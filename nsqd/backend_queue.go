@@ -45,7 +45,9 @@ type BackendQueueReader interface {
 	ConfirmRead(BackendOffset) error
 	SkipReadToOffset(BackendOffset) error
 	Close() error
+	// left data to be read
 	Depth() int64
+	GetQueueReadEnd() BackendQueueEnd
 	Delete() error
 	UpdateQueueEnd(BackendQueueEnd) error
 }

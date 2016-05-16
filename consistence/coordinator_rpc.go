@@ -314,7 +314,7 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 		// all topic status
 		topicStats := self.nsqdCoord.localNsqd.GetStats()
 		stat.NodeID = self.nsqdCoord.myNode.GetID()
-		stat.ChannelConsumedData = make(map[string]int64, len(topicStats))
+		stat.ChannelDepthData = make(map[string]int64, len(topicStats))
 		stat.ChannelHourlyConsumedData = make(map[string]int64, len(topicStats))
 		stat.TopicLeaderDataSize = make(map[string]int64, len(topicStats))
 		stat.TopicTotalDataSize = make(map[string]int64, len(topicStats))
@@ -322,13 +322,14 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string, stat *NodeTopicStats
 		stat.TopicChannelSubQPS = nil
 		stat.NodeCPUs = runtime.NumCPU()
 		for _, ts := range topicStats {
+			// plus 1 to handle the empty topic/channel
 			stat.TopicTotalDataSize[ts.TopicName] = ts.BackendDepth + 1
 			if ts.IsLeader {
 				stat.TopicLeaderDataSize[ts.TopicName] = ts.BackendDepth + 1
-			}
-			for _, chStat := range ts.Channels {
-				stat.ChannelConsumedData[ts.TopicName] += chStat.BackendDepth + 1
-				stat.ChannelHourlyConsumedData[ts.TopicName] += chStat.HourlySubSize
+				for _, chStat := range ts.Channels {
+					stat.ChannelDepthData[ts.TopicName] += chStat.BackendDepth + 1
+					stat.ChannelHourlyConsumedData[ts.TopicName] += chStat.HourlySubSize
+				}
 			}
 		}
 	}

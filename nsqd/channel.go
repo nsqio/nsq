@@ -591,10 +591,7 @@ func (c *Channel) GetConfirmedOffset() BackendOffset {
 }
 
 func (c *Channel) GetChannelEnd() BackendOffset {
-	if _, ok := c.backend.(*diskQueueReader); ok {
-		return c.backend.(*diskQueueReader).virtualEnd
-	}
-	return 0
+	return c.backend.GetQueueReadEnd().GetOffset()
 }
 
 // doRequeue performs the low level operations to requeue a message
