@@ -42,7 +42,7 @@ func (n *NsqdServer) statsdLoop() {
 				continue
 			}
 
-			nsqd.NsqLogger().Logf("STATSD: pushing stats to %s", client)
+			nsqd.NsqLogger().LogDebugf("STATSD: pushing stats to %s", client)
 
 			stats := n.ctx.nsqd.GetStats()
 			for _, topic := range stats {
@@ -56,7 +56,11 @@ func (n *NsqdServer) statsdLoop() {
 				}
 				diff := topic.MessageCount - lastTopic.MessageCount
 				stat := fmt.Sprintf("topic.%s.message_count", topic.TopicName)
-				client.Incr(stat, int64(diff))
+				err := client.Incr(stat, int64(diff))
+				if err != nil {
+					nsqd.NsqLogger().Logf("STATSD: pushing stats failed: %v", err)
+					break
+				}
 
 				stat = fmt.Sprintf("topic.%s.depth", topic.TopicName)
 				client.Gauge(stat, topic.Depth)

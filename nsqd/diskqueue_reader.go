@@ -851,14 +851,23 @@ func (d *diskQueueReader) ioLoop() {
 				d.needSync = true
 			}
 			if d.readPos.FileNum > endPos.EndOffset.FileNum {
+				nsqLog.Logf("new end old than the read end: %v, %v", d.readPos, endPos)
 				d.readPos.FileNum = endPos.EndOffset.FileNum
 				d.readPos.Pos = endPos.EndOffset.Pos
 				d.virtualReadOffset = endPos.VirtualEnd
 			}
 			if (d.readPos.FileNum == endPos.EndOffset.FileNum) && (d.readPos.Pos > endPos.EndOffset.Pos) {
+				nsqLog.Logf("new end old than the read end: %v, %v", d.readPos, endPos)
 				d.readPos.Pos = endPos.EndOffset.Pos
 				d.virtualReadOffset = endPos.VirtualEnd
 			}
+			if d.confirmedOffset.GreatThan(&d.readPos) {
+				d.confirmedOffset = d.readPos
+			}
+			if d.virtualConfirmedOffset > d.virtualReadOffset {
+				d.virtualConfirmedOffset = d.virtualReadOffset
+			}
+
 			if endPos.VirtualEnd > d.virtualConfirmedOffset {
 				atomic.StoreInt32(&d.waitingMoreData, 0)
 			}

@@ -93,7 +93,7 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 		nsqLog.Logf("rollback write position can not across file %v, %v, %v", offset, d.virtualEnd, d.writePos)
 		return ErrInvalidOffset
 	}
-	nsqLog.LogDebugf("rollback from %v to %v, roll cnt: %v", d.virtualEnd, offset, diffCnt)
+	nsqLog.Logf("rollback from %v-%v, %v to %v, roll cnt: %v", d.writeFileNum, d.writePos, d.virtualEnd, offset, diffCnt)
 	d.writePos -= int64(d.virtualEnd - offset)
 	if d.readablePos > d.writePos {
 		d.readablePos = d.writePos
@@ -102,6 +102,11 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 	atomic.AddInt64(&d.totalMsgCnt, -1*int64(diffCnt))
 	if d.virtualReadableEnd > d.virtualEnd {
 		d.virtualReadableEnd = d.virtualEnd
+	}
+	nsqLog.Logf("after rollback : %v, %v, %v", d.writePos, d.readablePos, d.totalMsgCnt)
+	if d.writeFile != nil {
+		d.writeFile.Close()
+		d.writeFile = nil
 	}
 	return nil
 }
@@ -154,6 +159,11 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	if d.virtualReadableEnd > d.virtualEnd {
 		d.virtualReadableEnd = d.virtualEnd
 	}
+	if d.writeFile != nil {
+		d.writeFile.Close()
+		d.writeFile = nil
+	}
+
 	return nil
 }
 
@@ -242,7 +252,7 @@ func (d *diskQueueWriter) cleanOldData() error {
 
 func (d *diskQueueWriter) saveFileOffsetMeta() {
 	fName := d.fileName(d.writeFileNum) + ".offsetmeta.dat"
-	f, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		nsqLog.LogErrorf("diskqueue(%s) failed to save data offset meta: %v", d.name, err)
 		return
@@ -293,7 +303,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, int64, er
 
 	if d.writeFile == nil {
 		curFileName := d.fileName(d.writeFileNum)
-		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0600)
+		d.writeFile, err = os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
 			return 0, 0, 0, err
 		}
@@ -323,13 +333,19 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, int64, er
 
 	err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
 	if err != nil {
+		d.sync()
+		d.writeFile.Close()
+		d.writeFile = nil
+		nsqLog.Logf("DISKQUEUE(%s): writeOne() faled %s", d.name, err)
 		return 0, 0, 0, err
 	}
 
 	_, err = d.bufferWriter.Write(data)
 	if err != nil {
+		d.sync()
 		d.writeFile.Close()
 		d.writeFile = nil
+		nsqLog.Logf("DISKQUEUE(%s): writeOne() faled %s", d.name, err)
 		return 0, 0, 0, err
 	}
 
@@ -405,7 +421,7 @@ func (d *diskQueueWriter) retrieveMetaData() error {
 	var err error
 
 	fileName := d.metaDataFileName()
-	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
+	f, err = os.OpenFile(fileName, os.O_RDONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -434,7 +450,7 @@ func (d *diskQueueWriter) persistMetaData() error {
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 
 	// write to tmp file
-	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0600)
+	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

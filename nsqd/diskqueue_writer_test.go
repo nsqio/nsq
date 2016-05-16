@@ -76,6 +76,65 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 	equal(t, int64(dqObj.virtualEnd), 10*(ml+4))
 }
 
+func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+	nsqLog.SetLevel(3)
+	dqName := "test_disk_queue_" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	msg := bytes.Repeat([]byte{0}, 226)
+	ml := int64(len(msg))
+	dq := newDiskQueueWriter(dqName, tmpDir, 1024*1024*100, 0, 1024, 1)
+	dqObj := dq.(*diskQueueWriter)
+	defer dq.Close()
+	nequal(t, dq, nil)
+	nequal(t, dqObj, nil)
+	equal(t, dq.(*diskQueueWriter).totalMsgCnt, int64(0))
+
+	for i := 0; i < 920000; i++ {
+		_, _, _, err := dq.Put(msg)
+		equal(t, err, nil)
+	}
+	dq.Flush()
+
+	equal(t, dqObj.writeFileNum, int64(2))
+	f1, err := os.Stat(dqObj.fileName(0))
+	equal(t, f1.Size(), (ml+4)*455903)
+	f2, err := os.Stat(dqObj.fileName(1))
+	equal(t, f2.Size(), (ml+4)*455903)
+	f3, err := os.Stat(dqObj.fileName(2))
+	equal(t, err, nil)
+	equal(t, int64(dqObj.virtualEnd), f1.Size()+f2.Size()+f3.Size())
+
+	dq.RollbackWrite(dqObj.virtualEnd-BackendOffset(ml+4), 1)
+	_, _, _, err = dq.Put(msg)
+	dq.Flush()
+	equal(t, err, nil)
+	f3, err = os.Stat(dqObj.fileName(2))
+	equal(t, int64(dqObj.virtualEnd), f1.Size()+f2.Size()+f3.Size())
+	dq.ResetWriteEnd(BackendOffset(f1.Size()), 455903)
+	equal(t, int64(dqObj.virtualEnd), f1.Size())
+	equal(t, int64(dqObj.writeFileNum), int64(1))
+	equal(t, int64(dqObj.writePos), int64(0))
+	for i := 455903; i < 920000; i++ {
+		_, _, _, err := dq.Put(msg)
+		equal(t, err, nil)
+	}
+	dq.Flush()
+	equal(t, dqObj.writeFileNum, int64(2))
+	f1, err = os.Stat(dqObj.fileName(0))
+	equal(t, f1.Size(), (ml+4)*455903)
+	f2, err = os.Stat(dqObj.fileName(1))
+	equal(t, f2.Size(), (ml+4)*455903)
+	f3, err = os.Stat(dqObj.fileName(2))
+	equal(t, err, nil)
+	equal(t, int64(dqObj.virtualEnd), f1.Size()+f2.Size()+f3.Size())
+}
+
 func TestDiskQueueWriterEmpty(t *testing.T) {
 	l := newTestLogger(t)
 	nsqLog.Logger = l
