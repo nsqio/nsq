@@ -8,6 +8,8 @@ import (
 var (
 	ErrLeaderSessionAlreadyExist = errors.New("leader session already exist")
 	ErrLeaderSessionNotExist     = errors.New("session not exist")
+	ErrKeyAlreadyExist           = errors.New("Key already exist")
+	ErrKeyNotFound               = errors.New("Key not found")
 )
 
 type EpochType int64

@@ -25,7 +25,7 @@ func TestNodeRe(t *testing.T) {
 	}
 	err := nodeMgr.RegisterNsqd(nodeInfo)
 	test.Nil(t, err)
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 	err = nodeMgr.UnregisterNsqd(nodeInfo)
 	test.Nil(t, err)
 }

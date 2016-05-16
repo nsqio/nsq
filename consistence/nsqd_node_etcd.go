@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
 	etcdlock "github.com/reechou/xlock"
 	"golang.org/x/net/context"
 )
@@ -203,6 +204,9 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 func (self *NsqdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
 	rsp, err := self.client.Get(self.lookupdRoot, false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	lookupdNodeList := make([]NsqLookupdNodeInfo, 0)
@@ -286,6 +290,9 @@ func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartit
 	var topicInfo TopicPartitionMetaInfo
 	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	var mInfo TopicMetaInfo
@@ -314,6 +321,9 @@ func (self *NsqdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartit
 func (self *NsqdEtcdMgr) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
 	rsp, err := self.client.Get(self.createTopicLeaderPath(topic, partition), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	var topicLeaderSession TopicLeaderSession
