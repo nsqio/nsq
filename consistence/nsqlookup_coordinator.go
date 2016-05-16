@@ -1145,16 +1145,15 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	for i := 0; i < meta.PartitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i)
 		if err != nil {
-			coordLog.Warningf("failed to create topic %v-%v: %v", topic, i, err.Error())
+			coordLog.Warningf("failed to create topic %v-%v: %v", topic, i, err)
 			// handle already exist
 			t, err := self.leadership.GetTopicInfo(topic, i)
 			if err != nil {
 				coordLog.Warningf("exist topic partition failed to get info: %v", err)
-				return err
+			} else {
+				coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
+				existPart[i] = t
 			}
-			coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
-			existPart[i] = t
-			continue
 		}
 	}
 	self.nodesMutex.RLock()
