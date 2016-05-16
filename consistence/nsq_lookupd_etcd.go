@@ -96,7 +96,7 @@ func (self *NsqLookupdEtcdMgr) Register(value *NsqLookupdNodeInfo) error {
 	self.leaderStr = string(valueB)
 	self.nodeKey = self.createLookupdPath(value)
 	self.nodeValue = string(valueB)
-	_, err = self.client.Create(self.nodeKey, self.nodeValue, ETCD_TTL)
+	_, err = self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 	if err != nil {
 		return err
 	}
@@ -150,6 +150,9 @@ func (self *NsqLookupdEtcdMgr) Stop() {
 func (self *NsqLookupdEtcdMgr) GetClusterEpoch() (EpochType, error) {
 	rsp, err := self.client.Get(self.clusterPath, false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return 0, ErrKeyNotFound
+		}
 		return 0, err
 	}
 
@@ -159,6 +162,9 @@ func (self *NsqLookupdEtcdMgr) GetClusterEpoch() (EpochType, error) {
 func (self *NsqLookupdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
 	rsp, err := self.client.Get(self.lookupdRootPath, false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	lookupdNodeList := make([]NsqLookupdNodeInfo, 0)
@@ -274,6 +280,9 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]NsqdNodeInfo, error) {
 	rsp, err := self.client.Get(self.createNsqdRootPath(), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	nsqdNodes := make([]NsqdNodeInfo, 0)
@@ -336,6 +345,9 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
 		self.Lock()
 		self.ifTopicChanged = true
 		self.Unlock()
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 
@@ -422,6 +434,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	if !ok {
 		rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 		if err != nil {
+			if client.IsKeyNotFound(err) {
+				return nil, ErrKeyNotFound
+			}
 			return nil, err
 		}
 		var mInfo TopicMetaInfo
@@ -438,6 +453,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	}
 	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	var rInfo TopicPartitionReplicaInfo
@@ -455,6 +473,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int) error {
 	_, err := self.client.CreateDir(self.createTopicPartitionPath(topic, partition), 0)
 	if err != nil {
+		if IsEtcdNotFile(err) {
+			return ErrKeyAlreadyExist
+		}
 		return err
 	}
 	// if replica == 1, no need watch leader session
@@ -487,6 +508,9 @@ func (self *NsqLookupdEtcdMgr) CreateTopic(topic string, meta *TopicMetaInfo) er
 	}
 	_, err = self.client.Create(self.createTopicMetaPath(topic), string(metaValue), 0)
 	if err != nil {
+		if IsEtcdNodeExist(err) {
+			return ErrKeyAlreadyExist
+		}
 		return err
 	}
 	self.Lock()
@@ -524,6 +548,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, er
 	var metaInfo TopicMetaInfo
 	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
+		if client.IsKeyNotFound(err) {
+			return metaInfo, ErrKeyNotFound
+		}
 		return metaInfo, err
 	}
 	err = json.Unmarshal([]byte(rsp.Node.Value), &metaInfo)

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/client"
 )
 
 var (
@@ -45,6 +46,24 @@ func initEtcdPeers(machines []string) error {
 func CheckKeyIfExist(err error) bool {
 	etcdErr, ok := err.(*etcd.EtcdError)
 	return ok && etcdErr != nil && etcdErr.ErrorCode == 100
+}
+
+func IsEtcdNotFile(err error) bool {
+	return isEtcdErrorNum(err, client.ErrorCodeNotFile)
+}
+
+func IsEtcdNodeExist(err error) bool {
+	return isEtcdErrorNum(err, client.ErrorCodeNodeExist)
+}
+
+func isEtcdErrorNum(err error, errorCode int) bool {
+	if err != nil {
+		if etcdError, ok := err.(client.Error); ok {
+			return etcdError.Code == errorCode
+		}
+		// NOTE: There are other error types returned
+	}
+	return false
 }
 
 func init() {
