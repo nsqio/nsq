@@ -38,7 +38,7 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
 	var err error
-	err = os.MkdirAll(basepath, 0700)
+	err = os.MkdirAll(basepath, 0755)
 	if err != nil {
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
 		return nil, err

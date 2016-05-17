@@ -96,7 +96,11 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 	t.fullName = GetTopicFullName(t.tname, t.partition)
 
 	t.dataPath = path.Join(opt.DataPath, topicName)
-	os.MkdirAll(t.dataPath, 0755)
+	err := os.MkdirAll(t.dataPath, 0755)
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to create directory: %v ", t.fullName, err)
+		return nil
+	}
 
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true

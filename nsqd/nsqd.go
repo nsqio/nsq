@@ -70,7 +70,11 @@ func New(opts *Options) *NSQD {
 		dataPath = cwd
 		opts.DataPath = dataPath
 	}
-	os.MkdirAll(dataPath, 0755)
+	err := os.MkdirAll(dataPath, 0755)
+	if err != nil {
+		nsqLog.LogErrorf("failed to create directory: %v ", err)
+		os.Exit(1)
+	}
 
 	nsqLog.Logger = opts.Logger
 	n := &NSQD{
@@ -86,7 +90,7 @@ func New(opts *Options) *NSQD {
 
 	n.errValue.Store(errStore{})
 
-	err := n.dl.Lock()
+	err = n.dl.Lock()
 	if err != nil {
 		nsqLog.LogErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
 		os.Exit(1)
