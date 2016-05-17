@@ -1013,6 +1013,8 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 		coordLog.Infof("nodes is less than replica*partition")
 		return nil, nil, ErrNodeUnavailable
 	}
+	coordLog.Infof("alloc current nodes: %v", len(currentNodes))
+
 	existLeaders := make(map[string]struct{})
 	existSlaves := make(map[string]struct{})
 	for _, topicInfo := range existPart {
@@ -1043,6 +1045,7 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 	leaders := make([]string, partitionNum)
 	p := 0
 	currentSelect := 0
+	coordLog.Infof("alloc current exist status: %v, \n %v", existLeaders, existSlaves)
 	for p < partitionNum {
 		if elem, ok := existPart[p]; ok {
 			leaders[p] = elem.Leader
@@ -1055,10 +1058,12 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 				nodeInfo := nodeTopicStats[currentSelect]
 				currentSelect++
 				if _, ok := existLeaders[nodeInfo.NodeID]; ok {
+					coordLog.Infof("ignore for exist other leader(different partition) node: %v", nodeInfo)
 					continue
 				}
 				// TODO: should slave can be used for other leader?
 				if _, ok := existSlaves[nodeInfo.NodeID]; ok {
+					coordLog.Infof("ignore for exist other slave (different partition) node: %v", nodeInfo)
 					continue
 				}
 				leaders[p] = nodeInfo.NodeID
@@ -1090,13 +1095,16 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 				nodeInfo := nodeTopicStats[currentSelect]
 				currentSelect++
 				if nodeInfo.NodeID == leaders[p] {
+					coordLog.Infof("ignore for leader node: %v", nodeInfo)
 					continue
 				}
 				if _, ok := existSlaves[nodeInfo.NodeID]; ok {
+					coordLog.Infof("ignore for exist slave node: %v", nodeInfo)
 					continue
 				}
 				// TODO: should slave can be used for other leader?
 				if _, ok := existLeaders[nodeInfo.NodeID]; ok {
+					coordLog.Infof("ignore for exist other leader(different partition) node: %v", nodeInfo)
 					continue
 				}
 				existSlaves[nodeInfo.NodeID] = struct{}{}
