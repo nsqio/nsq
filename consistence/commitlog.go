@@ -83,7 +83,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	var err error
 	// note: using append mode can make sure write only to end of file
 	// we can do random read without affecting the append behavior
-	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
+	mgr.appender, err = os.OpenFile(mgr.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		coordLog.Infof("open topic commit log file error: %v", err)
 		return nil, err

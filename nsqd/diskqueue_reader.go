@@ -630,7 +630,7 @@ func (d *diskQueueReader) retrieveMetaData() error {
 	var err error
 
 	fileName := d.metaDataFileName()
-	f, err = os.OpenFile(fileName, os.O_RDONLY, 0600)
+	f, err = os.OpenFile(fileName, os.O_RDONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -659,7 +659,7 @@ func (d *diskQueueReader) persistMetaData() error {
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 
 	// write to tmp file
-	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0600)
+	f, err = os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

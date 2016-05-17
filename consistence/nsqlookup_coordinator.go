@@ -137,7 +137,7 @@ func (self *NsqLookupCoordinator) Stop() {
 	self.leadership.Unregister(&self.myNode)
 	self.leadership.Stop()
 	// TODO: exit should avoid while test.
-	//self.nsqlookupRpcServer.stop()
+	self.nsqlookupRpcServer.stop()
 	self.wg.Wait()
 }
 

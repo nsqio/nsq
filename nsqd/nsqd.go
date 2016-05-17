@@ -317,7 +317,7 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 	}
 
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
-	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
