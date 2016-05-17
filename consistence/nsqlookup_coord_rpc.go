@@ -3,6 +3,7 @@ package consistence
 import (
 	"net"
 	"net/rpc"
+	"os"
 )
 
 type RpcLookupReqBase struct {
@@ -59,8 +60,8 @@ func (self *NsqLookupCoordRpcServer) start(ip, port string) error {
 	}
 	self.rpcListener, e = net.Listen("tcp4", ip+":"+port)
 	if e != nil {
-		coordLog.Warningf("listen rpc error : %v", e.Error())
-		return e
+		coordLog.Errorf("listen rpc error : %v", e.Error())
+		os.Exit(1)
 	}
 
 	coordLog.Infof("nsqlookup coordinator rpc listen at : %v", self.rpcListener.Addr())

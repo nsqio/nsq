@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/rpc"
+	"os"
 	"runtime"
 )
 
@@ -94,8 +95,8 @@ func (self *NsqdCoordRpcServer) start(ip, port string) error {
 	}
 	self.rpcListener, e = net.Listen("tcp4", ip+":"+port)
 	if e != nil {
-		coordLog.Warningf("listen rpc error : %v", e.Error())
-		return e
+		coordLog.Errorf("listen rpc error : %v", e.Error())
+		os.Exit(1)
 	}
 
 	coordLog.Infof("nsqd coordinator rpc listen at : %v", self.rpcListener.Addr())
