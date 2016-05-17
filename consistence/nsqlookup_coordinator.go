@@ -1085,9 +1085,8 @@ func (self *NsqLookupCoordinator) allocTopicLeaderAndISR(currentNodes map[string
 		isr := make([]string, 0, replica)
 		isr = append(isr, leaders[p])
 		if len(isr) >= replica {
-			continue
-		}
-		if elem, ok := existPart[p]; ok {
+			// already done with replica
+		} else if elem, ok := existPart[p]; ok {
 			isr = elem.ISR
 		} else {
 			for {
