@@ -751,6 +751,14 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	}
 }
 
+func TestNsqLookupNsqdCreateTopic(t *testing.T) {
+	// on 4 nodes, we should test follow cases
+	// 1 partition 1 replica
+	// 1 partition 3 replica
+	// 3 partition 1 replica
+	// 2 partition 2 replica
+}
+
 func TestNsqLookupNsqdMigrate(t *testing.T) {
 
 }
