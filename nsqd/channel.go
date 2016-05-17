@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,7 +130,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 		backendReaderName := getBackendReaderName(c.topicName, c.topicPart, channelName)
 		backendName := getBackendName(c.topicName, c.topicPart)
 		c.backend = newDiskQueueReader(backendName, backendReaderName,
-			opt.DataPath,
+			path.Join(opt.DataPath, c.topicName),
 			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(opt.MaxMsgSize)+minValidMsgLength,

@@ -3,6 +3,8 @@ package nsqd
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,14 +95,16 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 	}
 	t.fullName = GetTopicFullName(t.tname, t.partition)
 
-	t.dataPath = opt.DataPath
+	t.dataPath = path.Join(opt.DataPath, topicName)
+	os.MkdirAll(t.dataPath, 0755)
+
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true
 		t.backend = newDummyBackendQueueWriter()
 	} else {
 		backendName := getBackendName(t.tname, t.partition)
 		t.backend = newDiskQueueWriter(backendName,
-			opt.DataPath,
+			t.dataPath,
 			opt.MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(opt.MaxMsgSize)+minValidMsgLength,
