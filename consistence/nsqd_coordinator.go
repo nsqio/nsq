@@ -1445,7 +1445,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 			continue
 		}
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
-		rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
+		rpcErr = c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 		if rpcErr == nil {
 			success++
 		} else {
