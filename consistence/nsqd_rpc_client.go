@@ -77,7 +77,7 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}) (interf
 			}
 		} else {
 			if err != nil {
-				coordLog.Infof("rpc call %v error: %v", method, err)
+				coordLog.Debugf("rpc call %v error: %v", method, err)
 			}
 			return reply, err
 		}

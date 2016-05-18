@@ -1449,13 +1449,13 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		if rpcErr == nil {
 			success++
 		} else {
-			coordLog.Warningf("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
+			coordLog.Debugf("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
 			clusterWriteErr = rpcErr
 		}
 	}
 
 	if success != len(tcData.topicInfo.ISR) {
-		coordLog.Warningf("some nodes in isr is not synced with channel consumer offset.")
+		coordLog.Debugf("some nodes in isr is not synced with channel consumer offset.")
 	}
 
 exit:

@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
 )
 
@@ -363,11 +364,17 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
 	if len(c.confirmedMsgs) != 0 {
 		nsqLog.LogWarningf("should empty confirmed queue on slave.")
 	}
-	err := c.backend.SkipReadToOffset(offset)
-	c.currentLastConfirmed = offset
-	if err != nil {
-		if !c.Exiting() {
-			nsqLog.LogErrorf("confirm read failed: %v, offset: %v", err, offset)
+	var err error
+	if offset < c.currentLastConfirmed {
+		nsqLog.Logf("confirm offset less than current: %v, %v", offset, c.currentLastConfirmed)
+	} else {
+		err = c.backend.SkipReadToOffset(offset)
+		if err != nil {
+			if !c.Exiting() {
+				nsqLog.LogErrorf("confirm read failed: %v, offset: %v", err, offset)
+			}
+		} else {
+			c.currentLastConfirmed = offset
 		}
 	}
 	c.confirmMutex.Unlock()
@@ -471,7 +478,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, er
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
-	} else if nsqLog.Level() > 1 {
+	} else if nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqLog.Logf("message %v, offset:%v, finished from client %v",
 			msg.ID, msg.offset, clientID)
 	}
