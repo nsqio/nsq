@@ -138,6 +138,9 @@ func (self *NsqLookupCoordinator) Stop() {
 	self.leadership.Stop()
 	// TODO: exit should avoid while test.
 	self.nsqlookupRpcServer.stop()
+	for _, c := range self.nsqdRpcClients {
+		c.Close()
+	}
 	self.wg.Wait()
 }
 

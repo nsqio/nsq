@@ -1,13 +1,13 @@
 package consistence
 
 import (
-	"net"
-	"net/rpc"
+	"github.com/valyala/gorpc"
 	"time"
 )
 
 type INsqlookupRemoteProxy interface {
 	Reconnect() error
+	Close()
 	RequestJoinCatchup(topic string, partition int, nid string) *CoordErr
 	RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr
 	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, joinISRSession string) *CoordErr
@@ -18,47 +18,55 @@ type INsqlookupRemoteProxy interface {
 type nsqlookupRemoteProxyCreateFunc func(string, time.Duration) (INsqlookupRemoteProxy, error)
 
 type NsqLookupRpcClient struct {
-	remote     string
-	timeout    time.Duration
-	connection *rpc.Client
+	remote  string
+	timeout time.Duration
+	d       *gorpc.Dispatcher
+	c       *gorpc.Client
+	dc      *gorpc.DispatcherClient
 }
 
 func NewNsqLookupRpcClient(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
-	conn, err := net.DialTimeout("tcp", addr, timeout)
-	if err != nil {
-		return nil, err
-	}
+	c := gorpc.NewTCPClient(addr)
+	c.RequestTimeout = timeout
+	c.Start()
+	d := gorpc.NewDispatcher()
+	d.AddService("NsqLookupCoordRpcServer", &NsqLookupCoordRpcServer{})
 
 	return &NsqLookupRpcClient{
-		remote:     addr,
-		timeout:    timeout,
-		connection: rpc.NewClient(conn),
+		remote:  addr,
+		timeout: timeout,
+		d:       d,
+		c:       c,
+		dc:      d.NewServiceClient("NsqLookupCoordRpcServer", c),
 	}, nil
 }
 
+func (self *NsqLookupRpcClient) Close() {
+	self.c.Stop()
+}
+
 func (self *NsqLookupRpcClient) Reconnect() error {
-	conn, err := net.DialTimeout("tcp", self.remote, self.timeout)
-	if err != nil {
-		return err
-	}
-	self.connection.Close()
-	self.connection = rpc.NewClient(conn)
+	self.c.Stop()
+	self.c = gorpc.NewTCPClient(self.remote)
+	self.c.RequestTimeout = self.timeout
+	self.c.Start()
+	self.dc = self.d.NewServiceClient("NsqLookupCoordRpcServer", self.c)
 	return nil
 }
 
-func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}, reply interface{}) error {
+func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}) (interface{}, error) {
 	for {
-		err := self.connection.Call(method, arg, reply)
-		if err == rpc.ErrShutdown {
+		reply, err := self.dc.Call(method, arg)
+		if err != nil && err.(*gorpc.ClientError).Connection {
 			err = self.Reconnect()
 			if err != nil {
-				return err
+				return reply, err
 			}
 		} else {
 			if err != nil {
 				coordLog.Infof("rpc call %v error: %v", method, err)
 			}
-			return err
+			return reply, err
 		}
 	}
 }
@@ -68,9 +76,8 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret CoordErr
-	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestJoinCatchup", req, &ret)
-	return convertRpcError(err, &ret)
+	ret, err := self.CallWithRetry("RequestJoinCatchup", &req)
+	return convertRpcError(err, ret)
 }
 
 func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr {
@@ -78,9 +85,8 @@ func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int,
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret CoordErr
-	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestJoinTopicISR", req, &ret)
-	return convertRpcError(err, &ret)
+	ret, err := self.CallWithRetry("RequestJoinTopicISR", &req)
+	return convertRpcError(err, ret)
 }
 
 func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, joinISRSession string) *CoordErr {
@@ -92,9 +98,8 @@ func (self *NsqLookupRpcClient) ReadyForTopicISR(topic string, partition int, ni
 	req.JoinISRSession = joinISRSession
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret CoordErr
-	err := self.CallWithRetry("NsqLookupCoordRpcServer.ReadyForTopicISR", req, &ret)
-	return convertRpcError(err, &ret)
+	ret, err := self.CallWithRetry("ReadyForTopicISR", &req)
+	return convertRpcError(err, ret)
 }
 
 func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr {
@@ -102,9 +107,8 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int,
 	req.NodeID = nid
 	req.TopicName = topic
 	req.TopicPartition = partition
-	var ret CoordErr
-	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestLeaveFromISR", req, &ret)
-	return convertRpcError(err, &ret)
+	ret, err := self.CallWithRetry("RequestLeaveFromISR", &req)
+	return convertRpcError(err, ret)
 }
 
 func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr {
@@ -113,7 +117,6 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partit
 	req.TopicName = topic
 	req.TopicPartition = partition
 	req.LeaderSession = *leaderSession
-	var ret CoordErr
-	err := self.CallWithRetry("NsqLookupCoordRpcServer.RequestLeaveFromISRByLeader", req, &ret)
-	return convertRpcError(err, &ret)
+	ret, err := self.CallWithRetry("RequestLeaveFromISRByLeader", &req)
+	return convertRpcError(err, ret)
 }

@@ -139,6 +139,11 @@ func (n *NSQD) GetStats() []TopicStats {
 		}
 	}
 	n.RUnlock()
+
+	return n.getTopicStats(realTopics)
+}
+
+func (n *NSQD) getTopicStats(realTopics []*Topic) []TopicStats {
 	sort.Sort(TopicsByName{realTopics})
 	topics := make([]TopicStats, 0, len(realTopics))
 	for _, t := range realTopics {
@@ -162,4 +167,19 @@ func (n *NSQD) GetStats() []TopicStats {
 		topics = append(topics, NewTopicStats(t, channels))
 	}
 	return topics
+}
+
+func (n *NSQD) GetTopicStats(topic string) []TopicStats {
+	n.RLock()
+	realTopics := make([]*Topic, 0, len(n.topicMap))
+	for name, topicParts := range n.topicMap {
+		if name != topic {
+			continue
+		}
+		for _, t := range topicParts {
+			realTopics = append(realTopics, t)
+		}
+	}
+	n.RUnlock()
+	return n.getTopicStats(realTopics)
 }

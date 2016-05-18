@@ -1,8 +1,8 @@
 package consistence
 
 import (
+	"github.com/valyala/gorpc"
 	"net"
-	"net/rpc"
 	"os"
 )
 
@@ -42,75 +42,52 @@ type RpcReqLeaveFromISRByLeader struct {
 
 type NsqLookupCoordRpcServer struct {
 	nsqLookupCoord *NsqLookupCoordinator
-	rpcListener    net.Listener
-	rpcServer      *rpc.Server
+	rpcDispatcher  *gorpc.Dispatcher
+	rpcServer      *gorpc.Server
 }
 
 func NewNsqLookupCoordRpcServer(coord *NsqLookupCoordinator) *NsqLookupCoordRpcServer {
 	return &NsqLookupCoordRpcServer{
 		nsqLookupCoord: coord,
-		rpcServer:      rpc.NewServer(),
+		rpcDispatcher:  gorpc.NewDispatcher(),
 	}
 }
 
 func (self *NsqLookupCoordRpcServer) start(ip, port string) error {
-	e := self.rpcServer.Register(self)
+	self.rpcDispatcher.AddService("NsqLookupCoordRpcServer", self)
+	self.rpcServer = gorpc.NewTCPServer(net.JoinHostPort(ip, port), self.rpcDispatcher.NewHandlerFunc())
+	e := self.rpcServer.Start()
 	if e != nil {
-		panic(e)
-	}
-	self.rpcListener, e = net.Listen("tcp4", ip+":"+port)
-	if e != nil {
-		coordLog.Errorf("listen rpc error : %v", e.Error())
+		coordLog.Errorf("listen rpc error : %v", e)
 		os.Exit(1)
 	}
 
-	coordLog.Infof("nsqlookup coordinator rpc listen at : %v", self.rpcListener.Addr())
-	self.rpcServer.Accept(self.rpcListener)
+	coordLog.Infof("nsqlookup coordinator rpc listen at : %v", self.rpcServer.Listener.ListenAddr())
 	return nil
 }
 
 func (self *NsqLookupCoordRpcServer) stop() {
-	if self.rpcListener != nil {
-		self.rpcListener.Close()
+	if self.rpcServer != nil {
+		self.rpcServer.Stop()
 	}
 }
 
-func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req RpcReqJoinCatchup, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
-	if err != nil {
-		*ret = *err
-	}
-	return nil
+func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req *RpcReqJoinCatchup) *CoordErr {
+	return self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
 }
 
-func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req RpcReqJoinISR, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
-	if err != nil {
-		*ret = *err
-	}
-	return nil
+func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req *RpcReqJoinISR) *CoordErr {
+	return self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
 }
 
-func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req RpcReadyForISR, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
-	if err != nil {
-		*ret = *err
-	}
-	return nil
+func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req *RpcReadyForISR) *CoordErr {
+	return self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
 }
 
-func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req RpcReqLeaveFromISR, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
-	if err != nil {
-		*ret = *err
-	}
-	return nil
+func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req *RpcReqLeaveFromISR) *CoordErr {
+	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
 }
 
-func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req RpcReqLeaveFromISRByLeader, ret *CoordErr) error {
-	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
-	if err != nil {
-		*ret = *err
-	}
-	return nil
+func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req *RpcReqLeaveFromISRByLeader) *CoordErr {
+	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
 }

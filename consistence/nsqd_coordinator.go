@@ -73,6 +73,7 @@ type NsqdCoordinator struct {
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
+	rpcClientMutex         sync.Mutex
 	nsqdRpcClients         map[string]*NsqdRpcClient
 	flushNotifyChan        chan TopicPartitionID
 	stopChan               chan struct{}
@@ -119,6 +120,8 @@ func (self *NsqdCoordinator) SetLeadershipMgr(l NSQDLeadership) {
 }
 
 func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *CoordErr) {
+	self.rpcClientMutex.Lock()
+	defer self.rpcClientMutex.Unlock()
 	c, ok := self.nsqdRpcClients[nid]
 	var err error
 	if !ok {
@@ -164,6 +167,9 @@ func (self *NsqdCoordinator) Stop() {
 	close(self.stopChan)
 	self.rpcServer.stop()
 	self.rpcServer = nil
+	for _, c := range self.nsqdRpcClients {
+		c.Close()
+	}
 	self.wg.Wait()
 }
 
@@ -481,6 +487,7 @@ func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) *Co
 		coordLog.Infof("get lookup failed: %v", err)
 		return err
 	}
+	defer c.Close()
 	err = c.RequestJoinCatchup(topic, partition, self.myNode.GetID())
 	if err != nil {
 		coordLog.Infof("request join catchup failed: %v", err)
@@ -494,6 +501,7 @@ func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartitionMetaIn
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	err = c.RequestJoinTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID())
 	return err
 }
@@ -506,6 +514,7 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartitionMet
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, joinSession)
 }
 
@@ -515,6 +524,7 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
 }
 
@@ -536,6 +546,7 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 	return c.RequestLeaveFromISRByLeader(topic, partition, self.myNode.GetID(), &topicCoord.topicLeaderSession)
 }
 
@@ -949,6 +960,8 @@ type localCommitFunc func() error
 type localRollbackFunc func()
 type refreshCoordFunc func(*coordData)
 type slaveSyncFunc func(*NsqdRpcClient, string, *coordData) *CoordErr
+type slaveAsyncFunc func(*NsqdRpcClient, string, *coordData) *SlaveAsyncWriteResult
+
 type handleSyncResultFunc func(int, *coordData) bool
 
 type checkDupFunc func(*coordData) bool

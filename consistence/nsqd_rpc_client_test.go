@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/nsqd"
+	"github.com/valyala/gorpc"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -202,10 +203,9 @@ func TestNsqdRPCClient(t *testing.T) {
 	nsqdCoord.Start()
 	defer nsqdCoord.Stop()
 	time.Sleep(time.Second * 2)
-	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcListener.Addr().String(), time.Second)
+	client, err := NewNsqdRpcClient(nsqdCoord.rpcServer.rpcServer.Listener.ListenAddr().String(), time.Second)
 	test.Nil(t, err)
-	var rspInt int32
-	err = client.CallWithRetry("NsqdCoordinator.TestRpcCallNotExist", "req", &rspInt)
+	_, err = client.CallWithRetry("TestRpcCallNotExist", "req")
 	test.NotNil(t, err)
 
 	rsp, rpcErr := client.CallRpcTest("reqdata")
@@ -214,4 +214,9 @@ func TestNsqdRPCClient(t *testing.T) {
 	test.Equal(t, rpcErr.ErrCode, RpcNoErr)
 	test.Equal(t, rpcErr.ErrMsg, "reqdata")
 	test.Equal(t, rpcErr.ErrType, CoordCommonErr)
+	timeoutErr := client.CallRpcTesttimeout("reqdata")
+	test.NotNil(t, timeoutErr)
+	test.Equal(t, timeoutErr.(*gorpc.ClientError).Timeout, true)
+	time.Sleep(time.Second * 3)
+	client.Close()
 }

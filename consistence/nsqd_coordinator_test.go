@@ -32,6 +32,9 @@ func (self *fakeLookupRemoteProxy) Reconnect() error {
 	return nil
 }
 
+func (self *fakeLookupRemoteProxy) Close() {
+}
+
 func (self *fakeLookupRemoteProxy) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting join catchup")
