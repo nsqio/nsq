@@ -514,7 +514,6 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 		return nil, err
 	}
 
-	ret.DataList = make([][]byte, 0, len(ret.Logs))
 	var localErr error
 	ret.Logs, localErr = tcData.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
@@ -523,12 +522,25 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 		}
 		return nil, localErr
 	}
-	for _, l := range ret.Logs {
-		d, err := self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, l.MsgOffset, l.MsgSize)
-		if err != nil {
-			return nil, err
+	offsetList := make([]int64, len(ret.Logs))
+	sizeList := make([]int32, len(ret.Logs))
+	totalSize := int32(0)
+	for i, l := range ret.Logs {
+		offsetList[i] = l.MsgOffset
+		sizeList[i] = l.MsgSize
+		totalSize += l.MsgSize
+		// note: this should be large than the max message body size
+		if totalSize > MAX_LOG_PULL_BYTES {
+			coordLog.Warningf("pulling too much log data at one time: %v, %v", totalSize, i)
+			offsetList = offsetList[:i]
+			sizeList = sizeList[:i]
+			break
 		}
-		ret.DataList = append(ret.DataList, d)
+	}
+
+	ret.DataList, err = self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, offsetList, sizeList)
+	if err != nil {
+		return nil, err
 	}
 	return &ret, nil
 }

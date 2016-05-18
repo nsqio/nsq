@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"io"
 	"os"
 	"path"
@@ -165,7 +166,7 @@ func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
 	newPos := d.endPos
 	var err error
 	if voffset > d.virtualEnd {
-		nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
+		nsqLog.LogErrorf("internal skip error : skipping overflow to : %v, %v", voffset, d.virtualEnd)
 		return ErrMoveOffsetInvalid
 	} else if voffset == d.virtualEnd {
 		newPos = d.endPos
@@ -215,7 +216,7 @@ func (d *DiskQueueSnapshot) ReadRaw(size int32) ([]byte, error) {
 			if err != nil {
 				return result, err
 			}
-			nsqLog.Logf("DISKQUEUE snapshot(%s): readRaw() opened %s", d.readFrom, curFileName)
+			nsqLog.LogDebugf("DISKQUEUE snapshot(%s): readRaw() opened %s", d.readFrom, curFileName)
 			if d.readPos.Pos > 0 {
 				_, err = d.readFile.Seek(d.readPos.Pos, 0)
 				if err != nil {
@@ -261,8 +262,10 @@ func (d *DiskQueueSnapshot) ReadRaw(size int32) ([]byte, error) {
 		d.readPos.Pos = d.readPos.Pos + currentRead
 		readOffset += int32(currentRead)
 		d.virtualReadOffset += BackendOffset(currentRead)
-		nsqLog.LogDebugf("===snapshot read move forward: %v, %v, %v", oldPos,
-			d.virtualReadOffset, d.readPos)
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("===snapshot read move forward: %v, %v, %v", oldPos,
+				d.virtualReadOffset, d.readPos)
+		}
 
 		isEnd := false
 		if d.readPos.FileNum < d.endPos.FileNum {

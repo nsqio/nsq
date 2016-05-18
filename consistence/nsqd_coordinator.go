@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	MAX_WRITE_RETRY   = 10
-	MAX_CATCHUP_RETRY = 5
-	MAX_LOG_PULL      = 16
+	MAX_WRITE_RETRY    = 10
+	MAX_CATCHUP_RETRY  = 5
+	MAX_LOG_PULL       = 1000
+	MAX_LOG_PULL_BYTES = 1024 * 1024 * 32
 )
 
 var (
@@ -1500,7 +1501,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	return nil
 }
 
-func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offset int64, size int32) ([]byte, *CoordErr) {
+func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offsetList []int64, sizeList []int32) ([][]byte, *CoordErr) {
 	//read directly from local topic data used for pulling data by replicas
 	t, err := self.localNsqd.GetExistingTopic(topic, partition)
 	if err != nil {
@@ -1509,18 +1510,23 @@ func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offse
 	if t.GetTopicPart() != partition {
 		return nil, ErrLocalTopicPartitionMismatch
 	}
+	dataList := make([][]byte, len(offsetList))
 	snap := t.GetDiskQueueSnapshot()
-	err = snap.SeekTo(nsqd.BackendOffset(offset))
-	if err != nil {
-		coordLog.Infof("read topic data at offset %v, size: %v, error: %v", offset, size, err)
-		return nil, ErrLocalTopicDataCorrupt
+	for i, offset := range offsetList {
+		size := sizeList[i]
+		err = snap.SeekTo(nsqd.BackendOffset(offset))
+		if err != nil {
+			coordLog.Infof("read topic data at offset %v, size: %v, error: %v", offset, size, err)
+			return nil, ErrLocalTopicDataCorrupt
+		}
+		buf, err := snap.ReadRaw(size)
+		if err != nil {
+			coordLog.Infof("read topic data at offset %v, size:%v, error: %v", offset, size, err)
+			return nil, ErrLocalTopicDataCorrupt
+		}
+		dataList[i] = buf
 	}
-	buf, err := snap.ReadRaw(size)
-	if err != nil {
-		coordLog.Infof("read topic data at offset %v, size:%v, error: %v", offset, size, err)
-		return nil, ErrLocalTopicDataCorrupt
-	}
-	return buf, nil
+	return dataList, nil
 }
 
 // flush cached data to disk. This should be called when topic isr list
