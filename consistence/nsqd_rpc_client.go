@@ -204,6 +204,9 @@ func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaI
 	req.TopicPartition = topicInfo.Partition
 	var rsp *RpcCommitLogRsp
 	rspVar, err := self.CallWithRetry("GetCommitLogFromOffset", &req)
+	if err != nil {
+		return 0, CommitLogData{}, convertRpcError(err, nil)
+	}
 	rsp = rspVar.(*RpcCommitLogRsp)
 	return rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
 }
@@ -217,8 +220,11 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
 	r.LogMaxNum = num
 	var ret *RpcPullCommitLogsRsp
 	retVar, err := self.CallWithRetry("PullCommitLogsAndData", &r)
+	if err != nil {
+		return nil, nil, err
+	}
 	ret = retVar.(*RpcPullCommitLogsRsp)
-	return ret.Logs, ret.DataList, err
+	return ret.Logs, ret.DataList, nil
 }
 
 func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {
@@ -226,6 +232,9 @@ func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {
 	req.Data = data
 	var ret *RpcTestRsp
 	retVar, err := self.CallWithRetry("TestRpcError", &req)
+	if err != nil {
+		return "", convertRpcError(err, nil)
+	}
 	ret = retVar.(*RpcTestRsp)
 	return ret.RspData, convertRpcError(err, ret.RetErr)
 }

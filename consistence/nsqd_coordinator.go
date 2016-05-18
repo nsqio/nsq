@@ -199,7 +199,7 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIP, self.lookupLeader.RpcPort), time.Second)
+	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIP, self.lookupLeader.RpcPort), RPC_TIMEOUT)
 	if err == nil {
 		return c, nil
 	}
