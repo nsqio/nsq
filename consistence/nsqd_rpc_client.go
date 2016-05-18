@@ -1,8 +1,8 @@
 package consistence
 
 import (
+	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/nsqd"
-	"github.com/valyala/gorpc"
 	"time"
 )
 

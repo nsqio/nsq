@@ -3,9 +3,9 @@ package consistence
 import (
 	"errors"
 	"fmt"
+	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/nsqd"
-	"github.com/valyala/gorpc"
 	"io/ioutil"
 	"os"
 	"strconv"

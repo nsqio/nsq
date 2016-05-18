@@ -1,7 +1,7 @@
 package consistence
 
 import (
-	"github.com/valyala/gorpc"
+	"github.com/absolute8511/gorpc"
 	"time"
 )
 
