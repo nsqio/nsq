@@ -1488,7 +1488,6 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		return ErrLocalMissingTopic
 	}
 	ch := topic.GetChannel(channelName)
-	ch.DisableConsume(true)
 	currentEnd := ch.GetChannelEnd()
 	if nsqd.BackendOffset(offset.VOffset) > currentEnd {
 		topic.ForceFlush()

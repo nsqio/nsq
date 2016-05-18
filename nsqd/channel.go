@@ -665,7 +665,6 @@ func (c *Channel) IsConsumeDisabled() bool {
 }
 
 func (c *Channel) DisableConsume(disable bool) {
-	defer c.notifyCall(c)
 	c.Lock()
 	defer c.Unlock()
 	if disable {
@@ -720,6 +719,7 @@ func (c *Channel) DisableConsume(disable bool) {
 		default:
 		}
 	}
+	c.notifyCall(c)
 }
 
 func (c *Channel) resetReaderToConfirmed() {

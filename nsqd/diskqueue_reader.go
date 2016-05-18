@@ -421,13 +421,13 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 	newPos := d.queueEndInfo.EndOffset
 	var err error
 	if voffset < d.virtualReadOffset {
-		nsqLog.Logf("internal skip backward : %v, current: %v", voffset, d.virtualReadOffset)
+		nsqLog.LogDebugf("internal skip backward : %v, current: %v", voffset, d.virtualReadOffset)
 		err = d.internalConfirm(voffset)
 		if err != nil {
 			return err
 		}
 		if voffset < d.virtualConfirmedOffset {
-			nsqLog.LogErrorf("skip backward to less than confirmed: %v, %v", voffset, d.virtualConfirmedOffset)
+			nsqLog.Logf("skip backward to less than confirmed: %v, %v", voffset, d.virtualConfirmedOffset)
 			return ErrMoveOffsetInvalid
 		}
 	}
