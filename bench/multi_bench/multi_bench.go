@@ -38,6 +38,7 @@ var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
 var dumpCheck map[uint64]int
+var mutex sync.Mutex
 
 func init() {
 	flagSet.Var(&topics, "bench-topics", "the topic list for benchmark [t1, t2, t3]")
@@ -430,10 +431,10 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 			continue
 		}
 		msgCount += int64(len(batch))
+		atomic.AddInt64(&currentMsgCount, int64(len(batch)))
 		if time.Now().After(endTime) {
 			break
 		}
-		atomic.AddInt64(&currentMsgCount, int64(len(batch)))
 	}
 	atomic.AddInt64(&totalMsgCount, msgCount)
 }
@@ -443,6 +444,8 @@ type consumeHandler struct {
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 	mid := uint64(nsq.GetNewMessageID(message.ID))
+	mutex.Lock()
+	defer mutex.Unlock()
 	if cnt, ok := dumpCheck[mid]; ok {
 		atomic.AddInt64(&totalDumpCount, 1)
 		dumpCheck[mid] = cnt + 1
