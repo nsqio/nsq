@@ -142,6 +142,7 @@ func (self *NsqLookupCoordinator) Stop() {
 		c.Close()
 	}
 	self.wg.Wait()
+	coordLog.Infof("nsqlookup coordinator stopped.")
 }
 
 func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {

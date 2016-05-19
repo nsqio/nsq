@@ -192,6 +192,7 @@ func main() {
 	if err := svc.Run(prg, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGINT); err != nil {
 		log.Fatal(err)
 	}
+	log.Println("app exited.")
 }
 
 func (p *program) Init(env svc.Environment) error {

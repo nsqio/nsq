@@ -158,6 +158,7 @@ func (s *NsqdServer) GetNsqdInstance() *nsqd.NSQD {
 }
 
 func (s *NsqdServer) Exit() {
+	nsqd.NsqLogger().Logf("nsqd server stopping.")
 	if s.ctx.nsqdCoord != nil {
 		s.ctx.nsqdCoord.Stop()
 	}
@@ -178,6 +179,7 @@ func (s *NsqdServer) Exit() {
 
 	close(s.exitChan)
 	s.waitGroup.Wait()
+	nsqd.NsqLogger().Logf("nsqd server stopped.")
 }
 
 func (s *NsqdServer) Main() {
