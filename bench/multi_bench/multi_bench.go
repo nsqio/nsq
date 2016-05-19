@@ -33,9 +33,11 @@ var (
 
 var totalMsgCount int64
 var totalSubMsgCount int64
+var totalDumpCount int64
 var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
+var dumpCheck map[uint64]int
 
 func init() {
 	flagSet.Var(&topics, "bench-topics", "the topic list for benchmark [t1, t2, t3]")
@@ -244,7 +246,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 	for j := 0; j < *concurrency; j++ {
 		wg.Add(1)
 		go func(id int, topic string) {
-			subWorker(quitChan, (*runfor)*100, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
+			subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
 			wg.Done()
 		}(j, topics[j%len(topics)])
 		<-rdyChan
@@ -254,26 +256,35 @@ func startCheckData(msg []byte, batch [][]byte) {
 
 	go func() {
 		prev := int64(0)
+		prevSub := int64(0)
 		for {
 			time.Sleep(time.Second * 5)
 			currentTmc := atomic.LoadInt64(&currentMsgCount)
 			totalSub := atomic.LoadInt64(&totalSubMsgCount)
-			log.Printf("pub total %v - sub total %v \n",
+			log.Printf("pub total %v - sub total %v, dump: %v \n",
 				currentTmc,
-				totalSub)
-			if prev == currentTmc && totalSub >= currentTmc {
+				totalSub, atomic.LoadInt64(&totalDumpCount))
+			if prev == currentTmc && prevSub == totalSub && totalSub >= currentTmc {
 				close(quitChan)
 				return
 			}
 			prev = currentTmc
+			prevSub = totalSub
 		}
 	}()
 
 	wg.Wait()
 
-	log.Printf("pub total %v - sub total %v \n",
+	log.Printf("pub total %v - sub total %v, dump: %v \n",
 		atomic.LoadInt64(&totalMsgCount),
-		atomic.LoadInt64(&totalSubMsgCount))
+		atomic.LoadInt64(&totalSubMsgCount),
+		atomic.LoadInt64(&totalDumpCount))
+
+	for id, cnt := range dumpCheck {
+		if cnt > 2 {
+			log.Printf("dump id : %v, cnt: %v\n", id, cnt)
+		}
+	}
 }
 
 func startBenchLookup() {
@@ -370,8 +381,10 @@ func startBenchLookupRegUnreg() {
 func main() {
 	flagSet.Parse(os.Args[1:])
 	config = nsq.NewConfig()
+	config.MsgTimeout = time.Second * 10
 
 	log.SetPrefix("[bench_writer] ")
+	dumpCheck = make(map[uint64]int, 1000)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -429,6 +442,13 @@ type consumeHandler struct {
 }
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
+	mid := uint64(nsq.GetNewMessageID(message.ID))
+	if cnt, ok := dumpCheck[mid]; ok {
+		atomic.AddInt64(&totalDumpCount, 1)
+		dumpCheck[mid] = cnt + 1
+		return nil
+	}
+	dumpCheck[mid] = 1
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {
 		return errors.New("failed by need.")
