@@ -27,10 +27,11 @@ var (
 	batchSize     = flagSet.Int("batch-size", 20, "batch size of messages")
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
-	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub)")
+	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata)")
 )
 
 var totalMsgCount int64
+var totalSubMsgCount int64
 var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
@@ -113,7 +114,7 @@ func startBenchPub(msg []byte, batch [][]byte) {
 		float64(tmc)/duration.Seconds(),
 		float64(duration/time.Microsecond)/(float64(tmc)+0.01))
 
-	log.Printf("total error : %v\n", atomic.LoadInt64(&totalErrCount))
+	log.Printf("total count: %v, total error : %v\n", tmc, atomic.LoadInt64(&totalErrCount))
 }
 
 func startBenchSub() {
@@ -121,12 +122,13 @@ func startBenchSub() {
 
 	log.SetPrefix("[bench_reader] ")
 
+	quitChan := make(chan int)
 	goChan := make(chan int)
 	rdyChan := make(chan int)
 	for j := 0; j < *concurrency; j++ {
 		wg.Add(1)
 		go func(id int, topic string) {
-			subWorker(*runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
+			subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
 			wg.Done()
 		}(j, topics[j%len(topics)])
 		<-rdyChan
@@ -144,15 +146,18 @@ func startBenchSub() {
 
 	start := time.Now()
 	close(goChan)
+	close(quitChan)
 	wg.Wait()
 	end := time.Now()
 	duration := end.Sub(start)
-	tmc := atomic.LoadInt64(&totalMsgCount)
+	tmc := atomic.LoadInt64(&totalSubMsgCount)
 	log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op",
 		duration,
 		float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
 		float64(tmc)/duration.Seconds(),
 		float64(duration/time.Microsecond)/float64(tmc))
+
+	log.Printf("total count: %v\n", tmc)
 }
 
 func startSimpleTest(msg []byte, batch [][]byte) {
@@ -200,6 +205,117 @@ func startSimpleTest(msg []byte, batch [][]byte) {
 	// nsqd basic tcp operation
 }
 
+// check the pub data and sub data is the same at any time.
+func startCheckData(msg []byte, batch [][]byte) {
+	var wg sync.WaitGroup
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	if err != nil {
+		log.Printf("init error : %v", err)
+		return
+	}
+	pubMgr.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	err = pubMgr.ConnectToNSQLookupd(*lookupAddress)
+	if err != nil {
+		log.Printf("lookup connect error : %v", err)
+		return
+	}
+
+	for _, t := range topics {
+		err = pubMgr.Publish(t, msg)
+		if err != nil {
+			log.Printf("topic pub error : %v", err)
+			return
+		}
+		atomic.AddInt64(&totalMsgCount, 1)
+	}
+	goChan := make(chan int)
+	rdyChan := make(chan int)
+	for j := 0; j < *concurrency; j++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pubWorker(*runfor, pubMgr, *batchSize, batch, topics, rdyChan, goChan)
+		}()
+		<-rdyChan
+	}
+
+	quitChan := make(chan int)
+	for j := 0; j < *concurrency; j++ {
+		wg.Add(1)
+		go func(id int, topic string) {
+			subWorker(quitChan, (*runfor)*100, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
+			wg.Done()
+		}(j, topics[j%len(topics)])
+		<-rdyChan
+	}
+
+	close(goChan)
+
+	go func() {
+		prev := int64(0)
+		for {
+			time.Sleep(time.Second * 5)
+			currentTmc := atomic.LoadInt64(&currentMsgCount)
+			totalSub := atomic.LoadInt64(&totalSubMsgCount)
+			log.Printf("pub total %v - sub total %v \n",
+				currentTmc,
+				totalSub)
+			if prev == currentTmc && totalSub >= currentTmc {
+				close(quitChan)
+				return
+			}
+			prev = currentTmc
+		}
+	}()
+
+	wg.Wait()
+
+	log.Printf("pub total %v - sub total %v \n",
+		atomic.LoadInt64(&totalMsgCount),
+		atomic.LoadInt64(&totalSubMsgCount))
+}
+
+func startBenchLookup() {
+	// lookup operation
+	var wg sync.WaitGroup
+	start := time.Now()
+	eachCnt := 1000
+	for j := 0; j < *concurrency; j++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cluster := clusterinfo.New(log.New(os.Stderr, "", log.LstdFlags), http_api.NewClient(nil))
+			tmpList := make([]string, 0)
+			tmpList = append(tmpList, *lookupAddress)
+			currentTopics, err := cluster.GetLookupdTopics(tmpList)
+			if err != nil {
+				log.Printf("failed : %v\n", err)
+				return
+			} else {
+				log.Printf("return: %v\n", topics)
+			}
+			cnt := eachCnt
+			for cnt > 0 {
+				cnt--
+				for _, t := range currentTopics {
+					_, _, err := cluster.GetLookupdTopicProducers(t, tmpList)
+					if err != nil {
+						log.Printf("failed : %v\n", err)
+					}
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}()
+	}
+	wg.Wait()
+	runSec := time.Now().Sub(start).Seconds() + 1
+	log.Printf(" %v request done in %v seconds, qps: %v", *concurrency*eachCnt, runSec,
+		float64(*concurrency*eachCnt)/runSec)
+}
+
+func startBenchLookupRegUnreg() {
+}
+
 func main() {
 	flagSet.Parse(os.Args[1:])
 	config = nsq.NewConfig()
@@ -218,6 +334,12 @@ func main() {
 		startBenchPub(msg, batch)
 	} else if *benchCase == "benchsub" {
 		startBenchSub()
+	} else if *benchCase == "checkdata" {
+		startCheckData(msg, batch)
+	} else if *benchCase == "benchlookup" {
+		startBenchLookup()
+	} else if *benchCase == "benchreg" {
+		startBenchLookupRegUnreg()
 	}
 }
 
@@ -256,14 +378,14 @@ type consumeHandler struct {
 }
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
-	newCount := atomic.AddInt64(&totalMsgCount, 1)
+	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {
 		return errors.New("failed by need.")
 	}
 	return nil
 }
 
-func subWorker(td time.Duration, lookupAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
+func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
 	consumer, err := nsq.NewConsumer(topic, channel, config)
 	if err != nil {
 		panic(err.Error())
@@ -275,6 +397,7 @@ func subWorker(td time.Duration, lookupAddr string, topic string, channel string
 	done := make(chan struct{})
 	go func() {
 		time.Sleep(td)
+		<-quitChan
 		consumer.Stop()
 		<-consumer.StopChan
 		close(done)
