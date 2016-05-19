@@ -1,4 +1,4 @@
-package nsqdserver
+package clusterinfo
 
 import (
 	"encoding/binary"
@@ -16,23 +16,15 @@ import (
 // A lookupPeer instance is designed to connect lazily to nsqlookupd and reconnect
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
-type lookupPeer struct {
+type LookupPeer struct {
 	l               levellogger.Logger
 	addr            string
 	conn            net.Conn
 	state           int32
-	connectCallback func(*lookupPeer)
+	connectCallback func(*LookupPeer)
 	maxBodySize     int64
 	Info            peerInfo
 }
-
-const (
-	stateInit = iota
-	stateDisconnected
-	stateConnected
-	stateSubscribed
-	stateClosing
-)
 
 // peerInfo contains metadata for a lookupPeer instance (and is JSON marshalable)
 type peerInfo struct {
@@ -46,11 +38,19 @@ var (
 	lookupTimeout = time.Second * 5
 )
 
+const (
+	stateInit = iota
+	stateDisconnected
+	stateConnected
+	stateSubscribed
+	stateClosing
+)
+
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, maxBodySize int64, l levellogger.Logger, connectCallback func(*lookupPeer)) *lookupPeer {
-	return &lookupPeer{
+func NewLookupPeer(addr string, maxBodySize int64, l levellogger.Logger, connectCallback func(*LookupPeer)) *LookupPeer {
+	return &LookupPeer{
 		l:               l,
 		addr:            addr,
 		state:           stateDisconnected,
@@ -60,7 +60,7 @@ func newLookupPeer(addr string, maxBodySize int64, l levellogger.Logger, connect
 }
 
 // Connect will Dial the specified address, with timeouts
-func (lp *lookupPeer) Connect() error {
+func (lp *LookupPeer) Connect() error {
 	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
 	conn, err := net.DialTimeout("tcp", lp.addr, lookupTimeout)
 	if err != nil {
@@ -71,24 +71,24 @@ func (lp *lookupPeer) Connect() error {
 }
 
 // String returns the specified address
-func (lp *lookupPeer) String() string {
+func (lp *LookupPeer) String() string {
 	return lp.addr
 }
 
 // Read implements the io.Reader interface, adding deadlines
-func (lp *lookupPeer) Read(data []byte) (int, error) {
+func (lp *LookupPeer) Read(data []byte) (int, error) {
 	lp.conn.SetReadDeadline(time.Now().Add(lookupTimeout))
 	return lp.conn.Read(data)
 }
 
 // Write implements the io.Writer interface, adding deadlines
-func (lp *lookupPeer) Write(data []byte) (int, error) {
+func (lp *LookupPeer) Write(data []byte) (int, error) {
 	lp.conn.SetWriteDeadline(time.Now().Add(lookupTimeout))
 	return lp.conn.Write(data)
 }
 
 // Close implements the io.Closer interface
-func (lp *lookupPeer) Close() error {
+func (lp *LookupPeer) Close() error {
 	lp.state = stateDisconnected
 	if lp.conn != nil {
 		return lp.conn.Close()
@@ -102,7 +102,7 @@ func (lp *lookupPeer) Close() error {
 // reconnecting in the event of a failure.
 //
 // It returns the response from nsqlookupd as []byte
-func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
+func (lp *LookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 	initialState := lp.state
 	if lp.state != stateConnected {
 		err := lp.Connect()

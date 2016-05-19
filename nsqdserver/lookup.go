@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 )
 
-func connectCallback(ctx *context, hostname string, syncTopicChan chan *lookupPeer, exitChan chan int) func(*lookupPeer) {
-	return func(lp *lookupPeer) {
+func connectCallback(ctx *context, hostname string, syncTopicChan chan *clusterinfo.LookupPeer, exitChan chan int) func(*clusterinfo.LookupPeer) {
+	return func(lp *clusterinfo.LookupPeer) {
 		ci := make(map[string]interface{})
 		ci["id"] = strconv.Itoa(int(ctx.nsqd.GetOpts().ID)) + ":" + strconv.Itoa(ctx.realTCPAddr().Port)
 		ci["version"] = version.Binary
@@ -53,9 +54,9 @@ func connectCallback(ctx *context, hostname string, syncTopicChan chan *lookupPe
 }
 
 func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan chan struct{}, exitChan chan int) {
-	var lookupPeers []*lookupPeer
+	var lookupPeers []*clusterinfo.LookupPeer
 	var lookupAddrs []string
-	syncTopicChan := make(chan *lookupPeer)
+	syncTopicChan := make(chan *clusterinfo.LookupPeer)
 	changed := true
 
 	hostname, err := os.Hostname()
@@ -75,13 +76,13 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 			allHosts = append(allHosts, discoveryAddrs...)
 			nsqd.NsqLogger().Logf("all lookup hosts: %v", allHosts)
 
-			var tmpPeers []*lookupPeer
+			var tmpPeers []*clusterinfo.LookupPeer
 			var tmpAddrs []string
 
 			for _, lp := range lookupPeers {
-				if in(lp.addr, allHosts) {
+				if in(lp.String(), allHosts) {
 					tmpPeers = append(tmpPeers, lp)
-					tmpAddrs = append(tmpAddrs, lp.addr)
+					tmpAddrs = append(tmpAddrs, lp.String())
 					continue
 				}
 				nsqd.NsqLogger().Logf("LOOKUP(%s): removing peer", lp)
@@ -95,7 +96,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 					continue
 				}
 				nsqd.NsqLogger().Logf("LOOKUP(%s): adding peer", host)
-				lookupPeer := newLookupPeer(host, n.ctx.getOpts().MaxBodySize, n.ctx.getOpts().Logger,
+				lookupPeer := clusterinfo.NewLookupPeer(host, n.ctx.getOpts().MaxBodySize, n.ctx.getOpts().Logger,
 					connectCallback(n.ctx, hostname, syncTopicChan, exitChan))
 				lookupPeer.Command(nil) // start the connection
 				lookupPeers = append(lookupPeers, lookupPeer)
@@ -108,12 +109,12 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 		select {
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
-			for _, lookupPeer := range lookupPeers {
-				nsqd.NsqLogger().LogDebugf("LOOKUPD(%s): sending heartbeat", lookupPeer)
+			for _, lp := range lookupPeers {
+				nsqd.NsqLogger().LogDebugf("LOOKUPD(%s): sending heartbeat", lp)
 				cmd := nsq.Ping()
-				_, err := lookupPeer.Command(cmd)
+				_, err := lp.Command(cmd)
 				if err != nil {
-					nsqd.NsqLogger().Logf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err)
+					nsqd.NsqLogger().Logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
 				}
 			}
 			// discovery the new lookup
@@ -173,13 +174,13 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 				}
 			}
 
-			errLookupPeers := make([]*lookupPeer, 0)
-			for _, lookupPeer := range lookupPeers {
-				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
-				_, err := lookupPeer.Command(cmd)
+			errLookupPeers := make([]*clusterinfo.LookupPeer, 0)
+			for _, lp := range lookupPeers {
+				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s %s", lp, branch, cmd)
+				_, err := lp.Command(cmd)
 				if err != nil {
-					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err)
-					errLookupPeers = append(errLookupPeers, lookupPeer)
+					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
+					errLookupPeers = append(errLookupPeers, lp)
 				}
 			}
 			if len(errLookupPeers) > 0 {
@@ -194,7 +195,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 					}
 				}()
 			}
-		case lookupPeer := <-syncTopicChan:
+		case lp := <-syncTopicChan:
 			var commands []*nsq.Command
 			// build all the commands first so we exit the lock(s) as fast as possible
 			topicMap := n.ctx.nsqd.GetTopicMapCopy()
@@ -216,15 +217,15 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 			}
 
 			for index, cmd := range commands {
-				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s", lookupPeer, cmd)
-				_, err := lookupPeer.Command(cmd)
+				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s", lp, cmd)
+				_, err := lp.Command(cmd)
 				if err != nil {
-					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lookupPeer, cmd, err)
-					if in(lookupPeer.addr, allHosts) {
+					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
+					if in(lp.String(), allHosts) {
 						go func() {
 							time.Sleep(time.Second * 3)
 							select {
-							case syncTopicChan <- lookupPeer:
+							case syncTopicChan <- lp:
 							case <-exitChan:
 								return
 							}
@@ -264,7 +265,7 @@ func (n *NsqdServer) lookupdHTTPAddrs() []string {
 	if lookupPeers == nil {
 		return nil
 	}
-	for _, lp := range lookupPeers.([]*lookupPeer) {
+	for _, lp := range lookupPeers.([]*clusterinfo.LookupPeer) {
 		if len(lp.Info.BroadcastAddress) <= 0 {
 			continue
 		}

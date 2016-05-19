@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +28,7 @@ var (
 	batchSize     = flagSet.Int("batch-size", 20, "batch size of messages")
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
-	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata)")
+	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg)")
 )
 
 var totalMsgCount int64
@@ -284,7 +285,7 @@ func startBenchLookup() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cluster := clusterinfo.New(log.New(os.Stderr, "", log.LstdFlags), http_api.NewClient(nil))
+			cluster := clusterinfo.New(nil, http_api.NewClient(nil))
 			tmpList := make([]string, 0)
 			tmpList = append(tmpList, *lookupAddress)
 			currentTopics, err := cluster.GetLookupdTopics(tmpList)
@@ -309,11 +310,61 @@ func startBenchLookup() {
 	}
 	wg.Wait()
 	runSec := time.Now().Sub(start).Seconds() + 1
-	log.Printf(" %v request done in %v seconds, qps: %v", *concurrency*eachCnt, runSec,
+	log.Printf(" %v request done in %v seconds, qps: %v\n", *concurrency*eachCnt, runSec,
 		float64(*concurrency*eachCnt)/runSec)
 }
 
+func connectCallback(id string, hostname string) func(*clusterinfo.LookupPeer) {
+	return func(lp *clusterinfo.LookupPeer) {
+		ci := make(map[string]interface{})
+		ci["id"] = id
+		ci["version"] = "test.ver"
+		ci["tcp_port"] = 0
+		ci["http_port"] = 0
+		ci["hostname"] = hostname
+		ci["broadcast_address"] = "127.0.0.1"
+
+		cmd, _ := nsq.Identify(ci)
+		lp.Command(cmd)
+	}
+}
+
 func startBenchLookupRegUnreg() {
+	var wg sync.WaitGroup
+	eachCnt := 1000
+	hostname, _ := os.Hostname()
+	for i := 0; i < *concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			lookupPeer := clusterinfo.NewLookupPeer(*lookupAddress, 1024*1024*10, nil,
+				connectCallback("bench_reg_"+strconv.Itoa(i), hostname))
+			lookupPeer.Command(nil) // start the connection
+
+			cmd := nsq.Ping()
+			lookupPeer.Command(cmd)
+			cnt := eachCnt
+			for cnt > 0 {
+				cnt--
+				for _, t := range topics {
+					cmd = nsq.UnRegister(t,
+						strconv.Itoa(i), "")
+					lookupPeer.Command(cmd)
+					cmd = nsq.Register(t,
+						strconv.Itoa(i), "")
+					lookupPeer.Command(cmd)
+					for ch := 0; ch < 10; ch++ {
+						cmd = nsq.UnRegister(t,
+							strconv.Itoa(i), "ch"+strconv.Itoa(ch))
+						cmd = nsq.Register(t,
+							strconv.Itoa(i), "ch"+strconv.Itoa(ch))
+
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func main() {

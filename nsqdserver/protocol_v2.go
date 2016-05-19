@@ -33,6 +33,14 @@ const (
 	frameTypeMessage  int32 = 2
 )
 
+const (
+	stateInit = iota
+	stateDisconnected
+	stateConnected
+	stateSubscribed
+	stateClosing
+)
+
 var separatorBytes = []byte(" ")
 var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
