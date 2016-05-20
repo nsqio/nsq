@@ -1,5 +1,7 @@
 package nsqadmin
 
-type logger interface {
-	Output(maxdepth int, s string) error
-}
+import (
+	"github.com/absolute8511/nsq/internal/levellogger"
+)
+
+var adminLog = levellogger.NewLevelLogger(levellogger.LOG_INFO, &levellogger.GLogger{})

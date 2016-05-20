@@ -73,13 +73,15 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *Context) *httpServer {
-	log := http_api.Log(ctx.nsqlookupd.opts.Logger)
+	log := http_api.Log(nsqlookupLog)
+	// debug log only print when error or the level is larger than debug.
+	debugLog := http_api.DebugLog(nsqlookupLog)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqlookupd.opts.Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqlookupd.opts.Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqlookupd.opts.Logger)
+	router.PanicHandler = http_api.LogPanicHandler(nsqlookupLog)
+	router.NotFound = http_api.LogNotFoundHandler(nsqlookupLog)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(nsqlookupLog)
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,
@@ -89,7 +91,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 
 	// v1 negotiate
 	router.Handle("GET", "/debug", http_api.Decorate(s.doDebug, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/lookup", http_api.Decorate(s.doLookup, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/lookup", http_api.Decorate(s.doLookup, debugLog, http_api.NegotiateVersion))
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))

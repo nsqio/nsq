@@ -33,13 +33,13 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer {
-	log := http_api.Log(ctx.getOpts().Logger)
+	log := http_api.Log(nsqd.NsqLogger())
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.getOpts().Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.getOpts().Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.getOpts().Logger)
+	router.PanicHandler = http_api.LogPanicHandler(nsqd.NsqLogger())
+	router.NotFound = http_api.LogNotFoundHandler(nsqd.NsqLogger())
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(nsqd.NsqLogger())
 	s := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  tlsEnabled,

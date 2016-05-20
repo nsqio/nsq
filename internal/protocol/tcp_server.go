@@ -6,14 +6,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/absolute8511/nsq/internal/app"
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 type TCPHandler interface {
 	Handle(net.Conn)
 }
 
-func TCPServer(listener net.Listener, handler TCPHandler, l app.Logger) {
+func TCPServer(listener net.Listener, handler TCPHandler, l levellogger.Logger) {
 	l.Output(2, fmt.Sprintf("TCP: listening on %s", listener.Addr()))
 
 	for {

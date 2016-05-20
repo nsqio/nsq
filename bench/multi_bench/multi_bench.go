@@ -293,7 +293,7 @@ func startBenchLookup() {
 	// lookup operation
 	var wg sync.WaitGroup
 	start := time.Now()
-	eachCnt := 1000
+	eachCnt := *size * 10
 	for j := 0; j < *concurrency; j++ {
 		wg.Add(1)
 		go func() {
@@ -344,7 +344,7 @@ func connectCallback(id string, hostname string) func(*clusterinfo.LookupPeer) {
 
 func startBenchLookupRegUnreg() {
 	var wg sync.WaitGroup
-	eachCnt := 1000
+	eachCnt := *size * 10
 	hostname, _ := os.Hostname()
 	for i := 0; i < *concurrency; i++ {
 		wg.Add(1)

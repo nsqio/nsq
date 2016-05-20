@@ -1,8 +1,7 @@
 package nsqadmin
 
 import (
-	"log"
-	"os"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"time"
 )
 
@@ -29,7 +28,7 @@ type Options struct {
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
 
-	Logger logger
+	Logger levellogger.Logger
 }
 
 func NewOptions() *Options {
@@ -40,6 +39,6 @@ func NewOptions() *Options {
 		StatsdCounterFormat: "stats.counters.%s.count",
 		StatsdGaugeFormat:   "stats.gauges.%s",
 		StatsdInterval:      60 * time.Second,
-		Logger:              log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
+		Logger:              &levellogger.GLogger{},
 	}
 }

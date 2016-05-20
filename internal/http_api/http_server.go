@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/absolute8511/nsq/internal/app"
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 type logWriter struct {
-	app.Logger
+	levellogger.Logger
 }
 
 func (l logWriter) Write(p []byte) (int, error) {
@@ -19,7 +19,7 @@ func (l logWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func Serve(listener net.Listener, handler http.Handler, proto string, l app.Logger) {
+func Serve(listener net.Listener, handler http.Handler, proto string, l levellogger.Logger) {
 	l.Output(2, fmt.Sprintf("%s: listening on %s", proto, listener.Addr()))
 
 	server := &http.Server{

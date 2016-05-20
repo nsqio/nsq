@@ -50,15 +50,15 @@ type httpServer struct {
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
-	log := http_api.Log(ctx.nsqadmin.opts.Logger)
+	log := http_api.Log(adminLog)
 
 	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqadmin.opts.Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.opts.Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.opts.Logger)
+	router.PanicHandler = http_api.LogPanicHandler(adminLog)
+	router.NotFound = http_api.LogNotFoundHandler(adminLog)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(adminLog)
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,
