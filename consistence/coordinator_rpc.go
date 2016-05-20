@@ -279,7 +279,22 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		ret = *err
 		return &ret
 	}
-	return tp.DisableWriteWithTimeout(false)
+	err = tp.DisableWriteWithTimeout(false)
+	if err == nil {
+		tcData := tp.GetData()
+		if tp.GetData().IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
+			topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+			if err != nil {
+				coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
+			} else {
+				// leader changed (maybe down), we make sure out data is flushed to keep data safe
+				topicData.ForceFlush()
+				tcData.logMgr.FlushCommitLogs()
+				topicData.EnableForMaster()
+			}
+		}
+	}
+	return err
 }
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {

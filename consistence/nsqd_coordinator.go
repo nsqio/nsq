@@ -891,7 +891,9 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	coordLog.Infof("topic leader session: %v", tcData.topicLeaderSession)
 	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		coordLog.Infof("I become the leader for the topic: %v", tcData.topicInfo.GetTopicDesp())
-		topicData.EnableForMaster()
+		if !tcData.disableWrite {
+			topicData.EnableForMaster()
+		}
 	} else {
 		topicData.DisableForSlave()
 		if newLS == nil || newLS.LeaderNode == nil || newLS.Session == "" {
