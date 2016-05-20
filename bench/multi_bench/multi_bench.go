@@ -331,8 +331,8 @@ func connectCallback(id string, hostname string) func(*clusterinfo.LookupPeer) {
 		ci := make(map[string]interface{})
 		ci["id"] = id
 		ci["version"] = "test.ver"
-		ci["tcp_port"] = 0
-		ci["http_port"] = 0
+		ci["tcp_port"] = 1111
+		ci["http_port"] = 1112
 		ci["hostname"] = hostname
 		ci["broadcast_address"] = "127.0.0.1"
 
@@ -343,6 +343,7 @@ func connectCallback(id string, hostname string) func(*clusterinfo.LookupPeer) {
 
 func startBenchLookupRegUnreg() {
 	var wg sync.WaitGroup
+	start := time.Now()
 	eachCnt := *size * 10
 	hostname, _ := os.Hostname()
 	for i := 0; i < *concurrency; i++ {
@@ -384,6 +385,9 @@ func startBenchLookupRegUnreg() {
 		}()
 	}
 	wg.Wait()
+	runSec := time.Now().Sub(start).Seconds() + 1
+	log.Printf(" %v request done in %v seconds, qps: %v\n", *concurrency*eachCnt, runSec,
+		float64(*concurrency*eachCnt)/runSec)
 }
 
 func main() {
