@@ -231,6 +231,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 			return
 		}
 		atomic.AddInt64(&totalMsgCount, 1)
+		atomic.AddInt64(&currentMsgCount, 1)
 	}
 	goChan := make(chan int)
 	rdyChan := make(chan int)
@@ -305,7 +306,7 @@ func startBenchLookup() {
 				log.Printf("failed : %v\n", err)
 				return
 			} else {
-				log.Printf("return: %v\n", topics)
+				log.Printf("return: %v\n", currentTopics)
 			}
 			cnt := eachCnt
 			for cnt > 0 {

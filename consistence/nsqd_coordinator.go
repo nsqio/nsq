@@ -789,7 +789,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			}
 		}
 	}
-	if topicCoord.exiting {
+	if topicCoord.IsExiting() {
 		coordLog.Infof("update the topic info: %v while exiting.", oldData.topicInfo.GetTopicDesp())
 		topicCoord.dataRWMutex.Unlock()
 		return nil
@@ -874,7 +874,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	}
 	topicCoord.dataRWMutex.Unlock()
 	tcData := topicCoord.GetData()
-	if topicCoord.exiting {
+	if topicCoord.IsExiting() {
 		coordLog.Infof("update the topic info: %v while exiting.", tcData.topicInfo.GetTopicDesp())
 		return nil
 	}
@@ -1103,7 +1103,7 @@ func (self *NsqdCoordinator) doWriteOpToCluster(topic *nsqd.Topic, doLocalWrite 
 	coord.writeHold.Lock()
 	defer coord.writeHold.Unlock()
 
-	if coord.exiting {
+	if coord.IsExiting() {
 		return ErrTopicExiting
 	}
 	tcData := coord.GetData()
@@ -1368,7 +1368,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 
 	coord.writeHold.Lock()
 	defer coord.writeHold.Unlock()
-	if coord.exiting {
+	if coord.IsExiting() {
 		return ErrTopicExitingOnSlave
 	}
 	if coord.GetData().disableWrite {
@@ -1428,7 +1428,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	if localErr != nil {
 		coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 		clusterWriteErr = ErrLocalWriteFailed
-		goto exit
+		return clusterWriteErr
 	}
 	syncOffset.OffsetID = int64(msgID)
 	syncOffset.VOffset = int64(offset)
@@ -1458,7 +1458,6 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		coordLog.Debugf("some nodes in isr is not synced with channel consumer offset.")
 	}
 
-exit:
 	if clusterWriteErr != nil {
 		coordLog.Infof("channel %v FinishMessage %v error: %v", channel.GetName(), msgID, clusterWriteErr)
 	}

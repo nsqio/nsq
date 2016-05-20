@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	FailedOnNotLeader = consistence.ErrFailedOnNotLeader
+	FailedOnNotLeader   = consistence.ErrFailedOnNotLeader
+	FailedOnNotWritable = consistence.ErrFailedOnNotWritable
 )
 
 type context struct {

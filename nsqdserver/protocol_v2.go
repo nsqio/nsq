@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
@@ -807,6 +808,11 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
 			err)
+		if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if !clusterErr.IsLocalErr() {
+				return nil, protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
+			}
+		}
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %v failed %s", *id, err.Error()))
 	}
@@ -972,6 +978,12 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		err := p.ctx.PutMessage(topic, messageBody)
 		//p.ctx.setHealth(err)
 		if err != nil {
+
+			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+				if !clusterErr.IsLocalErr() {
+					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
+				}
+			}
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
 		}
@@ -1051,6 +1063,12 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
 		if err != nil {
+
+			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+				if !clusterErr.IsLocalErr() {
+					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
+				}
+			}
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}

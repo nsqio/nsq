@@ -6,7 +6,8 @@ import (
 )
 
 const (
-	ErrFailedOnNotLeader = "E_FAILED_ON_NOT_LEADER"
+	ErrFailedOnNotLeader   = "E_FAILED_ON_NOT_LEADER"
+	ErrFailedOnNotWritable = "E_FAILED_ON_NOT_WRITABLE"
 )
 
 type CoordErrType int
@@ -82,6 +83,10 @@ func (self *CoordErr) IsEqual(other *CoordErr) bool {
 
 func (self *CoordErr) IsNetErr() bool {
 	return self.ErrType == CoordNetErr
+}
+
+func (self *CoordErr) IsLocalErr() bool {
+	return self.ErrType == CoordLocalErr
 }
 
 func (self *CoordErr) CanRetryWrite() bool {

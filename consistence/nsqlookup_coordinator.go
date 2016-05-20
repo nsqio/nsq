@@ -660,7 +660,7 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartition
 				coordLog.Infof("leader session is clean: %v", s)
 				return nil
 			}
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 100)
 			return ErrWaitingLeaderRelease
 		}
 		if err != nil {

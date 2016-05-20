@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
@@ -244,6 +245,11 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+				if !clusterErr.IsLocalErr() {
+					return nil, http_api.Err{400, FailedOnNotWritable}
+				}
+			}
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
@@ -329,6 +335,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+				if !clusterErr.IsLocalErr() {
+					return nil, http_api.Err{400, FailedOnNotWritable}
+				}
+			}
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {

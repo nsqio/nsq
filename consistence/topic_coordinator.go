@@ -3,6 +3,7 @@ package consistence
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,7 +29,7 @@ type TopicCoordinator struct {
 	// lock order: first lock writehold then lock data to avoid deadlock
 	writeHold      sync.Mutex
 	catchupRunning int32
-	exiting        bool
+	exiting        int32
 	localDataState int32
 }
 
@@ -88,10 +89,12 @@ func (self *TopicCoordinator) DisableWriteWithTimeout(disable bool) *CoordErr {
 	return err
 }
 
+func (self *TopicCoordinator) IsExiting() bool {
+	return atomic.LoadInt32(&self.exiting) == 1
+}
+
 func (self *TopicCoordinator) Exiting() {
-	self.writeHold.Lock()
-	self.exiting = true
-	self.writeHold.Unlock()
+	atomic.StoreInt32(&self.exiting, 1)
 }
 
 func (self *coordData) GetLeader() string {
