@@ -1,6 +1,6 @@
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/absolute8511/go-nsq          3b2dce543bf6eb3231d1247857cd9507b257a600 # v1.0.5
+github.com/absolute8511/go-nsq          6793e8005cafb0f29ad3e59af7858dcc384dc433 # v1.0.5
 github.com/absolute8511/glog            b6b0b11c8d73ca2acd473138a8bcbf61d2b337af
 github.com/absolute8511/gorpc           4da7d79cd9c2a1296beade51426684c4c1e6344c
 github.com/bitly/go-simplejson          18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a
