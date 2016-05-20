@@ -15,6 +15,7 @@ import (
 	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 var (
@@ -347,7 +348,7 @@ func startBenchLookupRegUnreg() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			lookupPeer := clusterinfo.NewLookupPeer(*lookupAddress, 1024*1024*10, nil,
+			lookupPeer := clusterinfo.NewLookupPeer(*lookupAddress, 1024*1024*10, &levellogger.GLogger{},
 				connectCallback("bench_reg_"+strconv.Itoa(i), hostname))
 			lookupPeer.Command(nil) // start the connection
 
