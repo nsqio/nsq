@@ -175,17 +175,14 @@ func startSimpleTest(msg []byte, batch [][]byte) {
 	}
 	tmpList := make([]string, 0)
 	tmpList = append(tmpList, *lookupAddress)
-	for _, t := range topics {
-		err := cluster.CreateTopicChannel(t, "", tmpList)
-		if err != nil {
-			log.Printf("failed to create topic: %v, err: %v", t, err)
-		}
-	}
 	currentTopics, err := cluster.GetLookupdTopics(tmpList)
 	if err != nil {
 		log.Printf("failed : %v\n", err)
 	} else {
-		log.Printf("return: %v\n", topics)
+		log.Printf("return: %v\n", currentTopics)
+	}
+	if len(currentTopics) == 0 {
+		return
 	}
 	chs, err := cluster.GetLookupdTopicChannels(currentTopics[0], 0, tmpList)
 	if err != nil {

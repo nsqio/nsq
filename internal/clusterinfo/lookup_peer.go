@@ -61,7 +61,9 @@ func NewLookupPeer(addr string, maxBodySize int64, l levellogger.Logger, connect
 
 // Connect will Dial the specified address, with timeouts
 func (lp *LookupPeer) Connect() error {
-	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
+	if lp.l != nil {
+		lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
+	}
 	conn, err := net.DialTimeout("tcp", lp.addr, lookupTimeout)
 	if err != nil {
 		return err

@@ -141,7 +141,10 @@ func (n *NsqdServer) statsdLoop() {
 				client.Gauge("mem.gc_pause_usec_99", int64(percentile(99.0, gcPauses, len(gcPauses))/1000))
 				client.Gauge("mem.gc_pause_usec_95", int64(percentile(95.0, gcPauses, len(gcPauses))/1000))
 				client.Gauge("mem.next_gc_bytes", int64(memStats.NextGC))
-				client.Incr("mem.gc_runs", int64(memStats.NumGC-lastMemStats.NumGC))
+				err := client.Incr("mem.gc_runs", int64(memStats.NumGC-lastMemStats.NumGC))
+				if err != nil {
+					nsqd.NsqLogger().Logf("STATSD: pushing stats failed: %v", err)
+				}
 
 				lastMemStats = memStats
 			}
