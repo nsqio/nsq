@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
@@ -353,7 +354,13 @@ func startBenchLookupRegUnreg() {
 			lookupPeer.Command(nil) // start the connection
 
 			cmd := nsq.Ping()
-			lookupPeer.Command(cmd)
+			resp, err := lookupPeer.Command(cmd)
+			if err != nil {
+				log.Printf("ping lookup error : %v\n", err)
+				return
+			} else {
+				log.Printf("ping lookup  : %v\n", resp)
+			}
 			cnt := eachCnt
 			for cnt > 0 {
 				cnt--
@@ -367,9 +374,10 @@ func startBenchLookupRegUnreg() {
 					for ch := 0; ch < 10; ch++ {
 						cmd = nsq.UnRegister(t,
 							strconv.Itoa(i), "ch"+strconv.Itoa(ch))
+						lookupPeer.Command(cmd)
 						cmd = nsq.Register(t,
 							strconv.Itoa(i), "ch"+strconv.Itoa(ch))
-
+						lookupPeer.Command(cmd)
 					}
 				}
 			}
@@ -379,6 +387,7 @@ func startBenchLookupRegUnreg() {
 }
 
 func main() {
+	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
 	config = nsq.NewConfig()
 	config.MsgTimeout = time.Second * 10
