@@ -159,10 +159,6 @@ func (s *NsqdServer) GetNsqdInstance() *nsqd.NSQD {
 
 func (s *NsqdServer) Exit() {
 	nsqd.NsqLogger().Logf("nsqd server stopping.")
-	if s.ctx.nsqdCoord != nil {
-		s.ctx.nsqdCoord.Stop()
-	}
-
 	if s.tcpListener != nil {
 		s.tcpListener.Close()
 	}
@@ -171,6 +167,10 @@ func (s *NsqdServer) Exit() {
 	}
 	if s.httpsListener != nil {
 		s.httpsListener.Close()
+	}
+
+	if s.ctx.nsqdCoord != nil {
+		s.ctx.nsqdCoord.Stop()
 	}
 
 	if s.ctx.nsqd != nil {
