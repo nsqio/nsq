@@ -65,6 +65,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		InFlightCount: len(c.inFlightMessages),
 		// this is total message count need consume.
 		// may diff with topic total size since some is in buffer.
+		// TODO: this should be the messages count that already be consumed.
 		MessageCount: uint64(c.backend.GetQueueReadEnd().GetTotalMsgCnt()),
 		RequeueCount: atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount: atomic.LoadUint64(&c.timeoutCount),

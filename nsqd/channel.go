@@ -366,7 +366,9 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
 	}
 	var err error
 	if offset < c.currentLastConfirmed {
-		nsqLog.Logf("confirm offset less than current: %v, %v", offset, c.currentLastConfirmed)
+		if nsqLog.Level() > levellogger.LOG_DEBUG {
+			nsqLog.LogDebugf("confirm offset less than current: %v, %v", offset, c.currentLastConfirmed)
+		}
 	} else {
 		err = c.backend.SkipReadToOffset(offset)
 		if err != nil {

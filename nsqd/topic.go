@@ -349,6 +349,9 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) erro
 
 	wend := t.backend.GetQueueWriteEnd()
 	if wend.GetOffset() != offset {
+		nsqLog.LogErrorf(
+			"TOPIC(%s) : write message offset mismatch %v, %v",
+			t.GetFullName(), offset, wend)
 		return ErrWriteOffsetMismatch
 	}
 

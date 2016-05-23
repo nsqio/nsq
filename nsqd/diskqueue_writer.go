@@ -151,9 +151,7 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	d.writeFileNum = newWriteFileNum
 	newWritePos -= int64(newEnd - offset)
 	d.writePos = newWritePos
-	if d.readablePos > d.writePos {
-		d.readablePos = d.writePos
-	}
+	d.readablePos = d.writePos
 	d.virtualEnd = offset
 	atomic.StoreInt64(&d.totalMsgCnt, int64(totalCnt))
 	if d.virtualReadableEnd > d.virtualEnd {
@@ -163,6 +161,7 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 		d.writeFile.Close()
 		d.writeFile = nil
 	}
+	nsqLog.Logf("reset write end result : %v", d.virtualEnd, d.writeFileNum, d.writePos, d.totalMsgCnt)
 
 	return nil
 }
