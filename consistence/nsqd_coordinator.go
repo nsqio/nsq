@@ -1141,6 +1141,10 @@ retrypub:
 	if retryCnt > MAX_WRITE_RETRY {
 		coordLog.Warningf("write retrying times is large: %v", retryCnt)
 		needRefreshISR = true
+		if coord.IsExiting() {
+			clusterWriteErr = ErrTopicExiting
+			goto exitpub
+		}
 	}
 	if needRefreshISR {
 		tcData = coord.GetData()
