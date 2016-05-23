@@ -1338,7 +1338,13 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		defer topic.Unlock()
 		localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
 		if localErr != nil {
-			coordLog.Errorf("put messages on slave failed: %v", localErr)
+			var lastLog *CommitLogData
+			lastLogOffset, err := logMgr.GetLastLogOffset()
+			if err == nil {
+				lastLog, _ = logMgr.GetCommitLogFromOffset(lastLogOffset)
+			}
+			coordLog.Errorf("put messages on slave failed: %v, slave last logid: %v, data: %v",
+				localErr, logMgr.GetLastCommitLogID(), lastLog)
 			return &CoordErr{localErr.Error(), RpcCommonErr, CoordSlaveErr}
 		}
 		return nil
@@ -1364,12 +1370,14 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupOnSlave checkDupFunc,
 	doLocalWriteOnSlave localWriteFunc, doLocalCommit localCommitFunc, doLocalExit localExitFunc) *CoordErr {
 	tc := coord.GetData()
+
+	coord.writeHold.Lock()
+	defer coord.writeHold.Unlock()
+	// check should be protected by write lock to avoid the next write check during the commit log flushing.
 	if checkDupOnSlave(tc) {
 		return nil
 	}
 
-	coord.writeHold.Lock()
-	defer coord.writeHold.Unlock()
 	if coord.IsExiting() {
 		return ErrTopicExitingOnSlave
 	}

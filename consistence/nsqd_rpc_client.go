@@ -207,6 +207,9 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo)
 	req.TopicPartition = topicInfo.Partition
 	var retErr CoordErr
 	ret, err := self.CallWithRetry("GetLastCommitLogID", &req)
+	if err != nil || ret == nil {
+		return 0, convertRpcError(err, &retErr)
+	}
 	return ret.(int64), convertRpcError(err, &retErr)
 }
 

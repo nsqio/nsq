@@ -423,7 +423,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 		}
 	}
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
-		if c.EnableTrace || nsqLog.Level() > 1 {
+		if c.EnableTrace || nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
 				len(c.confirmedMsgs), c.currentLastConfirmed)
 
