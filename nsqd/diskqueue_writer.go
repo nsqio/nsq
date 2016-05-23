@@ -161,7 +161,8 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 		d.writeFile.Close()
 		d.writeFile = nil
 	}
-	nsqLog.Logf("reset write end result : %v", d.virtualEnd, d.writeFileNum, d.writePos, d.totalMsgCnt)
+	nsqLog.Logf("reset write end result : %v, %v, %v, %v",
+		d.virtualEnd, d.writeFileNum, d.writePos, d.totalMsgCnt)
 
 	return nil
 }

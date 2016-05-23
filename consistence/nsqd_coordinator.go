@@ -455,6 +455,8 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession 
 	coordLog.Infof("checking sync state with new leader: %v on node: %v", joinSession, self.myNode.GetID())
 	err := self.checkLocalTopicForISR(topicCoord)
 	if err == ErrLocalFallBehind || err == ErrLocalForwardThanLeader {
+		// TODO: only sync with leader when write is disabled,
+		// otherwise, we may miss to get the un-commit logs during write.
 		if joinSession != "" {
 			coordLog.Infof("isr begin sync with new leader")
 			go self.catchupFromLeader(topicCoord.topicInfo, joinSession)
@@ -1188,6 +1190,7 @@ retrypub:
 			failedNodes[nodeID] = struct{}{}
 			if !rpcErr.CanRetryWrite() {
 				exitErr++
+				coordLog.Infof("write failed and no retry type: %v, %v", rpcErr.ErrType, exitErr)
 				if exitErr > len(tcData.topicInfo.ISR)/2 {
 					goto exitpub
 				}

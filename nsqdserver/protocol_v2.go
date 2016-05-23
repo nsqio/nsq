@@ -991,6 +991,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
+		topic.DisableForSlave()
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 
@@ -1076,6 +1077,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
+		topic.DisableForSlave()
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 	return okBytes, nil

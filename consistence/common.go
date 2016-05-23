@@ -93,7 +93,8 @@ func (self *CoordErr) CanRetryWrite() bool {
 	return self.ErrType == CoordTmpErr ||
 		self.ErrType == CoordElectionTmpErr ||
 		self.ErrType == CoordLocalTmpErr ||
-		self.ErrType == CoordSlaveErr
+		self.ErrType == CoordSlaveErr ||
+		self.IsNetErr()
 }
 
 var (

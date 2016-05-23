@@ -257,6 +257,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		//TODO: should we forward this to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
+		topic.DisableForSlave()
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
@@ -347,6 +348,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		//should we forward to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
+		topic.DisableForSlave()
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
