@@ -567,6 +567,16 @@ func (t *Topic) flush(notifyChan bool) error {
 	return err
 }
 
+func (t *Topic) PrintCurrentStats() {
+	nsqLog.Logf("topic(%s) status: write end %v", t.GetFullName(), t.backend.GetQueueWriteEnd())
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		nsqLog.Logf("channel(%s) depth: %v, confirmed: %v, debug: %v", ch.GetName(), ch.Depth(),
+			ch.currentLastConfirmed, ch.GetChannelDebugStats())
+	}
+	t.channelLock.RUnlock()
+}
+
 func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	var latencyStream *quantile.Quantile
 	t.channelLock.RLock()

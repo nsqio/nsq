@@ -1618,6 +1618,12 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
+			localTopic, err := self.localNsqd.GetExistingTopic(topicName, pid)
+			if err != nil {
+				coordLog.Infof("no local topic")
+			} else {
+				localTopic.PrintCurrentStats()
+			}
 			tpCoord.Exiting()
 		}
 	}
