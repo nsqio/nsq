@@ -1570,10 +1570,10 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 	self.coordMutex.RUnlock()
 	for topicName, topicData := range tmpTopicCoords {
 		for pid, tpCoord := range topicData {
-			tpCoord.Exiting()
 			tcData := tpCoord.GetData()
 			tcData.logMgr.FlushCommitLogs()
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) == -1 {
+				tpCoord.Exiting()
 				continue
 			}
 			if len(tcData.topicInfo.ISR)-1 <= tcData.topicInfo.Replica/2 {
@@ -1605,6 +1605,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
+			tpCoord.Exiting()
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")

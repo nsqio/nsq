@@ -724,9 +724,9 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
+		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.RemoteAddr())
 		// we need disable topic here to trigger a notify, maybe we failed to notify lookup last time.
 		topic.DisableForSlave()
-		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.RemoteAddr())
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
@@ -801,6 +801,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if !p.ctx.checkForMasterWrite(client.Channel.GetTopicName(), client.Channel.GetTopicPart()) {
+		nsqd.NsqLogger().LogErrorf("topic %v fin message failed for not leader", client.Channel.GetTopicName())
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 
@@ -978,13 +979,12 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		err := p.ctx.PutMessage(topic, messageBody)
 		//p.ctx.setHealth(err)
 		if err != nil {
-
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}
 			}
-			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
 		}
 	} else {
@@ -1063,13 +1063,13 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
 		if err != nil {
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 
 			if clusterErr, ok := err.(*consistence.CoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}
 			}
-			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}
 	} else {
