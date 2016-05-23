@@ -27,8 +27,8 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		TopicFullName:  t.GetFullName(),
 		TopicPartition: t.GetTopicPart(),
 		Channels:       channels,
-		Depth:          t.TotalSize(),
-		BackendDepth:   t.TotalSize(),
+		Depth:          t.TotalDataSize(),
+		BackendDepth:   t.TotalDataSize(),
 		MessageCount:   t.TotalMessageCnt(),
 		IsLeader:       !t.IsWriteDisabled(),
 

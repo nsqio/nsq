@@ -373,7 +373,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
 		err = c.backend.SkipReadToOffset(offset)
 		if err != nil {
 			if !c.Exiting() {
-				nsqLog.LogErrorf("confirm read failed: %v, offset: %v", err, offset)
+				nsqLog.Logf("confirm read failed: %v, offset: %v", err, offset)
 			}
 		} else {
 			c.currentLastConfirmed = offset

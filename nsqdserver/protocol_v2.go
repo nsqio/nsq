@@ -390,7 +390,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			msgTimeout = identifyData.MsgTimeout
 		case <-heartbeatChan:
 			err = p.Send(client, frameTypeResponse, heartbeatBytes)
-			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] send heartbeat", client)
+			nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
 				heartbeatFailedCnt++
 				nsqd.NsqLogger().LogWarningf("PROTOCOL(V2): [%s] send heartbeat failed %v times, %v", client, heartbeatFailedCnt, err)

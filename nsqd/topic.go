@@ -451,8 +451,8 @@ func (t *Topic) TotalMessageCnt() uint64 {
 	return uint64(t.backend.GetQueueWriteEnd().GetTotalMsgCnt())
 }
 
-func (t *Topic) TotalSize() int64 {
-	e := t.backend.GetQueueReadEnd()
+func (t *Topic) TotalDataSize() int64 {
+	e := t.backend.GetQueueWriteEnd()
 	return int64(e.GetOffset())
 }
 

@@ -432,7 +432,7 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 		}
 	}
 	if voffset > d.queueEndInfo.VirtualEnd {
-		nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
+		nsqLog.Logf("internal skip great than end : %v, skipping to : %v", d.queueEndInfo, voffset)
 		return ErrMoveOffsetInvalid
 	} else if voffset == d.queueEndInfo.VirtualEnd {
 		newPos = d.queueEndInfo.EndOffset

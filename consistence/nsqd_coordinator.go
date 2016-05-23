@@ -1018,7 +1018,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		putErr := c.PutMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
 		if putErr != nil {
-			coordLog.Infof("sync write to replica %v failed: %v", nodeID, putErr)
+			coordLog.Infof("sync write to replica %v failed: %v. put offset:%v", nodeID, putErr, commitLog)
 		}
 		return putErr
 	}
@@ -1079,7 +1079,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		putErr := c.PutMessages(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msgs)
 		if putErr != nil {
-			coordLog.Infof("sync write to replica %v failed: %v", nodeID, putErr)
+			coordLog.Infof("sync write to replica %v failed: %v, put offset: %v", nodeID, putErr, commitLog)
 		}
 		return putErr
 	}
@@ -1496,7 +1496,8 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	}
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
 	if err != nil {
-		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v", channelName, offset, err, currentEnd)
+		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
+			channelName, offset, err, currentEnd, topic.TotalDataSize())
 		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
 	}
 	return nil
