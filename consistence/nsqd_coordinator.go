@@ -322,6 +322,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic starting as isr .")
+				self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
 			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic starting as catchup")
 				go self.catchupFromLeader(*topicInfo, "")
