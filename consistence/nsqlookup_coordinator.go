@@ -571,7 +571,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return coordErr
 	}
 	// Is it possible the topic info changed but no leadership watch trigger?
-	go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second*5)
+	go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 
 	return nil
 }
@@ -785,6 +785,7 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 			break
 		}
 	}
+	go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, true)
 	return nil
 }
 
