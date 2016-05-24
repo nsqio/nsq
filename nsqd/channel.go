@@ -904,7 +904,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if ok {
 			client.TimedOutMessage()
 		}
-		nsqLog.LogDebugf("message %v, offset: %v timeout, client: %v",
+		nsqLog.Logf("message %v, offset: %v timeout, client: %v",
 			msg.ID, msg.offset, msg.clientID)
 		c.doRequeue(msg)
 	}

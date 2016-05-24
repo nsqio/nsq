@@ -978,10 +978,11 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 	var msg *nsqd.Message
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		topic.Lock()
 		logMgr = d.logMgr
 		msg = nsqd.NewMessage(0, body)
+		topic.Lock()
 		id, offset, writeBytes, totalCnt, putErr := topic.PutMessageNoLock(msg)
+		topic.Unlock()
 		if putErr != nil {
 			coordLog.Warningf("put message to local failed: %v", putErr)
 			return ErrLocalWriteFailed
@@ -999,7 +1000,6 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {
-		topic.Unlock()
 		if err != nil {
 			coordLog.Infof("topic %v PutMessageToCluster msg %v error: %v", topic.GetFullName(), msg, err)
 		}
@@ -1012,7 +1012,9 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		return localErr
 	}
 	doLocalRollback := func() {
+		topic.Lock()
 		topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
+		topic.Unlock()
 	}
 	doRefresh := func(d *coordData) {
 		logMgr = d.logMgr
@@ -1044,6 +1046,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		topic.Lock()
 		logMgr = d.logMgr
 		id, offset, writeBytes, totalCnt, putErr := topic.PutMessagesNoLock(msgs)
+		topic.Unlock()
 		if putErr != nil {
 			coordLog.Warningf("put batch messages to local failed: %v", putErr)
 			return ErrLocalWriteFailed
@@ -1060,7 +1063,6 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {
-		topic.Unlock()
 		if err != nil {
 			coordLog.Infof("topic %v PutMessagesToCluster error: %v", topic.GetFullName(), err)
 		}
@@ -1073,7 +1075,9 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		return localErr
 	}
 	doLocalRollback := func() {
+		topic.Lock()
 		topic.ResetBackendEndNoLock(nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgCnt-1)
+		topic.Unlock()
 	}
 	doRefresh := func(d *coordData) {
 		logMgr = d.logMgr
@@ -1287,8 +1291,8 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		}
 
 		topic.Lock()
-		defer topic.Unlock()
 		localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+		topic.Unlock()
 		if localErr != nil {
 			coordLog.Errorf("put message on slave failed: %v", localErr)
 			return &CoordErr{localErr.Error(), RpcCommonErr, CoordSlaveErr}
@@ -1342,8 +1346,25 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			return &CoordErr{localErr.Error(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
+		start := time.Now()
 		topic.Lock()
+		cost := time.Now().Sub(start)
+		if cost > time.Second {
+			coordLog.Infof("prepare write on slave local cost :%v", cost)
+		}
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Infof("prepare write on slave local cost :%v", cost)
+		}
+
 		localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
+		cost2 := time.Now().Sub(start)
+		if cost2 > time.Second {
+			coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
+		}
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Infof("write local on slave cost :%v", cost2)
+		}
+
 		topic.Unlock()
 		if localErr != nil {
 			var lastLog *CommitLogData

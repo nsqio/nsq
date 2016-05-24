@@ -448,6 +448,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 		// handle remove this node from ISR
 		coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
 		if coordErr != nil {
+			go self.triggerCheckTopics(t.Name, t.Partition, time.Second*2)
 			continue
 		}
 
@@ -457,6 +458,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			coordErr := self.handleTopicLeaderElection(&t, currentNodes)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
+				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		} else {

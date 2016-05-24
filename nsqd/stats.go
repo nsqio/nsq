@@ -148,12 +148,12 @@ func (n *NSQD) getTopicStats(realTopics []*Topic) []TopicStats {
 	sort.Sort(TopicsByName{realTopics})
 	topics := make([]TopicStats, 0, len(realTopics))
 	for _, t := range realTopics {
-		t.RLock()
+		t.channelLock.RLock()
 		realChannels := make([]*Channel, 0, len(t.channelMap))
 		for _, c := range t.channelMap {
 			realChannels = append(realChannels, c)
 		}
-		t.RUnlock()
+		t.channelLock.RUnlock()
 		sort.Sort(ChannelsByName{realChannels})
 		channels := make([]ChannelStats, 0, len(realChannels))
 		for _, c := range realChannels {
