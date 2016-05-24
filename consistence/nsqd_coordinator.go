@@ -3,6 +3,7 @@ package consistence
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqd"
 	"io"
 	"net"
@@ -1342,8 +1343,8 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		}
 
 		topic.Lock()
-		defer topic.Unlock()
 		localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
+		topic.Unlock()
 		if localErr != nil {
 			var lastLog *CommitLogData
 			lastLogOffset, err := logMgr.GetLastLogOffset()
@@ -1378,6 +1379,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	doLocalWriteOnSlave localWriteFunc, doLocalCommit localCommitFunc, doLocalExit localExitFunc) *CoordErr {
 	tc := coord.GetData()
 
+	start := time.Now()
 	coord.writeHold.Lock()
 	defer coord.writeHold.Unlock()
 	// check should be protected by write lock to avoid the next write check during the commit log flushing.
@@ -1395,12 +1397,28 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 		return ErrTopicWriteOnNonISR
 	}
 
+	cost := time.Now().Sub(start)
+	if cost > time.Second {
+		coordLog.Infof("prepare write on slave cost :%v", cost)
+	}
+	if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Infof("prepare write on slave cost :%v", cost)
+	}
+
 	topicName := tc.topicInfo.Name
 	partition := tc.topicInfo.Partition
 
 	var slaveErr *CoordErr
 	var localErr error
 	slaveErr = doLocalWriteOnSlave(tc)
+	cost2 := time.Now().Sub(start)
+	if cost2 > time.Second {
+		coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
+	}
+	if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Infof("write local on slave cost :%v", cost2)
+	}
+
 	if slaveErr != nil {
 		goto exitpubslave
 	}
@@ -1421,6 +1439,14 @@ exitpubslave:
 		}()
 	}
 	doLocalExit(slaveErr)
+	cost3 := time.Now().Sub(start)
+	if cost3 > time.Second {
+		coordLog.Infof("write local on slave cost :%v, %v, %v", cost, cost2, cost3)
+	}
+	if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Infof("write local on slave cost :%v", cost3)
+	}
+
 	return slaveErr
 }
 
@@ -1441,12 +1467,18 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 
 	success := 0
 	var syncOffset ChannelConsumerOffset
-	offset, localErr := channel.FinishMessage(clientID, msgID)
+	offset, changed, localErr := channel.FinishMessage(clientID, msgID)
 	if localErr != nil {
 		coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 		clusterWriteErr = ErrLocalWriteFailed
 		return clusterWriteErr
 	}
+	// this confirmed offset not changed, so we no need to sync with replica.
+	if !changed {
+		return nil
+	}
+
+	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 	syncOffset.OffsetID = int64(msgID)
 	syncOffset.VOffset = int64(offset)
 

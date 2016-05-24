@@ -386,13 +386,14 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset) error {
 // in order not to make the confirm map too large,
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
-func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
+// indicated weather the confirmed offset is changed
+func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	//c.finMsgs[msg.ID] = msg
 	if msg.offset < c.currentLastConfirmed {
 		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, c.currentLastConfirmed)
-		return c.currentLastConfirmed
+		return c.currentLastConfirmed, false
 	}
 	c.confirmedMsgs[msg.offset] = msg
 	reduced := false
@@ -413,7 +414,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 			if !c.Exiting() {
 				nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
 			}
-			return c.currentLastConfirmed
+			return c.currentLastConfirmed, reduced
 		}
 		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
 			select {
@@ -455,7 +456,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) BackendOffset {
 		}
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
-	return c.currentLastConfirmed
+	return c.currentLastConfirmed, reduced
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
 	// in inflight queue and also not wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
@@ -470,12 +471,12 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, error) {
+func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bool, error) {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
 			clientID)
-		return 0, err
+		return 0, false, err
 	}
 	if c.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
@@ -487,14 +488,14 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, er
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
-	offset := c.ConfirmBackendQueue(msg)
+	offset, changed := c.ConfirmBackendQueue(msg)
 	if msg.notifyContinue != nil {
 		select {
 		case msg.notifyContinue <- 1:
 		case <-c.exitChan:
 		}
 	}
-	return offset, nil
+	return offset, changed, nil
 }
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:

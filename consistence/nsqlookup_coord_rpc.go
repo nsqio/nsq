@@ -4,6 +4,7 @@ import (
 	"github.com/absolute8511/gorpc"
 	"net"
 	"os"
+	"time"
 )
 
 type RpcLookupReqBase struct {
@@ -73,21 +74,60 @@ func (self *NsqLookupCoordRpcServer) stop() {
 }
 
 func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req *RpcReqJoinCatchup) *CoordErr {
+	s := time.Now().Unix()
+	defer func() {
+		e := time.Now().Unix()
+		if e-s > int64(RPC_TIMEOUT/2) {
+			coordLog.Infof("rpc call used: %v", e-s)
+		}
+	}()
 	return self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
 }
 
 func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req *RpcReqJoinISR) *CoordErr {
+	s := time.Now().Unix()
+	defer func() {
+		e := time.Now().Unix()
+		if e-s > int64(RPC_TIMEOUT/2) {
+			coordLog.Infof("rpc call used: %v", e-s)
+		}
+	}()
+
 	return self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
 }
 
 func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req *RpcReadyForISR) *CoordErr {
+	s := time.Now().Unix()
+	defer func() {
+		e := time.Now().Unix()
+		if e-s > int64(RPC_TIMEOUT/2) {
+			coordLog.Infof("rpc call used: %v", e-s)
+		}
+	}()
+
 	return self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
 }
 
 func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req *RpcReqLeaveFromISR) *CoordErr {
+	s := time.Now().Unix()
+	defer func() {
+		e := time.Now().Unix()
+		if e-s > int64(RPC_TIMEOUT/2) {
+			coordLog.Infof("rpc call used: %v", e-s)
+		}
+	}()
+
 	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
 }
 
 func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req *RpcReqLeaveFromISRByLeader) *CoordErr {
+	s := time.Now().Unix()
+	defer func() {
+		e := time.Now().Unix()
+		if e-s > int64(RPC_TIMEOUT/2) {
+			coordLog.Infof("rpc call used: %v", e-s)
+		}
+	}()
+
 	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
 }
