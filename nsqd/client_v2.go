@@ -87,7 +87,9 @@ type ClientV2 struct {
 	ConnectTime    time.Time
 	Channel        *Channel
 	ReadyStateChan chan int
-	ExitChan       chan int
+	// this is only used by notify messagebump to quit
+	// and should be closed by the read loop only
+	ExitChan chan int
 
 	ClientID string
 	Hostname string
@@ -157,7 +159,7 @@ func (c *ClientV2) String() string {
 
 func (c *ClientV2) Exit() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
-	close(c.ExitChan)
+	c.Conn.Close()
 }
 
 func (c *ClientV2) FinalClose() {

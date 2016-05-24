@@ -216,10 +216,11 @@ func (c *Channel) exit(deleted bool) error {
 		nsqLog.Logf("CHANNEL(%s): closing", c.name)
 	}
 
-	// this forceably remove clients
+	// this forceably closes clients, client will be removed by client before the
+	// client read loop exit.
 	c.RLock()
-	for cid, _ := range c.clients {
-		delete(c.clients, cid)
+	for _, client := range c.clients {
+		client.Exit()
 	}
 	c.RUnlock()
 
