@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/absolute8511/nsq/internal/quantile"
 )
@@ -497,9 +498,11 @@ func (t *Topic) exit(deleted bool) error {
 
 	// write anything leftover to disk
 	t.flush(true)
+	nsqLog.Logf("exiting topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {
+		nsqLog.Logf("exiting channel : %v, %v, %v, %v", channel.GetName(), channel.currentLastConfirmed, channel.Depth(), channel.backend.GetQueueReadEnd())
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
@@ -517,9 +520,11 @@ func (t *Topic) IsWriteDisabled() bool {
 
 func (t *Topic) DisableForSlave() {
 	atomic.StoreInt32(&t.writeDisabled, 1)
+	nsqLog.Logf("while disable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(true)
+		nsqLog.Logf("while disable channel : %v, %v, %v, %v", c.GetName(), c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd())
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
@@ -527,9 +532,11 @@ func (t *Topic) DisableForSlave() {
 }
 
 func (t *Topic) EnableForMaster() {
+	nsqLog.Logf("while disable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(false)
+		nsqLog.Logf("while disable channel : %v, %v, %v, %v", c.GetName(), c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd())
 	}
 	t.channelLock.RUnlock()
 	atomic.StoreInt32(&t.writeDisabled, 0)
@@ -543,9 +550,14 @@ func (t *Topic) Empty() error {
 }
 
 func (t *Topic) ForceFlush() {
+	s := time.Now()
 	t.Lock()
 	t.flush(true)
 	t.Unlock()
+	cost := time.Now().Sub(s)
+	if cost > time.Second {
+		nsqLog.Logf("topic(%s): flush cost: %v", t.GetFullName(), cost)
+	}
 }
 
 func (t *Topic) flush(notifyChan bool) error {

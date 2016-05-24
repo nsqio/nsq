@@ -30,7 +30,6 @@ type TopicCoordinator struct {
 	writeHold      sync.Mutex
 	catchupRunning int32
 	exiting        int32
-	localDataState int32
 }
 
 func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
@@ -38,6 +37,7 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 	tc.channelConsumeOffset = make(map[string]ChannelConsumerOffset)
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
+	tc.disableWrite = true
 	var err error
 	err = os.MkdirAll(basepath, 0755)
 	if err != nil {

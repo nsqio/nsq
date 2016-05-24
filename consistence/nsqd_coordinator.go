@@ -1560,7 +1560,9 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	ch := topic.GetChannel(channelName)
 	currentEnd := ch.GetChannelEnd()
 	if nsqd.BackendOffset(offset.VOffset) > currentEnd {
-		topic.ForceFlush()
+		coordLog.Debugf("update channel(%v) consume offset exceed end %v on slave : %v", channelName, offset, currentEnd)
+		return nil
+		//topic.ForceFlush()
 	}
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
 	if err != nil {
