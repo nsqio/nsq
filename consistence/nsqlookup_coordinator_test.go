@@ -747,6 +747,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		test.Equal(t, FindSlice(t1.ISR, failedID) == -1 || (len(t1.ISR) == 1 && t1.ISR[0] == failedID), true)
 		test.Equal(t, len(t1.ISR), t1IsrNum)
 		t3, _ = lookupLeadership.GetTopicInfo(topic3, 0)
+		t.Log(t3)
 		test.Equal(t, FindSlice(t3.ISR, failedID) == -1 || (len(t3.ISR) == 1 && t3.ISR[0] == failedID), true)
 	}
 }

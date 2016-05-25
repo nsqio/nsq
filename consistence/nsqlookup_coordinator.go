@@ -591,6 +591,7 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	}
 	topicInfo.CatchupList = MergeList(topicInfo.CatchupList, failedNodes)
 	coordLog.Infof("topic info updated: %v", topicInfo)
+	// remove isr node we keep the write epoch unchanged.
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
 	if err != nil {
 		coordLog.Infof("update topic node isr failed: %v", err.Error())
@@ -722,7 +723,7 @@ func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartiti
 		coordLog.Warningf("No leader can be elected. current topic info: %v", topicInfo)
 		return "", 0, ErrNoLeaderCanBeElected
 	}
-	coordLog.Infof("new leader %v found with commit id: %v", newLeader, newestLogID)
+	coordLog.Infof("topic %v new leader %v found with commit id: %v", topicInfo.GetTopicDesp(), newLeader, newestLogID)
 	return newLeader, newestLogID, nil
 }
 
@@ -754,6 +755,7 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		coordLog.Infof("disable write failed while make new leader: %v", rpcErr)
 		return rpcErr
 	}
+	newTopicInfo.EpochForWrite++
 
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
 		&newTopicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
@@ -1195,6 +1197,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		var tmpTopicReplicaInfo TopicPartitionReplicaInfo
 		tmpTopicReplicaInfo.ISR = isrList[i]
 		tmpTopicReplicaInfo.Leader = leaders[i]
+		tmpTopicReplicaInfo.EpochForWrite = 1
 
 		err = self.leadership.UpdateTopicNodeInfo(topic, i, &tmpTopicReplicaInfo, tmpTopicReplicaInfo.Epoch)
 		if err != nil {
@@ -1683,6 +1686,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 			go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second*3)
 			return
 		}
+		topicInfo.EpochForWrite++
 
 		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
 			&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
@@ -1822,6 +1826,7 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartitionMeta
 			for n, _ := range newCatchupList {
 				topicInfo.CatchupList = append(topicInfo.CatchupList, n)
 			}
+			topicInfo.EpochForWrite++
 			err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
 				&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
 			if err != nil {
@@ -1883,7 +1888,7 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	}
 
 	if topicInfo.Leader == nodeID {
-		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader", nodeID)
+		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader for topic: %v", nodeID, topicInfo.GetTopicDesp())
 		self.nodesMutex.RLock()
 		currentNodes := self.nsqdNodes
 		self.nodesMutex.RUnlock()

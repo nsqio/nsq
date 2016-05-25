@@ -238,7 +238,12 @@ func (p *program) Start() error {
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)
 
-	nsqd.LoadMetadata()
+	// if we are using the coordinator, we should disable the topic at startup
+	initDisabled := int32(0)
+	if opts.RPCPort != "" {
+		initDisabled = 1
+	}
+	nsqd.LoadMetadata(initDisabled)
 	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())

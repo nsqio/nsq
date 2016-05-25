@@ -129,8 +129,8 @@ func (self *coordData) GetLeaderSessionEpoch() EpochType {
 	return self.topicLeaderSession.LeaderEpoch
 }
 
-func (self *coordData) GetTopicEpoch() EpochType {
-	return self.topicInfo.Epoch
+func (self *coordData) GetTopicEpochForWrite() EpochType {
+	return self.topicInfo.EpochForWrite
 }
 
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {

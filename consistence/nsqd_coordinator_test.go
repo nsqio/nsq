@@ -437,14 +437,14 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
 
-	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
 	logs1, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs1), msgCnt)
 
-	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
 	logs2, err := tc2.logMgr.GetCommitLogs(0, msgCnt)
@@ -467,7 +467,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicData3.ForceFlush()
 	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
 	test.Nil(t, err)
-	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err := tc3.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
@@ -479,7 +479,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	time.Sleep(time.Second * 3)
 	topicData3.ForceFlush()
-	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
@@ -514,7 +514,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	time.Sleep(time.Second * 3)
 	topicData3.ForceFlush()
 
-	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
@@ -550,20 +550,20 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicData2.ForceFlush()
 	topicData3.ForceFlush()
 
-	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	logs1, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs1), msgCnt)
 
-	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	logs2, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs2), msgCnt)
 	test.Equal(t, logs1, logs2)
 
-	test.Equal(t, topicData3.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
@@ -599,6 +599,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.Name = topic
 	topicInitInfo.Partition = partition
 	topicInitInfo.Epoch = 1
+	topicInitInfo.EpochForWrite = 1
 	topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord1.myNode.GetID())
 	topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord2.myNode.GetID())
 	topicInitInfo.Leader = nsqdCoord1.myNode.GetID()
@@ -627,7 +628,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
 
-	test.Equal(t, topicData1.TotalSize(), msgRawSize)
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize)
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
 	logs, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
@@ -635,7 +636,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, len(logs), msgCnt)
 	logs[msgCnt-1].Epoch = 1
 
-	test.Equal(t, topicData2.TotalSize(), msgRawSize)
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize)
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
@@ -661,12 +662,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	oldISR := topicInitInfo.ISR
 	topicInitInfo.ISR = newISR
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
 	t.Log(err)
 	topicInitInfo.ISR = oldISR
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	// test write epoch mismatch
@@ -688,6 +691,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	// leader failed previously, so the leader is invalid
 	// re-confirm the leader
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
@@ -700,14 +704,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	msgCnt++
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
-	test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
-	test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
@@ -752,6 +756,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	// test leader changed
 	topicInitInfo.Leader = nsqdCoord2.myNode.GetID()
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 	leaderSession.LeaderNode = nodeInfo2
 	leaderSession.LeaderEpoch++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
@@ -773,14 +778,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		msgCnt++
 		topicData1.ForceFlush()
 		topicData2.ForceFlush()
-		test.Equal(t, topicData1.TotalSize(), msgRawSize*int64(msgCnt))
+		test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 		logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
 		logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
 
-		test.Equal(t, topicData2.TotalSize(), msgRawSize*int64(msgCnt))
+		test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 		logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)

@@ -195,7 +195,7 @@ func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq *RpcAcquire
 		return &ret
 	}
 	tcData := topicCoord.GetData()
-	if tcData.GetTopicEpoch() != rpcTopicReq.TopicEpoch ||
+	if tcData.topicInfo.Epoch != rpcTopicReq.Epoch ||
 		tcData.GetLeader() != rpcTopicReq.LeaderNodeID ||
 		tcData.GetLeader() != self.nsqdCoord.myNode.GetID() {
 		coordLog.Infof("not topic leader while acquire leader: %v, %v", tcData, rpcTopicReq)
@@ -405,7 +405,8 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 type RpcTopicData struct {
 	TopicName               string
 	TopicPartition          int
-	TopicEpoch              EpochType
+	Epoch                   EpochType
+	TopicWriteEpoch         EpochType
 	TopicLeaderSessionEpoch EpochType
 	TopicLeaderSession      string
 }
@@ -460,7 +461,7 @@ type RpcTestRsp struct {
 	RetErr  *CoordErr
 }
 
-func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
+func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	topicCoord, err := self.getTopicCoord(rpcData.TopicName, rpcData.TopicPartition)
 	if err != nil || topicCoord == nil {
 		coordLog.Infof("rpc call with missing topic :%v", rpcData)
@@ -468,12 +469,12 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordi
 	}
 	coordLog.Debugf("checking rpc call...")
 	tcData := topicCoord.GetData()
-	if tcData.GetTopicEpoch() != rpcData.TopicEpoch {
-		coordLog.Infof("rpc call with wrong epoch :%v", rpcData)
+	if tcData.GetTopicEpochForWrite() != rpcData.TopicWriteEpoch {
+		coordLog.Infof("rpc call with wrong epoch :%v, current: %v", rpcData, tcData.GetTopicEpochForWrite())
 		return nil, ErrEpochMismatch
 	}
 	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
-		coordLog.Infof("rpc call with wrong session:%v", rpcData)
+		coordLog.Infof("rpc call with wrong session:%v", rpcData, tcData.GetLeaderSession())
 		return nil, ErrLeaderSessionMismatch
 	}
 	if !tcData.localDataLoaded {
@@ -484,11 +485,9 @@ func (self *NsqdCoordinator) checkForRpcCall(rpcData RpcTopicData) (*TopicCoordi
 }
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *CoordErr {
-	var retErr CoordErr
-	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		retErr = *err
-		return &retErr
+		return err
 	}
 	// update local channel offset
 	return self.nsqdCoord.updateChannelOffsetOnSlave(tc.GetData(), info.Channel, info.ChannelOffset)
@@ -504,11 +503,9 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 		}
 	}()
 
-	var retErr CoordErr
-	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		retErr = *err
-		return &retErr
+		return err
 	}
 	// do local pub message
 	return self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
@@ -523,11 +520,9 @@ func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
 		}
 	}()
 
-	var retErr CoordErr
-	tc, err := self.nsqdCoord.checkForRpcCall(info.RpcTopicData)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		retErr = *err
-		return &retErr
+		return err
 	}
 	// do local pub message
 	return self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)

@@ -104,7 +104,8 @@ func (self *NsqdRpcClient) NotifyAcquireTopicLeader(epoch EpochType, topicInfo *
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicName = topicInfo.Name
 	rpcInfo.TopicPartition = topicInfo.Partition
-	rpcInfo.TopicEpoch = topicInfo.Epoch
+	rpcInfo.TopicWriteEpoch = topicInfo.EpochForWrite
+	rpcInfo.Epoch = topicInfo.Epoch
 	rpcInfo.LeaderNodeID = topicInfo.Leader
 	retErr, err := self.CallWithRetry("NotifyAcquireTopicLeader", &rpcInfo)
 	return convertRpcError(err, retErr)
@@ -153,7 +154,8 @@ func (self *NsqdRpcClient) NotifyUpdateChannelOffset(leaderSession *TopicLeaderS
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
-	updateInfo.TopicEpoch = info.Epoch
+	updateInfo.TopicWriteEpoch = info.EpochForWrite
+	updateInfo.Epoch = info.Epoch
 	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
@@ -166,7 +168,8 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name
 	updateInfo.TopicPartition = info.Partition
-	updateInfo.TopicEpoch = info.Epoch
+	updateInfo.TopicWriteEpoch = info.EpochForWrite
+	updateInfo.Epoch = info.Epoch
 	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
@@ -181,7 +184,8 @@ func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *T
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessage = message
-	putData.TopicEpoch = info.Epoch
+	putData.TopicWriteEpoch = info.EpochForWrite
+	putData.Epoch = info.Epoch
 	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	retErr, err := self.CallWithRetry("PutMessage", &putData)
@@ -194,7 +198,8 @@ func (self *NsqdRpcClient) PutMessages(leaderSession *TopicLeaderSession, info *
 	putData.TopicName = info.Name
 	putData.TopicPartition = info.Partition
 	putData.TopicMessages = messages
-	putData.TopicEpoch = info.Epoch
+	putData.TopicWriteEpoch = info.EpochForWrite
+	putData.Epoch = info.Epoch
 	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	putData.TopicLeaderSession = leaderSession.Session
 	retErr, err := self.CallWithRetry("PutMessages", &putData)

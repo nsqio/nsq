@@ -197,7 +197,7 @@ func (n *NSQD) Start() {
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })
 }
 
-func (n *NSQD) LoadMetadata() {
+func (n *NSQD) LoadMetadata(disabled int32) {
 	atomic.StoreInt32(&n.isLoading, 1)
 	defer atomic.StoreInt32(&n.isLoading, 0)
 	fn := fmt.Sprintf(path.Join(n.GetOpts().DataPath, "nsqd.%d.dat"), n.GetOpts().ID)
@@ -238,7 +238,7 @@ func (n *NSQD) LoadMetadata() {
 			nsqLog.LogErrorf("failed to parse metadata - %s", err)
 			return
 		}
-		topic := n.GetTopic(topicName, part)
+		topic := n.internalGetTopic(topicName, part, disabled)
 
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {

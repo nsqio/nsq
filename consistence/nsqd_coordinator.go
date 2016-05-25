@@ -965,7 +965,7 @@ type localWriteFunc func(*coordData) *CoordErr
 type localExitFunc func(*CoordErr)
 type localCommitFunc func() error
 type localRollbackFunc func()
-type refreshCoordFunc func(*coordData)
+type refreshCoordFunc func(*coordData) *CoordErr
 type slaveSyncFunc func(*NsqdRpcClient, string, *coordData) *CoordErr
 type slaveAsyncFunc func(*NsqdRpcClient, string, *coordData) *SlaveAsyncWriteResult
 
@@ -993,7 +993,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		// leader epoch change means leadership change, leadership change
 		// need disable write which should hold the write lock.
 		// However, we are holding write lock while doing the cluster write replication.
-		commitLog.Epoch = d.GetTopicEpoch()
+		commitLog.Epoch = d.GetTopicEpochForWrite()
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = totalCnt
@@ -1013,12 +1013,18 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		return localErr
 	}
 	doLocalRollback := func() {
+		coordLog.Warningf("failed write begin rollback : %v, %v", topic.GetFullName(), commitLog)
 		topic.Lock()
 		topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
 		topic.Unlock()
 	}
-	doRefresh := func(d *coordData) {
+	doRefresh := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
+		if d.GetTopicEpochForWrite() != commitLog.Epoch {
+			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
+			return ErrEpochMismatch
+		}
+		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
@@ -1057,7 +1063,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		// leader epoch change means leadership change, leadership change
 		// need disable write which should hold the write lock.
 		// However, we are holding write lock while doing the cluster write replication.
-		commitLog.Epoch = d.GetTopicEpoch()
+		commitLog.Epoch = d.GetTopicEpochForWrite()
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = totalCnt
@@ -1076,12 +1082,18 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsq
 		return localErr
 	}
 	doLocalRollback := func() {
+		coordLog.Warningf("failed write begin rollback : %v, %v", topic.GetFullName(), commitLog)
 		topic.Lock()
 		topic.ResetBackendEndNoLock(nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgCnt-1)
 		topic.Unlock()
 	}
-	doRefresh := func(d *coordData) {
+	doRefresh := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
+		if d.GetTopicEpochForWrite() != commitLog.Epoch {
+			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
+			return ErrEpochMismatch
+		}
+		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
@@ -1160,8 +1172,10 @@ retrypub:
 			coordLog.Warningf("topic(%v) check write failed :%v", topicName, clusterWriteErr)
 			goto exitpub
 		}
-		doRefresh(tcData)
-		coordLog.Debugf("coord data refreshed while write: %v", tcData)
+		if clusterWriteErr = doRefresh(tcData); clusterWriteErr != nil {
+			coordLog.Warningf("topic(%v) write failed after refresh data:%v", topicName, clusterWriteErr)
+			goto exitpub
+		}
 	}
 	success = 0
 	failedNodes = make(map[string]struct{})

@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 )
 
@@ -48,7 +49,17 @@ func NewCoordErrWithCode(msg string, etype CoordErrType, code ErrRPCRetCode) *Co
 }
 
 func (self *CoordErr) Error() string {
-	return self.ErrMsg
+	var tmpbuf bytes.Buffer
+	tmpbuf.WriteString(strconv.Itoa(int(self.ErrType)))
+	tmpbuf.WriteByte(':')
+	tmpbuf.WriteString(strconv.Itoa(int(self.ErrCode)))
+	tmpbuf.WriteByte(':')
+	tmpbuf.WriteString(self.ErrMsg)
+	return tmpbuf.String()
+}
+
+func (self *CoordErr) String() string {
+	return self.Error()
 }
 
 func (self *CoordErr) HasError() bool {

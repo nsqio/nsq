@@ -56,7 +56,10 @@ type TopicPartitionReplicaInfo struct {
 	ISR         []string
 	CatchupList []string
 	Channels    []string
-	Epoch       EpochType
+	// this is only used for write operation
+	// if this changed during write, mean the current write should be abort
+	EpochForWrite EpochType
+	Epoch         EpochType
 }
 
 type TopicPartitionMetaInfo struct {
