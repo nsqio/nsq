@@ -1283,7 +1283,9 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 	var logMgr *TopicCommitLogMgr
 
 	checkDupOnSlave := func(tc *coordData) bool {
-		coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
+		}
 		logMgr = tc.logMgr
 		if logMgr.IsCommitted(logData.LogID) {
 			coordLog.Infof("pub the already committed log id : %v", logData.LogID)
@@ -1341,7 +1343,13 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 	}
 	var logMgr *TopicCommitLogMgr
 
+	tcData := coord.GetData()
+	topicName := tcData.topicInfo.Name
+	partition := tcData.topicInfo.Partition
 	checkDupOnSlave := func(tc *coordData) bool {
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Debugf("pub on slave : %v, msg count: %v", topicName, len(msgs))
+		}
 		logMgr = tc.logMgr
 		if logMgr.IsCommitted(logData.LogID) {
 			coordLog.Infof("put the already committed log id : %v", logData.LogID)
@@ -1350,9 +1358,6 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		return false
 	}
 
-	tcData := coord.GetData()
-	topicName := tcData.topicInfo.Name
-	partition := tcData.topicInfo.Partition
 	doLocalWriteOnSlave := func(tc *coordData) *CoordErr {
 		topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 		if localErr != nil {
@@ -1560,7 +1565,9 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		return ErrTopicWriteOnNonISR
 	}
 
-	coordLog.Debugf("got update channel(%v) offset on slave : %v", channelName, offset)
+	if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Debugf("got update channel(%v) offset on slave : %v", channelName, offset)
+	}
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("slave missing topic : %v", topicName)

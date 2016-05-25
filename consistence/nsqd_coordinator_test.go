@@ -150,6 +150,18 @@ func ensureTopicDisableWrite(nsqdCoord *NsqdCoordinator, topic string, partition
 		panic(err)
 	}
 	tc.disableWrite = disabled
+	tcData := tc.GetData()
+	if tcData.IsMineLeaderSessionReady(nsqdCoord.myNode.GetID()) {
+		topicData, err := nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+		if err != nil {
+			coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
+		} else {
+			// leader changed (maybe down), we make sure out data is flushed to keep data safe
+			topicData.ForceFlush()
+			tcData.logMgr.FlushCommitLogs()
+			topicData.EnableForMaster()
+		}
+	}
 }
 
 func ensureCatchupForTopic(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicInfo) {
@@ -170,7 +182,12 @@ func TestNsqdCoordLookupdChanged(t *testing.T) {
 func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, string) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 2
+	if testing.Verbose() {
+		opts.Logger = &levellogger.GLogger{}
+		opts.LogLevel = levellogger.LOG_DETAIL
+	} else {
+		opts.LogLevel = levellogger.LOG_ERR
+	}
 	nsqd := mustStartNSQD(opts)
 	randPort := rand.Int31n(30000) + 20000
 	nodeInfo := NsqdNodeInfo{
@@ -577,8 +594,12 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 
-	coordLog.SetLevel(2)
-	coordLog.Logger = &levellogger.GLogger{}
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.SetLevel(levellogger.LOG_ERR)
+	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	defer os.RemoveAll(data1)
@@ -634,7 +655,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	logs, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = 1
+	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize)
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
@@ -642,15 +663,17 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
+	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), true)
 	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), false)
+	coordLog.Infof("==== test write not leader ====")
 	// test write not leader
 	err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
 	test.NotNil(t, err)
 	t.Log(err)
 	// test write disabled
+	coordLog.Infof("==== test write disabled ====")
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, true)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
@@ -663,6 +686,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.ISR = newISR
 	topicInitInfo.Epoch++
 	topicInitInfo.EpochForWrite++
+	coordLog.Infof("==== test write while isr not enough ====")
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
@@ -670,6 +694,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicInitInfo.ISR = oldISR
 	topicInitInfo.Epoch++
 	topicInitInfo.EpochForWrite++
+	coordLog.Infof("==== test write with mismatch epoch ====")
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	// test write epoch mismatch
@@ -698,6 +723,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+	time.Sleep(time.Second)
+	coordLog.Infof("==== test write success ====")
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.Nil(t, err)
 
@@ -709,20 +736,22 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
+	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
-	logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
+	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 	channel1 := topicData1.GetChannel("ch1")
 	channel2 := topicData2.GetChannel("ch1")
 	test.Equal(t, channel1.Depth(), int64(msgCnt)*msgRawSize)
 	test.Equal(t, channel2.Depth(), int64(msgCnt)*msgRawSize)
 	msgConsumed := 0
+	time.Sleep(time.Second)
+	coordLog.Infof("==== test client consume messages ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel1.GetClientMsgChan()
 		channel1.StartInFlightTimeout(msg, 1, 10)
@@ -730,11 +759,13 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		test.Nil(t, err)
 
 		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
+		time.Sleep(time.Millisecond * 10)
 		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
 
 	// test write session mismatch
+	coordLog.Infof("==== test write with session mismatch ====")
 	leaderSession.Session = "1234new"
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 
@@ -763,6 +794,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
+
+	coordLog.Infof("==== test write while leader changed ====")
 	err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"))
 	test.NotNil(t, err)
 	err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
@@ -772,6 +805,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
 	test.Equal(t, tc1.IsMineLeaderSessionReady(nsqdCoord1.myNode.GetID()), false)
 	test.Equal(t, tc2.IsMineLeaderSessionReady(nsqdCoord2.myNode.GetID()), true)
+	coordLog.Infof("==== test write success ====")
 	for i := 0; i < 3; i++ {
 		err = nsqdCoord2.PutMessageToCluster(topicData2, []byte("123"))
 		test.Nil(t, err)
@@ -783,14 +817,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
-		logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
+		test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 		test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 		logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
-		logs[msgCnt-1].Epoch = leaderSession.LeaderEpoch
+		test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 		t.Log(logs)
 	}
 	topicData2.ForceFlush()
@@ -805,6 +839,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	channel1.EnableTrace = true
 	topicData1.EnableTrace = true
 	topicData2.EnableTrace = true
+	coordLog.Infof("==== test client consume ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel2.GetClientMsgChan()
 		channel2.StartInFlightTimeout(msg, 1, 10)

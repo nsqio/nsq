@@ -3,6 +3,7 @@ package consistence
 import (
 	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/nsqd"
+	"sync"
 	"time"
 )
 
@@ -12,6 +13,7 @@ const (
 )
 
 type NsqdRpcClient struct {
+	sync.Mutex
 	remote  string
 	timeout time.Duration
 	d       *gorpc.Dispatcher
@@ -54,15 +56,24 @@ func NewNsqdRpcClient(addr string, timeout time.Duration) (*NsqdRpcClient, error
 }
 
 func (self *NsqdRpcClient) Close() {
-	self.c.Stop()
+	self.Lock()
+	if self.c != nil {
+		self.c.Stop()
+		self.c = nil
+	}
+	self.Unlock()
 }
 
 func (self *NsqdRpcClient) Reconnect() error {
-	self.c.Stop()
+	self.Lock()
+	if self.c != nil {
+		self.c.Stop()
+	}
 	self.c = gorpc.NewTCPClient(self.remote)
 	self.c.RequestTimeout = self.timeout
 	self.dc = self.d.NewServiceClient("NsqdCoordRpcServer", self.c)
 	self.c.Start()
+	self.Unlock()
 	return nil
 }
 
