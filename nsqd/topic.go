@@ -269,6 +269,8 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 }
 
 func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
+	old := t.backend.GetQueueWriteEnd()
+	nsqLog.Logf("reset the backend from %v to : %v", old, vend, diffCnt)
 	err := t.backend.RollbackWrite(vend, diffCnt)
 	if err == nil {
 		t.updateChannelsEnd()
@@ -277,6 +279,8 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 }
 
 func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
+	old := t.backend.GetQueueWriteEnd()
+	nsqLog.Logf("reset the backend from %v to : %v", old, vend, totalCnt)
 	err := t.backend.ResetWriteEnd(vend, totalCnt)
 	if err != nil {
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
@@ -381,6 +385,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	firstMsgID := MessageID(0)
 	firstOffset := BackendOffset(-1)
 	totalCnt := int64(0)
+	firstCnt := int64(0)
 	batchBytes := int32(0)
 	for _, m := range msgs {
 		id, offset, bytes, cnt, err := t.put(m)
@@ -389,10 +394,11 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 			return firstMsgID, firstOffset, batchBytes, cnt, err
 		}
 		batchBytes += bytes
+		totalCnt = cnt
 		if firstOffset == BackendOffset(-1) {
 			firstOffset = offset
 			firstMsgID = id
-			totalCnt = cnt
+			firstCnt = cnt
 		}
 	}
 
@@ -401,7 +407,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	} else {
 		t.flushForChannels()
 	}
-	return firstMsgID, firstOffset, batchBytes, totalCnt, nil
+	return firstMsgID, firstOffset, batchBytes, firstCnt, nil
 }
 
 // PutMessages writes multiple Messages to the queue

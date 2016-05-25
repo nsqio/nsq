@@ -204,8 +204,12 @@ func TestNsqdCoordStartup(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 
-	coordLog.SetLevel(2)
-	coordLog.Logger = &levellogger.GLogger{}
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.Logger = newTestLogger(t)
+	}
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
@@ -308,9 +312,13 @@ func TestNsqdCoordStartup(t *testing.T) {
 func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.Logger = newTestLogger(t)
+	}
 
-	coordLog.SetLevel(2)
-	coordLog.Logger = &levellogger.GLogger{}
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
@@ -381,9 +389,13 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 func TestNsqdCoordCatchup(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.Logger = newTestLogger(t)
+	}
 
-	coordLog.SetLevel(2)
-	coordLog.Logger = &levellogger.GLogger{}
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
 	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")

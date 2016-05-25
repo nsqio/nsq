@@ -448,8 +448,12 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 }
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
-	coordLog.SetLevel(2)
-	coordLog.Logger = &levellogger.GLogger{}
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.Logger = newTestLogger(t)
+	}
 
 	nsqdNodeInfoList := make(map[string]*NsqdNodeInfo)
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
