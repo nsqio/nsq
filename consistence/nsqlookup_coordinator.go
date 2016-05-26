@@ -3,6 +3,7 @@ package consistence
 import (
 	"errors"
 	"github.com/cenkalti/backoff"
+	"math"
 	"net"
 	"strconv"
 	"sync"
@@ -458,7 +459,6 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			coordErr := self.handleTopicLeaderElection(&t, currentNodes)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
-				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		} else {
@@ -536,6 +536,9 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		coordLog.Warningf("failed because another is waiting join.")
 		return ErrLeavingISRWait
 	}
+	defer func() {
+		go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
+	}()
 	if state.doneChan != nil {
 		close(state.doneChan)
 		state.doneChan = nil
@@ -570,8 +573,6 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	if coordErr != nil {
 		return coordErr
 	}
-	// Is it possible the topic info changed but no leadership watch trigger?
-	go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 
 	return nil
 }
@@ -684,6 +685,7 @@ func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartiti
 	newestLogID := int64(0)
 	for _, replica := range topicInfo.ISR {
 		if _, ok := currentNodes[replica]; !ok {
+			coordLog.Infof("ignore failed node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
 			continue
 		}
 		if replica == topicInfo.Leader {
@@ -707,14 +709,17 @@ func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartiti
 	if len(newestReplicas) == 1 {
 		newLeader = newestReplicas[0]
 	} else {
-		minLF := 100.0
+		minLF := float64(math.MaxInt64)
 		for _, replica := range newestReplicas {
 			stat, err := self.getNsqdTopicStat(currentNodes[replica])
 			if err != nil {
+				coordLog.Infof("ignore node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
 				continue
 			}
 			_, lf := stat.GetNodeLeaderLoadFactor()
-			if lf < minLF {
+
+			coordLog.Infof("node %v load factor is : %v", replica, lf)
+			if newLeader == "" || lf < minLF {
 				newLeader = replica
 			}
 		}
@@ -791,7 +796,6 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		}
 	}
 
-	go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 	return ErrLeaderElectionFail
 }
 
