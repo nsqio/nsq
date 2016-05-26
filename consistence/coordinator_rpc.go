@@ -327,7 +327,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		}
 	} else {
 		ret = *err
-		return ret
+		return &ret
 	}
 	return nil
 }
