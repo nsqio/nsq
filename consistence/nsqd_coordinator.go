@@ -145,18 +145,31 @@ func (self *NsqdCoordinator) Start() error {
 			return err
 		}
 	}
+	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
+	self.wg.Add(1)
+	go self.watchNsqLookupd()
+
+	start := time.Now()
+	for {
+		if self.lookupLeader.GetID() != "" {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+		coordLog.Infof("waiting for lookupd ...")
+		if time.Now().Sub(start) > time.Second*10 {
+			panic("no lookupd found while starting nsqd coordinator")
+		}
+	}
 
 	err := self.loadLocalTopicData()
 	if err != nil {
+		close(self.stopChan)
+		self.rpcServer.stop()
 		return err
 	}
-	self.wg.Add(1)
-	go self.watchNsqLookupd()
+
 	self.wg.Add(1)
 	go self.checkForUnsyncedTopics()
-	// for each topic, wait other replicas and sync data with leader,
-	// begin accept client request.
-	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
 	self.wg.Add(1)
 	go self.periodFlushCommitLogs()
 	return nil
@@ -322,7 +335,9 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic starting as isr .")
-				self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+				if len(topicInfo.ISR) > 1 {
+					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+				}
 			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic starting as catchup")
 				go self.catchupFromLeader(*topicInfo, "")
@@ -332,7 +347,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
 					self.localNsqd.CloseExistingTopic(topicName, partition)
 				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
-					self.requestJoinCatchup(topicName, partition)
+					go self.requestJoinCatchup(topicName, partition)
 				}
 			}
 		}
