@@ -1743,6 +1743,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
+			tpCoord.Exiting()
 			if tcData.GetLeader() == self.myNode.GetID() {
 				self.trySyncTopicChannels(tcData)
 			}
@@ -1764,9 +1765,6 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					time.Sleep(time.Millisecond * 100)
 				}
 			}
-			if tcData.GetLeader() == self.myNode.GetID() {
-				self.trySyncTopicChannels(tcData)
-			}
 
 			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 				// leader
@@ -1780,7 +1778,6 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				localTopic.PrintCurrentStats()
 				localTopic.Close()
 			}
-			tpCoord.Exiting()
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")
