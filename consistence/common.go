@@ -52,9 +52,9 @@ func (self *CoordErr) Error() string {
 	var tmpbuf bytes.Buffer
 	tmpbuf.WriteString("ErrType:")
 	tmpbuf.WriteString(strconv.Itoa(int(self.ErrType)))
-	tmpbuf.WriteString("ErrCode:")
+	tmpbuf.WriteString(" ErrCode:")
 	tmpbuf.WriteString(strconv.Itoa(int(self.ErrCode)))
-	tmpbuf.WriteByte(':')
+	tmpbuf.WriteString(" : ")
 	tmpbuf.WriteString(self.ErrMsg)
 	return tmpbuf.String()
 }

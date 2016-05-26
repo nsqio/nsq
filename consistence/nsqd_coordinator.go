@@ -1764,6 +1764,9 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					time.Sleep(time.Millisecond * 100)
 				}
 			}
+			if tcData.GetLeader() == self.myNode.GetID() {
+				self.trySyncTopicChannels(tcData)
+			}
 
 			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 				// leader
@@ -1775,6 +1778,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				coordLog.Infof("no local topic")
 			} else {
 				localTopic.PrintCurrentStats()
+				localTopic.Close()
 			}
 			tpCoord.Exiting()
 		}

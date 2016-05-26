@@ -557,9 +557,7 @@ func (t *Topic) Empty() error {
 
 func (t *Topic) ForceFlush() {
 	s := time.Now()
-	t.Lock()
 	t.flush(true)
-	t.Unlock()
 	cost := time.Now().Sub(s)
 	if cost > time.Second {
 		nsqLog.Logf("topic(%s): flush cost: %v", t.GetFullName(), cost)
