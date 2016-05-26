@@ -79,6 +79,7 @@ type Channel struct {
 	confirmMutex         sync.Mutex
 	waitingConfirm       int32
 	tryReadBackend       chan bool
+	needNotifyRead       int32
 	consumeDisabled      int32
 	// stat counters
 	EnableTrace bool
@@ -417,7 +418,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 			}
 			return c.currentLastConfirmed, reduced
 		}
-		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 {
+		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 && atomic.LoadInt32(&c.needNotifyRead) == 1 {
 			select {
 			case c.tryReadBackend <- true:
 			default:
@@ -734,7 +735,14 @@ func (c *Channel) DisableConsume(disable bool) {
 }
 
 func (c *Channel) resetReaderToConfirmed() {
-	c.backend.SkipReadToOffset(c.currentLastConfirmed)
+	offset := c.GetConfirmedOffset()
+	c.backend.SkipReadToOffset(offset)
+	d, ok := c.backend.(*diskQueueReader)
+	vc := int64(0)
+	if ok {
+		vc = int64(d.virtualConfirmedOffset)
+	}
+	nsqLog.Logf("reset channel %v reader confirm: %v, disk queue: %v", c.name, offset, vc)
 }
 
 // messagePump reads messages from either memory or backend and sends
@@ -748,6 +756,7 @@ func (c *Channel) messagePump() {
 	var readChan <-chan ReadResult
 	maxWin := int32(c.option.MaxConfirmWin)
 	continuNotifyChan := make(chan int, 1)
+	resumedFirst := true
 
 LOOP:
 	for {
@@ -760,6 +769,7 @@ LOOP:
 
 		if atomic.LoadInt32(&c.waitingConfirm) > maxWin ||
 			len(c.requeuedMsgChan) > 0 {
+			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readChan = nil
 		} else {
 			readChan = c.backend.ReadChan()
@@ -800,11 +810,17 @@ LOOP:
 				// TODO: store the skipped info to retry error if possible.
 				nsqLog.LogWarningf("skipped message from %v to the : %v", lastMsg, *msg)
 			}
+			if resumedFirst {
+				nsqLog.Logf("resumed first messsage offset: %v", msg.offset)
+				resumedFirst = false
+			}
 			isSkipped = false
 			lastMsg = *msg
 		case <-c.exitChan:
 			goto exit
 		case <-c.tryReadBackend:
+			atomic.StoreInt32(&c.needNotifyRead, 0)
+			resumedFirst = true
 			continue LOOP
 		}
 

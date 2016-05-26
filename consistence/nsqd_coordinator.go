@@ -706,7 +706,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition, offset, MAX_LOG_PULL)
 		if rpcErr != nil {
 			// if not network error, something wrong with commit log file, we need return to abort.
-			coordLog.Infof("error while get logs :%v, offset: %v", rpcErr, offset)
+			coordLog.Infof("topic %v error while get logs :%v, offset: %v", topicInfo.GetTopicDesp(), rpcErr, offset)
 			if retryCnt > MAX_CATCHUP_RETRY {
 				return &CoordErr{rpcErr.Error(), RpcCommonErr, CoordNetErr}
 			}
@@ -716,7 +716,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		} else if len(logs) == 0 {
 			synced = true
 		}
-		coordLog.Infof("pulled logs :%v from offset: %v", len(logs), offset)
+		coordLog.Infof("topic %v pulled logs :%v from offset: %v", topicInfo.GetTopicDesp(), len(logs), offset)
 		localTopic.Lock()
 		hasErr := false
 		for i, l := range logs {
@@ -1650,9 +1650,9 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 				if rpcErr != nil {
 					continue
 				}
-				rpcErr = c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+				rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 				if rpcErr != nil {
-					coordLog.Debugf("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
+					coordLog.Infof("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
 				}
 			}
 			// only the first channel of topic should flush.
@@ -1670,21 +1670,21 @@ func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offse
 	if t.GetTopicPart() != partition {
 		return nil, ErrLocalTopicPartitionMismatch
 	}
-	dataList := make([][]byte, len(offsetList))
+	dataList := make([][]byte, 0, len(offsetList))
 	snap := t.GetDiskQueueSnapshot()
 	for i, offset := range offsetList {
 		size := sizeList[i]
 		err = snap.SeekTo(nsqd.BackendOffset(offset))
 		if err != nil {
 			coordLog.Infof("read topic data at offset %v, size: %v, error: %v", offset, size, err)
-			return nil, ErrLocalTopicDataCorrupt
+			break
 		}
 		buf, err := snap.ReadRaw(size)
 		if err != nil {
 			coordLog.Infof("read topic data at offset %v, size:%v, error: %v", offset, size, err)
-			return nil, ErrLocalTopicDataCorrupt
+			break
 		}
-		dataList[i] = buf
+		dataList = append(dataList, buf)
 	}
 	return dataList, nil
 }

@@ -264,7 +264,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 			}
 		}
 		self.nsqdCoord.coordMutex.Unlock()
-		return nil
+		return &ret
 	}
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
@@ -325,8 +325,10 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 				topicData.EnableForMaster()
 			}
 		}
+	} else {
+		ret = *err
 	}
-	return err
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
@@ -613,6 +615,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	}
 
 	ret.DataList, err = self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, offsetList, sizeList)
+	ret.Logs = ret.Logs[:len(ret.DataList)]
 	if err != nil {
 		return nil, err
 	}
