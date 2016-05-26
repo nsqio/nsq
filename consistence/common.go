@@ -50,8 +50,9 @@ func NewCoordErrWithCode(msg string, etype CoordErrType, code ErrRPCRetCode) *Co
 
 func (self *CoordErr) Error() string {
 	var tmpbuf bytes.Buffer
+	tmpbuf.WriteString("ErrType:")
 	tmpbuf.WriteString(strconv.Itoa(int(self.ErrType)))
-	tmpbuf.WriteByte(':')
+	tmpbuf.WriteString("ErrCode:")
 	tmpbuf.WriteString(strconv.Itoa(int(self.ErrCode)))
 	tmpbuf.WriteByte(':')
 	tmpbuf.WriteString(self.ErrMsg)

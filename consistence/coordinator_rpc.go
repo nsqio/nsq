@@ -264,7 +264,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 			}
 		}
 		self.nsqdCoord.coordMutex.Unlock()
-		return &ret
+		return nil
 	}
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
@@ -327,8 +327,9 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		}
 	} else {
 		ret = *err
+		return ret
 	}
-	return &ret
+	return nil
 }
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
