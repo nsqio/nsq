@@ -2,6 +2,35 @@
 
 ## Binaries
 
+### 0.3.8 - 2016-05-26
+
+**Upgrading from 0.3.7**: Binaries contain no backwards incompatible changes.
+
+This release fixes a critical regression in `0.3.7` that could result in message loss when
+attempting to cleanly shutdown `nsqd` by sending it a `SIGTERM`. The expected behavior was for it
+to flush messages in internal buffers to disk before exiting. See #757 and #759 for more details.
+
+A few performance improvements landed including #743, which improves channel throughput by ~17%,
+and #740, which reduces garbage when reading messages from disk.
+
+We're now stripping debug info, reducing binary size, in the official binary downloads and Windows
+binaries are now bundled with the appropriate `.exe` extension (#726 and #751).
+
+Features:
+
+ * #743 - `nsqd`: remove channel `messagePump`
+ * #751 - strip debug info from binaries (thanks @ploxiln)
+ * #740 - `nsqd`: reduce garbage when reading from diskqueue (thanks @dieterbe)
+
+Bugs:
+
+ * #757/#759 - `nsqd`: properly handle `SIGTERM` (thanks @judwhite)
+ * #738 - updates for latest `go-options`
+ * #730 - `nsqd`: diskqueue sync count on both read/write
+ * #734 - `nsqadmin`: make `rate` column work without `--proxy-graphite` (thanks @ploxiln)
+ * #726 - add `.exe` extension to Windows binaries (thanks @ploxiln)
+ * #722 - `nsqadmin`: fix connected duration > `1hr`
+
 ### 0.3.7 - 2016-02-23
 
 **Upgrading from 0.3.6**: Binaries contain no backwards incompatible changes.
