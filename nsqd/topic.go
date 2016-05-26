@@ -270,7 +270,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	old := t.backend.GetQueueWriteEnd()
-	nsqLog.Logf("reset the backend from %v to : %v", old, vend, diffCnt)
+	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, diffCnt)
 	err := t.backend.RollbackWrite(vend, diffCnt)
 	if err == nil {
 		t.updateChannelsEnd()
@@ -280,7 +280,7 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 
 func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
 	old := t.backend.GetQueueWriteEnd()
-	nsqLog.Logf("reset the backend from %v to : %v", old, vend, totalCnt)
+	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, totalCnt)
 	err := t.backend.ResetWriteEnd(vend, totalCnt)
 	if err != nil {
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)

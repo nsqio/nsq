@@ -153,6 +153,27 @@ func startBenchSub() {
 	start := time.Now()
 	close(goChan)
 	close(quitChan)
+	go func() {
+		prevMsgCount := int64(0)
+		prevStart := start
+		for {
+			time.Sleep(time.Second * 5)
+			end := time.Now()
+			duration := end.Sub(prevStart)
+			currentTmc := atomic.LoadInt64(&totalSubMsgCount)
+			tmc := currentTmc - prevMsgCount
+			prevMsgCount = currentTmc
+			prevStart = time.Now()
+			log.Printf("duration: %s - %.03fmb/s - %.03fops/s - %.03fus/op\n",
+				duration,
+				float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
+				float64(tmc)/duration.Seconds(),
+				float64(duration/time.Microsecond)/(float64(tmc)+0.01))
+
+		}
+
+	}()
+
 	wg.Wait()
 	end := time.Now()
 	duration := end.Sub(start)
@@ -161,7 +182,7 @@ func startBenchSub() {
 		duration,
 		float64(tmc*int64(*size))/duration.Seconds()/1024/1024,
 		float64(tmc)/duration.Seconds(),
-		float64(duration/time.Microsecond)/float64(tmc))
+		float64(duration/time.Microsecond)/(float64(tmc)+0.01))
 
 	log.Printf("total count: %v\n", tmc)
 }

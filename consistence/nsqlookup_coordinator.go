@@ -768,7 +768,9 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 	self.notifyTopicMetaInfo(topicInfo)
 
 	var leaderSession *TopicLeaderSession
-	for {
+	retry := 10
+	for retry > 0 {
+		retry--
 		leaderSession, err = self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 		if err != nil || leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 			coordLog.Infof("topic leader session still missing")
@@ -784,11 +786,13 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 			time.Sleep(time.Second)
 		} else {
 			coordLog.Infof("topic leader session found: %v", leaderSession)
-			break
+			go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, true)
+			return nil
 		}
 	}
-	go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, true)
-	return nil
+
+	go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
+	return ErrLeaderElectionFail
 }
 
 func (self *NsqLookupCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *CoordErr) {
