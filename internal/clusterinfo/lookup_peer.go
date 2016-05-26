@@ -35,7 +35,7 @@ type peerInfo struct {
 }
 
 var (
-	lookupTimeout = time.Second * 5
+	lookupTimeout = time.Second * 3
 )
 
 const (

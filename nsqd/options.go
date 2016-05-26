@@ -17,18 +17,19 @@ const (
 
 type Options struct {
 	// basic options
-	ID                         int64    `flag:"worker-id" cfg:"id"`
-	Verbose                    bool     `flag:"verbose"`
-	ClusterID                  string   `flag:"cluster-id"`
-	ClusterLeadershipAddresses string   `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
-	TCPAddress                 string   `flag:"tcp-address"`
-	RPCPort                    string   `flag:"rpc-port"`
-	HTTPAddress                string   `flag:"http-address"`
-	HTTPSAddress               string   `flag:"https-address"`
-	BroadcastAddress           string   `flag:"broadcast-address"`
-	BroadcastInterface         string   `flag:"broadcast-interface"`
-	NSQLookupdTCPAddresses     []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
-	AuthHTTPAddresses          []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	ID                         int64         `flag:"worker-id" cfg:"id"`
+	Verbose                    bool          `flag:"verbose"`
+	ClusterID                  string        `flag:"cluster-id"`
+	ClusterLeadershipAddresses string        `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
+	TCPAddress                 string        `flag:"tcp-address"`
+	RPCPort                    string        `flag:"rpc-port"`
+	HTTPAddress                string        `flag:"http-address"`
+	HTTPSAddress               string        `flag:"https-address"`
+	BroadcastAddress           string        `flag:"broadcast-address"`
+	BroadcastInterface         string        `flag:"broadcast-interface"`
+	NSQLookupdTCPAddresses     []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses          []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	LookupPingInterval         time.Duration `flag:"lookup-ping-interval" arg:"5s"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -109,6 +110,7 @@ func NewOptions() *Options {
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),
+		LookupPingInterval:     5 * time.Second,
 
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 100 * 1024 * 1024,

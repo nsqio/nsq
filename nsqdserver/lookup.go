@@ -53,7 +53,7 @@ func connectCallback(ctx *context, hostname string, syncTopicChan chan *clusteri
 	}
 }
 
-func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan chan struct{}, exitChan chan int) {
+func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan interface{}, optsNotifyChan chan struct{}, exitChan chan int) {
 	var lookupPeers []*clusterinfo.LookupPeer
 	var lookupAddrs []string
 	syncTopicChan := make(chan *clusterinfo.LookupPeer)
@@ -66,7 +66,7 @@ func (n *NsqdServer) lookupLoop(metaNotifyChan chan interface{}, optsNotifyChan 
 	}
 
 	// for announcements, lookupd determines the host automatically
-	ticker := time.Tick(15 * time.Second)
+	ticker := time.Tick(pingInterval)
 	allHosts := make([]string, 0)
 	discoveryAddrs := make([]string, 0)
 	for {

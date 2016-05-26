@@ -236,7 +236,7 @@ func (s *NsqdServer) Main() {
 	s.ctx.nsqd.Start()
 
 	s.waitGroup.Wrap(func() {
-		s.lookupLoop(s.ctx.nsqd.MetaNotifyChan, s.ctx.nsqd.OptsNotificationChan, s.exitChan)
+		s.lookupLoop(opts.LookupPingInterval, s.ctx.nsqd.MetaNotifyChan, s.ctx.nsqd.OptsNotificationChan, s.exitChan)
 	})
 
 	if opts.StatsdAddress != "" {

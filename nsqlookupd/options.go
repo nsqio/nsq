@@ -40,7 +40,7 @@ func NewOptions() *Options {
 		ClusterLeadershipAddresses: "",
 		ClusterID:                  "nsq-clusterid-test-only",
 
-		InactiveProducerTimeout: 300 * time.Second,
+		InactiveProducerTimeout: 30 * time.Second,
 
 		LogLevel: 1,
 		Logger:   &levellogger.GLogger{},

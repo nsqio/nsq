@@ -190,9 +190,11 @@ func (self *NsqdCoordinator) Stop() {
 
 func (self *NsqdCoordinator) periodFlushCommitLogs() {
 	tmpCoords := make(map[string]map[int]*TopicCoordinator)
+	syncChannelCounter := 0
 	defer self.wg.Done()
 	flushTicker := time.NewTicker(time.Second)
 	doFlush := func() {
+		syncChannelCounter++
 		self.coordMutex.RLock()
 		for name, tc := range self.topicCoords {
 			coords, ok := tmpCoords[name]
@@ -209,7 +211,7 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 			for pid, tpc := range tc {
 				tcData := tpc.GetData()
 				tcData.logMgr.FlushCommitLogs()
-				if tcData.GetLeader() == self.myNode.GetID() {
+				if syncChannelCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
 					self.trySyncTopicChannels(tcData)
 				}
 				delete(tc, pid)
@@ -1635,10 +1637,10 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 	localTopic, _ := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if localTopic != nil {
 		channels := localTopic.GetChannelMapCopy()
+		var syncOffset ChannelConsumerOffset
+		syncOffset.Flush = true
 		for _, ch := range channels {
-			var syncOffset ChannelConsumerOffset
 			syncOffset.VOffset = int64(ch.GetConfirmedOffset())
-			syncOffset.Flush = true
 
 			for _, nodeID := range tcData.topicInfo.ISR {
 				if nodeID == self.myNode.GetID() {
@@ -1653,6 +1655,8 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 					coordLog.Debugf("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
 				}
 			}
+			// only the first channel of topic should flush.
+			syncOffset.Flush = false
 		}
 	}
 }

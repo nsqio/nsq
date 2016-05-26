@@ -122,6 +122,7 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 		return nil, err
 	}
 
+	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())
 	if channel != "" {
 		key := ChannelReg{
 			PartitionID: pid,
@@ -151,6 +152,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		return nil, err
 	}
 
+	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())
 	if channel != "" {
 		key := ChannelReg{
 			PartitionID: pid,
