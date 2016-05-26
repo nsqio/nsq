@@ -352,6 +352,15 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 		ret = *err
 		return &ret
 	}
+	tcData := tp.GetData()
+	localTopic, localErr := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+	if localErr != nil {
+		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), localErr)
+	} else {
+		localTopic.ForceFlush()
+	}
+	tcData.logMgr.FlushCommitLogs()
+
 	return tp.DisableWriteWithTimeout(true)
 }
 

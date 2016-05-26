@@ -854,6 +854,9 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
+	localTopic.ForceFlush()
+	topicCoord.GetData().logMgr.FlushCommitLogs()
+
 	if newTopicInfo.Leader == self.myNode.GetID() {
 		// not leader before and became new leader
 		if oldData.GetLeader() != self.myNode.GetID() {
