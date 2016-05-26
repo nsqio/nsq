@@ -596,10 +596,10 @@ func (c *Channel) GetInflightNum() int {
 }
 
 func (c *Channel) GetConfirmedOffset() BackendOffset {
-	if _, ok := c.backend.(*diskQueueReader); ok {
-		return c.backend.(*diskQueueReader).virtualConfirmedOffset
-	}
-	return 0
+	c.confirmMutex.Lock()
+	tmp := c.currentLastConfirmed
+	c.confirmMutex.Unlock()
+	return tmp
 }
 
 func (c *Channel) GetChannelEnd() BackendOffset {

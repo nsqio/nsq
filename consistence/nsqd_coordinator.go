@@ -189,17 +189,32 @@ func (self *NsqdCoordinator) Stop() {
 }
 
 func (self *NsqdCoordinator) periodFlushCommitLogs() {
+	tmpCoords := make(map[string]map[int]*TopicCoordinator)
 	defer self.wg.Done()
 	flushTicker := time.NewTicker(time.Second)
 	doFlush := func() {
 		self.coordMutex.RLock()
-		for _, tc := range self.topicCoords {
-			for _, tpc := range tc {
-				tcData := tpc.GetData()
-				tcData.logMgr.FlushCommitLogs()
+		for name, tc := range self.topicCoords {
+			coords, ok := tmpCoords[name]
+			if !ok {
+				coords = make(map[int]*TopicCoordinator)
+				tmpCoords[name] = coords
+			}
+			for pid, tpc := range tc {
+				coords[pid] = tpc
 			}
 		}
 		self.coordMutex.RUnlock()
+		for _, tc := range tmpCoords {
+			for pid, tpc := range tc {
+				tcData := tpc.GetData()
+				tcData.logMgr.FlushCommitLogs()
+				if tcData.GetLeader() == self.myNode.GetID() {
+					self.trySyncTopicChannels(tcData)
+				}
+				delete(tc, pid)
+			}
+		}
 	}
 	for {
 		select {
@@ -327,7 +342,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 
 			if topicInfo.Leader == self.myNode.GetID() {
-				coordLog.Infof("topic starting as leader.")
+				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())
 				err := self.acquireTopicLeader(topicInfo)
 				if err != nil {
 					coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
@@ -339,10 +354,10 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
 				}
 			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
-				coordLog.Infof("topic starting as catchup")
+				coordLog.Infof("topic %v starting as catchup", topicInfo.GetTopicDesp())
 				go self.catchupFromLeader(*topicInfo, "")
 			} else {
-				coordLog.Infof("topic starting as not relevant")
+				coordLog.Infof("topic %v starting as not relevant", topicInfo.GetTopicDesp())
 				if len(topicInfo.ISR) >= topicInfo.Replica {
 					coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
 					self.localNsqd.CloseExistingTopic(topicName, partition)
@@ -1535,7 +1550,6 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	}
 
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
-	syncOffset.OffsetID = int64(msgID)
 	syncOffset.VOffset = int64(offset)
 
 	for _, nodeID := range tcData.topicInfo.ISR {
@@ -1598,8 +1612,15 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	currentEnd := ch.GetChannelEnd()
 	if nsqd.BackendOffset(offset.VOffset) > currentEnd {
 		coordLog.Debugf("update channel(%v) consume offset exceed end %v on slave : %v", channelName, offset, currentEnd)
-		return nil
-		//topic.ForceFlush()
+		if offset.Flush {
+			topic.ForceFlush()
+			currentEnd = ch.GetChannelEnd()
+			if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+				offset.VOffset = int64(currentEnd)
+			}
+		} else {
+			offset.VOffset = int64(currentEnd)
+		}
 	}
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
 	if err != nil {
@@ -1608,6 +1629,32 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
 	}
 	return nil
+}
+
+func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
+	localTopic, _ := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+	if localTopic != nil {
+		channels := localTopic.GetChannelMapCopy()
+		for _, ch := range channels {
+			var syncOffset ChannelConsumerOffset
+			syncOffset.VOffset = int64(ch.GetConfirmedOffset())
+			syncOffset.Flush = true
+
+			for _, nodeID := range tcData.topicInfo.ISR {
+				if nodeID == self.myNode.GetID() {
+					continue
+				}
+				c, rpcErr := self.acquireRpcClient(nodeID)
+				if rpcErr != nil {
+					continue
+				}
+				rpcErr = c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+				if rpcErr != nil {
+					coordLog.Debugf("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
+				}
+			}
+		}
+	}
 }
 
 func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offsetList []int64, sizeList []int32) ([][]byte, *CoordErr) {
@@ -1689,6 +1736,9 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					tpCoord.topicInfo.GetTopicDesp(), tpCoord.topicInfo.ISR)
 			}
 
+			if tcData.GetLeader() == self.myNode.GetID() {
+				self.trySyncTopicChannels(tcData)
+			}
 			// TODO: if we release leader first, we can not transfer the leader properly,
 			// if we leave isr first, we would get the state that the leader not in isr
 			// wait lookup choose new node for isr/leader

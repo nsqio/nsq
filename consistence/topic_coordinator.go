@@ -8,8 +8,8 @@ import (
 )
 
 type ChannelConsumerOffset struct {
-	OffsetID int64
-	VOffset  int64
+	VOffset int64
+	Flush   bool
 }
 
 type coordData struct {
