@@ -134,6 +134,7 @@ var (
 	ErrTopicLeaderSessionInvalid     = NewCoordErrWithCode("topic leader session is invalid", CoordElectionTmpErr, RpcCommonErr)
 	ErrTopicWriteOnNonISR            = NewCoordErrWithCode("topic write on a node not in ISR", CoordTmpErr, RpcErrWriteOnNonISR)
 	ErrTopicISRNotEnough             = NewCoordErrWithCode("topic isr nodes not enough", CoordTmpErr, RpcCommonErr)
+	ErrClusterChanged                = NewCoordErrWithCode("cluster changed ", CoordTmpErr, RpcNoErr)
 
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)

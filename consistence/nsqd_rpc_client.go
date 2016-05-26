@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	RPC_TIMEOUT       = time.Duration(time.Second * 10)
-	RPC_TIMEOUT_SHORT = time.Duration(time.Second * 5)
+	RPC_TIMEOUT            = time.Duration(time.Second * 10)
+	RPC_TIMEOUT_SHORT      = time.Duration(time.Second * 5)
+	RPC_TIMEOUT_FOR_LOOKUP = time.Duration(time.Second * 2)
 )
 
 type NsqdRpcClient struct {
@@ -77,6 +78,11 @@ func (self *NsqdRpcClient) Reconnect() error {
 	return nil
 }
 
+func (self *NsqdRpcClient) CallFast(method string, arg interface{}) (interface{}, error) {
+	reply, err := self.dc.CallTimeout(method, arg, time.Second)
+	return reply, err
+}
+
 func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}) (interface{}, error) {
 	for {
 		reply, err := self.dc.Call(method, arg)
@@ -135,6 +141,14 @@ func (self *NsqdRpcClient) EnableTopicWrite(epoch EpochType, topicInfo *TopicPar
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartitionMetaInfo = *topicInfo
 	retErr, err := self.CallWithRetry("EnableTopicWrite", &rpcInfo)
+	return convertRpcError(err, retErr)
+}
+
+func (self *NsqdRpcClient) DisableTopicWriteFast(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	var rpcInfo RpcAdminTopicInfo
+	rpcInfo.LookupdEpoch = epoch
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
+	retErr, err := self.CallFast("DisableTopicWrite", &rpcInfo)
 	return convertRpcError(err, retErr)
 }
 
