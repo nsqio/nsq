@@ -847,6 +847,9 @@ func (d *diskQueueReader) ioLoop() {
 				d.endUpdatedResponseChan <- nil
 				continue
 			}
+			if *endPos == d.queueEndInfo {
+				continue
+			}
 			if d.queueEndInfo.EndOffset.FileNum != endPos.EndOffset.FileNum && endPos.EndOffset.Pos == 0 {
 				// a new file for the position
 				count = 0
@@ -882,8 +885,12 @@ func (d *diskQueueReader) ioLoop() {
 			d.endUpdatedResponseChan <- nil
 
 		case confirmInfo := <-d.confirmChan:
-			count++
-			d.confirmResponseChan <- d.internalConfirm(confirmInfo)
+			oldConfirm := d.virtualConfirmedOffset
+			err := d.internalConfirm(confirmInfo)
+			if oldConfirm != d.virtualConfirmedOffset {
+				count++
+			}
+			d.confirmResponseChan <- err
 
 		case <-d.exitChan:
 			goto exit
