@@ -66,8 +66,8 @@ func (d *errorBackendQueue) Delete() error                             { return 
 func (d *errorBackendQueue) Depth() int64                              { return 0 }
 func (d *errorBackendQueue) Empty() error                              { return nil }
 func (d *errorBackendQueue) Flush() error                              { return nil }
-func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd          { return nil }
-func (d *errorBackendQueue) GetQueueWriteEnd() BackendQueueEnd         { return nil }
+func (d *errorBackendQueue) GetQueueReadEnd() BackendQueueEnd          { return &diskQueueEndInfo{} }
+func (d *errorBackendQueue) GetQueueWriteEnd() BackendQueueEnd         { return &diskQueueEndInfo{} }
 func (d *errorBackendQueue) ResetWriteEnd(BackendOffset, int64) error  { return nil }
 func (d *errorBackendQueue) RollbackWrite(BackendOffset, uint64) error { return nil }
 

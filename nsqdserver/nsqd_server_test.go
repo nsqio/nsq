@@ -3,6 +3,7 @@ package nsqdserver
 import (
 	"fmt"
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
@@ -125,7 +126,7 @@ func TestReconfigure(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	numLookupPeers := len(nsqdServer.lookupPeers.Load().([]*lookupPeer))
+	numLookupPeers := len(nsqdServer.lookupPeers.Load().([]*clusterinfo.LookupPeer))
 	test.Equal(t, numLookupPeers, 1)
 
 	newOpts = *opts
@@ -137,8 +138,8 @@ func TestReconfigure(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	var lookupPeers []string
-	for _, lp := range nsqdServer.lookupPeers.Load().([]*lookupPeer) {
-		lookupPeers = append(lookupPeers, lp.addr)
+	for _, lp := range nsqdServer.lookupPeers.Load().([]*clusterinfo.LookupPeer) {
+		lookupPeers = append(lookupPeers, lp.String())
 	}
 	test.Equal(t, len(lookupPeers), 2)
 	test.Equal(t, lookupPeers, newOpts.NSQLookupdTCPAddresses)

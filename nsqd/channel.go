@@ -689,6 +689,10 @@ func (c *Channel) DisableConsume(disable bool) {
 			client.Exit()
 			delete(c.clients, cid)
 		}
+		dr, ok := c.backend.(*diskQueueReader)
+		if ok {
+			dr.SetPreFetch(false)
+		}
 		c.initPQ()
 		c.waitingRequeueMutex.Lock()
 		for k, _ := range c.waitingRequeueMsgs {
@@ -724,6 +728,10 @@ func (c *Channel) DisableConsume(disable bool) {
 			default:
 				done = true
 			}
+		}
+		dr, ok := c.backend.(*diskQueueReader)
+		if ok {
+			dr.SetPreFetch(true)
 		}
 
 		c.resetReaderToConfirmed()

@@ -460,6 +460,9 @@ func (t *Topic) TotalMessageCnt() uint64 {
 
 func (t *Topic) TotalDataSize() int64 {
 	e := t.backend.GetQueueWriteEnd()
+	if e == nil {
+		return 0
+	}
 	return int64(e.GetOffset())
 }
 
