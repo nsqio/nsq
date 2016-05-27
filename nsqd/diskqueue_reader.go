@@ -841,7 +841,9 @@ func (d *diskQueueReader) ioLoop() {
 		case endPos := <-d.endUpdatedChan:
 			if endPos == nil {
 				count = 0
-				d.sync()
+				if d.needSync {
+					d.sync()
+				}
 				d.endUpdatedResponseChan <- nil
 				continue
 			}
