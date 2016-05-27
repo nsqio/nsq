@@ -562,6 +562,12 @@ func (t *Topic) ForceFlush() {
 	if cost > time.Second {
 		nsqLog.Logf("topic(%s): flush cost: %v", t.GetFullName(), cost)
 	}
+	t.channelLock.RLock()
+	for _, channel := range t.channelMap {
+		channel.flush()
+	}
+	t.channelLock.RUnlock()
+
 }
 
 func (t *Topic) flush(notifyChan bool) error {

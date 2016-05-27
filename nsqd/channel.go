@@ -117,7 +117,8 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 			opt.E2EProcessingLatencyPercentiles,
 		)
 	}
-	syncEvery := opt.SyncEvery
+	// channel no need sync so much.
+	syncEvery := opt.SyncEvery * 1000
 	if syncEvery < 1 {
 		syncEvery = 1
 	}

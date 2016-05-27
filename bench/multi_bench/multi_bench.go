@@ -39,7 +39,7 @@ var totalDumpCount int64
 var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
-var dumpCheck map[uint64]int
+var dumpCheck map[string]map[uint64]int
 var mutex sync.Mutex
 
 func init() {
@@ -302,9 +302,12 @@ func startCheckData(msg []byte, batch [][]byte) {
 		atomic.LoadInt64(&totalSubMsgCount),
 		atomic.LoadInt64(&totalDumpCount))
 
-	for id, cnt := range dumpCheck {
-		if cnt > 2 {
-			log.Printf("dump id : %v, cnt: %v\n", id, cnt)
+	for topicName, tdump := range dumpCheck {
+		log.Printf("topic %v dump count: \n", topicName, len(tdump))
+		for id, cnt := range tdump {
+			if cnt > 2 {
+				log.Printf("dump id : %v, cnt: %v\n", id, cnt)
+			}
 		}
 	}
 }
@@ -418,7 +421,7 @@ func main() {
 	config.MsgTimeout = time.Second * 10
 
 	log.SetPrefix("[bench_writer] ")
-	dumpCheck = make(map[uint64]int, 1000)
+	dumpCheck = make(map[string]map[uint64]int, 5)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -473,18 +476,20 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 }
 
 type consumeHandler struct {
+	topic          string
+	topicDumpCheck map[uint64]int
 }
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 	mid := uint64(nsq.GetNewMessageID(message.ID))
 	mutex.Lock()
 	defer mutex.Unlock()
-	if cnt, ok := dumpCheck[mid]; ok {
+	if cnt, ok := c.topicDumpCheck[mid]; ok {
 		atomic.AddInt64(&totalDumpCount, 1)
-		dumpCheck[mid] = cnt + 1
+		c.topicDumpCheck[mid] = cnt + 1
 		return nil
 	}
-	dumpCheck[mid] = 1
+	c.topicDumpCheck[mid] = 1
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {
 		return errors.New("failed by need.")
@@ -497,8 +502,13 @@ func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic str
 	if err != nil {
 		panic(err.Error())
 	}
+	mutex.Lock()
+	if _, ok := dumpCheck[topic]; !ok {
+		dumpCheck[topic] = make(map[uint64]int)
+	}
+	mutex.Unlock()
 	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-	consumer.AddHandler(&consumeHandler{})
+	consumer.AddHandler(&consumeHandler{topic, dumpCheck[topic]})
 	rdyChan <- 1
 	<-goChan
 	done := make(chan struct{})
