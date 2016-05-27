@@ -169,6 +169,10 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 		nsqdCoord.leadership.UnregisterNsqd(&nsqdCoord.myNode)
 	}
 	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
+	nsqdCoord.lookupLeader.NodeIP = "127.0.0.1"
+	nsqdCoord.lookupLeader.RpcPort = "0"
+	nsqdCoord.lookupLeader.TcpPort = "0"
+	nsqdCoord.lookupLeader.ID = GenNsqLookupNodeID(&nsqdCoord.lookupLeader, "")
 	return nsqdCoord
 }
 
@@ -182,6 +186,10 @@ func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 		return fakeLookupProxy, nil
 	}
 	nsqdCoord.lookupLeader = NsqLookupdNodeInfo{}
+	nsqdCoord.lookupLeader.NodeIP = "127.0.0.1"
+	nsqdCoord.lookupLeader.RpcPort = "0"
+	nsqdCoord.lookupLeader.TcpPort = "0"
+	nsqdCoord.lookupLeader.ID = GenNsqLookupNodeID(&nsqdCoord.lookupLeader, "")
 	err := nsqdCoord.Start()
 	if err != nil {
 		panic(err)

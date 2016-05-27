@@ -199,7 +199,7 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
-	retErr, err := self.CallWithRetry("UpdateChannelOffset", &updateInfo)
+	retErr, err := self.CallFast("UpdateChannelOffset", &updateInfo)
 	return convertRpcError(err, retErr)
 }
 

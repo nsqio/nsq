@@ -303,7 +303,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 		atomic.LoadInt64(&totalDumpCount))
 
 	for topicName, tdump := range dumpCheck {
-		log.Printf("topic %v dump count: \n", topicName, len(tdump))
+		log.Printf("topic %v count: %v \n", topicName, len(tdump))
 		for id, cnt := range tdump {
 			if cnt > 2 {
 				log.Printf("dump id : %v, cnt: %v\n", id, cnt)
