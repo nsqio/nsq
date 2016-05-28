@@ -217,12 +217,19 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer) error {
 	buf.Reset()
-	_, err := msg.WriteTo(buf)
-	if err != nil {
-		return err
+	if !client.EnableTrace {
+		_, err := msg.WriteTo(buf)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := msg.WriteToV2(buf)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = p.Send(client, frameTypeMessage, buf.Bytes())
+	err := p.Send(client, frameTypeMessage, buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -272,6 +279,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.REQ(client, params)
 	case bytes.Equal(params[0], []byte("PUB")):
 		return p.PUB(client, params)
+	case bytes.Equal(params[0], []byte("PUB_TRACE")):
+		return p.PUBTRACE(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
 	case bytes.Equal(params[0], []byte("NOP")):
@@ -280,6 +289,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.TOUCH(client, params)
 	case bytes.Equal(params[0], []byte("SUB")):
 		return p.SUB(client, params)
+	case bytes.Equal(params[0], []byte("SUB_TRACE")):
+		return p.SUBTRACE(client, params)
 	case bytes.Equal(params[0], []byte("CLS")):
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("AUTH")):
@@ -674,7 +685,15 @@ func (p *protocolV2) CheckAuth(client *nsqd.ClientV2, cmd, topicName, channelNam
 	return nil
 }
 
+func (p *protocolV2) SUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalSUB(client, params, true)
+}
+
 func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalSUB(client, params, false)
+}
+
+func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableTrace bool) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != stateInit {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot SUB in current state")
 	}
@@ -734,6 +753,7 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel
+	client.EnableTrace = enableTrace
 	// update message pump
 	client.SubEventChan <- channel
 
@@ -916,23 +936,23 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 	return okBytes, nil
 }
 
-func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte) (int32, *nsqd.Topic, error) {
 	var err error
 
 	if len(params) < 2 {
-		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "PUB insufficient number of parameters")
+		return 0, nil, protocol.NewFatalClientErr(nil, E_INVALID, "PUB insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !protocol.IsValidTopicName(topicName) {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
+		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("PUB topic name %q is not valid", topicName))
 	}
 	partition := -1
 	if len(params) == 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
-			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+			return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 				fmt.Sprintf("topic partition is not valid: %v", err))
 		}
 	}
@@ -943,23 +963,37 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body size")
+		return 0, nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body size")
 	}
 
 	if bodyLen <= 0 {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
 			fmt.Sprintf("PUB invalid message body size %d", bodyLen))
 	}
 
 	if int64(bodyLen) > p.ctx.getOpts().MaxMsgSize {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
 			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.getOpts().MaxMsgSize))
 	}
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName, err.Error())
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
+		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
+	}
+
+	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
+		return bodyLen, nil, err
+	}
+	// mpub
+	return bodyLen, topic, nil
+}
+
+func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+
+	bodyLen, topic, err := p.preparePub(client, params)
+	if err != nil {
+		return nil, err
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
@@ -971,12 +1005,10 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body")
 	}
 
-	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
-		return nil, err
-	}
-
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
 	if p.ctx.checkForMasterWrite(topicName, partition) {
-		err := p.ctx.PutMessage(topic, messageBody)
+		_, _, _, _, err := p.ctx.PutMessage(topic, messageBody)
 		//p.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -999,53 +1031,9 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	var err error
-
-	if len(params) < 2 {
-		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "MPUB insufficient number of parameters")
-	}
-
-	topicName := string(params[1])
-	if !protocol.IsValidTopicName(topicName) {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
-			fmt.Sprintf("E_BAD_TOPIC MPUB topic name %q is not valid", topicName))
-	}
-	partition := -1
-	if len(params) == 3 {
-		partition, err = strconv.Atoi(string(params[2]))
-		if err != nil {
-			return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
-				fmt.Sprintf("topic partition is not valid: %v", err))
-		}
-	}
-
-	if partition == -1 {
-		partition = p.ctx.getDefaultPartition(topicName)
-	}
-
-	bodyLen, err := readLen(client.Reader, client.LenSlice)
+	_, topic, err := p.preparePub(client, params)
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read body size")
-	}
-
-	if bodyLen <= 0 {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("MPUB invalid body size %d", bodyLen))
-	}
-
-	if int64(bodyLen) > p.ctx.getOpts().MaxBodySize {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.ctx.getOpts().MaxBodySize))
-	}
-
-	if err := p.CheckAuth(client, "MPUB", topicName, ""); err != nil {
 		return nil, err
-	}
-
-	topic, err := p.ctx.getExistingTopic(topicName, partition)
-	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v, %v", topicName, err.Error())
-		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
 	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,
@@ -1060,6 +1048,8 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, err
 	}
 
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
 	if p.ctx.checkForMasterWrite(topicName, partition) {
 		err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
@@ -1081,6 +1071,68 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 	return okBytes, nil
+}
+
+// PUB TRACE data format
+// 4 bytes length + 8bytes trace id + binary data
+func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	bodyLen, topic, err := p.preparePub(client, params)
+	if err != nil {
+		return nil, err
+	}
+	if bodyLen <= 8 {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE", "missing trace id with pub trace")
+	}
+
+	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
+	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
+	defer topic.BufferPoolPut(messageBodyBuffer)
+
+	_, err = io.ReadFull(client.Reader, messageBody)
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
+	}
+
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
+	traceID := messageBody[:8]
+	if p.ctx.checkForMasterWrite(topicName, partition) {
+		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, messageBody[8:])
+		//p.ctx.setHealth(err)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
+			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+				if !clusterErr.IsLocalErr() {
+					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
+				}
+			}
+			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
+		}
+		var buf []byte
+		// pub with trace will return OK+16BYTES ID+8bytes offset of the disk queue + 4bytes raw size of disk queue data.
+		retLen := 2 + 16 + 8 + 4
+		if len(messageBodyBuffer.Bytes()) >= retLen {
+			buf = messageBodyBuffer.Bytes()[:retLen]
+		} else {
+			buf = make([]byte, retLen)
+		}
+		copy(buf[:2], okBytes)
+		pos := 2
+		binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(id))
+		pos += 8
+		copy(buf[pos:pos+nsqd.MsgTraceIDLength], traceID)
+		pos += nsqd.MsgTraceIDLength
+		binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(offset))
+		pos += 8
+		binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(rawSize))
+		return buf, nil
+	} else {
+		//forward to master of topic
+		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
+			topic.GetFullName(), client.RemoteAddr)
+		topic.DisableForSlave()
+		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
+	}
 }
 
 func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {

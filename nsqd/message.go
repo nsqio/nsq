@@ -9,6 +9,7 @@ import (
 
 const (
 	MsgIDLength       = 16
+	MsgTraceIDLength  = 8
 	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
 )
 
@@ -45,7 +46,7 @@ type Message struct {
 }
 
 func MessageHeaderBytes() int {
-	return 8 + 8 + 8 + 2
+	return MsgIDLength + 8 + 2
 }
 
 func NewMessage(id MessageID, body []byte) *Message {

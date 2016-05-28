@@ -174,6 +174,19 @@ func (n *NSQD) GetTopicMapRef() map[string]map[int]*Topic {
 	return n.topicMap
 }
 
+func (n *NSQD) GetTopicPartitions(topicName string) map[int]*Topic {
+	tmpMap := make(map[int]*Topic)
+	n.RLock()
+	parts, ok := n.topicMap[topicName]
+	if ok {
+		for p, t := range parts {
+			tmpMap[p] = t
+		}
+	}
+	n.RUnlock()
+	return tmpMap
+}
+
 func (n *NSQD) GetTopicMapCopy() map[string]map[int]*Topic {
 	tmpMap := make(map[string]map[int]*Topic)
 	n.RLock()

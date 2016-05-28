@@ -53,9 +53,12 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 	// v1 negotiate
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
+	router.Handle("POST", "/pubtrace", http_api.Decorate(s.doPUBTrace, http_api.V1))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
+	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
 	//router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	//router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
@@ -65,7 +68,6 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
-	// only v1, deprecated
 	//router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
@@ -205,7 +207,14 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 	return reqParams, topic, nil
 }
 
+func (s *httpServer) doPUBTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return s.internalPUB(w, req, ps, true)
+}
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return s.internalPUB(w, req, ps, false)
+}
+
+func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool) (interface{}, error) {
 	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -215,7 +224,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
-	_, topic, err := s.getExistingTopicFromQuery(req)
+	params, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		nsqd.NsqLogger().Logf("get topic err: %v", err)
 		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
@@ -242,7 +251,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		err := s.ctx.PutMessage(topic, body)
+		traceID := params.Get("trace_id")
+		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body)
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -253,15 +263,24 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			}
 			return nil, http_api.Err{503, err.Error()}
 		}
+
+		if enableTrace {
+			return struct {
+				Status      string `json:"status"`
+				ID          uint64 `json:"id"`
+				TraceID     string `json:"trace_id"`
+				QueueOffset uint64 `json:"queue_offset"`
+				DataRawSize int32  `json:"rawsize"`
+			}{"OK", uint64(id), traceID, uint64(offset), rawSize}, nil
+		} else {
+			return "OK", nil
+		}
 	} else {
-		//TODO: should we forward this to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		topic.DisableForSlave()
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
-
-	return "OK", nil
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -452,6 +471,55 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 
 	// pro-actively persist metadata so in case of process failure
 	s.ctx.persistMetadata()
+	return nil, nil
+}
+
+func (s *httpServer) enableMessageTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	channelName := reqParams.Get("channel")
+
+	parts := s.ctx.getPartitions(topicName)
+	for _, t := range parts {
+		t.EnableTrace = true
+		nsqd.NsqLogger().Logf("topic %v trace enabled", t.GetFullName())
+		if channelName != "" {
+			ch, err := t.GetExistingChannel(channelName)
+			if err != nil {
+				continue
+			}
+			ch.EnableTrace = true
+			nsqd.NsqLogger().Logf("channel %v trace enabled", ch.GetName())
+		}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	channelName := reqParams.Get("channel")
+	parts := s.ctx.getPartitions(topicName)
+	for _, t := range parts {
+		t.EnableTrace = false
+		nsqd.NsqLogger().Logf("topic %v trace disabled", t.GetFullName())
+		if channelName != "" {
+			ch, err := t.GetExistingChannel(channelName)
+			if err != nil {
+				continue
+			}
+			ch.EnableTrace = false
+			nsqd.NsqLogger().Logf("channel %v trace disabled", ch.GetName())
+		}
+	}
 	return nil, nil
 }
 

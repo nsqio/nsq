@@ -583,7 +583,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 		return err
 	}
 	if c.EnableTrace {
-		nsqLog.Logf("[TRACE] message %v sending to client %v in flight", msg.GetFullMsgID(), clientID)
+		nsqLog.Logf("[TRACE] message %v, offset: %v sending to client %v in flight", msg.GetFullMsgID(), msg.offset, clientID)
 	} else if nsqLog.Level() > 1 {
 		nsqLog.LogDebugf("message %v sending to client %v in flight, offset: %v", msg.ID, clientID, msg.offset)
 	}
@@ -631,7 +631,7 @@ func (c *Channel) doRequeue(m *Message) error {
 		}
 	}
 	if c.EnableTrace {
-		nsqLog.Logf("[TRACE] message %v requeued.", m.GetFullMsgID())
+		nsqLog.Logf("[TRACE] message %v, offset: %v requeued.", m.GetFullMsgID(), m.offset)
 	} else if nsqLog.Level() > 1 {
 		nsqLog.Logf("message %v requeued from client %v, offset: %v", m.ID, m.clientID, m.offset)
 	}

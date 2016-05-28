@@ -432,8 +432,8 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, int64, error) 
 	}
 
 	if t.EnableTrace {
-		nsqLog.Logf("[TRACE] message %v put in topic: %v", m.GetFullMsgID(),
-			t.GetFullName())
+		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, count: %v", m.GetFullMsgID(),
+			t.GetFullName(), offset, totalCnt)
 	}
 	return m.ID, offset, writeBytes, totalCnt, nil
 }

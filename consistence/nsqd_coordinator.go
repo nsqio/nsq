@@ -1008,14 +1008,15 @@ type handleSyncResultFunc func(int, *coordData) bool
 
 type checkDupFunc func(*coordData) bool
 
-func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte) error {
+func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
+	body []byte) (nsqd.MessageID, nsqd.BackendOffset, int32, int64, error) {
 	var commitLog CommitLogData
 	var logMgr *TopicCommitLogMgr
 	var msg *nsqd.Message
+	msg = nsqd.NewMessage(0, body)
 
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
-		msg = nsqd.NewMessage(0, body)
 		topic.Lock()
 		id, offset, writeBytes, totalCnt, putErr := topic.PutMessageNoLock(msg)
 		topic.Unlock()
@@ -1076,11 +1077,14 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic, body []byte)
 		return false
 	}
 
-	return self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+	clusterErr := self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
+
+	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, commitLog.MsgCnt, clusterErr
 }
 
-func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic, msgs []*nsqd.Message) error {
+func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
+	msgs []*nsqd.Message) error {
 	var commitLog CommitLogData
 	var logMgr *TopicCommitLogMgr
 

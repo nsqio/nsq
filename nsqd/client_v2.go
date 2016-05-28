@@ -107,9 +107,10 @@ type ClientV2 struct {
 	lenBuf   [4]byte
 	LenSlice []byte
 
-	AuthSecret string
-	AuthState  *auth.State
-	tlsConfig  *tls.Config
+	AuthSecret  string
+	AuthState   *auth.State
+	tlsConfig   *tls.Config
+	EnableTrace bool
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {

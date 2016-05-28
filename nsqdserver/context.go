@@ -87,6 +87,10 @@ func (c *context) getDefaultPartition(topic string) int {
 	return c.nsqd.GetTopicDefaultPart(topic)
 }
 
+func (c *context) getPartitions(name string) map[int]*nsqd.Topic {
+	return c.nsqd.GetTopicPartitions(name)
+}
+
 func (c *context) getExistingTopic(name string, part int) (*nsqd.Topic, error) {
 	return c.nsqd.GetExistingTopic(name, part)
 }
@@ -111,11 +115,11 @@ func (c *context) checkForMasterWrite(topic string, part int) bool {
 	return c.nsqdCoord.IsMineLeaderForTopic(topic, part)
 }
 
-func (c *context) PutMessage(topic *nsqd.Topic, msg []byte) error {
+func (c *context) PutMessage(topic *nsqd.Topic,
+	msg []byte) (nsqd.MessageID, nsqd.BackendOffset, int32, int64, error) {
 	if c.nsqdCoord == nil {
 		msg := nsqd.NewMessage(0, msg)
-		_, _, _, _, err := topic.PutMessage(msg)
-		return err
+		return topic.PutMessage(msg)
 	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
