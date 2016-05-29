@@ -282,8 +282,10 @@ finish:
 func (c *Channel) flush() error {
 
 	if len(c.requeuedMsgChan) > 0 || len(c.inFlightMessages) > 0 {
-		nsqLog.Logf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
-			c.name, len(c.requeuedMsgChan), len(c.inFlightMessages))
+		if nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.LogDebugf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
+				c.name, len(c.requeuedMsgChan), len(c.inFlightMessages))
+		}
 	}
 	d, ok := c.backend.(*diskQueueReader)
 	if ok {

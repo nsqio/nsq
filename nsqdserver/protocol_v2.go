@@ -753,6 +753,9 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel
+	if enableTrace {
+		nsqd.NsqLogger().Logf("sub channel %v with trace enabled, remote is : %v", channelName, client.RemoteAddr())
+	}
 	client.EnableTrace = enableTrace
 	// update message pump
 	client.SubEventChan <- channel
