@@ -24,7 +24,7 @@ func GetMessageIDFromFullMsgID(id FullMessageID) MessageID {
 }
 
 func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
-	return binary.BigEndian.Uint64(id[8:16])
+	return binary.BigEndian.Uint64(id[8 : 8+MsgTraceIDLength])
 }
 
 type Message struct {
@@ -70,7 +70,7 @@ func NewMessageWithTs(id MessageID, body []byte, ts int64) *Message {
 func (m *Message) GetFullMsgID() FullMessageID {
 	var buf FullMessageID
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.ID))
-	binary.BigEndian.PutUint64(buf[8:16], uint64(m.TraceID))
+	binary.BigEndian.PutUint64(buf[8:8+MsgTraceIDLength], uint64(m.TraceID))
 	return buf
 }
 
@@ -96,8 +96,8 @@ func (m *Message) internalWriteTo(w io.Writer, isNewVer bool) (int64, error) {
 	}
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.ID))
-	binary.BigEndian.PutUint64(buf[8:16], uint64(m.TraceID))
-	n, err = w.Write(buf[:16])
+	binary.BigEndian.PutUint64(buf[8:8+MsgTraceIDLength], uint64(m.TraceID))
+	n, err = w.Write(buf[:MsgIDLength])
 	total += int64(n)
 	if err != nil {
 		return total, err
@@ -105,8 +105,8 @@ func (m *Message) internalWriteTo(w io.Writer, isNewVer bool) (int64, error) {
 
 	if isNewVer {
 		binary.BigEndian.PutUint64(buf[:8], uint64(m.offset))
-		binary.BigEndian.PutUint64(buf[8:16], uint64(m.rawMoveSize))
-		n, err = w.Write(buf[:16])
+		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.rawMoveSize))
+		n, err = w.Write(buf[:8+4])
 		total += int64(n)
 		if err != nil {
 			return total, err

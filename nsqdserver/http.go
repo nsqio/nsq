@@ -270,8 +270,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				ID          uint64 `json:"id"`
 				TraceID     string `json:"trace_id"`
 				QueueOffset uint64 `json:"queue_offset"`
-				DataRawSize int32  `json:"rawsize"`
-			}{"OK", uint64(id), traceID, uint64(offset), rawSize}, nil
+				DataRawSize uint32 `json:"rawsize"`
+			}{"OK", uint64(id), traceID, uint64(offset), uint32(rawSize)}, nil
 		} else {
 			return "OK", nil
 		}
