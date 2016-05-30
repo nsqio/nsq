@@ -45,7 +45,7 @@ type Options struct {
 	QueueScanDirtyPercent    float64
 
 	// msg and command options
-	MsgTimeout    time.Duration `flag:"msg-timeout" arg:"1ms"`
+	MsgTimeout    time.Duration `flag:"msg-timeout" arg:"60s"`
 	MaxMsgTimeout time.Duration `flag:"max-msg-timeout"`
 	MaxMsgSize    int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
 	MaxBodySize   int64         `flag:"max-body-size"`
@@ -63,7 +63,7 @@ type Options struct {
 	StatsdAddress  string        `flag:"statsd-address"`
 	StatsdPrefix   string        `flag:"statsd-prefix"`
 	StatsdProtocol string        `flag:"statsd-protocol"`
-	StatsdInterval time.Duration `flag:"statsd-interval" arg:"1s"`
+	StatsdInterval time.Duration `flag:"statsd-interval" arg:"60s"`
 	StatsdMemStats bool          `flag:"statsd-mem-stats"`
 
 	// e2e message latency

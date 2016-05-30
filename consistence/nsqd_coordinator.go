@@ -84,6 +84,7 @@ type NsqdCoordinator struct {
 	rpcServer              *NsqdCoordRpcServer
 	tryCheckUnsynced       chan bool
 	wg                     sync.WaitGroup
+	stopping               bool
 }
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -800,6 +801,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 }
 
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartitionMetaInfo) *CoordErr {
+	if self.stopping {
+		return ErrClusterChanged
+	}
 	oldData := topicCoord.GetData()
 	if oldData.topicInfo.Name == "" {
 		coordLog.Infof("empty topic name not allowed")
@@ -899,12 +903,18 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 }
 
 func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordErr {
+	if self.stopping {
+		return ErrClusterChanged
+	}
 	coordLog.Infof("I am notified to acquire topic leader %v.", coord.topicInfo)
 	go self.acquireTopicLeader(&coord.topicInfo)
 	return nil
 }
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLS *TopicLeaderSession, joinSession string) *CoordErr {
+	if self.stopping {
+		return ErrClusterChanged
+	}
 	topicCoord.dataRWMutex.Lock()
 	if newLS.LeaderEpoch < topicCoord.GetLeaderSessionEpoch() {
 		topicCoord.dataRWMutex.Unlock()
@@ -1819,6 +1829,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 	}
 	coordLog.Infof("prepare leaving finished.")
 	if self.leadership != nil {
+		self.stopping = true
 		self.leadership.UnregisterNsqd(&self.myNode)
 	}
 }

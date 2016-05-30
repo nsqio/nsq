@@ -452,6 +452,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
 	} else {
+		coordLog.SetLevel(levellogger.LOG_DEBUG)
 		coordLog.Logger = newTestLogger(t)
 	}
 
@@ -569,6 +570,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	coordLog.Warningf("============= begin test isr node failed  ====")
 	// test isr node lost
 	lostNodeID := t0.ISR[1]
+	nsqdCoordList[lostNodeID].stopping = true
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 5)
 
@@ -585,6 +587,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nsqdCoordList[lostNodeID].topicCoords = make(map[string]map[int]*TopicCoordinator)
 
 	// test new catchup and new isr
+	nsqdCoordList[lostNodeID].stopping = false
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 5)
 
@@ -598,6 +601,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	coordLog.Warningf("============= begin test leader failed  ====")
 	// test leader node lost
 	lostNodeID = t0.Leader
+	nsqdCoordList[lostNodeID].stopping = true
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
 	time.Sleep(time.Second * 5)
@@ -615,6 +619,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 
 	// test lost leader node rejoin
+	nsqdCoordList[lostNodeID].stopping = false
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 5)
 	t0, _ = lookupLeadership.GetTopicInfo(topic, 0)
@@ -637,10 +642,14 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	if lostISRID == lostNodeID {
 		lostISRID = t0.ISR[0]
 	}
+	nsqdCoordList[lostNodeID].stopping = true
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Millisecond)
+	nsqdCoordList[lostISRID].stopping = true
 	nsqdCoordList[lostISRID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostISRID])
 	time.Sleep(time.Second * 5)
+	nsqdCoordList[lostNodeID].stopping = false
+	nsqdCoordList[lostISRID].stopping = false
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	nsqdCoordList[lostISRID].leadership.RegisterNsqd(nsqdNodeInfoList[lostISRID])
 	go lookupCoord1.triggerCheckTopics("", 0, time.Second)
@@ -661,8 +670,10 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	// test join isr timeout
 	lostNodeID = t1.ISR[1]
+	nsqdCoordList[lostNodeID].stopping = true
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 3)
+	nsqdCoordList[lostNodeID].stopping = false
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Millisecond * 5)
 	// with only 2 replica, the isr join fail should not change the isr list
@@ -685,8 +696,10 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Nil(t, err)
 	test.Equal(t, len(t3.ISR), 3)
 	lostNodeID = t3.ISR[1]
+	nsqdCoordList[lostNodeID].stopping = true
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Second * 3)
+	nsqdCoordList[lostNodeID].stopping = false
 	nsqdCoordList[lostNodeID].leadership.RegisterNsqd(nsqdNodeInfoList[lostNodeID])
 	time.Sleep(time.Millisecond)
 	nsqdCoordList[lostNodeID].rpcServer.toggleDisableRpcTest(true)
