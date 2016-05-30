@@ -566,6 +566,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, tc1.topicInfo.Leader, t1.Leader)
 	test.Equal(t, len(tc1.topicInfo.ISR), 2)
 
+	coordLog.Warningf("============= begin test isr node failed  ====")
 	// test isr node lost
 	lostNodeID := t0.ISR[1]
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])
@@ -594,6 +595,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, len(tc0.topicInfo.ISR), 2)
 	test.Equal(t, t0.Leader, t0.ISR[0])
 
+	coordLog.Warningf("============= begin test leader failed  ====")
 	// test leader node lost
 	lostNodeID = t0.Leader
 	nsqdCoordList[lostNodeID].leadership.UnregisterNsqd(nsqdNodeInfoList[lostNodeID])

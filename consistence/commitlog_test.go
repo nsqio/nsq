@@ -35,12 +35,14 @@ func TestCommitLogWrite(t *testing.T) {
 	for i := 0; i < num; i++ {
 		var logData CommitLogData
 		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+		test.Equal(t, int64(logMgr.NextID()) > logData.LastMsgLogID, true)
 	}
 	lastOffset, err := logMgr.GetLastLogOffset()
 	test.Nil(t, err)
@@ -57,7 +59,7 @@ func TestCommitLogWrite(t *testing.T) {
 		test.Nil(t, err)
 		test.Equal(t, len(logs), 1)
 		if prevLog.LogID > 0 {
-			test.Equal(t, prevLog.LogID+1, logs[0].LogID)
+			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+1, logs[0].MsgCnt)
 		}
@@ -66,12 +68,14 @@ func TestCommitLogWrite(t *testing.T) {
 	for i := num; i < num*2; i++ {
 		var logData CommitLogData
 		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+		test.Equal(t, int64(logMgr.NextID()) > logData.LastMsgLogID, true)
 	}
 	lastOffset, err = logMgr.GetLastLogOffset()
 	test.Nil(t, err)
@@ -83,7 +87,7 @@ func TestCommitLogWrite(t *testing.T) {
 		test.Nil(t, err)
 		test.Equal(t, len(logs), 1)
 		if prevLog.LogID > 0 {
-			test.Equal(t, prevLog.LogID+1, logs[0].LogID)
+			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+int64(1), logs[0].MsgCnt)
 		}
@@ -114,6 +118,7 @@ func TestCommitLogTruncate(t *testing.T) {
 	for i := 0; i < num; i++ {
 		var logData CommitLogData
 		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
@@ -135,4 +140,37 @@ func TestCommitLogTruncate(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64(0), logMgr.pLogID)
 	test.Nil(t, prevLog)
+}
+
+func TestCommitLogForBatchWrite(t *testing.T) {
+	logName := "test_log" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Nil(t, err)
+
+	batchNum := 10
+	msgRawSize := 10
+	var logData CommitLogData
+	logData.Epoch = 1
+	logData.LogID = int64(logMgr.NextID())
+	logData.MsgOffset = int64(0)
+	logData.MsgCnt = int64(1)
+	endID := int64(0)
+	endID += int64(batchNum)
+	for j := 0; j < batchNum; j++ {
+		logData.MsgSize += int32(msgRawSize)
+	}
+	logData.LastMsgLogID = endID
+	// append as slave
+	err = logMgr.AppendCommitLog(&logData, true)
+	test.Nil(t, err)
+	test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+	nextID := logMgr.NextID()
+	test.Equal(t, int64(nextID) > endID, true)
+	test.Equal(t, logMgr.nLogID > logData.LastMsgLogID, true)
 }

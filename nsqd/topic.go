@@ -55,16 +55,18 @@ type Topic struct {
 	deleteCallback func(*Topic)
 	deleter        sync.Once
 
-	notifyCall    func(v interface{})
-	option        *Options
-	MsgIDCursor   MsgIDGenerator
-	defaultIDSeq  uint64
-	needFlush     int32
-	EnableTrace   bool
-	syncEvery     int64
-	putBuffer     bytes.Buffer
-	bp            sync.Pool
-	writeDisabled int32
+	notifyCall      func(v interface{})
+	option          *Options
+	MsgIDCursor     MsgIDGenerator
+	defaultIDSeq    uint64
+	needFlush       int32
+	EnableTrace     bool
+	syncEvery       int64
+	putBuffer       bytes.Buffer
+	bp              sync.Pool
+	writeDisabled   int32
+	committedOffset uint64
+	autoCommit      bool
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -72,7 +74,9 @@ func GetTopicFullName(topic string, part int) string {
 }
 
 // Topic constructor
-func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Topic), writeDisabled int32, notify func(v interface{})) *Topic {
+func NewTopic(topicName string, part int, opt *Options,
+	deleteCallback func(*Topic), writeDisabled int32,
+	notify func(v interface{})) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -87,6 +91,7 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
+		autoCommit:     true,
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1
@@ -115,11 +120,16 @@ func NewTopic(topicName string, part int, opt *Options, deleteCallback func(*Top
 			int32(opt.MaxMsgSize)+minValidMsgLength,
 			opt.SyncEvery)
 	}
+	t.committedOffset = uint64(t.backend.GetQueueWriteEnd().GetOffset())
 
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) SetAutoCommit(enable bool) {
+	t.autoCommit = enable
 }
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
@@ -216,7 +226,10 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
 			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
-		channel.UpdateQueueEnd(t.backend.GetQueueReadEnd())
+		e := t.backend.GetQueueReadEnd()
+		if uint64(e.GetOffset()) <= t.committedOffset {
+			channel.UpdateQueueEnd(e)
+		}
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}
@@ -273,6 +286,7 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, diffCnt)
 	err := t.backend.RollbackWrite(vend, diffCnt)
 	if err == nil {
+		atomic.StoreUint64(&t.committedOffset, uint64(vend))
 		t.updateChannelsEnd()
 	}
 	return err
@@ -285,6 +299,7 @@ func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error 
 	if err != nil {
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
 	} else {
+		atomic.StoreUint64(&t.committedOffset, uint64(vend))
 		t.updateChannelsEnd()
 	}
 
@@ -431,6 +446,10 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, int64, error) 
 		return m.ID, offset, writeBytes, totalCnt, err
 	}
 
+	if t.autoCommit {
+		atomic.StoreUint64(&t.committedOffset, uint64(offset)+uint64(writeBytes))
+	}
+
 	if t.EnableTrace {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, count: %v", m.GetFullMsgID(),
 			t.GetFullName(), offset, totalCnt)
@@ -438,8 +457,24 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, int64, error) 
 	return m.ID, offset, writeBytes, totalCnt, nil
 }
 
+func (t *Topic) UpdateCommittedOffsetNoLock(offset uint64) {
+	if offset > atomic.LoadUint64(&t.committedOffset) {
+		atomic.StoreUint64(&t.committedOffset, offset)
+	}
+}
+
+func (t *Topic) UpdateCommittedOffset(offset uint64) {
+	t.Lock()
+	t.UpdateCommittedOffsetNoLock(offset)
+	t.Unlock()
+}
+
 func (t *Topic) updateChannelsEnd() {
 	e := t.backend.GetQueueReadEnd()
+	// if not committed, we need wait to notify channel.
+	if uint64(e.GetOffset()) > atomic.LoadUint64(&t.committedOffset) {
+		return
+	}
 	t.channelLock.RLock()
 	if e != nil {
 		for _, channel := range t.channelMap {

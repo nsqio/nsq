@@ -18,6 +18,7 @@ const (
 
 var (
 	ErrCommitLogWrongID         = errors.New("commit log id is wrong")
+	ErrCommitLogWrongLastID     = errors.New("commit log last id should no less than log id")
 	ErrCommitLogIDNotFound      = errors.New("commit log id is not found")
 	ErrCommitLogOutofBound      = errors.New("commit log offset is out of bound")
 	ErrCommitLogEOF             = errors.New("commit log end of file")
@@ -28,8 +29,11 @@ var (
 type CommitLogData struct {
 	LogID int64
 	// epoch for the topic leader
-	Epoch     EpochType
-	MsgOffset int64
+	Epoch EpochType
+	// if single message, this should be the same with logid
+	// for multiple messages, this would be the logid for the last message in batch
+	LastMsgLogID int64
+	MsgOffset    int64
 	// size for batch messages
 	MsgSize int32
 	// the total message count for all from begin, not only this batch
@@ -106,7 +110,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 			return nil, err
 		}
 		mgr.pLogID = l.LogID
-		mgr.nLogID = l.LogID + 100
+		mgr.nLogID = l.LastMsgLogID + 1
 	} else {
 		mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
 	}
@@ -157,6 +161,9 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	}
 
 	atomic.StoreInt64(&self.pLogID, l.LogID)
+	if l.LastMsgLogID+1 > self.nLogID {
+		atomic.StoreInt64(&self.nLogID, l.LastMsgLogID+1)
+	}
 	return &l, nil
 }
 
@@ -244,10 +251,13 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	if l.LogID <= atomic.LoadInt64(&self.pLogID) {
 		return ErrCommitLogWrongID
 	}
+	if l.LastMsgLogID < l.LogID {
+		return ErrCommitLogWrongLastID
+	}
 	self.Lock()
 	defer self.Unlock()
 	if slave {
-		atomic.StoreInt64(&self.nLogID, l.LogID+1)
+		atomic.StoreInt64(&self.nLogID, l.LastMsgLogID+1)
 	}
 	if cap(self.committedLogs) == 0 {
 		// no buffer, write to file directly.
@@ -322,35 +332,4 @@ func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]Comm
 		n -= GetLogDataSize()
 	}
 	return logList, err
-}
-
-func (self *TopicCommitLogMgr) GetCommitLogsReverse(startIndex int64, num int) ([]CommitLogData, error) {
-	self.Lock()
-	defer self.Unlock()
-	ret := make([]CommitLogData, 0, num)
-	for i := startIndex; i < int64(len(self.committedLogs)); i++ {
-		ret = append(ret, self.committedLogs[len(self.committedLogs)-int(i)-1])
-		if len(ret) >= num {
-			return ret, nil
-		}
-	}
-	dataSize := GetLogDataSize()
-	// TODO: read from end of commit file.
-	endOffset := 0
-	readStart := endOffset - dataSize*(num-len(ret))
-	if readStart < 0 {
-		readStart = 0
-	}
-	buf := make([]byte, endOffset-readStart)
-	// TODO: read file data to buf
-	var tmp CommitLogData
-	for i := 0; i < len(buf)-dataSize; i++ {
-		err := binary.Read(bytes.NewReader(buf[i:i+dataSize]), binary.BigEndian, &tmp)
-		if err != nil {
-			return nil, err
-		}
-		ret = append(ret, tmp)
-		i = i + dataSize
-	}
-	return ret, nil
 }

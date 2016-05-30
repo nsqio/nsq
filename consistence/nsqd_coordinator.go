@@ -308,14 +308,15 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			if topicName == "" {
 				continue
 			}
-			topicInfo, err := self.leadership.GetTopicInfo(topicName, partition)
-			if err != nil {
-				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, err)
-				if err == ErrTopicInfoNotFound {
+			topicInfo, commonErr := self.leadership.GetTopicInfo(topicName, partition)
+			if commonErr != nil {
+				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, commonErr)
+				if commonErr == ErrKeyNotFound {
 					self.localNsqd.CloseExistingTopic(topicName, partition)
 				}
 				continue
 			}
+			topic.SetAutoCommit(false)
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
 				basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
@@ -649,7 +650,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			offset -= int64(GetLogDataSize())
 		}
 	}
-	coordLog.Infof("local commit log match leader at: %v", offset)
+	coordLog.Infof("topic %v local commit log match leader %v at: %v", topicInfo.GetTopicDesp(), topicInfo.Leader, offset)
 	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name, topicInfo.Partition)
 	if localErr != nil {
 		coordLog.Errorf("get local topic failed:%v", localErr)
@@ -719,15 +720,17 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		coordLog.Infof("topic %v pulled logs :%v from offset: %v", topicInfo.GetTopicDesp(), len(logs), offset)
 		localTopic.Lock()
 		hasErr := false
+		lastCommitOffset := uint64(0)
 		for i, l := range logs {
 			d := dataList[i]
 			// read and decode all messages
 			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, tmpBuf)
-			if localErr != nil {
-				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v", localErr, len(d), d)
+			if localErr != nil || len(newMsgs) == 0 {
+				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v, decoded len: %v", localErr, len(d), d, len(newMsgs))
 				hasErr = true
 				break
 			}
+			lastMsgLogID := int64(newMsgs[len(newMsgs)-1].ID)
 			if len(newMsgs) == 1 {
 				localErr = localTopic.PutMessageOnReplica(newMsgs[0], nsqd.BackendOffset(l.MsgOffset))
 				if localErr != nil {
@@ -744,14 +747,23 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 					break
 				}
 			}
+			if l.LastMsgLogID != lastMsgLogID {
+				coordLog.Infof("Failed to put message on slave since last log id mismatch %v, %v", l, lastMsgLogID)
+				localErr = ErrCommitLogWrongLastID
+				hasErr = true
+				break
+			}
 			localErr = logMgr.AppendCommitLog(&l, true)
 			if localErr != nil {
 				coordLog.Infof("Failed to append local log: %v", localErr)
 				hasErr = true
 				break
 			}
+			lastCommitOffset = uint64(l.MsgOffset) + uint64(l.MsgSize)
 		}
+		logMgr.FlushCommitLogs()
 		localTopic.Unlock()
+		localTopic.UpdateCommittedOffset(lastCommitOffset)
 		if hasErr {
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
@@ -1030,6 +1042,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 		// need disable write which should hold the write lock.
 		// However, we are holding write lock while doing the cluster write replication.
 		commitLog.Epoch = d.GetTopicEpochForWrite()
+		commitLog.LastMsgLogID = commitLog.LogID
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = totalCnt
@@ -1046,6 +1059,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 		if localErr != nil {
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
 		}
+		topic.UpdateCommittedOffset(uint64(commitLog.MsgOffset) + uint64(commitLog.MsgSize))
 		return localErr
 	}
 	doLocalRollback := func() {
@@ -1103,6 +1117,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		// need disable write which should hold the write lock.
 		// However, we are holding write lock while doing the cluster write replication.
 		commitLog.Epoch = d.GetTopicEpochForWrite()
+		commitLog.LastMsgLogID = int64(msgs[len(msgs)-1].ID)
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = totalCnt
@@ -1118,6 +1133,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		if localErr != nil {
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
 		}
+		topic.UpdateCommittedOffset(uint64(commitLog.MsgOffset) + uint64(commitLog.MsgSize))
 		return localErr
 	}
 	doLocalRollback := func() {
@@ -1320,6 +1336,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 	topicName := tcData.topicInfo.Name
 	partition := tcData.topicInfo.Partition
 	var logMgr *TopicCommitLogMgr
+	var topic *nsqd.Topic
 
 	checkDupOnSlave := func(tc *coordData) bool {
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
@@ -1334,7 +1351,8 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 	}
 
 	doLocalWriteOnSlave := func(tc *coordData) *CoordErr {
-		topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+		var localErr error
+		topic, localErr = self.localNsqd.GetExistingTopic(topicName, partition)
 		if localErr != nil {
 			coordLog.Infof("pub on slave missing topic : %v", topicName)
 			// leave the isr and try re-sync with leader
@@ -1362,6 +1380,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 			coordLog.Errorf("write commit log on slave failed: %v", localErr)
 			return localErr
 		}
+		topic.UpdateCommittedOffset(uint64(logData.MsgOffset) + uint64(logData.MsgSize))
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {
@@ -1381,7 +1400,17 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		return ErrPubArgError
 	}
 	var logMgr *TopicCommitLogMgr
+	// this last log id should be used on slave to avoid the slave switch
+	// override the leader's prev mpub message id.
+	// While slave is chosen as leader, the next id should be larger than the last logid.
+	// Because the mpub maybe already committed after the leader is down, the new leader should begin
+	// with the last message id + 1 for next message.
+	lastMsgLogID := int64(msgs[len(msgs)-1].ID)
+	if logData.LastMsgLogID != lastMsgLogID {
+		return ErrPubArgError
+	}
 
+	var topic *nsqd.Topic
 	tcData := coord.GetData()
 	topicName := tcData.topicInfo.Name
 	partition := tcData.topicInfo.Partition
@@ -1398,7 +1427,8 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 	}
 
 	doLocalWriteOnSlave := func(tc *coordData) *CoordErr {
-		topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+		var localErr error
+		topic, localErr = self.localNsqd.GetExistingTopic(topicName, partition)
 		if localErr != nil {
 			coordLog.Infof("pub on slave missing topic : %v", topicName)
 			// leave the isr and try re-sync with leader
@@ -1444,8 +1474,10 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			coordLog.Errorf("write commit log on slave failed: %v", localErr)
 			return localErr
 		}
+		topic.UpdateCommittedOffset(uint64(logData.MsgOffset) + uint64(logData.MsgSize))
 		return nil
 	}
+
 	doLocalExit := func(err *CoordErr) {
 		if err != nil {
 			coordLog.Warningf("failed to batch put messages on slave: %v", err)
@@ -1711,6 +1743,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) (*nsqd.Topi
 	if t == nil {
 		return nil, ErrLocalInitTopicFailed
 	}
+	t.SetAutoCommit(false)
 	if t.MsgIDCursor == nil {
 		t.MsgIDCursor = topicCoord.logMgr
 	}

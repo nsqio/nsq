@@ -939,17 +939,17 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 	return okBytes, nil
 }
 
-func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte) (int32, *nsqd.Topic, error) {
+func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody int64) (int32, *nsqd.Topic, error) {
 	var err error
 
 	if len(params) < 2 {
-		return 0, nil, protocol.NewFatalClientErr(nil, E_INVALID, "PUB insufficient number of parameters")
+		return 0, nil, protocol.NewFatalClientErr(nil, E_INVALID, "insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !protocol.IsValidTopicName(topicName) {
 		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
-			fmt.Sprintf("PUB topic name %q is not valid", topicName))
+			fmt.Sprintf("topic name %q is not valid", topicName))
 	}
 	partition := -1
 	if len(params) == 3 {
@@ -966,22 +966,22 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte) (int32, 
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
 	if err != nil {
-		return 0, nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body size")
+		return 0, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "failed to read body size")
 	}
 
 	if bodyLen <= 0 {
-		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("PUB invalid message body size %d", bodyLen))
+		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("invalid body size %d", bodyLen))
 	}
 
-	if int64(bodyLen) > p.ctx.getOpts().MaxMsgSize {
-		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.getOpts().MaxMsgSize))
+	if int64(bodyLen) > maxBody {
+		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("body too big %d > %d", bodyLen, maxBody))
 	}
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("PUB to not existing topic: %v", topicName, err.Error())
+		nsqd.NsqLogger().Logf("not existing topic: %v", topicName, err.Error())
 		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
@@ -994,7 +994,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte) (int32, 
 
 func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 
-	bodyLen, topic, err := p.preparePub(client, params)
+	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,7 +1034,7 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	_, topic, err := p.preparePub(client, params)
+	_, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,7 +1079,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 // PUB TRACE data format
 // 4 bytes length + 8bytes trace id + binary data
 func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	bodyLen, topic, err := p.preparePub(client, params)
+	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
 	if err != nil {
 		return nil, err
 	}

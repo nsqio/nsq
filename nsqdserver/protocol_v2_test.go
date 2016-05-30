@@ -450,7 +450,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameType, frameTypeError)
-	test.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"))
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 105 > 100"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -463,7 +463,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameType, frameTypeError)
-	test.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"))
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY invalid body size 0"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -494,7 +494,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameType, frameTypeError)
-	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"))
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 1148 > 1000"))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
