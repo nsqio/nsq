@@ -1,3 +1,5 @@
+github.com/cenkalti/backoff
+github.com/coreos/etcd/client
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
 github.com/absolute8511/go-nsq          7a9f38baa26ff640e1e7bc520f3bf9afa7198d5a # v1.0.5

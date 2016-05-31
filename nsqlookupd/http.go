@@ -357,24 +357,16 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 	partStr := reqParams.Get("partition")
 	if partStr == "" {
-		partStr = "0"
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION"}
+	} else if partStr == "**" {
+		nsqlookupLog.LogWarningf("removing all the partitions of topic: %v", topicName)
 	}
 
-	// TODO: handle delete topic for cluster
-	registrations := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, partStr)
-	for _, registration := range registrations {
-		nsqlookupLog.Logf("DB: removing channel(%s) from topic(%s-%s)", registration.Channel, topicName, partStr)
-		s.ctx.nsqlookupd.DB.RemoveChannelReg(topicName, registration)
+	nsqlookupLog.Logf("deleting topic(%s) with partition %v ", topicName, partStr)
+	err = s.ctx.nsqlookupd.coordinator.DeleteTopic(topicName, partStr)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
 	}
-
-	topicRegs := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, partStr)
-	for _, reg := range topicRegs {
-		nsqlookupLog.Logf("DB: removing topic(%s) producer: %v", topicName, partStr, reg)
-		if reg.ProducerNode.peerInfo != nil {
-			s.ctx.nsqlookupd.DB.RemoveTopicProducer(topicName, partStr, reg.ProducerNode.peerInfo.Id)
-		}
-	}
-
 	return nil, nil
 }
 
