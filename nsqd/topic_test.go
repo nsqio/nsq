@@ -77,33 +77,6 @@ func (d *errorRecoveredBackendQueue) Put([]byte) (BackendOffset, int32, int64, e
 	return 0, 0, 0, nil
 }
 
-func TestHealth(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 2
-	opts.MemQueueSize = 2
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topic := nsqd.GetTopicIgnPart("test")
-	topic.backend = &errorBackendQueue{}
-
-	msg := NewMessage(0, make([]byte, 100))
-	_, _, _, _, err := topic.PutMessage(msg)
-	nequal(t, err, nil)
-
-	// TODO: health should be topic scoped.
-	//equal(t, nsqd.IsHealthy(), false)
-	topic.backend = &errorRecoveredBackendQueue{}
-
-	msg = NewMessage(0, make([]byte, 100))
-	_, _, _, _, err = topic.PutMessages([]*Message{msg})
-	equal(t, err, nil)
-
-	equal(t, nsqd.IsHealthy(), true)
-}
-
 func TestDeletes(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -161,7 +134,7 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName, 0)
 
-	equal(t, topic.backend.(*diskQueueWriter).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
 func TestTopicResetWriteEnd(t *testing.T) {

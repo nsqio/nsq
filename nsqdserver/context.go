@@ -116,7 +116,7 @@ func (c *context) checkForMasterWrite(topic string, part int) bool {
 }
 
 func (c *context) PutMessage(topic *nsqd.Topic,
-	msg []byte) (nsqd.MessageID, nsqd.BackendOffset, int32, int64, error) {
+	msg []byte) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	if c.nsqdCoord == nil {
 		msg := nsqd.NewMessage(0, msg)
 		return topic.PutMessage(msg)
@@ -126,7 +126,7 @@ func (c *context) PutMessage(topic *nsqd.Topic,
 
 func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) error {
 	if c.nsqdCoord == nil {
-		_, _, _, _, err := topic.PutMessages(msgs)
+		_, _, _, _, _, err := topic.PutMessages(msgs)
 		return err
 	}
 	return c.nsqdCoord.PutMessagesToCluster(topic, msgs)

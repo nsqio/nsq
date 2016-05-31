@@ -343,9 +343,6 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO: not support currently.
-	return nil, http_api.Err{501, "DELETE topic not Implemented"}
-
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}

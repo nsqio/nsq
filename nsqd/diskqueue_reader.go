@@ -188,7 +188,11 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) error {
 	end, ok := e.(*diskQueueEndInfo)
 	if !ok || end == nil {
-		return errors.New("invalid end type")
+		end = &diskQueueEndInfo{}
+		end.TotalMsgCnt = e.GetTotalMsgCnt()
+		end.VirtualEnd = e.GetOffset()
+		end.EndOffset.FileNum = 0
+		end.EndOffset.Pos = 0
 	}
 	d.RLock()
 	defer d.RUnlock()
@@ -602,7 +606,8 @@ CheckFileOpen:
 		}
 	}
 	if (d.readPos.Pos > d.maxBytesPerFile) && !isEnd {
-		nsqLog.LogErrorf("should be end since next position is larger than maxfile size. %v", d.readPos)
+		// this can happen if the maxbytesperfile configure is changed.
+		nsqLog.Logf("should be end since next position is larger than maxfile size. %v", d.readPos)
 	}
 	if isEnd {
 		if d.readFile != nil {
@@ -851,9 +856,15 @@ func (d *diskQueueReader) ioLoop() {
 				d.endUpdatedResponseChan <- nil
 				continue
 			}
-			if *endPos == d.queueEndInfo {
+			if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt == d.queueEndInfo.TotalMsgCnt {
 				d.endUpdatedResponseChan <- nil
 				continue
+			}
+			// if endPos has no file num info , we can compute it
+			if endPos.EndOffset.FileNum == 0 && endPos.EndOffset.Pos == 0 {
+				if endPos.VirtualEnd >= d.queueEndInfo.VirtualEnd {
+				} else {
+				}
 			}
 			if d.queueEndInfo.EndOffset.FileNum != endPos.EndOffset.FileNum && endPos.EndOffset.Pos == 0 {
 				// a new file for the position
