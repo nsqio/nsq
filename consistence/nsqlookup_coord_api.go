@@ -39,14 +39,64 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 
 	if partition == "**" {
 		// delete all
+		meta, err := self.leadership.GetTopicMetaInfo(topic)
+		if err != nil {
+			coordLog.Infof("failed to get meta for topic: %v", err)
+			return err
+		}
+		for pid := 0; pid < meta.PartitionNum; pid++ {
+			err := self.deleteTopicPartition(topic, pid)
+			if err != nil {
+				coordLog.Infof("failed to delete partition %v for topic: %v, err:%v", pid, topic, err)
+			}
+		}
+		self.leadership.DeleteWholeTopic(topic)
 	} else {
 		pid, err := strconv.Atoi(partition)
 		if err != nil {
 			coordLog.Infof("failed to parse the partition id : %v, %v", partition, err)
 			return err
 		}
-		self.leadership.IsExistTopicPartition(topic, pid)
+
+		return self.deleteTopicPartition(topic, pid)
 	}
+	return nil
+}
+
+func (self *NsqLookupCoordinator) deleteTopicPartition(topic string, pid int) error {
+	topicInfo, commonErr := self.leadership.GetTopicInfo(topic, pid)
+	if commonErr != nil {
+		coordLog.Infof("failed to get the topic info while delete topic: %v", commonErr)
+		return commonErr
+	}
+	commonErr = self.leadership.DeleteTopic(topic, pid)
+	if commonErr != nil {
+		coordLog.Infof("failed to delete the topic info : %v", commonErr)
+		return commonErr
+	}
+	for _, id := range topicInfo.CatchupList {
+		c, rpcErr := self.acquireRpcClient(id)
+		if rpcErr != nil {
+			coordLog.Infof("failed to get rpc client: %v, %v", id, rpcErr)
+			continue
+		}
+		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, topicInfo)
+		if rpcErr != nil {
+			coordLog.Infof("failed to call rpc : %v, %v", id, rpcErr)
+		}
+	}
+	for _, id := range topicInfo.ISR {
+		c, rpcErr := self.acquireRpcClient(id)
+		if rpcErr != nil {
+			coordLog.Infof("failed to get rpc client: %v, %v", id, rpcErr)
+			continue
+		}
+		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, topicInfo)
+		if rpcErr != nil {
+			coordLog.Infof("failed to call rpc : %v, %v", id, rpcErr)
+		}
+	}
+
 	return nil
 }
 

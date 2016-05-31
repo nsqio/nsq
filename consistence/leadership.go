@@ -136,6 +136,7 @@ type NSQLookupdLeadership interface {
 	// get topic meta info only
 	GetTopicMetaInfo(topic string) (TopicMetaInfo, error)
 	DeleteTopic(topic string, partition int) error
+	DeleteWholeTopic(topic string) error
 	//
 	// update the replica info about leader, isr, epoch for partition
 	// Note: update should do check-and-set to avoid unexpected override.

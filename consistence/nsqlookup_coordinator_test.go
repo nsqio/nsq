@@ -232,6 +232,11 @@ func (self *FakeNsqlookupLeadership) GetTopicMetaInfo(topic string) (TopicMetaIn
 	return t[0].metaInfo.TopicMetaInfo, nil
 }
 
+func (self *FakeNsqlookupLeadership) DeleteWholeTopic(topic string) error {
+	delete(self.fakeTopics, topic)
+	return nil
+}
+
 func (self *FakeNsqlookupLeadership) DeleteTopic(topic string, partition int) error {
 	delete(self.fakeTopics[topic], partition)
 	self.clusterEpoch++

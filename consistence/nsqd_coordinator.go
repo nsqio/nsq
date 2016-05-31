@@ -1018,6 +1018,23 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 	return nil, ErrMissingTopicCoord
 }
 
+func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int) (*TopicCoordinator, *CoordErr) {
+	var topicCoord *TopicCoordinator
+	self.coordMutex.Lock()
+	if v, ok := self.topicCoords[topic]; ok {
+		if tc, ok := v[partition]; ok {
+			topicCoord = tc
+			delete(v, partition)
+		}
+	}
+	self.coordMutex.Unlock()
+	if topicCoord != nil {
+		topicCoord.Delete()
+		return topicCoord, nil
+	}
+	return nil, ErrMissingTopicCoord
+}
+
 type localWriteFunc func(*coordData) *CoordErr
 type localExitFunc func(*CoordErr)
 type localCommitFunc func() error

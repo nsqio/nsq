@@ -56,6 +56,16 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 	return tc, nil
 }
 
+func (self *TopicCoordinator) Delete() {
+	self.Exiting()
+	self.forceLeave = true
+	self.writeHold.Lock()
+	self.dataRWMutex.Lock()
+	self.logMgr.Delete()
+	self.dataRWMutex.Unlock()
+	self.writeHold.Unlock()
+}
+
 func (self *TopicCoordinator) GetData() *coordData {
 	self.dataRWMutex.RLock()
 	d := self.coordData

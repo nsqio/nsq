@@ -373,6 +373,28 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicI
 	return tp.GetData().disableWrite
 }
 
+func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
+	var ret CoordErr
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		ret = *err
+		return &ret
+	}
+
+	coordLog.Infof("removing the local topic: %v", rpcTopicReq)
+	_, err := self.nsqdCoord.removeTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if err != nil {
+		ret = *err
+		coordLog.Infof("delete topic %v failed : %v", rpcTopicReq.GetTopicDesp(), err)
+		return &ret
+	}
+	localErr := self.nsqdCoord.localNsqd.DeleteExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if localErr != nil {
+		ret = CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
+		return &ret
+	}
+	return nil
+}
+
 func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 	s := time.Now().Unix()
 	defer func() {

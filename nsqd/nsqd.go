@@ -517,6 +517,7 @@ func (n *NSQD) deleteTopic(topicName string, part int) {
 	}
 }
 
+// this just close the topic and remove from map, but keep the data for later.
 func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	topic, err := n.GetExistingTopic(topicName, partition)
 	if err != nil {

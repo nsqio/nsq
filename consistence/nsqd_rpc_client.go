@@ -160,6 +160,14 @@ func (self *NsqdRpcClient) DisableTopicWrite(epoch EpochType, topicInfo *TopicPa
 	return convertRpcError(err, retErr)
 }
 
+func (self *NsqdRpcClient) DeleteNsqdTopic(epoch EpochType, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	var rpcInfo RpcAdminTopicInfo
+	rpcInfo.LookupdEpoch = epoch
+	rpcInfo.TopicPartitionMetaInfo = *topicInfo
+	retErr, err := self.CallWithRetry("DeleteNsqdTopic", &rpcInfo)
+	return convertRpcError(err, retErr)
+}
+
 func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartitionMetaInfo) bool {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.TopicPartitionMetaInfo = *topicInfo

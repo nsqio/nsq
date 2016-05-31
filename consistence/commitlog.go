@@ -117,6 +117,18 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	return mgr, nil
 }
 
+func (self *TopicCommitLogMgr) Delete() {
+	self.Lock()
+	self.flushCommitLogsNoLock()
+	self.appender.Sync()
+	self.appender.Close()
+	err := os.Remove(self.path)
+	if err != nil {
+		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
+	}
+	self.Unlock()
+}
+
 func (self *TopicCommitLogMgr) Close() {
 	self.Lock()
 	self.flushCommitLogsNoLock()

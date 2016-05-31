@@ -560,6 +560,11 @@ func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, er
 	return metaInfo, nil
 }
 
+func (self *NsqLookupdEtcdMgr) DeleteWholeTopic(topic string) error {
+	_, err := self.client.Delete(self.createTopicPath(topic), true)
+	return err
+}
+
 func (self *NsqLookupdEtcdMgr) DeleteTopic(topic string, partition int) error {
 	_, err := self.client.Delete(self.createTopicPartitionPath(topic, partition), true)
 	if err != nil {
