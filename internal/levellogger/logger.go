@@ -55,17 +55,17 @@ func (self *LevelLogger) SetLevel(l int32) {
 }
 
 func (self *LevelLogger) Level() int32 {
-	return self.level
+	return atomic.LoadInt32(&self.level)
 }
 
 func (self *LevelLogger) Logf(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_INFO {
+	if self.Logger != nil && self.Level() >= LOG_INFO {
 		self.Logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }
 
 func (self *LevelLogger) LogDebugf(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_DEBUG {
+	if self.Logger != nil && self.Level() >= LOG_DEBUG {
 		self.Logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }
@@ -77,19 +77,19 @@ func (self *LevelLogger) LogErrorf(f string, args ...interface{}) {
 }
 
 func (self *LevelLogger) LogWarningf(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_WARN {
+	if self.Logger != nil && self.Level() >= LOG_WARN {
 		self.Logger.OutputWarning(2, fmt.Sprintf(f, args...))
 	}
 }
 
 func (self *LevelLogger) Infof(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_INFO {
+	if self.Logger != nil && self.Level() >= LOG_INFO {
 		self.Logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }
 
 func (self *LevelLogger) Debugf(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_DEBUG {
+	if self.Logger != nil && self.Level() >= LOG_DEBUG {
 		self.Logger.Output(2, fmt.Sprintf(f, args...))
 	}
 }
@@ -101,13 +101,13 @@ func (self *LevelLogger) Errorf(f string, args ...interface{}) {
 }
 
 func (self *LevelLogger) Warningf(f string, args ...interface{}) {
-	if self.Logger != nil && self.level >= LOG_WARN {
+	if self.Logger != nil && self.Level() >= LOG_WARN {
 		self.Logger.OutputWarning(2, fmt.Sprintf(f, args...))
 	}
 }
 
 func (self *LevelLogger) Warningln(f string) {
-	if self.Logger != nil && self.level >= LOG_WARN {
+	if self.Logger != nil && self.Level() >= LOG_WARN {
 		self.Logger.OutputWarning(2, f)
 	}
 }

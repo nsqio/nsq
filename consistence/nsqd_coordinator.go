@@ -765,11 +765,11 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			}
 		}
 		logMgr.FlushCommitLogs()
+		localTopic.UpdateCommittedOffset(lastCommitOffset)
 		localTopic.Unlock()
 		if hasErr {
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
-		localTopic.UpdateCommittedOffset(lastCommitOffset)
 		offset += int64(len(logs) * GetLogDataSize())
 
 		if synced && joinISRSession == "" {
@@ -1090,7 +1090,9 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 		if localErr != nil {
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
 		}
+		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
+		topic.Unlock()
 		return localErr
 	}
 	doLocalRollback := func() {
@@ -1166,7 +1168,9 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		if localErr != nil {
 			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
 		}
+		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
+		topic.Unlock()
 		return localErr
 	}
 	doLocalRollback := func() {
@@ -1414,7 +1418,9 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 			coordLog.Errorf("write commit log on slave failed: %v", localErr)
 			return localErr
 		}
+		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
+		topic.Unlock()
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {
@@ -1509,7 +1515,9 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			coordLog.Errorf("write commit log on slave failed: %v", localErr)
 			return localErr
 		}
+		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
+		topic.Unlock()
 		return nil
 	}
 

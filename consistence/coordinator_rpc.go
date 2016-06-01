@@ -501,7 +501,6 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordLog.Infof("rpc call with missing topic :%v", rpcData)
 		return nil, ErrMissingTopicCoord
 	}
-	coordLog.Debugf("checking rpc call...")
 	tcData := topicCoord.GetData()
 	if tcData.GetTopicEpochForWrite() != rpcData.TopicWriteEpoch {
 		coordLog.Infof("rpc call with wrong epoch :%v, current: %v", rpcData, tcData.GetTopicEpochForWrite())

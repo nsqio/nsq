@@ -261,9 +261,11 @@ func (self *TopicCommitLogMgr) IsCommitted(id int64) bool {
 
 func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) error {
 	if l.LogID <= atomic.LoadInt64(&self.pLogID) {
+		coordLog.Errorf("commit id %v less than prev id: %v", l, self.pLogID)
 		return ErrCommitLogWrongID
 	}
 	if l.LastMsgLogID < l.LogID {
+		coordLog.Errorf("commit id %v less than last msgid", l)
 		return ErrCommitLogWrongLastID
 	}
 	self.Lock()

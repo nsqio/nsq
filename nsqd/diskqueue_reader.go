@@ -523,7 +523,9 @@ CheckFileOpen:
 			return result
 		}
 
-		nsqLog.LogDebugf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
+		if nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.LogDebugf("DISKQUEUE(%s): readOne() opened %s", d.readerMetaName, curFileName)
+		}
 
 		if d.readPos.Pos > 0 {
 			_, result.err = d.readFile.Seek(d.readPos.Pos, 0)

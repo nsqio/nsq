@@ -141,11 +141,10 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 		return
 	}
 	cur := t.GetCommitted()
-	if cur == nil || offset.GetOffset() > cur.GetOffset() {
-		t.committedOffset.Store(offset)
-	} else {
-		nsqLog.LogDebugf("offset is less than commited: %v, %v, maybe multi writer", cur, offset)
+	if cur != nil && offset.GetOffset() < cur.GetOffset() {
+		nsqLog.LogDebugf("commited is rollbacked: %v, %v", cur, offset)
 	}
+	t.committedOffset.Store(offset)
 }
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
@@ -373,6 +372,7 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 	}
 	wend := t.backend.GetQueueWriteEnd()
 	if wend.GetOffset() != offset {
+		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
 	_, _, _, dend, err := t.put(m)
