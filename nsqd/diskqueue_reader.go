@@ -188,11 +188,10 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) error {
 	end, ok := e.(*diskQueueEndInfo)
 	if !ok || end == nil {
-		end = &diskQueueEndInfo{}
-		end.TotalMsgCnt = e.GetTotalMsgCnt()
-		end.VirtualEnd = e.GetOffset()
-		end.EndOffset.FileNum = 0
-		end.EndOffset.Pos = 0
+		if nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.Logf("%v got nil end while update queue end", d.readerMetaName)
+		}
+		return nil
 	}
 	d.RLock()
 	defer d.RUnlock()
@@ -859,12 +858,6 @@ func (d *diskQueueReader) ioLoop() {
 			if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt == d.queueEndInfo.TotalMsgCnt {
 				d.endUpdatedResponseChan <- nil
 				continue
-			}
-			// if endPos has no file num info , we can compute it
-			if endPos.EndOffset.FileNum == 0 && endPos.EndOffset.Pos == 0 {
-				if endPos.VirtualEnd >= d.queueEndInfo.VirtualEnd {
-				} else {
-				}
 			}
 			if d.queueEndInfo.EndOffset.FileNum != endPos.EndOffset.FileNum && endPos.EndOffset.Pos == 0 {
 				// a new file for the position

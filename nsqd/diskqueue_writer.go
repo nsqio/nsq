@@ -141,6 +141,7 @@ func (d *diskQueueWriter) closeCurrentFile() {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
+	d.diskReadEnd = d.diskWriteEnd
 	if d.writeFile != nil {
 		d.writeFile.Close()
 		d.writeFile = nil

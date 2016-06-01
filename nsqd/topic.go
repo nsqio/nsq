@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
 )
 
@@ -241,6 +242,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		e := t.backend.GetQueueReadEnd()
 		curCommit := t.GetCommitted()
 		if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+			if nsqLog.Level() >= levellogger.LOG_DEBUG {
+				nsqLog.Logf("channel %v, end to commit: %v, read end: %v", channel.GetName(), curCommit, e)
+			}
 			e = curCommit
 		}
 		channel.UpdateQueueEnd(e)
@@ -481,6 +485,9 @@ func (t *Topic) updateChannelsEnd() {
 	curCommit := t.GetCommitted()
 	// if not committed, we need wait to notify channel.
 	if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+		if nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.Logf("topic %v, end to commit: %v, read end: %v", t.fullName, curCommit, e)
+		}
 		e = curCommit
 	}
 	t.channelLock.RLock()
@@ -602,6 +609,12 @@ func (t *Topic) Empty() error {
 }
 
 func (t *Topic) ForceFlush() {
+	if nsqLog.Level() >= levellogger.LOG_DETAIL {
+		e := t.backend.GetQueueReadEnd()
+		curCommit := t.GetCommitted()
+		nsqLog.Logf("topic %v, end to commit: %v, read end: %v", t.fullName, curCommit, e)
+	}
+
 	s := time.Now()
 	t.flush(true)
 	cost := time.Now().Sub(s)
