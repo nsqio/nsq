@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"github.com/absolute8511/nsq/internal/levellogger"
 	"os"
 	"strconv"
 	"testing"
@@ -11,8 +10,7 @@ import (
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
 	opts := NewOptions()
-	//opts.Logger = newTestLogger(t)
-	opts.Logger = &levellogger.GLogger{}
+	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 2
 	opts.SyncEvery = 1
 	_, _, nsqd := mustStartNSQD(opts)

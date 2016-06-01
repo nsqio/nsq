@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -108,15 +107,13 @@ func NewTopic(topicName string, part int, opt *Options,
 		return nil
 	}
 
-	if strings.HasSuffix(topicName, "#ephemeral") {
-		backendName := getBackendName(t.tname, t.partition)
-		t.backend = newDiskQueueWriter(backendName,
-			t.dataPath,
-			opt.MaxBytesPerFile,
-			int32(minValidMsgLength),
-			int32(opt.MaxMsgSize)+minValidMsgLength,
-			opt.SyncEvery).(*diskQueueWriter)
-	}
+	backendName := getBackendName(t.tname, t.partition)
+	t.backend = newDiskQueueWriter(backendName,
+		t.dataPath,
+		opt.MaxBytesPerFile,
+		int32(minValidMsgLength),
+		int32(opt.MaxMsgSize)+minValidMsgLength,
+		opt.SyncEvery).(*diskQueueWriter)
 	t.committedOffset = t.backend.GetQueueWriteEnd()
 
 	t.notifyCall(t)
