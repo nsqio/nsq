@@ -64,7 +64,7 @@ type Topic struct {
 	putBuffer       bytes.Buffer
 	bp              sync.Pool
 	writeDisabled   int32
-	committedOffset BackendQueueEnd
+	committedOffset atomic.Value
 	autoCommit      bool
 }
 
@@ -114,7 +114,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		int32(minValidMsgLength),
 		int32(opt.MaxMsgSize)+minValidMsgLength,
 		opt.SyncEvery).(*diskQueueWriter)
-	t.committedOffset = t.backend.GetQueueWriteEnd()
+	t.UpdateCommittedOffset(t.backend.GetQueueWriteEnd())
 
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
@@ -124,6 +124,24 @@ func NewTopic(topicName string, part int, opt *Options,
 
 func (t *Topic) SetAutoCommit(enable bool) {
 	t.autoCommit = enable
+}
+
+func (t *Topic) GetCommitted() BackendQueueEnd {
+	l := t.committedOffset.Load()
+	if l == nil {
+		return nil
+	}
+	return l.(BackendQueueEnd)
+}
+
+func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
+	if offset == nil {
+		return
+	}
+	cur := t.GetCommitted()
+	if cur == nil || offset.GetOffset() > cur.GetOffset() {
+		t.committedOffset.Store(offset)
+	}
 }
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
@@ -221,8 +239,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
 			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
 		e := t.backend.GetQueueReadEnd()
-		if t.committedOffset != nil && e.GetOffset() > t.committedOffset.GetOffset() {
-			e = t.committedOffset
+		curCommit := t.GetCommitted()
+		if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+			e = curCommit
 		}
 		channel.UpdateQueueEnd(e)
 		if t.IsWriteDisabled() {
@@ -281,7 +300,7 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, diffCnt)
 	dend, err := t.backend.RollbackWriteV2(vend, diffCnt)
 	if err == nil {
-		t.committedOffset = &dend
+		t.UpdateCommittedOffset(&dend)
 		t.updateChannelsEnd()
 	}
 	return err
@@ -294,7 +313,7 @@ func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error 
 	if err != nil {
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
 	} else {
-		t.committedOffset = &dend
+		t.UpdateCommittedOffset(&dend)
 		t.updateChannelsEnd()
 	}
 
@@ -447,7 +466,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 	}
 
 	if t.autoCommit {
-		t.committedOffset = &dend
+		t.UpdateCommittedOffset(&dend)
 	}
 
 	if t.EnableTrace {
@@ -457,28 +476,12 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 	return m.ID, offset, writeBytes, dend, nil
 }
 
-func (t *Topic) UpdateCommittedOffsetNoLock(offset BackendQueueEnd) {
-	if offset == nil {
-		return
-	}
-	if t.committedOffset == nil {
-		t.committedOffset = offset
-	} else if offset.GetOffset() > t.committedOffset.GetOffset() {
-		t.committedOffset = offset
-	}
-}
-
-func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
-	t.Lock()
-	t.UpdateCommittedOffsetNoLock(offset)
-	t.Unlock()
-}
-
 func (t *Topic) updateChannelsEnd() {
 	e := t.backend.GetQueueReadEnd()
+	curCommit := t.GetCommitted()
 	// if not committed, we need wait to notify channel.
-	if t.committedOffset != nil && e.GetOffset() > t.committedOffset.GetOffset() {
-		e = t.committedOffset
+	if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+		e = curCommit
 	}
 	t.channelLock.RLock()
 	if e != nil {
