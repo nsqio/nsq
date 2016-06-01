@@ -1060,7 +1060,8 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
 		topic.Lock()
-		id, offset, writeBytes, queueEnd, putErr := topic.PutMessageNoLock(msg)
+		id, offset, writeBytes, qe, putErr := topic.PutMessageNoLock(msg)
+		queueEnd = qe
 		topic.Unlock()
 		if putErr != nil {
 			coordLog.Warningf("put message to local failed: %v", putErr)

@@ -135,6 +135,7 @@ func (t *Topic) GetCommitted() BackendQueueEnd {
 	return l.(BackendQueueEnd)
 }
 
+// note: multiple writer should be protected by lock
 func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 	if offset == nil {
 		return
@@ -142,6 +143,8 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 	cur := t.GetCommitted()
 	if cur == nil || offset.GetOffset() > cur.GetOffset() {
 		t.committedOffset.Store(offset)
+	} else {
+		nsqLog.LogDebugf("offset is less than commited: %v, %v, maybe multi writer", cur, offset)
 	}
 }
 
@@ -426,11 +429,12 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	var diskEnd diskQueueEndInfo
 	batchBytes := int32(0)
 	for _, m := range msgs {
-		id, offset, bytes, diskEnd, err := t.put(m)
+		id, offset, bytes, end, err := t.put(m)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, err
 		}
+		diskEnd = end
 		batchBytes += bytes
 		totalCnt = diskEnd.GetTotalMsgCnt()
 		if firstOffset == BackendOffset(-1) {
@@ -473,9 +477,9 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		t.UpdateCommittedOffset(&dend)
 	}
 
-	if t.EnableTrace {
-		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, count: %v", m.GetFullMsgID(),
-			t.GetFullName(), offset, dend.GetTotalMsgCnt())
+	if t.EnableTrace || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, disk end: %v", m.GetFullMsgID(),
+			t.GetFullName(), offset, dend)
 	}
 	return m.ID, offset, writeBytes, dend, nil
 }

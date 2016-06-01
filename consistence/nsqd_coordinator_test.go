@@ -743,6 +743,10 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	msgCnt++
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(topicData2.GetCommitted().GetTotalMsgCnt()))
+	test.Equal(t, topicData2.TotalDataSize(), int64(topicData2.GetCommitted().GetOffset()))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(topicData1.GetCommitted().GetTotalMsgCnt()))
+	test.Equal(t, topicData1.TotalDataSize(), int64(topicData1.GetCommitted().GetOffset()))
 	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
