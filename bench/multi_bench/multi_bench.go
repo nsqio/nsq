@@ -535,6 +535,7 @@ func main() {
 
 	log.SetPrefix("[bench_writer] ")
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
+	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -577,6 +578,13 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 		i := r.Intn(len(topics))
 		if *trace {
 			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topics[i], traceIDs, batch)
+			if err != nil {
+				log.Println("pub error :" + err.Error())
+				atomic.AddInt64(&totalErrCount, 1)
+				time.Sleep(time.Second)
+				continue
+			}
+
 			mutex.Lock()
 			topicResp, ok := pubRespCheck[topics[i]]
 			if !ok {
@@ -593,12 +601,6 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 				topicResp[uint64(traceResp.id)] = traceResp
 			}
 			mutex.Unlock()
-			if err != nil {
-				log.Println("pub error :" + err.Error())
-				atomic.AddInt64(&totalErrCount, 1)
-				time.Sleep(time.Second)
-				continue
-			}
 		} else {
 			err := pubMgr.MultiPublish(topics[i], batch)
 			if err != nil {
