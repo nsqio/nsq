@@ -518,7 +518,8 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		}
 		return c.doRequeue(msg)
 	}
-	return nil
+	// TODO: maybe change the timeout for inflight
+	return errors.New("Not allowed for delay")
 }
 
 func (c *Channel) RequeueClientMessages(clientID int64) {

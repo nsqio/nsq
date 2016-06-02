@@ -35,6 +35,12 @@ var (
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 )
 
+type pubResp struct {
+	id      nsq.NewMessageID
+	offset  uint64
+	rawSize uint32
+}
+
 var totalMsgCount int64
 var totalSubMsgCount int64
 var totalDumpCount int64
@@ -42,6 +48,7 @@ var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
 var dumpCheck map[string]map[uint64]*nsq.Message
+var pubRespCheck map[string]map[uint64]pubResp
 var mutex sync.Mutex
 
 type ByMsgOffset []*nsq.Message
@@ -56,6 +63,20 @@ func (self ByMsgOffset) Swap(i, j int) {
 
 func (self ByMsgOffset) Less(i, j int) bool {
 	return self[i].Offset < self[j].Offset
+}
+
+type ByPubOffset []pubResp
+
+func (self ByPubOffset) Len() int {
+	return len(self)
+}
+
+func (self ByPubOffset) Swap(i, j int) {
+	self[i], self[j] = self[j], self[i]
+}
+
+func (self ByPubOffset) Less(i, j int) bool {
+	return self[i].offset < self[j].offset
 }
 
 func init() {
@@ -271,7 +292,15 @@ func startCheckData(msg []byte, batch [][]byte) {
 	}
 
 	for _, t := range topics {
-		err = pubMgr.Publish(t, msg)
+		if *trace {
+			var id nsq.NewMessageID
+			var offset uint64
+			var rawSize uint32
+			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			log.Printf("topic %v pub trace : %v, %v, %v", t, id, offset, rawSize)
+		} else {
+			err = pubMgr.Publish(t, msg)
+		}
 		if err != nil {
 			log.Printf("topic pub error : %v", err)
 			return
@@ -279,6 +308,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 		atomic.AddInt64(&totalMsgCount, 1)
 		atomic.AddInt64(&currentMsgCount, 1)
 	}
+
 	goChan := make(chan int)
 	rdyChan := make(chan int)
 	for j := 0; j < *concurrency; j++ {
@@ -359,7 +389,35 @@ func startCheckData(msg []byte, batch [][]byte) {
 				log.Printf("a new fragment of queue: begin from %v ", msg.Offset)
 			}
 		}
-		log.Printf("last fragment of queue end at %v ", receivedOffsets[len(receivedOffsets)-1])
+		if len(receivedOffsets) != 0 {
+			log.Printf("last fragment of queue end at %v ", receivedOffsets[len(receivedOffsets)-1])
+		}
+	}
+	for topicName, tpubs := range pubRespCheck {
+		log.Printf("topic: %v pub count: %v", topicName, len(tpubs))
+		pubSortList := make([]pubResp, 0, len(tpubs))
+		for _, r := range tpubs {
+			pubSortList = append(pubSortList, r)
+		}
+		sort.Sort(ByPubOffset(pubSortList))
+		pubOffsets := make([]uint64, 0)
+		for _, r := range pubSortList {
+			if len(pubOffsets) == 0 {
+				log.Printf("a new pub fragment of queue: begin from %v ", r.offset)
+				pubOffsets = append(pubOffsets, r.offset)
+				pubOffsets = append(pubOffsets, r.offset+uint64(r.rawSize))
+			} else if pubOffsets[len(pubOffsets)-1] == r.offset {
+				pubOffsets[len(pubOffsets)-1] = r.offset + uint64(r.rawSize)
+			} else {
+				log.Printf("current pub fragment of queue end at %v ", pubOffsets[len(pubOffsets)-1])
+				pubOffsets = append(pubOffsets, r.offset)
+				pubOffsets = append(pubOffsets, r.offset+uint64(r.rawSize))
+				log.Printf("a new pub fragment of queue: begin from %v ", r.offset)
+			}
+		}
+		if len(pubOffsets) != 0 {
+			log.Printf("last pub fragment of queue end at %v ", pubOffsets[len(pubOffsets)-1])
+		}
 	}
 }
 
@@ -505,6 +563,9 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	r := rand.New(rand.NewSource(time.Now().Unix()))
+	traceIDs := make([]uint64, len(batch))
+	var traceResp pubResp
+	var err error
 	for {
 		if time.Now().After(endTime) {
 			break
@@ -514,12 +575,38 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 		}
 
 		i := r.Intn(len(topics))
-		err := pubMgr.MultiPublish(topics[i], batch)
-		if err != nil {
-			log.Println("pub error :" + err.Error())
-			atomic.AddInt64(&totalErrCount, 1)
-			time.Sleep(time.Second)
-			continue
+		if *trace {
+			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topics[i], traceIDs, batch)
+			mutex.Lock()
+			topicResp, ok := pubRespCheck[topics[i]]
+			if !ok {
+				topicResp = make(map[uint64]pubResp)
+				pubRespCheck[topics[i]] = topicResp
+			}
+			oldResp, ok := topicResp[uint64(traceResp.id)]
+			if ok {
+				log.Printf("got the same id with mpub: %v\n", traceResp.id)
+				if oldResp != traceResp {
+					log.Printf("response not the same old %v, new:%v\n", oldResp, traceResp)
+				}
+			} else {
+				topicResp[uint64(traceResp.id)] = traceResp
+			}
+			mutex.Unlock()
+			if err != nil {
+				log.Println("pub error :" + err.Error())
+				atomic.AddInt64(&totalErrCount, 1)
+				time.Sleep(time.Second)
+				continue
+			}
+		} else {
+			err := pubMgr.MultiPublish(topics[i], batch)
+			if err != nil {
+				log.Println("pub error :" + err.Error())
+				atomic.AddInt64(&totalErrCount, 1)
+				time.Sleep(time.Second)
+				continue
+			}
 		}
 		msgCount += int64(len(batch))
 		atomic.AddInt64(&currentMsgCount, int64(len(batch)))

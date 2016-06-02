@@ -1190,7 +1190,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 }
 
 func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
-	msgs []*nsqd.Message) error {
+	msgs []*nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, error) {
 	var commitLog CommitLogData
 	var queueEnd nsqd.BackendQueueEnd
 	var logMgr *TopicCommitLogMgr
@@ -1260,8 +1260,10 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		}
 		return false
 	}
-	return self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+	clusterErr := self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
+
+	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, clusterErr
 }
 
 func (self *NsqdCoordinator) doWriteOpToCluster(topic *nsqd.Topic, doLocalWrite localWriteFunc,

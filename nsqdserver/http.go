@@ -307,7 +307,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	if ok {
 		tmp := make([]byte, 4)
 		msgs, buffers, err = readMPUB(req.Body, tmp, topic,
-			s.ctx.getOpts().MaxMsgSize)
+			s.ctx.getOpts().MaxMsgSize, false)
 		defer func() {
 			for _, b := range buffers {
 				topic.BufferPoolPut(b)
@@ -358,7 +358,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		err := s.ctx.PutMessages(topic, msgs)
+		_, _, _, err := s.ctx.PutMessages(topic, msgs)
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)

@@ -125,10 +125,10 @@ func (c *context) PutMessage(topic *nsqd.Topic,
 	return c.nsqdCoord.PutMessageToCluster(topic, msg, traceID)
 }
 
-func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) error {
+func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, error) {
 	if c.nsqdCoord == nil {
-		_, _, _, _, _, err := topic.PutMessages(msgs)
-		return err
+		id, offset, rawSize, _, _, err := topic.PutMessages(msgs)
+		return id, offset, rawSize, err
 	}
 	return c.nsqdCoord.PutMessagesToCluster(topic, msgs)
 }

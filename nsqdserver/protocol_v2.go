@@ -1093,7 +1093,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 	}
 
 	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,
-		p.ctx.getOpts().MaxMsgSize)
+		p.ctx.getOpts().MaxMsgSize, traceEnable)
 
 	defer func() {
 		for _, b := range buffers {
@@ -1107,7 +1107,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
 	if p.ctx.checkForMasterWrite(topicName, partition) {
-		err := p.ctx.PutMessages(topic, messages)
+		id, offset, rawSize, err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -1119,7 +1119,10 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 			}
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}
-		return okBytes, nil
+		if !traceEnable {
+			return okBytes, nil
+		}
+		return getTracedReponse(buffers[0], id, 0, offset, rawSize)
 	} else {
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
@@ -1160,7 +1163,7 @@ func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, erro
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64) ([]*nsqd.Message, []*bytes.Buffer, error) {
+func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64, traceEnable bool) ([]*nsqd.Message, []*bytes.Buffer, error) {
 	numMessages, err := readLen(r, tmp)
 	if err != nil {
 		return nil, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
@@ -1198,7 +1201,21 @@ func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64) 
 			return nil, buffers, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, nsqd.NewMessage(0, msgBody))
+		traceID := uint64(0)
+		var realBody []byte
+		if traceEnable {
+			if messageSize <= nsqd.MsgTraceIDLength {
+				return nil, buffers, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+					fmt.Sprintf("MPUB invalid message(%d) body size %d for tracing", i, messageSize))
+			}
+			traceID = binary.BigEndian.Uint64(msgBody[:8])
+			realBody = msgBody[8:]
+		} else {
+			realBody = msgBody
+		}
+		msg := nsqd.NewMessage(0, realBody)
+		msg.TraceID = traceID
+		messages = append(messages, msg)
 	}
 
 	return messages, buffers, nil

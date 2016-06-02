@@ -417,6 +417,7 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 	if s.ctx.nsqlookupd.coordinator != nil {
 		nodes, err := s.ctx.nsqlookupd.coordinator.GetAllLookupdNodes()
 		if err != nil {
+			nsqlookupLog.Infof("list lookup error: %v", err)
 			return nil, http_api.Err{500, err.Error()}
 		}
 		leader := s.ctx.nsqlookupd.coordinator.GetLookupLeader()
