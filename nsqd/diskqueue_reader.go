@@ -773,12 +773,8 @@ func (d *diskQueueReader) ioLoop() {
 
 	for {
 		// dont sync all the time :)
-		if count == d.syncEvery {
+		if d.needSync && count == d.syncEvery {
 			count = 0
-			d.needSync = true
-		}
-
-		if d.needSync {
 			syncerr = d.sync()
 			if syncerr != nil {
 				nsqLog.LogErrorf("diskqueue(%s) failed to sync - %s",
@@ -840,10 +836,15 @@ func (d *diskQueueReader) ioLoop() {
 			}
 			lastDataNeedRead = false
 		case skipInfo := <-d.skipChan:
+			old := d.virtualConfirmedOffset
 			skiperr := d.internalSkipTo(skipInfo)
 			if skiperr == nil {
 				lastDataNeedRead = false
 				rerr = nil
+				if old != d.virtualConfirmedOffset {
+					d.needSync = true
+					count++
+				}
 			}
 			d.skipResponseChan <- skiperr
 		case <-d.readEndChan:
@@ -861,11 +862,8 @@ func (d *diskQueueReader) ioLoop() {
 				d.endUpdatedResponseChan <- nil
 				continue
 			}
-			if d.queueEndInfo.EndOffset.FileNum != endPos.EndOffset.FileNum && endPos.EndOffset.Pos == 0 {
-				// a new file for the position
-				count = 0
-				d.needSync = true
-			}
+			d.needSync = true
+			count++
 			if d.readPos.FileNum > endPos.EndOffset.FileNum {
 				nsqLog.Logf("new end old than the read end: %v, %v", d.readPos, endPos)
 				d.readPos.FileNum = endPos.EndOffset.FileNum
@@ -890,7 +888,6 @@ func (d *diskQueueReader) ioLoop() {
 			oldPos := d.queueEndInfo
 			d.queueEndInfo = *endPos
 			d.updateDepth()
-			count++
 			if nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("read end %v updated to : %v", oldPos, endPos)
 			}
@@ -901,6 +898,7 @@ func (d *diskQueueReader) ioLoop() {
 			err := d.internalConfirm(confirmInfo)
 			if oldConfirm != d.virtualConfirmedOffset {
 				count++
+				d.needSync = true
 			}
 			d.confirmResponseChan <- err
 

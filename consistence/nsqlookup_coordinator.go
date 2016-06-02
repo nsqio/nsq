@@ -517,6 +517,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		} else {
 			if aliveCount > t.Replica {
+				//TODO: remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
 			}
 		}
