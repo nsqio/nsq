@@ -283,6 +283,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.PUBTRACE(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
+	case bytes.Equal(params[0], []byte("MPUB_TRACE")):
+		return p.MPUBTRACE(client, params)
 	case bytes.Equal(params[0], []byte("NOP")):
 		return p.NOP(client, params)
 	case bytes.Equal(params[0], []byte("TOUCH")):
@@ -992,11 +994,52 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	return bodyLen, topic, nil
 }
 
-func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+// PUB TRACE data format
+// 4 bytes length + 8bytes trace id + binary data
+func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalPubAndTrace(client, params, true)
+}
 
+func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalPubAndTrace(client, params, false)
+}
+
+func (p *protocolV2) MPUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalMPUBAndTrace(client, params, true)
+}
+
+func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalMPUBAndTrace(client, params, false)
+}
+
+func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceID uint64, offset nsqd.BackendOffset, rawSize int32) ([]byte, error) {
+	var buf []byte
+	// pub with trace will return OK+16BYTES ID+8bytes offset of the disk queue + 4bytes raw size of disk queue data.
+	retLen := 2 + 16 + 8 + 4
+	if len(messageBodyBuffer.Bytes()) >= retLen {
+		buf = messageBodyBuffer.Bytes()[:retLen]
+	} else {
+		buf = make([]byte, retLen)
+	}
+	copy(buf[:2], okBytes)
+	pos := 2
+	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(id))
+	pos += 8
+	binary.BigEndian.PutUint64(buf[pos:pos+nsqd.MsgTraceIDLength], uint64(traceID))
+	pos += nsqd.MsgTraceIDLength
+	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(offset))
+	pos += 8
+	binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(rawSize))
+	return buf, nil
+}
+
+func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
 	if err != nil {
 		return nil, err
+	}
+	if bodyLen <= 8 {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE", "missing trace id with pub trace")
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
@@ -1005,13 +1048,21 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	_, err = io.ReadFull(client.Reader, messageBody)
 	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body")
+		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
 	}
 
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
+	var traceID uint64
+	var realBody []byte
+	if traceEnable {
+		traceID = binary.BigEndian.Uint64(messageBody[:8])
+		realBody = messageBody[8:]
+	} else {
+		realBody = messageBody
+	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
-		_, _, _, _, err := p.ctx.PutMessage(topic, messageBody)
+		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, realBody, traceID)
 		//p.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -1022,6 +1073,10 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			}
 			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
 		}
+		if !traceEnable {
+			return okBytes, nil
+		}
+		return getTracedReponse(messageBodyBuffer, id, traceID, offset, rawSize)
 	} else {
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
@@ -1029,11 +1084,9 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		topic.DisableForSlave()
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
-
-	return okBytes, nil
 }
 
-func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	_, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
@@ -1066,69 +1119,7 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 			}
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}
-	} else {
-		//forward to master of topic
-		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
-			topic.GetFullName(), client.RemoteAddr)
-		topic.DisableForSlave()
-		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
-	}
-	return okBytes, nil
-}
-
-// PUB TRACE data format
-// 4 bytes length + 8bytes trace id + binary data
-func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
-	if err != nil {
-		return nil, err
-	}
-	if bodyLen <= 8 {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE", "missing trace id with pub trace")
-	}
-
-	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
-	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
-	defer topic.BufferPoolPut(messageBodyBuffer)
-
-	_, err = io.ReadFull(client.Reader, messageBody)
-	if err != nil {
-		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
-	}
-
-	topicName := topic.GetTopicName()
-	partition := topic.GetTopicPart()
-	traceID := messageBody[:8]
-	if p.ctx.checkForMasterWrite(topicName, partition) {
-		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, messageBody[8:])
-		//p.ctx.setHealth(err)
-		if err != nil {
-			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
-				if !clusterErr.IsLocalErr() {
-					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
-				}
-			}
-			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
-		}
-		var buf []byte
-		// pub with trace will return OK+16BYTES ID+8bytes offset of the disk queue + 4bytes raw size of disk queue data.
-		retLen := 2 + 16 + 8 + 4
-		if len(messageBodyBuffer.Bytes()) >= retLen {
-			buf = messageBodyBuffer.Bytes()[:retLen]
-		} else {
-			buf = make([]byte, retLen)
-		}
-		copy(buf[:2], okBytes)
-		pos := 2
-		binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(id))
-		pos += 8
-		copy(buf[pos:pos+nsqd.MsgTraceIDLength], traceID)
-		pos += nsqd.MsgTraceIDLength
-		binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(offset))
-		pos += 8
-		binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(rawSize))
-		return buf, nil
+		return okBytes, nil
 	} else {
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",

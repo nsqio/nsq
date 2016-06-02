@@ -251,8 +251,14 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		traceID := params.Get("trace_id")
-		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body)
+		traceIDStr := params.Get("trace_id")
+		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
+		if err != nil {
+			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
+				traceIDStr, err)
+			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+		}
+		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body, traceID)
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -271,7 +277,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				TraceID     string `json:"trace_id"`
 				QueueOffset uint64 `json:"queue_offset"`
 				DataRawSize uint32 `json:"rawsize"`
-			}{"OK", uint64(id), traceID, uint64(offset), uint32(rawSize)}, nil
+			}{"OK", uint64(id), traceIDStr, uint64(offset), uint32(rawSize)}, nil
 		} else {
 			return "OK", nil
 		}

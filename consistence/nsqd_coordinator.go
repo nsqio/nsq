@@ -1108,12 +1108,13 @@ type handleSyncResultFunc func(int, *coordData) bool
 type checkDupFunc func(*coordData) bool
 
 func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
-	body []byte) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	var commitLog CommitLogData
 	var logMgr *TopicCommitLogMgr
 	var msg *nsqd.Message
 	var queueEnd nsqd.BackendQueueEnd
 	msg = nsqd.NewMessage(0, body)
+	msg.TraceID = traceID
 
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
