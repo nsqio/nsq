@@ -343,7 +343,9 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 	id, offset, writeBytes, dend, err := t.put(m)
 	if err == nil {
 		if dend.GetTotalMsgCnt()%t.syncEvery == 0 {
-			t.flush(true)
+			if !t.IsWriteDisabled() {
+				t.flush(true)
+			}
 		} else {
 			t.flushForChannels()
 		}
@@ -352,6 +354,9 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 }
 
 func (t *Topic) flushForChannels() {
+	if t.IsWriteDisabled() {
+		return
+	}
 	needFlush := false
 	t.channelLock.RLock()
 	for _, ch := range t.channelMap {
@@ -379,9 +384,6 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 	if err != nil {
 		return nil, err
 	}
-	if dend.GetTotalMsgCnt()%t.syncEvery == 0 {
-		t.flush(false)
-	}
 	return &dend, nil
 }
 
@@ -398,7 +400,6 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 		return nil, ErrWriteOffsetMismatch
 	}
 
-	totalCnt := int64(0)
 	var dend diskQueueEndInfo
 	var err error
 	for _, m := range msgs {
@@ -407,12 +408,8 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
 			return nil, err
 		}
-		totalCnt = dend.GetTotalMsgCnt()
 	}
 
-	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
-		t.flush(false)
-	}
 	return &dend, nil
 }
 
@@ -445,7 +442,9 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	}
 
 	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
-		t.flush(true)
+		if !t.IsWriteDisabled() {
+			t.flush(true)
+		}
 	} else {
 		t.flushForChannels()
 	}
@@ -582,6 +581,7 @@ func (t *Topic) IsWriteDisabled() bool {
 }
 
 func (t *Topic) DisableForSlave() {
+	// TODO : log the last logid and message offset
 	atomic.StoreInt32(&t.writeDisabled, 1)
 	nsqLog.Logf("[TRACE_DATA] while disable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
@@ -595,6 +595,8 @@ func (t *Topic) DisableForSlave() {
 }
 
 func (t *Topic) EnableForMaster() {
+	// TODO : log the last logid and message offset
+	// TODO : log the first logid and message offset after enable master
 	nsqLog.Logf("[TRACE_DATA] while enable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {

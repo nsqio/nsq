@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrInvalidOffset = errors.New("invalid offset")
+	writeBufSize     = 1024 * 64
 )
 
 // diskQueueWriter implements the BackendQueue interface
@@ -344,7 +345,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueu
 			}
 		}
 		if d.bufferWriter == nil {
-			d.bufferWriter = bufio.NewWriter(d.writeFile)
+			d.bufferWriter = bufio.NewWriterSize(d.writeFile, writeBufSize)
 		} else {
 			d.bufferWriter.Reset(d.writeFile)
 		}

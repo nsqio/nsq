@@ -554,10 +554,13 @@ func (n *NSQD) DeleteExistingTopic(topicName string, part int) error {
 	return nil
 }
 
-func (n *NSQD) flushAll() {
+func (n *NSQD) flushAll(all bool) {
 	tmpMap := n.GetTopicMapCopy()
 	for _, topics := range tmpMap {
 		for _, t := range topics {
+			if !all && t.IsWriteDisabled() {
+				continue
+			}
 			t.ForceFlush()
 		}
 	}
@@ -672,6 +675,7 @@ func (n *NSQD) queueScanLoop() {
 
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
+	flushCnt := 0
 
 	for {
 		select {
@@ -684,7 +688,7 @@ func (n *NSQD) queueScanLoop() {
 			n.resizePool(len(channels), workCh, responseCh, closeCh)
 			continue
 		case <-flushTicker.C:
-			n.flushAll()
+			n.flushAll(flushCnt%100 == 0)
 			continue
 		case <-n.exitChan:
 			goto exit

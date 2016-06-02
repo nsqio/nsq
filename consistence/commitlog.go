@@ -61,6 +61,7 @@ type TopicCommitLogMgr struct {
 	pLogID        int64
 	path          string
 	committedLogs []CommitLogData
+	bufSize       int
 	appender      *os.File
 	sync.Mutex
 }
@@ -81,6 +82,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		nLogID:        0,
 		pLogID:        0,
 		path:          fullpath,
+		bufSize:       commitBufSize,
 		committedLogs: make([]CommitLogData, 0, commitBufSize),
 	}
 	// load check point index. read sizeof(CommitLogData) until EOF.
@@ -287,6 +289,21 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	}
 	atomic.StoreInt64(&self.pLogID, l.LogID)
 	return nil
+}
+
+func (self *TopicCommitLogMgr) switchForMaster(master bool) {
+	self.Lock()
+	self.flushCommitLogsNoLock()
+	if master {
+		if cap(self.committedLogs) != self.bufSize {
+			self.committedLogs = make([]CommitLogData, 0, self.bufSize)
+		}
+	} else {
+		if cap(self.committedLogs) != self.bufSize*100 {
+			self.committedLogs = make([]CommitLogData, 0, self.bufSize*100)
+		}
+	}
+	self.Unlock()
 }
 
 func (self *TopicCommitLogMgr) flushCommitLogsNoLock() {

@@ -211,7 +211,11 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 		for _, tc := range tmpCoords {
 			for pid, tpc := range tc {
 				tcData := tpc.GetData()
-				tcData.logMgr.FlushCommitLogs()
+				if tcData.GetLeader() == self.myNode.GetID() {
+					tcData.logMgr.FlushCommitLogs()
+				} else if syncChannelCounter%10 == 0 {
+					tcData.logMgr.FlushCommitLogs()
+				}
 				if syncChannelCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
 					self.trySyncTopicChannels(tcData)
 				}
@@ -786,6 +790,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
 			logMgr.FlushCommitLogs()
+			logMgr.switchForMaster(false)
+			localTopic.ForceFlush()
 			coordLog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
 			go func() {
 				rpcErr := self.notifyReadyForTopicISR(&topicInfo, &leaderSession, joinISRSession)
@@ -872,10 +878,36 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
+	// flush topic data and channel comsume data if any cluster topic info changed
 	localTopic.ForceFlush()
-	topicCoord.GetData().logMgr.FlushCommitLogs()
+	newTcData := topicCoord.GetData()
+	newTcData.logMgr.FlushCommitLogs()
+	topicCoord.dataRWMutex.Lock()
+	offsetMap := make(map[string]ChannelConsumerOffset)
+	for chName, offset := range newTcData.channelConsumeOffset {
+		offsetMap[chName] = offset
+		delete(newTcData.channelConsumeOffset, chName)
+	}
+	topicCoord.dataRWMutex.Unlock()
+	for chName, offset := range offsetMap {
+		ch := localTopic.GetChannel(chName)
+		currentConfirmed := ch.GetConfirmedOffset()
+		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
+			continue
+		}
+		currentEnd := ch.GetChannelEnd()
+		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+			continue
+		}
+		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+		if err != nil {
+			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
+				chName, offset, err, currentEnd, localTopic.TotalDataSize())
+		}
+	}
 
 	if newTopicInfo.Leader == self.myNode.GetID() {
+		newTcData.logMgr.switchForMaster(true)
 		// not leader before and became new leader
 		if oldData.GetLeader() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
@@ -890,6 +922,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			go self.acquireTopicLeader(newTopicInfo)
 		}
 	} else {
+		newTcData.logMgr.switchForMaster(false)
 		localTopic.DisableForSlave()
 		if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 			coordLog.Infof("I am in isr list.")
@@ -942,23 +975,48 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		return nil
 	}
 
-	topicData, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+	localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if err != nil {
 		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
 	}
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
-	topicData.ForceFlush()
+	localTopic.ForceFlush()
 	tcData.logMgr.FlushCommitLogs()
+	topicCoord.dataRWMutex.Lock()
+	offsetMap := make(map[string]ChannelConsumerOffset)
+	for chName, offset := range tcData.channelConsumeOffset {
+		offsetMap[chName] = offset
+		delete(tcData.channelConsumeOffset, chName)
+	}
+	topicCoord.dataRWMutex.Unlock()
+	for chName, offset := range offsetMap {
+		ch := localTopic.GetChannel(chName)
+		currentConfirmed := ch.GetConfirmedOffset()
+		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
+			continue
+		}
+		currentEnd := ch.GetChannelEnd()
+		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+			continue
+		}
+		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+		if err != nil {
+			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
+				chName, offset, err, currentEnd, localTopic.TotalDataSize())
+		}
+	}
 
 	coordLog.Infof("topic leader session: %v", tcData.topicLeaderSession)
 	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		coordLog.Infof("I become the leader for the topic: %v", tcData.topicInfo.GetTopicDesp())
+		tcData.logMgr.switchForMaster(true)
 		if !tcData.disableWrite {
-			topicData.EnableForMaster()
+			localTopic.EnableForMaster()
 		}
 	} else {
-		topicData.DisableForSlave()
+		tcData.logMgr.switchForMaster(false)
+		localTopic.DisableForSlave()
 		if newLS == nil || newLS.LeaderNode == nil || newLS.Session == "" {
 			coordLog.Infof("topic leader is missing : %v", tcData.topicInfo.GetTopicDesp())
 			if tcData.GetLeader() == self.myNode.GetID() {
@@ -1681,6 +1739,11 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	if coordLog.Level() >= levellogger.LOG_DETAIL {
 		coordLog.Debugf("got update channel(%v) offset on slave : %v", channelName, offset)
 	}
+	coord, coordErr := self.getTopicCoord(topicName, partition)
+	if coordErr != nil {
+		return ErrMissingTopicCoord
+	}
+
 	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
 	if localErr != nil {
 		coordLog.Infof("slave missing topic : %v", topicName)
@@ -1703,7 +1766,14 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 				offset.VOffset = int64(currentEnd)
 			}
 		} else {
-			offset.VOffset = int64(currentEnd)
+			// cache the offset (using map?) to reduce the slave channel flush.
+			coord.dataRWMutex.Lock()
+			cur, ok := coord.channelConsumeOffset[channelName]
+			if !ok || cur.VOffset < offset.VOffset {
+				coord.channelConsumeOffset[channelName] = offset
+			}
+			coord.dataRWMutex.Unlock()
+			return nil
 		}
 	}
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))

@@ -515,6 +515,10 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 		if self.isTopicWriteDisabled(&t) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
+		} else {
+			if aliveCount > t.Replica {
+				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
+			}
 		}
 	}
 }
@@ -587,6 +591,22 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 }
 
 func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topicInfo.GetTopicDesp()] = state
+	}
+	self.joinStateMutex.Unlock()
+	state.Lock()
+	defer state.Unlock()
+
+	wj := state.waitingJoin
+	if wj {
+		coordLog.Infof("isr node is waiting for join session %v, removing should wait.", state.waitingSession)
+		return ErrLeavingISRWait
+	}
+
 	if len(failedNodes) == 0 {
 		return nil
 	}
@@ -1537,38 +1557,11 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 		}
 	}
 
-	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
-	self.joinStateMutex.Unlock()
-	if ok && state != nil {
-		state.Lock()
-		wj := state.waitingJoin
-		if wj {
-			coordLog.Infof("isr node is waiting for join session %v, graceful leaving should wait.", state.waitingSession)
-		}
-		state.Unlock()
-		if wj {
-			return ErrLeavingISRWait
-		}
+	failedNodes := make([]string, 0, 1)
+	failedNodes = append(failedNodes, nodeID)
+	coordErr := self.handleRemoveFailedISRNodes(failedNodes, topicInfo)
+	if coordErr == nil {
+		coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
 	}
-
-	newISR := make([]string, 0, len(topicInfo.ISR)-1)
-	for _, n := range topicInfo.ISR {
-		if n == nodeID {
-			continue
-		}
-		newISR = append(newISR, n)
-	}
-	topicInfo.ISR = newISR
-	topicInfo.CatchupList = append(topicInfo.CatchupList, nodeID)
-	err = self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
-		&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
-	if err != nil {
-		coordLog.Infof("remove node from isr failed: %v", err.Error())
-		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
-	}
-
-	go self.notifyTopicMetaInfo(topicInfo)
-	coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
-	return nil
+	return coordErr
 }
