@@ -42,6 +42,9 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 					coordLog.Infof("retry cancelled since node not exist: %v", info)
 					continue
 				}
+				if FindSlice(topicInfo.ISR, info.nodeID) == -1 && FindSlice(topicInfo.CatchupList, info.nodeID) == -1 {
+					continue
+				}
 				c, rpcErr := self.acquireRpcClient(info.nodeID)
 				if rpcErr != nil {
 					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
@@ -49,7 +52,10 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 				}
 				rpcErr = c.UpdateTopicInfo(epoch, topicInfo)
 				if rpcErr != nil {
-					self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					// this error should not retry anymore
+					if !rpcErr.IsEqual(ErrTopicCoordExistingAndMismatch) {
+						self.addRetryFailedRpc(info.topic, info.partition, info.nodeID)
+					}
 					continue
 				}
 				leaderSession, err := self.leadership.GetTopicLeaderSession(info.topic, info.partition)
