@@ -462,8 +462,8 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			coordErr := self.handleTopicLeaderElection(&t, currentNodes, currentNodesEpoch)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
-				continue
 			}
+			continue
 		} else {
 			// check topic leader session key.
 			leaderSession, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
@@ -517,8 +517,20 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		} else {
 			if aliveCount > t.Replica {
-				//TODO: remove the unwanted node in isr
+				//remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
+				failedNodes := make([]string, 0, 1)
+				for _, nodeID := range t.ISR {
+					if nodeID == t.Leader {
+						continue
+					}
+					failedNodes = append(failedNodes, nodeID)
+					break
+				}
+				coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
+				if coordErr == nil {
+					coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
+				}
 			}
 		}
 	}

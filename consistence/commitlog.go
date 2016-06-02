@@ -113,6 +113,20 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		}
 		mgr.pLogID = l.LogID
 		mgr.nLogID = l.LastMsgLogID + 1
+		if mgr.pLogID < int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Infof("log id init less than expected: %v", mgr.pLogID)
+			panic("init commit log id failed")
+		} else if mgr.pLogID > int64(uint64(mgr.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Infof("log id init large than expected: %v", mgr.pLogID)
+			panic("init commit log id failed")
+		}
+		if mgr.nLogID < int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Infof("log id init less than expected: %v", mgr.pLogID)
+			panic("init commit log id failed")
+		} else if mgr.nLogID > int64(uint64(mgr.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Infof("log id init large than expected: %v", mgr.pLogID)
+			panic("init commit log id failed")
+		}
 	} else {
 		mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
 	}

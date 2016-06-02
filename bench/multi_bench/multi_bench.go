@@ -35,6 +35,10 @@ var (
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 )
 
+func getPartitionID(msgID nsq.NewMessageID) string {
+	return strconv.Itoa(int(uint64(msgID) >> 50))
+}
+
 type pubResp struct {
 	id      nsq.NewMessageID
 	offset  uint64
@@ -375,9 +379,13 @@ func startCheckData(msg []byte, batch [][]byte) {
 		}
 		sort.Sort(ByMsgOffset(topicMsgs))
 		receivedOffsets := make([]uint64, 0)
+		fragmentNum := 1
 		for _, msg := range topicMsgs {
+			if fragmentNum > 10 {
+				break
+			}
 			if len(receivedOffsets) == 0 {
-				log.Printf("a new fragment of queue: begin from %v ", msg.Offset)
+				log.Printf("a new fragment of queue: begin from %v, %v ", msg.Offset, msg.ID)
 				receivedOffsets = append(receivedOffsets, msg.Offset)
 				receivedOffsets = append(receivedOffsets, msg.Offset+uint64(msg.RawSize))
 			} else if receivedOffsets[len(receivedOffsets)-1] == msg.Offset {
@@ -386,7 +394,8 @@ func startCheckData(msg []byte, batch [][]byte) {
 				log.Printf("current fragment of queue end at %v ", receivedOffsets[len(receivedOffsets)-1])
 				receivedOffsets = append(receivedOffsets, msg.Offset)
 				receivedOffsets = append(receivedOffsets, msg.Offset+uint64(msg.RawSize))
-				log.Printf("a new fragment of queue: begin from %v ", msg.Offset)
+				log.Printf("a new fragment of queue: begin from %v, %v ", msg.Offset, msg.ID)
+				fragmentNum++
 			}
 		}
 		if len(receivedOffsets) != 0 {
@@ -401,9 +410,13 @@ func startCheckData(msg []byte, batch [][]byte) {
 		}
 		sort.Sort(ByPubOffset(pubSortList))
 		pubOffsets := make([]uint64, 0)
+		fragmentNum := 1
 		for _, r := range pubSortList {
+			if fragmentNum > 10 {
+				break
+			}
 			if len(pubOffsets) == 0 {
-				log.Printf("a new pub fragment of queue: begin from %v ", r.offset)
+				log.Printf("a new pub fragment of queue: begin from %v, %v ", r.offset, r.id)
 				pubOffsets = append(pubOffsets, r.offset)
 				pubOffsets = append(pubOffsets, r.offset+uint64(r.rawSize))
 			} else if pubOffsets[len(pubOffsets)-1] == r.offset {
@@ -412,7 +425,8 @@ func startCheckData(msg []byte, batch [][]byte) {
 				log.Printf("current pub fragment of queue end at %v ", pubOffsets[len(pubOffsets)-1])
 				pubOffsets = append(pubOffsets, r.offset)
 				pubOffsets = append(pubOffsets, r.offset+uint64(r.rawSize))
-				log.Printf("a new pub fragment of queue: begin from %v ", r.offset)
+				log.Printf("a new pub fragment of queue: begin from %v, %v ", r.offset, r.id)
+				fragmentNum++
 			}
 		}
 		if len(pubOffsets) != 0 {
@@ -585,11 +599,12 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 				continue
 			}
 
+			pidStr := getPartitionID(traceResp.id)
 			mutex.Lock()
-			topicResp, ok := pubRespCheck[topics[i]]
+			topicResp, ok := pubRespCheck[topics[i]+pidStr]
 			if !ok {
 				topicResp = make(map[uint64]pubResp)
-				pubRespCheck[topics[i]] = topicResp
+				pubRespCheck[topics[i]+pidStr] = topicResp
 			}
 			oldResp, ok := topicResp[uint64(traceResp.id)]
 			if ok {
@@ -620,24 +635,31 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 }
 
 type consumeHandler struct {
-	topic          string
-	topicDumpCheck map[uint64]*nsq.Message
+	topic string
+	check bool
 }
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
-	if c.topicDumpCheck != nil {
+	// get partition id from msgid to avoid multi partitions to dump check.
+	pidStr := getPartitionID(nsq.NewMessageID(mid))
+	if c.check {
 		mutex.Lock()
 		defer mutex.Unlock()
-		if msg, ok := c.topicDumpCheck[mid]; ok {
+		topicCheck, ok := dumpCheck[c.topic+pidStr]
+		if !ok {
+			topicCheck = make(map[uint64]*nsq.Message)
+			dumpCheck[c.topic+pidStr] = topicCheck
+		}
+		if msg, ok := topicCheck[mid]; ok {
 			atomic.AddInt64(&totalDumpCount, 1)
 			if msg.Offset != message.Offset || msg.RawSize != message.RawSize {
 				log.Printf("got dump message with mismatch data: %v, %v\n", msg, message)
 			}
-			c.topicDumpCheck[mid] = message
+			topicCheck[mid] = message
 			return nil
 		}
-		c.topicDumpCheck[mid] = message
+		topicCheck[mid] = message
 	}
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {
@@ -651,16 +673,11 @@ func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic str
 	if err != nil {
 		panic(err.Error())
 	}
-	mutex.Lock()
-	if _, ok := dumpCheck[topic]; !ok {
-		dumpCheck[topic] = make(map[uint64]*nsq.Message)
-	}
-	mutex.Unlock()
 	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 	if *benchCase == "checkdata" {
-		consumer.AddHandler(&consumeHandler{topic, dumpCheck[topic]})
+		consumer.AddHandler(&consumeHandler{topic, true})
 	} else {
-		consumer.AddHandler(&consumeHandler{topic, nil})
+		consumer.AddHandler(&consumeHandler{topic, false})
 	}
 	rdyChan <- 1
 	<-goChan
