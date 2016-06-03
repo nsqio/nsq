@@ -63,7 +63,7 @@ func TestCommitLogWrite(t *testing.T) {
 			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+1, logs[0].MsgCnt)
-			test.Equal(t, prevLog.MsgNum, 1)
+			test.Equal(t, prevLog.MsgNum, int32(1))
 		}
 		prevLog = logs[0]
 	}
@@ -93,7 +93,7 @@ func TestCommitLogWrite(t *testing.T) {
 			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+int64(1), logs[0].MsgCnt)
-			test.Equal(t, prevLog.MsgNum, 1)
+			test.Equal(t, prevLog.MsgNum, int32(1))
 		}
 		prevLog = logs[0]
 	}
