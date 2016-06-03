@@ -650,6 +650,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			time.Sleep(time.Second)
 		} else {
 			if *localLogData == leaderLogData {
+				coordLog.Infof("topic %v local commit log match leader %v at: %v", topicInfo.GetTopicDesp(), topicInfo.Leader, leaderLogData)
 				break
 			}
 			offset -= int64(GetLogDataSize())
@@ -878,36 +879,9 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Warningf("init local topic failed: %v", err)
 		return err
 	}
-	// flush topic data and channel comsume data if any cluster topic info changed
-	localTopic.ForceFlush()
-	newTcData := topicCoord.GetData()
-	newTcData.logMgr.FlushCommitLogs()
-	topicCoord.dataRWMutex.Lock()
-	offsetMap := make(map[string]ChannelConsumerOffset)
-	for chName, offset := range newTcData.channelConsumeOffset {
-		offsetMap[chName] = offset
-		delete(newTcData.channelConsumeOffset, chName)
-	}
-	topicCoord.dataRWMutex.Unlock()
-	for chName, offset := range offsetMap {
-		ch := localTopic.GetChannel(chName)
-		currentConfirmed := ch.GetConfirmedOffset()
-		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
-			continue
-		}
-		currentEnd := ch.GetChannelEnd()
-		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
-			continue
-		}
-		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
-		if err != nil {
-			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
-				chName, offset, err, currentEnd, localTopic.TotalDataSize())
-		}
-	}
 
+	self.switchStateForMaster(topicCoord, localTopic, newTopicInfo.Leader == self.myNode.GetID(), false)
 	if newTopicInfo.Leader == self.myNode.GetID() {
-		newTcData.logMgr.switchForMaster(true)
 		// not leader before and became new leader
 		if oldData.GetLeader() != self.myNode.GetID() {
 			coordLog.Infof("I am notified to be leader for the topic.")
@@ -922,8 +896,6 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			go self.acquireTopicLeader(newTopicInfo)
 		}
 	} else {
-		newTcData.logMgr.switchForMaster(false)
-		localTopic.DisableForSlave()
 		if FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 			coordLog.Infof("I am in isr list.")
 		} else if FindSlice(newTopicInfo.CatchupList, self.myNode.GetID()) != -1 {
@@ -943,6 +915,70 @@ func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordEr
 	}
 	coordLog.Infof("I am notified to acquire topic leader %v.", coord.topicInfo)
 	go self.acquireTopicLeader(&coord.topicInfo)
+	return nil
+}
+
+func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, localTopic *nsqd.Topic, master bool, syncCommitAndDisk bool) *CoordErr {
+	// flush topic data and channel comsume data if any cluster topic info changed
+	tcData := topicCoord.GetData()
+	// leader changed (maybe down), we make sure out data is flushed to keep data safe
+	localTopic.ForceFlush()
+	tcData.logMgr.FlushCommitLogs()
+	// TODO: print commit log
+	tcData.logMgr.switchForMaster(master)
+	if master {
+		localTopic.Lock()
+		logOffset, err := tcData.logMgr.GetLastLogOffset()
+		if err != nil {
+			coordLog.Errorf("commit log is corrupted: %v", err)
+		} else {
+			logData, err := tcData.logMgr.GetCommitLogFromOffset(logOffset)
+			if err != nil {
+				coordLog.Errorf("commit log is corrupted: %v", err)
+			} else {
+				coordLog.Infof("current topic %v log: %v, %v, pid: %v, %v",
+					tcData.topicInfo.GetTopicDesp(), logOffset, logData, tcData.logMgr.pLogID, tcData.logMgr.nLogID)
+				if syncCommitAndDisk {
+					localErr := localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
+						logData.MsgCnt+int64(logData.MsgNum)-1)
+					if localErr != nil {
+						coordLog.Errorf("reset local backend failed: %v", localErr)
+					}
+				}
+			}
+		}
+		localTopic.Unlock()
+		if !tcData.disableWrite {
+			localTopic.EnableForMaster()
+		}
+	} else {
+		localTopic.DisableForSlave()
+	}
+	topicCoord.dataRWMutex.Lock()
+	offsetMap := make(map[string]ChannelConsumerOffset)
+	for chName, offset := range tcData.channelConsumeOffset {
+		offsetMap[chName] = offset
+		coordLog.Infof("current channel %v offset: %v", chName, offset)
+		delete(tcData.channelConsumeOffset, chName)
+	}
+	topicCoord.dataRWMutex.Unlock()
+	for chName, offset := range offsetMap {
+		ch := localTopic.GetChannel(chName)
+		currentConfirmed := ch.GetConfirmedOffset()
+		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
+			continue
+		}
+		currentEnd := ch.GetChannelEnd()
+		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+			continue
+		}
+		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+		if err != nil {
+			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
+				chName, offset, err, currentEnd, localTopic.TotalDataSize())
+		}
+	}
+
 	return nil
 }
 
@@ -981,42 +1017,12 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		return ErrLocalMissingTopic
 	}
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
-	localTopic.ForceFlush()
-	tcData.logMgr.FlushCommitLogs()
-	topicCoord.dataRWMutex.Lock()
-	offsetMap := make(map[string]ChannelConsumerOffset)
-	for chName, offset := range tcData.channelConsumeOffset {
-		offsetMap[chName] = offset
-		delete(tcData.channelConsumeOffset, chName)
-	}
-	topicCoord.dataRWMutex.Unlock()
-	for chName, offset := range offsetMap {
-		ch := localTopic.GetChannel(chName)
-		currentConfirmed := ch.GetConfirmedOffset()
-		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
-			continue
-		}
-		currentEnd := ch.GetChannelEnd()
-		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
-			continue
-		}
-		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
-		if err != nil {
-			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
-				chName, offset, err, currentEnd, localTopic.TotalDataSize())
-		}
-	}
+	self.switchStateForMaster(topicCoord, localTopic, tcData.IsMineLeaderSessionReady(self.myNode.GetID()), false)
 
 	coordLog.Infof("topic leader session: %v", tcData.topicLeaderSession)
 	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
 		coordLog.Infof("I become the leader for the topic: %v", tcData.topicInfo.GetTopicDesp())
-		tcData.logMgr.switchForMaster(true)
-		if !tcData.disableWrite {
-			localTopic.EnableForMaster()
-		}
 	} else {
-		tcData.logMgr.switchForMaster(false)
-		localTopic.DisableForSlave()
 		if newLS == nil || newLS.LeaderNode == nil || newLS.Session == "" {
 			coordLog.Infof("topic leader is missing : %v", tcData.topicInfo.GetTopicDesp())
 			if tcData.GetLeader() == self.myNode.GetID() {
@@ -1136,6 +1142,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = queueEnd.GetTotalMsgCnt()
+		commitLog.MsgNum = 1
 
 		return nil
 	}
@@ -1215,6 +1222,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
 		commitLog.MsgCnt = totalCnt
+		commitLog.MsgNum = int32(len(msgs))
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {

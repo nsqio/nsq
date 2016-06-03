@@ -122,6 +122,7 @@ var (
 	ErrWriteDisabled                 = NewCoordErrWithCode("write is disabled on the topic", CoordElectionErr, RpcErrWriteDisabled)
 	ErrLeavingISRWait                = NewCoordErrWithCode("leaving isr need wait.", CoordElectionTmpErr, RpcErrLeavingISRWait)
 	ErrTopicCoordExistingAndMismatch = NewCoordErrWithCode("topic coordinator existing with a different partition", CoordClusterErr, RpcErrTopicCoordExistingAndMismatch)
+	ErrTopicCoordTmpConflicted       = NewCoordErrWithCode("topic coordinator is conflicted temporally", CoordClusterErr, RpcErrTopicCoordConflicted)
 	ErrTopicLeaderChanged            = NewCoordErrWithCode("topic leader changed", CoordElectionTmpErr, RpcErrTopicLeaderChanged)
 	ErrTopicCommitLogEOF             = NewCoordErrWithCode("topic commit log end of file", CoordCommonErr, RpcErrCommitLogEOF)
 	ErrTopicCommitLogOutofBound      = NewCoordErrWithCode("topic commit log offset out of bound", CoordCommonErr, RpcErrCommitLogOutofBound)

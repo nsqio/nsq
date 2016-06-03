@@ -484,6 +484,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 }
 
 func (t *Topic) updateChannelsEnd() {
+	s := time.Now()
 	e := t.backend.GetQueueReadEnd()
 	curCommit := t.GetCommitted()
 	// if not committed, we need wait to notify channel.
@@ -505,6 +506,10 @@ func (t *Topic) updateChannelsEnd() {
 		}
 	}
 	t.channelLock.RUnlock()
+	cost := time.Now().Sub(s)
+	if cost > time.Second {
+		nsqLog.Logf("topic(%s): update channels end cost: %v", t.GetFullName(), cost)
+	}
 }
 
 func (t *Topic) TotalMessageCnt() uint64 {

@@ -33,6 +33,7 @@ const (
 	RpcErrTopicNotExist
 	RpcErrMissingTopicCoord
 	RpcErrTopicCoordExistingAndMismatch
+	RpcErrTopicCoordConflicted
 	RpcErrTopicLeaderChanged
 	RpcErrTopicLoading
 	RpcErrSlaveStateInvalid
@@ -232,16 +233,29 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 				continue
 			}
 			if pid != rpcTopicReq.Partition {
+				self.nsqdCoord.coordMutex.Unlock()
 				coordLog.Infof("found another partition %v already exist master for this topic %v", pid, rpcTopicReq.Name)
+				tmpInfo, err := self.nsqdCoord.leadership.GetTopicInfo(rpcTopicReq.Name, pid)
+				if err != nil {
+					if err == ErrKeyNotFound {
+						self.nsqdCoord.requestLeaveFromISR(rpcTopicReq.Name, pid)
+					} else {
+						return &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
+					}
+				} else if tmpInfo.Leader != myID {
+					coordLog.Infof("this conflict topic leader is not mine, but the data is wrong: %v, %v", tc.GetData(), tmpInfo)
+					self.nsqdCoord.requestLeaveFromISR(rpcTopicReq.Name, pid)
+				} else {
+					ret = *ErrTopicCoordExistingAndMismatch
+					return &ret
+				}
 				if _, err := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition); err != nil {
 					coordLog.Infof("local no such topic, we can just remove this coord")
 					tc.logMgr.Close()
 					delete(coords, pid)
 					continue
 				}
-				self.nsqdCoord.coordMutex.Unlock()
-				ret = *ErrTopicCoordExistingAndMismatch
-				return &ret
+				return ErrMissingTopicCoord
 			}
 		}
 	}
@@ -311,21 +325,18 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		ret = *err
 		return &ret
 	}
-	err = tp.DisableWriteWithTimeout(false)
-	if err == nil {
-		tcData := tp.GetData()
-		if tp.GetData().IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
-			topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
-			if err != nil {
-				coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
-			} else {
-				// leader changed (maybe down), we make sure out data is flushed to keep data safe
-				topicData.ForceFlush()
-				tcData.logMgr.FlushCommitLogs()
-				topicData.EnableForMaster()
-			}
+	tcData := tp.GetData()
+	if tp.GetData().IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
+		topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+		if err != nil {
+			coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
+		} else {
+			self.nsqdCoord.switchStateForMaster(tp, topicData, true, true)
 		}
-	} else {
+	}
+
+	err = tp.DisableWriteWithTimeout(false)
+	if err != nil {
 		ret = *err
 		return &ret
 	}
@@ -358,11 +369,14 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 	if localErr != nil {
 		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), localErr)
 	} else {
-		localTopic.ForceFlush()
+		self.nsqdCoord.switchStateForMaster(tp, localTopic, false, false)
 	}
-	tcData.logMgr.FlushCommitLogs()
-
-	return tp.DisableWriteWithTimeout(true)
+	err = tp.DisableWriteWithTimeout(true)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return nil
 }
 
 func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicInfo) bool {

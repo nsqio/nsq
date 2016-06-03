@@ -38,6 +38,8 @@ type CommitLogData struct {
 	MsgSize int32
 	// the total message count for all from begin, not only this batch
 	MsgCnt int64
+	// the message number for current commit
+	MsgNum int32
 }
 
 var emptyLogData CommitLogData

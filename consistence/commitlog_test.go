@@ -39,6 +39,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
+		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
@@ -62,6 +63,7 @@ func TestCommitLogWrite(t *testing.T) {
 			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+1, logs[0].MsgCnt)
+			test.Equal(t, prevLog.MsgNum, 1)
 		}
 		prevLog = logs[0]
 	}
@@ -72,6 +74,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
+		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
@@ -90,6 +93,7 @@ func TestCommitLogWrite(t *testing.T) {
 			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
 			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
 			test.Equal(t, prevLog.MsgCnt+int64(1), logs[0].MsgCnt)
+			test.Equal(t, prevLog.MsgNum, 1)
 		}
 		prevLog = logs[0]
 	}
@@ -122,6 +126,7 @@ func TestCommitLogTruncate(t *testing.T) {
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
 		logData.MsgCnt = int64(i)
+		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
@@ -166,6 +171,7 @@ func TestCommitLogForBatchWrite(t *testing.T) {
 		logData.MsgSize += int32(msgRawSize)
 	}
 	logData.LastMsgLogID = endID
+	logData.MsgNum = int32(batchNum)
 	// append as slave
 	err = logMgr.AppendCommitLog(&logData, true)
 	test.Nil(t, err)
@@ -173,4 +179,10 @@ func TestCommitLogForBatchWrite(t *testing.T) {
 	nextID := logMgr.NextID()
 	test.Equal(t, int64(nextID) > endID, true)
 	test.Equal(t, logMgr.nLogID > logData.LastMsgLogID, true)
+	lastOffset, err := logMgr.GetLastLogOffset()
+	test.Nil(t, err)
+	lastLog, err := logMgr.GetCommitLogFromOffset(lastOffset)
+	test.Nil(t, err)
+	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
+	test.Equal(t, lastLog.MsgNum, int32(batchNum))
 }

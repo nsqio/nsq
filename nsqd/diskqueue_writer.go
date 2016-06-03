@@ -10,6 +10,7 @@ import (
 	"path"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -414,9 +415,15 @@ func (d *diskQueueWriter) Flush() error {
 	if d.exitFlag == 1 {
 		return errors.New("exiting")
 	}
+	s := time.Now()
 	if d.needSync {
 		return d.sync()
 	}
+	cost := time.Now().Sub(s)
+	if cost > time.Second {
+		nsqLog.Logf("disk writer(%s): flush cost: %v", d.name, cost)
+	}
+
 	return nil
 }
 
