@@ -66,20 +66,20 @@ func main() {
 		log.Fatalf("loading last commit log failed: %v\n", err)
 		return
 	}
-	log.Printf("topic last commit log is : %v", lastLogData)
+	log.Printf("topic last commit log is : %v\n", lastLogData)
 	searchOffset := lastOffset
 	searchCntEnd := lastOffset / int64(consistence.GetLogDataSize())
 	searchCntStart := int64(0)
 	for {
-		if searchCntStart >= searchCntEnd {
+		if searchCntStart >= searchCntEnd-1 {
 			break
 		}
 		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
 		searchOffset = searchCntPos * int64(consistence.GetLogDataSize())
 		cur, _ := tpLogMgr.GetCommitLogFromOffset(searchOffset)
-		if cur.LogID > *viewStart {
+		if cur.MsgCnt > *viewStart {
 			searchCntEnd = searchCntPos
-		} else if cur.LogID < *viewStart {
+		} else if cur.MsgCnt < *viewStart {
 			searchCntStart = searchCntPos
 		} else {
 			break
@@ -87,7 +87,7 @@ func main() {
 	}
 
 	logData, _ := tpLogMgr.GetCommitLogFromOffset(searchOffset)
-	log.Printf("topic read at: %v, %v", searchOffset, logData)
+	log.Printf("topic read at: %v, %v\n", searchOffset, logData)
 	if *view == "commitlog" {
 		logs, err := tpLogMgr.GetCommitLogs(searchOffset, int(*viewCnt))
 		if err != nil {
@@ -95,10 +95,10 @@ func main() {
 			return
 		}
 		for index, l := range logs {
-			log.Print(l)
-			log.Print(" || ")
+			fmt.Print(l)
+			fmt.Print(" || ")
 			if index%10 == 0 {
-				log.Print("\n")
+				fmt.Print("\n")
 			}
 		}
 	} else if *view == "topicdata" {
@@ -114,7 +114,7 @@ func main() {
 				log.Fatalf("read data error: %v", ret)
 				return
 			}
-			log.Printf("%v:%v:%v\n", ret.Offset, ret.MovedSize, string(ret.Data))
+			fmt.Printf("%v:%v:%v\n", ret.Offset, ret.MovedSize, string(ret.Data))
 		}
 	}
 }
