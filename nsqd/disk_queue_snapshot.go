@@ -30,7 +30,7 @@ type DiskQueueSnapshot struct {
 
 // newDiskQueue instantiates a new instance of DiskQueueSnapshot, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
-func newDiskQueueSnapshot(readFrom string, dataPath string, endInfo *diskQueueEndInfo) *DiskQueueSnapshot {
+func NewDiskQueueSnapshot(readFrom string, dataPath string, endInfo BackendQueueEnd) *DiskQueueSnapshot {
 	d := DiskQueueSnapshot{
 		readFrom: readFrom,
 		dataPath: dataPath,
@@ -292,23 +292,23 @@ func (d *DiskQueueSnapshot) ReadOne() ReadResult {
 	var result ReadResult
 	var msgSize int32
 	var stat os.FileInfo
-	result.offset = BackendOffset(0)
+	result.Offset = BackendOffset(0)
 
 CheckFileOpen:
 
-	result.offset = d.virtualReadOffset
+	result.Offset = d.virtualReadOffset
 	if d.readFile == nil {
 		curFileName := d.fileName(d.readPos.FileNum)
-		d.readFile, result.err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
-		if result.err != nil {
+		d.readFile, result.Err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
+		if result.Err != nil {
 			return result
 		}
 
 		nsqLog.Logf("DISKQUEUE(%s): readOne() opened %s", d.readFrom, curFileName)
 
 		if d.readPos.Pos > 0 {
-			_, result.err = d.readFile.Seek(d.readPos.Pos, 0)
-			if result.err != nil {
+			_, result.Err = d.readFile.Seek(d.readPos.Pos, 0)
+			if result.Err != nil {
 				d.readFile.Close()
 				d.readFile = nil
 				return result
@@ -318,8 +318,8 @@ CheckFileOpen:
 		d.reader = bufio.NewReader(d.readFile)
 	}
 	if d.readPos.FileNum < d.endPos.FileNum {
-		stat, result.err = d.readFile.Stat()
-		if result.err != nil {
+		stat, result.Err = d.readFile.Stat()
+		if result.Err != nil {
 			return result
 		}
 		if d.readPos.Pos >= stat.Size() {
@@ -333,8 +333,8 @@ CheckFileOpen:
 		}
 	}
 
-	result.err = binary.Read(d.reader, binary.BigEndian, &msgSize)
-	if result.err != nil {
+	result.Err = binary.Read(d.reader, binary.BigEndian, &msgSize)
+	if result.Err != nil {
 		d.readFile.Close()
 		d.readFile = nil
 		return result
@@ -345,22 +345,22 @@ CheckFileOpen:
 		// where a new message should begin
 		d.readFile.Close()
 		d.readFile = nil
-		result.err = fmt.Errorf("invalid message read size (%d)", msgSize)
+		result.Err = fmt.Errorf("invalid message read size (%d)", msgSize)
 		return result
 	}
 
-	result.data = make([]byte, msgSize)
-	_, result.err = io.ReadFull(d.reader, result.data)
-	if result.err != nil {
+	result.Data = make([]byte, msgSize)
+	_, result.Err = io.ReadFull(d.reader, result.Data)
+	if result.Err != nil {
 		d.readFile.Close()
 		d.readFile = nil
 		return result
 	}
 
-	result.offset = d.virtualReadOffset
+	result.Offset = d.virtualReadOffset
 
 	totalBytes := int64(4 + msgSize)
-	result.movedSize = BackendOffset(totalBytes)
+	result.MovedSize = BackendOffset(totalBytes)
 
 	oldPos := d.readPos
 	d.readPos.Pos = d.readPos.Pos + totalBytes
@@ -370,8 +370,8 @@ CheckFileOpen:
 
 	isEnd := false
 	if d.readPos.FileNum < d.endPos.FileNum {
-		stat, result.err = d.readFile.Stat()
-		if result.err == nil {
+		stat, result.Err = d.readFile.Stat()
+		if result.Err == nil {
 			isEnd = d.readPos.Pos >= stat.Size()
 		} else {
 			return result

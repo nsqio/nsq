@@ -149,7 +149,7 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
 	e := t.backend.GetQueueReadEndV2()
-	return newDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
+	return NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
 }
 
 func (t *Topic) BufferPoolGet(capacity int) *bytes.Buffer {

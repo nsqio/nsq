@@ -40,6 +40,12 @@ type diskQueueWriter struct {
 	bufferWriter *bufio.Writer
 }
 
+func NewDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
+	minMsgSize int32, maxMsgSize int32,
+	syncEvery int64) BackendQueueWriter {
+	return newDiskQueueWriter(name, dataPath, maxBytesPerFile, minMsgSize, maxMsgSize, syncEvery)
+}
+
 // newDiskQueue instantiates a new instance of diskQueueWriter, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,

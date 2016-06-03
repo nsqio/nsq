@@ -801,8 +801,8 @@ LOOP:
 		select {
 		case msg = <-c.requeuedMsgChan:
 		case data = <-readChan:
-			if data.err != nil {
-				nsqLog.LogErrorf("failed to read message - %s", data.err)
+			if data.Err != nil {
+				nsqLog.LogErrorf("failed to read message - %s", data.Err)
 				// TODO: fix corrupt file from other replica.
 				// and should handle the confirm offset, since some skipped data
 				// may never be confirmed any more
@@ -811,13 +811,13 @@ LOOP:
 				time.Sleep(time.Millisecond * 100)
 				continue LOOP
 			}
-			msg, err = decodeMessage(data.data)
+			msg, err = decodeMessage(data.Data)
 			if err != nil {
 				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
 				continue LOOP
 			}
-			msg.offset = data.offset
-			msg.rawMoveSize = data.movedSize
+			msg.offset = data.Offset
+			msg.rawMoveSize = data.MovedSize
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
 				nsqLog.LogWarningf("skipped message from %v to the : %v", lastMsg, *msg)
