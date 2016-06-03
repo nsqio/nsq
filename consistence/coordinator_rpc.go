@@ -326,16 +326,32 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		return &ret
 	}
 	tcData := tp.GetData()
-	if tp.GetData().IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
-		topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
-		if err != nil {
-			coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
-		} else {
-			self.nsqdCoord.switchStateForMaster(tp, topicData, true, true)
+	if tcData.disableWrite {
+		// already done.
+		return nil
+	}
+	begin := time.Now()
+	tp.writeHold.Lock()
+	if time.Now().After(begin.Add(time.Second * 3)) {
+		// timeout for waiting
+		err = ErrOperationExpired
+	} else {
+		tp.dataRWMutex.Lock()
+		tp.disableWrite = false
+		tp.dataRWMutex.Unlock()
+
+		tcData = tp.GetData()
+		if tcData.IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
+			topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+			if err != nil {
+				coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
+			} else {
+				self.nsqdCoord.switchStateForMaster(tp, topicData, true, true)
+			}
 		}
 	}
+	tp.writeHold.Unlock()
 
-	err = tp.DisableWriteWithTimeout(false)
 	if err != nil {
 		ret = *err
 		return &ret
@@ -364,14 +380,25 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 		ret = *err
 		return &ret
 	}
-	tcData := tp.GetData()
-	localTopic, localErr := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
-	if localErr != nil {
-		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), localErr)
+	begin := time.Now()
+	tp.writeHold.Lock()
+	if time.Now().After(begin.Add(time.Second * 3)) {
+		// timeout for waiting
+		err = ErrOperationExpired
 	} else {
-		self.nsqdCoord.switchStateForMaster(tp, localTopic, false, false)
+		tp.dataRWMutex.Lock()
+		tp.disableWrite = true
+		tp.dataRWMutex.Unlock()
+
+		tcData := tp.GetData()
+		localTopic, localErr := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+		if localErr != nil {
+			coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), localErr)
+		} else {
+			self.nsqdCoord.switchStateForMaster(tp, localTopic, false, false)
+		}
 	}
-	err = tp.DisableWriteWithTimeout(true)
+	tp.writeHold.Unlock()
 	if err != nil {
 		ret = *err
 		return &ret
