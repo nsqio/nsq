@@ -39,7 +39,7 @@ type MsgIDGenerator interface {
 }
 
 type Topic struct {
-	sync.RWMutex
+	sync.Mutex
 
 	tname       string
 	fullName    string
@@ -57,7 +57,7 @@ type Topic struct {
 
 	notifyCall      func(v interface{})
 	option          *Options
-	MsgIDCursor     MsgIDGenerator
+	msgIDCursor     MsgIDGenerator
 	defaultIDSeq    uint64
 	needFlush       int32
 	EnableTrace     bool
@@ -66,7 +66,7 @@ type Topic struct {
 	bp              sync.Pool
 	writeDisabled   int32
 	committedOffset atomic.Value
-	autoCommit      bool
+	autoCommit      int32
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -91,7 +91,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		autoCommit:     true,
+		autoCommit:     1,
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1
@@ -121,10 +121,6 @@ func NewTopic(topicName string, part int, opt *Options,
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
-}
-
-func (t *Topic) SetAutoCommit(enable bool) {
-	t.autoCommit = enable
 }
 
 func (t *Topic) GetCommitted() BackendQueueEnd {
@@ -179,10 +175,31 @@ func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
+func (t *Topic) SetMsgGenerator(idGen MsgIDGenerator) {
+	t.Lock()
+	t.msgIDCursor = idGen
+	t.Unlock()
+}
+
+func (t *Topic) GetMsgGenerator() MsgIDGenerator {
+	t.Lock()
+	cursor := t.msgIDCursor
+	t.Unlock()
+	return cursor
+}
+
+func (t *Topic) SetAutoCommit(enable bool) {
+	if enable {
+		atomic.StoreInt32(&t.autoCommit, 1)
+	} else {
+		atomic.StoreInt32(&t.autoCommit, 0)
+	}
+}
+
 func (t *Topic) nextMsgID() MessageID {
 	id := uint64(0)
-	if t.MsgIDCursor != nil {
-		id = t.MsgIDCursor.NextID()
+	if t.msgIDCursor != nil {
+		id = t.msgIDCursor.NextID()
 	} else {
 		id = atomic.AddUint64(&t.defaultIDSeq, 1)
 	}
@@ -485,7 +502,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		return m.ID, offset, writeBytes, dend, err
 	}
 
-	if t.autoCommit {
+	if atomic.LoadInt32(&t.autoCommit) == 1 {
 		t.UpdateCommittedOffset(&dend)
 	}
 

@@ -108,6 +108,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 
 	// TODO: handle default load factor
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
+
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
@@ -122,6 +123,20 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 				return err
 			}
 		}
+	}
+
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topic]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topic] = state
+	}
+	self.joinStateMutex.Unlock()
+	state.Lock()
+	defer state.Unlock()
+	if state.waitingJoin {
+		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
+		return ErrWaitingJoinISR
 	}
 
 	existPart := make(map[int]*TopicPartitionMetaInfo)

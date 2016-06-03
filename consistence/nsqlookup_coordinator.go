@@ -423,7 +423,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 		}
 
 		self.joinStateMutex.Lock()
-		state, ok := self.joinISRState[t.GetTopicDesp()]
+		state, ok := self.joinISRState[t.Name]
 		self.joinStateMutex.Unlock()
 		if ok && state != nil {
 			state.Lock()
@@ -605,10 +605,10 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 
 func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	state, ok := self.joinISRState[topicInfo.Name]
 	if !ok {
 		state = &JoinISRState{}
-		self.joinISRState[topicInfo.GetTopicDesp()] = state
+		self.joinISRState[topicInfo.Name] = state
 	}
 	self.joinStateMutex.Unlock()
 	state.Lock()
@@ -1116,10 +1116,10 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 
 	coordLog.Infof("revoke begin check: %v-%v", topic, partition)
 	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	state, ok := self.joinISRState[topicInfo.Name]
 	if !ok {
 		state = &JoinISRState{}
-		self.joinISRState[topicInfo.GetTopicDesp()] = state
+		self.joinISRState[topicInfo.Name] = state
 	}
 	self.joinStateMutex.Unlock()
 	state.Lock()
@@ -1275,10 +1275,10 @@ func (self *NsqLookupCoordinator) prepareJoinState(topic string, partition int, 
 	}
 
 	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	state, ok := self.joinISRState[topicInfo.Name]
 	if !ok {
 		state = &JoinISRState{}
-		self.joinISRState[topicInfo.GetTopicDesp()] = state
+		self.joinISRState[topicInfo.Name] = state
 	}
 	self.joinStateMutex.Unlock()
 
@@ -1375,7 +1375,7 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 
 	// check for state and should lock for the state to prevent others join isr.
 	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topicInfo.GetTopicDesp()]
+	state, ok := self.joinISRState[topicInfo.Name]
 	self.joinStateMutex.Unlock()
 	if !ok || state == nil {
 		coordLog.Warningf("failed join isr because the join state is not set: %v", topicInfo.GetTopicDesp())

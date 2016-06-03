@@ -346,9 +346,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 				coords[topicInfo.Partition] = tc
 				self.coordMutex.Unlock()
-				if topic.MsgIDCursor == nil {
-					topic.MsgIDCursor = tc.logMgr
-				}
+				topic.SetMsgGenerator(tc.logMgr)
 			} else {
 				continue
 			}
@@ -671,9 +669,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		return ErrLocalTopicPartitionMismatch
 	}
 	localTopic.SetAutoCommit(false)
-	if localTopic.MsgIDCursor == nil {
-		localTopic.MsgIDCursor = logMgr
-	}
+	localTopic.SetMsgGenerator(logMgr)
 	if offset > 0 {
 		lastLog, localErr := logMgr.GetCommitLogFromOffset(offset)
 		if localErr != nil {
@@ -1026,9 +1022,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		return ErrLocalMissingTopic
 	}
 	localTopic.SetAutoCommit(false)
-	if localTopic.MsgIDCursor == nil {
-		localTopic.MsgIDCursor = tcData.logMgr
-	}
+	localTopic.SetMsgGenerator(tcData.logMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, tcData.IsMineLeaderSessionReady(self.myNode.GetID()), false)
 
@@ -1166,7 +1160,8 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	doLocalCommit := func() error {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
+			coordLog.Errorf("topic : %v, Generator %v failed write commit log : %v, logmgr: %v, %v",
+				topic.GetFullName(), topic.GetMsgGenerator(), localErr, logMgr.pLogID, logMgr.nLogID)
 		}
 		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
@@ -1191,7 +1186,8 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		putErr := c.PutMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
 		if putErr != nil {
-			coordLog.Infof("sync write to replica %v failed: %v. put offset:%v", nodeID, putErr, commitLog)
+			coordLog.Infof("sync write to replica %v failed: %v. put offset:%v, logmgr: %v, %v",
+				nodeID, putErr, commitLog, logMgr.pLogID, logMgr.nLogID)
 		}
 		return putErr
 	}
@@ -1245,7 +1241,8 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	doLocalCommit := func() error {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			coordLog.Errorf("topic : %v failed write commit log : %v", topic.GetFullName(), localErr)
+			coordLog.Errorf("topic : %v, Generator %v failed write commit log : %v, logMgr: %v, %v",
+				topic.GetFullName(), topic.GetMsgGenerator(), localErr, logMgr.pLogID, logMgr.nLogID)
 		}
 		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
@@ -1270,7 +1267,8 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		putErr := c.PutMessages(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msgs)
 		if putErr != nil {
-			coordLog.Infof("sync write to replica %v failed: %v, put offset: %v", nodeID, putErr, commitLog)
+			coordLog.Infof("sync write to replica %v failed: %v, put offset: %v, logmgr: %v, %v",
+				nodeID, putErr, commitLog, logMgr.pLogID, logMgr.nLogID)
 		}
 		return putErr
 	}
@@ -1880,9 +1878,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) (*nsqd.Topi
 		return nil, ErrLocalInitTopicFailed
 	}
 	t.SetAutoCommit(false)
-	if t.MsgIDCursor == nil {
-		t.MsgIDCursor = topicCoord.logMgr
-	}
+	t.SetMsgGenerator(topicCoord.logMgr)
 	return t, nil
 }
 
