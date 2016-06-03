@@ -934,7 +934,9 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 		} else {
 			logData, err := tcData.logMgr.GetCommitLogFromOffset(logOffset)
 			if err != nil {
-				coordLog.Errorf("commit log is corrupted: %v", err)
+				if err != ErrCommitLogEOF {
+					coordLog.Errorf("commit log is corrupted: %v", err)
+				}
 			} else {
 				coordLog.Infof("current topic %v log: %v, %v, pid: %v, %v",
 					tcData.topicInfo.GetTopicDesp(), logOffset, logData, tcData.logMgr.pLogID, tcData.logMgr.nLogID)

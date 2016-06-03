@@ -588,7 +588,7 @@ func (t *Topic) IsWriteDisabled() bool {
 func (t *Topic) DisableForSlave() {
 	// TODO : log the last logid and message offset
 	atomic.StoreInt32(&t.writeDisabled, 1)
-	nsqLog.Logf("[TRACE_DATA] while disable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
+	nsqLog.Logf("[TRACE_DATA] while disable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(true)

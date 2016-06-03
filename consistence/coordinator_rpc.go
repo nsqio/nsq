@@ -326,8 +326,8 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		return &ret
 	}
 	tcData := tp.GetData()
-	if tcData.disableWrite {
-		// already done.
+	if !tcData.disableWrite {
+		// write enable already done.
 		return nil
 	}
 	begin := time.Now()
