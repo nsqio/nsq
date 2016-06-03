@@ -321,6 +321,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 				continue
 			}
+
 			topic.SetAutoCommit(false)
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
@@ -345,6 +346,9 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 				coords[topicInfo.Partition] = tc
 				self.coordMutex.Unlock()
+				if topic.MsgIDCursor == nil {
+					topic.MsgIDCursor = tc.logMgr
+				}
 			} else {
 				continue
 			}
@@ -666,6 +670,10 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		coordLog.Errorf("local topic partition mismatch:%v vs %v", topicInfo.Partition, localTopic.GetTopicPart())
 		return ErrLocalTopicPartitionMismatch
 	}
+	localTopic.SetAutoCommit(false)
+	if localTopic.MsgIDCursor == nil {
+		localTopic.MsgIDCursor = logMgr
+	}
 	if offset > 0 {
 		lastLog, localErr := logMgr.GetCommitLogFromOffset(offset)
 		if localErr != nil {
@@ -924,7 +932,6 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	localTopic.ForceFlush()
 	tcData.logMgr.FlushCommitLogs()
-	// TODO: print commit log
 	tcData.logMgr.switchForMaster(master)
 	if master {
 		localTopic.Lock()
@@ -1017,6 +1024,10 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	if err != nil {
 		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
+	}
+	localTopic.SetAutoCommit(false)
+	if localTopic.MsgIDCursor == nil {
+		localTopic.MsgIDCursor = tcData.logMgr
 	}
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, tcData.IsMineLeaderSessionReady(self.myNode.GetID()), false)
@@ -1119,9 +1130,8 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	var commitLog CommitLogData
 	var logMgr *TopicCommitLogMgr
-	var msg *nsqd.Message
 	var queueEnd nsqd.BackendQueueEnd
-	msg = nsqd.NewMessage(0, body)
+	msg := nsqd.NewMessage(0, body)
 	msg.TraceID = traceID
 
 	doLocalWrite := func(d *coordData) *CoordErr {

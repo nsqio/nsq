@@ -191,7 +191,7 @@ func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, e
 	}
 
 	atomic.StoreInt64(&self.pLogID, l.LogID)
-	if l.LastMsgLogID+1 > self.nLogID {
+	if l.LastMsgLogID+1 > atomic.LoadInt64(&self.nLogID) {
 		atomic.StoreInt64(&self.nLogID, l.LastMsgLogID+1)
 	}
 	return &l, nil
@@ -279,7 +279,7 @@ func (self *TopicCommitLogMgr) IsCommitted(id int64) bool {
 
 func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) error {
 	if l.LogID <= atomic.LoadInt64(&self.pLogID) {
-		coordLog.Errorf("commit id %v less than prev id: %v", l, self.pLogID)
+		coordLog.Errorf("commit id %v less than prev id: %v, %v", l, atomic.LoadInt64(&self.pLogID), atomic.LoadInt64(&self.nLogID))
 		return ErrCommitLogWrongID
 	}
 	if l.LastMsgLogID < l.LogID {

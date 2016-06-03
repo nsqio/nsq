@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	ErrMissingMessageID    = errors.New("missing message id")
+	ErrInvalidMessageID    = errors.New("message id is invalid")
 	ErrWriteOffsetMismatch = errors.New("write offset mismatch")
 	ErrExiting             = errors.New("exiting")
 )
@@ -329,6 +329,10 @@ func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
 	t.Lock()
+	if m.ID > 0 {
+		nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
+		return 0, 0, 0, nil, ErrInvalidMessageID
+	}
 	id, offset, writeBytes, dend, err := t.PutMessageNoLock(m)
 	t.Unlock()
 	return id, offset, writeBytes, dend, err
@@ -338,6 +342,10 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		t.Unlock()
 		return 0, 0, 0, nil, errors.New("exiting")
+	}
+	if m.ID > 0 {
+		nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
+		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 
 	id, offset, writeBytes, dend, err := t.put(m)
@@ -426,6 +434,11 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	var diskEnd diskQueueEndInfo
 	batchBytes := int32(0)
 	for _, m := range msgs {
+		if m.ID > 0 {
+			nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
+			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
+			return 0, 0, 0, 0, nil, ErrInvalidMessageID
+		}
 		id, offset, bytes, end, err := t.put(m)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
@@ -602,7 +615,7 @@ func (t *Topic) DisableForSlave() {
 func (t *Topic) EnableForMaster() {
 	// TODO : log the last logid and message offset
 	// TODO : log the first logid and message offset after enable master
-	nsqLog.Logf("[TRACE_DATA] while enable topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
+	nsqLog.Logf("[TRACE_DATA] while enable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(false)
