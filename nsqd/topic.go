@@ -60,7 +60,7 @@ type Topic struct {
 	msgIDCursor     MsgIDGenerator
 	defaultIDSeq    uint64
 	needFlush       int32
-	EnableTrace     bool
+	EnableTrace     int32
 	syncEvery       int64
 	putBuffer       bytes.Buffer
 	bp              sync.Pool
@@ -121,6 +121,14 @@ func NewTopic(topicName string, part int, opt *Options,
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) SetTrace(enable bool) {
+	if enable {
+		atomic.StoreInt32(&t.EnableTrace, 1)
+	} else {
+		atomic.StoreInt32(&t.EnableTrace, 0)
+	}
 }
 
 func (t *Topic) GetCommitted() BackendQueueEnd {
@@ -267,6 +275,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			e = curCommit
 		}
 		channel.UpdateQueueEnd(e)
+		if atomic.LoadInt32(&t.EnableTrace) == 1 {
+			channel.SetTrace(true)
+		}
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}
@@ -506,7 +517,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		t.UpdateCommittedOffset(&dend)
 	}
 
-	if t.EnableTrace || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, disk end: %v", m.GetFullMsgID(),
 			t.GetFullName(), offset, dend)
 	}

@@ -82,7 +82,7 @@ type Channel struct {
 	needNotifyRead       int32
 	consumeDisabled      int32
 	// stat counters
-	EnableTrace bool
+	EnableTrace int32
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
 	requireOrder bool
@@ -165,6 +165,18 @@ func (c *Channel) GetTopicPart() int {
 
 func (c *Channel) GetClientMsgChan() chan *Message {
 	return c.clientMsgChan
+}
+
+func (c *Channel) IsTraced() bool {
+	return atomic.LoadInt32(&c.EnableTrace) == 1
+}
+
+func (c *Channel) SetTrace(enable bool) {
+	if enable {
+		atomic.StoreInt32(&c.EnableTrace, 1)
+	} else {
+		atomic.StoreInt32(&c.EnableTrace, 0)
+	}
 }
 
 func (c *Channel) initPQ() {
@@ -429,7 +441,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 		}
 	}
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
-		if c.EnableTrace || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
 				len(c.confirmedMsgs), c.currentLastConfirmed)
 
@@ -483,7 +495,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bo
 			clientID)
 		return 0, false, err
 	}
-	if c.EnableTrace {
+	if c.IsTraced() {
 		nsqLog.Logf("[TRACE] message %v, offset:%v, finished from client %v",
 			msg.GetFullMsgID(), msg.offset, clientID)
 	} else if nsqLog.Level() >= levellogger.LOG_DEBUG {
@@ -585,7 +597,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 			msg.GetFullMsgID())
 		return err
 	}
-	if c.EnableTrace {
+	if c.IsTraced() {
 		nsqLog.Logf("[TRACE] message %v, offset: %v sending to client %v in flight", msg.GetFullMsgID(), msg.offset, clientID)
 	} else if nsqLog.Level() > 1 {
 		nsqLog.LogDebugf("message %v sending to client %v in flight, offset: %v", msg.ID, clientID, msg.offset)
@@ -633,7 +645,7 @@ func (c *Channel) doRequeue(m *Message) error {
 		case <-c.exitChan:
 		}
 	}
-	if c.EnableTrace {
+	if c.IsTraced() {
 		nsqLog.Logf("[TRACE] message %v, offset: %v requeued.", m.GetFullMsgID(), m.offset)
 	} else if nsqLog.Level() > 1 {
 		nsqLog.Logf("message %v requeued from client %v, offset: %v", m.ID, m.clientID, m.offset)

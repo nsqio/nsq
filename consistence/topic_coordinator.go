@@ -11,32 +11,51 @@ type ChannelConsumerOffset struct {
 	Flush   bool
 }
 
-type coordData struct {
-	topicInfo            TopicPartitionMetaInfo
-	topicLeaderSession   TopicLeaderSession
+type ChannelConsumeMgr struct {
+	sync.Mutex
 	channelConsumeOffset map[string]ChannelConsumerOffset
-	localDataLoaded      bool
-	logMgr               *TopicCommitLogMgr
-	forceLeave           bool
-	disableWrite         bool
+}
+
+func newChannelComsumeMgr() *ChannelConsumeMgr {
+	return &ChannelConsumeMgr{
+		channelConsumeOffset: make(map[string]ChannelConsumerOffset),
+	}
+}
+
+type coordData struct {
+	topicInfo          TopicPartitionMetaInfo
+	topicLeaderSession TopicLeaderSession
+	consumeMgr         *ChannelConsumeMgr
+	logMgr             *TopicCommitLogMgr
+	forceLeave         bool
+}
+
+func (self *coordData) GetCopy() *coordData {
+	newCoordData := &coordData{}
+	if self == nil {
+		return newCoordData
+	}
+	*newCoordData = *self
+	return newCoordData
 }
 
 type TopicCoordinator struct {
-	dataRWMutex sync.RWMutex
-	coordData
+	dataMutex sync.Mutex
+	*coordData
 	// hold for write to avoid disable or exiting or catchup
 	// lock order: first lock writehold then lock data to avoid deadlock
 	writeHold      sync.Mutex
 	catchupRunning int32
+	disableWrite   int32
 	exiting        int32
 }
 
 func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{}
-	tc.channelConsumeOffset = make(map[string]ChannelConsumerOffset)
+	tc.coordData.consumeMgr = newChannelComsumeMgr()
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
-	tc.disableWrite = true
+	tc.disableWrite = 1
 	var err error
 	err = os.MkdirAll(basepath, 0755)
 	if err != nil {
@@ -59,25 +78,31 @@ func (self *TopicCoordinator) Delete() {
 	self.Exiting()
 	self.forceLeave = true
 	self.writeHold.Lock()
-	self.dataRWMutex.Lock()
+	self.dataMutex.Lock()
 	self.logMgr.Delete()
-	self.dataRWMutex.Unlock()
+	self.dataMutex.Unlock()
 	self.writeHold.Unlock()
 }
 
 func (self *TopicCoordinator) GetData() *coordData {
-	self.dataRWMutex.RLock()
+	self.dataMutex.Lock()
 	d := self.coordData
-	self.dataRWMutex.RUnlock()
-	return &d
+	self.dataMutex.Unlock()
+	return d
+}
+
+func (self *TopicCoordinator) IsWriteDisabled() bool {
+	return atomic.LoadInt32(&self.disableWrite) == 1
 }
 
 func (self *TopicCoordinator) DisableWrite(disable bool) {
 	// hold the write lock to wait the current write finish.
 	self.writeHold.Lock()
-	self.dataRWMutex.Lock()
-	self.disableWrite = disable
-	self.dataRWMutex.Unlock()
+	if disable {
+		atomic.StoreInt32(&self.disableWrite, 1)
+	} else {
+		atomic.StoreInt32(&self.disableWrite, 0)
+	}
 	self.writeHold.Unlock()
 }
 

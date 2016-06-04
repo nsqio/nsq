@@ -491,14 +491,14 @@ func (s *httpServer) enableMessageTrace(w http.ResponseWriter, req *http.Request
 
 	parts := s.ctx.getPartitions(topicName)
 	for _, t := range parts {
-		t.EnableTrace = true
+		t.SetTrace(true)
 		nsqd.NsqLogger().Logf("topic %v trace enabled", t.GetFullName())
 		if channelName != "" {
 			ch, err := t.GetExistingChannel(channelName)
 			if err != nil {
 				continue
 			}
-			ch.EnableTrace = true
+			ch.SetTrace(true)
 			nsqd.NsqLogger().Logf("channel %v trace enabled", ch.GetName())
 		}
 	}
@@ -515,14 +515,14 @@ func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Reques
 	channelName := reqParams.Get("channel")
 	parts := s.ctx.getPartitions(topicName)
 	for _, t := range parts {
-		t.EnableTrace = false
+		t.SetTrace(false)
 		nsqd.NsqLogger().Logf("topic %v trace disabled", t.GetFullName())
 		if channelName != "" {
 			ch, err := t.GetExistingChannel(channelName)
 			if err != nil {
 				continue
 			}
-			ch.EnableTrace = false
+			ch.SetTrace(false)
 			nsqd.NsqLogger().Logf("channel %v trace disabled", ch.GetName())
 		}
 	}

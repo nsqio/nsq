@@ -827,13 +827,13 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		coordLog.Infof("I am notified to be a new node in ISR: %v", self.myNode.GetID())
 		topicCoord.DisableWrite(true)
 	}
-	disableWrite := topicCoord.GetData().disableWrite
-	topicCoord.dataRWMutex.Lock()
+	disableWrite := topicCoord.IsWriteDisabled()
+	topicCoord.dataMutex.Lock()
 	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
 		coordLog.Warningf("topic (%v) info epoch is less while update: %v vs %v",
 			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
 
-		topicCoord.dataRWMutex.Unlock()
+		topicCoord.dataMutex.Unlock()
 		return ErrEpochLessThanCurrent
 	}
 	// if any of new node in isr or leader is changed, the write disabled should be set first on isr nodes.
@@ -841,14 +841,14 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		if !disableWrite && newTopicInfo.Leader != "" && FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
 			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) > len(topicCoord.topicInfo.ISR) {
 				coordLog.Errorf("should disable the write before changing the leader or isr of topic")
-				topicCoord.dataRWMutex.Unlock()
+				topicCoord.dataMutex.Unlock()
 				return ErrTopicCoordStateInvalid
 			}
 			// note: removing failed node no need to disable write.
 			for _, newNode := range newTopicInfo.ISR {
 				if FindSlice(topicCoord.topicInfo.ISR, newNode) == -1 {
 					coordLog.Errorf("should disable the write before adding new ISR node ")
-					topicCoord.dataRWMutex.Unlock()
+					topicCoord.dataMutex.Unlock()
 					return ErrTopicCoordStateInvalid
 				}
 			}
@@ -856,7 +856,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 	if topicCoord.IsExiting() {
 		coordLog.Infof("update the topic info: %v while exiting.", oldData.topicInfo.GetTopicDesp())
-		topicCoord.dataRWMutex.Unlock()
+		topicCoord.dataMutex.Unlock()
 		return nil
 	}
 
@@ -872,11 +872,12 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	} else if topicCoord.GetLeader() == self.myNode.GetID() {
 		coordLog.Infof("leader session not ready: %v", topicCoord.topicLeaderSession)
 	}
+	newCoordData := topicCoord.coordData.GetCopy()
 	if topicCoord.topicInfo.Epoch != newTopicInfo.Epoch {
-		topicCoord.topicInfo = *newTopicInfo
+		newCoordData.topicInfo = *newTopicInfo
 	}
-	topicCoord.localDataLoaded = true
-	topicCoord.dataRWMutex.Unlock()
+	topicCoord.coordData = newCoordData
+	topicCoord.dataMutex.Unlock()
 
 	localTopic, err := self.updateLocalTopic(topicCoord.GetData())
 	if err != nil {
@@ -953,20 +954,20 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 			}
 		}
 		localTopic.Unlock()
-		if !tcData.disableWrite {
+		if !topicCoord.IsWriteDisabled() {
 			localTopic.EnableForMaster()
 		}
 	} else {
 		localTopic.DisableForSlave()
 	}
-	topicCoord.dataRWMutex.Lock()
 	offsetMap := make(map[string]ChannelConsumerOffset)
-	for chName, offset := range tcData.channelConsumeOffset {
+	tcData.consumeMgr.Lock()
+	for chName, offset := range tcData.consumeMgr.channelConsumeOffset {
 		offsetMap[chName] = offset
 		coordLog.Infof("current channel %v offset: %v", chName, offset)
-		delete(tcData.channelConsumeOffset, chName)
+		delete(tcData.consumeMgr.channelConsumeOffset, chName)
 	}
-	topicCoord.dataRWMutex.Unlock()
+	tcData.consumeMgr.Unlock()
 	for chName, offset := range offsetMap {
 		ch := localTopic.GetChannel(chName)
 		currentConfirmed := ch.GetConfirmedOffset()
@@ -991,25 +992,27 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	if self.stopping {
 		return ErrClusterChanged
 	}
-	topicCoord.dataRWMutex.Lock()
+	topicCoord.dataMutex.Lock()
 	if newLS.LeaderEpoch < topicCoord.GetLeaderSessionEpoch() {
-		topicCoord.dataRWMutex.Unlock()
+		topicCoord.dataMutex.Unlock()
 		coordLog.Infof("topic partition leadership epoch error.")
 		return ErrEpochLessThanCurrent
 	}
 	coordLog.Infof("update the topic %v leader session: %v", topicCoord.topicInfo.GetTopicDesp(), newLS)
 	if newLS != nil && newLS.LeaderNode != nil && topicCoord.GetLeader() != newLS.LeaderNode.GetID() {
 		coordLog.Infof("topic leader info not match leader session: %v", topicCoord.GetLeader())
-		topicCoord.dataRWMutex.Unlock()
+		topicCoord.dataMutex.Unlock()
 		return ErrTopicLeaderSessionInvalid
 	}
+	newCoordData := topicCoord.coordData.GetCopy()
 	if newLS == nil {
 		coordLog.Infof("leader session is lost for topic")
-		topicCoord.topicLeaderSession = TopicLeaderSession{}
+		newCoordData.topicLeaderSession = TopicLeaderSession{}
 	} else if !topicCoord.topicLeaderSession.IsSame(newLS) {
-		topicCoord.topicLeaderSession = *newLS
+		newCoordData.topicLeaderSession = *newLS
 	}
-	topicCoord.dataRWMutex.Unlock()
+	topicCoord.coordData = newCoordData
+	topicCoord.dataMutex.Unlock()
 	tcData := topicCoord.GetData()
 	if topicCoord.IsExiting() {
 		coordLog.Infof("update the topic info: %v while exiting.", tcData.topicInfo.GetTopicDesp())
@@ -1300,7 +1303,7 @@ func (self *NsqdCoordinator) doWriteOpToCluster(topic *nsqd.Topic, doLocalWrite 
 		return ErrTopicExiting
 	}
 	tcData := coord.GetData()
-	if tcData.disableWrite {
+	if coord.IsWriteDisabled() {
 		return ErrWriteDisabled
 	}
 
@@ -1428,9 +1431,11 @@ retrypub:
 exitpub:
 	if needLeaveISR {
 		doLocalRollback()
-		coord.dataRWMutex.Lock()
-		coord.topicLeaderSession.LeaderNode = nil
-		coord.dataRWMutex.Unlock()
+		coord.dataMutex.Lock()
+		newCoordData := coord.coordData.GetCopy()
+		newCoordData.topicLeaderSession.LeaderNode = nil
+		coord.coordData = newCoordData
+		coord.dataMutex.Unlock()
 		// leave isr
 		go func() {
 			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -1624,7 +1629,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	if coord.IsExiting() {
 		return ErrTopicExitingOnSlave
 	}
-	if coord.GetData().disableWrite {
+	if coord.IsWriteDisabled() {
 		return ErrWriteDisabled
 	}
 	if !tc.IsMineISR(self.myNode.GetID()) {
@@ -1788,12 +1793,12 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 			}
 		} else {
 			// cache the offset (using map?) to reduce the slave channel flush.
-			coord.dataRWMutex.Lock()
-			cur, ok := coord.channelConsumeOffset[channelName]
+			coord.consumeMgr.Lock()
+			cur, ok := coord.consumeMgr.channelConsumeOffset[channelName]
 			if !ok || cur.VOffset < offset.VOffset {
-				coord.channelConsumeOffset[channelName] = offset
+				coord.consumeMgr.channelConsumeOffset[channelName] = offset
 			}
-			coord.dataRWMutex.Unlock()
+			coord.consumeMgr.Unlock()
 			return nil
 		}
 	}

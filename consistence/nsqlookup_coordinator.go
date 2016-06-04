@@ -448,7 +448,10 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				aliveCount++
 			}
 		}
-
+		if currentNodesEpoch != atomic.LoadInt64(&self.nodesEpoch) {
+			coordLog.Infof("nodes changed while checking topics: %v, %v", currentNodesEpoch, atomic.LoadInt64(&self.nodesEpoch))
+			return
+		}
 		// handle remove this node from ISR
 		coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
 		if coordErr != nil {
@@ -511,6 +514,11 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				continue
 			}
 		}
+
+		if currentNodesEpoch != atomic.LoadInt64(&self.nodesEpoch) {
+			coordLog.Infof("nodes changed while checking topics: %v, %v", currentNodesEpoch, atomic.LoadInt64(&self.nodesEpoch))
+			return
+		}
 		// check if write disabled
 		if self.isTopicWriteDisabled(&t) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
@@ -553,6 +561,9 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second)
 	}()
 
+	if currentNodesEpoch != atomic.LoadInt64(&self.nodesEpoch) {
+		return ErrClusterChanged
+	}
 	if state.doneChan != nil {
 		close(state.doneChan)
 		state.doneChan = nil
@@ -1122,6 +1133,7 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 		self.joinISRState[topicInfo.Name] = state
 	}
 	self.joinStateMutex.Unlock()
+	start := time.Now()
 	state.Lock()
 	defer state.Unlock()
 	if state.waitingJoin {
@@ -1131,6 +1143,9 @@ func (self *NsqLookupCoordinator) revokeEnableTopicWrite(topic string, partition
 		} else {
 			return ErrWaitingJoinISR
 		}
+	}
+	if time.Since(start) > time.Second*10 {
+		return ErrOperationExpired
 	}
 	if state.doneChan != nil {
 		close(state.doneChan)
@@ -1305,10 +1320,15 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 
 	// we go here to allow the rpc call from client can return ok immediately
 	go func() {
+		start := time.Now()
 		state.Lock()
 		defer state.Unlock()
 		if state.waitingJoin {
 			coordLog.Warningf("failed request join isr because another is joining.")
+			return
+		}
+		if time.Since(start) > time.Second*10 {
+			coordLog.Warningf("failed since waiting too long for lock")
 			return
 		}
 		if state.doneChan != nil {
@@ -1383,6 +1403,7 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 	}
 	// we go here to allow the rpc call from client can return ok immediately
 	go func() {
+		start := time.Now()
 		state.Lock()
 		defer state.Unlock()
 		if !state.waitingJoin || state.waitingSession != joinISRSession {
@@ -1390,6 +1411,10 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 			return
 		}
 
+		if time.Since(start) > time.Second*10 {
+			coordLog.Warningf("failed since waiting too long for lock")
+			return
+		}
 		coordLog.Infof("topic %v isr node %v ready for state: %v", topicInfo.GetTopicDesp(), nodeID, joinISRSession)
 		state.readyNodes[nodeID] = struct{}{}
 		for _, n := range topicInfo.ISR {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 )
 
@@ -157,7 +158,7 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		ret = *err
 		return &ret
 	}
-	if rpcTopicReq.JoinSession != "" && !topicCoord.GetData().disableWrite {
+	if rpcTopicReq.JoinSession != "" && !topicCoord.IsWriteDisabled() {
 		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
 			coordLog.Errorf("join session should disable write first")
 			ret = *ErrTopicCoordStateInvalid
@@ -294,7 +295,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 			ret = *ErrLocalInitTopicCoordFailed
 			return &ret
 		}
-		tpCoord.disableWrite = true
+		tpCoord.DisableWrite(true)
 		coords[rpcTopicReq.Partition] = tpCoord
 		rpcTopicReq.DisableWrite = true
 		coordLog.Infof("A new topic coord init on the node: %v", rpcTopicReq.GetTopicDesp())
@@ -325,8 +326,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		ret = *err
 		return &ret
 	}
-	tcData := tp.GetData()
-	if !tcData.disableWrite {
+	if tp.IsWriteDisabled() {
 		// write enable already done.
 		return nil
 	}
@@ -336,11 +336,9 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		// timeout for waiting
 		err = ErrOperationExpired
 	} else {
-		tp.dataRWMutex.Lock()
-		tp.disableWrite = false
-		tp.dataRWMutex.Unlock()
+		atomic.StoreInt32(&tp.disableWrite, 0)
 
-		tcData = tp.GetData()
+		tcData := tp.GetData()
 		if tcData.IsMineLeaderSessionReady(self.nsqdCoord.myNode.GetID()) {
 			topicData, err := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 			if err != nil {
@@ -386,9 +384,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 		// timeout for waiting
 		err = ErrOperationExpired
 	} else {
-		tp.dataRWMutex.Lock()
-		tp.disableWrite = true
-		tp.dataRWMutex.Unlock()
+		atomic.StoreInt32(&tp.disableWrite, 1)
 
 		tcData := tp.GetData()
 		localTopic, localErr := self.nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -411,7 +407,7 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicI
 	if err != nil {
 		return false
 	}
-	return tp.GetData().disableWrite
+	return tp.IsWriteDisabled()
 }
 
 func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
@@ -551,10 +547,10 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordLog.Infof("rpc call with wrong session:%v", rpcData, tcData.GetLeaderSession())
 		return nil, ErrLeaderSessionMismatch
 	}
-	if !tcData.localDataLoaded {
-		coordLog.Infof("local data is still loading. %v", tcData.topicInfo.GetTopicDesp())
-		return nil, ErrTopicLoading
-	}
+	//if !tcData.localDataLoaded {
+	//	coordLog.Infof("local data is still loading. %v", tcData.topicInfo.GetTopicDesp())
+	//	return nil, ErrTopicLoading
+	//}
 	return topicCoord, nil
 }
 
