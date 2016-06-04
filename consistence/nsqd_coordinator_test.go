@@ -149,7 +149,7 @@ func ensureTopicDisableWrite(nsqdCoord *NsqdCoordinator, topic string, partition
 	if err != nil {
 		panic(err)
 	}
-	tc.disableWrite = disabled
+	tc.DisableWrite(disabled)
 	tcData := tc.GetData()
 	if tcData.IsMineLeaderSessionReady(nsqdCoord.myNode.GetID()) {
 		topicData, err := nsqdCoord.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -851,10 +851,10 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, int64(channel2.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
 	test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
 	test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
-	channel2.EnableTrace = true
-	channel1.EnableTrace = true
-	topicData1.EnableTrace = true
-	topicData2.EnableTrace = true
+	channel2.SetTrace(true)
+	channel1.SetTrace(true)
+	topicData1.SetTrace(true)
+	topicData2.SetTrace(true)
 	coordLog.Infof("==== test client consume ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel2.GetClientMsgChan()

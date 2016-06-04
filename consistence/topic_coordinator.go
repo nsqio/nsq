@@ -52,6 +52,7 @@ type TopicCoordinator struct {
 
 func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{}
+	tc.coordData = &coordData{}
 	tc.coordData.consumeMgr = newChannelComsumeMgr()
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition

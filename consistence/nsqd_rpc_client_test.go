@@ -81,9 +81,9 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 			tc.topicInfo.Epoch++
 		} else {
 			tc = &TopicCoordinator{}
+			tc.coordData = &coordData{}
 			tc.topicInfo.Name = topic
 			tc.topicInfo.Partition = partition
-			tc.localDataLoaded = true
 			tc.topicInfo.Leader = nodeData.GetID()
 			tc.topicInfo.ISR = append(tc.topicInfo.ISR, nodeData.GetID())
 			tc.topicInfo.Epoch++
@@ -95,9 +95,9 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 	} else {
 		tmp := make(map[int]*TopicCoordinator)
 		tc = &TopicCoordinator{}
+		tc.coordData = &coordData{}
 		tc.topicInfo.Name = topic
 		tc.topicInfo.Partition = partition
-		tc.localDataLoaded = true
 		tc.topicInfo.Leader = nodeData.GetID()
 		tc.topicInfo.ISR = append(tc.topicInfo.ISR, nodeData.GetID())
 		tc.topicInfo.Epoch++
