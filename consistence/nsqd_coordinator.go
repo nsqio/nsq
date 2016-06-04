@@ -885,7 +885,6 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 		return err
 	}
 
-	self.switchStateForMaster(topicCoord, localTopic, newTopicInfo.Leader == self.myNode.GetID(), false)
 	if newTopicInfo.Leader == self.myNode.GetID() {
 		// not leader before and became new leader
 		if oldData.GetLeader() != self.myNode.GetID() {
@@ -911,6 +910,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			}
 		}
 	}
+	self.switchStateForMaster(topicCoord, localTopic, newTopicInfo.Leader == self.myNode.GetID(), false)
 	return nil
 }
 
@@ -954,6 +954,8 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 			}
 		}
 		localTopic.Unlock()
+		coordLog.Infof("current topic %v write state: %v",
+			tcData.topicInfo.GetTopicDesp(), topicCoord.IsWriteDisabled())
 		if !topicCoord.IsWriteDisabled() {
 			localTopic.EnableForMaster()
 		}

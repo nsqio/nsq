@@ -326,14 +326,11 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		ret = *err
 		return &ret
 	}
-	if tp.IsWriteDisabled() {
-		// write enable already done.
-		return nil
-	}
 	begin := time.Now()
 	tp.writeHold.Lock()
-	if time.Now().After(begin.Add(time.Second * 3)) {
+	if time.Since(begin) > time.Second*3 {
 		// timeout for waiting
+		coordLog.Infof("timeout while enable write for topic: %v", tp.GetData().topicInfo.GetTopicDesp())
 		err = ErrOperationExpired
 	} else {
 		atomic.StoreInt32(&tp.disableWrite, 0)
@@ -380,7 +377,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 	}
 	begin := time.Now()
 	tp.writeHold.Lock()
-	if time.Now().After(begin.Add(time.Second * 3)) {
+	if time.Since(begin) > time.Second*3 {
 		// timeout for waiting
 		err = ErrOperationExpired
 	} else {
