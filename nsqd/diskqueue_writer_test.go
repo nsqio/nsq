@@ -42,7 +42,7 @@ func TestDiskQueueWriter(t *testing.T) {
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, true)
 	dqReader.UpdateQueueEnd(end)
 	msgOut := <-dqReader.ReadChan()
-	equal(t, msgOut.data, msg)
+	equal(t, msgOut.Data, msg)
 	dqReader.Close()
 }
 
@@ -193,7 +193,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	}
 	equal(t, dqReader.Depth(), int64(97*msgRawSize))
 
-	err = dqReader.(*diskQueueReader).SkipToEnd()
+	_, err = dqReader.(*diskQueueReader).SkipToEnd()
 	equal(t, err, nil)
 	equal(t, dqReader.(*diskQueueReader).readPos,
 		dqReader.(*diskQueueReader).queueEndInfo.EndOffset)
@@ -299,8 +299,8 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 
 	for i := 0; i < 19; i++ { // 1 message leftover in 4th file
 		m := <-dqReader.ReadChan()
-		equal(t, m.data, msg)
-		equal(t, m.err, nil)
+		equal(t, m.Data, msg)
+		equal(t, m.Err, nil)
 	}
 
 	// corrupt the 4th (current) file
@@ -312,7 +312,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
 	readResult := <-dqReader.ReadChan()
-	equal(t, readResult.data, msg)
+	equal(t, readResult.Data, msg)
 
 	// write a corrupt (len 0) message at the 5th (current) file
 	dq.(*diskQueueWriter).writeFile.Write([]byte{0, 0, 0, 0})
@@ -325,7 +325,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	dqReader.UpdateQueueEnd(e)
 	readResult = <-dqReader.ReadChan()
 
-	equal(t, readResult.data, msg)
+	equal(t, readResult.Data, msg)
 }
 
 func TestDiskQueueWriterHandleError(t *testing.T) {
@@ -493,9 +493,9 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 				time.Sleep(time.Microsecond)
 				select {
 				case m := <-dqReader.ReadChan():
-					equal(t, msg, m.data)
-					equal(t, nil, m.err)
-					newr := atomic.AddInt64(&read, int64(4+len(m.data)))
+					equal(t, msg, m.Data)
+					equal(t, nil, m.Err)
+					newr := atomic.AddInt64(&read, int64(4+len(m.Data)))
 					if newr >= depth {
 						dqReader.ConfirmRead(BackendOffset(newr))
 					}

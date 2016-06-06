@@ -1600,7 +1600,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 		topic.PutMessage(msg)
 	}
 	topic.ForceFlush()
-	topic.GetChannel("ch").EnableTrace = false
+	topic.GetChannel("ch").SetTrace(false)
 	b.SetBytes(int64(len(msg)))
 	goChan := make(chan int)
 	rdyChan := make(chan int)

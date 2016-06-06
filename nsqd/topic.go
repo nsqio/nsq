@@ -152,7 +152,11 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 }
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
-	e := t.backend.GetQueueReadEndV2()
+	e := t.backend.GetQueueReadEnd()
+	commit := t.GetCommitted()
+	if commit != nil && e.GetOffset() > commit.GetOffset() {
+		e = commit
+	}
 	return NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
 }
 
@@ -275,9 +279,6 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			e = curCommit
 		}
 		channel.UpdateQueueEnd(e)
-		if atomic.LoadInt32(&t.EnableTrace) == 1 {
-			channel.SetTrace(true)
-		}
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}
@@ -518,8 +519,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 	}
 
 	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqLog.Logf("[TRACE] message %v put in topic: %v, at offset: %v, disk end: %v", m.GetFullMsgID(),
-			t.GetFullName(), offset, dend)
+		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.GetTotalMsgCnt())
 	}
 	return m.ID, offset, writeBytes, dend, nil
 }

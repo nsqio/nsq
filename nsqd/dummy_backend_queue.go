@@ -82,8 +82,12 @@ func (d *dummyBackendQueueReader) ConfirmRead(offset BackendOffset) error {
 	return nil
 }
 
-func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset) error {
-	return nil
+func (d *dummyBackendQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
+	return 0, nil
+}
+
+func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset, error) {
+	return 0, nil
 }
 
 func (d *dummyBackendQueue) UpdateQueueEnd(end BackendQueueEnd) error {

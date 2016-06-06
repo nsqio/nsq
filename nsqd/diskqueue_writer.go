@@ -309,13 +309,6 @@ func (d *diskQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
 	return e
 }
 
-func (d *diskQueueWriter) GetQueueReadEndV2() *diskQueueEndInfo {
-	d.RLock()
-	e := d.internalGetQueueReadEnd()
-	d.RUnlock()
-	return e
-}
-
 func (d *diskQueueWriter) GetQueueReadEnd() BackendQueueEnd {
 	d.RLock()
 	e := d.internalGetQueueReadEnd()

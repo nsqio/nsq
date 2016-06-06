@@ -253,7 +253,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
-		if err != nil {
+		if enableTrace && err != nil {
 			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
 				traceIDStr, err)
 			return nil, http_api.Err{400, "INVALID_TRACE_ID"}

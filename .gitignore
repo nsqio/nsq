@@ -6,6 +6,7 @@ apps/nsqadmin/nsqadmin
 bench/bench_reader/bench_reader
 bench/bench_writer/bench_writer
 bench/bench_channels/bench_channels
+bench/multi_bench/multi_bench
 apps/nsq_to_nsq/nsq_to_nsq
 apps/nsq_to_file/nsq_to_file
 apps/nsq_pubsub/nsq_pubsub
@@ -13,11 +14,13 @@ apps/nsq_to_http/nsq_to_http
 apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
 apps/to_nsq/to_nsq
+apps/nsq_data_tool/nsq_data_tool
 nsqadmin/static/build
 dist
 _site
 _posts
 *.dat
+.vscode
 
 # Go.gitignore
 
@@ -29,6 +32,7 @@ _posts
 # Folders
 _obj
 _test
+build
 
 # Architecture specific extensions/prefixes
 *.[568vq]

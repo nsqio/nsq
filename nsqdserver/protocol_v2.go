@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -45,9 +46,28 @@ const (
 var separatorBytes = []byte(" ")
 var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
+var offsetSplitStr = ":"
+var offsetSplitBytes = []byte(offsetSplitStr)
 
 type protocolV2 struct {
 	ctx *context
+}
+
+type ConsumeOffset struct {
+	OffsetType  string
+	OffsetValue int64
+}
+
+func (self *ConsumeOffset) ToString() string {
+	return self.OffsetType + offsetSplitStr + strconv.FormatInt(self.OffsetValue, 10)
+}
+
+func (self *ConsumeOffset) FromString(s string) {
+	strings.Split(s, offsetSplitStr)
+}
+
+func (self *ConsumeOffset) FromBytes(s []byte) {
+	bytes.Split(s, offsetSplitBytes)
 }
 
 func (p *protocolV2) IOLoop(conn net.Conn) error {
@@ -202,7 +222,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): client [%s] exiting ioloop", client)
+	nsqd.NsqLogger().Logf("PROTOCOL(V2): client [%s] exiting ioloop", client)
 	close(client.ExitChan)
 	<-msgPumpStoppedChan
 
@@ -291,8 +311,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.TOUCH(client, params)
 	case bytes.Equal(params[0], []byte("SUB")):
 		return p.SUB(client, params)
-	case bytes.Equal(params[0], []byte("SUB_TRACE")):
-		return p.SUBTRACE(client, params)
+	case bytes.Equal(params[0], []byte("SUB_ADVANCED")):
+		return p.SUBADVANCED(client, params)
 	case bytes.Equal(params[0], []byte("CLS")):
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("AUTH")):
@@ -444,7 +464,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 	}
 
 exit:
-	nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {
@@ -687,15 +707,27 @@ func (p *protocolV2) CheckAuth(client *nsqd.ClientV2, cmd, topicName, channelNam
 	return nil
 }
 
-func (p *protocolV2) SUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	return p.internalSUB(client, params, true)
+// command topic channel partition ordered consume_start
+func (p *protocolV2) SUBADVANCED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	ordered := false
+	consumeStart := &ConsumeOffset{}
+	if len(params) > 4 {
+		if strings.ToLower(string(params[4])) == "true" {
+			ordered = true
+		}
+	}
+	if len(params) > 5 {
+		consumeStart.FromBytes(params[5])
+	}
+	return p.internalSUB(client, params, true, ordered, consumeStart)
 }
 
 func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	return p.internalSUB(client, params, false)
+	return p.internalSUB(client, params, false, false, nil)
 }
 
-func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableTrace bool) ([]byte, error) {
+func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableTrace bool,
+	ordered bool, startFrom *ConsumeOffset) ([]byte, error) {
 	if atomic.LoadInt32(&client.State) != stateInit {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot SUB in current state")
 	}
@@ -757,6 +789,9 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 	client.Channel = channel
 	if enableTrace {
 		nsqd.NsqLogger().Logf("sub channel %v with trace enabled, remote is : %v", channelName, client.RemoteAddr())
+	}
+	if ordered {
+		channel.SetOrdered(true)
 	}
 	client.EnableTrace = enableTrace
 	// update message pump

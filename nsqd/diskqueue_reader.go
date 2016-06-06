@@ -55,6 +55,11 @@ func (d *diskQueueOffset) GreatThan(o *diskQueueOffset) bool {
 	return false
 }
 
+type skipResult struct {
+	err       error
+	retOffset BackendOffset
+}
+
 // diskQueueReader implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type diskQueueReader struct {
@@ -93,7 +98,7 @@ type diskQueueReader struct {
 	readResultChan   chan ReadResult
 	skipReadErrChan  chan diskQueueOffset
 	skipChan         chan BackendOffset
-	skipResponseChan chan error
+	skipResponseChan chan skipResult
 
 	readEndResponseChan    chan diskQueueEndInfo
 	readEndChan            chan int
@@ -124,7 +129,7 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		readResultChan:         make(chan ReadResult),
 		skipReadErrChan:        make(chan diskQueueOffset),
 		skipChan:               make(chan BackendOffset),
-		skipResponseChan:       make(chan error),
+		skipResponseChan:       make(chan skipResult),
 		readEndChan:            make(chan int),
 		readEndResponseChan:    make(chan diskQueueEndInfo),
 		endUpdatedChan:         make(chan *diskQueueEndInfo),
@@ -295,14 +300,26 @@ func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next di
 	return BackendOffset(int64(vdiff) + left), err
 }
 
-func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) error {
+func (d *diskQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
 	d.RLock()
 	defer d.RUnlock()
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return 0, errors.New("exiting")
+	}
+	d.skipChan <- BackendOffset(-1)
+	ret := <-d.skipResponseChan
+	return ret.retOffset, ret.err
+}
+
+func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset, error) {
+	d.RLock()
+	defer d.RUnlock()
+	if d.exitFlag == 1 {
+		return 0, errors.New("exiting")
 	}
 	d.skipChan <- BackendOffset(offset)
-	return <-d.skipResponseChan
+	ret := <-d.skipResponseChan
+	return ret.retOffset, ret.err
 }
 
 func (d *diskQueueReader) SkipToNext() error {
@@ -316,15 +333,16 @@ func (d *diskQueueReader) SkipToNext() error {
 	return nil
 }
 
-func (d *diskQueueReader) SkipToEnd() error {
+func (d *diskQueueReader) SkipToEnd() (BackendOffset, error) {
 	d.RLock()
 	defer d.RUnlock()
 
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return 0, errors.New("exiting")
 	}
 	d.skipChan <- d.queueEndInfo.VirtualEnd
-	return <-d.skipResponseChan
+	ret := <-d.skipResponseChan
+	return ret.retOffset, ret.err
 }
 
 func (d *diskQueueReader) stepOffset(virtualCur BackendOffset, cur diskQueueOffset, step BackendOffset, maxVirtual BackendOffset, maxStep diskQueueOffset) (diskQueueOffset, error) {
@@ -837,6 +855,9 @@ func (d *diskQueueReader) ioLoop() {
 			lastDataNeedRead = false
 		case skipInfo := <-d.skipChan:
 			old := d.virtualConfirmedOffset
+			if skipInfo == BackendOffset(-1) {
+				skipInfo = old
+			}
 			skiperr := d.internalSkipTo(skipInfo)
 			if skiperr == nil {
 				lastDataNeedRead = false
@@ -846,7 +867,7 @@ func (d *diskQueueReader) ioLoop() {
 					count++
 				}
 			}
-			d.skipResponseChan <- skiperr
+			d.skipResponseChan <- skipResult{skiperr, d.virtualConfirmedOffset}
 		case <-d.readEndChan:
 			d.readEndResponseChan <- d.queueEndInfo
 		case endPos := <-d.endUpdatedChan:
