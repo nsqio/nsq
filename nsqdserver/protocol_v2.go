@@ -62,12 +62,38 @@ func (self *ConsumeOffset) ToString() string {
 	return self.OffsetType + offsetSplitStr + strconv.FormatInt(self.OffsetValue, 10)
 }
 
-func (self *ConsumeOffset) FromString(s string) {
-	strings.Split(s, offsetSplitStr)
+func (self *ConsumeOffset) FromString(s string) error {
+	values := strings.Split(s, offsetSplitStr)
+	if len(values) != 2 {
+		return errors.New("invalid consume offset:" + s)
+	}
+	self.OffsetType = values[0]
+	if self.OffsetType != "count" && self.OffsetType != "time" {
+		return errors.New("invalid consume offset:" + s)
+	}
+	v, err := strconv.ParseInt(s, 10, 0)
+	if err != nil {
+		return err
+	}
+	self.OffsetValue = v
+	return nil
 }
 
-func (self *ConsumeOffset) FromBytes(s []byte) {
-	bytes.Split(s, offsetSplitBytes)
+func (self *ConsumeOffset) FromBytes(s []byte) error {
+	values := bytes.Split(s, offsetSplitBytes)
+	if len(values) != 2 {
+		return errors.New("invalid consume offset:" + string(s))
+	}
+	self.OffsetType = string(values[0])
+	if self.OffsetType != "count" && self.OffsetType != "time" {
+		return errors.New("invalid consume offset:" + string(s))
+	}
+	v, err := strconv.ParseInt(string(s), 10, 0)
+	if err != nil {
+		return err
+	}
+	self.OffsetValue = v
+	return nil
 }
 
 func (p *protocolV2) IOLoop(conn net.Conn) error {
@@ -710,14 +736,18 @@ func (p *protocolV2) CheckAuth(client *nsqd.ClientV2, cmd, topicName, channelNam
 // command topic channel partition ordered consume_start
 func (p *protocolV2) SUBADVANCED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	ordered := false
-	consumeStart := &ConsumeOffset{}
+	var consumeStart *ConsumeOffset
 	if len(params) > 4 {
 		if strings.ToLower(string(params[4])) == "true" {
 			ordered = true
 		}
 	}
 	if len(params) > 5 {
-		consumeStart.FromBytes(params[5])
+		consumeStart = &ConsumeOffset{}
+		err := consumeStart.FromBytes(params[5])
+		if err != nil {
+			return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
+		}
 	}
 	return p.internalSUB(client, params, true, ordered, consumeStart)
 }
@@ -792,6 +822,17 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 	}
 	if ordered {
 		channel.SetOrdered(true)
+	}
+	if startFrom != nil {
+		// TODO: get the disk offset from the consume offset
+		// the time offset is in Millisecond
+		diskOffset := nsqd.BackendOffset(0)
+		err = channel.SetConsumeOffset(diskOffset)
+		if err != nil {
+			nsqd.NsqLogger().Logf("failed to set the consume offset: %v", startFrom, err)
+			return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
+		}
+		// TODO: sync to the replicas
 	}
 	client.EnableTrace = enableTrace
 	// update message pump

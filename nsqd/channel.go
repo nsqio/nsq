@@ -180,6 +180,11 @@ func (c *Channel) SetTrace(enable bool) {
 	}
 }
 
+func (c *Channel) SetConsumeOffset(offset BackendOffset) error {
+	_, err := c.backend.SkipReadToOffset(offset)
+	return err
+}
+
 func (c *Channel) SetOrdered(enable bool) {
 	atomic.StoreInt32(&c.requireOrder, 1)
 }

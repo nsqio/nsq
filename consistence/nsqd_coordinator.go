@@ -1722,6 +1722,10 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 	syncOffset.VOffset = int64(offset)
 
+	if channel.IsOrdered() {
+		// TODO: if ordered, we need make sure all the consume offset is synced to all replicas
+	}
+
 	for _, nodeID := range tcData.topicInfo.ISR {
 		if nodeID == self.myNode.GetID() {
 			success++
