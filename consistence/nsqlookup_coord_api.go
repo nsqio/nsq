@@ -3,6 +3,7 @@ package consistence
 import (
 	"errors"
 	"strconv"
+	"time"
 )
 
 func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
@@ -110,6 +111,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
+		meta.MagicCode = time.Now().UnixNano()
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
 			coordLog.Infof("create topic key %v failed :%v", topic, err)

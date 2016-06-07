@@ -3,6 +3,7 @@ package nsqd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strconv"
@@ -67,6 +68,7 @@ type Topic struct {
 	writeDisabled   int32
 	committedOffset atomic.Value
 	autoCommit      int32
+	magicCode       int64
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -116,11 +118,89 @@ func NewTopic(topicName string, part int, opt *Options,
 		int32(opt.MaxMsgSize)+minValidMsgLength,
 		opt.SyncEvery).(*diskQueueWriter)
 	t.UpdateCommittedOffset(t.backend.GetQueueWriteEnd())
+	err = t.loadMagicCode()
+	if err != nil {
+		nsqLog.LogErrorf("topic %v failed to load magic code: %v", t.fullName, err)
+		return nil
+	}
 
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) saveMagicCode() error {
+	var f *os.File
+	var err error
+
+	fileName := path.Join(t.dataPath, "magic")
+	f, err = os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f, "%d\n",
+		atomic.LoadInt64(&t.magicCode))
+	if err != nil {
+		return err
+	}
+	f.Sync()
+	nsqLog.Infof("saved topic %v as magic code: %v", t.fullName, atomic.LoadInt64(&t.magicCode))
+	return nil
+}
+
+func (t *Topic) loadMagicCode() error {
+	var f *os.File
+	var err error
+
+	fileName := path.Join(t.dataPath, "magic")
+	f, err = os.OpenFile(fileName, os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+
+	var code int64
+	_, err = fmt.Fscanf(f, "%d\n",
+		&code)
+	if err != nil {
+		return err
+	}
+	atomic.StoreInt64(&t.magicCode, code)
+	nsqLog.Infof("loading topic %v as magic code: %v", t.fullName, code)
+	return nil
+}
+
+func (t *Topic) MarkAsRemoved() error {
+	renamePath := t.dataPath + "-removed-" + strconv.Itoa(int(time.Now().Unix()))
+	nsqLog.Warningf("mark the topic %v as removed: %v", t.GetFullName(), renamePath)
+	err := atomicRename(t.dataPath, renamePath)
+	if err != nil {
+		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
+	}
+	return err
+}
+
+// should be protected by the topic lock for all partitions
+func (t *Topic) SetMagicCode(code int64) error {
+	if t.magicCode == code {
+		return nil
+	} else if t.magicCode > 0 {
+		nsqLog.Errorf("magic code set more than once :%v, %v", t.magicCode, code)
+		return errors.New("magic code can not be changed.")
+	}
+	t.magicCode = code
+	return t.saveMagicCode()
+}
+
+// should be protected by the topic lock for all partitions
+func (t *Topic) GetMagicCode() int64 {
+	return t.magicCode
 }
 
 func (t *Topic) SetTrace(enable bool) {

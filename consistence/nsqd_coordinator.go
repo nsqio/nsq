@@ -275,6 +275,14 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	}
 }
 
+func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo) {
+	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name, topicInfo.Partition)
+	if localErr != nil {
+		return
+	}
+	self.localNsqd.CheckMagicCode(localTopic, topicInfo.MagicCode, topicInfo.Leader != self.myNode.GetID())
+}
+
 func (self *NsqdCoordinator) loadLocalTopicData() error {
 	if self.localNsqd == nil {
 		return nil
@@ -323,6 +331,8 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 
 			topic.SetAutoCommit(false)
+			self.checkLocalTopicMagicCode(topicInfo)
+
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
 				basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
@@ -346,7 +356,15 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 				coords[topicInfo.Partition] = tc
 				self.coordMutex.Unlock()
-				topic.SetMsgGenerator(tc.logMgr)
+
+				tc.writeHold.Lock()
+				var coordErr *CoordErr
+				topic, coordErr = self.updateLocalTopic(tc.GetData())
+				if coordErr != nil {
+					coordLog.Errorf("failed to update local topic %v: %v", topicInfo.GetTopicDesp(), coordErr)
+					panic(coordErr)
+				}
+				tc.writeHold.Unlock()
 			} else {
 				continue
 			}
@@ -360,7 +378,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic starting as isr .")
-				if len(topicInfo.ISR) > 1 {
+				if len(topicInfo.ISR) > 1 && topicInfo.Leader != self.myNode.GetID() {
 					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
 				}
 			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
@@ -1887,6 +1905,10 @@ func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) (*nsqd.Topi
 	t := self.localNsqd.GetTopicWithDisabled(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
 	if t == nil {
 		return nil, ErrLocalInitTopicFailed
+	}
+	localErr := self.localNsqd.SetTopicMagicCode(t, topicCoord.topicInfo.MagicCode)
+	if localErr != nil {
+		return t, ErrLocalInitTopicFailed
 	}
 	t.SetAutoCommit(false)
 	t.SetMsgGenerator(topicCoord.logMgr)

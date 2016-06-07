@@ -49,6 +49,8 @@ type TopicMetaInfo struct {
 	SuggestLF int
 	// other options
 	SyncEvery int
+	// to verify the data of the create -> delete -> create with same topic
+	MagicCode int64
 }
 
 type TopicPartitionReplicaInfo struct {

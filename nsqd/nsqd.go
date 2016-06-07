@@ -49,7 +49,8 @@ type NSQD struct {
 	errValue  atomic.Value
 	startTime time.Time
 
-	topicMap map[string]map[int]*Topic
+	topicMap       map[string]map[int]*Topic
+	magicCodeMutex sync.Mutex
 
 	poolSize int
 
@@ -533,6 +534,36 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 
 	n.deleteTopic(topicName, partition)
 	return nil
+}
+
+func (n *NSQD) CheckMagicCode(localTopic *Topic, code int64, tryFix bool) {
+	magicCodeWrong := false
+	localMagicCode := localTopic.GetMagicCode()
+	if localMagicCode != 0 && localMagicCode != code {
+		nsqLog.Infof("local topic %v magic code is not matching with the current:%v-%v", localTopic.GetFullName(), localTopic.GetMagicCode(), code)
+		magicCodeWrong = true
+	}
+	if magicCodeWrong {
+		if !tryFix {
+			panic("magic code is wrong.")
+		} else {
+			nsqLog.Warningf("local topic %v removed for wrong magic code: %v vs %v", localTopic.GetFullName(), localTopic.GetMagicCode(), code)
+			n.deleteTopic(localTopic.GetTopicName(), localTopic.GetTopicPart())
+			localTopic.Close()
+			err := localTopic.MarkAsRemoved()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
+func (n *NSQD) SetTopicMagicCode(t *Topic, code int64) error {
+	n.magicCodeMutex.Lock()
+	err := t.SetMagicCode(code)
+	n.magicCodeMutex.Unlock()
+
+	return err
 }
 
 // DeleteExistingTopic removes a topic only if it exists
