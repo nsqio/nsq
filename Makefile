@@ -9,19 +9,20 @@ ifeq (${GOOS},windows)
     EXT=.exe
 endif
 
-APPS = nsqd nsqlookupd nsqadmin nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat to_nsq
+APPS = nsqd nsqlookupd nsqadmin nsq_pubsub nsq_to_nsq nsq_to_file nsq_to_http nsq_tail nsq_stat to_nsq nsq_data_tool
 all: $(APPS)
 
-$(BLDDIR)/nsqd:        $(wildcard apps/nsqd/*.go       nsqd/*.go nsqdserver/*.go consistence/*.go      nsq/*.go internal/*/*.go)
-$(BLDDIR)/nsqlookupd:  $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go consistence/*.go nsq/*.go internal/*/*.go)
+$(BLDDIR)/nsqd:        $(wildcard apps/nsqd/*.go       nsqd/*.go nsqdserver/*.go consistence/*.go      internal/*/*.go)
+$(BLDDIR)/nsqlookupd:  $(wildcard apps/nsqlookupd/*.go nsqlookupd/*.go consistence/*.go internal/*/*.go)
 $(BLDDIR)/nsqadmin:    $(wildcard apps/nsqadmin/*.go   nsqadmin/*.go nsqadmin/templates/*.go internal/*/*.go)
-$(BLDDIR)/nsq_pubsub:  $(wildcard apps/nsq_pubsub/*.go  nsq/*.go internal/*/*.go)
-$(BLDDIR)/nsq_to_nsq:  $(wildcard apps/nsq_to_nsq/*.go  nsq/*.go internal/*/*.go)
-$(BLDDIR)/nsq_to_file: $(wildcard apps/nsq_to_file/*.go nsq/*.go internal/*/*.go)
-$(BLDDIR)/nsq_to_http: $(wildcard apps/nsq_to_http/*.go nsq/*.go internal/*/*.go)
-$(BLDDIR)/nsq_tail:    $(wildcard apps/nsq_tail/*.go    nsq/*.go internal/*/*.go)
+$(BLDDIR)/nsq_pubsub:  $(wildcard apps/nsq_pubsub/*.go  internal/*/*.go)
+$(BLDDIR)/nsq_to_nsq:  $(wildcard apps/nsq_to_nsq/*.go  internal/*/*.go)
+$(BLDDIR)/nsq_to_file: $(wildcard apps/nsq_to_file/*.go internal/*/*.go)
+$(BLDDIR)/nsq_to_http: $(wildcard apps/nsq_to_http/*.go internal/*/*.go)
+$(BLDDIR)/nsq_tail:    $(wildcard apps/nsq_tail/*.go  internal/*/*.go)
 $(BLDDIR)/nsq_stat:    $(wildcard apps/nsq_stat/*.go             internal/*/*.go)
 $(BLDDIR)/to_nsq:      $(wildcard apps/to_nsq/*.go               internal/*/*.go)
+$(BLDDIR)/nsq_data_tool:  $(wildcard apps/nsq_data_tool/*.go consistence/*.go nsqd/*.go internal/*/*.go)
 
 $(BLDDIR)/%:
 	@mkdir -p $(dir $@)
