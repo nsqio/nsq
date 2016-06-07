@@ -226,6 +226,11 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
+	if p.ctx.nsqlookupd.RealTCPAddr() == nil || p.ctx.nsqlookupd.RealHTTPAddr() == nil {
+		nsqlookupLog.Logf("client(%s) register before the server is ready", client)
+		return nil, protocol.NewFatalClientErr(nil, "E_NOT_READY", "The server is not ready for use")
+	}
+
 	atomic.StoreInt64(&peerInfo.lastUpdate, time.Now().UnixNano())
 
 	nsqlookupLog.Logf("CLIENT(%s): IDENTIFY peer: %v ",
