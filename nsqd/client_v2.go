@@ -161,6 +161,7 @@ func (c *ClientV2) String() string {
 func (c *ClientV2) Exit() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
 	c.Conn.Close()
+	nsqLog.Logf("client [%s] force exit", c)
 }
 
 func (c *ClientV2) FinalClose() {

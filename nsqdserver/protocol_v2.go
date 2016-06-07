@@ -248,6 +248,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
+	if err != nil {
+		nsqd.NsqLogger().Logf("PROTOCOL(V2): client [%s] exiting ioloop with error: %v", client, err)
+	}
 	nsqd.NsqLogger().Logf("PROTOCOL(V2): client [%s] exiting ioloop", client)
 	close(client.ExitChan)
 	<-msgPumpStoppedChan
