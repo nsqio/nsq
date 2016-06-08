@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	//"github.com/absolute8511/nsq/internal/levellogger"
 	"os"
 	"strconv"
 	"testing"
@@ -11,7 +12,8 @@ import (
 func TestPutMessage(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 2
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 3
 	opts.SyncEvery = 1
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

@@ -14,12 +14,14 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 
-	topic     = flag.String("topic", "", "NSQ topic")
-	partition = flag.Int("partition", -1, "NSQ topic partition")
-	dataPath  = flag.String("data_path", "", "the data path of nsqd")
-	view      = flag.String("view", "commitlog", "commitlog | topicdata ")
-	viewStart = flag.Int64("view_start", 0, "the start id of message.")
-	viewCnt   = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
+	topic          = flag.String("topic", "", "NSQ topic")
+	partition      = flag.Int("partition", -1, "NSQ topic partition")
+	dataPath       = flag.String("data_path", "", "the data path of nsqd")
+	view           = flag.String("view", "commitlog", "commitlog | topicdata ")
+	viewStart      = flag.Int64("view_start", 0, "the start id of message.")
+	viewOffset     = flag.Int64("view_offset", 0, "the virtual offset of the queue")
+	viewFileOffset = flag.String("view_file_offset", "0:0", "the file number and the offset of the file position")
+	viewCnt        = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
 )
 
 func getBackendName(topicName string, part int) string {

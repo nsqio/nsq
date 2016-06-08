@@ -221,7 +221,7 @@ func (c *Channel) Close() error {
 func (c *Channel) IsWaitingMoreData() bool {
 	d, ok := c.backend.(*diskQueueReader)
 	if ok {
-		return atomic.LoadInt32(&d.waitingMoreData) == 1
+		return d.IsWaitingMoreData()
 	}
 	return false
 }
@@ -360,7 +360,16 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	if end == nil {
 		return nil
 	}
-	return c.backend.UpdateQueueEnd(end)
+	err := c.backend.UpdateQueueEnd(end)
+
+	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+	} else {
+		select {
+		case c.tryReadBackend <- true:
+		default:
+		}
+	}
+	return err
 }
 
 // TouchMessage resets the timeout for an in-flight message
@@ -652,6 +661,12 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
+	if c.IsOrdered() {
+		select {
+		case c.tryReadBackend <- true:
+		default:
+		}
+	}
 	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
 	}
@@ -709,10 +724,6 @@ func (c *Channel) DisableConsume(disable bool) {
 			client.Exit()
 			delete(c.clients, cid)
 		}
-		dr, ok := c.backend.(*diskQueueReader)
-		if ok {
-			dr.SetPreFetch(false)
-		}
 		c.initPQ()
 		c.waitingRequeueMutex.Lock()
 		for k, _ := range c.waitingRequeueMsgs {
@@ -750,11 +761,6 @@ func (c *Channel) DisableConsume(disable bool) {
 				done = true
 			}
 		}
-		dr, ok := c.backend.(*diskQueueReader)
-		if ok {
-			dr.SetPreFetch(true)
-		}
-
 		c.resetReaderToConfirmed()
 		select {
 		case c.tryReadBackend <- true:
@@ -766,15 +772,8 @@ func (c *Channel) DisableConsume(disable bool) {
 
 func (c *Channel) TryWakeupRead() {
 	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
-		nsqLog.LogDebugf("channel consume is disabled while wakeup : %v", c.name)
 		return
 	}
-
-	dr, ok := c.backend.(*diskQueueReader)
-	if ok {
-		dr.SetPreFetch(true)
-	}
-
 	select {
 	case c.tryReadBackend <- true:
 	default:
@@ -800,9 +799,14 @@ func (c *Channel) messagePump() {
 	var err error
 	var lastMsg Message
 	isSkipped := false
+	origReadChan := make(chan ReadResult, 1)
 	var readChan <-chan ReadResult
+
 	maxWin := int32(c.option.MaxConfirmWin)
 	resumedFirst := true
+	d := c.backend
+	needReadBackend := true
+	lastDataNeedRead := false
 
 LOOP:
 	for {
@@ -816,12 +820,15 @@ LOOP:
 		if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
 			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readChan = nil
+			needReadBackend = false
 		} else {
-			readChan = c.backend.ReadChan()
+			readChan = origReadChan
+			needReadBackend = true
 		}
 
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			readChan = nil
+			needReadBackend = false
 			nsqLog.Logf("channel consume is disabled : %v", c.name)
 		}
 
@@ -829,6 +836,23 @@ LOOP:
 			nsqLog.LogDebugf("channel reader is holding: %v, %v",
 				atomic.LoadInt32(&c.waitingConfirm),
 				c.name)
+		}
+		if needReadBackend {
+			if !lastDataNeedRead {
+				dataRead, hasData := d.TryReadOne()
+				if hasData {
+					lastDataNeedRead = true
+					origReadChan <- dataRead
+					readChan = origReadChan
+				} else {
+					if nsqLog.Level() >= levellogger.LOG_DEBUG {
+						nsqLog.LogDebugf("no data to be read: %v", c.name)
+					}
+					readChan = nil
+				}
+			} else {
+				readChan = origReadChan
+			}
 		}
 
 		select {
@@ -839,6 +863,7 @@ LOOP:
 				nsqLog.LogDebugf("read message %v from requeue", msg.ID)
 			}
 		case data = <-readChan:
+			lastDataNeedRead = false
 			if data.Err != nil {
 				nsqLog.LogErrorf("failed to read message - %s", data.Err)
 				// TODO: fix corrupt file from other replica.
@@ -875,6 +900,7 @@ LOOP:
 		if msg == nil {
 			continue
 		}
+
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			continue
 		}
@@ -987,10 +1013,13 @@ exit:
 	if len(c.waitingRequeueMsgs) > 1 {
 		nsqLog.LogDebugf("requeue waiting messages: %v", len(c.waitingRequeueMsgs))
 	}
+
+	requeued := false
 	for k, m := range c.waitingRequeueMsgs {
 		select {
 		case c.requeuedMsgChan <- m:
 			delete(c.waitingRequeueMsgs, k)
+			requeued = true
 		default:
 			stopScan = true
 		}
@@ -999,6 +1028,12 @@ exit:
 		}
 	}
 	c.waitingRequeueMutex.Unlock()
+	if requeued {
+		select {
+		case c.tryReadBackend <- true:
+		default:
+		}
+	}
 	if atomic.LoadInt32(&c.waitingConfirm) >
 		int32(c.option.MaxConfirmWin) {
 		// check if lastconfirmed message offset not in inflight

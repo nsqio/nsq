@@ -41,7 +41,6 @@ type ReadResult struct {
 
 // for channel consumer
 type BackendQueueReader interface {
-	ReadChan() <-chan ReadResult
 	ConfirmRead(BackendOffset) error
 	ResetReadToConfirmed() (BackendOffset, error)
 	SkipReadToOffset(BackendOffset) (BackendOffset, error)
@@ -51,4 +50,5 @@ type BackendQueueReader interface {
 	GetQueueReadEnd() BackendQueueEnd
 	Delete() error
 	UpdateQueueEnd(BackendQueueEnd) error
+	TryReadOne() (ReadResult, bool)
 }

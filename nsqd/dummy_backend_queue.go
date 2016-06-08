@@ -74,8 +74,8 @@ func (d *dummyBackendQueueWriter) Flush() error {
 	return nil
 }
 
-func (d *dummyBackendQueueReader) ReadChan() <-chan ReadResult {
-	return d.readResultChan
+func (d *dummyBackendQueueReader) TryReadOne() (ReadResult, bool) {
+	return ReadResult{}, true
 }
 
 func (d *dummyBackendQueueReader) ConfirmRead(offset BackendOffset) error {

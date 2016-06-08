@@ -41,7 +41,7 @@ func TestDiskQueueWriter(t *testing.T) {
 
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, true)
 	dqReader.UpdateQueueEnd(end)
-	msgOut := <-dqReader.ReadChan()
+	msgOut, _ := dqReader.TryReadOne()
 	equal(t, msgOut.Data, msg)
 	dqReader.Close()
 }
@@ -173,7 +173,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	dqReader.UpdateQueueEnd(dq.GetQueueReadEnd())
 
 	for i := 0; i < 3; i++ {
-		<-dqReader.ReadChan()
+		dqReader.TryReadOne()
 	}
 
 	dqReader.ConfirmRead(BackendOffset(3 * msgRawSize))
@@ -244,7 +244,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 		true)
 
 	for i := 0; i < 100; i++ {
-		<-dqReader.ReadChan()
+		dqReader.TryReadOne()
 	}
 	dqReader.ConfirmRead(BackendOffset(-1))
 	equal(t, dqReader.(*diskQueueReader).virtualReadOffset, dqReader.(*diskQueueReader).virtualConfirmedOffset)
@@ -298,7 +298,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	os.Truncate(dqFn, 500) // 3 valid messages, 5 corrupted
 
 	for i := 0; i < 19; i++ { // 1 message leftover in 4th file
-		m := <-dqReader.ReadChan()
+		m, _ := dqReader.TryReadOne()
 		equal(t, m.Data, msg)
 		equal(t, m.Err, nil)
 	}
@@ -311,7 +311,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	dq.Flush()
 	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
-	readResult := <-dqReader.ReadChan()
+	readResult, _ := dqReader.TryReadOne()
 	equal(t, readResult.Data, msg)
 
 	// write a corrupt (len 0) message at the 5th (current) file
@@ -323,7 +323,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	dq.Flush()
 	e = dq.GetQueueReadEnd()
 	dqReader.UpdateQueueEnd(e)
-	readResult = <-dqReader.ReadChan()
+	readResult, _ = dqReader.TryReadOne()
 
 	equal(t, readResult.Data, msg)
 }
@@ -491,16 +491,19 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 			defer wg.Done()
 			for {
 				time.Sleep(time.Microsecond)
-				select {
-				case m := <-dqReader.ReadChan():
+				m, hasData := dqReader.TryReadOne()
+				if hasData {
 					equal(t, msg, m.Data)
 					equal(t, nil, m.Err)
 					newr := atomic.AddInt64(&read, int64(4+len(m.Data)))
 					if newr >= depth {
 						dqReader.ConfirmRead(BackendOffset(newr))
 					}
+				}
+				select {
 				case <-readExitChan:
 					return
+				default:
 				}
 			}
 		}()
@@ -652,6 +655,6 @@ func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 	dqReader.UpdateQueueEnd(e)
 
 	for i := 0; i < b.N; i++ {
-		<-dqReader.ReadChan()
+		dqReader.TryReadOne()
 	}
 }
