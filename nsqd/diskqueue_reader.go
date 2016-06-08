@@ -300,6 +300,10 @@ func (d *diskQueueReader) TryReadOne() (ReadResult, bool) {
 			}
 			return dataRead, true
 		} else {
+			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqLog.LogDebugf("reading from diskqueue(%s) no more data: %v, %v, confirmed: %v",
+					d.readerMetaName, d.readPos, d.queueEndInfo, d.confirmedOffset)
+			}
 			return ReadResult{}, false
 		}
 	}
