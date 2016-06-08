@@ -764,6 +764,26 @@ func (c *Channel) DisableConsume(disable bool) {
 	c.notifyCall(c)
 }
 
+func (c *Channel) TryWakeupRead() {
+	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+		nsqLog.LogDebugf("channel consume is disabled while wakeup : %v", c.name)
+		return
+	}
+
+	dr, ok := c.backend.(*diskQueueReader)
+	if ok {
+		dr.SetPreFetch(true)
+	}
+
+	select {
+	case c.tryReadBackend <- true:
+	default:
+	}
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.LogDebugf("channel consume try wakeup : %v", c.name)
+	}
+}
+
 func (c *Channel) resetReaderToConfirmed() {
 	confirmed, err := c.backend.ResetReadToConfirmed()
 	if err != nil {
@@ -815,6 +835,9 @@ LOOP:
 		case <-c.exitChan:
 			goto exit
 		case msg = <-c.requeuedMsgChan:
+			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqLog.LogDebugf("read message %v from requeue", msg.ID)
+			}
 		case data = <-readChan:
 			if data.Err != nil {
 				nsqLog.LogErrorf("failed to read message - %s", data.Err)

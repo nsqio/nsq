@@ -424,6 +424,10 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			}
 			flushed = true
 		case <-client.ReadyStateChan:
+			if subChannel != nil {
+				// try wake up the channel
+				subChannel.TryWakeupRead()
+			}
 		case subChannel = <-subEventChan:
 			// you can't SUB anymore
 			nsqd.NsqLogger().Logf("client %v sub to channel: %v", client.ID,

@@ -170,6 +170,7 @@ func (d *diskQueueReader) SetPreFetch(enable bool) {
 	} else {
 		atomic.StoreInt32(&d.preFetch, 0)
 	}
+	nsqLog.Logf("reader %v prefetch setting changed to : %v", d.metaDataFileName(), enable)
 }
 
 // Depth returns the depth of the queue
@@ -839,9 +840,9 @@ func (d *diskQueueReader) ioLoop() {
 			}
 		}
 
-		if r == nil {
-			//nsqLog.LogDebugf("diskreader(%s) is holding on:%v, %v", d.readerMetaName,
-			//	d.virtualConfirmedOffset, d.virtualReadOffset)
+		if r == nil && nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("diskreader(%s) is holding on:%v, %v, %v, %v", d.readerMetaName,
+				d.virtualConfirmedOffset, d.virtualReadOffset, d.queueEndInfo, atomic.LoadInt32(&d.preFetch))
 		}
 
 		select {
