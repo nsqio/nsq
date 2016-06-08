@@ -70,6 +70,7 @@ func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]
 type NsqdCoordinator struct {
 	clusterKey             string
 	leadership             NSQDLeadership
+	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
 	topicCoords            map[string]map[int]*TopicCoordinator
@@ -139,25 +140,20 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *Coor
 }
 
 func (self *NsqdCoordinator) Start() error {
-	if self.leadership != nil {
-		err := self.leadership.RegisterNsqd(&self.myNode)
-		if err != nil {
-			coordLog.Warningf("failed to register nsqd coordinator: %v", err)
-			return err
-		}
-	}
-	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
 	self.wg.Add(1)
 	go self.watchNsqLookupd()
 
 	start := time.Now()
 	for {
-		if self.lookupLeader.GetID() != "" {
+		self.lookupMutex.Lock()
+		l := self.lookupLeader
+		self.lookupMutex.Unlock()
+		if l.GetID() != "" {
 			break
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Second)
 		coordLog.Infof("waiting for lookupd ...")
-		if time.Now().Sub(start) > time.Second*10 {
+		if time.Now().Sub(start) > time.Second*30 {
 			panic("no lookupd found while starting nsqd coordinator")
 		}
 	}
@@ -167,6 +163,14 @@ func (self *NsqdCoordinator) Start() error {
 		close(self.stopChan)
 		self.rpcServer.stop()
 		return err
+	}
+	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
+	if self.leadership != nil {
+		err := self.leadership.RegisterNsqd(&self.myNode)
+		if err != nil {
+			coordLog.Warningf("failed to register nsqd coordinator: %v", err)
+			return err
+		}
 	}
 
 	self.wg.Add(1)
@@ -236,15 +240,20 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 }
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(self.lookupLeader.NodeIP, self.lookupLeader.RpcPort), RPC_TIMEOUT)
+	self.lookupMutex.Lock()
+	l := self.lookupLeader
+	self.lookupMutex.Unlock()
+	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(l.NodeIP, l.RpcPort), RPC_TIMEOUT)
 	if err == nil {
 		return c, nil
 	}
-	coordLog.Infof("get lookup remote %v failed: %v", self.lookupLeader, err)
+	coordLog.Infof("get lookup remote %v failed: %v", l, err)
 	return c, NewCoordErr(err.Error(), CoordNetErr)
 }
 
 func (self *NsqdCoordinator) GetCurrentLookupd() NsqLookupdNodeInfo {
+	self.lookupMutex.Lock()
+	defer self.lookupMutex.Unlock()
 	return self.lookupLeader
 }
 
@@ -266,11 +275,13 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 			if !ok {
 				return
 			}
+			self.lookupMutex.Lock()
 			if n.GetID() != self.lookupLeader.GetID() ||
 				n.Epoch != self.lookupLeader.Epoch {
 				coordLog.Infof("nsqlookup leader changed: %v", n)
 				self.lookupLeader = *n
 			}
+			self.lookupMutex.Unlock()
 		}
 	}
 }
