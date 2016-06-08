@@ -536,7 +536,16 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	return nil
 }
 
-func (n *NSQD) CheckMagicCode(localTopic *Topic, code int64, tryFix bool) {
+func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix bool) {
+	localTopic, err := n.GetExistingTopic(name, partition)
+	if err != nil {
+		// not exist, create temp for check
+		deleteCallback := func(t *Topic) {
+			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
+		}
+		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify)
+		defer localTopic.Close()
+	}
 	magicCodeWrong := false
 	localMagicCode := localTopic.GetMagicCode()
 	if localMagicCode != 0 && localMagicCode != code {

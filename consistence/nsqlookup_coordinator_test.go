@@ -540,7 +540,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		time.Sleep(time.Second)
 	}
 	// test new topic create
-	err := lookupCoord1.CreateTopic(topic, TopicMetaInfo{2, 2, 0, 0})
+	err := lookupCoord1.CreateTopic(topic, TopicMetaInfo{2, 2, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
 
@@ -693,7 +693,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	time.Sleep(time.Second * 3)
 	// test new topic create
 	coordLog.Warningf("============= begin test 3 replicas ====")
-	err = lookupCoord1.CreateTopic(topic3, TopicMetaInfo{1, 3, 0, 0})
+	err = lookupCoord1.CreateTopic(topic3, TopicMetaInfo{1, 3, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
 	// with 3 replica, the isr join timeout will change the isr list if the isr has the quorum nodes

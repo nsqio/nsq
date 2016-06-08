@@ -108,7 +108,6 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	}
 
 	// TODO: handle default load factor
-	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		meta.MagicCode = time.Now().UnixNano()
@@ -126,6 +125,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	}
+	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 
 	self.joinStateMutex.Lock()
 	state, ok := self.joinISRState[topic]

@@ -287,7 +287,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 	}
 	tpCoord, ok := coords[rpcTopicReq.Partition]
 	if !ok {
-		self.nsqdCoord.checkLocalTopicMagicCode(&rpcTopicReq.TopicPartitionMetaInfo)
+		self.nsqdCoord.checkLocalTopicMagicCode(&rpcTopicReq.TopicPartitionMetaInfo, true)
 
 		var localErr error
 		tpCoord, localErr = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
@@ -298,6 +298,15 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 			return &ret
 		}
 		tpCoord.DisableWrite(true)
+
+		_, coordErr := self.nsqdCoord.updateLocalTopic(&rpcTopicReq.TopicPartitionMetaInfo, tpCoord.GetData().logMgr)
+		if coordErr != nil {
+			coordLog.Warningf("init local topic failed: %v", coordErr)
+			self.nsqdCoord.coordMutex.Unlock()
+			ret = *coordErr
+			return &ret
+		}
+
 		coords[rpcTopicReq.Partition] = tpCoord
 		rpcTopicReq.DisableWrite = true
 		coordLog.Infof("A new topic coord init on the node: %v", rpcTopicReq.GetTopicDesp())
@@ -417,7 +426,7 @@ func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) 
 	}
 
 	coordLog.Infof("removing the local topic: %v", rpcTopicReq)
-	_, err := self.nsqdCoord.removeTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition)
+	_, err := self.nsqdCoord.removeTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition, true)
 	if err != nil {
 		ret = *err
 		coordLog.Infof("delete topic %v failed : %v", rpcTopicReq.GetTopicDesp(), err)

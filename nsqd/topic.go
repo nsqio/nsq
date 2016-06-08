@@ -151,6 +151,14 @@ func (t *Topic) saveMagicCode() error {
 	return nil
 }
 
+func (t *Topic) removeMagicCode() {
+	fileName := path.Join(t.dataPath, "magic")
+	err := os.Remove(fileName)
+	if err != nil {
+		nsqLog.Errorf("remove the magic file %v failed:%v", fileName, err)
+	}
+}
+
 func (t *Topic) loadMagicCode() error {
 	var f *os.File
 	var err error
@@ -737,6 +745,7 @@ func (t *Topic) EnableForMaster() {
 
 func (t *Topic) Empty() error {
 	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
+	t.removeMagicCode()
 	return t.backend.Empty()
 }
 

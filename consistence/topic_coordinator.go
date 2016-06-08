@@ -75,12 +75,16 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 	return tc, nil
 }
 
-func (self *TopicCoordinator) Delete() {
+func (self *TopicCoordinator) Delete(removeData bool) {
 	self.Exiting()
 	self.forceLeave = true
 	self.writeHold.Lock()
 	self.dataMutex.Lock()
-	self.logMgr.Delete()
+	if removeData {
+		self.logMgr.Delete()
+	} else {
+		self.logMgr.Close()
+	}
 	self.dataMutex.Unlock()
 	self.writeHold.Unlock()
 }

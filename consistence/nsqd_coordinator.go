@@ -275,12 +275,8 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	}
 }
 
-func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo) {
-	localTopic, localErr := self.localNsqd.GetExistingTopic(topicInfo.Name, topicInfo.Partition)
-	if localErr != nil {
-		return
-	}
-	self.localNsqd.CheckMagicCode(localTopic, topicInfo.MagicCode, topicInfo.Leader != self.myNode.GetID())
+func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo, tryFix bool) {
+	self.localNsqd.CheckMagicCode(topicInfo.Name, topicInfo.Partition, topicInfo.MagicCode, tryFix)
 }
 
 func (self *NsqdCoordinator) loadLocalTopicData() error {
@@ -331,7 +327,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			}
 
 			topic.SetAutoCommit(false)
-			self.checkLocalTopicMagicCode(topicInfo)
+			self.checkLocalTopicMagicCode(topicInfo, topicInfo.Leader != self.myNode.GetID())
 
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
@@ -359,7 +355,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 
 				tc.writeHold.Lock()
 				var coordErr *CoordErr
-				topic, coordErr = self.updateLocalTopic(tc.GetData())
+				topic, coordErr = self.updateLocalTopic(topicInfo, tc.GetData().logMgr)
 				if coordErr != nil {
 					coordLog.Errorf("failed to update local topic %v: %v", topicInfo.GetTopicDesp(), coordErr)
 					panic(coordErr)
@@ -897,9 +893,10 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	topicCoord.coordData = newCoordData
 	topicCoord.dataMutex.Unlock()
 
-	localTopic, err := self.updateLocalTopic(topicCoord.GetData())
+	localTopic, err := self.updateLocalTopic(newTopicInfo, topicCoord.GetData().logMgr)
 	if err != nil {
 		coordLog.Warningf("init local topic failed: %v", err)
+		self.removeTopicCoord(newTopicInfo.Name, newTopicInfo.Partition, false)
 		return err
 	}
 
@@ -1114,7 +1111,7 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 	return nil, ErrMissingTopicCoord
 }
 
-func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int) (*TopicCoordinator, *CoordErr) {
+func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int, removeData bool) (*TopicCoordinator, *CoordErr) {
 	var topicCoord *TopicCoordinator
 	self.coordMutex.Lock()
 	if v, ok := self.topicCoords[topic]; ok {
@@ -1125,7 +1122,7 @@ func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int) (*Top
 	}
 	self.coordMutex.Unlock()
 	if topicCoord != nil {
-		topicCoord.Delete()
+		topicCoord.Delete(removeData)
 		return topicCoord, nil
 	}
 	return nil, ErrMissingTopicCoord
@@ -1900,18 +1897,18 @@ func (self *NsqdCoordinator) notifyFlushData(topic string, partition int) {
 	}
 }
 
-func (self *NsqdCoordinator) updateLocalTopic(topicCoord *coordData) (*nsqd.Topic, *CoordErr) {
+func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo, logMgr *TopicCommitLogMgr) (*nsqd.Topic, *CoordErr) {
 	// check topic exist and prepare on local.
-	t := self.localNsqd.GetTopicWithDisabled(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
+	t := self.localNsqd.GetTopicWithDisabled(topicInfo.Name, topicInfo.Partition)
 	if t == nil {
 		return nil, ErrLocalInitTopicFailed
 	}
-	localErr := self.localNsqd.SetTopicMagicCode(t, topicCoord.topicInfo.MagicCode)
+	localErr := self.localNsqd.SetTopicMagicCode(t, topicInfo.MagicCode)
 	if localErr != nil {
 		return t, ErrLocalInitTopicFailed
 	}
 	t.SetAutoCommit(false)
-	t.SetMsgGenerator(topicCoord.logMgr)
+	t.SetMsgGenerator(logMgr)
 	return t, nil
 }
 
