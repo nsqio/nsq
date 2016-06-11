@@ -229,7 +229,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if checkConsistent != "" {
 			// check leader only the client need consistent
 			pid, _ := strconv.Atoi(r.PartitionID)
-			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.Id) {
+			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.DistributedID) {
 				leaderProducer = r.ProducerNode
 			}
 		} else {

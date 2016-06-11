@@ -24,6 +24,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	var err error
 	var line string
 
+	// TODO: set timeout for read to avoid wait too long for nsqd
 	client := NewClientV1(conn)
 	reader := bufio.NewReader(client)
 	for {
@@ -65,7 +66,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	nsqlookupLog.Logf("CLIENT(%s): closing", client)
+	nsqlookupLog.Logf("CLIENT(%s): closing, %v", client, err)
 	if client.peerInfo != nil {
 		p.ctx.nsqlookupd.DB.RemoveAllByPeerId(client.peerInfo.Id)
 	}
@@ -219,6 +220,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	}
 
 	peerInfo.RemoteAddress = client.RemoteAddr().String()
+	peerInfo.Id = peerInfo.RemoteAddress
 
 	// require all fields
 	if peerInfo.Id == "" || peerInfo.BroadcastAddress == "" || peerInfo.TCPPort == 0 || peerInfo.HTTPPort == 0 || peerInfo.Version == "" {

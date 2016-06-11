@@ -30,6 +30,8 @@ type PeerInfo struct {
 	TCPPort          int    `json:"tcp_port"`
 	HTTPPort         int    `json:"http_port"`
 	Version          string `json:"version"`
+	// the node id used in the cluster.
+	DistributedID string `json:"distributed_id"`
 }
 
 type Producer struct {

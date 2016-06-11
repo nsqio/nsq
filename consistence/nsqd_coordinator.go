@@ -116,6 +116,10 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 	return nsqdCoord
 }
 
+func (self *NsqdCoordinator) GetMyID() string {
+	return self.myNode.GetID()
+}
+
 func (self *NsqdCoordinator) SetLeadershipMgr(l NSQDLeadership) {
 	self.leadership = l
 	if self.leadership != nil {

@@ -18,6 +18,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	// the version of the protocol that it intends to communicate, this will allow us
 	// to gracefully upgrade the protocol away from text/line oriented to whatever...
 	buf := make([]byte, 4)
+	// TODO: set timeout, it may read time and wait too long for this client
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
 		nsqlookupLog.LogErrorf("failed to read protocol version - %s", err)

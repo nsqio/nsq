@@ -108,6 +108,13 @@ func (c *context) persistMetadata() {
 	c.nsqd.PersistMetadata(tmpMap)
 }
 
+func (c *context) GetDistributedID() string {
+	if c.nsqdCoord == nil {
+		return ""
+	}
+	return c.nsqdCoord.GetMyID()
+}
+
 func (c *context) checkForMasterWrite(topic string, part int) bool {
 	if c.nsqdCoord == nil {
 		return true

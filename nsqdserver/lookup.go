@@ -17,12 +17,12 @@ import (
 func connectCallback(ctx *context, hostname string, syncTopicChan chan *clusterinfo.LookupPeer, exitChan chan int) func(*clusterinfo.LookupPeer) {
 	return func(lp *clusterinfo.LookupPeer) {
 		ci := make(map[string]interface{})
-		ci["id"] = strconv.Itoa(int(ctx.nsqd.GetOpts().ID)) + ":" + strconv.Itoa(ctx.realTCPAddr().Port)
 		ci["version"] = version.Binary
 		ci["tcp_port"] = ctx.realTCPAddr().Port
 		ci["http_port"] = ctx.realHTTPAddr().Port
 		ci["hostname"] = hostname
 		ci["broadcast_address"] = ctx.getOpts().BroadcastAddress
+		ci["distributed_id"] = ctx.GetDistributedID()
 
 		cmd, err := nsq.Identify(ci)
 		if err != nil {
