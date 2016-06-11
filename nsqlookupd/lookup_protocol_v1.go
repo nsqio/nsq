@@ -23,11 +23,17 @@ type LookupProtocolV1 struct {
 func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	var err error
 	var line string
+	var zeroTime time.Time
+	to := p.ctx.nsqlookupd.opts.NsqdPingTimeout
 
-	// TODO: set timeout for read to avoid wait too long for nsqd
 	client := NewClientV1(conn)
 	reader := bufio.NewReader(client)
 	for {
+		if to > 0 {
+			client.SetReadDeadline(time.Now().Add(to))
+		} else {
+			client.SetReadDeadline(zeroTime)
+		}
 		line, err = reader.ReadString('\n')
 		if err != nil {
 			break

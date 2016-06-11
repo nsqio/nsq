@@ -20,6 +20,7 @@ type Options struct {
 	ClusterLeadershipAddresses string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
+	NsqdPingTimeout         time.Duration `flag:"nsqd-ping-timeout"`
 
 	LogLevel int32 `flag:"log-level" cfg:"log_level"`
 	Logger   levellogger.Logger
@@ -40,7 +41,8 @@ func NewOptions() *Options {
 		ClusterLeadershipAddresses: "",
 		ClusterID:                  "nsq-clusterid-test-only",
 
-		InactiveProducerTimeout: 30 * time.Second,
+		InactiveProducerTimeout: 60 * time.Second,
+		NsqdPingTimeout:         15 * time.Second,
 
 		LogLevel: 1,
 		Logger:   &levellogger.GLogger{},

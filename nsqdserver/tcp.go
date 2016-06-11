@@ -6,6 +6,7 @@ import (
 
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/nsqd"
+	"time"
 )
 
 type tcpServer struct {
@@ -16,9 +17,11 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	// The client should initialize itself by sending a 4 byte sequence indicating
 	// the version of the protocol that it intends to communicate, this will allow us
 	// to gracefully upgrade the protocol away from text/line oriented to whatever...
+	clientConn.SetReadDeadline(time.Now().Add(p.ctx.getOpts().ClientTimeout))
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
+		clientConn.Close()
 		nsqd.NsqLogger().LogErrorf(" failed to read protocol version - %s", err)
 		return
 	}
