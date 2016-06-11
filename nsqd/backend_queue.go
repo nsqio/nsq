@@ -49,6 +49,6 @@ type BackendQueueReader interface {
 	Depth() int64
 	GetQueueReadEnd() BackendQueueEnd
 	Delete() error
-	UpdateQueueEnd(BackendQueueEnd) error
+	UpdateQueueEnd(BackendQueueEnd) (bool, error)
 	TryReadOne() (ReadResult, bool)
 }

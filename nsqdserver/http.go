@@ -491,8 +491,6 @@ func (s *httpServer) enableMessageTrace(w http.ResponseWriter, req *http.Request
 
 	parts := s.ctx.getPartitions(topicName)
 	for _, t := range parts {
-		t.SetTrace(true)
-		nsqd.NsqLogger().Logf("topic %v trace enabled", t.GetFullName())
 		if channelName != "" {
 			ch, err := t.GetExistingChannel(channelName)
 			if err != nil {
@@ -500,6 +498,9 @@ func (s *httpServer) enableMessageTrace(w http.ResponseWriter, req *http.Request
 			}
 			ch.SetTrace(true)
 			nsqd.NsqLogger().Logf("channel %v trace enabled", ch.GetName())
+		} else {
+			t.SetTrace(true)
+			nsqd.NsqLogger().Logf("topic %v trace enabled", t.GetFullName())
 		}
 	}
 	return nil, nil
@@ -515,8 +516,6 @@ func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Reques
 	channelName := reqParams.Get("channel")
 	parts := s.ctx.getPartitions(topicName)
 	for _, t := range parts {
-		t.SetTrace(false)
-		nsqd.NsqLogger().Logf("topic %v trace disabled", t.GetFullName())
 		if channelName != "" {
 			ch, err := t.GetExistingChannel(channelName)
 			if err != nil {
@@ -524,6 +523,9 @@ func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Reques
 			}
 			ch.SetTrace(false)
 			nsqd.NsqLogger().Logf("channel %v trace disabled", ch.GetName())
+		} else {
+			t.SetTrace(false)
+			nsqd.NsqLogger().Logf("topic %v trace disabled", t.GetFullName())
 		}
 	}
 	return nil, nil

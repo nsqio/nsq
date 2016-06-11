@@ -820,7 +820,11 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
-	channel.AddClient(client.ID, client)
+	err = channel.AddClient(client.ID, client)
+	if err != nil {
+		nsqd.NsqLogger().Logf("sub failed to add client: %v, %v", client, err)
+		return nil, protocol.NewFatalClientErr(nil, FailedOnNotWritable, "")
+	}
 
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel

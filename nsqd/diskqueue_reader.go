@@ -142,18 +142,18 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 }
 
 // Put writes a []byte to the queue
-func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) error {
+func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) (bool, error) {
 	end, ok := e.(*diskQueueEndInfo)
 	if !ok || end == nil {
 		if nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.Logf("%v got nil end while update queue end", d.readerMetaName)
 		}
-		return nil
+		return false, nil
 	}
 	d.Lock()
 	defer d.Unlock()
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return false, errors.New("exiting")
 	}
 	return d.internalUpdateEnd(end)
 }
@@ -768,15 +768,15 @@ func (d *diskQueueReader) handleReadError() {
 	d.needSync = true
 }
 
-func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo) error {
+func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo) (bool, error) {
 	if endPos == nil {
 		if d.needSync {
 			d.sync()
 		}
-		return nil
+		return false, nil
 	}
 	if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt == d.queueEndInfo.TotalMsgCnt {
-		return nil
+		return false, nil
 	}
 	d.needSync = true
 	if d.readPos.FileNum > endPos.EndOffset.FileNum {
@@ -807,5 +807,5 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo) error {
 		nsqLog.LogDebugf("read end %v updated to : %v", oldPos, endPos)
 	}
 
-	return nil
+	return true, nil
 }

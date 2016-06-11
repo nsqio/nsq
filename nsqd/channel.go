@@ -18,6 +18,7 @@ import (
 var (
 	ErrMsgNotInFlight     = errors.New("Message ID not in flight")
 	ErrMsgAlreadyInFlight = errors.New("Message ID already in flight")
+	ErrConsumeDisabled    = errors.New("Consume is disabled currently")
 )
 
 type Consumer interface {
@@ -86,7 +87,8 @@ type Channel struct {
 	EnableTrace int32
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
-	requireOrder int32
+	requireOrder    int32
+	needResetReader int32
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -266,10 +268,6 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
-func (c *Channel) GetClients() map[int64]Consumer {
-	return c.clients
-}
-
 func (c *Channel) Empty() error {
 	c.Lock()
 	defer c.Unlock()
@@ -360,7 +358,10 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
 	if end == nil {
 		return nil
 	}
-	err := c.backend.UpdateQueueEnd(end)
+	changed, err := c.backend.UpdateQueueEnd(end)
+	if !changed || err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 	} else {
@@ -468,6 +469,16 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	}
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		curConfirm = c.GetConfirmedOffset()
+		c.inFlightMutex.Lock()
+		flightCnt := len(c.inFlightMessages)
+		c.inFlightMutex.Unlock()
+		c.waitingRequeueMutex.Lock()
+		reqLen := len(c.waitingRequeueMsgs)
+		reqLen += len(c.requeuedMsgChan)
+		c.waitingRequeueMutex.Unlock()
+		if flightCnt == 0 && reqLen <= 0 {
+			atomic.StoreInt32(&c.needResetReader, 1)
+		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
 				len(c.confirmedMsgs), curConfirm)
@@ -581,15 +592,19 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 }
 
 // AddClient adds a client to the Channel's client list
-func (c *Channel) AddClient(clientID int64, client Consumer) {
+func (c *Channel) AddClient(clientID int64, client Consumer) error {
 	c.Lock()
 	defer c.Unlock()
 
+	if c.IsConsumeDisabled() {
+		return ErrConsumeDisabled
+	}
 	_, ok := c.clients[clientID]
 	if ok {
-		return
+		return nil
 	}
 	c.clients[clientID] = client
+	return nil
 }
 
 // RemoveClient removes a client from the Channel's client list
@@ -650,6 +665,9 @@ func (c *Channel) doRequeue(m *Message) error {
 	if c.Exiting() {
 		return ErrExiting
 	}
+	if c.IsConsumeDisabled() {
+		return ErrConsumeDisabled
+	}
 	select {
 	case <-c.exitChan:
 		nsqLog.LogDebugf("requeue message failed for existing: %v ", m.ID)
@@ -676,6 +694,9 @@ func (c *Channel) doRequeue(m *Message) error {
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
 func (c *Channel) pushInFlightMessage(msg *Message) error {
 	c.inFlightMutex.Lock()
+	if c.IsConsumeDisabled() {
+		return ErrConsumeDisabled
+	}
 	_, ok := c.inFlightMessages[msg.ID]
 	if ok {
 		c.inFlightMutex.Unlock()
@@ -749,8 +770,6 @@ func (c *Channel) DisableConsume(disable bool) {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		// we need reset backend read position to confirm position
 		// since we dropped all inflight and requeue data while disable consume.
-		atomic.StoreInt32(&c.consumeDisabled, 0)
-
 		done := false
 		for !done {
 			select {
@@ -762,6 +781,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 		c.resetReaderToConfirmed()
+		atomic.StoreInt32(&c.consumeDisabled, 0)
 		select {
 		case c.tryReadBackend <- true:
 		default:
@@ -807,6 +827,7 @@ func (c *Channel) messagePump() {
 	d := c.backend
 	needReadBackend := true
 	lastDataNeedRead := false
+	holdingStart := time.Now()
 
 LOOP:
 	for {
@@ -818,9 +839,30 @@ LOOP:
 		}
 
 		if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
-			atomic.StoreInt32(&c.needNotifyRead, 1)
-			readChan = nil
-			needReadBackend = false
+			if nsqLog.Level() >= levellogger.LOG_DEBUG {
+				nsqLog.LogDebugf("channel reader is holding: %v, %v, %v",
+					atomic.LoadInt32(&c.waitingConfirm),
+					c.currentLastConfirmed,
+					c.name)
+			}
+			if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
+				nsqLog.Logf("reset the reader : %v", c.currentLastConfirmed)
+				c.resetReaderToConfirmed()
+				readChan = origReadChan
+				needReadBackend = true
+			} else {
+				atomic.StoreInt32(&c.needNotifyRead, 1)
+				if readChan != nil {
+					holdingStart = time.Now()
+				}
+				readChan = nil
+				needReadBackend = false
+				if time.Since(holdingStart) > time.Minute {
+					nsqLog.Warningf("the holding too long, try reset reader")
+					holdingStart = time.Now()
+					atomic.StoreInt32(&c.needResetReader, 1)
+				}
+			}
 		} else {
 			readChan = origReadChan
 			needReadBackend = true
@@ -829,14 +871,9 @@ LOOP:
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			readChan = nil
 			needReadBackend = false
-			nsqLog.Logf("channel consume is disabled : %v", c.name)
+			nsqLog.LogDebugf("channel consume is disabled : %v", c.name)
 		}
 
-		if readChan == nil && nsqLog.Level() >= levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("channel reader is holding: %v, %v",
-				atomic.LoadInt32(&c.waitingConfirm),
-				c.name)
-		}
 		if needReadBackend {
 			if !lastDataNeedRead {
 				dataRead, hasData := d.TryReadOne()
@@ -967,13 +1004,14 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 	}
 
 	dirty := false
+	flightCnt := 0
 	for {
 		if atomic.LoadInt32(&c.consumeDisabled) == 1 {
 			goto exit
 		}
 		c.inFlightMutex.Lock()
 		msg, _ := c.inFlightPQ.PeekAndShift(t)
-		flightCnt := len(c.inFlightMessages)
+		flightCnt = len(c.inFlightMessages)
 		if msg == nil {
 			if atomic.LoadInt32(&c.waitingConfirm) > 1 || flightCnt > 1 {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
@@ -1010,22 +1048,26 @@ exit:
 	// try requeue the messages that waiting.
 	stopScan := false
 	c.waitingRequeueMutex.Lock()
-	if len(c.waitingRequeueMsgs) > 1 {
-		nsqLog.LogDebugf("requeue waiting messages: %v", len(c.waitingRequeueMsgs))
-	}
-
 	requeued := false
-	for k, m := range c.waitingRequeueMsgs {
-		select {
-		case c.requeuedMsgChan <- m:
-			delete(c.waitingRequeueMsgs, k)
-			requeued = true
-		default:
-			stopScan = true
+	reqLen := len(c.requeuedMsgChan)
+	if !c.IsConsumeDisabled() {
+		if len(c.waitingRequeueMsgs) > 1 {
+			nsqLog.LogDebugf("requeue waiting messages: %v", len(c.waitingRequeueMsgs))
 		}
-		if stopScan {
-			break
+
+		for k, m := range c.waitingRequeueMsgs {
+			select {
+			case c.requeuedMsgChan <- m:
+				delete(c.waitingRequeueMsgs, k)
+				requeued = true
+			default:
+				stopScan = true
+			}
+			if stopScan {
+				break
+			}
 		}
+		reqLen = len(c.requeuedMsgChan)
 	}
 	c.waitingRequeueMutex.Unlock()
 	if requeued {
@@ -1035,8 +1077,10 @@ exit:
 		}
 	}
 	if atomic.LoadInt32(&c.waitingConfirm) >
-		int32(c.option.MaxConfirmWin) {
+		int32(c.option.MaxConfirmWin) &&
+		flightCnt == 0 && reqLen == 0 && !requeued {
 		// check if lastconfirmed message offset not in inflight
+		atomic.StoreInt32(&c.needResetReader, 1)
 	}
 
 	return dirty
