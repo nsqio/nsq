@@ -66,33 +66,7 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 	}
 
 	// for announcements, lookupd determines the host automatically
-	go func() {
-		heartTicker := time.NewTicker(pingInterval)
-		defer heartTicker.Stop()
-		// use the heartbeat goroutine to avoid other operations block heartbeat.
-		for {
-			select {
-			case <-heartTicker.C:
-				peers := n.lookupPeers.Load()
-				if peers == nil {
-					continue
-				}
-				// send a heartbeat and read a response (read detects closed conns)
-				for _, lp := range peers.([]*clusterinfo.LookupPeer) {
-					nsqd.NsqLogger().LogDebugf("LOOKUPD(%s): sending heartbeat", lp)
-					cmd := nsq.Ping()
-					_, err := lp.Command(cmd)
-					if err != nil {
-						nsqd.NsqLogger().Logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
-					}
-				}
-			case <-exitChan:
-				return
-			}
-		}
-	}()
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
+	ticker := time.Tick(pingInterval)
 	allHosts := make([]string, 0)
 	discoveryAddrs := make([]string, 0)
 	for {
@@ -133,7 +107,16 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 		}
 
 		select {
-		case <-ticker.C:
+		case <-ticker:
+			// send a heartbeat and read a response (read detects closed conns)
+			for _, lp := range lookupPeers {
+				nsqd.NsqLogger().LogDebugf("LOOKUPD(%s): sending heartbeat", lp)
+				cmd := nsq.Ping()
+				_, err := lp.Command(cmd)
+				if err != nil {
+					nsqd.NsqLogger().Logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
+				}
+			}
 			// discovery the new lookup
 			if n.ctx.nsqdCoord != nil {
 				newDiscoveried, err := n.ctx.nsqdCoord.GetAllLookupdNodes()
@@ -233,35 +216,32 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 				}
 			}
 
-			// this may took a long time if many topics and channels.
-			// so we go run it.
-			go func() {
-				for index, cmd := range commands {
-					nsqd.NsqLogger().Logf("LOOKUPD(%s): %s", lp, cmd)
-					_, err := lp.Command(cmd)
-					if err != nil {
-						nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
-						if in(lp.String(), allHosts) {
-							go func() {
-								time.Sleep(time.Second * 3)
-								select {
-								case syncTopicChan <- lp:
-								case <-exitChan:
-									return
-								}
-							}()
-						}
-						break
+			for index, cmd := range commands {
+				nsqd.NsqLogger().Logf("LOOKUPD(%s): %s", lp, cmd)
+				_, err := lp.Command(cmd)
+				if err != nil {
+					nsqd.NsqLogger().LogErrorf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
+					if in(lp.String(), allHosts) {
+						go func() {
+							time.Sleep(time.Second * 3)
+							select {
+							case syncTopicChan <- lp:
+							case <-exitChan:
+								return
+							}
+						}()
 					}
-					// avoid too much command once, we need sleep here
-					if index%10 == 0 {
-						time.Sleep(time.Millisecond * 10)
-					}
+					break
 				}
-			}()
+				// avoid too much command once, we need sleep here
+				if index%10 == 0 {
+					time.Sleep(time.Millisecond * 10)
+				}
+			}
 		case <-optsNotifyChan:
 			changed = true
 		case <-exitChan:
+
 			goto exit
 		}
 	}
