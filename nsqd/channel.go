@@ -844,7 +844,7 @@ LOOP:
 					c.name)
 			}
 			if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
-				nsqLog.Logf("reset the reader : %v", c.currentLastConfirmed)
+				nsqLog.Warningf("reset the reader : %v", c.currentLastConfirmed)
 				c.resetReaderToConfirmed()
 				readChan = origReadChan
 				needReadBackend = true
@@ -919,18 +919,20 @@ LOOP:
 			msg.rawMoveSize = data.MovedSize
 			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
-				if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
-					// note: this may happen if the reader pefetch some data not committed by the disk writer
-					// we need read it again later.
-					nsqLog.Warningf("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
-					nsqLog.Warningf("last raw data: %v", lastDataResult)
-					time.Sleep(time.Millisecond * 5)
-					if diskQ, ok := c.backend.(*diskQueueReader); ok {
-						diskQ.resetLastReadOne(data.Offset, int32(data.MovedSize))
-					}
-					continue LOOP
-				}
 			}
+
+			if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
+				// note: this may happen if the reader pefetch some data not committed by the disk writer
+				// we need read it again later.
+				nsqLog.Warningf("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
+				nsqLog.Warningf("last raw data: %v", lastDataResult)
+				time.Sleep(time.Millisecond * 5)
+				if diskQ, ok := c.backend.(*diskQueueReader); ok {
+					diskQ.resetLastReadOne(data.Offset, int32(data.MovedSize))
+				}
+				continue LOOP
+			}
+
 			lastDataResult = data
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
@@ -1022,6 +1024,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 
 	dirty := false
 	flightCnt := 0
+	requeued := false
 	for {
 		if atomic.LoadInt32(&c.consumeDisabled) == 1 {
 			goto exit
@@ -1059,6 +1062,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msg.TraceID, msg, strconv.Itoa(int(msg.clientID)))
 		}
+		requeued = true
 		c.doRequeue(msg)
 	}
 
@@ -1067,7 +1071,6 @@ exit:
 	stopScan := false
 	c.waitingRequeueMutex.Lock()
 	duringReqCnt := atomic.LoadInt32(&c.duringReqCnt)
-	requeued := false
 	reqLen := len(c.requeuedMsgChan) + len(c.waitingRequeueMsgs)
 	if !c.IsConsumeDisabled() {
 		if len(c.waitingRequeueMsgs) > 1 {
