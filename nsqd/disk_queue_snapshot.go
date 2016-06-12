@@ -340,7 +340,7 @@ CheckFileOpen:
 		return result
 	}
 
-	if msgSize > 1<<28 {
+	if msgSize <= 0 || msgSize > MAX_POSSIBLE_MSG_SIZE {
 		// this file is corrupt and we have no reasonable guarantee on
 		// where a new message should begin
 		d.readFile.Close()

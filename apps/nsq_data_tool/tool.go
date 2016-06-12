@@ -18,7 +18,8 @@ var (
 	partition      = flag.Int("partition", -1, "NSQ topic partition")
 	dataPath       = flag.String("data_path", "", "the data path of nsqd")
 	view           = flag.String("view", "commitlog", "commitlog | topicdata ")
-	viewStart      = flag.Int64("view_start", 0, "the start id of message.")
+	viewStart      = flag.Int64("view_start", 0, "the start count of message.")
+	viewStartID    = flag.Int64("view_start_id", 0, "the start id of message.")
 	viewOffset     = flag.Int64("view_offset", 0, "the virtual offset of the queue")
 	viewFileOffset = flag.String("view_file_offset", "0:0", "the file number and the offset of the file position")
 	viewCnt        = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
@@ -107,7 +108,7 @@ func main() {
 		backendName := getBackendName(*topic, *partition)
 		backendWriter := nsqd.NewDiskQueueWriter(backendName, topicDataPath, 1024*1024*1024, 1, 1024*1024*100, 1)
 		backendReader := nsqd.NewDiskQueueSnapshot(backendName, topicDataPath, backendWriter.GetQueueReadEnd())
-		backendReader.SeekTo(nsqd.BackendOffset(searchOffset))
+		backendReader.SeekTo(nsqd.BackendOffset(logData.MsgOffset))
 		cnt := *viewCnt
 		for cnt > 0 {
 			cnt--
@@ -116,7 +117,7 @@ func main() {
 				log.Fatalf("read data error: %v", ret)
 				return
 			}
-			fmt.Printf("%v:%v:%v\n", ret.Offset, ret.MovedSize, string(ret.Data))
+			fmt.Printf("%v:%v:%v\n", ret.Offset, ret.MovedSize, ret.Data)
 		}
 	}
 }

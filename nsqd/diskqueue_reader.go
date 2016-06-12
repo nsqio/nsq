@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+const (
+	MAX_POSSIBLE_MSG_SIZE = 1 << 28
+)
+
 var (
 	ErrConfirmSizeInvalid = errors.New("Confirm data size invalid.")
 	ErrMoveOffsetInvalid  = errors.New("move offset invalid")
@@ -589,7 +593,7 @@ CheckFileOpen:
 		return result
 	}
 
-	if msgSize < d.minMsgSize || msgSize > d.maxMsgSize {
+	if msgSize <= 0 || msgSize > MAX_POSSIBLE_MSG_SIZE {
 		// this file is corrupt and we have no reasonable guarantee on
 		// where a new message should begin
 		d.readFile.Close()
