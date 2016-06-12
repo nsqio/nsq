@@ -89,6 +89,7 @@ type Channel struct {
 	//finErrMsgs map[MessageID]string
 	requireOrder    int32
 	needResetReader int32
+	duringReqCnt    int32
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -470,44 +471,24 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		curConfirm = c.GetConfirmedOffset()
 		c.inFlightMutex.Lock()
+		duringReqCnt := atomic.LoadInt32(&c.duringReqCnt)
 		flightCnt := len(c.inFlightMessages)
 		c.inFlightMutex.Unlock()
 		c.waitingRequeueMutex.Lock()
 		reqLen := len(c.waitingRequeueMsgs)
 		reqLen += len(c.requeuedMsgChan)
 		c.waitingRequeueMutex.Unlock()
-		if flightCnt == 0 && reqLen <= 0 {
-			atomic.StoreInt32(&c.needResetReader, 1)
+		if flightCnt == 0 && reqLen <= 0 && duringReqCnt <= 0 {
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
+				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen, duringReqCnt)
+			//atomic.StoreInt32(&c.needResetReader, 1)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("lots of confirmed messages : %v, %v",
-				len(c.confirmedMsgs), curConfirm)
-
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
+				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen, duringReqCnt)
 			//found the message in the flight with offset c.currentLastConfirmed and
 			//requeue to client again. This can force the missed message with
 			//c.currentLastConfirmed offset
-			c.inFlightMutex.Lock()
-			var reqMsg *Message
-			for _, msg := range c.inFlightMessages {
-				if msg.offset == curConfirm {
-					nsqLog.Logf("client %v message %v confirm offset %v wait too long %v ",
-						msg.clientID, msg.ID, msg.offset, msg.pri-time.Now().UnixNano())
-					//delete(c.inFlightMessages, msg.ID)
-					//if msg.index != -1 {
-					//	c.inFlightPQ.Remove(msg.index)
-					//}
-					reqMsg = msg
-					break
-				}
-			}
-			c.inFlightMutex.Unlock()
-			if reqMsg != nil {
-				//nsqLog.Logf("client %v message %v confirm offset %v requeued",
-				//	reqMsg.clientID, reqMsg.ID, reqMsg.offset)
-				//c.doRequeue(reqMsg)
-			} else {
-				nsqLog.LogWarningf("waiting confirm message offset %v not in inflight, current requeue: %v", curConfirm, len(c.requeuedMsgChan))
-			}
 		}
 	}
 	return c.GetConfirmedOffset(), reduced
@@ -539,6 +520,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bo
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
 	offset, changed := c.ConfirmBackendQueue(msg)
+	atomic.AddInt32(&c.duringReqCnt, -1)
 	if c.IsOrdered() && atomic.LoadInt32(&c.needNotifyRead) == 1 {
 		select {
 		case c.tryReadBackend <- true:
@@ -679,6 +661,7 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
+	atomic.AddInt32(&c.duringReqCnt, -1)
 	if c.IsOrdered() {
 		select {
 		case c.tryReadBackend <- true:
@@ -721,6 +704,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
+	atomic.AddInt32(&c.duringReqCnt, 1)
 	delete(c.inFlightMessages, id)
 	if msg.index != -1 {
 		c.inFlightPQ.Remove(msg.index)
@@ -766,6 +750,7 @@ func (c *Channel) DisableConsume(disable bool) {
 				done = true
 			}
 		}
+		atomic.StoreInt32(&c.duringReqCnt, 0)
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		// we need reset backend read position to confirm position
@@ -781,6 +766,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 		c.resetReaderToConfirmed()
+		atomic.StoreInt32(&c.duringReqCnt, 0)
 		atomic.StoreInt32(&c.consumeDisabled, 0)
 		select {
 		case c.tryReadBackend <- true:
@@ -850,6 +836,7 @@ LOOP:
 				c.resetReaderToConfirmed()
 				readChan = origReadChan
 				needReadBackend = true
+				holdingStart = time.Now()
 			} else {
 				atomic.StoreInt32(&c.needNotifyRead, 1)
 				if readChan != nil {
@@ -918,16 +905,23 @@ LOOP:
 			}
 			msg.offset = data.Offset
 			msg.rawMoveSize = data.MovedSize
+			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
+				if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
+					nsqLog.Infof("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
+				}
+			}
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
-				nsqLog.LogWarningf("skipped message from %v to the : %v", lastMsg, *msg)
+				nsqLog.LogWarningf("skipped message from %v:%v to the : %v:%v", lastMsg.ID, lastMsg.offset, msg.ID, msg.offset)
 			}
 			if resumedFirst {
-				nsqLog.Logf("resumed first messsage offset: %v", msg.offset)
+				if nsqLog.Level() >= levellogger.LOG_DEBUG {
+					nsqLog.LogDebugf("resumed first messsage %v at offset: %v", msg.ID, msg.offset)
+				}
 				resumedFirst = false
 			}
 			isSkipped = false
-			lastMsg = *msg
 		case <-c.tryReadBackend:
 			atomic.StoreInt32(&c.needNotifyRead, 0)
 			resumedFirst = true
@@ -937,6 +931,8 @@ LOOP:
 		if msg == nil {
 			continue
 		}
+
+		lastMsg = *msg
 
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			continue
@@ -1028,6 +1024,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			c.inFlightMutex.Unlock()
 			goto exit
 		}
+		atomic.AddInt32(&c.duringReqCnt, 1)
 		delete(c.inFlightMessages, msg.ID)
 		c.inFlightMutex.Unlock()
 
@@ -1048,8 +1045,9 @@ exit:
 	// try requeue the messages that waiting.
 	stopScan := false
 	c.waitingRequeueMutex.Lock()
+	duringReqCnt := atomic.LoadInt32(&c.duringReqCnt)
 	requeued := false
-	reqLen := len(c.requeuedMsgChan)
+	reqLen := len(c.requeuedMsgChan) + len(c.waitingRequeueMsgs)
 	if !c.IsConsumeDisabled() {
 		if len(c.waitingRequeueMsgs) > 1 {
 			nsqLog.LogDebugf("requeue waiting messages: %v", len(c.waitingRequeueMsgs))
@@ -1067,7 +1065,7 @@ exit:
 				break
 			}
 		}
-		reqLen = len(c.requeuedMsgChan)
+		reqLen += len(c.requeuedMsgChan)
 	}
 	c.waitingRequeueMutex.Unlock()
 	if requeued {
@@ -1078,8 +1076,8 @@ exit:
 	}
 	if atomic.LoadInt32(&c.waitingConfirm) >
 		int32(c.option.MaxConfirmWin) &&
-		flightCnt == 0 && reqLen == 0 && !requeued {
-		// check if lastconfirmed message offset not in inflight
+		flightCnt == 0 && reqLen == 0 && !requeued && duringReqCnt <= 0 {
+		nsqLog.Logf("try reset reader since no inflight and requeued: %v, %v", duringReqCnt, atomic.LoadInt32(&c.waitingConfirm))
 		atomic.StoreInt32(&c.needResetReader, 1)
 	}
 
