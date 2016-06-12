@@ -15,6 +15,10 @@ import (
 	"github.com/absolute8511/nsq/internal/quantile"
 )
 
+const (
+	resetReaderTimeoutSec = 10
+)
+
 var (
 	ErrMsgNotInFlight     = errors.New("Message ID not in flight")
 	ErrMsgAlreadyInFlight = errors.New("Message ID already in flight")
@@ -87,9 +91,9 @@ type Channel struct {
 	EnableTrace int32
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
-	requireOrder    int32
-	needResetReader int32
-	duringReqCnt    int32
+	requireOrder           int32
+	needResetReader        int32
+	processResetReaderTime int64
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -471,21 +475,20 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		curConfirm = c.GetConfirmedOffset()
 		c.inFlightMutex.Lock()
-		duringReqCnt := atomic.LoadInt32(&c.duringReqCnt)
 		flightCnt := len(c.inFlightMessages)
 		c.inFlightMutex.Unlock()
 		c.waitingRequeueMutex.Lock()
 		reqLen := len(c.waitingRequeueMsgs)
 		reqLen += len(c.requeuedMsgChan)
 		c.waitingRequeueMutex.Unlock()
-		if flightCnt == 0 && reqLen <= 0 && duringReqCnt <= 0 {
+		if flightCnt == 0 && reqLen <= 0 {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
-				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen, duringReqCnt)
+				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 			//atomic.StoreInt32(&c.needResetReader, 1)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
-				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen, duringReqCnt)
+				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 			//found the message in the flight with offset c.currentLastConfirmed and
 			//requeue to client again. This can force the missed message with
 			//c.currentLastConfirmed offset
@@ -520,7 +523,6 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bo
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
 	offset, changed := c.ConfirmBackendQueue(msg)
-	atomic.AddInt32(&c.duringReqCnt, -1)
 	if c.IsOrdered() && atomic.LoadInt32(&c.needNotifyRead) == 1 {
 		select {
 		case c.tryReadBackend <- true:
@@ -672,7 +674,6 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
-	atomic.AddInt32(&c.duringReqCnt, -1)
 	if c.IsOrdered() {
 		select {
 		case c.tryReadBackend <- true:
@@ -715,7 +716,6 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
-	atomic.AddInt32(&c.duringReqCnt, 1)
 	delete(c.inFlightMessages, id)
 	if msg.index != -1 {
 		c.inFlightPQ.Remove(msg.index)
@@ -761,7 +761,6 @@ func (c *Channel) DisableConsume(disable bool) {
 				done = true
 			}
 		}
-		atomic.StoreInt32(&c.duringReqCnt, 0)
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		// we need reset backend read position to confirm position
@@ -777,7 +776,6 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 		c.resetReaderToConfirmed()
-		atomic.StoreInt32(&c.duringReqCnt, 0)
 		atomic.StoreInt32(&c.consumeDisabled, 0)
 		select {
 		case c.tryReadBackend <- true:
@@ -825,7 +823,6 @@ func (c *Channel) messagePump() {
 	d := c.backend
 	needReadBackend := true
 	lastDataNeedRead := false
-	holdingStart := time.Now()
 
 LOOP:
 	for {
@@ -848,19 +845,10 @@ LOOP:
 				c.resetReaderToConfirmed()
 				readChan = origReadChan
 				needReadBackend = true
-				holdingStart = time.Now()
 			} else {
 				atomic.StoreInt32(&c.needNotifyRead, 1)
-				if readChan != nil {
-					holdingStart = time.Now()
-				}
 				readChan = nil
 				needReadBackend = false
-				if time.Since(holdingStart) > time.Minute {
-					nsqLog.Warningf("the holding too long, try reset reader")
-					holdingStart = time.Now()
-					atomic.StoreInt32(&c.needResetReader, 1)
-				}
 			}
 		} else {
 			readChan = origReadChan
@@ -1024,7 +1012,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 
 	dirty := false
 	flightCnt := 0
-	requeued := false
+	requeuedCnt := 0
 	for {
 		if atomic.LoadInt32(&c.consumeDisabled) == 1 {
 			goto exit
@@ -1048,7 +1036,6 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			c.inFlightMutex.Unlock()
 			goto exit
 		}
-		atomic.AddInt32(&c.duringReqCnt, 1)
 		delete(c.inFlightMessages, msg.ID)
 		c.inFlightMutex.Unlock()
 
@@ -1062,7 +1049,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msg.TraceID, msg, strconv.Itoa(int(msg.clientID)))
 		}
-		requeued = true
+		requeuedCnt++
 		c.doRequeue(msg)
 	}
 
@@ -1070,7 +1057,6 @@ exit:
 	// try requeue the messages that waiting.
 	stopScan := false
 	c.waitingRequeueMutex.Lock()
-	duringReqCnt := atomic.LoadInt32(&c.duringReqCnt)
 	reqLen := len(c.requeuedMsgChan) + len(c.waitingRequeueMsgs)
 	if !c.IsConsumeDisabled() {
 		if len(c.waitingRequeueMsgs) > 1 {
@@ -1081,7 +1067,7 @@ exit:
 			select {
 			case c.requeuedMsgChan <- m:
 				delete(c.waitingRequeueMsgs, k)
-				requeued = true
+				requeuedCnt++
 			default:
 				stopScan = true
 			}
@@ -1092,18 +1078,26 @@ exit:
 		reqLen += len(c.requeuedMsgChan)
 	}
 	c.waitingRequeueMutex.Unlock()
-	if requeued {
+	if requeuedCnt > 0 {
 		select {
 		case c.tryReadBackend <- true:
 		default:
 		}
 	}
-	if (atomic.LoadInt32(&c.waitingConfirm) >
+	if (atomic.LoadInt32(&c.waitingConfirm) >=
 		int32(c.option.MaxConfirmWin)) &&
 		(flightCnt == 0) && (reqLen == 0) &&
-		(!requeued) && (!dirty) && (duringReqCnt <= 0) {
-		nsqLog.Logf("try reset reader since no inflight and requeued: %v, %v", duringReqCnt, atomic.LoadInt32(&c.waitingConfirm))
-		atomic.StoreInt32(&c.needResetReader, 1)
+		(requeuedCnt <= 0) && (!dirty) {
+		diff := time.Now().Unix() - atomic.LoadInt64(&c.processResetReaderTime)
+		if diff > resetReaderTimeoutSec && atomic.LoadInt64(&c.processResetReaderTime) > 0 {
+			nsqLog.Logf("try reset reader since no inflight and requeued for too long (%v): %v, %v",
+				diff,
+				atomic.LoadInt32(&c.waitingConfirm), requeuedCnt)
+
+			atomic.StoreInt32(&c.needResetReader, 1)
+		}
+	} else {
+		atomic.StoreInt64(&c.processResetReaderTime, time.Now().Unix())
 	}
 
 	return dirty
