@@ -143,8 +143,9 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 	return &e
 }
 
-// Put writes a []byte to the queue
-func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) (bool, error) {
+// force reopen is used to avoid the read prefetch by OS read the previously rollbacked data by writer.
+// we need make sure this since we may read/write on the same file in different thread.
+func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd, forceReload bool) (bool, error) {
 	end, ok := e.(*diskQueueEndInfo)
 	if !ok || end == nil {
 		if nsqLog.Level() >= levellogger.LOG_DEBUG {
@@ -157,7 +158,7 @@ func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd) (bool, error) {
 	if d.exitFlag == 1 {
 		return false, errors.New("exiting")
 	}
-	return d.internalUpdateEnd(end)
+	return d.internalUpdateEnd(end, forceReload)
 }
 
 func (d *diskQueueReader) Delete() error {
@@ -217,7 +218,7 @@ func (d *diskQueueReader) Flush() {
 	if d.exitFlag == 1 {
 		return
 	}
-	d.internalUpdateEnd(nil)
+	d.internalUpdateEnd(nil, false)
 }
 
 func (d *diskQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
@@ -783,7 +784,7 @@ func (d *diskQueueReader) handleReadError() {
 	d.needSync = true
 }
 
-func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo) (bool, error) {
+func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReload bool) (bool, error) {
 	if endPos == nil {
 		if d.needSync {
 			d.sync()
@@ -820,6 +821,13 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo) (bool, err
 	d.updateDepth()
 	if nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqLog.LogDebugf("read end %v updated to : %v", oldPos, endPos)
+	}
+	if forceReload {
+		nsqLog.LogDebugf("read force reload at end %v ", endPos)
+		if d.readFile != nil {
+			d.readFile.Close()
+			d.readFile = nil
+		}
 	}
 
 	return true, nil

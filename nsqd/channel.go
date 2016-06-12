@@ -355,11 +355,11 @@ func (c *Channel) IsPaused() bool {
 }
 
 // When topic message is put, update the new end of the queue
-func (c *Channel) UpdateQueueEnd(end BackendQueueEnd) error {
+func (c *Channel) UpdateQueueEnd(end BackendQueueEnd, forceReload bool) error {
 	if end == nil {
 		return nil
 	}
-	changed, err := c.backend.UpdateQueueEnd(end)
+	changed, err := c.backend.UpdateQueueEnd(end, forceReload)
 	if !changed || err != nil {
 		return err
 	}
@@ -571,6 +571,17 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 		nsqLog.Logf("client: %v requeued %v messages ",
 			clientID, len(idList))
 	}
+}
+
+func (c *Channel) GetClients() map[int64]Consumer {
+	c.Lock()
+	defer c.Unlock()
+
+	results := make(map[int64]Consumer)
+	for k, c := range c.clients {
+		results[k] = c
+	}
+	return results
 }
 
 // AddClient adds a client to the Channel's client list
@@ -909,6 +920,8 @@ LOOP:
 			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
 				if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
+					// note: this may happen if the reader pefetch some data not committed by the disk writer
+					// we need read it again later.
 					nsqLog.Warningf("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
 					nsqLog.Warningf("last raw data: %v", lastDataResult)
 					time.Sleep(time.Millisecond * 5)

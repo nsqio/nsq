@@ -366,7 +366,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			}
 			e = curCommit
 		}
-		channel.UpdateQueueEnd(e)
+		channel.UpdateQueueEnd(e, false)
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}
@@ -424,7 +424,7 @@ func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	dend, err := t.backend.RollbackWriteV2(vend, diffCnt)
 	if err == nil {
 		t.UpdateCommittedOffset(&dend)
-		t.updateChannelsEnd()
+		t.updateChannelsEnd(true)
 	}
 	return err
 }
@@ -437,7 +437,7 @@ func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error 
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
 	} else {
 		t.UpdateCommittedOffset(&dend)
-		t.updateChannelsEnd()
+		t.updateChannelsEnd(true)
 	}
 
 	return err
@@ -612,7 +612,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 	return m.ID, offset, writeBytes, dend, nil
 }
 
-func (t *Topic) updateChannelsEnd() {
+func (t *Topic) updateChannelsEnd(forceReload bool) {
 	s := time.Now()
 	e := t.backend.GetQueueReadEnd()
 	curCommit := t.GetCommitted()
@@ -626,7 +626,7 @@ func (t *Topic) updateChannelsEnd() {
 	t.channelLock.RLock()
 	if e != nil {
 		for _, channel := range t.channelMap {
-			err := channel.UpdateQueueEnd(e)
+			err := channel.UpdateQueueEnd(e, forceReload)
 			if err != nil {
 				nsqLog.LogErrorf(
 					"failed to update topic end to channel(%s) - %s",
@@ -778,7 +778,7 @@ func (t *Topic) flush(notifyChan bool) error {
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
 	if !ok {
 		if notifyChan {
-			t.updateChannelsEnd()
+			t.updateChannelsEnd(false)
 		}
 		return nil
 	}
@@ -788,7 +788,7 @@ func (t *Topic) flush(notifyChan bool) error {
 		return err
 	}
 	if notifyChan {
-		t.updateChannelsEnd()
+		t.updateChannelsEnd(false)
 	}
 	return err
 }

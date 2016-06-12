@@ -128,10 +128,7 @@ func (d *diskQueueWriter) RollbackWriteV2(offset BackendOffset, diffCnt uint64) 
 		d.diskReadEnd = d.diskWriteEnd
 	}
 	nsqLog.Logf("after rollback : %v, %v, read end: %v", d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.TotalMsgCnt, d.diskReadEnd)
-	if d.writeFile != nil {
-		d.writeFile.Close()
-		d.writeFile = nil
-	}
+	d.truncateDiskQueueToWriteEnd()
 	return d.diskWriteEnd, nil
 }
 
@@ -156,6 +153,36 @@ func (d *diskQueueWriter) closeCurrentFile() {
 	}
 }
 
+func (d *diskQueueWriter) truncateDiskQueueToWriteEnd() {
+	if d.writeFile != nil {
+		d.writeFile.Truncate(d.diskWriteEnd.EndOffset.Pos)
+		d.writeFile.Close()
+		d.writeFile = nil
+	} else {
+		curFileName := d.fileName(d.diskWriteEnd.EndOffset.FileNum)
+		tmpFile, err := os.OpenFile(curFileName, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			nsqLog.LogErrorf("open write queue failed: %v", err)
+		} else {
+			tmpFile.Truncate(d.diskWriteEnd.EndOffset.Pos)
+			tmpFile.Close()
+		}
+	}
+	cleanNum := d.diskWriteEnd.EndOffset.FileNum + 1
+	for {
+		fileName := d.fileName(cleanNum)
+		err := os.Rename(fileName, fileName+".rolldata")
+		if err != nil {
+			if os.IsNotExist(err) {
+				return
+			}
+			nsqLog.LogErrorf("truncate and remove the write file %v failed: %v", fileName, err)
+		}
+		nsqLog.LogWarningf("truncate queue and remove the write file %v ", fileName)
+		cleanNum++
+	}
+}
+
 func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) (diskQueueEndInfo, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -173,6 +200,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 		d.diskWriteEnd.EndOffset.FileNum = 0
 		atomic.StoreInt64(&d.diskWriteEnd.TotalMsgCnt, 0)
 		d.diskReadEnd = d.diskWriteEnd
+		d.truncateDiskQueueToWriteEnd()
 		return d.diskWriteEnd, nil
 	}
 	newEnd := d.diskWriteEnd.VirtualEnd
@@ -201,6 +229,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 	d.diskReadEnd = d.diskWriteEnd
 	d.closeCurrentFile()
 	nsqLog.Logf("reset write end result : %v", d.diskWriteEnd)
+	d.truncateDiskQueueToWriteEnd()
 
 	return d.diskWriteEnd, nil
 }
