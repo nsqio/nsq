@@ -1098,9 +1098,10 @@ exit:
 		default:
 		}
 	}
-	if atomic.LoadInt32(&c.waitingConfirm) >
-		int32(c.option.MaxConfirmWin) &&
-		flightCnt == 0 && reqLen == 0 && !requeued && duringReqCnt <= 0 {
+	if (atomic.LoadInt32(&c.waitingConfirm) >
+		int32(c.option.MaxConfirmWin)) &&
+		(flightCnt == 0) && (reqLen == 0) &&
+		(!requeued) && (!dirty) && (duringReqCnt <= 0) {
 		nsqLog.Logf("try reset reader since no inflight and requeued: %v, %v", duringReqCnt, atomic.LoadInt32(&c.waitingConfirm))
 		atomic.StoreInt32(&c.needResetReader, 1)
 	}
