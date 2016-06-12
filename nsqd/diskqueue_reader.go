@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -89,7 +88,6 @@ type diskQueueReader struct {
 	virtualConfirmedOffset BackendOffset
 
 	readFile *os.File
-	reader   *bufio.Reader
 
 	exitChan        chan int
 	autoSkipError   bool
@@ -537,6 +535,21 @@ func (d *diskQueueReader) skipToEndofFile() error {
 	return nil
 }
 
+func (d *diskQueueReader) resetLastReadOne(offset BackendOffset, lastMoved int32) {
+	d.Lock()
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+	if d.readPos.Pos < int64(lastMoved) {
+		d.Unlock()
+		return
+	}
+	d.readPos.Pos -= int64(lastMoved)
+	d.virtualReadOffset = offset
+	d.Unlock()
+}
+
 // readOne performs a low level filesystem read for a single []byte
 // while advancing read positions and rolling files, if necessary
 func (d *diskQueueReader) readOne() ReadResult {
@@ -567,8 +580,6 @@ CheckFileOpen:
 				return result
 			}
 		}
-
-		d.reader = bufio.NewReader(d.readFile)
 	}
 	if d.readPos.FileNum < d.queueEndInfo.EndOffset.FileNum {
 		stat, result.Err = d.readFile.Stat()
@@ -586,7 +597,7 @@ CheckFileOpen:
 		}
 	}
 
-	result.Err = binary.Read(d.reader, binary.BigEndian, &msgSize)
+	result.Err = binary.Read(d.readFile, binary.BigEndian, &msgSize)
 	if result.Err != nil {
 		d.readFile.Close()
 		d.readFile = nil
@@ -603,7 +614,7 @@ CheckFileOpen:
 	}
 
 	result.Data = make([]byte, msgSize)
-	_, result.Err = io.ReadFull(d.reader, result.Data)
+	_, result.Err = io.ReadFull(d.readFile, result.Data)
 	if result.Err != nil {
 		d.readFile.Close()
 		d.readFile = nil

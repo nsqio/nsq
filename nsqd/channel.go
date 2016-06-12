@@ -804,6 +804,7 @@ func (c *Channel) messagePump() {
 	var data ReadResult
 	var err error
 	var lastMsg Message
+	var lastDataResult ReadResult
 	isSkipped := false
 	origReadChan := make(chan ReadResult, 1)
 	var readChan <-chan ReadResult
@@ -908,9 +909,16 @@ LOOP:
 			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
 				if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
-					nsqLog.Infof("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
+					nsqLog.Warningf("read a message with less message ID: %v vs %v, raw data: %v", msg.ID, lastMsg.ID, data)
+					nsqLog.Warningf("last raw data: %v", lastDataResult)
+					time.Sleep(time.Millisecond * 5)
+					if diskQ, ok := c.backend.(*diskQueueReader); ok {
+						diskQ.resetLastReadOne(data.Offset, int32(data.MovedSize))
+					}
+					continue LOOP
 				}
 			}
+			lastDataResult = data
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
 				nsqLog.LogWarningf("skipped message from %v:%v to the : %v:%v", lastMsg.ID, lastMsg.offset, msg.ID, msg.offset)

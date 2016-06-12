@@ -431,7 +431,6 @@ func (d *diskQueueWriter) sync() error {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
-	d.diskReadEnd = d.diskWriteEnd
 	if d.writeFile != nil {
 		err := d.writeFile.Sync()
 		if err != nil {
@@ -440,6 +439,7 @@ func (d *diskQueueWriter) sync() error {
 			return err
 		}
 	}
+	d.diskReadEnd = d.diskWriteEnd
 
 	err := d.persistMetaData()
 	if err != nil {
