@@ -859,6 +859,10 @@ LOOP:
 			readChan = nil
 			needReadBackend = false
 			nsqLog.LogDebugf("channel consume is disabled : %v", c.name)
+			if lastMsg.ID > 0 {
+				nsqLog.Logf("consume disabled at last read message: %v:%v", lastMsg.ID, lastMsg.offset)
+				lastMsg = Message{}
+			}
 		}
 
 		if needReadBackend {
@@ -918,6 +922,8 @@ LOOP:
 				if diskQ, ok := c.backend.(*diskQueueReader); ok {
 					diskQ.resetLastReadOne(data.Offset, int32(data.MovedSize))
 				}
+				lastMsg = *msg
+				lastDataResult = data
 				continue LOOP
 			}
 

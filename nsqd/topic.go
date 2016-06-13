@@ -721,7 +721,14 @@ func (t *Topic) DisableForSlave() {
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(true)
-		nsqLog.Logf("[TRACE_DATA] while disable channel : %v, %v, %v, %v", c.GetName(), c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd())
+		d, ok := c.backend.(*diskQueueReader)
+		var curRead BackendQueueEnd
+		if ok {
+			curRead = d.GetQueueCurrentRead()
+		}
+
+		nsqLog.Logf("[TRACE_DATA] while disable channel : %v, %v, %v, %v, %v", c.GetName(),
+			c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd(), curRead)
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
@@ -735,7 +742,13 @@ func (t *Topic) EnableForMaster() {
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(false)
-		nsqLog.Logf("[TRACE_DATA] while enable channel : %v, %v, %v, %v", c.GetName(), c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd())
+		d, ok := c.backend.(*diskQueueReader)
+		var curRead BackendQueueEnd
+		if ok {
+			curRead = d.GetQueueCurrentRead()
+		}
+		nsqLog.Logf("[TRACE_DATA] while enable channel : %v, %v, %v, %v, %v", c.GetName(),
+			c.GetConfirmedOffset(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
 	}
 	t.channelLock.RUnlock()
 	atomic.StoreInt32(&t.writeDisabled, 0)

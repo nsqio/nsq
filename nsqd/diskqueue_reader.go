@@ -143,6 +143,15 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 	return &e
 }
 
+func (d *diskQueueReader) GetQueueCurrentRead() BackendQueueEnd {
+	d.RLock()
+	var ret diskQueueEndInfo
+	ret.EndOffset = d.readPos
+	ret.VirtualEnd = d.virtualReadOffset
+	d.RUnlock()
+	return &ret
+}
+
 // force reopen is used to avoid the read prefetch by OS read the previously rollbacked data by writer.
 // we need make sure this since we may read/write on the same file in different thread.
 func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd, forceReload bool) (bool, error) {
@@ -486,8 +495,8 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 		}
 	}
 
-	if nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqLog.LogDebugf("==== read skip to : %v, %v", voffset, newPos)
+	if voffset < d.virtualReadOffset || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.Logf("==== read skip from %v, %v to : %v, %v", d.readPos, d.virtualReadOffset, voffset, newPos)
 	}
 	d.readPos = newPos
 	d.virtualReadOffset = voffset
@@ -791,6 +800,10 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 		}
 		return false, nil
 	}
+	if forceReload {
+		nsqLog.Logf("read force reload at end %v ", endPos)
+	}
+
 	if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt == d.queueEndInfo.TotalMsgCnt {
 		return false, nil
 	}
