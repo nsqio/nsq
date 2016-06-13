@@ -228,7 +228,7 @@ func TestStartup(t *testing.T) {
 	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
 
 	channel1 = topic.GetChannel("ch1")
-	channel1.UpdateQueueEnd(backEnd)
+	channel1.UpdateQueueEnd(backEnd, false)
 
 	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(int64(iterations/2)*msgRawSize))
