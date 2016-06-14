@@ -16,6 +16,8 @@ type Options struct {
 	BroadcastAddress   string `flag:"broadcast-address"`
 	BroadcastInterface string `flag:"broadcast-interface"`
 
+	ReverseProxyPort string `flag:"reverse-proxy-port"`
+
 	ClusterID                  string `flag:"cluster-id"`
 	ClusterLeadershipAddresses string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 
