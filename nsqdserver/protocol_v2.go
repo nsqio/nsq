@@ -958,7 +958,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	if timeoutDuration < 0 || timeoutDuration > p.ctx.getOpts().MaxReqTimeout {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID,
-			fmt.Sprintf("REQ timeout %d out of range 0-%d", timeoutDuration, p.ctx.getOpts().MaxReqTimeout))
+			fmt.Sprintf("REQ timeout %v out of range 0-%v", timeoutDuration, p.ctx.getOpts().MaxReqTimeout))
 	}
 
 	if client.Channel == nil {
@@ -970,7 +970,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}
 
-	client.RequeuedMessage()
+	client.RequeuedMessage(timeoutDuration > 0)
 
 	return nil, nil
 }

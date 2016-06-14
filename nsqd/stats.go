@@ -90,6 +90,7 @@ type ClientStats struct {
 	MessageCount    uint64 `json:"message_count"`
 	FinishCount     uint64 `json:"finish_count"`
 	RequeueCount    uint64 `json:"requeue_count"`
+	DelayedCount    uint64 `json:"delayed_count"`
 	ConnectTime     int64  `json:"connect_ts"`
 	SampleRate      int32  `json:"sample_rate"`
 	Deflate         bool   `json:"deflate"`

@@ -534,6 +534,125 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, string(data), fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"))
 }
 
+func TestDelayMessage(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 2
+	opts.SyncEvery = 1
+	opts.Verbose = true
+	opts.MsgTimeout = time.Second * 2
+	opts.MaxReqTimeout = time.Second * 100
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	topicName := "test_requeue_delay" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+	time.Sleep(opts.QueueScanRefreshInterval)
+
+	msg := nsqdNs.NewMessage(0, []byte("test body"))
+	topic.PutMessage(msg)
+	topic.ForceFlush()
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, err := nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := nsqdNs.DecodeMessage(data)
+	test.Equal(t, frameType, frameTypeMessage)
+	test.Equal(t, msgOut.ID, msg.ID)
+
+	time.Sleep(75 * time.Millisecond)
+
+	// requeue with valid timeout
+	delayStart := time.Now()
+	_, err = nsq.Requeue(nsq.MessageID(msg.GetFullMsgID()), opts.MsgTimeout).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, err = nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	msgOut, _ = nsqdNs.DecodeMessage(data)
+	test.Equal(t, frameType, frameTypeMessage)
+	test.Equal(t, msgOut.ID, msg.ID)
+	delayDone := time.Since(delayStart)
+	t.Log(delayDone)
+	test.Equal(t, delayDone > opts.MsgTimeout, true)
+	test.Equal(t, delayDone < opts.MsgTimeout+time.Duration(time.Millisecond*500), true)
+
+	// requeue timeout less than msg timeout
+	delayStart = time.Now()
+	_, err = nsq.Requeue(nsq.MessageID(msg.GetFullMsgID()), opts.MsgTimeout-time.Second).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, err = nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	msgOut, _ = nsqdNs.DecodeMessage(data)
+	test.Equal(t, frameType, frameTypeMessage)
+	test.Equal(t, msgOut.ID, msg.ID)
+	delayDone = time.Since(delayStart)
+	t.Log(delayDone)
+	test.Equal(t, delayDone > opts.MsgTimeout-time.Second, true)
+	test.Equal(t, delayDone < opts.MsgTimeout-time.Second+time.Duration(time.Millisecond*500), true)
+
+	// requeue timeout larger than msg timeout
+	delayStart = time.Now()
+	_, err = nsq.Requeue(nsq.MessageID(msg.GetFullMsgID()), opts.MsgTimeout+time.Second).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, err = nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	msgOut, _ = nsqdNs.DecodeMessage(data)
+	test.Equal(t, frameType, frameTypeMessage)
+	test.Equal(t, msgOut.ID, msg.ID)
+	delayDone = time.Since(delayStart)
+	t.Log(delayDone)
+	test.Equal(t, delayDone > opts.MsgTimeout+time.Second, true)
+	test.Equal(t, delayDone < opts.MsgTimeout+time.Second+time.Duration(time.Millisecond*500), true)
+
+	time.Sleep(500 * time.Millisecond)
+
+	_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	time.Sleep(25 * time.Millisecond)
+
+	// requeue duration out of range
+	msg = nsqdNs.NewMessage(0, []byte("test body 2"))
+	_, _, _, _, err = topic.PutMessage(msg)
+	test.Equal(t, err, nil)
+	topic.ForceFlush()
+
+	resp, err = nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	msgOut, _ = nsqdNs.DecodeMessage(data)
+	test.Equal(t, frameType, frameTypeMessage)
+	test.Equal(t, msgOut.ID, msg.ID)
+
+	time.Sleep(75 * time.Millisecond)
+	_, err = nsq.Requeue(nsq.MessageID(msg.GetFullMsgID()), opts.MaxReqTimeout+time.Second*2).WriteTo(conn)
+	test.Equal(t, err, nil)
+	resp, err = nsq.ReadResponse(conn)
+	test.Equal(t, err, nil)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	test.Equal(t, frameType, frameTypeError)
+	test.Equal(t, string(data), fmt.Sprintf("E_INVALID REQ timeout %v out of range 0-%v", opts.MaxReqTimeout+time.Second*2, opts.MaxReqTimeout))
+}
+
 func TestTouch(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -547,7 +666,7 @@ func TestTouch(t *testing.T) {
 	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
 
 	topic := nsqd.GetTopicIgnPart(topicName)
-	topic.GetChannel("ch")
+	ch := topic.GetChannel("ch")
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)
@@ -579,7 +698,8 @@ func TestTouch(t *testing.T) {
 	_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
 	test.Equal(t, err, nil)
 
-	//test.Equal(t, channel.timeoutCount, uint64(0))
+	stats := nsqdNs.NewChannelStats(ch, nil)
+	test.Equal(t, stats.TimeoutCount, uint64(0))
 }
 
 func TestMaxRdyCount(t *testing.T) {

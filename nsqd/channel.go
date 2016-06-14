@@ -540,8 +540,28 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		}
 		return c.doRequeue(msg)
 	}
-	// TODO: maybe change the timeout for inflight
-	return errors.New("Not allowed for delay")
+	// change the timeout for inflight
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	msg, ok := c.inFlightMessages[id]
+	if !ok {
+		nsqLog.Logf("failed requeue for delay: %v, msg not exist", id)
+		return ErrMsgNotInFlight
+	}
+	if msg.clientID != clientID {
+		nsqLog.Logf("failed requeue for client not own message: %v: %v vs %v", id, msg.clientID, clientID)
+		return fmt.Errorf("client does not own message %v: %v vs %v", id,
+			msg.clientID, clientID)
+	}
+	newTimeout := time.Now().Add(timeout)
+	if newTimeout.Sub(msg.deliveryTS) >=
+		c.option.MaxReqTimeout {
+		// we would have gone over, set to the max
+		nsqLog.Logf("requeue message: %v exceed max requeue timeout: %v, %v", id, msg.deliveryTS, newTimeout)
+		newTimeout = msg.deliveryTS.Add(c.option.MaxReqTimeout)
+	}
+	msg.pri = newTimeout.UnixNano()
+	return nil
 }
 
 func (c *Channel) RequeueClientMessages(clientID int64) {
