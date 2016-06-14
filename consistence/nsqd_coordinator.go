@@ -612,9 +612,10 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 	if err != nil {
 		return err
 	}
-	if err = topicCoord.checkWriteForLeader(self.myNode.GetID()); err != nil {
-		return err
+	if topicCoord.GetLeaderSessionID() != self.myNode.GetID() || topicCoord.GetLeader() != self.myNode.GetID() {
+		return ErrNotTopicLeader
 	}
+
 	// send request with leader session, so lookup can check the valid of session.
 	c, err := self.getLookupRemoteProxy()
 	if err != nil {

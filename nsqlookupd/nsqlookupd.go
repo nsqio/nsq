@@ -105,7 +105,9 @@ func (l *NSQLookupd) Main() {
 		node.RpcPort = l.opts.RPCPort
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 
+		l.Lock()
 		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node)
+		l.Unlock()
 		// set etcd leader manager here
 		leadership := consistence.NewNsqLookupdEtcdMgr(l.opts.ClusterLeadershipAddresses)
 		l.coordinator.SetLeadershipMgr(leadership)
@@ -116,7 +118,9 @@ func (l *NSQLookupd) Main() {
 		}
 	} else {
 		nsqlookupLog.Logf("lookup start without the coordinator enabled.")
+		l.Lock()
 		l.coordinator = nil
+		l.Unlock()
 	}
 }
 

@@ -85,6 +85,7 @@ type Channel struct {
 	confirmMutex         sync.Mutex
 	waitingConfirm       int32
 	tryReadBackend       chan bool
+	endUpdatedChan       chan bool
 	needNotifyRead       int32
 	consumeDisabled      int32
 	// stat counters
@@ -114,6 +115,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
 		tryReadBackend:  make(chan bool, 1),
+		endUpdatedChan:  make(chan bool, 1),
 		deleteCallback:  deleteCallback,
 		option:          opt,
 		notifyCall:      notify,
@@ -306,16 +308,7 @@ finish:
 	return nil
 }
 
-// flush persists all the messages in internal memory buffers to the backend
-// it does not drain inflight because it is only called in Close()
 func (c *Channel) flush() error {
-
-	if len(c.requeuedMsgChan) > 0 || len(c.inFlightMessages) > 0 {
-		if nsqLog.Level() >= levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("CHANNEL(%s): flushing %d requeued %d in-flight messages to backend",
-				c.name, len(c.requeuedMsgChan), len(c.inFlightMessages))
-		}
-	}
 	d, ok := c.backend.(*diskQueueReader)
 	if ok {
 		d.Flush()
@@ -371,7 +364,7 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd, forceReload bool) error {
 	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 	} else {
 		select {
-		case c.tryReadBackend <- true:
+		case c.endUpdatedChan <- true:
 		default:
 		}
 	}
@@ -674,12 +667,6 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
-	if c.IsOrdered() {
-		select {
-		case c.tryReadBackend <- true:
-		default:
-		}
-	}
 	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
 	}
@@ -789,6 +776,9 @@ func (c *Channel) TryWakeupRead() {
 	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 		return
 	}
+	if c.IsOrdered() {
+		return
+	}
 	select {
 	case c.tryReadBackend <- true:
 	default:
@@ -799,6 +789,7 @@ func (c *Channel) TryWakeupRead() {
 }
 
 func (c *Channel) resetReaderToConfirmed() {
+	atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0)
 	confirmed, err := c.backend.ResetReadToConfirmed()
 	if err != nil {
 		nsqLog.LogWarningf("reset read to confirmed error: %v", err)
@@ -817,12 +808,14 @@ func (c *Channel) messagePump() {
 	isSkipped := false
 	origReadChan := make(chan ReadResult, 1)
 	var readChan <-chan ReadResult
+	var waitEndUpdated chan bool
 
 	maxWin := int32(c.option.MaxConfirmWin)
 	resumedFirst := true
 	d := c.backend
 	needReadBackend := true
 	lastDataNeedRead := false
+	readBackendWait := false
 
 LOOP:
 	for {
@@ -833,23 +826,31 @@ LOOP:
 			goto exit
 		}
 
-		if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
+		if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
+			nsqLog.Warningf("reset the reader : %v", c.currentLastConfirmed)
+			c.resetReaderToConfirmed()
+			readChan = origReadChan
+			needReadBackend = true
+			readBackendWait = false
+			lastDataNeedRead = false
+			// since the reader is reset, we should drain the previous data.
+			select {
+			case <-origReadChan:
+			default:
+			}
+		} else if readBackendWait {
+			readChan = nil
+			needReadBackend = false
+		} else if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
 			if nsqLog.Level() >= levellogger.LOG_DEBUG {
 				nsqLog.LogDebugf("channel reader is holding: %v, %v, %v",
 					atomic.LoadInt32(&c.waitingConfirm),
 					c.currentLastConfirmed,
 					c.name)
 			}
-			if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
-				nsqLog.Warningf("reset the reader : %v", c.currentLastConfirmed)
-				c.resetReaderToConfirmed()
-				readChan = origReadChan
-				needReadBackend = true
-			} else {
-				atomic.StoreInt32(&c.needNotifyRead, 1)
-				readChan = nil
-				needReadBackend = false
-			}
+			atomic.StoreInt32(&c.needNotifyRead, 1)
+			readChan = nil
+			needReadBackend = false
 		} else {
 			readChan = origReadChan
 			needReadBackend = true
@@ -858,7 +859,7 @@ LOOP:
 		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
 			readChan = nil
 			needReadBackend = false
-			nsqLog.LogDebugf("channel consume is disabled : %v", c.name)
+			nsqLog.Logf("channel consume is disabled : %v", c.name)
 			if lastMsg.ID > 0 {
 				nsqLog.Logf("consume disabled at last read message: %v:%v", lastMsg.ID, lastMsg.offset)
 				lastMsg = Message{}
@@ -872,15 +873,20 @@ LOOP:
 					lastDataNeedRead = true
 					origReadChan <- dataRead
 					readChan = origReadChan
+					waitEndUpdated = nil
 				} else {
 					if nsqLog.Level() >= levellogger.LOG_DEBUG {
 						nsqLog.LogDebugf("no data to be read: %v", c.name)
 					}
 					readChan = nil
+					waitEndUpdated = c.endUpdatedChan
 				}
 			} else {
 				readChan = origReadChan
+				waitEndUpdated = nil
 			}
+		} else {
+			waitEndUpdated = nil
 		}
 
 		select {
@@ -941,7 +947,10 @@ LOOP:
 			isSkipped = false
 		case <-c.tryReadBackend:
 			atomic.StoreInt32(&c.needNotifyRead, 0)
+			readBackendWait = false
 			resumedFirst = true
+			continue LOOP
+		case <-waitEndUpdated:
 			continue LOOP
 		}
 
@@ -957,24 +966,19 @@ LOOP:
 		if c.IsOrdered() {
 			if msg.offset != c.GetConfirmedOffset() {
 				nsqLog.Infof("read a message not in ordered: %v, %v", msg.offset, c.GetConfirmedOffset())
-				c.resetReaderToConfirmed()
+				atomic.StoreInt32(&c.needResetReader, 1)
 				continue
 			}
 		}
 		msg.Attempts++
+		if c.IsOrdered() {
+			atomic.StoreInt32(&c.needNotifyRead, 1)
+			readBackendWait = true
+		}
 		select {
 		case c.clientMsgChan <- msg:
 		case <-c.exitChan:
 			goto exit
-		}
-		if c.IsOrdered() {
-			atomic.StoreInt32(&c.needNotifyRead, 1)
-			select {
-			case <-c.tryReadBackend:
-				atomic.StoreInt32(&c.needNotifyRead, 0)
-			case <-c.exitChan:
-				goto exit
-			}
 		}
 		msg = nil
 		// the client will call back to mark as in-flight w/ its info
@@ -1084,12 +1088,6 @@ exit:
 		reqLen += len(c.requeuedMsgChan)
 	}
 	c.waitingRequeueMutex.Unlock()
-	if requeuedCnt > 0 {
-		select {
-		case c.tryReadBackend <- true:
-		default:
-		}
-	}
 	if (atomic.LoadInt32(&c.waitingConfirm) >=
 		int32(c.option.MaxConfirmWin)) &&
 		(flightCnt == 0) && (reqLen == 0) &&

@@ -114,6 +114,7 @@ func mustStartNSQD(opts *nsqdNs.Options) *nsqdNs.NSQD {
 }
 
 func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicInfo) *TopicCoordinator {
+	nsqdCoord.coordMutex.Lock()
 	coords, ok := nsqdCoord.topicCoords[topicInfo.Name]
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
@@ -125,6 +126,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0)
 		coords[topicInfo.Partition] = tpCoord
 	}
+	nsqdCoord.coordMutex.Unlock()
 	ensureTopicDisableWrite(nsqdCoord, topicInfo.Name, topicInfo.Partition, true)
 	err := nsqdCoord.updateTopicInfo(tpCoord, false, &topicInfo.TopicPartitionMetaInfo)
 	if err != nil {
@@ -717,9 +719,9 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	go func() {
 		time.Sleep(time.Second)
 		tc, _ := nsqdCoord1.getTopicCoord(topic, partition)
-		tc.forceLeave = true
+		tc.SetForceLeave(true)
 		time.Sleep(time.Second)
-		tc.forceLeave = false
+		tc.SetForceLeave(false)
 		close(waitDone)
 	}()
 	_, _, _, _, err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
@@ -789,9 +791,9 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	go func() {
 		time.Sleep(time.Second)
 		tc, _ := nsqdCoord1.getTopicCoord(topic, partition)
-		tc.forceLeave = true
+		tc.SetForceLeave(true)
 		time.Sleep(time.Second)
-		tc.forceLeave = false
+		tc.SetForceLeave(false)
 		close(waitDone)
 	}()
 

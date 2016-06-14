@@ -27,7 +27,7 @@ type coordData struct {
 	topicLeaderSession TopicLeaderSession
 	consumeMgr         *ChannelConsumeMgr
 	logMgr             *TopicCommitLogMgr
-	forceLeave         bool
+	forceLeave         int32
 }
 
 func (self *coordData) GetCopy() *coordData {
@@ -77,7 +77,7 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 
 func (self *TopicCoordinator) Delete(removeData bool) {
 	self.Exiting()
-	self.forceLeave = true
+	self.SetForceLeave(true)
 	self.writeHold.Lock()
 	self.dataMutex.Lock()
 	if removeData {
@@ -155,8 +155,12 @@ func (self *coordData) GetTopicEpochForWrite() EpochType {
 	return self.topicInfo.EpochForWrite
 }
 
+func (self *TopicCoordinator) checkWriteForLeader(myID string) *CoordErr {
+	return self.GetData().checkWriteForLeader(myID)
+}
+
 func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
-	if self.forceLeave {
+	if self.IsForceLeave() {
 		return ErrNotTopicLeader
 	}
 	if self.GetLeaderSessionID() != myID || self.topicInfo.Leader != myID {
@@ -170,4 +174,16 @@ func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
 
 func (self *coordData) IsISRReadyForWrite() bool {
 	return len(self.topicInfo.ISR) > self.topicInfo.Replica/2
+}
+
+func (self *coordData) SetForceLeave(leave bool) {
+	if leave {
+		atomic.StoreInt32(&self.forceLeave, 1)
+	} else {
+		atomic.StoreInt32(&self.forceLeave, 0)
+	}
+}
+
+func (self *coordData) IsForceLeave() bool {
+	return atomic.LoadInt32(&self.forceLeave) == 1
 }
