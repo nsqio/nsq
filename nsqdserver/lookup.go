@@ -196,6 +196,13 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 				}()
 			}
 		case lp := <-syncTopicChan:
+			if in(lp.String(), allHosts) {
+			} else {
+				nsqd.NsqLogger().Logf("LOOKUP(%s): already removed ", lp)
+				lp.Close()
+				continue
+			}
+
 			var commands []*nsq.Command
 			// build all the commands first so we exit the lock(s) as fast as possible
 			topicMap := n.ctx.nsqd.GetTopicMapCopy()
