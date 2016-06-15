@@ -44,8 +44,9 @@ type Consumer interface {
 // messages, timeouts, requeuing, etc.
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	requeueCount uint64
-	timeoutCount uint64
+	requeueCount  uint64
+	timeoutCount  uint64
+	deferredCount int64
 
 	sync.RWMutex
 
@@ -208,6 +209,7 @@ func (c *Channel) initPQ() {
 	c.inFlightMutex.Lock()
 	c.inFlightMessages = make(map[MessageID]*Message, pqSize)
 	c.inFlightPQ = newInFlightPqueue(pqSize)
+	atomic.StoreInt64(&c.deferredCount, 0)
 	c.inFlightMutex.Unlock()
 
 }
@@ -560,7 +562,9 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		nsqLog.Logf("requeue message: %v exceed max requeue timeout: %v, %v", id, msg.deliveryTS, newTimeout)
 		newTimeout = msg.deliveryTS.Add(c.option.MaxReqTimeout)
 	}
+	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
+	msg.isDeferred = true
 	return nil
 }
 
@@ -726,6 +730,9 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 	delete(c.inFlightMessages, id)
 	if msg.index != -1 {
 		c.inFlightPQ.Remove(msg.index)
+	}
+	if msg.isDeferred {
+		atomic.AddInt64(&c.deferredCount, -1)
 	}
 	c.inFlightMutex.Unlock()
 	return msg, nil
@@ -991,6 +998,7 @@ LOOP:
 			}
 		}
 		msg.Attempts++
+		msg.isDeferred = false
 		if c.IsOrdered() {
 			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readBackendWait = true
@@ -1067,9 +1075,15 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			goto exit
 		}
 		delete(c.inFlightMessages, msg.ID)
+		// note: if this message is deferred by client, we treat it as a delay message,
+		// so we consider it is by demanded to delay not timeout of message.
+		if msg.isDeferred {
+			atomic.AddInt64(&c.deferredCount, -1)
+		} else {
+			atomic.AddUint64(&c.timeoutCount, 1)
+		}
 		c.inFlightMutex.Unlock()
 
-		atomic.AddUint64(&c.timeoutCount, 1)
 		c.RLock()
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()

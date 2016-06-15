@@ -57,7 +57,8 @@ type ClientV2 struct {
 	MessageCount  uint64
 	FinishCount   uint64
 	RequeueCount  uint64
-	DelayedCount  uint64
+	TimeoutCount  int64
+	DeferredCount int64
 
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex
@@ -290,7 +291,8 @@ func (c *ClientV2) Stats() ClientStats {
 		MessageCount:    atomic.LoadUint64(&c.MessageCount),
 		FinishCount:     atomic.LoadUint64(&c.FinishCount),
 		RequeueCount:    atomic.LoadUint64(&c.RequeueCount),
-		DelayedCount:    atomic.LoadUint64(&c.DelayedCount),
+		TimeoutCount:    atomic.LoadInt64(&c.TimeoutCount),
+		DeferredCount:   atomic.LoadInt64(&c.DeferredCount),
 		ConnectTime:     c.ConnectTime.Unix(),
 		SampleRate:      atomic.LoadInt32(&c.SampleRate),
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
@@ -397,14 +399,18 @@ func (c *ClientV2) tryUpdateReadyState() {
 	}
 }
 
-func (c *ClientV2) FinishedMessage() {
+func (c *ClientV2) FinishedMessage(delayed bool) {
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
+	if delayed {
+		atomic.AddInt64(&c.DeferredCount, -1)
+	}
 	c.tryUpdateReadyState()
 }
 
 func (c *ClientV2) Empty() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
+	atomic.StoreInt64(&c.DeferredCount, 0)
 	c.tryUpdateReadyState()
 }
 
@@ -413,8 +419,13 @@ func (c *ClientV2) SendingMessage() {
 	atomic.AddUint64(&c.MessageCount, 1)
 }
 
-func (c *ClientV2) TimedOutMessage() {
+func (c *ClientV2) TimedOutMessage(isDefer bool) {
 	atomic.AddInt64(&c.InFlightCount, -1)
+	if isDefer {
+		atomic.AddInt64(&c.DeferredCount, -1)
+	} else {
+		atomic.AddInt64(&c.TimeoutCount, 1)
+	}
 	c.tryUpdateReadyState()
 }
 
@@ -423,7 +434,7 @@ func (c *ClientV2) RequeuedMessage(delayed bool) {
 	if !delayed {
 		atomic.AddInt64(&c.InFlightCount, -1)
 	} else {
-		atomic.AddUint64(&c.DelayedCount, 1)
+		atomic.AddInt64(&c.DeferredCount, 1)
 	}
 	c.tryUpdateReadyState()
 }

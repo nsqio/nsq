@@ -39,9 +39,11 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
+	isDeferred bool
 	//for backend queue
-	offset      BackendOffset
-	rawMoveSize BackendOffset
+	offset        BackendOffset
+	rawMoveSize   BackendOffset
+	queueCntIndex int64
 }
 
 func MessageHeaderBytes() int {
