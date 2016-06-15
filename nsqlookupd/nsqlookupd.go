@@ -86,6 +86,9 @@ func (l *NSQLookupd) Main() {
 
 	var node consistence.NsqLookupdNodeInfo
 	_, node.HttpPort, _ = net.SplitHostPort(l.opts.HTTPAddress)
+	if l.opts.ReverseProxyPort != "" {
+		node.HttpPort = l.opts.ReverseProxyPort
+	}
 	node.NodeIP, node.TcpPort, _ = net.SplitHostPort(l.opts.TCPAddress)
 	if l.opts.RPCPort != "" {
 		nsqlookupLog.Logf("broadcast option: %s, %s", l.opts.BroadcastAddress, l.opts.BroadcastInterface)

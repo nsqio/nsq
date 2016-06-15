@@ -416,6 +416,79 @@ func TestEmptyCommand(t *testing.T) {
 	// if we didn't panic here we're good, see issue #120
 }
 
+func TestTcpPUBTRACE(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.MaxMsgSize = 100
+	opts.MaxBodySize = 1000
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	topicName := "test_tcp_pubtrace" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopicIgnPart(topicName).GetChannel("ch")
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	// PUBTRACE that's valid
+	cmd, _ := nsq.PublishTrace(topicName, "0", 123, make([]byte, 5))
+	cmd.WriteTo(conn)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeResponse)
+	test.Equal(t, len(data), 2+nsqdNs.MsgIDLength+8+4)
+	test.Equal(t, data[:2], []byte("OK"))
+
+	// PUBTRACE that's invalid (too big)
+	cmd, _ = nsq.PublishTrace(topicName, "0", 123, make([]byte, 105))
+	cmd.WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeError)
+	// note: the trace body length should include the trace id
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 113 > 100"))
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+	//MPUB
+	mpub := make([][]byte, 5)
+	traceIDList := make([]uint64, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 1)
+		traceIDList[i] = uint64(i)
+	}
+	cmd, _ = nsq.MultiPublishTrace(topicName, "0", traceIDList, mpub)
+	cmd.WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeResponse)
+	test.Equal(t, len(data), 2+nsqdNs.MsgIDLength+8+4)
+	test.Equal(t, data[:2], []byte("OK"))
+
+	// MPUB body that's invalid (body too big)
+	mpub = make([][]byte, 11)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
+	}
+	cmd, _ = nsq.MultiPublish(topicName, mpub)
+	cmd.WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeError)
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 1148 > 1000"))
+}
+
 func TestSizeLimits(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -437,9 +510,18 @@ func TestSizeLimits(t *testing.T) {
 	sub(t, conn, topicName, "ch")
 
 	// PUB that's valid
-	nsq.Publish(topicName, make([]byte, 95)).WriteTo(conn)
+	// small body
+	nsq.Publish(topicName, make([]byte, 1)).WriteTo(conn)
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeResponse)
+	test.Equal(t, data, []byte("OK"))
+
+	// normal body
+	nsq.Publish(topicName, make([]byte, 95)).WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameType, frameTypeResponse)
 	test.Equal(t, data, []byte("OK"))
@@ -471,11 +553,24 @@ func TestSizeLimits(t *testing.T) {
 	defer conn.Close()
 
 	// MPUB body that's valid
+	// mpub small for each body
 	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 1)
+	}
+	cmd, _ := nsq.MultiPublish(topicName, mpub)
+	cmd.WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeResponse)
+	test.Equal(t, data, []byte("OK"))
+
+	mpub = make([][]byte, 5)
 	for i := range mpub {
 		mpub[i] = make([]byte, 100)
 	}
-	cmd, _ := nsq.MultiPublish(topicName, mpub)
+	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
 	frameType, data, _ = nsq.UnpackResponse(resp)

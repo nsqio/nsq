@@ -151,7 +151,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			if err != nil {
 				coordLog.Warningf("exist topic partition failed to get info: %v", err)
 			} else {
-				coordLog.Infof("create topic partition already exist %v-%v: %v", topic, i, err.Error())
+				coordLog.Infof("create topic partition already exist %v-%v", topic, i)
 				existPart[i] = t
 			}
 		}

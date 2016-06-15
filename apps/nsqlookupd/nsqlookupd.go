@@ -26,9 +26,10 @@ var (
 
 	tcpAddress         = flagSet.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
 	httpAddress        = flagSet.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
-	rpcPort            = flagSet.String("rpc-port", "", ":<port> to listen on for Rpc call")
+	rpcPort            = flagSet.String("rpc-port", "", "<port> to listen on for Rpc call")
 	broadcastAddress   = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
 	broadcastInterface = flagSet.String("broadcast-interface", "", "address of this lookupd node, (default to the OS hostname)")
+	reverseProxyPort   = flagSet.String("reverse-proxy-port", "", "<port> for reverse proxy")
 
 	clusterLeadershipAddresses = flagSet.String("cluster-leadership-addresses", "", " the cluster leadership server list")
 	clusterID                  = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")

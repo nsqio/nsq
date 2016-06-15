@@ -3,6 +3,7 @@ package nsqdserver
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	//"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
@@ -41,6 +43,75 @@ func TestHTTPpub(t *testing.T) {
 	body, _ := ioutil.ReadAll(resp.Body)
 	test.Equal(t, string(body), "OK")
 
+	time.Sleep(5 * time.Millisecond)
+
+}
+
+func TestHTTPpubpartition(t *testing.T) {
+	opts := nsqd.NewOptions()
+	opts.LogLevel = 2
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	_, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_http_pub_partition" + strconv.Itoa(int(time.Now().Unix()))
+	_ = nsqd.GetTopicIgnPart(topicName)
+
+	buf := bytes.NewBuffer([]byte("test message"))
+	// should failed pub to not exist partition
+	url := fmt.Sprintf("http://%s/pub?topic=%s&partition=2", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	test.Equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	test.NotEqual(t, string(body), "OK")
+
+	time.Sleep(5 * time.Millisecond)
+}
+
+func TestHTTPpubtrace(t *testing.T) {
+	opts := nsqd.NewOptions()
+	opts.LogLevel = 2
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	_, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_http_pub_trace" + strconv.Itoa(int(time.Now().Unix()))
+	_ = nsqd.GetTopicIgnPart(topicName)
+
+	buf := bytes.NewBuffer([]byte("test message"))
+	rawurl := fmt.Sprintf("http://%s/pubtrace?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(rawurl, "application/octet-stream", buf)
+	test.Equal(t, err, nil)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, resp.StatusCode, 400)
+	test.Equal(t, string(body), `{"message":"INVALID_TRACE_ID"}`)
+
+	time.Sleep(time.Second)
+	buf = bytes.NewBuffer([]byte("test message 2"))
+	rawurl = fmt.Sprintf("http://%s/pubtrace?topic=%s&partition=0&trace_id=11", httpAddr, topicName)
+	resp, err = http.Post(rawurl, "application/octet-stream", buf)
+	test.Equal(t, err, nil)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, resp.StatusCode, 200)
+
+	type tmpResp struct {
+		Status      string `json:"status"`
+		ID          uint64 `json:"id"`
+		TraceID     string `json:"trace_id"`
+		QueueOffset uint64 `json:"queue_offset"`
+		DataRawSize uint32 `json:"rawsize"`
+	}
+	var ret tmpResp
+	json.Unmarshal(body, &ret)
+	test.Equal(t, ret.Status, "OK")
+	test.Equal(t, ret.TraceID, "11")
 	time.Sleep(5 * time.Millisecond)
 
 }
