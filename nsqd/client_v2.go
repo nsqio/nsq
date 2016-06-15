@@ -399,12 +399,12 @@ func (c *ClientV2) tryUpdateReadyState() {
 	}
 }
 
-func (c *ClientV2) FinishedMessage(delayed bool) {
+func (c *ClientV2) FinishedMessage() {
+	// since deferred message should be only requeued while timeout
+	// Before deliver message, the delay state will be cleared.
+	// So we no need handle the DeferredCount here.
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
-	if delayed {
-		atomic.AddInt64(&c.DeferredCount, -1)
-	}
 	c.tryUpdateReadyState()
 }
 

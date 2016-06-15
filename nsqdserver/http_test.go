@@ -93,6 +93,8 @@ func TestHTTPpubtrace(t *testing.T) {
 	test.Equal(t, string(body), `{"message":"INVALID_TRACE_ID"}`)
 
 	time.Sleep(time.Second)
+	// the buffer will be drained by the http post
+	// so we need refill the buffer.
 	buf = bytes.NewBuffer([]byte("test message 2"))
 	rawurl = fmt.Sprintf("http://%s/pubtrace?topic=%s&partition=0&trace_id=11", httpAddr, topicName)
 	resp, err = http.Post(rawurl, "application/octet-stream", buf)

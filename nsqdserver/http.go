@@ -219,7 +219,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	} else if req.ContentLength <= 0 {
-		return nil, http_api.Err{400, "MSG_EMPTY"}
+		return nil, http_api.Err{406, "MSG_EMPTY"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
@@ -247,7 +247,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		}
 	}
 	if len(body) == 0 {
-		return nil, http_api.Err{400, "MSG_EMPTY"}
+		return nil, http_api.Err{406, "MSG_EMPTY"}
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {

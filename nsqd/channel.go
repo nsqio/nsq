@@ -23,12 +23,13 @@ var (
 	ErrMsgNotInFlight     = errors.New("Message ID not in flight")
 	ErrMsgAlreadyInFlight = errors.New("Message ID already in flight")
 	ErrConsumeDisabled    = errors.New("Consume is disabled currently")
+	ErrMsgDeferred        = errors.New("Message is deferred")
 )
 
 type Consumer interface {
 	UnPause()
 	Pause()
-	TimedOutMessage()
+	TimedOutMessage(delayed bool)
 	Stats() ClientStats
 	Exit()
 	Empty()
@@ -538,6 +539,8 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		// remove from inflight first
 		msg, err := c.popInFlightMessage(clientID, id)
 		if err != nil {
+			nsqLog.LogWarningf("message %v requeue error: %v from client %v", id, err,
+				clientID)
 			return err
 		}
 		return c.doRequeue(msg)
@@ -727,12 +730,14 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
+	if msg.isDeferred {
+		nsqLog.LogWarningf("should never pop a deferred message here unless the timeout : %v", msg.ID)
+		c.inFlightMutex.Unlock()
+		return nil, ErrMsgDeferred
+	}
 	delete(c.inFlightMessages, id)
 	if msg.index != -1 {
 		c.inFlightPQ.Remove(msg.index)
-	}
-	if msg.isDeferred {
-		atomic.AddInt64(&c.deferredCount, -1)
 	}
 	c.inFlightMutex.Unlock()
 	return msg, nil
@@ -1088,7 +1093,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()
 		if ok {
-			client.TimedOutMessage()
+			client.TimedOutMessage(msg.isDeferred)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msg.TraceID, msg, strconv.Itoa(int(msg.clientID)))
