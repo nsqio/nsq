@@ -196,7 +196,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 
 	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
 	if err != nil {
-		nsqd.NsqLogger().Logf("topic not found - %s, %v", topicName, err)
+		nsqd.NsqLogger().Logf("topic not found - %s-%v, %v", topicName, topicPart, err)
 		return nil, nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
 

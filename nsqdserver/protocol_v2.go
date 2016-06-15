@@ -1125,8 +1125,9 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	if err != nil {
 		return nil, err
 	}
-	if bodyLen <= 8 {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE", "missing trace id with pub trace")
+	if traceEnable && bodyLen <= nsqd.MsgTraceIDLength {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("invalid body size %d with trace id enabled", bodyLen))
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
@@ -1143,8 +1144,8 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	var traceID uint64
 	var realBody []byte
 	if traceEnable {
-		traceID = binary.BigEndian.Uint64(messageBody[:8])
-		realBody = messageBody[8:]
+		traceID = binary.BigEndian.Uint64(messageBody[:nsqd.MsgTraceIDLength])
+		realBody = messageBody[nsqd.MsgTraceIDLength:]
 	} else {
 		realBody = messageBody
 	}
@@ -1295,8 +1296,8 @@ func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64, 
 				return nil, buffers, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
 					fmt.Sprintf("MPUB invalid message(%d) body size %d for tracing", i, messageSize))
 			}
-			traceID = binary.BigEndian.Uint64(msgBody[:8])
-			realBody = msgBody[8:]
+			traceID = binary.BigEndian.Uint64(msgBody[:nsqd.MsgTraceIDLength])
+			realBody = msgBody[nsqd.MsgTraceIDLength:]
 		} else {
 			realBody = msgBody
 		}
