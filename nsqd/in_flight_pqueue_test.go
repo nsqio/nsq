@@ -67,7 +67,7 @@ func TestRemove(t *testing.T) {
 			}
 		}
 		rm := pq.Remove(idx)
-		equal(t, fmt.Sprintf("%s", fm.ID), fmt.Sprintf("%s", rm.ID))
+		equal(t, fmt.Sprintf("%v", fm.ID), fmt.Sprintf("%v", rm.ID))
 	}
 
 	lastPriority := pq.Pop().pri

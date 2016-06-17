@@ -13,6 +13,7 @@ import (
 
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/util"
 )
 
 const (
@@ -187,7 +188,7 @@ func (t *Topic) loadMagicCode() error {
 func (t *Topic) MarkAsRemoved() error {
 	renamePath := t.dataPath + "-removed-" + strconv.Itoa(int(time.Now().Unix()))
 	nsqLog.Warningf("mark the topic %v as removed: %v", t.GetFullName(), renamePath)
-	err := atomicRename(t.dataPath, renamePath)
+	err := util.AtomicRename(t.dataPath, renamePath)
 	if err != nil {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}

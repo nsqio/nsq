@@ -1,11 +1,11 @@
 // +build !windows
 
-package nsqd
+package util
 
 import (
 	"os"
 )
 
-func atomicRename(sourceFile, targetFile string) error {
+func AtomicRename(sourceFile, targetFile string) error {
 	return os.Rename(sourceFile, targetFile)
 }

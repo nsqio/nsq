@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/absolute8511/nsq/internal/util"
 	"math/rand"
 	"os"
 	"path"
@@ -529,7 +530,7 @@ func (d *diskQueueWriter) persistMetaData() error {
 	f.Close()
 
 	// atomically rename
-	return atomicRename(tmpFileName, fileName)
+	return util.AtomicRename(tmpFileName, fileName)
 }
 
 func (d *diskQueueWriter) metaDataFileName() string {

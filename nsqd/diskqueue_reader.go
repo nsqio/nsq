@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/util"
 	"io"
 	"math/rand"
 	"os"
@@ -133,6 +134,10 @@ func (d *diskQueueReader) getCurrentFileEnd(offset diskQueueOffset) (int64, erro
 
 // Depth returns the depth of the queue
 func (d *diskQueueReader) Depth() int64 {
+	return atomic.LoadInt64(&d.depth)
+}
+
+func (d *diskQueueReader) DepthSize() int64 {
 	return atomic.LoadInt64(&d.depth)
 }
 
@@ -395,7 +400,8 @@ func (d *diskQueueReader) stepOffset(virtualCur BackendOffset, cur diskQueueOffs
 				nsqLog.Logf("reset read acrossed the begin %v, %v", step, newOffset)
 				return newOffset, ErrMoveOffsetInvalid
 			}
-			f, err := os.Stat(d.fileName(newOffset.FileNum))
+			var f os.FileInfo
+			f, err = os.Stat(d.fileName(newOffset.FileNum))
 			if err != nil {
 				nsqLog.LogErrorf("stat data file error %v, %v", step, newOffset)
 				return newOffset, err
@@ -738,7 +744,7 @@ func (d *diskQueueReader) persistMetaData() error {
 	f.Close()
 
 	// atomically rename
-	return atomicRename(tmpFileName, fileName)
+	return util.AtomicRename(tmpFileName, fileName)
 }
 
 func (d *diskQueueReader) metaDataFileName() string {

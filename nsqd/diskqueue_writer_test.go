@@ -96,7 +96,7 @@ func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
 	equal(t, dq.(*diskQueueWriter).diskWriteEnd.TotalMsgCnt, int64(0))
 
 	for i := 0; i < 920000; i++ {
-		_, _, _, err := dq.Put(msg)
+		_, _, _, err = dq.Put(msg)
 		equal(t, err, nil)
 	}
 	dq.Flush()
@@ -121,7 +121,7 @@ func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
 	equal(t, int64(dqObj.diskWriteEnd.EndOffset.FileNum), int64(1))
 	equal(t, int64(dqObj.diskWriteEnd.EndOffset.Pos), int64(0))
 	for i := 455903; i < 920000; i++ {
-		_, _, _, err := dq.Put(msg)
+		_, _, _, err = dq.Put(msg)
 		equal(t, err, nil)
 	}
 	dq.Flush()

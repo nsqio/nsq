@@ -1,6 +1,6 @@
 // +build windows
 
-package nsqd
+package util
 
 import (
 	"fmt"
@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/absolute8511/nsq/internal/util"
 )
 
 const TEST_FILE_COUNT = 500
@@ -55,11 +53,11 @@ func TestConcurrentRenames(t *testing.T) {
 
 		waitGroup.Wrap(func() {
 			_, _ = <-trigger
-			err := atomicRename(sourcePath1, targetPath)
+			err := AtomicRename(sourcePath1, targetPath)
 			if err != nil {
 				t.Error(err)
 			}
-			err = atomicRename(sourcePath2, targetPath)
+			err = AtomicRename(sourcePath2, targetPath)
 			if err != nil {
 				t.Error(err)
 			}

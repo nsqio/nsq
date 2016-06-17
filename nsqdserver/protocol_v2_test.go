@@ -1871,7 +1871,6 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 				rw.Flush()
 				continue
 			}
-			return err
 		}
 		frameType, data, err := nsq.UnpackResponse(resp)
 		if err != nil {

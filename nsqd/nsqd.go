@@ -344,7 +344,7 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 	f.Sync()
 	f.Close()
 
-	err = atomicRename(tmpFileName, fileName)
+	err = util.AtomicRename(tmpFileName, fileName)
 	if err != nil {
 		return err
 	}
@@ -435,8 +435,8 @@ func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Top
 	n.RLock()
 	topics, ok := n.topicMap[topicName]
 	if ok {
-		t, ok := topics[part]
-		if ok {
+		t, ok2 := topics[part]
+		if ok2 {
 			n.RUnlock()
 			return t
 		}

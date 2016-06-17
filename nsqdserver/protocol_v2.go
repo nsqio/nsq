@@ -158,9 +158,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 					}
 					line = append(line, left[:nr]...)
 					// read last real '\n'
-					extra, err := client.Reader.ReadSlice('\n')
-					if err != nil {
-						nsqd.NsqLogger().LogErrorf("read param err:%v", err)
+					extra, err2 := client.Reader.ReadSlice('\n')
+					if err2 != nil {
+						nsqd.NsqLogger().LogErrorf("read param err:%v", err2)
 					}
 					line = append(line, extra...)
 				}
@@ -424,10 +424,6 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			}
 			flushed = true
 		case <-client.ReadyStateChan:
-			if subChannel != nil {
-				// try wake up the channel
-				subChannel.TryWakeupRead()
-			}
 		case subChannel = <-subEventChan:
 			// you can't SUB anymore
 			nsqd.NsqLogger().Logf("client %v sub to channel: %v", client.ID,
@@ -455,6 +451,11 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 
 			msgTimeout = identifyData.MsgTimeout
 		case <-heartbeatChan:
+			if subChannel != nil && client.IsReadyForMessages() {
+				// try wake up the channel
+				subChannel.TryWakeupRead()
+			}
+
 			err = p.Send(client, frameTypeResponse, heartbeatBytes)
 			nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
@@ -686,7 +687,7 @@ func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_DISABLED", "AUTH Disabled")
 	}
 
-	if err := client.Auth(string(body)); err != nil {
+	if err = client.Auth(string(body)); err != nil {
 		// we don't want to leak errors contacting the auth server to untrusted clients
 		nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] Auth Failed %s", client, err)
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_FAILED", "AUTH failed")
@@ -696,7 +697,8 @@ func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewFatalClientErr(nil, "E_UNAUTHORIZED", "AUTH No authorizations found")
 	}
 
-	resp, err := json.Marshal(struct {
+	var resp []byte
+	resp, err = json.Marshal(struct {
 		Identity        string `json:"identity"`
 		IdentityURL     string `json:"identity_url"`
 		PermissionCount int    `json:"permission_count"`
@@ -800,7 +802,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		}
 	}
 
-	if err := p.CheckAuth(client, "SUB", topicName, channelName); err != nil {
+	if err = p.CheckAuth(client, "SUB", topicName, channelName); err != nil {
 		return nil, err
 	}
 
@@ -810,7 +812,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("sub to not existing topic: %v", topicName, err.Error())
+		nsqd.NsqLogger().Logf("sub to not existing topic: %v, err:%v", topicName, err.Error())
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
@@ -840,7 +842,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		diskOffset := nsqd.BackendOffset(0)
 		err = channel.SetConsumeOffset(diskOffset)
 		if err != nil {
-			nsqd.NsqLogger().Logf("failed to set the consume offset: %v", startFrom, err)
+			nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
 			return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 		}
 		// TODO: sync to the replicas
@@ -1007,7 +1009,7 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 			fmt.Sprintf("topic partition is not valid: %v", err))
 	}
-	if err := p.CheckAuth(client, "CREATE_TOPIC", topicName, ""); err != nil {
+	if err = p.CheckAuth(client, "CREATE_TOPIC", topicName, ""); err != nil {
 		return nil, err
 	}
 
@@ -1070,7 +1072,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
-		nsqd.NsqLogger().Logf("not existing topic: %v", topicName, err.Error())
+		nsqd.NsqLogger().Logf("not existing topic: %v-%v, err:%v", topicName, partition, err.Error())
 		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 

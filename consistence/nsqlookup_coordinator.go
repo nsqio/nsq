@@ -889,15 +889,15 @@ func (self *NsqLookupCoordinator) getExcludeNodesForTopic(topicInfo *TopicPartit
 	}
 	num := meta.PartitionNum
 	for i := 0; i < num; i++ {
-		topicInfo, err := self.leadership.GetTopicInfo(topicInfo.Name, i)
+		topicPartInfo, err := self.leadership.GetTopicInfo(topicInfo.Name, i)
 		if err != nil {
 			continue
 		}
-		excludeNodes[topicInfo.Leader] = struct{}{}
-		for _, v := range topicInfo.ISR {
+		excludeNodes[topicPartInfo.Leader] = struct{}{}
+		for _, v := range topicPartInfo.ISR {
 			excludeNodes[v] = struct{}{}
 		}
-		for _, v := range topicInfo.CatchupList {
+		for _, v := range topicPartInfo.CatchupList {
 			excludeNodes[v] = struct{}{}
 		}
 	}

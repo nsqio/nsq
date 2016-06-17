@@ -1,6 +1,6 @@
 // +build windows
 
-package nsqd
+package util
 
 import (
 	"syscall"
@@ -27,7 +27,7 @@ func moveFileEx(sourceFile, targetFile *uint16, flags uint32) error {
 	return nil
 }
 
-func atomicRename(sourceFile, targetFile string) error {
+func AtomicRename(sourceFile, targetFile string) error {
 	lpReplacedFileName, err := syscall.UTF16PtrFromString(targetFile)
 	if err != nil {
 		return err
