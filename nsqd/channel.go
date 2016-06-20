@@ -97,6 +97,7 @@ type Channel struct {
 	requireOrder           int32
 	needResetReader        int32
 	processResetReaderTime int64
+	waitingProcessMsgTs    int64
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -321,6 +322,17 @@ func (c *Channel) flush() error {
 
 func (c *Channel) Depth() int64 {
 	return c.backend.Depth()
+}
+
+func (c *Channel) DepthSize() int64 {
+	if d, ok := c.backend.(*diskQueueReader); ok {
+		return d.DepthSize()
+	}
+	return 0
+}
+
+func (c *Channel) DepthTimestamp() int64 {
+	return atomic.LoadInt64(&c.waitingProcessMsgTs)
 }
 
 func (c *Channel) Pause() error {
@@ -672,7 +684,7 @@ func (c *Channel) GetConfirmedOffset() BackendOffset {
 }
 
 func (c *Channel) GetChannelEnd() BackendOffset {
-	return c.backend.GetQueueReadEnd().GetOffset()
+	return c.backend.GetQueueReadEnd().Offset()
 }
 
 // doRequeue performs the low level operations to requeue a message
@@ -769,6 +781,7 @@ func (c *Channel) DisableConsume(disable bool) {
 		c.confirmedMsgs = make(map[int64]*Message)
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
+		atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 
 		done := false
 		for !done {
@@ -821,6 +834,7 @@ func (c *Channel) TryWakeupRead() {
 }
 
 func (c *Channel) resetReaderToConfirmed() {
+	atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 	atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0)
 	confirmed, err := c.backend.ResetReadToConfirmed()
 	if err != nil {
@@ -912,6 +926,7 @@ LOOP:
 					}
 					readChan = nil
 					waitEndUpdated = c.endUpdatedChan
+					atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 				}
 			} else {
 				readChan = origReadChan
@@ -965,6 +980,7 @@ LOOP:
 				continue LOOP
 			}
 
+			atomic.StoreInt64(&c.waitingProcessMsgTs, msg.Timestamp)
 			lastDataResult = data
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.

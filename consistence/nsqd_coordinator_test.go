@@ -471,14 +471,14 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
-	logs1, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
+	logs1, err := tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs1), msgCnt)
 
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
-	logs2, err := tc2.logMgr.GetCommitLogs(0, msgCnt)
+	logs2, err := tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs2), msgCnt)
 	test.Equal(t, logs1, logs2)
@@ -500,7 +500,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
-	logs3, err := tc3.logMgr.GetCommitLogs(0, msgCnt)
+	logs3, err := tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs3), msgCnt)
 	test.Equal(t, logs1, logs3)
@@ -512,7 +512,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicData3.ForceFlush()
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
-	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs3), msgCnt)
 	test.Equal(t, logs1, logs3)
@@ -547,7 +547,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
-	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs3), msgCnt)
 	test.Equal(t, logs1, logs3)
@@ -583,25 +583,253 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
-	logs1, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
+	logs1, err = tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs1), msgCnt)
 
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
-	logs2, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
+	logs2, err = tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs2), msgCnt)
 	test.Equal(t, logs1, logs2)
 
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
-	logs3, err = tc3.logMgr.GetCommitLogs(0, msgCnt)
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs3), msgCnt)
 	test.Equal(t, logs1, logs3)
 
 	t.Log(logs3)
+}
+
+// catchup from empty
+// catchup with more data than leader
+// catchup with same segment
+// catchup with less segment
+// catchup with more segment
+func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	LOGROTATE_NUM = 10
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+	}()
+	topic := "coordTestTopic"
+	partition := 1
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_DETAIL)
+		coordLog.Logger = &levellogger.GLogger{}
+	} else {
+		coordLog.Logger = newTestLogger(t)
+	}
+
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
+	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
+	nsqd3, randPort3, nodeInfo3, data3 := newNsqdNode(t, "id3")
+
+	fakeLeadership := NewFakeNSQDLeadership().(*fakeNsqdLeadership)
+	meta := TopicMetaInfo{
+		Replica:      3,
+		PartitionNum: 1,
+	}
+	fakeReplicaInfo := &TopicPartitionReplicaInfo{
+		Leader:      nodeInfo1.GetID(),
+		ISR:         make([]string, 0),
+		CatchupList: make([]string, 0),
+		Epoch:       1,
+	}
+	fakeInfo := &TopicPartitionMetaInfo{
+		Name:                      topic,
+		Partition:                 partition,
+		TopicMetaInfo:             meta,
+		TopicPartitionReplicaInfo: *fakeReplicaInfo,
+	}
+
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo1.GetID())
+	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo2.GetID())
+	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
+
+	tmp := make(map[int]*TopicPartitionMetaInfo)
+	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
+	tmp[partition] = fakeInfo
+
+	fakeLookupProxy, _ := NewFakeLookupRemoteProxy("127.0.0.1", 0)
+	fakeSession, _ := fakeLeadership.GetTopicLeaderSession(topic, partition)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic] = make(map[int]*TopicLeaderSession)
+	fakeLookupProxy.(*fakeLookupRemoteProxy).leaderSessions[topic][partition] = fakeSession
+
+	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+	time.Sleep(time.Second)
+
+	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data2)
+	defer nsqd2.Exit()
+	time.Sleep(time.Second)
+
+	// create topic on nsqdcoord
+	var topicInitInfo RpcAdminTopicInfo
+	topicInitInfo.TopicPartitionMetaInfo = *fakeInfo
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	// notify leadership to nsqdcoord
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+
+	// message header is 26 bytes
+	msgCnt := 0
+	msgRawSize := int64(nsqdNs.MessageHeaderBytes() + 3 + 4)
+	topicData1 := nsqd1.GetTopic(topic, partition)
+	for i := 0; i < 30; i++ {
+		_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
+		test.Nil(t, err)
+		msgCnt++
+	}
+	topicData2 := nsqd2.GetTopic(topic, partition)
+	topicData1.ForceFlush()
+	topicData2.ForceFlush()
+
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
+	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
+	logs1, err := tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs1), msgCnt)
+
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
+	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
+	logs2, err := tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs2), msgCnt)
+	test.Equal(t, logs1, logs2)
+	t.Log(logs2)
+
+	// start as catchup
+	// 3 kinds of catchup
+	// 1. fall behind, 2. exact same, 3. data more than leader(need rollback)
+	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
+	defer os.RemoveAll(data3)
+	defer nsqd3.Exit()
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	// wait catchup
+	time.Sleep(time.Second * 3)
+	topicData3 := nsqd3.GetTopic(topic, partition)
+	topicData3.ForceFlush()
+	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, err)
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err := tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+	// catchup again with exact same logs
+	topicInitInfo.Epoch++
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	time.Sleep(time.Second * 3)
+	topicData3.ForceFlush()
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+	// change leader and make nsqd3 write more than old leader
+	changedInfo := topicInitInfo
+	changedInfo.Leader = nsqdCoord3.myNode.GetID()
+	changedInfo.ISR = make([]string, 0)
+	changedInfo.ISR = append(changedInfo.ISR, nodeInfo3.GetID())
+	changedInfo.Replica = 1
+	changedInfo.CatchupList = make([]string, 0)
+	changedInfo.Epoch++
+	fakeSession.LeaderNode = nodeInfo3
+	fakeSession.Session = fakeSession.Session + fakeSession.Session
+	fakeSession.LeaderEpoch++
+	ensureTopicOnNsqdCoord(nsqdCoord3, changedInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+	for i := 0; i < 20; i++ {
+		_, _, _, _, err = nsqdCoord3.PutMessageToCluster(topicData3, []byte("123"), 0)
+		test.Nil(t, err)
+	}
+
+	// test catchup again with more logs than leader
+	fakeSession.LeaderNode = nodeInfo1
+	fakeSession.Session = fakeSession.Session
+	fakeSession.LeaderEpoch++
+	topicInitInfo.Epoch = changedInfo.Epoch + 1
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+	time.Sleep(time.Second * 3)
+	topicData3.ForceFlush()
+
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, len(logs1), msgCnt)
+	test.Equal(t, logs1, logs3)
+
+	// move from catchup to isr
+	topicInitInfo.ISR = append(topicInitInfo.ISR, nodeInfo3.GetID())
+	topicInitInfo.CatchupList = make([]string, 0)
+	topicInitInfo.DisableWrite = true
+	topicInitInfo.Epoch++
+
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
+	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
+
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, true)
+	time.Sleep(time.Second * 3)
+
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+	ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+	for i := 0; i < 3; i++ {
+		_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
+		test.Nil(t, err)
+		msgCnt++
+	}
+
+	topicData1.ForceFlush()
+	topicData2.ForceFlush()
+	topicData3.ForceFlush()
+
+	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
+	logs1, err = tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs1), msgCnt)
+
+	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
+	logs2, err = tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs2), msgCnt)
+	test.Equal(t, logs1, logs2)
+
+	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
+	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
+	logs3, err = tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
+	test.Nil(t, err)
+	test.Equal(t, len(logs3), msgCnt)
+	test.Equal(t, logs1, logs3)
+
+	t.Log(logs3)
+
 }
 
 func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
@@ -666,7 +894,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, topicData1.TotalDataSize(), msgRawSize)
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
 	tc1, _ := nsqdCoord1.getTopicCoord(topic, partition)
-	logs, err := tc1.logMgr.GetCommitLogs(0, msgCnt)
+	logs, err := tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
@@ -674,7 +902,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize)
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
 	tc2, _ := nsqdCoord2.getTopicCoord(topic, partition)
-	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
+	logs, err = tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
@@ -745,20 +973,20 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	msgCnt++
 	topicData1.ForceFlush()
 	topicData2.ForceFlush()
-	test.Equal(t, topicData2.TotalMessageCnt(), uint64(topicData2.GetCommitted().GetTotalMsgCnt()))
-	test.Equal(t, topicData2.TotalDataSize(), int64(topicData2.GetCommitted().GetOffset()))
-	test.Equal(t, topicData1.TotalMessageCnt(), uint64(topicData1.GetCommitted().GetTotalMsgCnt()))
-	test.Equal(t, topicData1.TotalDataSize(), int64(topicData1.GetCommitted().GetOffset()))
+	test.Equal(t, topicData2.TotalMessageCnt(), uint64(topicData2.GetCommitted().TotalMsgCnt()))
+	test.Equal(t, topicData2.TotalDataSize(), int64(topicData2.GetCommitted().Offset()))
+	test.Equal(t, topicData1.TotalMessageCnt(), uint64(topicData1.GetCommitted().TotalMsgCnt()))
+	test.Equal(t, topicData1.TotalDataSize(), int64(topicData1.GetCommitted().Offset()))
 	test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
-	logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
+	logs, err = tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 	test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
-	logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
+	logs, err = tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), msgCnt)
 	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
@@ -832,14 +1060,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		topicData2.ForceFlush()
 		test.Equal(t, topicData1.TotalDataSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData1.TotalMessageCnt(), uint64(msgCnt))
-		logs, err = tc1.logMgr.GetCommitLogs(0, msgCnt)
+		logs, err = tc1.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
 		test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
 		test.Equal(t, topicData2.TotalDataSize(), msgRawSize*int64(msgCnt))
 		test.Equal(t, topicData2.TotalMessageCnt(), uint64(msgCnt))
-		logs, err = tc2.logMgr.GetCommitLogs(0, msgCnt)
+		logs, err = tc2.logMgr.GetCommitLogsV2(0, 0, msgCnt)
 		test.Nil(t, err)
 		test.Equal(t, len(logs), msgCnt)
 		test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)

@@ -102,7 +102,7 @@ func (d *diskQueueWriter) Put(data []byte) (BackendOffset, int32, int64, error) 
 	}
 	d.needSync = true
 	d.Unlock()
-	return offset, writeBytes, e.TotalMsgCnt, werr
+	return offset, writeBytes, e.TotalMsgCnt(), werr
 }
 
 func (d *diskQueueWriter) RollbackWriteV2(offset BackendOffset, diffCnt uint64) (diskQueueEndInfo, error) {
@@ -122,13 +122,13 @@ func (d *diskQueueWriter) RollbackWriteV2(offset BackendOffset, diffCnt uint64) 
 	nsqLog.Logf("rollback from %v-%v, %v to %v, roll cnt: %v", d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.VirtualEnd, offset, diffCnt)
 	d.diskWriteEnd.EndOffset.Pos -= int64(d.diskWriteEnd.VirtualEnd - offset)
 	d.diskWriteEnd.VirtualEnd = offset
-	atomic.AddInt64(&d.diskWriteEnd.TotalMsgCnt, -1*int64(diffCnt))
+	atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, -1*int64(diffCnt))
 
 	if d.diskReadEnd.EndOffset.Pos > d.diskWriteEnd.EndOffset.Pos ||
 		d.diskReadEnd.VirtualEnd > d.diskWriteEnd.VirtualEnd {
 		d.diskReadEnd = d.diskWriteEnd
 	}
-	nsqLog.Logf("after rollback : %v, %v, read end: %v", d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.TotalMsgCnt, d.diskReadEnd)
+	nsqLog.Logf("after rollback : %v, %v, read end: %v", d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.TotalMsgCnt(), d.diskReadEnd)
 	d.truncateDiskQueueToWriteEnd()
 	return d.diskWriteEnd, nil
 }
@@ -199,7 +199,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 		d.diskWriteEnd.VirtualEnd = 0
 		d.diskWriteEnd.EndOffset.Pos = 0
 		d.diskWriteEnd.EndOffset.FileNum = 0
-		atomic.StoreInt64(&d.diskWriteEnd.TotalMsgCnt, 0)
+		atomic.StoreInt64(&d.diskWriteEnd.totalMsgCnt, 0)
 		d.diskReadEnd = d.diskWriteEnd
 		d.truncateDiskQueueToWriteEnd()
 		return d.diskWriteEnd, nil
@@ -226,7 +226,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 	newWritePos -= int64(newEnd - offset)
 	d.diskWriteEnd.EndOffset.Pos = newWritePos
 	d.diskWriteEnd.VirtualEnd = offset
-	atomic.StoreInt64(&d.diskWriteEnd.TotalMsgCnt, int64(totalCnt))
+	atomic.StoreInt64(&d.diskWriteEnd.totalMsgCnt, int64(totalCnt))
 	d.diskReadEnd = d.diskWriteEnd
 	d.closeCurrentFile()
 	nsqLog.Logf("reset write end result : %v", d.diskWriteEnd)
@@ -320,7 +320,7 @@ func (d *diskQueueWriter) saveFileOffsetMeta() {
 		return
 	}
 	_, err = fmt.Fprintf(f, "%d\n%d,%d\n",
-		atomic.LoadInt64(&d.diskWriteEnd.TotalMsgCnt),
+		atomic.LoadInt64(&d.diskWriteEnd.totalMsgCnt),
 		d.diskWriteEnd.VirtualEnd-BackendOffset(d.diskWriteEnd.EndOffset.Pos), d.diskWriteEnd.VirtualEnd)
 	if err != nil {
 		f.Close()
@@ -413,7 +413,7 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueu
 	totalBytes := int64(4 + dataLen)
 	d.diskWriteEnd.EndOffset.Pos += totalBytes
 	d.diskWriteEnd.VirtualEnd += BackendOffset(totalBytes)
-	atomic.AddInt64(&d.diskWriteEnd.TotalMsgCnt, 1)
+	atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, 1)
 
 	if d.diskWriteEnd.EndOffset.Pos >= d.maxBytesPerFile {
 		// sync every time we start writing to a new file
@@ -499,7 +499,7 @@ func (d *diskQueueWriter) retrieveMetaData() error {
 	if err != nil {
 		return err
 	}
-	atomic.StoreInt64(&d.diskWriteEnd.TotalMsgCnt, totalCnt)
+	atomic.StoreInt64(&d.diskWriteEnd.totalMsgCnt, totalCnt)
 	d.diskReadEnd = d.diskWriteEnd
 
 	return nil
@@ -520,7 +520,7 @@ func (d *diskQueueWriter) persistMetaData() error {
 	}
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n",
-		atomic.LoadInt64(&d.diskWriteEnd.TotalMsgCnt),
+		atomic.LoadInt64(&d.diskWriteEnd.totalMsgCnt),
 		d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.VirtualEnd)
 	if err != nil {
 		f.Close()

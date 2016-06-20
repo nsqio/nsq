@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"github.com/absolute8511/nsq/internal/util"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +27,8 @@ var (
 	ErrCommitLogOffsetInvalid   = errors.New("commit log offset is invalid")
 	ErrCommitLogPartitionExceed = errors.New("commit log partition id is exceeded")
 )
+
+var LOGROTATE_NUM = 10000000
 
 type CommitLogData struct {
 	LogID int64
@@ -56,6 +60,162 @@ func GetNextLogOffset(cur int64) int64 {
 	return cur + int64(GetLogDataSize())
 }
 
+func getCommitLogFile(path string, start int64, for_write bool) (*os.File, error) {
+	name := path + "." + getSuffixString(start)
+	mode := os.O_RDONLY
+	if for_write {
+		mode = os.O_RDWR
+	}
+	tmpFile, err := os.OpenFile(name, mode, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return tmpFile, nil
+}
+
+func getCommitLogFromFile(file *os.File, offset int64) (*CommitLogData, error) {
+	f, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	fsize := f.Size()
+	if offset == fsize {
+		return nil, ErrCommitLogEOF
+	}
+
+	if offset > fsize-int64(GetLogDataSize()) {
+		return nil, ErrCommitLogOutofBound
+	}
+
+	if (offset % int64(GetLogDataSize())) != 0 {
+		return nil, ErrCommitLogOffsetInvalid
+	}
+	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
+	n, err := file.ReadAt(b.Bytes(), offset)
+	if err != nil {
+		return nil, err
+	}
+	if n != GetLogDataSize() {
+		return nil, ErrCommitLogOffsetInvalid
+	}
+	var l CommitLogData
+	err = binary.Read(b, binary.BigEndian, &l)
+	return &l, err
+
+}
+
+func getLastCommitLogData(path string, startIndex int64) (*CommitLogData, int64, error) {
+	tmpFile, err := getCommitLogFile(path, startIndex, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tmpFile.Close()
+	s, err := tmpFile.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	fsize := s.Size()
+	if fsize == 0 {
+		return nil, 0, ErrCommitLogEOF
+	}
+	if fsize < int64(GetLogDataSize()) {
+		return nil, 0, ErrCommitLogOffsetInvalid
+	}
+	num := fsize / int64(GetLogDataSize())
+	roundOffset := (num - 1) * int64(GetLogDataSize())
+	l, err := getCommitLogFromFile(tmpFile, roundOffset)
+	if err != nil {
+		coordLog.Infof("load file error: %v", err)
+		return nil, 0, err
+	}
+	return l, roundOffset, err
+}
+
+func getCommitLogListFromFile(file *os.File, offset int64, num int) ([]CommitLogData, error) {
+	f, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	fsize := f.Size()
+	if offset == fsize {
+		return nil, ErrCommitLogEOF
+	}
+
+	if offset > fsize-int64(GetLogDataSize()) {
+		return nil, ErrCommitLogOutofBound
+	}
+
+	if (offset % int64(GetLogDataSize())) != 0 {
+		return nil, ErrCommitLogOffsetInvalid
+	}
+
+	needRead := int64(num * GetLogDataSize())
+	readToEnd := false
+	if offset+needRead > fsize {
+		needRead = fsize - offset
+		readToEnd = true
+	}
+	b := bytes.NewBuffer(make([]byte, needRead))
+	n, err := file.ReadAt(b.Bytes(), offset)
+	if err != nil {
+		if err != io.EOF {
+			return nil, err
+		}
+		if int64(n) != needRead {
+			return nil, err
+		}
+	}
+	logList := make([]CommitLogData, 0, n/GetLogDataSize())
+	var l CommitLogData
+	for n > 0 {
+		err := binary.Read(b, binary.BigEndian, &l)
+		if err != nil {
+			return nil, err
+		}
+		logList = append(logList, l)
+		n -= GetLogDataSize()
+	}
+	if readToEnd {
+		err = ErrCommitLogEOF
+	}
+	return logList, err
+}
+
+func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
+	if offset > 0 && offset < int64(GetLogDataSize()) {
+		return nil, ErrCommitLogOffsetInvalid
+	}
+	err := file.Truncate(offset)
+	if err != nil {
+		s, _ := file.Stat()
+		coordLog.Infof("truncate file %v failed: %v, offset:%v, %v, %v, %v", file, err, offset, s.Name(), s.Size(), s.IsDir())
+		return nil, err
+	}
+	if offset == 0 {
+		return nil, nil
+	}
+	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
+	n, err := file.ReadAt(b.Bytes(), offset-int64(GetLogDataSize()))
+	if err != nil {
+		return nil, err
+	}
+	if n != GetLogDataSize() {
+		return nil, ErrCommitLogOffsetInvalid
+	}
+	var l CommitLogData
+	err = binary.Read(b, binary.BigEndian, &l)
+	if err != nil {
+		return nil, err
+	}
+
+	return &l, nil
+}
+
+func getSuffixString(index int64) string {
+	return fmt.Sprintf("%08d", index)
+}
+
 type TopicCommitLogMgr struct {
 	topic         string
 	partition     int
@@ -65,6 +225,8 @@ type TopicCommitLogMgr struct {
 	committedLogs []CommitLogData
 	bufSize       int
 	appender      *os.File
+	currentStart  int64
+	currentCount  int32
 	sync.Mutex
 }
 
@@ -97,6 +259,10 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		return nil, err
 	}
 
+	err = mgr.loadCurrentStart()
+	if err != nil {
+		return nil, err
+	}
 	//load meta
 	f, err := mgr.appender.Stat()
 	if err != nil {
@@ -108,7 +274,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	if fsize > 0 {
 		num := fsize / int64(GetLogDataSize())
 		roundOffset := (num - 1) * int64(GetLogDataSize())
-		l, err := mgr.GetCommitLogFromOffset(roundOffset)
+		l, err := mgr.GetCommitLogFromOffsetV2(mgr.currentStart, roundOffset)
 		if err != nil {
 			coordLog.Infof("load file error: %v", err)
 			return nil, err
@@ -116,23 +282,77 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		mgr.pLogID = l.LogID
 		mgr.nLogID = l.LastMsgLogID + 1
 		if mgr.pLogID < int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT) {
-			coordLog.Infof("log id init less than expected: %v", mgr.pLogID)
-			panic("init commit log id failed")
+			coordLog.Errorf("log id init less than expected: %v", mgr.pLogID)
+			return nil, errors.New("init commit log id failed")
 		} else if mgr.pLogID > int64(uint64(mgr.partition+1)<<MAX_INCR_ID_BIT+1) {
-			coordLog.Infof("log id init large than expected: %v", mgr.pLogID)
-			panic("init commit log id failed")
+			coordLog.Errorf("log id init large than expected: %v", mgr.pLogID)
+			return nil, errors.New("init commit log id failed")
 		}
 		if mgr.nLogID < int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT) {
-			coordLog.Infof("log id init less than expected: %v", mgr.pLogID)
-			panic("init commit log id failed")
+			coordLog.Errorf("log id init less than expected: %v", mgr.pLogID)
+			return nil, errors.New("init commit log id failed")
 		} else if mgr.nLogID > int64(uint64(mgr.partition+1)<<MAX_INCR_ID_BIT+1) {
-			coordLog.Infof("log id init large than expected: %v", mgr.pLogID)
-			panic("init commit log id failed")
+			coordLog.Errorf("log id init large than expected: %v", mgr.pLogID)
+			return nil, errors.New("init commit log id failed")
 		}
 	} else {
-		mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
+		if mgr.currentStart <= 0 {
+			mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
+		} else {
+			l, _, err := getLastCommitLogData(mgr.path, mgr.currentStart-1)
+			if err != nil {
+				coordLog.Infof("get last commit data from file %v error: %v", mgr.currentStart-1, err)
+				return nil, err
+			}
+			mgr.pLogID = l.LogID
+			mgr.nLogID = l.LastMsgLogID + 1
+		}
 	}
 	return mgr, nil
+}
+
+func (self *TopicCommitLogMgr) loadCurrentStart() error {
+	file, err := os.OpenFile(self.path+".current", os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			self.currentStart = 0
+			return nil
+		}
+		coordLog.Errorf("open commit log current file error: %v", err)
+		return err
+	}
+	defer file.Close()
+	var data int64
+	_, err = fmt.Fscanf(file, "%d\n", &data)
+	if err != nil {
+		return err
+	}
+	atomic.StoreInt64(&self.currentStart, data)
+	return nil
+}
+
+func (self *TopicCommitLogMgr) saveCurrentStart() error {
+	tmpFileName := self.path + ".current.tmp"
+	file, err := os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		coordLog.Errorf("open commit log current file for write error: %v", err)
+		return err
+	}
+	defer file.Close()
+	_, err = fmt.Fprintf(file, "%d\n", atomic.LoadInt64(&self.currentStart))
+	if err != nil {
+		return err
+	}
+	file.Sync()
+
+	return util.AtomicRename(tmpFileName, self.path+".current")
+}
+
+func (self *TopicCommitLogMgr) GetCurrentStart() int64 {
+	self.Lock()
+	tmp := atomic.LoadInt64(&self.currentStart)
+	self.Unlock()
+	return tmp
 }
 
 func (self *TopicCommitLogMgr) Delete() {
@@ -144,6 +364,10 @@ func (self *TopicCommitLogMgr) Delete() {
 	if err != nil {
 		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
 	}
+	for i := int64(0); i < self.currentStart; i++ {
+		os.Remove(self.path + "." + getSuffixString(int64(i)))
+	}
+	os.Remove(self.path + ".current")
 	self.Unlock()
 }
 
@@ -164,97 +388,136 @@ func (self *TopicCommitLogMgr) NextID() uint64 {
 func (self *TopicCommitLogMgr) Reset(id uint64) {
 }
 
-func (self *TopicCommitLogMgr) TruncateToOffset(offset int64) (*CommitLogData, error) {
+func (self *TopicCommitLogMgr) GetCurrentEnd() (int64, int64) {
+	self.Lock()
+	defer self.Unlock()
+	return self.currentStart, int64(self.currentCount) * int64(GetLogDataSize())
+}
+
+func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64) (*CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
 	self.flushCommitLogsNoLock()
-	err := self.appender.Truncate(offset)
-	if err != nil {
-		return nil, err
-	}
-	if offset == 0 {
-		atomic.StoreInt64(&self.pLogID, 0)
-		return nil, nil
-	}
-	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
-	n, err := self.appender.ReadAt(b.Bytes(), offset-int64(GetLogDataSize()))
-	if err != nil {
-		return nil, err
-	}
-	if n != GetLogDataSize() {
+	if startIndex > self.currentStart {
 		return nil, ErrCommitLogOffsetInvalid
 	}
-	var l CommitLogData
-	err = binary.Read(b, binary.BigEndian, &l)
+	if startIndex < self.currentStart {
+		oldStart := self.currentStart
+		self.currentStart = startIndex
+		self.currentCount = int32(offset / int64(GetLogDataSize()))
+		self.saveCurrentStart()
+
+		self.appender.Sync()
+		self.appender.Close()
+		os.Remove(self.path)
+
+		err := util.AtomicRename(self.path+"."+getSuffixString(startIndex), self.path)
+		if err != nil {
+			coordLog.Infof("rename file failed: %v, %v", startIndex, err)
+			return nil, err
+		}
+		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+		if err != nil {
+			coordLog.Infof("open topic commit log file error: %v", err)
+			return nil, err
+		}
+
+		for i := startIndex + 1; i < oldStart; i++ {
+			os.Remove(self.path + "." + getSuffixString(int64(i)))
+		}
+	}
+	return self.truncateToOffset(offset)
+}
+
+func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, error) {
+	l, err := truncateFileToOffset(self.appender, offset)
 	if err != nil {
 		return nil, err
 	}
-
+	self.currentCount = int32(offset / int64(GetLogDataSize()))
+	if offset == 0 {
+		if self.currentStart == 0 {
+			atomic.StoreInt64(&self.pLogID, 0)
+			return nil, nil
+		} else {
+			l, _, err = getLastCommitLogData(self.path, self.currentStart-1)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	atomic.StoreInt64(&self.pLogID, l.LogID)
 	if l.LastMsgLogID+1 > atomic.LoadInt64(&self.nLogID) {
 		atomic.StoreInt64(&self.nLogID, l.LastMsgLogID+1)
 	}
-	return &l, nil
+	return l, nil
 }
 
-func (self *TopicCommitLogMgr) getCommitLogFromOffsetNoLock(offset int64) (*CommitLogData, error) {
-	self.flushCommitLogsNoLock()
-	f, err := self.appender.Stat()
-	if err != nil {
-		return nil, err
-	}
-	fsize := f.Size()
-	if offset == fsize {
-		return nil, ErrCommitLogEOF
-	}
-
-	if offset > fsize {
-		return nil, ErrCommitLogOutofBound
-	}
-	if (offset % int64(GetLogDataSize())) != 0 {
-		return nil, ErrCommitLogOffsetInvalid
-	}
-	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
-	n, err := self.appender.ReadAt(b.Bytes(), offset)
-	if err != nil {
-		return nil, err
-	}
-	if n != GetLogDataSize() {
-		return nil, ErrCommitLogOffsetInvalid
-	}
-	var l CommitLogData
-	err = binary.Read(b, binary.BigEndian, &l)
-	return &l, err
-}
-
-func (self *TopicCommitLogMgr) GetCommitLogFromOffset(offset int64) (*CommitLogData, error) {
+func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
 	self.Lock()
-	ret, err := self.getCommitLogFromOffsetNoLock(offset)
-	self.Unlock()
-	return ret, err
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
+	if start == self.currentStart {
+		return getCommitLogFromFile(self.appender, offset)
+	} else if start > self.currentStart || start < 0 {
+		return nil, ErrCommitLogOutofBound
+	} else {
+		tmpFile, err := getCommitLogFile(self.path, start, false)
+		if err != nil {
+			return nil, err
+		}
+		defer tmpFile.Close()
+		return getCommitLogFromFile(tmpFile, offset)
+	}
 }
 
-func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
+func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64, *CommitLogData, error) {
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
+	l, readOffset, err := getLastCommitLogData(self.path, index)
+	if err != nil {
+		return 0, nil, err
+	}
+	return readOffset, l, nil
+}
+
+// this will get the log data of last commit
+func (self *TopicCommitLogMgr) GetLastCommitLogOffsetV2() (int64, int64, *CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
 	self.flushCommitLogsNoLock()
 	f, err := self.appender.Stat()
 	if err != nil {
-		return 0, err
+		return self.currentStart, 0, nil, err
 	}
 	fsize := f.Size()
 	if fsize == 0 {
-		return 0, nil
+		if self.currentStart == 0 {
+			return self.currentStart, 0, nil, ErrCommitLogEOF
+		} else {
+			// it may happen : a new commit segment without any commit log,
+			// so we get the last log id from previous segment.
+			l, readOffset, err := getLastCommitLogData(self.path, self.currentStart-1)
+			if err != nil {
+				return self.currentStart, 0, nil, err
+			}
+			if l.LogID == atomic.LoadInt64(&self.pLogID) {
+				return self.currentStart - 1, readOffset, l, nil
+			}
+		}
+		return self.currentStart, 0, nil, ErrCommitLogIDNotFound
 	}
+
 	num := fsize / int64(GetLogDataSize())
 	roundOffset := (num - 1) * int64(GetLogDataSize())
 	for {
-		l, err := self.getCommitLogFromOffsetNoLock(roundOffset)
+		l, err := getCommitLogFromFile(self.appender, roundOffset)
 		if err != nil {
-			return 0, err
+			return self.currentStart, 0, nil, err
 		}
 		if l.LogID == atomic.LoadInt64(&self.pLogID) {
-			return roundOffset, nil
+			return self.currentStart, roundOffset, l, nil
 		} else if l.LogID < atomic.LoadInt64(&self.pLogID) {
 			break
 		}
@@ -263,7 +526,7 @@ func (self *TopicCommitLogMgr) GetLastLogOffset() (int64, error) {
 			break
 		}
 	}
-	return 0, ErrCommitLogIDNotFound
+	return self.currentStart, 0, nil, ErrCommitLogIDNotFound
 }
 
 func (self *TopicCommitLogMgr) GetLastCommitLogID() int64 {
@@ -291,6 +554,29 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	if slave {
 		atomic.StoreInt64(&self.nLogID, l.LastMsgLogID+1)
 	}
+	if self.currentCount >= int32(LOGROTATE_NUM) {
+		self.flushCommitLogsNoLock()
+		newName := self.path + "." + getSuffixString(self.currentStart)
+		err := util.AtomicRename(self.path, newName)
+		if err != nil {
+			coordLog.Errorf("rotate file %v to %v failed: %v", self.path, newName, err)
+			return err
+		}
+		coordLog.Infof("rotate file %v to %v", self.path, newName)
+		self.appender.Sync()
+		self.appender.Close()
+		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+		if err != nil {
+			coordLog.Infof("open topic commit log file error: %v", err)
+			return err
+		}
+		atomic.AddInt64(&self.currentStart, 1)
+		self.currentCount = 0
+		err = self.saveCurrentStart()
+		if err != nil {
+			return err
+		}
+	}
 	if cap(self.committedLogs) == 0 {
 		// no buffer, write to file directly.
 		err := binary.Write(self.appender, binary.BigEndian, l)
@@ -303,6 +589,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		}
 		self.committedLogs = append(self.committedLogs, *l)
 	}
+	self.currentCount++
 	atomic.StoreInt64(&self.pLogID, l.LogID)
 	return nil
 }
@@ -339,44 +626,50 @@ func (self *TopicCommitLogMgr) FlushCommitLogs() {
 	self.Unlock()
 }
 
-func (self *TopicCommitLogMgr) GetCommitLogs(startOffset int64, num int) ([]CommitLogData, error) {
+func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int64, num int) ([]CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
 	self.flushCommitLogsNoLock()
-	f, err := self.appender.Stat()
-	if err != nil {
-		return nil, err
+	if startIndex == self.currentStart {
+		return getCommitLogListFromFile(self.appender, startOffset, num)
 	}
-	fsize := f.Size()
-	if startOffset == fsize {
-		return nil, nil
-	}
-	if startOffset > fsize-int64(GetLogDataSize()) {
-		return nil, ErrCommitLogOutofBound
-	}
-	if (startOffset % int64(GetLogDataSize())) != 0 {
-		return nil, ErrCommitLogOffsetInvalid
-	}
-	needRead := int64(num * GetLogDataSize())
-	if startOffset+needRead > fsize {
-		needRead = fsize - startOffset
-	}
-	b := bytes.NewBuffer(make([]byte, needRead))
-	n, err := self.appender.ReadAt(b.Bytes(), startOffset)
-	if err != nil {
-		if err != io.EOF {
-			return nil, err
+	var totalLogs []CommitLogData
+	readIndex := startIndex
+	readOffset := startOffset
+	for {
+		var loglist []CommitLogData
+		var err error
+		if readIndex < self.currentStart {
+			tmpFile, fileErr := getCommitLogFile(self.path, readIndex, false)
+			if fileErr != nil {
+				coordLog.Warningf("read logs from %v error : %v", readIndex, fileErr)
+				return totalLogs, fileErr
+			}
+			loglist, err = getCommitLogListFromFile(tmpFile, readOffset, num-len(totalLogs))
+			tmpFile.Close()
+		} else {
+			loglist, err = getCommitLogListFromFile(self.appender, readOffset, num-len(totalLogs))
+		}
+		if err == ErrCommitLogEOF {
+			coordLog.Debugf("read %v to end: %v logs", readIndex, len(loglist))
+			readIndex++
+			readOffset = 0
+		} else {
+			if err != nil {
+				coordLog.Infof("read %v:%v logs failed: %v", readIndex, readOffset, err)
+				return totalLogs, err
+			}
+			readOffset = readOffset + int64(len(loglist))*int64(GetLogDataSize())
+		}
+		totalLogs = append(totalLogs, loglist...)
+		if readIndex > self.currentStart {
+			if err == ErrCommitLogEOF {
+				return totalLogs, err
+			}
+			break
+		} else if len(totalLogs) == num {
+			break
 		}
 	}
-	logList := make([]CommitLogData, 0, n/GetLogDataSize())
-	var l CommitLogData
-	for n > 0 {
-		err := binary.Read(b, binary.BigEndian, &l)
-		if err != nil {
-			return nil, err
-		}
-		logList = append(logList, l)
-		n -= GetLogDataSize()
-	}
-	return logList, err
+	return totalLogs, nil
 }

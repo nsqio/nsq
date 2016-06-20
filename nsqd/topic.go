@@ -234,7 +234,7 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 		return
 	}
 	cur := t.GetCommitted()
-	if cur != nil && offset.GetOffset() < cur.GetOffset() {
+	if cur != nil && offset.Offset() < cur.Offset() {
 		nsqLog.LogDebugf("commited is rollbacked: %v, %v", cur, offset)
 	}
 	t.committedOffset.Store(offset)
@@ -243,7 +243,7 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
 	e := t.backend.GetQueueReadEnd()
 	commit := t.GetCommitted()
-	if commit != nil && e.GetOffset() > commit.GetOffset() {
+	if commit != nil && e.Offset() > commit.Offset() {
 		e = commit
 	}
 	return NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
@@ -361,7 +361,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
 		e := t.backend.GetQueueReadEnd()
 		curCommit := t.GetCommitted()
-		if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+		if curCommit != nil && e.Offset() > curCommit.Offset() {
 			if nsqLog.Level() >= levellogger.LOG_DEBUG {
 				nsqLog.Logf("channel %v, end to commit: %v, read end: %v", channel.GetName(), curCommit, e)
 			}
@@ -468,7 +468,7 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 
 	id, offset, writeBytes, dend, err := t.put(m)
 	if err == nil {
-		if dend.GetTotalMsgCnt()%t.syncEvery == 0 {
+		if dend.TotalMsgCnt()%t.syncEvery == 0 {
 			if !t.IsWriteDisabled() {
 				t.flush(true)
 			}
@@ -502,7 +502,7 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 		return nil, ErrExiting
 	}
 	wend := t.backend.GetQueueWriteEnd()
-	if wend.GetOffset() != offset {
+	if wend.Offset() != offset {
 		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
@@ -519,7 +519,7 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 	}
 
 	wend := t.backend.GetQueueWriteEnd()
-	if wend.GetOffset() != offset {
+	if wend.Offset() != offset {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : write message offset mismatch %v, %v",
 			t.GetFullName(), offset, wend)
@@ -531,7 +531,7 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 	for _, m := range msgs {
 		_, _, _, dend, err = t.put(m)
 		if err != nil {
-			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
+			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return nil, err
 		}
 	}
@@ -554,21 +554,21 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	for _, m := range msgs {
 		if m.ID > 0 {
 			nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
-			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
+			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return 0, 0, 0, 0, nil, ErrInvalidMessageID
 		}
 		id, offset, bytes, end, err := t.put(m)
 		if err != nil {
-			t.ResetBackendEndNoLock(wend.GetOffset(), wend.GetTotalMsgCnt())
+			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, err
 		}
 		diskEnd = end
 		batchBytes += bytes
-		totalCnt = diskEnd.GetTotalMsgCnt()
+		totalCnt = diskEnd.TotalMsgCnt()
 		if firstOffset == BackendOffset(-1) {
 			firstOffset = offset
 			firstMsgID = id
-			firstCnt = diskEnd.GetTotalMsgCnt()
+			firstCnt = diskEnd.TotalMsgCnt()
 		}
 	}
 
@@ -608,7 +608,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 	}
 
 	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.GetTotalMsgCnt())
+		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
 	}
 	return m.ID, offset, writeBytes, dend, nil
 }
@@ -618,7 +618,7 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 	e := t.backend.GetQueueReadEnd()
 	curCommit := t.GetCommitted()
 	// if not committed, we need wait to notify channel.
-	if curCommit != nil && e.GetOffset() > curCommit.GetOffset() {
+	if curCommit != nil && e.Offset() > curCommit.Offset() {
 		if nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.Logf("topic %v, end to commit: %v, read end: %v", t.fullName, curCommit, e)
 		}
@@ -643,7 +643,7 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 }
 
 func (t *Topic) TotalMessageCnt() uint64 {
-	return uint64(t.backend.GetQueueWriteEnd().GetTotalMsgCnt())
+	return uint64(t.backend.GetQueueWriteEnd().TotalMsgCnt())
 }
 
 func (t *Topic) TotalDataSize() int64 {
@@ -651,7 +651,7 @@ func (t *Topic) TotalDataSize() int64 {
 	if e == nil {
 		return 0
 	}
-	return int64(e.GetOffset())
+	return int64(e.Offset())
 }
 
 // Delete empties the topic and all its channels and closes

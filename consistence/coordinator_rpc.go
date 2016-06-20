@@ -3,7 +3,6 @@ package consistence
 import (
 	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/nsqd"
-	"io"
 	"net"
 	"os"
 	"runtime"
@@ -511,19 +510,22 @@ type RpcPutMessage struct {
 
 type RpcCommitLogReq struct {
 	RpcTopicData
-	LogOffset int64
+	LogOffset     int64
+	LogStartIndex int64
 }
 
 type RpcCommitLogRsp struct {
-	LogOffset int64
-	LogData   CommitLogData
-	ErrInfo   CoordErr
+	LogStartIndex int64
+	LogOffset     int64
+	LogData       CommitLogData
+	ErrInfo       CoordErr
 }
 
 type RpcPullCommitLogsReq struct {
 	RpcTopicData
 	StartLogOffset int64
 	LogMaxNum      int
+	StartIndexCnt  int64
 }
 
 type RpcPullCommitLogsRsp struct {
@@ -625,16 +627,10 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *Rp
 		ret.ErrInfo = *coorderr
 		return &ret
 	}
-	logData, err := tcData.logMgr.GetCommitLogFromOffset(req.LogOffset)
+	logData, err := tcData.logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
 	if err != nil {
 		var err2 error
-		ret.LogOffset, err2 = tcData.logMgr.GetLastLogOffset()
-		if err2 != nil {
-			ret.ErrInfo = *NewCoordErr(err2.Error(), CoordCommonErr)
-			return &ret
-		}
-		logData, err2 = tcData.logMgr.GetCommitLogFromOffset(ret.LogOffset)
-
+		ret.LogStartIndex, ret.LogOffset, logData, err2 = tcData.logMgr.GetLastCommitLogOffsetV2()
 		if err2 != nil {
 			if err2 == ErrCommitLogEOF {
 				ret.ErrInfo = *ErrTopicCommitLogEOF
@@ -653,6 +649,7 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *Rp
 		}
 		return &ret
 	} else {
+		ret.LogStartIndex = req.LogStartIndex
 		ret.LogOffset = req.LogOffset
 		ret.LogData = *logData
 	}
@@ -667,12 +664,11 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	}
 
 	var localErr error
-	ret.Logs, localErr = tcData.logMgr.GetCommitLogs(req.StartLogOffset, req.LogMaxNum)
+	ret.Logs, localErr = tcData.logMgr.GetCommitLogsV2(req.StartIndexCnt, req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
-		if localErr == io.EOF {
-			return &ret, nil
+		if localErr != ErrCommitLogEOF {
+			return nil, localErr
 		}
-		return nil, localErr
 	}
 	offsetList := make([]int64, len(ret.Logs))
 	sizeList := make([]int32, len(ret.Logs))

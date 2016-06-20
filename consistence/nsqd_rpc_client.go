@@ -251,26 +251,28 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo)
 	return ret.(int64), convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, offset int64) (int64, CommitLogData, *CoordErr) {
+func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logIndex int64, offset int64) (int64, int64, CommitLogData, *CoordErr) {
 	var req RpcCommitLogReq
+	req.LogStartIndex = logIndex
 	req.LogOffset = offset
 	req.TopicName = topicInfo.Name
 	req.TopicPartition = topicInfo.Partition
 	var rsp *RpcCommitLogRsp
 	rspVar, err := self.CallWithRetry("GetCommitLogFromOffset", &req)
 	if err != nil {
-		return 0, CommitLogData{}, convertRpcError(err, nil)
+		return 0, 0, CommitLogData{}, convertRpcError(err, nil)
 	}
 	rsp = rspVar.(*RpcCommitLogRsp)
-	return rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
+	return rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
 }
 
 func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
-	startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
+	logIndex int64, startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
 	var r RpcPullCommitLogsReq
 	r.TopicName = topic
 	r.TopicPartition = partition
 	r.StartLogOffset = startOffset
+	r.StartIndexCnt = logIndex
 	r.LogMaxNum = num
 	var ret *RpcPullCommitLogsRsp
 	retVar, err := self.CallWithRetry("PullCommitLogsAndData", &r)

@@ -33,15 +33,15 @@ type diskQueueOffset struct {
 type diskQueueEndInfo struct {
 	EndOffset   diskQueueOffset
 	VirtualEnd  BackendOffset
-	TotalMsgCnt int64
+	totalMsgCnt int64
 }
 
-func (d *diskQueueEndInfo) GetOffset() BackendOffset {
+func (d *diskQueueEndInfo) Offset() BackendOffset {
 	return d.VirtualEnd
 }
 
-func (d *diskQueueEndInfo) GetTotalMsgCnt() int64 {
-	return d.TotalMsgCnt
+func (d *diskQueueEndInfo) TotalMsgCnt() int64 {
+	return atomic.LoadInt64(&d.totalMsgCnt)
 }
 
 func (d *diskQueueEndInfo) IsSame(other BackendQueueEnd) bool {
@@ -705,7 +705,7 @@ func (d *diskQueueReader) retrieveMetaData() error {
 	defer f.Close()
 
 	_, err = fmt.Fscanf(f, "%d\n%d,%d,%d\n%d,%d,%d\n",
-		&d.queueEndInfo.TotalMsgCnt,
+		&d.queueEndInfo.totalMsgCnt,
 		&d.confirmedOffset.FileNum, &d.confirmedOffset.Pos, &d.virtualConfirmedOffset,
 		&d.queueEndInfo.EndOffset.FileNum, &d.queueEndInfo.EndOffset.Pos, &d.queueEndInfo.VirtualEnd)
 	if err != nil {
@@ -733,7 +733,7 @@ func (d *diskQueueReader) persistMetaData() error {
 	}
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n%d,%d,%d\n",
-		d.queueEndInfo.TotalMsgCnt,
+		d.queueEndInfo.totalMsgCnt,
 		d.confirmedOffset.FileNum, d.confirmedOffset.Pos, d.virtualConfirmedOffset,
 		d.queueEndInfo.EndOffset.FileNum, d.queueEndInfo.EndOffset.Pos, d.queueEndInfo.VirtualEnd)
 	if err != nil {
@@ -810,7 +810,7 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 		nsqLog.Logf("read force reload at end %v ", endPos)
 	}
 
-	if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt == d.queueEndInfo.TotalMsgCnt {
+	if endPos.VirtualEnd == d.queueEndInfo.VirtualEnd && endPos.TotalMsgCnt() == d.queueEndInfo.TotalMsgCnt() {
 		return false, nil
 	}
 	d.needSync = true

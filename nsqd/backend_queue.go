@@ -3,8 +3,8 @@ package nsqd
 type BackendOffset int64
 
 type BackendQueueEnd interface {
-	GetOffset() BackendOffset
-	GetTotalMsgCnt() int64
+	Offset() BackendOffset
+	TotalMsgCnt() int64
 	IsSame(BackendQueueEnd) bool
 }
 
