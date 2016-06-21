@@ -112,7 +112,7 @@ func (self *NsqLookupdEtcdMgr) refresh() {
 		case <-self.refreshStopCh:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
-			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
+			_, err := self.client.Set(self.nodeKey, ETCD_TTL)
 			if err != nil {
 				coordLog.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
 			}
@@ -435,6 +435,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 		rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 		if err != nil {
 			if client.IsKeyNotFound(err) {
+				self.Lock()
+				self.ifTopicChanged = true
+				self.Unlock()
 				return nil, ErrKeyNotFound
 			}
 			return nil, err
@@ -454,6 +457,9 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
+			self.Lock()
+			self.ifTopicChanged = true
+			self.Unlock()
 			return nil, ErrKeyNotFound
 		}
 		return nil, err
