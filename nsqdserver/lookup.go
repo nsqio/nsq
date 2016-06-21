@@ -53,6 +53,36 @@ func connectCallback(ctx *context, hostname string, syncTopicChan chan *clusteri
 	}
 }
 
+func (n *NsqdServer) discoverLookupdNodes(discoveryAddrs []string) ([]string, bool) {
+	changed := false
+	// discovery the new lookup
+	if n.ctx.nsqdCoord != nil {
+		newDiscoveried, err := n.ctx.nsqdCoord.GetAllLookupdNodes()
+		if err != nil {
+			nsqd.NsqLogger().Logf("discovery lookup failed: %v", err)
+		} else {
+			if len(newDiscoveried) != len(discoveryAddrs) {
+				changed = true
+			} else {
+				for _, l := range newDiscoveried {
+					if !in(net.JoinHostPort(l.NodeIP, l.TcpPort), discoveryAddrs) {
+						changed = true
+						break
+					}
+				}
+			}
+			if changed {
+				discoveryAddrs = discoveryAddrs[:0]
+				for _, l := range newDiscoveried {
+					discoveryAddrs = append(discoveryAddrs, net.JoinHostPort(l.NodeIP, l.TcpPort))
+				}
+				nsqd.NsqLogger().LogDebugf("discovery lookup nodes: %v", discoveryAddrs)
+			}
+		}
+	}
+	return discoveryAddrs, changed
+}
+
 func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan interface{}, optsNotifyChan chan struct{}, exitChan chan int) {
 	var lookupPeers []*clusterinfo.LookupPeer
 	var lookupAddrs []string
@@ -69,6 +99,8 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 	ticker := time.Tick(pingInterval)
 	allHosts := make([]string, 0)
 	discoveryAddrs := make([]string, 0)
+	discoveryAddrs, _ = n.discoverLookupdNodes(discoveryAddrs)
+
 	for {
 		if changed {
 			allHosts = allHosts[:0]
@@ -117,31 +149,10 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 					nsqd.NsqLogger().Logf("LOOKUPD(%s): ERROR %s - %s", lp, cmd, err)
 				}
 			}
-			// discovery the new lookup
-			if n.ctx.nsqdCoord != nil {
-				newDiscoveried, err := n.ctx.nsqdCoord.GetAllLookupdNodes()
-				if err != nil {
-					nsqd.NsqLogger().Logf("discovery lookup failed: %v", err)
-				} else {
-					if len(newDiscoveried) != len(discoveryAddrs) {
-						changed = true
-					} else {
-						for _, l := range newDiscoveried {
-							if !in(net.JoinHostPort(l.NodeIP, l.TcpPort), discoveryAddrs) {
-								changed = true
-								break
-							}
-						}
-					}
-					if !changed {
-						continue
-					}
-					discoveryAddrs = discoveryAddrs[:0]
-					for _, l := range newDiscoveried {
-						discoveryAddrs = append(discoveryAddrs, net.JoinHostPort(l.NodeIP, l.TcpPort))
-					}
-					nsqd.NsqLogger().LogDebugf("discovery lookup nodes: %v", discoveryAddrs)
-				}
+			discoveryChanged := false
+			discoveryAddrs, discoveryChanged = n.discoverLookupdNodes(discoveryAddrs)
+			if discoveryChanged {
+				changed = true
 			}
 		case val := <-metaNotifyChan:
 			var cmd *nsq.Command

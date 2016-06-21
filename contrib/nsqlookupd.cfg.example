@@ -1,19 +1,31 @@
-## enable verbose logging
-verbose = false
-
-
 ## <addr>:<port> to listen on for TCP clients
 tcp_address = "0.0.0.0:4160"
 
 ## <addr>:<port> to listen on for HTTP clients
 http_address = "0.0.0.0:4161"
 
+## rpc port used for cluster communication
+rpc_port = "4260"
 ## address that will be registered with lookupd (defaults to the OS hostname)
-# broadcast_address = ""
+#broadcast_address = ""
+## the network interface for broadcast, the ip will be detected automatically.
+# use this configure instead of broadcast_address to keep all the configure is the same 
+broadcast_interface = "eth0"
 
+## local reverse proxy port, basically used for collecting the stats 
+reverse_proxy_port = "5460"
+
+cluster_id = "test-nsq-cluster-dev-1"
+## the etcd cluster ip list
+cluster_leadership_addresses = "127.0.0.1:2379"
 
 ## duration of time a producer will remain in the active list since its last ping
-inactive_producer_timeout = "300s"
+inactive_producer_timeout = "100s"
+# should at least twice as the ping interval on nsqd
+nsqd_ping_timeout= "15s"
 
 ## duration of time a producer will remain tombstoned if registration remains
 tombstone_lifetime = "45s"
+
+## the detail of the log, larger number means more details
+log_level = 2

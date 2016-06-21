@@ -1,8 +1,16 @@
-## enable verbose logging
-verbose = false
-
 ## unique identifier (int) for this worker (will default to a hash of hostname)
 # id = 5150
+#
+## cluster id to separate different cluster
+cluster_id = "test-nsq-cluster-dev-1"
+## the etcd cluster ip list
+cluster_leadership_addresses = "127.0.0.1:2379"
+
+## rpc port used for node communication for cluster , ip will be the same with broadcast
+rpc_port = "4250"
+## address that will be registered with lookupd (defaults to the OS hostname)
+#broadcast_address = ""
+broadcast_interface = "eth0"
 
 ## <addr>:<port> to listen on for TCP clients
 tcp_address = "0.0.0.0:4150"
@@ -13,14 +21,8 @@ http_address = "0.0.0.0:4151"
 ## <addr>:<port> to listen on for HTTPS clients
 # https_address = "0.0.0.0:4152"
 
-## address that will be registered with lookupd (defaults to the OS hostname)
-# broadcast_address = ""
-
-## cluster of nsqlookupd TCP addresses
-nsqlookupd_tcp_addresses = [
-    "127.0.0.1:4160"
-]
-
+## keep alive heartbeat interval between the nsqd node with the nsqlookupd
+lookup_ping_interval = "5s"
 
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"
@@ -53,6 +55,8 @@ max_req_timeout = "1h"
 ## maximum size of a single command body
 max_body_size = 5123840
 
+## maximum finished count with unordered
+max_confirm_win = 1000
 
 ## maximum client configurable duration of time between client heartbeats
 max_heartbeat_interval = "60s"
@@ -72,6 +76,9 @@ max_output_buffer_timeout = "1s"
 
 ## prefix used for keys sent to statsd (%s for host replacement)
 statsd_prefix = "nsq.%s"
+
+## the protocol for statsd
+statsd_protocol="tcp"
 
 ## duration between pushing to statsd (time.Duration)
 statsd_interval = "60s"
@@ -118,3 +125,6 @@ max_deflate_level = 6
 
 ## enable snappy feature negotiation (client compression)
 snappy = true
+
+## bigger level means more log details
+log_level = 2
