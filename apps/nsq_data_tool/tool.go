@@ -14,113 +14,21 @@ import (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 
-	topic       = flag.String("topic", "", "NSQ topic")
-	partition   = flag.Int("partition", -1, "NSQ topic partition")
-	dataPath    = flag.String("data_path", "", "the data path of nsqd")
-	view        = flag.String("view", "commitlog", "commitlog | topicdata ")
-	searchMode  = flag.String("search_mode", "count", "the view start of mode. (count|id|virtual_offset)")
-	viewStart   = flag.Int64("view_start", 0, "the start count of message.")
-	viewStartID = flag.Int64("view_start_id", 0, "the start id of message.")
-	viewOffset  = flag.Int64("view_offset", 0, "the virtual offset of the queue")
-	viewCnt     = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
+	topic              = flag.String("topic", "", "NSQ topic")
+	partition          = flag.Int("partition", -1, "NSQ topic partition")
+	dataPath           = flag.String("data_path", "", "the data path of nsqd")
+	view               = flag.String("view", "commitlog", "commitlog | topicdata ")
+	searchMode         = flag.String("search_mode", "count", "the view start of mode. (count|id|timestamp|virtual_offset)")
+	viewStart          = flag.Int64("view_start", 0, "the start count of message.")
+	viewStartID        = flag.Int64("view_start_id", 0, "the start id of message.")
+	viewStartTimestamp = flag.Int64("view_start_timestamp", 0, "the start timestamp of message.")
+	viewOffset         = flag.Int64("view_offset", 0, "the virtual offset of the queue")
+	viewCnt            = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
 )
 
 func getBackendName(topicName string, part int) string {
 	backendName := nsqd.GetTopicFullName(topicName, part)
 	return backendName
-}
-
-func getSearchPositionFromCount(tpLogMgr *consistence.TopicCommitLogMgr, logIndex int64,
-	lastOffset int64, lastLogData consistence.CommitLogData) (int64, int64) {
-	searchOffset := int64(0)
-	searchLogIndexStart := int64(0)
-	searchLogIndexEnd := *viewStart/int64(consistence.LOGROTATE_NUM) + 1
-	if searchLogIndexEnd > logIndex {
-		searchLogIndexEnd = logIndex
-	}
-	// find the start index of log
-	for searchLogIndexStart < searchLogIndexEnd {
-		_, l, err := tpLogMgr.GetLastCommitLogDataOnSegment(searchLogIndexStart)
-		if err != nil {
-			log.Fatalf("read log data failed: %v", err)
-		}
-		if l.MsgCnt+int64(l.MsgNum-1) >= *viewStart {
-			break
-		}
-		searchLogIndexStart++
-	}
-	searchCntStart := int64(0)
-	roffset, _, err := tpLogMgr.GetLastCommitLogDataOnSegment(searchLogIndexStart)
-	if err != nil {
-		log.Fatalf("get last log data on segment:%v, failed:%v\n", searchLogIndexStart, err)
-	}
-	searchCntEnd := roffset / int64(consistence.GetLogDataSize())
-	for {
-		if searchCntStart >= searchCntEnd {
-			break
-		}
-		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
-		searchOffset = searchCntPos * int64(consistence.GetLogDataSize())
-		cur, _ := tpLogMgr.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
-		if cur.MsgCnt > *viewStart {
-			searchCntEnd = searchCntPos - 1
-		} else if cur.MsgCnt+int64(cur.MsgNum-1) < *viewStart {
-			searchCntStart = searchCntPos + 1
-		} else {
-			break
-		}
-	}
-
-	return searchLogIndexStart, searchOffset
-}
-
-func getSearchPositionFromID(tpLogMgr *consistence.TopicCommitLogMgr, logIndex int64,
-	lastOffset int64, lastLogData consistence.CommitLogData) (int64, int64) {
-	searchOffset := int64(0)
-	searchLogIndexStart := int64(0)
-	searchLogIndexEnd := *viewStartID/int64(consistence.LOGROTATE_NUM) + 1
-	if searchLogIndexEnd > logIndex {
-		searchLogIndexEnd = logIndex
-	}
-	// find the start index of log
-	for searchLogIndexStart < searchLogIndexEnd {
-		_, l, err := tpLogMgr.GetLastCommitLogDataOnSegment(searchLogIndexStart)
-		if err != nil {
-			log.Fatalf("read log data failed: %v", err)
-		}
-		if l.LastMsgLogID >= *viewStartID {
-			break
-		}
-		searchLogIndexStart++
-	}
-	searchCntStart := int64(0)
-	roffset, _, err := tpLogMgr.GetLastCommitLogDataOnSegment(searchLogIndexStart)
-	if err != nil {
-		log.Fatalf("get last log data on segment:%v, failed:%v\n", searchLogIndexStart, err)
-	}
-	searchCntEnd := roffset / int64(consistence.GetLogDataSize())
-	for {
-		if searchCntStart >= searchCntEnd {
-			break
-		}
-		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
-		searchOffset = searchCntPos * int64(consistence.GetLogDataSize())
-		cur, _ := tpLogMgr.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
-		if cur.LogID > *viewStartID {
-			searchCntEnd = searchCntPos - 1
-		} else if cur.LastMsgLogID < *viewStartID {
-			searchCntStart = searchCntPos + 1
-		} else {
-			break
-		}
-	}
-
-	return searchLogIndexStart, searchOffset
-}
-
-func getSearchPositionFromVirtualPos(tpLogMgr *consistence.TopicCommitLogMgr, logIndex int64,
-	lastOffset int64, lastLogData consistence.CommitLogData) (int64, int64) {
-	return 0, 0
 }
 
 func main() {
@@ -162,9 +70,20 @@ func main() {
 	searchOffset := int64(0)
 	searchLogIndexStart := int64(0)
 	if *searchMode == "count" {
-		searchLogIndexStart, searchOffset = getSearchPositionFromCount(tpLogMgr, logIndex, lastOffset, *lastLogData)
+		searchLogIndexStart, searchOffset, _, err = tpLogMgr.SearchLogDataByMsgCnt(*viewStart)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	} else if *searchMode == "id" {
-		searchLogIndexStart, searchOffset = getSearchPositionFromID(tpLogMgr, logIndex, lastOffset, *lastLogData)
+		searchLogIndexStart, searchOffset, _, err = tpLogMgr.SearchLogDataByMsgID(*viewStartID)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else if *searchMode == "virtual_offset" {
+		searchLogIndexStart, searchOffset, _, err = tpLogMgr.SearchLogDataByMsgOffset(*viewStartID)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	} else {
 		log.Fatalln("not supported search mode")
 	}

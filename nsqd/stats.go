@@ -8,15 +8,16 @@ import (
 )
 
 type TopicStats struct {
-	TopicName      string         `json:"topic_name"`
-	TopicFullName  string         `json:"topic_full_name"`
-	TopicPartition int            `json:"topic_partition"`
-	Channels       []ChannelStats `json:"channels"`
-	Depth          int64          `json:"depth"`
-	BackendDepth   int64          `json:"backend_depth"`
-	MessageCount   uint64         `json:"message_count"`
-	IsLeader       bool           `json:"is_leader"`
-	HourlyPubSize  int64          `json:"hourly_pubsize"`
+	TopicName      string           `json:"topic_name"`
+	TopicFullName  string           `json:"topic_full_name"`
+	TopicPartition int              `json:"topic_partition"`
+	Channels       []ChannelStats   `json:"channels"`
+	Depth          int64            `json:"depth"`
+	BackendDepth   int64            `json:"backend_depth"`
+	MessageCount   uint64           `json:"message_count"`
+	IsLeader       bool             `json:"is_leader"`
+	HourlyPubSize  int64            `json:"hourly_pubsize"`
+	Clients        []ClientPubStats `json:"client_pub_stats"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
@@ -74,6 +75,15 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 
 		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}
+}
+
+type ClientPubStats struct {
+	RemoteAddress string `json:"remote_address"`
+	UserAgent     string `json:"user_agent"`
+	Protocol      string `json:"protocol"`
+	PubCount      int64  `json:"pub_count"`
+	ErrCount      int64  `json:"err_count"`
+	LastPubTs     int64  `json:"last_pub_ts"`
 }
 
 type ClientStats struct {

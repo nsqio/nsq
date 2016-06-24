@@ -70,6 +70,13 @@ type Topic struct {
 	committedOffset atomic.Value
 	autoCommit      int32
 	magicCode       int64
+	// 100bytes, 1KB, 4KB, 16KB, 64KB, 512KB, 1MB, 2MB, 4MB, 8MB
+	msgSizeStats [10]int64
+	// 1ms, 8ms, 16ms, 32ms, 64ms, 128ms, 512ms, 1s, 2s, 4s
+	msgWriteLatencyStats [10]int64
+	writeErrCnt          int64
+	statsMutex           sync.Mutex
+	clientPubStats       map[string]*ClientPubStats
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -837,4 +844,57 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 		latencyStream.Merge(c.e2eProcessingLatencyStream)
 	}
 	return latencyStream
+}
+
+func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, count int64, hasErr bool) {
+	t.statsMutex.Lock()
+	defer t.statsMutex.Unlock()
+	s, ok := t.clientPubStats[remote]
+	if !ok {
+		// too much clients pub to this topic
+		// we just ignore stats
+		if len(t.clientPubStats) > 1000 {
+			return
+		}
+		s = &ClientPubStats{
+			RemoteAddress: remote,
+			UserAgent:     agent,
+			Protocol:      protocol,
+		}
+		t.clientPubStats[remote] = s
+	}
+
+	if hasErr {
+		s.ErrCount++
+	} else {
+		s.PubCount += count
+		s.LastPubTs = time.Now().Unix()
+	}
+}
+
+func (t *Topic) RemovePubStats(remote string, protocol string) {
+	t.statsMutex.Lock()
+	if protocol == "tcp" {
+		delete(t.clientPubStats, remote)
+	} else {
+		s, ok := t.clientPubStats[remote]
+		if ok && time.Now().Unix()-s.LastPubTs > 60 {
+			delete(t.clientPubStats, remote)
+		}
+	}
+	t.statsMutex.Unlock()
+}
+
+func (t *Topic) GetPubStats() []ClientPubStats {
+	t.statsMutex.Lock()
+	stats := make([]ClientPubStats, 0, len(t.clientPubStats))
+	for _, s := range t.clientPubStats {
+		if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60 {
+			delete(t.clientPubStats, s.RemoteAddress)
+		} else {
+			stats = append(stats, *s)
+		}
+	}
+	t.statsMutex.Unlock()
+	return stats
 }

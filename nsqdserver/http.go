@@ -59,19 +59,15 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.NegotiateVersion))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
-	//router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
-	//router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
-	//router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, http_api.DeprecatedAPI, log, http_api.V1))
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
-	//router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, http_api.DeprecatedAPI, log, http_api.V1))
-	//router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, http_api.DeprecatedAPI, log, http_api.V1))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
@@ -250,6 +246,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{406, "MSG_EMPTY"}
 	}
 
+	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
@@ -261,6 +258,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body, traceID)
 		//s.ctx.setHealth(err)
 		if err != nil {
+			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -270,6 +268,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
+		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, false)
 		if enableTrace {
 			return struct {
 				Status      string `json:"status"`
@@ -282,6 +281,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return "OK", nil
 		}
 	} else {
+		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		topic.DisableForSlave()
@@ -357,10 +357,12 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
+	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		_, _, _, err := s.ctx.PutMessages(topic, msgs)
 		//s.ctx.setHealth(err)
 		if err != nil {
+			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -370,6 +372,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
+		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 		//should we forward to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
@@ -377,35 +380,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
+	topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), false)
 	return "OK", nil
-}
-
-func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil {
-		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	topicName, topicPart, err := http_api.GetTopicPartitionArgs(reqParams)
-	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
-	}
-
-	if topicPart == -1 {
-		topicPart = s.ctx.getDefaultPartition(topicName)
-	}
-	topic, err := s.ctx.getExistingTopic(topicName, topicPart)
-	if err != nil {
-		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
-	}
-
-	err = topic.Empty()
-	if err != nil {
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-
-	return nil, nil
 }
 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -437,6 +413,31 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 	topic.GetChannel(channelName)
+	return nil, nil
+}
+
+func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	}
+
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		// TODO : sync to replicas
+		err = channel.Empty()
+		if err != nil {
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+	} else {
+		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		return nil, http_api.Err{400, FailedOnNotLeader}
+	}
 	return nil, nil
 }
 

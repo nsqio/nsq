@@ -20,10 +20,12 @@ const (
 )
 
 var (
-	ErrMsgNotInFlight     = errors.New("Message ID not in flight")
-	ErrMsgAlreadyInFlight = errors.New("Message ID already in flight")
-	ErrConsumeDisabled    = errors.New("Consume is disabled currently")
-	ErrMsgDeferred        = errors.New("Message is deferred")
+	ErrMsgNotInFlight                 = errors.New("Message ID not in flight")
+	ErrMsgAlreadyInFlight             = errors.New("Message ID already in flight")
+	ErrConsumeDisabled                = errors.New("Consume is disabled currently")
+	ErrMsgDeferred                    = errors.New("Message is deferred")
+	ErrSetConsumeOffsetNotFirstClient = errors.New("consume offset can only be changed by the first consume client")
+	ErrNotDiskQueueReader             = errors.New("the consume channel is not disk queue reader")
 )
 
 type Consumer interface {
@@ -193,8 +195,22 @@ func (c *Channel) SetTrace(enable bool) {
 }
 
 func (c *Channel) SetConsumeOffset(offset BackendOffset) error {
-	_, err := c.backend.SkipReadToOffset(offset)
-	return err
+	c.Lock()
+	defer c.Unlock()
+	if len(c.clients) > 1 {
+		return ErrSetConsumeOffsetNotFirstClient
+	}
+	d, ok := c.backend.(*diskQueueReader)
+	if ok {
+		_, err := d.ResetReadToOffset(offset)
+		if err != nil {
+			nsqLog.Infof("set reader to offset %v failed: %v", offset, err)
+			return err
+		}
+	} else {
+		return ErrNotDiskQueueReader
+	}
+	return nil
 }
 
 func (c *Channel) SetOrdered(enable bool) {
@@ -270,7 +286,7 @@ func (c *Channel) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		c.Empty()
+		c.emptyConsume()
 		return c.backend.Delete()
 	}
 
@@ -279,7 +295,7 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
-func (c *Channel) Empty() error {
+func (c *Channel) emptyConsume() error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -309,7 +325,18 @@ finish:
 		delete(c.waitingRequeueMsgs, k)
 	}
 	c.waitingRequeueMutex.Unlock()
+	d, ok := c.backend.(*diskQueueReader)
+	if ok {
+		d.SkipToEnd()
+	}
 	return nil
+}
+
+func (c *Channel) Empty() error {
+	if c.IsConsumeDisabled() {
+		return ErrConsumeDisabled
+	}
+	return c.emptyConsume()
 }
 
 func (c *Channel) flush() error {
@@ -473,7 +500,9 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 			}
 			return c.GetConfirmedOffset(), reduced
 		}
-		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 && atomic.LoadInt32(&c.needNotifyRead) == 1 {
+		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 &&
+			atomic.LoadInt32(&c.needNotifyRead) == 1 &&
+			!c.IsOrdered() {
 			select {
 			case c.tryReadBackend <- true:
 			default:
@@ -531,13 +560,16 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bo
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
 	offset, changed := c.ConfirmBackendQueue(msg)
+	return offset, changed, nil
+}
+
+func (c *Channel) ContinueConsumeForOrder() {
 	if c.IsOrdered() && atomic.LoadInt32(&c.needNotifyRead) == 1 {
 		select {
 		case c.tryReadBackend <- true:
 		default:
 		}
 	}
-	return offset, changed, nil
 }
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:
@@ -607,9 +639,15 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 	}
 }
 
+func (c *Channel) GetClientsCount() int {
+	c.RLock()
+	defer c.RUnlock()
+	return len(c.clients)
+}
+
 func (c *Channel) GetClients() map[int64]Consumer {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	results := make(map[int64]Consumer)
 	for k, c := range c.clients {

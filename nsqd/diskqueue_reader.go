@@ -242,7 +242,7 @@ func (d *diskQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
 		return 0, errors.New("exiting")
 	}
 	old := d.virtualConfirmedOffset
-	skiperr := d.internalSkipTo(d.virtualConfirmedOffset)
+	skiperr := d.internalSkipTo(d.virtualConfirmedOffset, false)
 	if skiperr == nil {
 		if old != d.virtualConfirmedOffset {
 			d.needSync = true
@@ -255,6 +255,32 @@ func (d *diskQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
 	return d.virtualConfirmedOffset, skiperr
 }
 
+// reset can be set to the old offset before confirmed, skip can only skip forward confirmed.
+func (d *diskQueueReader) ResetReadToOffset(offset BackendOffset) (BackendOffset, error) {
+	d.Lock()
+	defer d.Unlock()
+	if d.exitFlag == 1 {
+		return 0, errors.New("exiting")
+	}
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+
+	old := d.virtualConfirmedOffset
+	nsqLog.Infof("reset from: %v, %v, %v", d.readPos, d.virtualReadOffset, d.virtualConfirmedOffset)
+	err := d.internalSkipTo(offset, offset < old)
+	if err == nil {
+		if old != d.virtualConfirmedOffset {
+			d.needSync = true
+			d.sync()
+		}
+	}
+
+	nsqLog.Infof("reset reader to: %v, %v, %v", d.readPos, d.virtualReadOffset, d.virtualConfirmedOffset)
+	return d.virtualConfirmedOffset, err
+}
+
 func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -262,7 +288,7 @@ func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset,
 		return 0, errors.New("exiting")
 	}
 	old := d.virtualConfirmedOffset
-	skiperr := d.internalSkipTo(offset)
+	skiperr := d.internalSkipTo(offset, false)
 	if skiperr == nil {
 		if old != d.virtualConfirmedOffset {
 			d.needSync = true
@@ -283,7 +309,7 @@ func (d *diskQueueReader) SkipToEnd() (BackendOffset, error) {
 		return 0, errors.New("exiting")
 	}
 	old := d.virtualConfirmedOffset
-	skiperr := d.internalSkipTo(d.queueEndInfo.VirtualEnd)
+	skiperr := d.internalSkipTo(d.queueEndInfo.VirtualEnd, false)
 	if skiperr == nil {
 		if old != d.virtualConfirmedOffset {
 			d.needSync = true
@@ -473,7 +499,7 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset) error {
 	return nil
 }
 
-func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
+func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, backToConfirmed bool) error {
 	if voffset == d.virtualReadOffset && voffset == d.virtualConfirmedOffset {
 		return nil
 	}
@@ -486,7 +512,9 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset) error {
 	var err error
 	if voffset < d.virtualConfirmedOffset {
 		nsqLog.Logf("skip backward to less than confirmed: %v, %v", voffset, d.virtualConfirmedOffset)
-		return ErrMoveOffsetInvalid
+		if !backToConfirmed {
+			return ErrMoveOffsetInvalid
+		}
 	}
 	if voffset > d.queueEndInfo.VirtualEnd {
 		nsqLog.Logf("internal skip great than end : %v, skipping to : %v", d.queueEndInfo, voffset)

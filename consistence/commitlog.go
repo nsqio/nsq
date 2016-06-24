@@ -26,6 +26,7 @@ var (
 	ErrCommitLogEOF             = errors.New("commit log end of file")
 	ErrCommitLogOffsetInvalid   = errors.New("commit log offset is invalid")
 	ErrCommitLogPartitionExceed = errors.New("commit log partition id is exceeded")
+	ErrCommitLogSearchFailed    = errors.New("commit log data search failed")
 )
 
 var LOGROTATE_NUM = 10000000
@@ -672,4 +673,133 @@ func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int
 		}
 	}
 	return totalLogs, nil
+}
+
+type ICommitLogComparator interface {
+	SearchEndBoundary() int64
+	LessThanLeftBoundary(l *CommitLogData) bool
+	GreatThanRightBoundary(l *CommitLogData) bool
+}
+
+func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparator) (int64, int64, *CommitLogData, error) {
+	searchOffset := int64(0)
+	searchLogIndexStart := int64(0)
+	searchLogIndexEnd := comp.SearchEndBoundary()
+	if searchLogIndexEnd > self.currentStart {
+		searchLogIndexEnd = self.currentStart
+	}
+	// find the start index of log
+	for searchLogIndexStart < searchLogIndexEnd {
+		searchIndex := searchLogIndexStart + (searchLogIndexEnd-searchLogIndexStart)/2
+		_, l, err := self.GetLastCommitLogDataOnSegment(searchIndex)
+		if err != nil {
+			coordLog.Infof("read last log data failed: %v, offset: %v", err, searchIndex)
+			return 0, 0, nil, err
+		}
+		if !comp.GreatThanRightBoundary(l) {
+			searchLogIndexEnd = searchIndex - 1
+		} else {
+			searchLogIndexStart = searchIndex + 1
+		}
+	}
+	searchCntStart := int64(0)
+	roffset, _, err := self.GetLastCommitLogDataOnSegment(searchLogIndexStart)
+	if err != nil {
+		coordLog.Infof("get last log data on segment:%v, failed:%v\n", searchLogIndexStart, err)
+		return 0, 0, nil, err
+	}
+	searchCntEnd := roffset / int64(GetLogDataSize())
+	var cur *CommitLogData
+	for {
+		if searchCntStart >= searchCntEnd {
+			break
+		}
+		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
+		searchOffset = searchCntPos * int64(GetLogDataSize())
+		cur, err = self.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
+		if err != nil {
+			coordLog.Infof("get log data from:%v:%v, failed:%v\n", searchLogIndexStart, searchOffset, err)
+			return 0, 0, nil, err
+		}
+		if comp.LessThanLeftBoundary(cur) {
+			searchCntEnd = searchCntPos - 1
+		} else if comp.GreatThanRightBoundary(cur) {
+			searchCntStart = searchCntPos + 1
+		} else {
+			break
+		}
+	}
+	return searchLogIndexStart, searchOffset, cur, nil
+}
+
+type CntComparator int64
+
+func (self CntComparator) SearchEndBoundary() int64 {
+	return int64(self)/int64(LOGROTATE_NUM) + 1
+}
+
+func (self CntComparator) LessThanLeftBoundary(l *CommitLogData) bool {
+	if l.MsgCnt > int64(self) {
+		return true
+	}
+	return false
+}
+
+func (self CntComparator) GreatThanRightBoundary(l *CommitLogData) bool {
+	if l.MsgCnt+int64(l.MsgNum-1) < int64(self) {
+		return true
+	}
+	return false
+}
+
+type MsgIDComparator int64
+
+func (self MsgIDComparator) SearchEndBoundary() int64 {
+	return int64(self)/int64(LOGROTATE_NUM) + 1
+}
+
+func (self MsgIDComparator) LessThanLeftBoundary(l *CommitLogData) bool {
+	if l.LogID > int64(self) {
+		return true
+	}
+	return false
+}
+
+func (self MsgIDComparator) GreatThanRightBoundary(l *CommitLogData) bool {
+	if l.LastMsgLogID < int64(self) {
+		return true
+	}
+	return false
+}
+
+type MsgOffsetComparator int64
+
+func (self MsgOffsetComparator) SearchEndBoundary() int64 {
+	return int64(self)/int64(LOGROTATE_NUM) + 1
+}
+
+func (self MsgOffsetComparator) LessThanLeftBoundary(l *CommitLogData) bool {
+	if l.MsgOffset > int64(self) {
+		return true
+	}
+	return false
+}
+
+func (self MsgOffsetComparator) GreatThanRightBoundary(l *CommitLogData) bool {
+	if l.MsgOffset+int64(l.MsgSize) < int64(self) {
+		return true
+	}
+	return false
+}
+
+func (self *TopicCommitLogMgr) SearchLogDataByMsgCnt(searchCnt int64) (int64, int64, *CommitLogData, error) {
+	return self.SearchLogDataByComparator(CntComparator(searchCnt))
+}
+
+func (self *TopicCommitLogMgr) SearchLogDataByMsgID(searchMsgID int64) (int64, int64, *CommitLogData, error) {
+	return self.SearchLogDataByComparator(MsgIDComparator(searchMsgID))
+}
+
+func (self *TopicCommitLogMgr) SearchLogDataByMsgOffset(searchMsgOffset int64) (int64, int64, *CommitLogData, error) {
+	return self.SearchLogDataByComparator(MsgOffsetComparator(searchMsgOffset))
 }

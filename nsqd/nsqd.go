@@ -594,6 +594,15 @@ func (n *NSQD) DeleteExistingTopic(topicName string, part int) error {
 	return nil
 }
 
+func (n *NSQD) CleanClientPubStats(remote string, protocol string) {
+	tmpMap := n.GetTopicMapCopy()
+	for _, topics := range tmpMap {
+		for _, t := range topics {
+			t.RemovePubStats(remote, protocol)
+		}
+	}
+}
+
 func (n *NSQD) flushAll(all bool) {
 	tmpMap := n.GetTopicMapCopy()
 	for _, topics := range tmpMap {

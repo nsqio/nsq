@@ -554,7 +554,7 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		return nil, ErrEpochMismatch
 	}
 	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
-		coordLog.Infof("rpc call with wrong session:%v", rpcData, tcData.GetLeaderSession())
+		coordLog.Infof("rpc call with wrong session:%v, local: %v", rpcData, tcData.GetLeaderSession())
 		return nil, ErrLeaderSessionMismatch
 	}
 	//if !tcData.localDataLoaded {
