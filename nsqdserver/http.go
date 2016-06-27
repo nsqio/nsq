@@ -56,6 +56,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/pubtrace", http_api.Decorate(s.doPUBTrace, http_api.V1))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.NegotiateVersion))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
@@ -554,6 +555,13 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 	statStr := t.GetTopicChannelDebugStat(channelName)
 
 	return statStr, nil
+}
+
+func (s *httpServer) doCoordStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqdCoord != nil {
+		return s.ctx.nsqdCoord.Stats(), nil
+	}
+	return nil, http_api.Err{500, "Coordinator is disabled."}
 }
 
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

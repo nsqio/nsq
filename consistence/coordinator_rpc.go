@@ -709,3 +709,7 @@ func (self *NsqdCoordRpcServer) TestRpcTimeout() error {
 	time.Sleep(time.Second)
 	return nil
 }
+
+type CoordStats struct {
+	RpcStats gorpc.ConnStats
+}

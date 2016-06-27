@@ -1462,3 +1462,11 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 		self.leadership.UnregisterNsqd(&self.myNode)
 	}
 }
+
+func (self *NsqdCoordinator) Stats() *CoordStats {
+	s := &CoordStats{}
+	if self.rpcServer != nil && self.rpcServer.rpcServer != nil {
+		s.RpcStats = self.rpcServer.rpcServer.Stats
+	}
+	return s
+}
