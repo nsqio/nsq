@@ -86,7 +86,7 @@ func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 		case <-stopChan:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
-			_, err := self.client.Set(self.nodeKey, ETCD_TTL)
+			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
 				coordLog.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
 			}
