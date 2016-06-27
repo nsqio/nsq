@@ -50,6 +50,7 @@ var offsetSplitStr = ":"
 var offsetSplitBytes = []byte(offsetSplitStr)
 var offsetCountType = "count"
 var offsetTimestampType = "timestamp"
+var offsetSpecialType = "special"
 
 var (
 	ErrOrderChannelOnSampleRate = errors.New("order consume is not allowed while sample rate is not 0")
@@ -74,7 +75,9 @@ func (self *ConsumeOffset) FromString(s string) error {
 		return errors.New("invalid consume offset:" + s)
 	}
 	self.OffsetType = values[0]
-	if self.OffsetType != offsetCountType && self.OffsetType != offsetTimestampType {
+	if self.OffsetType != offsetCountType &&
+		self.OffsetType != offsetTimestampType &&
+		self.OffsetType != offsetSpecialType {
 		return errors.New("invalid consume offset:" + s)
 	}
 	v, err := strconv.ParseInt(s, 10, 0)
@@ -91,7 +94,9 @@ func (self *ConsumeOffset) FromBytes(s []byte) error {
 		return errors.New("invalid consume offset:" + string(s))
 	}
 	self.OffsetType = string(values[0])
-	if self.OffsetType != offsetCountType && self.OffsetType != offsetTimestampType {
+	if self.OffsetType != offsetCountType &&
+		self.OffsetType != offsetTimestampType &&
+		self.OffsetType != offsetSpecialType {
 		return errors.New("invalid consume offset:" + string(s))
 	}
 	v, err := strconv.ParseInt(string(s), 10, 0)
@@ -855,11 +860,19 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 			// get the disk offset from the consume offset
 			// the time offset is in Millisecond
 			var l *consistence.CommitLogData
+			var queueOffset int64
 			var err error
 			if startFrom.OffsetType == offsetCountType {
-				l, err = p.ctx.nsqdCoord.SearchLogByMsgCnt(topicName, partition, startFrom.OffsetValue)
+				l, queueOffset, err = p.ctx.nsqdCoord.SearchLogByMsgCnt(topicName, partition, startFrom.OffsetValue)
 			} else if startFrom.OffsetType == offsetTimestampType {
-				l, err = p.ctx.nsqdCoord.SearchLogByMsgTimestamp(topicName, partition, startFrom.OffsetValue)
+				l, queueOffset, err = p.ctx.nsqdCoord.SearchLogByMsgTimestamp(topicName, partition, startFrom.OffsetValue)
+			} else if startFrom.OffsetType == offsetSpecialType {
+				if startFrom.OffsetValue == -1 {
+					queueOffset = int64(channel.GetChannelEnd())
+				} else {
+					nsqd.NsqLogger().Logf("not known special offset :%v", startFrom)
+					err = errors.New("not supported offset type")
+				}
 			} else {
 				nsqd.NsqLogger().Logf("not supported offset type:%v", startFrom)
 				err = errors.New("not supported offset type")
@@ -868,8 +881,8 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 				nsqd.NsqLogger().Logf("failed to search the consume offset: %v, err:%v", startFrom, err)
 				return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 			}
-			nsqd.NsqLogger().Logf("searched log : %v", l)
-			err = channel.SetConsumeOffset(nsqd.BackendOffset(l.MsgOffset))
+			nsqd.NsqLogger().Logf("%v searched log : %v, offset: %v", startFrom, l, queueOffset)
+			err = channel.SetConsumeOffset(nsqd.BackendOffset(queueOffset))
 			if err != nil {
 				if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
 					nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
@@ -878,7 +891,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 				nsqd.NsqLogger().LogDebugf("the consume offset: %v can only be set by the first client", startFrom, err)
 			} else {
 				nsqd.NsqLogger().Logf("set the consume offset: %v (actual set : %v), by client:%v, %v",
-					startFrom, l.MsgOffset, client.String(), client.UserAgent)
+					startFrom, queueOffset, client.String(), client.UserAgent)
 				// TODO: sync to the replicas, maybe we can wait the first FIN to sync offset ?
 			}
 		}

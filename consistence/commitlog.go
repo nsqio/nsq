@@ -694,6 +694,10 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		_, l, err := self.GetLastCommitLogDataOnSegment(searchIndex)
 		if err != nil {
 			coordLog.Infof("read last log data failed: %v, offset: %v", err, searchIndex)
+			if os.IsNotExist(err) {
+				searchLogIndexStart = searchIndex + 1
+				continue
+			}
 			return 0, 0, nil, err
 		}
 		if !comp.GreatThanRightBoundary(l) {

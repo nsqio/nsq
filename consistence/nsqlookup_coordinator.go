@@ -24,6 +24,7 @@ var (
 	ErrJoinISRTimeout           = NewCoordErr("Join ISR timeout", CoordCommonErr)
 	ErrWaitingJoinISR           = NewCoordErr("The topic is waiting node to join isr", CoordCommonErr)
 	ErrLeaderSessionNotReleased = NewCoordErr("The topic leader session is not released", CoordElectionTmpErr)
+	ErrTopicISRCatchupEnough    = NewCoordErr("the topic isr and catchup nodes are enough", CoordTmpErr)
 )
 
 const (
@@ -1263,6 +1264,10 @@ func (self *NsqLookupCoordinator) handleRequestJoinCatchup(topic string, partiti
 	if FindSlice(topicInfo.ISR, nid) != -1 {
 		return &CoordErr{"catchup node should not in the isr", RpcCommonErr, CoordCommonErr}
 	}
+	if len(topicInfo.ISR)+len(topicInfo.CatchupList) > topicInfo.Replica {
+		coordLog.Infof("topic(%v) current isr and catchup list: %v", topicInfo.GetTopicDesp(), topicInfo.ISR, topicInfo.CatchupList)
+		return ErrTopicISRCatchupEnough
+	}
 	if FindSlice(topicInfo.CatchupList, nid) == -1 {
 		topicInfo.CatchupList = append(topicInfo.CatchupList, nid)
 		err = self.leadership.UpdateTopicNodeInfo(topic, partition, &topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
@@ -1316,6 +1321,11 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 		coordLog.Infof("join isr node is not in catchup list.")
 		return ErrJoinISRInvalid
 	}
+	if len(topicInfo.ISR) > topicInfo.Replica {
+		coordLog.Infof("topic(%v) current isr list is enough: %v", topicInfo.GetTopicDesp(), topicInfo.ISR)
+		return ErrTopicISRCatchupEnough
+	}
+
 	coordLog.Infof("node %v request join isr for topic %v", nodeID, topicInfo.GetTopicDesp())
 
 	// we go here to allow the rpc call from client can return ok immediately

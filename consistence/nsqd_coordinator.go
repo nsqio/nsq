@@ -517,19 +517,52 @@ func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, part int) bool {
 	return tcData.GetLeader() == self.myNode.GetID() && tcData.GetLeaderSessionID() == self.myNode.GetID()
 }
 
-func (self *NsqdCoordinator) SearchLogByMsgCnt(topic string, part int, count int64) (*CommitLogData, error) {
+func (self *NsqdCoordinator) SearchLogByMsgCnt(topic string, part int, count int64) (*CommitLogData, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {
-		return nil, errors.New(err.Error())
+		return nil, 0, errors.New(err.Error())
 	}
 	_, _, l, localErr := tcData.logMgr.SearchLogDataByMsgCnt(count)
-	return l, localErr
+	if localErr != nil {
+		coordLog.Infof("search data failed: %v", localErr)
+		return nil, 0, localErr
+	}
+	realOffset := l.MsgOffset
+	if l.MsgCnt < count {
+		t, localErr := self.localNsqd.GetExistingTopic(topic, part)
+		if localErr != nil {
+			return l, realOffset, localErr
+		}
+		snap := t.GetDiskQueueSnapshot()
+		localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
+		if localErr != nil {
+			coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
+			return l, realOffset, localErr
+		}
+		curCount := l.MsgCnt
+
+		for {
+			ret := snap.ReadOne()
+			if ret.Err != nil {
+				coordLog.Infof("read disk queue error: %v", ret.Err)
+				return l, realOffset, ret.Err
+			} else {
+				realOffset = int64(ret.Offset)
+				if curCount >= count || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
+					break
+				}
+				curCount++
+			}
+		}
+	}
+	return l, realOffset, nil
 }
 
 type MsgTimestampComparator struct {
 	localTopicReader *nsqd.DiskQueueSnapshot
 	searchEnd        int64
 	searchTs         int64
+	searchResultMsg  *nsqd.Message
 }
 
 func (self *MsgTimestampComparator) SearchEndBoundary() int64 {
@@ -550,7 +583,9 @@ func (self *MsgTimestampComparator) LessThanLeftBoundary(l *CommitLogData) bool 
 	msg, err := nsqd.DecodeMessage(r.Data)
 	if err != nil {
 		coordLog.Errorf("failed to decode message - %s - %v", err, r)
+		return true
 	}
+	self.searchResultMsg = msg
 	if self.searchTs < msg.Timestamp {
 		return true
 	}
@@ -572,21 +607,23 @@ func (self *MsgTimestampComparator) GreatThanRightBoundary(l *CommitLogData) boo
 	msg, err := nsqd.DecodeMessage(r.Data)
 	if err != nil {
 		coordLog.Errorf("failed to decode message - %s - %v", err, r)
+		return false
 	}
+	self.searchResultMsg = msg
 	if self.searchTs > msg.Timestamp {
 		return true
 	}
 	return false
 }
 
-func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts int64) (*CommitLogData, error) {
+func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts int64) (*CommitLogData, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {
-		return nil, errors.New(err.Error())
+		return nil, 0, errors.New(err.Error())
 	}
 	t, localErr := self.localNsqd.GetExistingTopic(topic, part)
 	if localErr != nil {
-		return nil, localErr
+		return nil, 0, localErr
 	}
 
 	snap := t.GetDiskQueueSnapshot()
@@ -596,7 +633,38 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts 
 		searchTs:         ts,
 	}
 	_, _, l, localErr := tcData.logMgr.SearchLogDataByComparator(comp)
-	return l, localErr
+	if localErr != nil {
+		return nil, 0, localErr
+	}
+	realOffset := l.MsgOffset
+	if comp.searchResultMsg != nil && comp.searchResultMsg.Timestamp < ts {
+		localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
+		if localErr != nil {
+			coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
+			return l, realOffset, localErr
+		}
+		curCount := l.MsgCnt
+
+		for {
+			ret := snap.ReadOne()
+			if ret.Err != nil {
+				coordLog.Infof("read disk queue error: %v", ret.Err)
+				return l, realOffset, ret.Err
+			} else {
+				realOffset = int64(ret.Offset)
+				msg, err := nsqd.DecodeMessage(ret.Data)
+				if err != nil {
+					coordLog.Errorf("failed to decode message - %v - %v", err, ret)
+					return l, realOffset, err
+				}
+				if msg.Timestamp >= ts || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
+					break
+				}
+				curCount++
+			}
+		}
+	}
+	return l, realOffset, nil
 }
 
 // for isr node to check with leader
