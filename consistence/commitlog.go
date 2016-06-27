@@ -22,6 +22,7 @@ var (
 	ErrCommitLogWrongID         = errors.New("commit log id is wrong")
 	ErrCommitLogWrongLastID     = errors.New("commit log last id should no less than log id")
 	ErrCommitLogIDNotFound      = errors.New("commit log id is not found")
+	ErrCommitLogSearchNotFound  = errors.New("search commit log data not found")
 	ErrCommitLogOutofBound      = errors.New("commit log offset is out of bound")
 	ErrCommitLogEOF             = errors.New("commit log end of file")
 	ErrCommitLogOffsetInvalid   = errors.New("commit log offset is invalid")
@@ -106,13 +107,8 @@ func getCommitLogFromFile(file *os.File, offset int64) (*CommitLogData, error) {
 
 }
 
-func getLastCommitLogData(path string, startIndex int64) (*CommitLogData, int64, error) {
-	tmpFile, err := getCommitLogFile(path, startIndex, false)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer tmpFile.Close()
-	s, err := tmpFile.Stat()
+func getLastCommitLogDataFromFile(file *os.File) (*CommitLogData, int64, error) {
+	s, err := file.Stat()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -125,12 +121,21 @@ func getLastCommitLogData(path string, startIndex int64) (*CommitLogData, int64,
 	}
 	num := fsize / int64(GetLogDataSize())
 	roundOffset := (num - 1) * int64(GetLogDataSize())
-	l, err := getCommitLogFromFile(tmpFile, roundOffset)
+	l, err := getCommitLogFromFile(file, roundOffset)
 	if err != nil {
 		coordLog.Infof("load file error: %v", err)
 		return nil, 0, err
 	}
 	return l, roundOffset, err
+}
+
+func getLastCommitLogData(path string, startIndex int64) (*CommitLogData, int64, error) {
+	tmpFile, err := getCommitLogFile(path, startIndex, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tmpFile.Close()
+	return getLastCommitLogDataFromFile(tmpFile)
 }
 
 func getCommitLogListFromFile(file *os.File, offset int64, num int) ([]CommitLogData, error) {
@@ -476,11 +481,13 @@ func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64
 	self.Lock()
 	defer self.Unlock()
 	self.flushCommitLogsNoLock()
-	l, readOffset, err := getLastCommitLogData(self.path, index)
-	if err != nil {
-		return 0, nil, err
+	if self.currentStart == index {
+		l, readOffset, err := getLastCommitLogDataFromFile(self.appender)
+		return readOffset, l, err
+	} else {
+		l, readOffset, err := getLastCommitLogData(self.path, index)
+		return readOffset, l, err
 	}
-	return readOffset, l, nil
 }
 
 // this will get the log data of last commit
@@ -691,7 +698,7 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 	// find the start index of log
 	for searchLogIndexStart < searchLogIndexEnd {
 		searchIndex := searchLogIndexStart + (searchLogIndexEnd-searchLogIndexStart)/2
-		_, l, err := self.GetLastCommitLogDataOnSegment(searchIndex)
+		_, segEndLog, err := self.GetLastCommitLogDataOnSegment(searchIndex)
 		if err != nil {
 			coordLog.Infof("read last log data failed: %v, offset: %v", err, searchIndex)
 			if os.IsNotExist(err) {
@@ -700,11 +707,22 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 			}
 			return 0, 0, nil, err
 		}
-		if !comp.GreatThanRightBoundary(l) {
+		segStartLog, err := self.GetCommitLogFromOffsetV2(searchIndex, 0)
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		coordLog.Infof("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		if comp.GreatThanRightBoundary(segEndLog) {
+			searchLogIndexStart = searchIndex + 1
+		} else if comp.LessThanLeftBoundary(segStartLog) {
 			searchLogIndexEnd = searchIndex - 1
 		} else {
-			searchLogIndexStart = searchIndex + 1
+			searchLogIndexStart = searchIndex
+			break
 		}
+	}
+	if searchLogIndexStart > searchLogIndexEnd {
+		return searchLogIndexEnd, 0, nil, ErrCommitLogSearchNotFound
 	}
 	searchCntStart := int64(0)
 	roffset, _, err := self.GetLastCommitLogDataOnSegment(searchLogIndexStart)
@@ -715,11 +733,12 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 	searchCntEnd := roffset / int64(GetLogDataSize())
 	var cur *CommitLogData
 	for {
-		if searchCntStart >= searchCntEnd {
+		if searchCntStart > searchCntEnd {
 			break
 		}
 		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
 		searchOffset = searchCntPos * int64(GetLogDataSize())
+		coordLog.Infof("log searching: %v:%v", searchLogIndexStart, searchOffset)
 		cur, err = self.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
 		if err != nil {
 			coordLog.Infof("get log data from:%v:%v, failed:%v\n", searchLogIndexStart, searchOffset, err)
@@ -790,7 +809,8 @@ func (self MsgOffsetComparator) LessThanLeftBoundary(l *CommitLogData) bool {
 }
 
 func (self MsgOffsetComparator) GreatThanRightBoundary(l *CommitLogData) bool {
-	if l.MsgOffset+int64(l.MsgSize) < int64(self) {
+	// if the offset is equal to the right boundary, it means it should be next log (great than current log)
+	if l.MsgOffset+int64(l.MsgSize) <= int64(self) {
 		return true
 	}
 	return false

@@ -102,6 +102,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
 		autoCommit:     1,
+		clientPubStats: make(map[string]*ClientPubStats),
 	}
 	if t.syncEvery < 1 {
 		t.syncEvery = 1

@@ -7,7 +7,7 @@ import (
 type IMsgTracer interface {
 	Start()
 	TracePub(topic string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64)
-	// state will be Start, Req, Fin, Timeout
+	// state will be READ_QUEUE, Start, Req, Fin, Timeout
 	TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string)
 }
 

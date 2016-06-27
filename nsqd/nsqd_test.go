@@ -163,8 +163,8 @@ func TestStartup(t *testing.T) {
 
 	topic.flush(true)
 	backEnd := topic.backend.GetQueueReadEnd()
-	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
-	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
+	equal(t, backEnd.Offset(), BackendOffset(int64(iterations)*msgRawSize))
+	equal(t, backEnd.TotalMsgCnt(), int64(iterations))
 	channel1 := topic.GetChannel("ch1")
 
 	err = nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
@@ -224,8 +224,8 @@ func TestStartup(t *testing.T) {
 
 	topic = nsqd.GetTopicIgnPart(topicName)
 	backEnd = topic.backend.GetQueueReadEnd()
-	equal(t, backEnd.GetOffset(), BackendOffset(int64(iterations)*msgRawSize))
-	equal(t, backEnd.GetTotalMsgCnt(), int64(iterations))
+	equal(t, backEnd.Offset(), BackendOffset(int64(iterations)*msgRawSize))
+	equal(t, backEnd.TotalMsgCnt(), int64(iterations))
 
 	channel1 = topic.GetChannel("ch1")
 	channel1.UpdateQueueEnd(backEnd, false)
@@ -233,7 +233,7 @@ func TestStartup(t *testing.T) {
 	equal(t, channel1.backend.(*diskQueueReader).virtualConfirmedOffset,
 		BackendOffset(int64(iterations/2)*msgRawSize))
 	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.VirtualEnd,
-		backEnd.GetOffset())
+		backEnd.Offset())
 
 	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
 

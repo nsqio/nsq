@@ -397,3 +397,115 @@ func TestCommitLogRotate(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, len(logs), LOGROTATE_NUM)
 }
+
+func TestCommitLogSearch(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	LOGROTATE_NUM = 10
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+	}()
+	logName := "test_log_search" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	coordLog.SetLevel(4)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+
+	test.Nil(t, err)
+
+	// single pub
+	num := 100
+	msgRawSize := 10
+	for i := 0; i < num/2; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
+		logData.Epoch = 1
+		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgSize = int32(msgRawSize)
+		logData.MsgCnt = int64(i + 1)
+		logData.MsgNum = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+		test.Equal(t, logMgr.GetCurrentStart(), int64(i/LOGROTATE_NUM))
+		test.Equal(t, int64(logMgr.currentCount), int64(i)-int64(i/LOGROTATE_NUM)*int64(LOGROTATE_NUM)+1)
+	}
+	currentStart, lastOffset, _, err := logMgr.GetLastCommitLogOffsetV2()
+	test.Nil(t, err)
+	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
+	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+	// singe and multi pub
+	lastCnt := num / 2
+	for i := num / 2; i < num; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.MsgCnt = int64(lastCnt + 1)
+		logData.MsgOffset = int64(lastCnt * msgRawSize)
+		if i%3 == 0 {
+			logData.LastMsgLogID = int64(logMgr.NextID())
+			logData.MsgSize = int32(msgRawSize * 2)
+			logData.MsgNum = 2
+			lastCnt += 2
+		} else {
+			logData.LastMsgLogID = logData.LogID
+			logData.MsgSize = int32(msgRawSize)
+			logData.MsgNum = 1
+			lastCnt += 1
+		}
+		logData.Epoch = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+		test.Equal(t, logMgr.GetCurrentStart(), int64(i/LOGROTATE_NUM))
+		test.Equal(t, int64(logMgr.currentCount), int64(i)-int64(i/LOGROTATE_NUM)*int64(LOGROTATE_NUM)+1)
+	}
+
+	t.Logf("total %v messages", lastCnt)
+	for i := 1; i < lastCnt; i++ {
+		logIndex, offset, l, err := logMgr.SearchLogDataByMsgCnt(int64(i))
+		test.Nil(t, err)
+		t.Logf("searched: %v:%v, %v", logIndex, offset, l)
+		if i < num/2 {
+			test.Equal(t, int64(i), l.MsgCnt)
+			test.Equal(t, int64((i-1)/LOGROTATE_NUM), logIndex)
+			test.Equal(t, l.MsgOffset, int64((i-1)*msgRawSize))
+		} else {
+			// multi pub will cause the msg count different.
+			test.Equal(t, l.MsgCnt <= int64(i), true)
+			test.Equal(t, l.MsgCnt+int64(l.MsgNum-1) >= int64(i), true)
+		}
+	}
+	lastCommitID := logMgr.GetLastCommitLogID()
+	for i := int64(2); i < lastCommitID; i++ {
+		_, _, l, err := logMgr.SearchLogDataByMsgID(int64(i))
+		test.Nil(t, err)
+		if i < int64(num/2) {
+			test.Equal(t, int64(i), l.LogID)
+		} else {
+			test.Equal(t, l.LogID <= int64(i), true)
+			test.Equal(t, l.LastMsgLogID >= int64(i), true)
+		}
+	}
+
+	searchOffset := int64(0)
+	_, _, lastLog, err := logMgr.GetLastCommitLogOffsetV2()
+	test.Nil(t, err)
+	for i := 1; i < lastCnt; i++ {
+		_, _, l, err := logMgr.SearchLogDataByMsgOffset(searchOffset)
+		test.Nil(t, err)
+		if i < num/2 {
+			test.Equal(t, searchOffset, l.MsgOffset)
+		} else {
+			test.Equal(t, l.MsgOffset <= searchOffset, true)
+			test.Equal(t, l.MsgOffset+int64(l.MsgSize) >= searchOffset, true)
+		}
+		searchOffset = l.MsgOffset + int64(l.MsgSize)
+		if searchOffset > lastLog.MsgOffset {
+			break
+		}
+	}
+}
