@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"crypto/tls"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +54,26 @@ func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f 
 
 func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
+	test.Equal(t, err, nil)
+	readValidate(t, conn, frameTypeResponse, "OK")
+}
+
+func subOrdered(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
+	_, err := nsq.SubscribeOrdered(topicName, channelName, "0").WriteTo(conn)
+	test.Equal(t, err, nil)
+	readValidate(t, conn, frameTypeResponse, "OK")
+}
+
+func subTrace(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
+	_, err := nsq.SubscribeAndTrace(topicName, channelName).WriteTo(conn)
+	test.Equal(t, err, nil)
+	readValidate(t, conn, frameTypeResponse, "OK")
+}
+
+func subOffset(t *testing.T, conn io.ReadWriter, topicName string, channelName string, queueOffset int64) {
+	var startFrom nsq.ConsumeOffset
+	startFrom.SetVirtualQueueOffset(queueOffset)
+	_, err := nsq.SubscribeAdvanced(topicName, channelName, "0", false, startFrom).WriteTo(conn)
 	test.Equal(t, err, nil)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
@@ -700,7 +721,7 @@ func TestDelayMessage(t *testing.T) {
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone > opts.MsgTimeout-time.Second, true)
-	test.Equal(t, delayDone < opts.MsgTimeout-time.Second+time.Duration(time.Millisecond*500), true)
+	test.Equal(t, delayDone < opts.MsgTimeout-time.Second+time.Duration(time.Millisecond*500*2), true)
 
 	// requeue timeout larger than msg timeout
 	delayStart = time.Now()
@@ -1545,12 +1566,152 @@ func TestClientMsgTimeout(t *testing.T) {
 		fmt.Sprintf("E_FIN_FAILED FIN %v failed Message ID not in flight", msgOut.GetFullMsgID()))
 }
 
-// TODO:
-func TestOutofOrderFin(t *testing.T) {
-}
-
 // fail to finish some messages and wait server requeue.
 func TestTimeoutFin(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 3
+	opts.Verbose = true
+	opts.QueueScanRefreshInterval = 100 * time.Millisecond
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_cmsg_timeout_requeue" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	tmpCh := topic.GetChannel("ch")
+	tmpCh.EnableTrace = 1
+	msg := nsqdNs.NewMessage(0, make([]byte, 100))
+	topic.PutMessage(msg)
+
+	// without this the race detector thinks there's a write
+	// to msg.Attempts that races with the read in the protocol's messagePump...
+	// it does not reflect a realistically possible condition
+	topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	attemp := 1
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	msgOut, err := nsqdNs.DecodeMessage(data)
+	test.Equal(t, msgOut.ID, msg.ID)
+	test.Equal(t, msgOut.Attempts, uint16(attemp))
+	test.Equal(t, msgOut.Body, msg.Body)
+
+	attemp++
+	for i := 0; i < 6; i++ {
+		//time.Sleep(1100*time.Millisecond + opts.QueueScanInterval)
+
+		// wait timeout and requeue
+		resp, _ = nsq.ReadResponse(conn)
+		_, data, _ = nsq.UnpackResponse(resp)
+		msgOut, err = nsqdNs.DecodeMessage(data)
+		if msgOut.ID == msg.ID {
+			t.Log(msgOut)
+			test.Equal(t, msgOut.Attempts, uint16(attemp))
+			test.Equal(t, msgOut.Body, msg.Body)
+			attemp++
+			if i > 3 {
+				_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
+				test.Nil(t, err)
+			}
+		} else {
+			test.Equal(t, msgOut.ID, msg.ID+1)
+		}
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	for i := 0; i < 3; i++ {
+		resp, _ = nsq.ReadResponse(conn)
+		_, data, _ = nsq.UnpackResponse(resp)
+		msgOut, err = nsqdNs.DecodeMessage(data)
+		t.Log(msgOut)
+		test.NotEqual(t, msgOut.ID, msg.ID)
+	}
+}
+
+func TestSetChannelOffset(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	opts.QueueScanRefreshInterval = 100 * time.Millisecond
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_channel_setoffset" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	tmpCh := topic.GetChannel("ch")
+	tmpCh.EnableTrace = 1
+	msg := nsqdNs.NewMessage(0, make([]byte, 100))
+	topic.PutMessage(msg)
+	for i := 0; i < 100; i++ {
+		topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+	}
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+	subTrace(t, conn, topicName, "ch")
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	msgOut, err := nsq.DecodeMessage(data)
+	msgOut.Offset = uint64(binary.BigEndian.Uint64(msgOut.Body[:8]))
+	msgOut.RawSize = uint32(binary.BigEndian.Uint32(msgOut.Body[8:12]))
+	msgOut.Body = msgOut.Body[12:]
+	test.Equal(t, uint64(nsq.GetNewMessageID(msgOut.ID[:])), uint64(msg.ID))
+	test.Equal(t, msgOut.Body, msg.Body)
+
+	conn.Close()
+
+	msgRawSize := msgOut.RawSize
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+
+	subOffset(t, conn, topicName, "ch", int64(msgOut.RawSize*10))
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	resp, _ = nsq.ReadResponse(conn)
+	_, data, _ = nsq.UnpackResponse(resp)
+	msgOut, err = nsq.DecodeMessage(data)
+	msgOut.Offset = uint64(binary.BigEndian.Uint64(msgOut.Body[:8]))
+	msgOut.RawSize = uint32(binary.BigEndian.Uint32(msgOut.Body[8:12]))
+	msgOut.Body = msgOut.Body[12:]
+	test.Equal(t, int64(msgRawSize*10), int64(msgOut.Offset))
+	test.Equal(t, uint64(nsq.GetNewMessageID(msgOut.ID[:])), uint64(msg.ID+10))
+	test.Equal(t, msgOut.Body, msg.Body)
+
+	conn.Close()
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+
+	subOffset(t, conn, topicName, "ch", int64(msgOut.RawSize*10))
 }
 
 func TestBadFin(t *testing.T) {

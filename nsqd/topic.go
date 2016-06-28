@@ -879,7 +879,7 @@ func (t *Topic) RemovePubStats(remote string, protocol string) {
 		delete(t.clientPubStats, remote)
 	} else {
 		s, ok := t.clientPubStats[remote]
-		if ok && time.Now().Unix()-s.LastPubTs > 60 {
+		if ok && time.Now().Unix()-s.LastPubTs > 60*60 {
 			delete(t.clientPubStats, remote)
 		}
 	}
@@ -890,7 +890,7 @@ func (t *Topic) GetPubStats() []ClientPubStats {
 	t.statsMutex.Lock()
 	stats := make([]ClientPubStats, 0, len(t.clientPubStats))
 	for _, s := range t.clientPubStats {
-		if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60 {
+		if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60*60 {
 			delete(t.clientPubStats, s.RemoteAddress)
 		} else {
 			stats = append(stats, *s)

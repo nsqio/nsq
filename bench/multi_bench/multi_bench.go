@@ -33,6 +33,7 @@ var (
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
 	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg)")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
+	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
 )
 
 func getPartitionID(msgID nsq.NewMessageID) string {
@@ -540,6 +541,9 @@ func startBenchLookupRegUnreg() {
 func main() {
 	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
+	if *ordered {
+		*trace = true
+	}
 	config = nsq.NewConfig()
 	config.MsgTimeout = time.Second * 10
 	config.DefaultRequeueDelay = time.Second * 20

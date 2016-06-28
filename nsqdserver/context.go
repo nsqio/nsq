@@ -2,6 +2,7 @@ package nsqdserver
 
 import (
 	"crypto/tls"
+	"errors"
 	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
@@ -146,4 +147,51 @@ func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.Mes
 		return err
 	}
 	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)
+}
+
+func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, error) {
+	var l *consistence.CommitLogData
+	var queueOffset int64
+	var err error
+	if startFrom.OffsetType == offsetCountType {
+		if c.nsqdCoord == nil {
+			l, queueOffset, err = c.nsqdCoord.SearchLogByMsgCnt(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
+		} else {
+			err = errors.New("Not supported while coordinator disabled")
+		}
+	} else if startFrom.OffsetType == offsetTimestampType {
+		if c.nsqdCoord == nil {
+			l, queueOffset, err = c.nsqdCoord.SearchLogByMsgTimestamp(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
+		} else {
+			err = errors.New("Not supported while coordinator disabled")
+		}
+	} else if startFrom.OffsetType == offsetSpecialType {
+		if startFrom.OffsetValue == -1 {
+			queueOffset = int64(ch.GetChannelEnd())
+		} else {
+			nsqd.NsqLogger().Logf("not known special offset :%v", startFrom)
+			err = errors.New("not supported offset type")
+		}
+	} else if startFrom.OffsetType == offsetVirtualQueueType {
+		queueOffset = startFrom.OffsetValue
+	} else {
+		nsqd.NsqLogger().Logf("not supported offset type:%v", startFrom)
+		err = errors.New("not supported offset type")
+	}
+	if err != nil {
+		nsqd.NsqLogger().Logf("failed to search the consume offset: %v, err:%v", startFrom, err)
+		return 0, err
+	}
+	nsqd.NsqLogger().Logf("%v searched log : %v, offset: %v", startFrom, l, queueOffset)
+	err = ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
+	if err != nil {
+		if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
+			nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
+			return 0, err
+		}
+		nsqd.NsqLogger().LogDebugf("the consume offset: %v can only be set by the first client", startFrom, err)
+	} else {
+		// TODO: sync to the replicas, maybe we can wait the first FIN to sync offset ?
+	}
+	return queueOffset, nil
 }

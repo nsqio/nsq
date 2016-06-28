@@ -194,19 +194,52 @@ func (c *Channel) SetTrace(enable bool) {
 	}
 }
 
-func (c *Channel) SetConsumeOffset(offset BackendOffset) error {
+func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 	c.Lock()
 	defer c.Unlock()
-	if len(c.clients) > 1 {
+	if len(c.clients) > 1 && !force {
 		return ErrSetConsumeOffsetNotFirstClient
 	}
 	d, ok := c.backend.(*diskQueueReader)
 	if ok {
+
+		// since it may fail, we should try reset twice
+		// the first make sure it ok,
+		// the second time we make should clean all the confirmed and requeued message
 		_, err := d.ResetReadToOffset(offset)
 		if err != nil {
 			nsqLog.Infof("set reader to offset %v failed: %v", offset, err)
 			return err
 		}
+
+		c.waitingRequeueMutex.Lock()
+		for k, _ := range c.waitingRequeueMsgs {
+			delete(c.waitingRequeueMsgs, k)
+		}
+		c.waitingRequeueMutex.Unlock()
+
+		c.confirmMutex.Lock()
+		c.confirmedMsgs = make(map[int64]*Message)
+		atomic.StoreInt32(&c.waitingConfirm, 0)
+		c.confirmMutex.Unlock()
+		atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
+
+		done := false
+		for !done {
+			select {
+			case m := <-c.clientMsgChan:
+				nsqLog.Logf("ignored a read message %v at offset %v while disable consume", m.ID, m.offset)
+			case <-c.requeuedMsgChan:
+			default:
+				done = true
+			}
+		}
+		// try again with no fail
+		_, err = d.ResetReadToOffset(offset)
+		if err != nil {
+			nsqLog.Errorf("set reader to offset %v failed second time: %v", offset, err)
+		}
+		c.TryWakeupRead()
 	} else {
 		return ErrNotDiskQueueReader
 	}
@@ -1146,14 +1179,14 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		c.RLock()
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()
+		requeuedCnt++
+		c.doRequeue(msg)
 		if ok {
 			client.TimedOutMessage(msg.isDeferred)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msg.TraceID, msg, strconv.Itoa(int(msg.clientID)))
 		}
-		requeuedCnt++
-		c.doRequeue(msg)
 	}
 
 exit:

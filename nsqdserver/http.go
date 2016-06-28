@@ -65,6 +65,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/setoffset", http_api.Decorate(s.doSetChannelOffset, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
@@ -434,6 +435,55 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 		if err != nil {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
+	} else {
+		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		return nil, http_api.Err{400, FailedOnNotLeader}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doSetChannelOffset(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	}
+	readMax := req.ContentLength + 1
+	body := make([]byte, 0, readMax)
+	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
+	if err != nil {
+		nsqd.NsqLogger().Logf("read request body error: %v", err)
+		body = body[:n]
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			// we ignore EOF, maybe the ContentLength is not match?
+			nsqd.NsqLogger().LogWarningf("read request body eof: %v, ContentLength: %v,return length %v.",
+				err, req.ContentLength, n)
+		} else {
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+	}
+	if len(body) == 0 {
+		return nil, http_api.Err{406, "MSG_EMPTY"}
+	}
+	startFrom := &ConsumeOffset{}
+	err = startFrom.FromBytes(body)
+	if err != nil {
+		nsqd.NsqLogger().Logf("offset %v error: %v", string(body), err)
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		queueOffset, err := s.ctx.SetChannelOffset(channel, startFrom, true)
+		if err != nil {
+			return nil, http_api.Err{500, err.Error()}
+		}
+		nsqd.NsqLogger().Logf("set the channel offset: %v (actual set : %v), by client:%v",
+			startFrom, queueOffset, req.RemoteAddr)
 	} else {
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
