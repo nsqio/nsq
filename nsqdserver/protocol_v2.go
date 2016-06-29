@@ -48,7 +48,10 @@ var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
 var offsetSplitStr = ":"
 var offsetSplitBytes = []byte(offsetSplitStr)
-var offsetCountType = "count"
+
+// no need to support this type (count message maybe changed)
+//var offsetCountType = "count"
+
 var offsetVirtualQueueType = "virtual_queue"
 var offsetTimestampType = "timestamp"
 var offsetSpecialType = "special"
@@ -76,8 +79,7 @@ func (self *ConsumeOffset) FromString(s string) error {
 		return errors.New("invalid consume offset:" + s)
 	}
 	self.OffsetType = values[0]
-	if self.OffsetType != offsetCountType &&
-		self.OffsetType != offsetTimestampType &&
+	if self.OffsetType != offsetTimestampType &&
 		self.OffsetType != offsetSpecialType &&
 		self.OffsetType != offsetVirtualQueueType {
 		return errors.New("invalid consume offset:" + s)
@@ -96,8 +98,7 @@ func (self *ConsumeOffset) FromBytes(s []byte) error {
 		return errors.New("invalid consume offset:" + string(s))
 	}
 	self.OffsetType = string(values[0])
-	if self.OffsetType != offsetCountType &&
-		self.OffsetType != offsetTimestampType &&
+	if self.OffsetType != offsetTimestampType &&
 		self.OffsetType != offsetSpecialType &&
 		self.OffsetType != offsetVirtualQueueType {
 		return errors.New("invalid consume offset:" + string(s))

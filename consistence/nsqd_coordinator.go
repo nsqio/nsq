@@ -616,7 +616,7 @@ func (self *MsgTimestampComparator) GreatThanRightBoundary(l *CommitLogData) boo
 	return false
 }
 
-func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts int64) (*CommitLogData, int64, error) {
+func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_sec int64) (*CommitLogData, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {
 		return nil, 0, errors.New(err.Error())
@@ -630,14 +630,14 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts 
 	comp := &MsgTimestampComparator{
 		localTopicReader: snap,
 		searchEnd:        tcData.logMgr.GetCurrentStart(),
-		searchTs:         ts,
+		searchTs:         ts_sec * 1000 * 1000 * 1000,
 	}
 	_, _, l, localErr := tcData.logMgr.SearchLogDataByComparator(comp)
 	if localErr != nil {
 		return nil, 0, localErr
 	}
 	realOffset := l.MsgOffset
-	if comp.searchResultMsg != nil && comp.searchResultMsg.Timestamp < ts {
+	if comp.searchResultMsg != nil && comp.searchResultMsg.Timestamp < comp.searchTs {
 		localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
 		if localErr != nil {
 			coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
@@ -657,7 +657,7 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts 
 					coordLog.Errorf("failed to decode message - %v - %v", err, ret)
 					return l, realOffset, err
 				}
-				if msg.Timestamp >= ts || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
+				if msg.Timestamp >= comp.searchTs || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
 					break
 				}
 				curCount++

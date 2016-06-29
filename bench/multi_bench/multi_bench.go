@@ -31,7 +31,7 @@ var (
 	batchSize     = flagSet.Int("batch-size", 10, "batch size of messages")
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
-	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg)")
+	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset)")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
 )
@@ -53,6 +53,7 @@ var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
 var dumpCheck map[string]map[uint64]*nsq.Message
+var orderCheck map[string]pubResp
 var pubRespCheck map[string]map[uint64]pubResp
 var mutex sync.Mutex
 
@@ -538,6 +539,10 @@ func startBenchLookupRegUnreg() {
 		float64(*concurrency*eachCnt)/runSec)
 }
 
+func startCheckSetConsumerOffset(msg []byte, batch [][]byte) {
+	// offset count, timestamp
+}
+
 func main() {
 	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
@@ -550,10 +555,12 @@ func main() {
 	config.MaxRequeueDelay = time.Second * 30
 	config.MaxInFlight = 10
 	config.EnableTrace = *trace
+	config.EnableOrdered = *ordered
 
 	log.SetPrefix("[bench_writer] ")
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
+	orderCheck = make(map[string]int64)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -573,6 +580,8 @@ func main() {
 		startBenchLookup()
 	} else if *benchCase == "benchreg" {
 		startBenchLookupRegUnreg()
+	} else if *benchCase == "consumeoffset" {
+		startCheckSetConsumerOffset(msg, batch)
 	}
 }
 
@@ -654,6 +663,21 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 		if !ok {
 			topicCheck = make(map[uint64]*nsq.Message)
 			dumpCheck[c.topic+pidStr] = topicCheck
+		}
+		if *ordered {
+			lastResp, ok := orderCheck[c.topic+pidStr]
+			if ok {
+				if mid < uint64(lastResp.id) {
+					log.Printf("got message id out of order: %v, %v, %v\n", lastResp, mid, message)
+				}
+				if message.Offset < lastResp.offset+uint64(lastResp.rawSize) {
+					log.Printf("got message offset out of order: %v, %v, %v\n", lastResp, message)
+				}
+			}
+			lastResp.id = nsq.NewMessageID(mid)
+			lastResp.offset = message.Offset
+			lastResp.rawSize = message.RawSize
+			orderCheck[c.topic+pidStr] = lastResp
 		}
 		if msg, ok := topicCheck[mid]; ok {
 			atomic.AddInt64(&totalDumpCount, 1)
