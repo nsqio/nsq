@@ -539,13 +539,118 @@ func startBenchLookupRegUnreg() {
 		float64(*concurrency*eachCnt)/runSec)
 }
 
-func startCheckSetConsumerOffset(msg []byte, batch [][]byte) {
+func startCheckSetConsumerOffset() {
+	config.EnableTrace = true
 	// offset count, timestamp
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	if err != nil {
+		log.Printf("init error : %v", err)
+		return
+	}
+	pubMgr.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	err = pubMgr.ConnectToNSQLookupd(*lookupAddress)
+	if err != nil {
+		log.Printf("lookup connect error : %v", err)
+		return
+	}
+
+	type partOffset struct {
+		offsetValue int64
+		pid         string
+	}
+	topicOffsets := make(map[string]partOffset)
+	topicTsOffsets := make(map[string]partOffset)
+	for _, t := range topics {
+		for i := 0; i < 10; i++ {
+			msg := []byte(strconv.Itoa(int(time.Now().UnixNano())))
+			var id nsq.NewMessageID
+			var offset uint64
+			var rawSize uint32
+			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			if err != nil {
+				log.Printf("topic pub error : %v", err)
+				return
+			}
+			mid := uint64(id)
+			pidStr := getPartitionID(nsq.NewMessageID(mid))
+			log.Printf("topic %v pub to partition %v trace : %v, %v, %v", t, pidStr, id, offset, rawSize)
+			if i == 6 {
+				p := &partOffset{
+					offsetValue: int64(offset),
+					pid:         pidStr,
+				}
+				topicOffsets[t] = *p
+				p.offsetValue = time.Now().Unix()
+				topicTsOffsets[t] = *p
+			}
+			time.Sleep(time.Second)
+		}
+	}
+	for t, queueOffset := range topicOffsets {
+		var offset nsq.ConsumeOffset
+		offset.SetVirtualQueueOffset(queueOffset.offsetValue)
+		consumer, err := nsq.NewConsumer(t, "offset_ch", config)
+		if err != nil {
+			log.Printf("init consumer error: %v", err)
+			return
+		}
+		pid, _ := strconv.Atoi(queueOffset.pid)
+		consumer.SetConsumeOffset(pid, offset)
+		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, queueOffset.pid})
+		consumer.ConnectToNSQLookupd(*lookupAddress)
+		time.Sleep(time.Second * 3)
+		consumer.Stop()
+	}
+	for t, tsOffset := range topicTsOffsets {
+		var offset nsq.ConsumeOffset
+		offset.SetTime(tsOffset.offsetValue)
+		consumer, err := nsq.NewConsumer(t, "offset_ch", config)
+		if err != nil {
+			log.Printf("init consumer error: %v", err)
+			return
+		}
+		pid, _ := strconv.Atoi(tsOffset.pid)
+		consumer.SetConsumeOffset(pid, offset)
+		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, tsOffset.pid})
+		consumer.ConnectToNSQLookupd(*lookupAddress)
+		time.Sleep(time.Second * 3)
+		consumer.Stop()
+	}
+}
+
+type consumeOffsetHandler struct {
+	topic          string
+	firstReceived  bool
+	expectedOffset nsq.ConsumeOffset
+	expectedPidStr string
+}
+
+func (c *consumeOffsetHandler) HandleMessage(message *nsq.Message) error {
+	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
+	pidStr := getPartitionID(nsq.NewMessageID(mid))
+	if !c.firstReceived && pidStr == c.expectedPidStr {
+		if nsq.OffsetVirtualQueueType == c.expectedOffset.OffsetType {
+			if int64(message.Offset) != c.expectedOffset.OffsetValue {
+				log.Printf("not expected queue offset: %v, %v", message.Offset, c.expectedOffset)
+			}
+		} else if nsq.OffsetTimestampType == c.expectedOffset.OffsetType {
+			diff := message.Timestamp - c.expectedOffset.OffsetValue*1e9
+			if diff > 1*1e9 || diff < 0 {
+				log.Printf("not expected timestamp: %v, %v", message.Timestamp, c.expectedOffset)
+			}
+		}
+		log.Printf("got the first message : %v", message)
+		c.firstReceived = true
+	}
+	return nil
 }
 
 func main() {
 	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
+	glog.StartWorker(time.Second)
 	if *ordered {
 		*trace = true
 	}
@@ -560,7 +665,7 @@ func main() {
 	log.SetPrefix("[bench_writer] ")
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
-	orderCheck = make(map[string]int64)
+	orderCheck = make(map[string]pubResp)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -581,7 +686,7 @@ func main() {
 	} else if *benchCase == "benchreg" {
 		startBenchLookupRegUnreg()
 	} else if *benchCase == "consumeoffset" {
-		startCheckSetConsumerOffset(msg, batch)
+		startCheckSetConsumerOffset()
 	}
 }
 

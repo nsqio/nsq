@@ -212,28 +212,7 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 			return err
 		}
 
-		c.waitingRequeueMutex.Lock()
-		for k, _ := range c.waitingRequeueMsgs {
-			delete(c.waitingRequeueMsgs, k)
-		}
-		c.waitingRequeueMutex.Unlock()
-
-		c.confirmMutex.Lock()
-		c.confirmedMsgs = make(map[int64]*Message)
-		atomic.StoreInt32(&c.waitingConfirm, 0)
-		c.confirmMutex.Unlock()
-		atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
-
-		done := false
-		for !done {
-			select {
-			case m := <-c.clientMsgChan:
-				nsqLog.Logf("ignored a read message %v at offset %v while disable consume", m.ID, m.offset)
-			case <-c.requeuedMsgChan:
-			default:
-				done = true
-			}
-		}
+		c.drainChannelWaiting()
 		// try again with no fail
 		_, err = d.ResetReadToOffset(offset)
 		if err != nil {
@@ -843,27 +822,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			delete(c.clients, cid)
 		}
 		c.initPQ()
-		c.waitingRequeueMutex.Lock()
-		for k, _ := range c.waitingRequeueMsgs {
-			delete(c.waitingRequeueMsgs, k)
-		}
-		c.waitingRequeueMutex.Unlock()
-		c.confirmMutex.Lock()
-		c.confirmedMsgs = make(map[int64]*Message)
-		atomic.StoreInt32(&c.waitingConfirm, 0)
-		c.confirmMutex.Unlock()
-		atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
-
-		done := false
-		for !done {
-			select {
-			case m := <-c.clientMsgChan:
-				nsqLog.Logf("ignored a read message %v at offset %v while disable consume", m.ID, m.offset)
-			case <-c.requeuedMsgChan:
-			default:
-				done = true
-			}
-		}
+		c.drainChannelWaiting()
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		// we need reset backend read position to confirm position
@@ -886,6 +845,31 @@ func (c *Channel) DisableConsume(disable bool) {
 		}
 	}
 	c.notifyCall(c)
+}
+
+func (c *Channel) drainChannelWaiting() error {
+	c.waitingRequeueMutex.Lock()
+	for k, _ := range c.waitingRequeueMsgs {
+		delete(c.waitingRequeueMsgs, k)
+	}
+	c.waitingRequeueMutex.Unlock()
+	c.confirmMutex.Lock()
+	c.confirmedMsgs = make(map[int64]*Message)
+	atomic.StoreInt32(&c.waitingConfirm, 0)
+	c.confirmMutex.Unlock()
+	atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
+
+	done := false
+	for !done {
+		select {
+		case m := <-c.clientMsgChan:
+			nsqLog.Logf("ignored a read message %v at offset %v while drain channel", m.ID, m.offset)
+		case <-c.requeuedMsgChan:
+		default:
+			done = true
+		}
+	}
+	return nil
 }
 
 func (c *Channel) TryWakeupRead() {

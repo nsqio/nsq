@@ -211,6 +211,7 @@ func (p *program) Start() error {
 	glog.InitWithFlag(flagSet)
 
 	flagSet.Parse(os.Args[1:])
+	glog.StartWorker(time.Second * 2)
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
@@ -228,13 +229,6 @@ func (p *program) Start() error {
 		}
 	}
 	cfg.Validate()
-
-	go func() {
-		for {
-			glog.Flush()
-			time.Sleep(time.Second * 3)
-		}
-	}()
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)

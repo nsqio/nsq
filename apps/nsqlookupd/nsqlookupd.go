@@ -67,6 +67,7 @@ func (p *program) Start() error {
 	glog.InitWithFlag(flagSet)
 
 	flagSet.Parse(os.Args[1:])
+	glog.StartWorker(time.Second * 2)
 
 	if *showVersion {
 		fmt.Println(version.String("nsqlookupd"))
@@ -80,13 +81,6 @@ func (p *program) Start() error {
 			log.Fatalf("ERROR: failed to load config file %s - %s", *config, err.Error())
 		}
 	}
-
-	go func() {
-		for {
-			glog.Flush()
-			time.Sleep(time.Second * 3)
-		}
-	}()
 
 	opts := nsqlookupd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
