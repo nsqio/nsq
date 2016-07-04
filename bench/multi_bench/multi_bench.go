@@ -783,8 +783,8 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 				if mid < uint64(lastResp.id) {
 					log.Printf("got message id out of order: %v, %v, %v\n", lastResp, mid, message)
 				}
-				if message.Offset < lastResp.offset+uint64(lastResp.rawSize) {
-					log.Printf("got message offset out of order: %v, %v, %v\n", lastResp, message)
+				if mid != uint64(lastResp.id) && message.Offset < lastResp.offset+uint64(lastResp.rawSize) {
+					log.Printf("got message offset out of order: %v, %v\n", lastResp, message)
 				}
 			}
 			lastResp.id = nsq.NewMessageID(mid)

@@ -415,7 +415,7 @@ func (c *Channel) UpdateQueueEnd(end BackendQueueEnd, forceReload bool) error {
 		return err
 	}
 
-	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+	if c.IsConsumeDisabled() {
 	} else {
 		select {
 		case c.endUpdatedChan <- true:
@@ -631,7 +631,7 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 	if c.Exiting() {
 		return
 	}
-	if atomic.LoadInt32(&c.consumeDisabled) == 1 {
+	if c.IsConsumeDisabled() {
 		return
 	}
 	idList := make([]MessageID, 0)
@@ -681,6 +681,12 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 		return nil
 	}
 	c.clients[clientID] = client
+	if len(c.clients) == 1 {
+		select {
+		case c.tryReadBackend <- true:
+		default:
+		}
+	}
 	return nil
 }
 
@@ -873,7 +879,7 @@ func (c *Channel) drainChannelWaiting() error {
 }
 
 func (c *Channel) TryWakeupRead() {
-	if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+	if c.IsConsumeDisabled() {
 		return
 	}
 	if c.IsOrdered() {
@@ -957,7 +963,7 @@ LOOP:
 			needReadBackend = true
 		}
 
-		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+		if c.IsConsumeDisabled() {
 			readChan = nil
 			needReadBackend = false
 			nsqLog.Logf("channel consume is disabled : %v", c.name)
@@ -1063,7 +1069,7 @@ LOOP:
 
 		lastMsg = *msg
 
-		if atomic.LoadInt32(&c.consumeDisabled) != 0 {
+		if c.IsConsumeDisabled() {
 			continue
 		}
 		if c.IsOrdered() {
@@ -1128,7 +1134,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 	flightCnt := 0
 	requeuedCnt := 0
 	for {
-		if atomic.LoadInt32(&c.consumeDisabled) == 1 {
+		if c.IsConsumeDisabled() {
 			goto exit
 		}
 		c.inFlightMutex.Lock()
