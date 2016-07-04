@@ -599,8 +599,10 @@ func startCheckSetConsumerOffset() {
 		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, queueOffset.pid})
 		consumer.ConnectToNSQLookupd(*lookupAddress)
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 5)
 		consumer.Stop()
+		<-consumer.StopChan
+		time.Sleep(time.Second * 5)
 	}
 	for t, tsOffset := range topicTsOffsets {
 		var offset nsq.ConsumeOffset
@@ -615,9 +617,13 @@ func startCheckSetConsumerOffset() {
 		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, tsOffset.pid})
 		consumer.ConnectToNSQLookupd(*lookupAddress)
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 5)
+		log.Printf("stopping consumer")
 		consumer.Stop()
+		<-consumer.StopChan
+		time.Sleep(time.Second * 5)
 	}
+	log.Printf("exiting")
 }
 
 type consumeOffsetHandler struct {
@@ -643,6 +649,8 @@ func (c *consumeOffsetHandler) HandleMessage(message *nsq.Message) error {
 		}
 		log.Printf("got the first message : %v", message)
 		c.firstReceived = true
+	} else {
+		log.Printf("got later message : %v", message)
 	}
 	return nil
 }
