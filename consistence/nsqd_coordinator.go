@@ -247,7 +247,7 @@ func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *Coo
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
 	self.lookupMutex.Unlock()
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(l.NodeIP, l.RpcPort), RPC_TIMEOUT)
+	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(l.NodeIP, l.RpcPort), RPC_TIMEOUT_FOR_LOOKUP)
 	if err == nil {
 		return c, nil
 	}
@@ -1328,7 +1328,7 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 				if rpcErr != nil {
 					continue
 				}
-				rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+				rpcErr = c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 				if rpcErr != nil {
 					coordLog.Infof("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
 				}
