@@ -711,7 +711,7 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		if err != nil {
 			return 0, 0, nil, err
 		}
-		coordLog.Infof("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		coordLog.Debugf("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
 		if comp.GreatThanRightBoundary(segEndLog) {
 			searchLogIndexStart = searchIndex + 1
 		} else if comp.LessThanLeftBoundary(segStartLog) {
@@ -738,7 +738,7 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		}
 		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
 		searchOffset = searchCntPos * int64(GetLogDataSize())
-		coordLog.Infof("log searching: %v:%v", searchLogIndexStart, searchOffset)
+		coordLog.Debugf("log searching: %v:%v", searchLogIndexStart, searchOffset)
 		cur, err = self.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
 		if err != nil {
 			coordLog.Infof("get log data from:%v:%v, failed:%v\n", searchLogIndexStart, searchOffset, err)

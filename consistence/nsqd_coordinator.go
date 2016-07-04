@@ -547,10 +547,13 @@ func (self *NsqdCoordinator) SearchLogByMsgCnt(topic string, part int, count int
 			ret := snap.ReadOne()
 			if ret.Err != nil {
 				coordLog.Infof("read disk queue error: %v", ret.Err)
+				if ret.Err == io.EOF {
+					return l, realOffset, nil
+				}
 				return l, realOffset, ret.Err
 			} else {
 				realOffset = int64(ret.Offset)
-				if curCount >= count || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
+				if curCount >= count || curCount > l.MsgCnt+int64(l.MsgNum-1) {
 					break
 				}
 				curCount++
@@ -651,6 +654,9 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 			ret := snap.ReadOne()
 			if ret.Err != nil {
 				coordLog.Infof("read disk queue error: %v", ret.Err)
+				if ret.Err == io.EOF {
+					return l, realOffset, nil
+				}
 				return l, realOffset, ret.Err
 			} else {
 				realOffset = int64(ret.Offset)
@@ -659,7 +665,10 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 					coordLog.Errorf("failed to decode message - %v - %v", err, ret)
 					return l, realOffset, err
 				}
-				if msg.Timestamp >= comp.searchTs || curCount >= l.MsgCnt+int64(l.MsgNum-1) {
+				// we allow to read the next message count exceed the current log
+				// in case the current log contains only one message (the returned timestamp may be
+				// next to the current)
+				if msg.Timestamp >= comp.searchTs || curCount > l.MsgCnt+int64(l.MsgNum-1) {
 					break
 				}
 				curCount++
