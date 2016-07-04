@@ -32,6 +32,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		BackendDepth:   t.TotalDataSize(),
 		MessageCount:   t.TotalMessageCnt(),
 		IsLeader:       !t.IsWriteDisabled(),
+		Clients:        t.GetPubStats(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}
