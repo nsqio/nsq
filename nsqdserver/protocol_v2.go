@@ -346,6 +346,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("PUB_TRACE")):
 		return p.PUBTRACE(client, params)
+	case bytes.Equal(params[0], []byte("PUB_ORDERED")):
+		return p.PUBORDERED(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB_TRACE")):
@@ -358,6 +360,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.SUB(client, params)
 	case bytes.Equal(params[0], []byte("SUB_ADVANCED")):
 		return p.SUBADVANCED(client, params)
+	case bytes.Equal(params[0], []byte("SUB_ORDERED")):
+		return p.SUBORDERED(client, params)
 	case bytes.Equal(params[0], []byte("CLS")):
 		return p.CLS(client, params)
 	case bytes.Equal(params[0], []byte("AUTH")):
@@ -758,23 +762,22 @@ func (p *protocolV2) CheckAuth(client *nsqd.ClientV2, cmd, topicName, channelNam
 	return nil
 }
 
-// command topic channel partition ordered consume_start
+// params: [command topic channel partition consume_start]
 func (p *protocolV2) SUBADVANCED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	ordered := false
 	var consumeStart *ConsumeOffset
-	if len(params) > 4 {
-		if strings.ToLower(string(params[4])) == "true" {
-			ordered = true
-		}
-	}
-	if len(params) > 5 && len(params[5]) > 0 {
+	if len(params) > 4 && len(params[4]) > 0 {
 		consumeStart = &ConsumeOffset{}
-		err := consumeStart.FromBytes(params[5])
+		err := consumeStart.FromBytes(params[4])
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 		}
 	}
-	return p.internalSUB(client, params, true, ordered, consumeStart)
+	return p.internalSUB(client, params, true, false, consumeStart)
+}
+
+//params: [command topic channel partition]
+func (p *protocolV2) SUBORDERED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalSUB(client, params, true, true, nil)
 }
 
 func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1108,6 +1111,10 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 // PUB TRACE data format
 // 4 bytes length + 8bytes trace id + binary data
 func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalPubAndTrace(client, params, true)
+}
+
+func (p *protocolV2) PUBORDERED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	return p.internalPubAndTrace(client, params, true)
 }
 

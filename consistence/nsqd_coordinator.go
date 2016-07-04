@@ -380,6 +380,8 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				continue
 			}
 
+			// TODO: check the last commit log data logid is equal with the disk queue message
+			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
 			if topicInfo.Leader == self.myNode.GetID() {
 				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())
 				err := self.acquireTopicLeader(topicInfo)
