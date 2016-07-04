@@ -154,7 +154,7 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 	var queueOffset int64
 	var err error
 	if startFrom.OffsetType == offsetTimestampType {
-		if c.nsqdCoord == nil {
+		if c.nsqdCoord != nil {
 			l, queueOffset, err = c.nsqdCoord.SearchLogByMsgTimestamp(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
 		} else {
 			err = errors.New("Not supported while coordinator disabled")

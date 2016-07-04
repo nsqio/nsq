@@ -454,7 +454,7 @@ func (s *httpServer) doSetChannelOffset(w http.ResponseWriter, req *http.Request
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 	readMax := req.ContentLength + 1
-	body := make([]byte, 0, readMax)
+	body := make([]byte, req.ContentLength)
 	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
 	if err != nil {
 		nsqd.NsqLogger().Logf("read request body error: %v", err)
