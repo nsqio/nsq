@@ -216,7 +216,19 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 }
 
 func (c *Channel) SetOrdered(enable bool) {
-	atomic.StoreInt32(&c.requireOrder, 1)
+	if enable {
+		atomic.StoreInt32(&c.requireOrder, 1)
+	} else {
+		if c.GetClientsCount() == 0 {
+			atomic.StoreInt32(&c.requireOrder, 0)
+			select {
+			case c.tryReadBackend <- true:
+			default:
+			}
+		} else {
+			nsqLog.Logf("can not set ordered to false while the channel is still consuming by client")
+		}
+	}
 }
 
 func (c *Channel) IsOrdered() bool {

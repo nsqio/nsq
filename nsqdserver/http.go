@@ -66,6 +66,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/setoffset", http_api.Decorate(s.doSetChannelOffset, log, http_api.V1))
+	router.Handle("POST", "/channel/setorder", http_api.Decorate(s.doSetChannelOrder, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
@@ -439,6 +440,28 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		return nil, http_api.Err{400, FailedOnNotLeader}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doSetChannelOrder(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	}
+
+	orderStr := reqParams.Get("order")
+	if orderStr == "true" {
+		channel.SetOrdered(true)
+	} else if orderStr == "false" {
+		channel.SetOrdered(false)
+	} else {
+		return nil, http_api.Err{400, "INVALID_OPTION"}
 	}
 	return nil, nil
 }
