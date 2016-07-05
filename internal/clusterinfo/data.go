@@ -853,6 +853,7 @@ func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, 
 		}
 		errs = append(errs, pe.Errors()...)
 	}
+	c.logf("CI: got %v producer nodes for topic %v", len(producers), topicName)
 
 	err = c.versionPivotProducers(producers, deprecatedURI, v1URI, qs)
 	if err != nil {

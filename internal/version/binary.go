@@ -5,7 +5,7 @@ import (
 	"runtime"
 )
 
-const Binary = "0.3.7_HA.1.2"
+const Binary = "0.3.7-HA.1.2"
 
 func String(app string) string {
 	return fmt.Sprintf("%s v%s (built w/%s)", app, Binary, runtime.Version())
