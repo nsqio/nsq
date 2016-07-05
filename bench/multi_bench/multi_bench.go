@@ -573,16 +573,18 @@ func startCheckSetConsumerOffset() {
 			}
 			mid := uint64(id)
 			pidStr := getPartitionID(nsq.NewMessageID(mid))
-			log.Printf("topic %v pub to partition %v trace : %v, %v, %v", t, pidStr, id, offset, rawSize)
 			if i == 6 {
 				p := &partOffset{
 					offsetValue: int64(offset),
 					pid:         pidStr,
 				}
 				topicOffsets[t] = *p
+				log.Printf("check consume offset at : %v, %v", mid, p)
 				p.offsetValue = time.Now().Unix()
 				topicTsOffsets[t] = *p
+				log.Printf("check consume timestamp at : %v, %v", mid, p)
 			}
+			log.Printf("topic %v pub to partition %v trace : %v, %v, %v, %v", t, pidStr, id, offset, rawSize)
 			time.Sleep(time.Second)
 		}
 	}
@@ -597,7 +599,7 @@ func startCheckSetConsumerOffset() {
 		pid, _ := strconv.Atoi(queueOffset.pid)
 		consumer.SetConsumeOffset(pid, offset)
 		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, queueOffset.pid})
+		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, queueOffset.pid, 0})
 		consumer.ConnectToNSQLookupd(*lookupAddress)
 		time.Sleep(time.Second * 5)
 		consumer.Stop()
@@ -615,7 +617,7 @@ func startCheckSetConsumerOffset() {
 		pid, _ := strconv.Atoi(tsOffset.pid)
 		consumer.SetConsumeOffset(pid, offset)
 		consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, tsOffset.pid})
+		consumer.AddHandler(&consumeOffsetHandler{t, false, offset, tsOffset.pid, 0})
 		consumer.ConnectToNSQLookupd(*lookupAddress)
 		time.Sleep(time.Second * 5)
 		log.Printf("stopping consumer")
@@ -631,11 +633,13 @@ type consumeOffsetHandler struct {
 	firstReceived  bool
 	expectedOffset nsq.ConsumeOffset
 	expectedPidStr string
+	received       int
 }
 
 func (c *consumeOffsetHandler) HandleMessage(message *nsq.Message) error {
 	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
 	pidStr := getPartitionID(nsq.NewMessageID(mid))
+	c.received++
 	if !c.firstReceived && pidStr == c.expectedPidStr {
 		if nsq.OffsetVirtualQueueType == c.expectedOffset.OffsetType {
 			if int64(message.Offset) != c.expectedOffset.OffsetValue {
@@ -650,7 +654,9 @@ func (c *consumeOffsetHandler) HandleMessage(message *nsq.Message) error {
 		log.Printf("got the first message : %v", message)
 		c.firstReceived = true
 	} else {
-		log.Printf("got later message : %v", message)
+		if c.received < 10 {
+			log.Printf("got later message : %v", message)
+		}
 	}
 	return nil
 }
