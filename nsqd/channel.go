@@ -195,16 +195,23 @@ func (c *Channel) SetTrace(enable bool) {
 
 func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 	c.Lock()
+	defer c.Unlock()
 	num := len(c.clients)
-	c.Unlock()
 	if num > 1 && !force {
 		return ErrSetConsumeOffsetNotFirstClient
 	}
+	if c.IsConsumeDisabled() {
+		return ErrConsumeDisabled
+	}
+
 	_, ok := c.backend.(*diskQueueReader)
 	if ok {
 		select {
 		case c.readerChanged <- offset:
 		default:
+		}
+		for _, c := range c.clients {
+			c.Empty()
 		}
 	} else {
 		return ErrNotDiskQueueReader
@@ -297,7 +304,7 @@ func (c *Channel) exit(deleted bool) error {
 
 	if deleted {
 		// empty the queue (deletes the backend files, too)
-		c.emptyConsume()
+		c.skipChannelToEnd()
 		return c.backend.Delete()
 	}
 
@@ -306,53 +313,18 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
-func (c *Channel) emptyConsume() error {
+func (c *Channel) skipChannelToEnd() (BackendQueueEnd, error) {
 	c.Lock()
 	defer c.Unlock()
-
-	c.initPQ()
-	for _, client := range c.clients {
-		client.Empty()
+	e := c.backend.GetQueueReadEnd()
+	d := c.backend.(*diskQueueReader)
+	_, err := d.ResetReadToOffset(e.Offset())
+	if err != nil {
+		nsqLog.Warningf("failed to reset reader to end %v", err)
+	} else {
+		c.drainChannelWaiting(true, nil, nil)
 	}
-
-	clientMsgChan := c.clientMsgChan
-	for {
-		select {
-		case _, ok := <-clientMsgChan:
-			if !ok {
-				// c.clientMsgChan may be closed while in this loop
-				// so just remove it from the select so we can make progress
-				clientMsgChan = nil
-			}
-		case <-c.requeuedMsgChan:
-		default:
-			goto finish
-		}
-	}
-
-finish:
-	c.waitingRequeueMutex.Lock()
-	for k, _ := range c.waitingRequeueMsgs {
-		delete(c.waitingRequeueMsgs, k)
-	}
-	c.waitingRequeueMutex.Unlock()
-	d, ok := c.backend.(*diskQueueReader)
-	if ok {
-		newConfirmed, err := d.SkipToEnd()
-		if err != nil {
-			nsqLog.Logf("failed to skip to end: %v", err)
-		} else {
-			nsqLog.Logf("channel (%v) reader skip to end: %v", c.GetName(), newConfirmed)
-		}
-	}
-	return nil
-}
-
-func (c *Channel) Empty() error {
-	if c.IsConsumeDisabled() {
-		return ErrConsumeDisabled
-	}
-	return c.emptyConsume()
+	return e, nil
 }
 
 func (c *Channel) flush() error {
@@ -842,8 +814,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			client.Exit()
 			delete(c.clients, cid)
 		}
-		c.initPQ()
-		c.drainChannelWaiting(true)
+		c.drainChannelWaiting(true, nil, nil)
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		// we need reset backend read position to confirm position
@@ -867,7 +838,8 @@ func (c *Channel) DisableConsume(disable bool) {
 	c.notifyCall(c)
 }
 
-func (c *Channel) drainChannelWaiting(clearConfirmed bool) error {
+func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *bool, origReadChan chan ReadResult) error {
+	c.initPQ()
 	c.waitingRequeueMutex.Lock()
 	for k, _ := range c.waitingRequeueMsgs {
 		delete(c.waitingRequeueMsgs, k)
@@ -881,6 +853,10 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool) error {
 	}
 	atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 
+	if c.Exiting() {
+		return nil
+	}
+
 	done := false
 	for !done {
 		select {
@@ -891,6 +867,15 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool) error {
 			done = true
 		}
 	}
+	if lastDataNeedRead != nil {
+		*lastDataNeedRead = false
+	}
+	// since the reader is reset, we should drain the previous data.
+	select {
+	case <-origReadChan:
+	default:
+	}
+
 	return nil
 }
 
@@ -920,6 +905,25 @@ func (c *Channel) resetReaderToConfirmed() error {
 	}
 	nsqLog.Logf("reset channel %v reader to confirm: %v", c.name, confirmed)
 	return nil
+}
+
+func (c *Channel) resetChannelReader(resetOffset BackendOffset, lastDataNeedRead *bool, origReadChan chan ReadResult,
+	lastMsg *Message, needReadBackend *bool, readBackendWait *bool) {
+	var err error
+	if resetOffset == BackendOffset(-1) {
+		atomic.StoreInt32(&c.needResetReader, 1)
+	} else {
+		d := c.backend.(*diskQueueReader)
+		_, err = d.ResetReadToOffset(resetOffset)
+		if err != nil {
+			nsqLog.Warningf("failed to reset reader to %v, %v", resetOffset, err)
+		} else {
+			c.drainChannelWaiting(true, lastDataNeedRead, origReadChan)
+			*lastMsg = Message{}
+		}
+		*needReadBackend = true
+		*readBackendWait = false
+	}
 }
 
 // messagePump reads messages from either memory or backend and sends
@@ -956,13 +960,7 @@ LOOP:
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {
-				c.drainChannelWaiting(false)
-				lastDataNeedRead = false
-				// since the reader is reset, we should drain the previous data.
-				select {
-				case <-origReadChan:
-				default:
-				}
+				c.drainChannelWaiting(false, &lastDataNeedRead, origReadChan)
 				lastMsg = Message{}
 			}
 			readChan = origReadChan
@@ -1087,30 +1085,7 @@ LOOP:
 			continue LOOP
 		case resetOffset := <-c.readerChanged:
 			nsqLog.Infof("got reader reset notify:%v ", resetOffset)
-			if resetOffset == BackendOffset(-1) {
-				atomic.StoreInt32(&c.needResetReader, 1)
-			} else {
-				d, ok := c.backend.(*diskQueueReader)
-				if ok {
-					_, err = d.ResetReadToOffset(resetOffset)
-					if err != nil {
-						nsqLog.Warningf("failed to reset reader to %v, %v", resetOffset, err)
-					} else {
-						c.drainChannelWaiting(true)
-						lastDataNeedRead = false
-						// since the reader is reset, we should drain the previous data.
-						select {
-						case <-origReadChan:
-						default:
-						}
-						lastMsg = Message{}
-					}
-				} else {
-					nsqLog.Warningf("failed to reset reader to %v: not a disk queue backend", resetOffset)
-				}
-				needReadBackend = true
-				readBackendWait = false
-			}
+			c.resetChannelReader(resetOffset, &lastDataNeedRead, origReadChan, &lastMsg, &needReadBackend, &readBackendWait)
 			continue LOOP
 		case <-waitEndUpdated:
 			continue LOOP
@@ -1143,30 +1118,7 @@ LOOP:
 		case c.clientMsgChan <- msg:
 		case resetOffset := <-c.readerChanged:
 			nsqLog.Infof("got reader reset notify while dispatch message:%v ", resetOffset)
-			if resetOffset == BackendOffset(-1) {
-				atomic.StoreInt32(&c.needResetReader, 1)
-			} else {
-				d, ok := c.backend.(*diskQueueReader)
-				if ok {
-					_, err = d.ResetReadToOffset(resetOffset)
-					if err != nil {
-						nsqLog.Warningf("failed to reset reader to %v, %v", resetOffset, err)
-					} else {
-						c.drainChannelWaiting(true)
-						lastDataNeedRead = false
-						// since the reader is reset, we should drain the previous data.
-						select {
-						case <-origReadChan:
-						default:
-						}
-						lastMsg = Message{}
-					}
-				} else {
-					nsqLog.Warningf("failed to reset reader to %v: not a disk queue backend", resetOffset)
-				}
-				needReadBackend = true
-				readBackendWait = false
-			}
+			c.resetChannelReader(resetOffset, &lastDataNeedRead, origReadChan, &lastMsg, &needReadBackend, &readBackendWait)
 		case <-c.exitChan:
 			goto exit
 		}
@@ -1178,6 +1130,7 @@ exit:
 	nsqLog.Logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 	close(c.exitSyncChan)
+	c.clientMsgChan = nil
 }
 
 func (c *Channel) GetChannelDebugStats() string {

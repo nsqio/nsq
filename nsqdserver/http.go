@@ -431,11 +431,15 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		// TODO : sync to replicas
-		err = channel.Empty()
+		var startFrom ConsumeOffset
+		startFrom.OffsetType = offsetSpecialType
+		startFrom.OffsetValue = -1
+		queueOffset, err := s.ctx.SetChannelOffset(channel, &startFrom, true)
 		if err != nil {
-			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+			return nil, http_api.Err{500, err.Error()}
 		}
+		nsqd.NsqLogger().Logf("empty the channel to end offset: %v, by client:%v",
+			queueOffset, req.RemoteAddr)
 	} else {
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
