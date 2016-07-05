@@ -16,7 +16,7 @@ import (
 
 var (
 	ErrInvalidOffset = errors.New("invalid offset")
-	writeBufSize     = 1024 * 64
+	writeBufSize     = 1024 * 128
 )
 
 // diskQueueWriter implements the BackendQueue interface

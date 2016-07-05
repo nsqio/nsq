@@ -63,6 +63,7 @@ type Topic struct {
 	needFlush       int32
 	EnableTrace     int32
 	syncEvery       int64
+	lastSyncCnt     int64
 	putBuffer       bytes.Buffer
 	bp              sync.Pool
 	writeDisabled   int32
@@ -475,7 +476,7 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 
 	id, offset, writeBytes, dend, err := t.put(m)
 	if err == nil {
-		if dend.TotalMsgCnt()%t.syncEvery == 0 {
+		if t.syncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
 			if !t.IsWriteDisabled() {
 				t.flush(true)
 			}
@@ -579,7 +580,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		}
 	}
 
-	if int64(len(msgs)) >= t.syncEvery || totalCnt%t.syncEvery == 0 {
+	if int64(len(msgs)) >= t.syncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
 		if !t.IsWriteDisabled() {
 			t.flush(true)
 		}
@@ -803,6 +804,7 @@ func (t *Topic) flush(notifyChan bool) error {
 		}
 		return nil
 	}
+	atomic.StoreInt64(&t.lastSyncCnt, t.backend.GetQueueWriteEnd().TotalMsgCnt())
 	err := t.backend.Flush()
 	if err != nil {
 		nsqLog.LogErrorf("failed flush: %v", err)
