@@ -584,7 +584,7 @@ func startCheckSetConsumerOffset() {
 				topicTsOffsets[t] = *p
 				log.Printf("check consume timestamp at : %v, %v", mid, p)
 			}
-			log.Printf("topic %v pub to partition %v trace : %v, %v, %v, %v", t, pidStr, id, offset, rawSize)
+			log.Printf("topic %v pub to partition %v trace : %v, %v, %v", t, pidStr, id, offset, rawSize)
 			time.Sleep(time.Second)
 		}
 	}
