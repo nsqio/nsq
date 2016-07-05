@@ -23,7 +23,6 @@ const (
 var (
 	ErrInvalidMessageID    = errors.New("message id is invalid")
 	ErrWriteOffsetMismatch = errors.New("write offset mismatch")
-	ErrExiting             = errors.New("exiting")
 )
 
 func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
@@ -707,7 +706,7 @@ func (t *Topic) exit(deleted bool) error {
 	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {
-		nsqLog.Logf("[TRACE_DATA] exiting channel : %v, %v, %v, %v", channel.GetName(), channel.currentLastConfirmed, channel.Depth(), channel.backend.GetQueueReadEnd())
+		nsqLog.Logf("[TRACE_DATA] exiting channel : %v, %v, %v, %v", channel.GetName(), channel.GetConfirmedOffset(), channel.Depth(), channel.backend.GetQueueReadEnd())
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
@@ -737,7 +736,7 @@ func (t *Topic) DisableForSlave() {
 		}
 
 		nsqLog.Logf("[TRACE_DATA] while disable channel : %v, %v, %v, %v, %v", c.GetName(),
-			c.currentLastConfirmed, c.Depth(), c.backend.GetQueueReadEnd(), curRead)
+			c.GetConfirmedOffset(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
@@ -820,7 +819,7 @@ func (t *Topic) PrintCurrentStats() {
 	t.channelLock.RLock()
 	for _, ch := range t.channelMap {
 		nsqLog.Logf("channel(%s) depth: %v, confirmed: %v, debug: %v", ch.GetName(), ch.Depth(),
-			ch.currentLastConfirmed, ch.GetChannelDebugStats())
+			ch.GetConfirmedOffset(), ch.GetChannelDebugStats())
 	}
 	t.channelLock.RUnlock()
 }

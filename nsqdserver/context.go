@@ -177,15 +177,27 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 		return 0, err
 	}
 	nsqd.NsqLogger().Logf("%v searched log : %v, offset: %v", startFrom, l, queueOffset)
-	err = ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
-	if err != nil {
-		if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
-			nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
+	if c.nsqdCoord == nil {
+		err = ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
+		if err != nil {
+			if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
+				nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
+				return 0, err
+			}
+			nsqd.NsqLogger().Logf("the consume offset: %v can only be set by the first client", startFrom, err)
+		}
+	} else {
+		err = c.nsqdCoord.SetChannelConsumeOffsetToCluster(ch, queueOffset, force)
+		if err != nil {
+			if coordErr, ok := err.(*consistence.CoordErr); ok {
+				if coordErr.IsEqual(consistence.ErrLocalSetChannelOffsetNotFirstClient) {
+					nsqd.NsqLogger().Logf("the consume offset: %v can only be set by the first client", startFrom)
+					return queueOffset, nil
+				}
+			}
+			nsqd.NsqLogger().Logf("failed to set the consume offset: %v (%v), err: %v ", startFrom, queueOffset, err)
 			return 0, err
 		}
-		nsqd.NsqLogger().LogDebugf("the consume offset: %v can only be set by the first client", startFrom, err)
-	} else {
-		// TODO: sync to the replicas, maybe we can wait the first FIN to sync offset ?
 	}
 	return queueOffset, nil
 }

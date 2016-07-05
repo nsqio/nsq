@@ -602,6 +602,57 @@ exitpubslave:
 	return slaveErr
 }
 
+func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, queueOffset int64, force bool) error {
+	topicName := ch.GetTopicName()
+	partition := ch.GetTopicPart()
+	coord, checkErr := self.getTopicCoord(topicName, partition)
+	if checkErr != nil {
+		return checkErr
+	}
+
+	var syncOffset ChannelConsumerOffset
+	syncOffset.AllowBackward = true
+
+	doLocalWrite := func(d *coordData) *CoordErr {
+		err := ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
+		if err != nil {
+			if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
+				coordLog.Infof("failed to set the consume offset: %v, err:%v", queueOffset, err)
+				return ErrLocalWriteFailed
+			}
+			coordLog.Debugf("the consume offset: %v can only be set by the first client", queueOffset)
+			return ErrLocalSetChannelOffsetNotFirstClient
+		}
+		syncOffset.VOffset = queueOffset
+		return nil
+	}
+	doLocalExit := func(err *CoordErr) {}
+	doLocalCommit := func() error {
+		return nil
+	}
+	doLocalRollback := func() {}
+	doRefresh := func(d *coordData) *CoordErr {
+		return nil
+	}
+	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		rpcErr := c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+		if rpcErr != nil {
+			coordLog.Infof("sync channel(%v) offset to replica %v failed: %v, offset: %v", ch.GetName(),
+				nodeID, rpcErr, syncOffset)
+		}
+		return rpcErr
+	}
+	handleSyncResult := func(successNum int, tcData *coordData) bool {
+		if successNum == len(tcData.topicInfo.ISR) {
+			return true
+		}
+		return false
+	}
+	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+		doRefresh, doSlaveSync, handleSyncResult)
+	return clusterErr
+}
+
 func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
 	topicName := channel.GetTopicName()
 	partition := channel.GetTopicPart()
@@ -711,10 +762,13 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 			return nil
 		}
 	}
-	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.AllowBackward)
 	if err != nil {
 		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
 			channelName, offset, err, currentEnd, topic.TotalDataSize())
+		if err == nsqd.ErrExiting {
+			return &CoordErr{err.Error(), RpcNoErr, CoordTmpErr}
+		}
 		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
 	}
 	return nil

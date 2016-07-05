@@ -90,6 +90,10 @@ func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset) (Backen
 	return 0, nil
 }
 
+func (d *dummyBackendQueueReader) GetQueueConfirmed() BackendOffset {
+	return 0
+}
+
 func (d *dummyBackendQueue) UpdateQueueEnd(end BackendQueueEnd, force bool) (bool, error) {
 	return true, nil
 }

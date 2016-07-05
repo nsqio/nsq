@@ -23,6 +23,7 @@ var (
 	ErrConfirmSizeInvalid = errors.New("Confirm data size invalid.")
 	ErrMoveOffsetInvalid  = errors.New("move offset invalid")
 	ErrOffsetTypeMismatch = errors.New("offset type mismatch")
+	ErrExiting            = errors.New("exiting")
 )
 
 type diskQueueOffset struct {
@@ -148,6 +149,13 @@ func (d *diskQueueReader) GetQueueReadEnd() BackendQueueEnd {
 	return &e
 }
 
+func (d *diskQueueReader) GetQueueConfirmed() BackendOffset {
+	d.RLock()
+	e := d.virtualConfirmedOffset
+	d.RUnlock()
+	return e
+}
+
 func (d *diskQueueReader) GetQueueCurrentRead() BackendQueueEnd {
 	d.RLock()
 	var ret diskQueueEndInfo
@@ -170,7 +178,7 @@ func (d *diskQueueReader) UpdateQueueEnd(e BackendQueueEnd, forceReload bool) (b
 	d.Lock()
 	defer d.Unlock()
 	if d.exitFlag == 1 {
-		return false, errors.New("exiting")
+		return false, ErrExiting
 	}
 	return d.internalUpdateEnd(end, forceReload)
 }
@@ -213,7 +221,7 @@ func (d *diskQueueReader) ConfirmRead(offset BackendOffset) error {
 	defer d.Unlock()
 
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return ErrExiting
 	}
 	oldConfirm := d.virtualConfirmedOffset
 	err := d.internalConfirm(offset)
@@ -239,7 +247,7 @@ func (d *diskQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
 	d.Lock()
 	defer d.Unlock()
 	if d.exitFlag == 1 {
-		return 0, errors.New("exiting")
+		return 0, ErrExiting
 	}
 	old := d.virtualConfirmedOffset
 	skiperr := d.internalSkipTo(d.virtualConfirmedOffset, false)
@@ -260,7 +268,7 @@ func (d *diskQueueReader) ResetReadToOffset(offset BackendOffset) (BackendOffset
 	d.Lock()
 	defer d.Unlock()
 	if d.exitFlag == 1 {
-		return 0, errors.New("exiting")
+		return 0, ErrExiting
 	}
 	if d.readFile != nil {
 		d.readFile.Close()
@@ -285,7 +293,7 @@ func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset,
 	d.Lock()
 	defer d.Unlock()
 	if d.exitFlag == 1 {
-		return 0, errors.New("exiting")
+		return 0, ErrExiting
 	}
 	old := d.virtualConfirmedOffset
 	skiperr := d.internalSkipTo(offset, false)
@@ -306,7 +314,7 @@ func (d *diskQueueReader) SkipToEnd() (BackendOffset, error) {
 	defer d.Unlock()
 
 	if d.exitFlag == 1 {
-		return 0, errors.New("exiting")
+		return 0, ErrExiting
 	}
 	old := d.virtualConfirmedOffset
 	skiperr := d.internalSkipTo(d.queueEndInfo.VirtualEnd, false)
@@ -387,15 +395,15 @@ func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next di
 	return BackendOffset(int64(vdiff) + left), err
 }
 
-func (d *diskQueueReader) SkipToNext() error {
+func (d *diskQueueReader) SkipToNext() (BackendOffset, error) {
 	d.RLock()
 	defer d.RUnlock()
 
 	if d.exitFlag == 1 {
-		return errors.New("exiting")
+		return d.virtualConfirmedOffset, ErrExiting
 	}
 	// TODO: skip to next file number.
-	return nil
+	return d.virtualConfirmedOffset, nil
 }
 
 func (d *diskQueueReader) stepOffset(virtualCur BackendOffset, cur diskQueueOffset, step BackendOffset, maxVirtual BackendOffset, maxStep diskQueueOffset) (diskQueueOffset, error) {

@@ -1185,7 +1185,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
 			continue
 		}
-		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset))
+		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.AllowBackward)
 		if err != nil {
 			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
 				chName, offset, err, currentEnd, localTopic.TotalDataSize())

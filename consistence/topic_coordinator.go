@@ -7,8 +7,9 @@ import (
 )
 
 type ChannelConsumerOffset struct {
-	VOffset int64
-	Flush   bool
+	VOffset       int64
+	Flush         bool
+	AllowBackward bool
 }
 
 type ChannelConsumeMgr struct {
