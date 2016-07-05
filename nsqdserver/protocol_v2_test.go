@@ -73,7 +73,7 @@ func subTrace(t *testing.T, conn io.ReadWriter, topicName string, channelName st
 func subOffset(t *testing.T, conn io.ReadWriter, topicName string, channelName string, queueOffset int64) {
 	var startFrom nsq.ConsumeOffset
 	startFrom.SetVirtualQueueOffset(queueOffset)
-	_, err := nsq.SubscribeAdvanced(topicName, channelName, "0", false, startFrom).WriteTo(conn)
+	_, err := nsq.SubscribeAdvanced(topicName, channelName, "0", startFrom).WriteTo(conn)
 	test.Equal(t, err, nil)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
