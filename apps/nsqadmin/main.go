@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqadmin"
@@ -51,12 +52,15 @@ func init() {
 }
 
 func main() {
+	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
+	glog.StartWorker(time.Second * 2)
 
 	if *showVersion {
 		fmt.Println(version.String("nsqadmin"))
 		return
 	}
+	defer glog.Flush()
 
 	if *templateDir != "" {
 		log.Printf("WARNING: --template-dir is deprecated and will be removed in the next release (templates are now compiled into the binary)")
