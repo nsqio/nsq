@@ -221,7 +221,18 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 
 func (c *Channel) SetOrdered(enable bool) {
 	if enable {
-		atomic.StoreInt32(&c.requireOrder, 1)
+		if !atomic.CompareAndSwapInt32(&c.requireOrder, 0, 1) {
+			return
+		}
+		select {
+		case c.readerChanged <- BackendOffset(-1):
+		default:
+		}
+		c.Lock()
+		for _, c := range c.clients {
+			c.Empty()
+		}
+		c.Unlock()
 	} else {
 		if c.GetClientsCount() == 0 {
 			atomic.StoreInt32(&c.requireOrder, 0)
@@ -247,7 +258,6 @@ func (c *Channel) initPQ() {
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	atomic.StoreInt64(&c.deferredCount, 0)
 	c.inFlightMutex.Unlock()
-
 }
 
 // Exiting returns a boolean indicating if this channel is closed/exiting
@@ -518,9 +528,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	}
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		curConfirm = newConfirmed
-		c.inFlightMutex.Lock()
 		flightCnt := len(c.inFlightMessages)
-		c.inFlightMutex.Unlock()
 		c.waitingRequeueMutex.Lock()
 		reqLen := len(c.waitingRequeueMsgs)
 		reqLen += len(c.requeuedMsgChan)
@@ -554,6 +562,8 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 
 // FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bool, error) {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
@@ -586,6 +596,8 @@ func (c *Channel) ContinueConsumeForOrder() {
 //     and requeue a message
 //
 func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
 	if timeout == 0 {
 		// remove from inflight first
 		msg, err := c.popInFlightMessage(clientID, id)
@@ -597,8 +609,6 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		return c.doRequeue(msg)
 	}
 	// change the timeout for inflight
-	c.inFlightMutex.Lock()
-	defer c.inFlightMutex.Unlock()
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
 		nsqLog.Logf("failed requeue for delay: %v, msg not exist", id)
@@ -676,12 +686,6 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 		return nil
 	}
 	c.clients[clientID] = client
-	if len(c.clients) == 1 {
-		select {
-		case c.tryReadBackend <- true:
-		default:
-		}
-	}
 	return nil
 }
 
@@ -738,9 +742,6 @@ func (c *Channel) doRequeue(m *Message) error {
 	if c.Exiting() {
 		return ErrExiting
 	}
-	if c.IsConsumeDisabled() {
-		return ErrConsumeDisabled
-	}
 	select {
 	case <-c.exitChan:
 		nsqLog.LogDebugf("requeue message failed for existing: %v ", m.ID)
@@ -777,27 +778,22 @@ func (c *Channel) pushInFlightMessage(msg *Message) error {
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
 func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, error) {
-	c.inFlightMutex.Lock()
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
-		c.inFlightMutex.Unlock()
 		return nil, ErrMsgNotInFlight
 	}
 	if msg.clientID != clientID {
-		c.inFlightMutex.Unlock()
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
 	if msg.isDeferred {
 		nsqLog.LogWarningf("should never pop a deferred message here unless the timeout : %v", msg.ID)
-		c.inFlightMutex.Unlock()
 		return nil, ErrMsgDeferred
 	}
 	delete(c.inFlightMessages, id)
 	if msg.index != -1 {
 		c.inFlightPQ.Remove(msg.index)
 	}
-	c.inFlightMutex.Unlock()
 	return msg, nil
 }
 
@@ -1125,6 +1121,7 @@ LOOP:
 		case <-c.exitChan:
 			goto exit
 		}
+
 		msg = nil
 		// the client will call back to mark as in-flight w/ its info
 	}
@@ -1170,10 +1167,12 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 	flightCnt := 0
 	requeuedCnt := 0
 	for {
+		c.inFlightMutex.Lock()
 		if c.IsConsumeDisabled() {
+			c.inFlightMutex.Unlock()
 			goto exit
 		}
-		c.inFlightMutex.Lock()
+
 		msg, _ := c.inFlightPQ.PeekAndShift(t)
 		flightCnt = len(c.inFlightMessages)
 		if msg == nil {
@@ -1200,13 +1199,13 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		} else {
 			atomic.AddUint64(&c.timeoutCount, 1)
 		}
+		requeuedCnt++
+		c.doRequeue(msg)
 		c.inFlightMutex.Unlock()
 
 		c.RLock()
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()
-		requeuedCnt++
-		c.doRequeue(msg)
 		if ok {
 			client.TimedOutMessage(msg.isDeferred)
 		}
