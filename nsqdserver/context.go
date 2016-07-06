@@ -144,6 +144,9 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
 		_, _, err := ch.FinishMessage(clientID, msgID)
+		if err == nil {
+			ch.ContinueConsumeForOrder()
+		}
 		return err
 	}
 	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)

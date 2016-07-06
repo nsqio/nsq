@@ -546,6 +546,9 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 	//c.finMsgs[msg.ID] = msg
 	_, ok := c.confirmedMsgs[int64(msg.offset)]
 	c.confirmMutex.Unlock()
+	if ok {
+		c.ContinueConsumeForOrder()
+	}
 	return ok
 }
 
@@ -960,7 +963,7 @@ LOOP:
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {
-				c.drainChannelWaiting(false, &lastDataNeedRead, origReadChan)
+				c.drainChannelWaiting(c.IsOrdered(), &lastDataNeedRead, origReadChan)
 				lastMsg = Message{}
 			}
 			readChan = origReadChan
