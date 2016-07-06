@@ -75,7 +75,11 @@ func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	if resp.Version == "" {
 		resp.Version = "unknown"
 	}
-	return semver.Parse(resp.Version)
+	v, err := semver.Parse(resp.Version)
+	if err != nil {
+		c.logf("CI: parse version failed %s: %v", resp.Version, err)
+	}
+	return v, err
 }
 
 // GetLookupdTopics returns a []string containing a union of all the topics
@@ -282,6 +286,13 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 			lock.Lock()
 			defer lock.Unlock()
 			for _, p := range resp.Producers {
+				version, err := semver.Parse(p.Version)
+				if err != nil {
+					c.logf("CI: parse version failed %s: %v", p.Version, err)
+					version, _ = semver.Parse("0.0.0")
+				}
+				p.VersionObj = version
+
 				for _, pp := range producers {
 					if p.HTTPAddress() == pp.HTTPAddress() {
 						goto skip
@@ -291,6 +302,13 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 			skip:
 			}
 			for pid, p := range resp.partitionProducers {
+				version, err := semver.Parse(p.Version)
+				if err != nil {
+					c.logf("CI: parse version failed %s: %v", p.Version, err)
+					version, _ = semver.Parse("0.0.0")
+				}
+				p.VersionObj = version
+
 				partproducers := partitionProducers[pid]
 				for _, pp := range partproducers {
 					if p.HTTPAddress() == pp.HTTPAddress() {
@@ -422,6 +440,7 @@ func (c *ClusterInfo) GetNSQDProducers(nsqdHTTPAddrs []string) (Producers, error
 
 			version, err := semver.Parse(infoResp.Version)
 			if err != nil {
+				c.logf("CI: parse version failed %s: %v", infoResp.Version, err)
 				version, _ = semver.Parse("0.0.0")
 			}
 
@@ -509,6 +528,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 
 					version, err := semver.Parse(infoResp.Version)
 					if err != nil {
+						c.logf("CI: parse version failed %s: %v", infoResp.Version, err)
 						version, _ = semver.Parse("0.0.0")
 					}
 

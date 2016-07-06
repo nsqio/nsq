@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/absolute8511/nsq/internal/levellogger"
 )
@@ -23,8 +24,10 @@ func Serve(listener net.Listener, handler http.Handler, proto string, l levellog
 	l.Output(2, fmt.Sprintf("%s: listening on %s", proto, listener.Addr()))
 
 	server := &http.Server{
-		Handler:  handler,
-		ErrorLog: log.New(logWriter{l}, "", 0),
+		Handler:      handler,
+		ErrorLog:     log.New(logWriter{l}, "", 0),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 60 * time.Second,
 	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
