@@ -116,6 +116,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	var line []byte
 	var zeroTime time.Time
 	left := make([]byte, 100)
+	tmpLine := make([]byte, 100)
 
 	clientID := p.ctx.nextClientID()
 	client := nsqd.NewClientV2(clientID, conn, p.ctx.getOpts(), p.ctx.GetTlsConfig())
@@ -149,6 +150,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			break
 		}
 
+		if p.ctx.getOpts().Verbose {
+			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
+		}
 		// handle the compatible for message id.
 		// Since the new message id is id+traceid. we can not
 		// use \n to check line.
@@ -164,37 +168,47 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			if bytes.Equal(line[:3], []byte("FIN")) ||
 				bytes.Equal(line[:3], []byte("REQ")) {
 				isSpecial = true
-				if len(line) < 20 {
+				if len(line) < 21 {
 					left = left[:20-len(line)]
 					nr := 0
-					nr, err = client.Reader.Read(left)
+					nr, err = io.ReadFull(client.Reader, left)
 					if err != nil {
 						nsqd.NsqLogger().LogErrorf("read param err:%v", err)
 					}
 					line = append(line, left[:nr]...)
-					// read last real '\n'
-					extra, err2 := client.Reader.ReadSlice('\n')
-					if err2 != nil {
-						nsqd.NsqLogger().LogErrorf("read param err:%v", err2)
+					tmpLine = tmpLine[:len(line)]
+					copy(tmpLine, line)
+					// the readslice will overwrite the slice line,
+					// so we should copy it and copy back.
+					extra, extraErr := client.Reader.ReadSlice('\n')
+					tmpLine = append(tmpLine, extra...)
+					line = append(line[:0], tmpLine...)
+					if extraErr != nil {
+						nsqd.NsqLogger().LogErrorf("read param err:%v", extraErr)
 					}
-					line = append(line, extra...)
 				}
 				params = append(params, line[:3])
-				if len(line) >= 20 {
+				if len(line) >= 21 {
 					params = append(params, line[4:20])
-					if len(line) > 21 {
-						params = append(params, line[21:len(line)-1])
+					// it must be REQ
+					if bytes.Equal(line[:3], []byte("REQ")) {
+						if len(line) >= 22 {
+							params = append(params, line[21:len(line)-1])
+						}
+					} else {
+						params = append(params, line[20:])
 					}
 				} else {
 					params = append(params, []byte(""))
 				}
+
 			} else if len(line) >= 5 {
 				if bytes.Equal(line[:5], []byte("TOUCH")) {
 					isSpecial = true
 					if len(line) < 23 {
 						left = left[:23-len(line)]
 						nr := 0
-						nr, err = client.Reader.Read(left)
+						nr, err = io.ReadFull(client.Reader, left)
 						if err != nil {
 							nsqd.NsqLogger().Logf("TOUCH param err:%v", err)
 						}
@@ -211,7 +225,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			client.SetReadDeadline(zeroTime)
 		}
 		if p.ctx.getOpts().Verbose {
-			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %s ", line)
+			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
 		}
 		if !isSpecial {
 			// trim the '\n'
@@ -224,7 +238,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 
 		if p.ctx.getOpts().Verbose {
-			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %s", client, params)
+			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %v", client, params)
 		}
 
 		var response []byte
@@ -369,7 +383,7 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	case bytes.Equal(params[0], []byte("INTERNAL_CREATE_TOPIC")):
 		return p.internalCreateTopic(client, params)
 	}
-	return nil, protocol.NewFatalClientErr(nil, E_INVALID, fmt.Sprintf("invalid command %s", params[0]))
+	return nil, protocol.NewFatalClientErr(nil, E_INVALID, fmt.Sprintf("invalid command %v", params[0]))
 }
 
 func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,

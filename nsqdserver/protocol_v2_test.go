@@ -19,6 +19,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -705,7 +706,7 @@ func TestDelayMessage(t *testing.T) {
 	delayDone := time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone > opts.MsgTimeout, true)
-	test.Equal(t, delayDone < opts.MsgTimeout+time.Duration(time.Millisecond*500), true)
+	test.Equal(t, delayDone < opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
 
 	// requeue timeout less than msg timeout
 	delayStart = time.Now()
@@ -737,7 +738,7 @@ func TestDelayMessage(t *testing.T) {
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone > opts.MsgTimeout+time.Second, true)
-	test.Equal(t, delayDone < opts.MsgTimeout+time.Second+time.Duration(time.Millisecond*500), true)
+	test.Equal(t, delayDone < opts.MsgTimeout+time.Second+time.Duration(time.Millisecond*500*2), true)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -818,6 +819,100 @@ func TestTouch(t *testing.T) {
 	test.Equal(t, stats.TimeoutCount, uint64(0))
 }
 
+func TestSubOrdered(t *testing.T) {
+	topicName := "test_sub_ordered" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.Verbose = true
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ordered_ch")
+
+	identify(t, conn, nil, frameTypeResponse)
+	subOrdered(t, conn, topicName, "ordered_ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	msg := nsqdNs.NewMessage(0, make([]byte, 100))
+	topic.PutMessage(msg)
+	for i := 0; i < 100; i++ {
+		topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+	}
+
+	expectedOffset := int64(0)
+	var lastMsgID nsq.NewMessageID
+	for i := 0; i < 50; i++ {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+
+		msgOut.Offset = uint64(binary.BigEndian.Uint64(msgOut.Body[:8]))
+		msgOut.RawSize = uint32(binary.BigEndian.Uint32(msgOut.Body[8:12]))
+		msgOut.Body = msgOut.Body[12:]
+		test.Equal(t, msgOut.Body, msg.Body)
+		if expectedOffset != int64(0) {
+			if nsq.GetNewMessageID(msgOut.ID[:]) != lastMsgID {
+				test.Equal(t, expectedOffset, int64(msgOut.Offset))
+			} else {
+				t.Logf("got dump message id: %v", lastMsgID)
+			}
+		}
+		expectedOffset = int64(msgOut.Offset) + int64(msgOut.RawSize)
+		lastMsgID = nsq.GetNewMessageID(msgOut.ID[:])
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+	}
+	conn.Close()
+	time.Sleep(time.Second)
+	// reconnect and try consume the message
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, nil, frameTypeResponse)
+	subOrdered(t, conn, topicName, "ordered_ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+	for i := 0; i < 50; i++ {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+
+		msgOut, err := nsq.DecodeMessage(data)
+		msgOut.Offset = uint64(binary.BigEndian.Uint64(msgOut.Body[:8]))
+		msgOut.RawSize = uint32(binary.BigEndian.Uint32(msgOut.Body[8:12]))
+		msgOut.Body = msgOut.Body[12:]
+		test.Equal(t, msgOut.Body, msg.Body)
+		if expectedOffset != int64(0) {
+			if nsq.GetNewMessageID(msgOut.ID[:]) != lastMsgID {
+				test.Equal(t, expectedOffset, int64(msgOut.Offset))
+			} else {
+				t.Logf("got dump message id: %v", lastMsgID)
+			}
+		}
+		expectedOffset = int64(msgOut.Offset) + int64(msgOut.RawSize)
+		lastMsgID = nsq.GetNewMessageID(msgOut.ID[:])
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+	}
+}
+
 func TestMaxRdyCount(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -885,7 +980,7 @@ func TestFatalError(t *testing.T) {
 	test.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	test.Equal(t, frameType, int32(1))
-	test.Equal(t, string(data), "E_INVALID invalid command ASDF")
+	test.Equal(t, strings.HasPrefix(string(data), "E_INVALID "), true)
 
 	_, err = nsq.ReadResponse(conn)
 	test.NotNil(t, err)
@@ -1846,7 +1941,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	err := prot.IOLoop(fakeConn)
 
 	test.NotNil(t, err)
-	test.Equal(t, err.Error(), "E_INVALID invalid command INVALID_COMMAND")
+	test.Equal(t, strings.HasPrefix(err.Error(), "E_INVALID "), true)
 	test.NotNil(t, err.(*protocol.FatalClientErr))
 }
 
