@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"github.com/absolute8511/gorpc"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"os"
@@ -575,13 +576,15 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 
 // receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
-	s := time.Now().Unix()
-	defer func() {
-		e := time.Now().Unix()
-		if e-s > int64(RPC_TIMEOUT/2) {
-			coordLog.Infof("PutMessage rpc call used: %v", e-s)
-		}
-	}()
+	if coordLog.Level() >= levellogger.LOG_DEBUG {
+		s := time.Now().Unix()
+		defer func() {
+			e := time.Now().Unix()
+			if e-s > int64(RPC_TIMEOUT/2) {
+				coordLog.Infof("PutMessage rpc call used: %v", e-s)
+			}
+		}()
+	}
 
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
@@ -592,13 +595,15 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 }
 
 func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
-	s := time.Now().Unix()
-	defer func() {
-		e := time.Now().Unix()
-		if e-s > int64(RPC_TIMEOUT/2) {
-			coordLog.Infof("PutMessages rpc call used: %v", e-s)
-		}
-	}()
+	if coordLog.Level() >= levellogger.LOG_DEBUG {
+		s := time.Now().Unix()
+		defer func() {
+			e := time.Now().Unix()
+			if e-s > int64(RPC_TIMEOUT/2) {
+				coordLog.Infof("PutMessages rpc call used: %v", e-s)
+			}
+		}()
+	}
 
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {

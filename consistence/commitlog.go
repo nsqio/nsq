@@ -229,6 +229,7 @@ type TopicCommitLogMgr struct {
 	pLogID        int64
 	path          string
 	committedLogs []CommitLogData
+	buffer        []byte
 	bufSize       int
 	appender      *os.File
 	currentStart  int64
@@ -254,6 +255,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		path:          fullpath,
 		bufSize:       commitBufSize,
 		committedLogs: make([]CommitLogData, 0, commitBufSize),
+		buffer:        make([]byte, 0, (commitBufSize+1)*GetLogDataSize()),
 	}
 	// load check point index. read sizeof(CommitLogData) until EOF.
 	var err error
@@ -619,11 +621,16 @@ func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 
 func (self *TopicCommitLogMgr) flushCommitLogsNoLock() {
 	// write buffered commit logs to file.
+	tmpBuf := bytes.NewBuffer(self.buffer[:0])
 	for _, v := range self.committedLogs {
-		err := binary.Write(self.appender, binary.BigEndian, v)
+		err := binary.Write(tmpBuf, binary.BigEndian, v)
 		if err != nil {
 			panic(err)
 		}
+	}
+	_, err := tmpBuf.WriteTo(self.appender)
+	if err != nil {
+		panic(err)
 	}
 	self.committedLogs = self.committedLogs[0:0]
 }

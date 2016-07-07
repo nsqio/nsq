@@ -477,23 +477,32 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			return &CoordErr{localErr.Error(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
-		start := time.Now()
-		topic.Lock()
-		cost := time.Now().Sub(start)
-		if cost > time.Second {
-			coordLog.Infof("prepare write on slave local cost :%v", cost)
+		checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+		var start time.Time
+		if checkCost {
+			start = time.Now()
 		}
-		if coordLog.Level() >= levellogger.LOG_DETAIL {
-			coordLog.Infof("prepare write on slave local cost :%v", cost)
+		topic.Lock()
+		var cost time.Duration
+		if checkCost {
+			cost = time.Now().Sub(start)
+			if cost > time.Second {
+				coordLog.Infof("prepare write on slave local cost :%v", cost)
+			}
+			if coordLog.Level() >= levellogger.LOG_DETAIL {
+				coordLog.Infof("prepare write on slave local cost :%v", cost)
+			}
 		}
 
 		queueEnd, localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
-		cost2 := time.Now().Sub(start)
-		if cost2 > time.Second {
-			coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
-		}
-		if coordLog.Level() >= levellogger.LOG_DETAIL {
-			coordLog.Infof("write local on slave cost :%v", cost2)
+		if checkCost {
+			cost2 := time.Now().Sub(start)
+			if cost2 > time.Second {
+				coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
+			}
+			if coordLog.Level() >= levellogger.LOG_DETAIL {
+				coordLog.Infof("write local on slave cost :%v", cost2)
+			}
 		}
 
 		topic.Unlock()
@@ -531,7 +540,11 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	doLocalWriteOnSlave localWriteFunc, doLocalCommit localCommitFunc, doLocalExit localExitFunc) *CoordErr {
 	tc := coord.GetData()
 
-	start := time.Now()
+	var start time.Time
+	checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+	if checkCost {
+		start = time.Now()
+	}
 	coord.writeHold.Lock()
 	defer coord.writeHold.Unlock()
 	// check should be protected by write lock to avoid the next write check during the commit log flushing.
@@ -549,12 +562,15 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 		return ErrTopicWriteOnNonISR
 	}
 
-	cost := time.Now().Sub(start)
-	if cost > time.Second {
-		coordLog.Infof("prepare write on slave cost :%v", cost)
-	}
-	if coordLog.Level() >= levellogger.LOG_DETAIL {
-		coordLog.Infof("prepare write on slave cost :%v", cost)
+	var cost time.Duration
+	if checkCost {
+		cost = time.Now().Sub(start)
+		if cost > time.Second {
+			coordLog.Infof("prepare write on slave cost :%v", cost)
+		}
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Infof("prepare write on slave cost :%v", cost)
+		}
 	}
 
 	topicName := tc.topicInfo.Name
@@ -563,12 +579,15 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	var slaveErr *CoordErr
 	var localErr error
 	slaveErr = doLocalWriteOnSlave(tc)
-	cost2 := time.Now().Sub(start)
-	if cost2 > time.Second {
-		coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
-	}
-	if coordLog.Level() >= levellogger.LOG_DETAIL {
-		coordLog.Infof("write local on slave cost :%v", cost2)
+	var cost2 time.Duration
+	if checkCost {
+		cost2 = time.Now().Sub(start)
+		if cost2 > time.Second {
+			coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
+		}
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Infof("write local on slave cost :%v", cost2)
+		}
 	}
 
 	if slaveErr != nil {
@@ -591,12 +610,14 @@ exitpubslave:
 		}()
 	}
 	doLocalExit(slaveErr)
-	cost3 := time.Now().Sub(start)
-	if cost3 > time.Second {
-		coordLog.Infof("write local on slave cost :%v, %v, %v", cost, cost2, cost3)
-	}
-	if coordLog.Level() >= levellogger.LOG_DETAIL {
-		coordLog.Infof("write local on slave cost :%v", cost3)
+	if checkCost {
+		cost3 := time.Now().Sub(start)
+		if cost3 > time.Second {
+			coordLog.Infof("write local on slave cost :%v, %v, %v", cost, cost2, cost3)
+		}
+		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			coordLog.Infof("write local on slave cost :%v", cost3)
+		}
 	}
 
 	return slaveErr
