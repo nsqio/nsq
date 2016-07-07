@@ -294,7 +294,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer) error {
+func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer, needFlush bool) error {
 	buf.Reset()
 	if !client.EnableTrace {
 		_, err := msg.WriteTo(buf)
@@ -308,7 +308,7 @@ func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *
 		}
 	}
 
-	err := p.Send(client, frameTypeMessage, buf.Bytes())
+	err := p.internalSend(client, frameTypeMessage, buf.Bytes(), needFlush)
 	if err != nil {
 		return err
 	}
@@ -316,7 +316,11 @@ func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *
 	return nil
 }
 
-func (p *protocolV2) Send(client *nsqd.ClientV2, frameType int32, data []byte) error {
+func (p *protocolV2) SendNow(client *nsqd.ClientV2, frameType int32, data []byte) error {
+	return p.internalSend(client, frameType, data, true)
+}
+
+func (p *protocolV2) internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush bool) error {
 	client.LockWrite()
 
 	var zeroTime time.Time
@@ -332,13 +336,17 @@ func (p *protocolV2) Send(client *nsqd.ClientV2, frameType int32, data []byte) e
 		return err
 	}
 
-	if frameType != frameTypeMessage {
+	if needFlush || frameType != frameTypeMessage {
 		err = client.Flush()
 	}
 
 	client.UnlockWrite()
 
 	return err
+}
+
+func (p *protocolV2) Send(client *nsqd.ClientV2, frameType int32, data []byte) error {
+	return p.internalSend(client, frameType, data, false)
 }
 
 func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -523,7 +531,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()
-			err = p.SendMessage(client, msg, &buf)
+			err = p.SendMessage(client, msg, &buf, subChannel.IsOrdered())
 			if err != nil {
 				goto exit
 			}
