@@ -43,6 +43,7 @@ func convertRpcError(err error, errInterface interface{}) *CoordErr {
 func NewNsqdRpcClient(addr string, timeout time.Duration) (*NsqdRpcClient, error) {
 	c := gorpc.NewTCPClient(addr)
 	c.RequestTimeout = timeout
+	c.DisableCompression = true
 	c.Start()
 	d := gorpc.NewDispatcher()
 	d.AddService("NsqdCoordRpcServer", &NsqdCoordRpcServer{})
@@ -72,6 +73,7 @@ func (self *NsqdRpcClient) Reconnect() error {
 	}
 	self.c = gorpc.NewTCPClient(self.remote)
 	self.c.RequestTimeout = self.timeout
+	self.c.DisableCompression = true
 	self.dc = self.d.NewServiceClient("NsqdCoordRpcServer", self.c)
 	self.c.Start()
 	self.Unlock()

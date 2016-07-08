@@ -229,6 +229,8 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 		return ErrWriteQuorumFailed
 	}
 
+	checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+
 	needRefreshISR := false
 	needLeaveISR := false
 	success := 0
@@ -279,6 +281,11 @@ retrysync:
 			success++
 			continue
 		}
+		var start time.Time
+		if checkCost {
+			start = time.Now()
+		}
+
 		c, rpcErr := self.acquireRpcClient(nodeID)
 		if rpcErr != nil {
 			coordLog.Infof("get rpc client %v failed: %v", nodeID, rpcErr)
@@ -288,6 +295,15 @@ retrysync:
 		}
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		rpcErr = doSlaveSync(c, nodeID, tcData)
+		if checkCost {
+			cost := time.Since(start)
+			if cost > time.Millisecond*15 {
+				coordLog.Infof("slave(%v) sync cost long: %v", nodeID, cost)
+			}
+			if coordLog.Level() >= levellogger.LOG_DETAIL {
+				coordLog.Infof("slave(%v) sync cost: %v", nodeID, cost)
+			}
+		}
 		if rpcErr == nil {
 			success++
 		} else {
@@ -486,7 +502,7 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		var cost time.Duration
 		if checkCost {
 			cost = time.Now().Sub(start)
-			if cost > time.Second {
+			if cost > time.Millisecond*10 {
 				coordLog.Infof("prepare write on slave local cost :%v", cost)
 			}
 			if coordLog.Level() >= levellogger.LOG_DETAIL {
@@ -497,7 +513,7 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		queueEnd, localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
 		if checkCost {
 			cost2 := time.Now().Sub(start)
-			if cost2 > time.Second {
+			if cost2 > time.Millisecond*10 {
 				coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
 			}
 			if coordLog.Level() >= levellogger.LOG_DETAIL {
@@ -565,7 +581,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	var cost time.Duration
 	if checkCost {
 		cost = time.Now().Sub(start)
-		if cost > time.Second {
+		if cost > time.Millisecond*10 {
 			coordLog.Infof("prepare write on slave cost :%v", cost)
 		}
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
@@ -582,7 +598,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	var cost2 time.Duration
 	if checkCost {
 		cost2 = time.Now().Sub(start)
-		if cost2 > time.Second {
+		if cost2 > time.Millisecond*10 {
 			coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
 		}
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
@@ -612,7 +628,7 @@ exitpubslave:
 	doLocalExit(slaveErr)
 	if checkCost {
 		cost3 := time.Now().Sub(start)
-		if cost3 > time.Second {
+		if cost3 > time.Millisecond*10 {
 			coordLog.Infof("write local on slave cost :%v, %v, %v", cost, cost2, cost3)
 		}
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
