@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1127,7 +1128,7 @@ func TestNsqdCoordISRChangedWhileWrite(t *testing.T) {
 
 func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 	b.StopTimer()
-	topic := "coordBenchTestTopic"
+	topicBase := "coordBenchTestTopic"
 	partition := 1
 
 	if testing.Verbose() {
@@ -1173,65 +1174,81 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 
 	}
 
-	var topicInitInfo RpcAdminTopicInfo
-	topicInitInfo.Name = topic
-	topicInitInfo.Partition = partition
-	topicInitInfo.Epoch = 1
-	topicInitInfo.EpochForWrite = 1
-	topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord1.myNode.GetID())
-	if replica >= 2 {
-		topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord2.myNode.GetID())
-	}
-	if replica >= 3 {
-		topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord3.myNode.GetID())
-	}
-	topicInitInfo.Leader = nsqdCoord1.myNode.GetID()
-	topicInitInfo.Replica = replica
-	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
-	if replica >= 2 {
-		ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
-	}
-	if replica >= 3 {
-		ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
-	}
-	leaderSession := &TopicLeaderSession{
-		LeaderNode:  nodeInfo1,
-		LeaderEpoch: 1,
-		Session:     "fake123",
-	}
-	// normal test
-	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
-	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
-	if replica >= 2 {
-		ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
-		ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
-	}
-	if replica >= 3 {
-		ensureTopicLeaderSession(nsqdCoord3, topic, partition, leaderSession)
-		ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+	topicDataList := make([]*nsqdNs.Topic, 0)
+	for tnum := 0; tnum < 20; tnum++ {
+		var topicInitInfo RpcAdminTopicInfo
+		topicInitInfo.Name = topicBase + "-" + strconv.Itoa(tnum)
+		topic := topicInitInfo.Name
+		topicInitInfo.Partition = partition
+		topicInitInfo.Epoch = 1
+		topicInitInfo.EpochForWrite = 1
+		topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord1.myNode.GetID())
+		if replica >= 2 {
+			topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord2.myNode.GetID())
+		}
+		if replica >= 3 {
+			topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord3.myNode.GetID())
+		}
+		topicInitInfo.Leader = nsqdCoord1.myNode.GetID()
+		topicInitInfo.Replica = replica
+		ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+		if replica >= 2 {
+			ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+		}
+		if replica >= 3 {
+			ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+		}
+		leaderSession := &TopicLeaderSession{
+			LeaderNode:  nodeInfo1,
+			LeaderEpoch: 1,
+			Session:     "fake123",
+		}
+		// normal test
+		ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+		ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+		if replica >= 2 {
+			ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
+			ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+		}
+		if replica >= 3 {
+			ensureTopicLeaderSession(nsqdCoord3, topic, partition, leaderSession)
+			ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+		}
+		msg := make([]byte, size)
+		// check if write ok
+		topicData := nsqd1.GetTopic(topic, partition)
+		_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData, msg, 0)
+		if err != nil {
+			b.Logf("test put failed: %v", err)
+			b.Fail()
+		} else {
+			topicDataList = append(topicDataList, topicData)
+		}
 	}
 	msg := make([]byte, size)
-	// check if write ok
-	topicData1 := nsqd1.GetTopic(topic, partition)
-	_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
-	if err != nil {
-		b.Logf("test put failed: %v", err)
-		b.Fail()
-	}
 	//b.SetParallelism(1)
+	var wg sync.WaitGroup
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()
 
-	num := b.N
-	for i := 0; i < num; i++ {
-		_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
-		if err != nil {
-			b.Errorf("put error: %v", err)
-		}
-	}
-	b.StopTimer()
+	num := b.N / len(topicDataList)
 
-	b.Log(topicData1.GetPubStats())
+	for tnum := 0; tnum < len(topicDataList); tnum++ {
+		wg.Add(1)
+		topicData := topicDataList[tnum]
+		go func(localTopic *nsqdNs.Topic) {
+			defer wg.Done()
+			for i := 0; i < num; i++ {
+				_, _, _, _, err := nsqdCoord1.PutMessageToCluster(localTopic, msg, 0)
+				if err != nil {
+					b.Errorf("put error: %v", err)
+				}
+			}
+			b.Log(localTopic.GetPubStats())
+		}(topicData)
+	}
+	wg.Wait()
+	b.StopTimer()
 	b.Log(nsqdCoord1.rpcServer.rpcServer.Stats.Snapshot())
 }
 
