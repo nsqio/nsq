@@ -38,6 +38,7 @@ var (
 	nsqdPingTimeout         = flagSet.Duration("nsqd-ping-timeout", 15*time.Second, "duration of nsqd ping timeout, should be at least twice as the nsqd ping interval")
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 	logLevel                = flagSet.Int("log-level", 1, "log verbose level")
+	logDir                  = flagSet.String("log-dir", "", "directory for log file")
 )
 
 func init() {
@@ -67,7 +68,6 @@ func (p *program) Start() error {
 	glog.InitWithFlag(flagSet)
 
 	flagSet.Parse(os.Args[1:])
-	glog.StartWorker(time.Second * 2)
 
 	if *showVersion {
 		fmt.Println(version.String("nsqlookupd"))
@@ -85,7 +85,11 @@ func (p *program) Start() error {
 	opts := nsqlookupd.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
 	daemon := nsqlookupd.New(opts)
+	if opts.LogDir != "" {
+		glog.SetGLogDir(opts.LogDir)
+	}
 
+	glog.StartWorker(time.Second * 2)
 	daemon.Main()
 	p.nsqlookupd = daemon
 	return nil

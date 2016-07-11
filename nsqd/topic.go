@@ -615,7 +615,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		t.UpdateCommittedOffset(&dend)
 	}
 
-	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
 	}
 	return m.ID, offset, writeBytes, dend, nil
@@ -850,7 +850,6 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 
 func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, count int64, hasErr bool) {
 	t.statsMutex.Lock()
-	defer t.statsMutex.Unlock()
 	s, ok := t.clientPubStats[remote]
 	if !ok {
 		// too much clients pub to this topic
@@ -871,6 +870,7 @@ func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, cou
 			}
 			nsqLog.Logf("clean pub stats cost %v, scan: %v, clean:%v, left: %v", time.Since(scanStart),
 				scanCnt, cleanCnt, len(t.clientPubStats))
+			t.statsMutex.Unlock()
 			return
 		}
 		s = &ClientPubStats{
@@ -887,6 +887,7 @@ func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, cou
 		s.PubCount += count
 		s.LastPubTs = time.Now().Unix()
 	}
+	t.statsMutex.Unlock()
 }
 
 func (t *Topic) RemovePubStats(remote string, protocol string) {

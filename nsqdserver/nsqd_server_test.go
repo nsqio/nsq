@@ -2,6 +2,7 @@ package nsqdserver
 
 import (
 	"fmt"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
@@ -41,6 +42,11 @@ func mustStartNSQD(opts *nsqdNs.Options) (*net.TCPAddr, *net.TCPAddr, *nsqdNs.NS
 		}
 		opts.DataPath = tmpDir
 	}
+	if opts.LogDir == "" {
+		opts.LogDir = opts.DataPath
+	}
+	glog.SetGLogDir(opts.LogDir)
+	glog.StartWorker(time.Second)
 	nsqd := nsqdNs.New(opts)
 	nsqdServer := NewNsqdServer(nsqd, opts)
 	nsqdServer.Main()

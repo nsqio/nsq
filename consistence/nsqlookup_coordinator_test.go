@@ -456,6 +456,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.SetLevel(levellogger.LOG_DEBUG)
 		coordLog.Logger = newTestLogger(t)

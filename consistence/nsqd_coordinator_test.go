@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"fmt"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
@@ -9,7 +10,9 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
@@ -190,6 +193,9 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	} else {
 		opts.LogLevel = levellogger.LOG_ERR
 	}
+	if t == nil {
+		opts.Logger = nil
+	}
 	nsqd := mustStartNSQD(opts)
 	randPort := rand.Int31n(30000) + 20000
 	nodeInfo := NsqdNodeInfo{
@@ -209,6 +215,8 @@ func TestNsqdCoordStartup(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -317,6 +325,8 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -394,6 +404,8 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -620,6 +632,8 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -839,6 +853,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.SetLevel(levellogger.LOG_ERR)
 	}
@@ -1109,4 +1125,147 @@ func TestNsqdCoordISRChangedWhileWrite(t *testing.T) {
 	// leader write while network split, and part of isr agreed with write
 	// leader need rollback (or just move leader out from isr and sync with new leader )
 	// RESULT: all new isr nodes should be synced
+}
+
+func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
+	b.StopTimer()
+	topic := "coordBenchTestTopic"
+	partition := 1
+
+	if testing.Verbose() {
+		coordLog.SetLevel(levellogger.LOG_WARN)
+		//coordLog.Logger = newTestLogger(b)
+		coordLog.Logger = &levellogger.GLogger{}
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
+	} else {
+		coordLog.SetLevel(levellogger.LOG_WARN)
+	}
+
+	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(nil, "id1")
+	defer os.RemoveAll(data1)
+	defer nsqd1.Exit()
+	nsqdCoord1 := startNsqdCoord(nil, strconv.Itoa(randPort1), data1, "id1", nsqd1, true)
+	nsqdCoord1.Start()
+	defer nsqdCoord1.Stop()
+	time.Sleep(time.Second)
+
+	var nsqdCoord2 *NsqdCoordinator
+	var nsqdCoord3 *NsqdCoordinator
+	if replica >= 2 {
+		nsqd2, randPort2, _, data2 := newNsqdNode(nil, "id2")
+
+		defer os.RemoveAll(data2)
+		defer nsqd2.Exit()
+		nsqdCoord2 = startNsqdCoord(nil, strconv.Itoa(randPort2), data2, "id2", nsqd2, true)
+		nsqdCoord2.Start()
+		defer nsqdCoord2.Stop()
+	}
+	if replica >= 3 {
+		nsqd3, randPort3, _, data3 := newNsqdNode(nil, "id3")
+		defer os.RemoveAll(data3)
+		defer nsqd3.Exit()
+		nsqdCoord3 = startNsqdCoord(nil, strconv.Itoa(randPort3), data3, "id3", nsqd3, true)
+		nsqdCoord3.Start()
+		defer nsqdCoord3.Stop()
+
+	}
+
+	var topicInitInfo RpcAdminTopicInfo
+	topicInitInfo.Name = topic
+	topicInitInfo.Partition = partition
+	topicInitInfo.Epoch = 1
+	topicInitInfo.EpochForWrite = 1
+	topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord1.myNode.GetID())
+	if replica >= 2 {
+		topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord2.myNode.GetID())
+	}
+	if replica >= 3 {
+		topicInitInfo.ISR = append(topicInitInfo.ISR, nsqdCoord3.myNode.GetID())
+	}
+	topicInitInfo.Leader = nsqdCoord1.myNode.GetID()
+	topicInitInfo.Replica = replica
+	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
+	if replica >= 2 {
+		ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
+	}
+	if replica >= 3 {
+		ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
+	}
+	leaderSession := &TopicLeaderSession{
+		LeaderNode:  nodeInfo1,
+		LeaderEpoch: 1,
+		Session:     "fake123",
+	}
+	// normal test
+	ensureTopicLeaderSession(nsqdCoord1, topic, partition, leaderSession)
+	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
+	if replica >= 2 {
+		ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)
+		ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
+	}
+	if replica >= 3 {
+		ensureTopicLeaderSession(nsqdCoord3, topic, partition, leaderSession)
+		ensureTopicDisableWrite(nsqdCoord3, topic, partition, false)
+	}
+	msg := make([]byte, size)
+	// check if write ok
+	topicData1 := nsqd1.GetTopic(topic, partition)
+	_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
+	if err != nil {
+		b.Logf("test put failed: %v", err)
+		b.Fail()
+	}
+	b.SetBytes(int64(len(msg)))
+	var wg sync.WaitGroup
+	b.StartTimer()
+
+	concurrency := runtime.GOMAXPROCS(0)
+	concurrency = 1
+	for j := 0; j < concurrency; j++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			num := b.N / concurrency
+			if num <= 0 {
+				num = 1
+			}
+			for i := 0; i < num; i++ {
+				_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
+				if err != nil {
+					b.Errorf("put error: %v", err)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	b.StopTimer()
+
+	time.Sleep(time.Second * 2)
+}
+
+func BenchmarkNsqdCoordPub1Replicator128(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 1, 128)
+}
+
+func BenchmarkNsqdCoordPub2Replicator128(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 2, 128)
+}
+
+func BenchmarkNsqdCoordPub3Replicator128(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 3, 128)
+}
+
+func BenchmarkNsqdCoordPub1Replicator1024(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 1, 1024)
+}
+
+func BenchmarkNsqdCoordPub2Replicator1024(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 2, 1024)
+}
+
+func BenchmarkNsqdCoordPub3Replicator1024(b *testing.B) {
+	benchmarkNsqdCoordPubWithArg(b, 3, 1024)
 }

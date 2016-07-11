@@ -106,7 +106,7 @@ func (self *NsqdCoordRpcServer) toggleDisableRpcTest(disable bool) {
 	coordLog.Infof("rpc is disabled on node: %v", self.nsqdCoord.myNode.GetID())
 }
 
-func (self *NsqdCoordRpcServer) start(ip, port string) error {
+func (self *NsqdCoordRpcServer) start(ip, port string) (string, error) {
 	self.rpcDispatcher.AddService("NsqdCoordRpcServer", self)
 	self.rpcServer = gorpc.NewTCPServer(net.JoinHostPort(ip, port), self.rpcDispatcher.NewHandlerFunc())
 
@@ -117,7 +117,7 @@ func (self *NsqdCoordRpcServer) start(ip, port string) error {
 	}
 
 	coordLog.Infof("nsqd coordinator rpc listen at : %v", self.rpcServer.Listener.ListenAddr())
-	return nil
+	return self.rpcServer.Listener.ListenAddr().String(), nil
 }
 
 func (self *NsqdCoordRpcServer) stop() {
@@ -576,13 +576,14 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 
 // receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
-	if coordLog.Level() >= levellogger.LOG_DEBUG {
-		s := time.Now().Unix()
+	if coordLog.Level() >= levellogger.LOG_WARN {
+		s := time.Now()
 		defer func() {
-			e := time.Now().Unix()
-			if e-s > int64(RPC_TIMEOUT/2) {
-				coordLog.Infof("PutMessage rpc call used: %v", e-s)
+			e := time.Now()
+			if e.Sub(s) > time.Second*time.Duration(RPC_TIMEOUT/2) {
+				coordLog.Infof("PutMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
 			}
+			coordLog.Warningf("PutMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
 		}()
 	}
 

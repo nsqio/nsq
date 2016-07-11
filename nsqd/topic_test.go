@@ -141,22 +141,31 @@ func TestTopicResetWriteEnd(t *testing.T) {
 	// TODO
 }
 
-func BenchmarkTopicPut(b *testing.B) {
+func benchmarkTopicPut(b *testing.B, size int) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
+	msg := NewMessage(0, make([]byte, size))
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName, 0)
-		msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg.ID = 0
 		topic.PutMessage(msg)
 	}
+}
+
+func BenchmarkTopicPut16(b *testing.B) {
+	benchmarkTopicPut(b, 16)
+}
+
+func BenchmarkTopicPut128(b *testing.B) {
+	benchmarkTopicPut(b, 128)
 }
 
 func BenchmarkTopicToChannelPut(b *testing.B) {
@@ -171,10 +180,11 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	defer nsqd.Exit()
 	nsqd.GetTopic(topicName, 0).GetChannel(channelName)
 	b.StartTimer()
+	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName, 0)
-		msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg.ID = 0
 		topic.PutMessage(msg)
 	}
 }

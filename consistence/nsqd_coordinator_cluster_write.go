@@ -230,6 +230,9 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 	}
 
 	checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+	if self.enableBenchCost {
+		checkCost = true
+	}
 
 	needRefreshISR := false
 	needLeaveISR := false
@@ -281,10 +284,6 @@ retrysync:
 			success++
 			continue
 		}
-		var start time.Time
-		if checkCost {
-			start = time.Now()
-		}
 
 		c, rpcErr := self.acquireRpcClient(nodeID)
 		if rpcErr != nil {
@@ -293,15 +292,19 @@ retrysync:
 			failedNodes[nodeID] = struct{}{}
 			continue
 		}
+		var start time.Time
+		if checkCost {
+			start = time.Now()
+		}
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
 		rpcErr = doSlaveSync(c, nodeID, tcData)
 		if checkCost {
 			cost := time.Since(start)
-			if cost > time.Millisecond*15 {
+			if cost > time.Millisecond*3 {
 				coordLog.Infof("slave(%v) sync cost long: %v", nodeID, cost)
 			}
-			if coordLog.Level() >= levellogger.LOG_DETAIL {
-				coordLog.Infof("slave(%v) sync cost: %v", nodeID, cost)
+			if self.enableBenchCost {
+				coordLog.Warningf("slave(%v) sync cost: %v, start: %v, end: %v", nodeID, cost, start, time.Now())
 			}
 		}
 		if rpcErr == nil {
@@ -386,15 +389,13 @@ exitsync:
 }
 
 func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData CommitLogData, msg *nsqd.Message) *CoordErr {
-	tcData := coord.GetData()
-	topicName := tcData.topicInfo.Name
-	partition := tcData.topicInfo.Partition
 	var logMgr *TopicCommitLogMgr
 	var topic *nsqd.Topic
 	var queueEnd nsqd.BackendQueueEnd
 
 	checkDupOnSlave := func(tc *coordData) bool {
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			topicName := tc.topicInfo.Name
 			coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
 		}
 		logMgr = tc.logMgr
@@ -407,6 +408,8 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 
 	doLocalWriteOnSlave := func(tc *coordData) *CoordErr {
 		var localErr error
+		topicName := tc.topicInfo.Name
+		partition := tc.topicInfo.Partition
 		topic, localErr = self.localNsqd.GetExistingTopic(topicName, partition)
 		if localErr != nil {
 			coordLog.Infof("pub on slave missing topic : %v", topicName)
@@ -469,11 +472,9 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 
 	var queueEnd nsqd.BackendQueueEnd
 	var topic *nsqd.Topic
-	tcData := coord.GetData()
-	topicName := tcData.topicInfo.Name
-	partition := tcData.topicInfo.Partition
 	checkDupOnSlave := func(tc *coordData) bool {
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
+			topicName := tc.topicInfo.Name
 			coordLog.Debugf("pub on slave : %v, msg count: %v", topicName, len(msgs))
 		}
 		logMgr = tc.logMgr
@@ -486,6 +487,16 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 
 	doLocalWriteOnSlave := func(tc *coordData) *CoordErr {
 		var localErr error
+		var start time.Time
+		checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+		if self.enableBenchCost {
+			checkCost = true
+		}
+		if checkCost {
+			start = time.Now()
+		}
+		topicName := tc.topicInfo.Name
+		partition := tc.topicInfo.Partition
 		topic, localErr = self.localNsqd.GetExistingTopic(topicName, partition)
 		if localErr != nil {
 			coordLog.Infof("pub on slave missing topic : %v", topicName)
@@ -493,19 +504,11 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			return &CoordErr{localErr.Error(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
-		checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
-		var start time.Time
-		if checkCost {
-			start = time.Now()
-		}
 		topic.Lock()
 		var cost time.Duration
 		if checkCost {
 			cost = time.Now().Sub(start)
-			if cost > time.Millisecond*10 {
-				coordLog.Infof("prepare write on slave local cost :%v", cost)
-			}
-			if coordLog.Level() >= levellogger.LOG_DETAIL {
+			if cost > time.Millisecond {
 				coordLog.Infof("prepare write on slave local cost :%v", cost)
 			}
 		}
@@ -513,11 +516,8 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 		queueEnd, localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
 		if checkCost {
 			cost2 := time.Now().Sub(start)
-			if cost2 > time.Millisecond*10 {
+			if cost2 > time.Millisecond {
 				coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
-			}
-			if coordLog.Level() >= levellogger.LOG_DETAIL {
-				coordLog.Infof("write local on slave cost :%v", cost2)
 			}
 		}
 
@@ -554,13 +554,17 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 
 func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupOnSlave checkDupFunc,
 	doLocalWriteOnSlave localWriteFunc, doLocalCommit localCommitFunc, doLocalExit localExitFunc) *CoordErr {
-	tc := coord.GetData()
-
 	var start time.Time
+
 	checkCost := coordLog.Level() >= levellogger.LOG_DEBUG
+	if self.enableBenchCost {
+		checkCost = true
+	}
 	if checkCost {
 		start = time.Now()
 	}
+
+	tc := coord.GetData()
 	coord.writeHold.Lock()
 	defer coord.writeHold.Unlock()
 	// check should be protected by write lock to avoid the next write check during the commit log flushing.
@@ -581,10 +585,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	var cost time.Duration
 	if checkCost {
 		cost = time.Now().Sub(start)
-		if cost > time.Millisecond*10 {
-			coordLog.Infof("prepare write on slave cost :%v", cost)
-		}
-		if coordLog.Level() >= levellogger.LOG_DETAIL {
+		if cost > time.Millisecond {
 			coordLog.Infof("prepare write on slave cost :%v", cost)
 		}
 	}
@@ -598,11 +599,8 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	var cost2 time.Duration
 	if checkCost {
 		cost2 = time.Now().Sub(start)
-		if cost2 > time.Millisecond*10 {
+		if cost2 > time.Millisecond {
 			coordLog.Infof("write local on slave cost :%v, %v", cost, cost2)
-		}
-		if coordLog.Level() >= levellogger.LOG_DETAIL {
-			coordLog.Infof("write local on slave cost :%v", cost2)
 		}
 	}
 
@@ -626,13 +624,14 @@ exitpubslave:
 		}()
 	}
 	doLocalExit(slaveErr)
+
 	if checkCost {
 		cost3 := time.Now().Sub(start)
-		if cost3 > time.Millisecond*10 {
+		if cost3 > time.Millisecond {
 			coordLog.Infof("write local on slave cost :%v, %v, %v", cost, cost2, cost3)
 		}
-		if coordLog.Level() >= levellogger.LOG_DETAIL {
-			coordLog.Infof("write local on slave cost :%v", cost3)
+		if self.enableBenchCost {
+			coordLog.Warningf("write local on slave cost :%v, start: %v, end: %v", cost3, start, time.Now())
 		}
 	}
 

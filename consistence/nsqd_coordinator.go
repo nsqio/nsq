@@ -83,9 +83,11 @@ type NsqdCoordinator struct {
 	dataRootPath           string
 	localNsqd              *nsqd.NSQD
 	rpcServer              *NsqdCoordRpcServer
+	grpcServer             *nsqdCoordGRpcServer
 	tryCheckUnsynced       chan bool
 	wg                     sync.WaitGroup
 	stopping               bool
+	enableBenchCost        bool
 }
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -113,6 +115,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		nsqdCoord.leadership.InitClusterID(nsqdCoord.clusterKey)
 	}
 	nsqdCoord.rpcServer = NewNsqdCoordRpcServer(nsqdCoord, rootPath)
+	nsqdCoord.grpcServer = NewNsqdCoordGRpcServer(nsqdCoord, rootPath)
 	return nsqdCoord
 }
 
@@ -168,7 +171,15 @@ func (self *NsqdCoordinator) Start() error {
 		self.rpcServer.stop()
 		return err
 	}
-	go self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
+	realAddr, err := self.rpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
+	if err != nil {
+		return err
+	}
+	_, realRpcPort, _ := net.SplitHostPort(realAddr)
+	self.myNode.RpcPort = realRpcPort
+	port, _ := strconv.Atoi(realRpcPort)
+	grpcPort := strconv.Itoa(port + 1)
+	go self.grpcServer.start(self.myNode.NodeIP, grpcPort)
 	if self.leadership != nil {
 		err := self.leadership.RegisterNsqd(&self.myNode)
 		if err != nil {

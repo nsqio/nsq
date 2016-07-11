@@ -1964,13 +1964,14 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	}
 }
 
-func benchmarkProtocolV2Pub(b *testing.B, size int) {
+func benchmarkProtocolV2PubWithArg(b *testing.B, size int, single bool) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := nsqdNs.NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = newTestLogger(b)
-	opts.LogLevel = 0
+	//opts.Logger = newTestLogger(b)
+	opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 2
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1980,7 +1981,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 		batch[i] = msg
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
-	nsqd.GetTopicIgnPart(topicName)
+	testTopic := nsqd.GetTopic(topicName, 0)
 
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()
@@ -1996,8 +1997,19 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
+			if single {
+				num = b.N / runtime.GOMAXPROCS(0)
+			}
+			if num <= 0 {
+				num = 1
+			}
 			for i := 0; i < num; i++ {
-				cmd, _ := nsq.MultiPublish(topicName, batch)
+				var cmd *nsq.Command
+				if single {
+					cmd = nsq.PublishWithPart(topicName, "0", msg)
+				} else {
+					cmd, _ = nsq.MultiPublishWithPart(topicName, "0", batch)
+				}
 				_, err := cmd.WriteTo(rw)
 				if err != nil {
 					b.Error(err.Error())
@@ -2035,8 +2047,21 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	wg.Wait()
 
 	b.StopTimer()
+	b.Log(testTopic.GetPubStats())
 	nsqdServer.Exit()
+
 }
+
+func benchmarkProtocolV2Pub(b *testing.B, size int) {
+	benchmarkProtocolV2PubWithArg(b, size, false)
+}
+
+func benchmarkProtocolV2PubSingle(b *testing.B, size int) {
+	benchmarkProtocolV2PubWithArg(b, size, true)
+}
+
+func BenchmarkProtocolV2Pub128Single(b *testing.B) { benchmarkProtocolV2PubSingle(b, 128) }
+func BenchmarkProtocolV2Pub512Single(b *testing.B) { benchmarkProtocolV2PubSingle(b, 512) }
 
 func BenchmarkProtocolV2Pub256(b *testing.B)  { benchmarkProtocolV2Pub(b, 256) }
 func BenchmarkProtocolV2Pub512(b *testing.B)  { benchmarkProtocolV2Pub(b, 512) }

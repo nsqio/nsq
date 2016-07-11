@@ -83,7 +83,8 @@ type Options struct {
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
 
-	LogLevel int32 `flag:"log-level" cfg:"log_level"`
+	LogLevel int32  `flag:"log-level" cfg:"log_level"`
+	LogDir   string `flag:"log-dir" cfg:"log_dir"`
 	Logger   levellogger.Logger
 }
 
@@ -150,6 +151,7 @@ func NewOptions() *Options {
 		TLSMinVersion: tls.VersionTLS10,
 
 		LogLevel: levellogger.LOG_INFO,
+		LogDir:   "",
 		Logger:   &levellogger.GLogger{},
 	}
 }

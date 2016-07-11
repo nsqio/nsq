@@ -149,6 +149,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 	flagSet.Int("log-level", int(opts.LogLevel), "log verbose level")
+	flagSet.String("log-dir", opts.LogDir, "directory for logs")
 
 	return flagSet
 }
@@ -211,7 +212,6 @@ func (p *program) Start() error {
 	glog.InitWithFlag(flagSet)
 
 	flagSet.Parse(os.Args[1:])
-	glog.StartWorker(time.Second * 2)
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
@@ -232,7 +232,11 @@ func (p *program) Start() error {
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqd := nsqd.New(opts)
+	if opts.LogDir != "" {
+		glog.SetGLogDir(opts.LogDir)
+	}
 
+	glog.StartWorker(time.Second * 2)
 	// if we are using the coordinator, we should disable the topic at startup
 	initDisabled := int32(0)
 	if opts.RPCPort != "" {

@@ -24,7 +24,8 @@ type Options struct {
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	NsqdPingTimeout         time.Duration `flag:"nsqd-ping-timeout"`
 
-	LogLevel int32 `flag:"log-level" cfg:"log_level"`
+	LogLevel int32  `flag:"log-level" cfg:"log_level"`
+	LogDir   string `flag:"log-dir" cfg:"log_dir"`
 	Logger   levellogger.Logger
 }
 
@@ -47,6 +48,7 @@ func NewOptions() *Options {
 		NsqdPingTimeout:         15 * time.Second,
 
 		LogLevel: 1,
+		LogDir:   "",
 		Logger:   &levellogger.GLogger{},
 	}
 }
