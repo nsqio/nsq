@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package coordgrpc;
+
+service NsqdCoordRpcV2 {
+    rpc UpdateChannelOffset(RpcChannelOffsetArg) returns (CoordErr) {}
+    rpc PutMessage(RpcPutMessage) returns (CoordErr) {}
+    rpc PutMessages(RpcPutMessages) returns (CoordErr) {}
+}
+
+message CoordErr {
+    string err_msg = 1;
+    int32 err_code = 2;
+    int32 err_type = 3;
+}
+
+message RpcTopicData {
+    string topic_name = 1;
+    int32 topic_partition = 2;
+    int64 epoch = 3;
+    int64 topic_write_epoch = 4;
+    int64 topic_leader_session_epoch = 5;
+    string topic_leader_session = 6;
+}
+
+message ChannelConsumerOffset {
+    int64 voffset = 1;
+    bool flush = 2;
+    bool allow_backward = 3;
+}
+
+message CommitLogData {
+    int64 logID = 1;
+    int64 epoch = 2;
+    int64 last_msg_logID = 3;
+    int64 msg_offset = 4;
+    int32 msg_size = 5;
+    int64 msg_cnt = 6;
+    int32 msg_num = 7;
+}
+
+message NsqdMessage {
+    uint64 ID = 1;
+    uint64 trace_ID = 2;
+    bytes body = 3;
+    int64 timestamp = 4;
+    uint32 attemps = 5;
+}
+
+message RpcChannelOffsetArg {
+    RpcTopicData topic_data = 1;
+    string channel = 2;
+    ChannelConsumerOffset channel_offset = 3;
+}
+
+message RpcPutMessage {
+    RpcTopicData topic_data = 1;
+    CommitLogData log_data = 2;
+    NsqdMessage topic_message = 3;
+}
+
+message RpcPutMessages {
+    RpcTopicData topic_data = 1;
+    CommitLogData log_data = 2;
+    repeated NsqdMessage topic_message = 3;
+}
