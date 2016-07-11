@@ -1244,7 +1244,6 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 					b.Errorf("put error: %v", err)
 				}
 			}
-			b.Log(localTopic.GetPubStats())
 		}(topicData)
 	}
 	wg.Wait()
