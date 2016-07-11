@@ -10,9 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
-	"runtime"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 )
@@ -1134,18 +1132,20 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_WARN)
-		//coordLog.Logger = newTestLogger(b)
 		coordLog.Logger = &levellogger.GLogger{}
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
 		coordLog.SetLevel(levellogger.LOG_WARN)
+		coordLog.Logger = nil
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(nil, "id1")
+	coordLog.Warningf("data1: %v", data1)
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
 	nsqdCoord1 := startNsqdCoord(nil, strconv.Itoa(randPort1), data1, "id1", nsqd1, true)
+	nsqdCoord1.enableBenchCost = true
 	nsqdCoord1.Start()
 	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
@@ -1158,6 +1158,7 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 		defer os.RemoveAll(data2)
 		defer nsqd2.Exit()
 		nsqdCoord2 = startNsqdCoord(nil, strconv.Itoa(randPort2), data2, "id2", nsqd2, true)
+		nsqdCoord2.enableBenchCost = true
 		nsqdCoord2.Start()
 		defer nsqdCoord2.Stop()
 	}
@@ -1166,6 +1167,7 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 		defer os.RemoveAll(data3)
 		defer nsqd3.Exit()
 		nsqdCoord3 = startNsqdCoord(nil, strconv.Itoa(randPort3), data3, "id3", nsqd3, true)
+		nsqdCoord3.enableBenchCost = true
 		nsqdCoord3.Start()
 		defer nsqdCoord3.Stop()
 
@@ -1216,34 +1218,21 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 		b.Logf("test put failed: %v", err)
 		b.Fail()
 	}
+	//b.SetParallelism(1)
 	b.SetBytes(int64(len(msg)))
-	var wg sync.WaitGroup
 	b.StartTimer()
 
-	concurrency := runtime.GOMAXPROCS(0)
-	concurrency = 1
-	for j := 0; j < concurrency; j++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			num := b.N / concurrency
-			if num <= 0 {
-				num = 1
-			}
-			for i := 0; i < num; i++ {
-				_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
-				if err != nil {
-					b.Errorf("put error: %v", err)
-				}
-			}
-		}()
+	num := b.N
+	for i := 0; i < num; i++ {
+		_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, msg, 0)
+		if err != nil {
+			b.Errorf("put error: %v", err)
+		}
 	}
-
-	wg.Wait()
-
 	b.StopTimer()
 
-	time.Sleep(time.Second * 2)
+	b.Log(topicData1.GetPubStats())
+	b.Log(nsqdCoord1.rpcServer.rpcServer.Stats.Snapshot())
 }
 
 func BenchmarkNsqdCoordPub1Replicator128(b *testing.B) {

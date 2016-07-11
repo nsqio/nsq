@@ -576,7 +576,7 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 
 // receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
-	if coordLog.Level() >= levellogger.LOG_WARN {
+	if self.nsqdCoord.enableBenchCost || coordLog.Level() >= levellogger.LOG_DEBUG {
 		s := time.Now()
 		defer func() {
 			e := time.Now()

@@ -252,7 +252,7 @@ func (self *NsqdRpcClient) NotifyUpdateChannelOffset(leaderSession *TopicLeaderS
 }
 
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
-	if self.grpcClient != nil {
+	if self.grpcClient != nil && false {
 		var req pb.RpcChannelOffsetArg
 		var rpcData pb.RpcTopicData
 		rpcData.TopicName = info.Name
