@@ -9,11 +9,13 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 )
 
 type fakeNsqdLeadership struct {
+	sync.Mutex
 	clusterID            string
 	regData              map[string]*NsqdNodeInfo
 	fakeTopicsLeaderData map[string]map[int]*TopicCoordinator
@@ -43,6 +45,8 @@ func (self *fakeNsqdLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 }
 
 func (self *fakeNsqdLeadership) IsNodeTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo) bool {
+	self.Lock()
+	defer self.Unlock()
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
@@ -63,6 +67,8 @@ func (self *fakeNsqdLeadership) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, erro
 }
 
 func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error {
+	self.Lock()
+	defer self.Unlock()
 	t, ok := self.fakeTopicsLeaderData[topic]
 	var tc *TopicCoordinator
 	if ok {
@@ -111,6 +117,8 @@ func (self *fakeNsqdLeadership) AcquireTopicLeader(topic string, partition int, 
 }
 
 func (self *fakeNsqdLeadership) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
+	self.Lock()
+	defer self.Unlock()
 	t, ok := self.fakeTopicsLeaderData[topic]
 	if ok {
 		delete(t, partition)
@@ -139,6 +147,8 @@ func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*Topi
 }
 
 func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
+	self.Lock()
+	defer self.Unlock()
 	s, ok := self.fakeTopicsLeaderData[topic]
 	if !ok {
 		return nil, ErrLeaderSessionNotExist
