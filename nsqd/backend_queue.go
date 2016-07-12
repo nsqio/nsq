@@ -35,6 +35,7 @@ type BackendQueueWriter interface {
 type ReadResult struct {
 	Offset    BackendOffset
 	MovedSize BackendOffset
+	CurCnt    int64
 	Data      []byte
 	Err       error
 }

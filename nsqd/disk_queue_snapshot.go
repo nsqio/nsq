@@ -64,15 +64,15 @@ func (d *DiskQueueSnapshot) UpdateQueueEnd(e BackendQueueEnd) {
 	if d.readPos.FileNum > endPos.EndOffset.FileNum {
 		d.readPos.FileNum = endPos.EndOffset.FileNum
 		d.readPos.Pos = endPos.EndOffset.Pos
-		d.virtualReadOffset = endPos.VirtualEnd
+		d.virtualReadOffset = endPos.Offset()
 	}
 	if (d.readPos.FileNum == endPos.EndOffset.FileNum) && (d.readPos.Pos > endPos.EndOffset.Pos) {
 		d.readPos.Pos = endPos.EndOffset.Pos
-		d.virtualReadOffset = endPos.VirtualEnd
+		d.virtualReadOffset = endPos.Offset()
 	}
 	d.endPos.Pos = endPos.EndOffset.Pos
 	d.endPos.FileNum = endPos.EndOffset.FileNum
-	d.virtualEnd = endPos.VirtualEnd
+	d.virtualEnd = endPos.Offset()
 }
 
 // Close cleans up the queue and persists metadata

@@ -252,6 +252,7 @@ func (self *NsqdRpcClient) NotifyUpdateChannelOffset(leaderSession *TopicLeaderS
 }
 
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
+	// it seems grpc is slower, so disable it.
 	if self.grpcClient != nil && false {
 		var req pb.RpcChannelOffsetArg
 		var rpcData pb.RpcTopicData
@@ -290,6 +291,7 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 }
 
 func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
+	// it seems grpc is slower, so disable it.
 	if self.grpcClient != nil && false {
 		ctx, cancel := context.WithTimeout(context.Background(), RPC_TIMEOUT_SHORT)
 		var req pb.RpcPutMessage

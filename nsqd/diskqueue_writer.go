@@ -112,20 +112,20 @@ func (d *diskQueueWriter) RollbackWriteV2(offset BackendOffset, diffCnt uint64) 
 		d.sync()
 	}
 
-	if offset > d.diskWriteEnd.VirtualEnd {
+	if offset > d.diskWriteEnd.Offset() {
 		return d.diskWriteEnd, ErrInvalidOffset
 	}
-	if offset < d.diskWriteEnd.VirtualEnd-BackendOffset(d.diskWriteEnd.EndOffset.Pos) {
-		nsqLog.Logf("rollback write position can not across file %v, %v, %v", offset, d.diskWriteEnd.VirtualEnd, d.diskWriteEnd.EndOffset.Pos)
+	if offset < d.diskWriteEnd.Offset()-BackendOffset(d.diskWriteEnd.EndOffset.Pos) {
+		nsqLog.Logf("rollback write position can not across file %v, %v, %v", offset, d.diskWriteEnd.Offset(), d.diskWriteEnd.EndOffset.Pos)
 		return d.diskWriteEnd, ErrInvalidOffset
 	}
-	nsqLog.Logf("rollback from %v-%v, %v to %v, roll cnt: %v", d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.VirtualEnd, offset, diffCnt)
-	d.diskWriteEnd.EndOffset.Pos -= int64(d.diskWriteEnd.VirtualEnd - offset)
-	d.diskWriteEnd.VirtualEnd = offset
+	nsqLog.Logf("rollback from %v-%v, %v to %v, roll cnt: %v", d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.Offset(), offset, diffCnt)
+	d.diskWriteEnd.EndOffset.Pos -= int64(d.diskWriteEnd.Offset() - offset)
+	d.diskWriteEnd.virtualEnd = offset
 	atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, -1*int64(diffCnt))
 
 	if d.diskReadEnd.EndOffset.Pos > d.diskWriteEnd.EndOffset.Pos ||
-		d.diskReadEnd.VirtualEnd > d.diskWriteEnd.VirtualEnd {
+		d.diskReadEnd.Offset() > d.diskWriteEnd.Offset() {
 		d.diskReadEnd = d.diskWriteEnd
 	}
 	nsqLog.Logf("after rollback : %v, %v, read end: %v", d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.TotalMsgCnt(), d.diskReadEnd)
@@ -187,16 +187,16 @@ func (d *diskQueueWriter) truncateDiskQueueToWriteEnd() {
 func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) (diskQueueEndInfo, error) {
 	d.Lock()
 	defer d.Unlock()
-	if offset > d.diskWriteEnd.VirtualEnd {
+	if offset > d.diskWriteEnd.Offset() {
 		return d.diskWriteEnd, ErrInvalidOffset
 	}
 	if d.needSync {
 		d.sync()
 	}
-	nsqLog.Logf("reset write end from %v to %v, reset to totalCnt: %v", d.diskWriteEnd.VirtualEnd, offset, totalCnt)
+	nsqLog.Logf("reset write end from %v to %v, reset to totalCnt: %v", d.diskWriteEnd.Offset(), offset, totalCnt)
 	if offset == 0 {
 		d.closeCurrentFile()
-		d.diskWriteEnd.VirtualEnd = 0
+		d.diskWriteEnd.virtualEnd = 0
 		d.diskWriteEnd.EndOffset.Pos = 0
 		d.diskWriteEnd.EndOffset.FileNum = 0
 		atomic.StoreInt64(&d.diskWriteEnd.totalMsgCnt, 0)
@@ -204,7 +204,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 		d.truncateDiskQueueToWriteEnd()
 		return d.diskWriteEnd, nil
 	}
-	newEnd := d.diskWriteEnd.VirtualEnd
+	newEnd := d.diskWriteEnd.Offset()
 	newWriteFileNum := d.diskWriteEnd.EndOffset.FileNum
 	newWritePos := d.diskWriteEnd.EndOffset.Pos
 	for offset < newEnd-BackendOffset(newWritePos) {
@@ -225,7 +225,7 @@ func (d *diskQueueWriter) ResetWriteEndV2(offset BackendOffset, totalCnt int64) 
 	d.diskWriteEnd.EndOffset.FileNum = newWriteFileNum
 	newWritePos -= int64(newEnd - offset)
 	d.diskWriteEnd.EndOffset.Pos = newWritePos
-	d.diskWriteEnd.VirtualEnd = offset
+	d.diskWriteEnd.virtualEnd = offset
 	atomic.StoreInt64(&d.diskWriteEnd.totalMsgCnt, int64(totalCnt))
 	d.diskReadEnd = d.diskWriteEnd
 	d.closeCurrentFile()
@@ -321,7 +321,7 @@ func (d *diskQueueWriter) saveFileOffsetMeta() {
 	}
 	_, err = fmt.Fprintf(f, "%d\n%d,%d\n",
 		atomic.LoadInt64(&d.diskWriteEnd.totalMsgCnt),
-		d.diskWriteEnd.VirtualEnd-BackendOffset(d.diskWriteEnd.EndOffset.Pos), d.diskWriteEnd.VirtualEnd)
+		d.diskWriteEnd.Offset()-BackendOffset(d.diskWriteEnd.EndOffset.Pos), d.diskWriteEnd.Offset())
 	if err != nil {
 		f.Close()
 		nsqLog.LogErrorf("diskqueue(%s) failed to save data offset meta: %v", d.name, err)
@@ -409,10 +409,10 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueu
 		return 0, 0, nil, err
 	}
 
-	writeOffset := d.diskWriteEnd.VirtualEnd
+	writeOffset := d.diskWriteEnd.Offset()
 	totalBytes := int64(4 + dataLen)
 	d.diskWriteEnd.EndOffset.Pos += totalBytes
-	d.diskWriteEnd.VirtualEnd += BackendOffset(totalBytes)
+	d.diskWriteEnd.virtualEnd += BackendOffset(totalBytes)
 	atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, 1)
 
 	if d.diskWriteEnd.EndOffset.Pos >= d.maxBytesPerFile {
@@ -495,7 +495,7 @@ func (d *diskQueueWriter) retrieveMetaData() error {
 	var totalCnt int64
 	_, err = fmt.Fscanf(f, "%d\n%d,%d,%d\n",
 		&totalCnt,
-		&d.diskWriteEnd.EndOffset.FileNum, &d.diskWriteEnd.EndOffset.Pos, &d.diskWriteEnd.VirtualEnd)
+		&d.diskWriteEnd.EndOffset.FileNum, &d.diskWriteEnd.EndOffset.Pos, &d.diskWriteEnd.virtualEnd)
 	if err != nil {
 		return err
 	}
@@ -521,7 +521,7 @@ func (d *diskQueueWriter) persistMetaData() error {
 
 	_, err = fmt.Fprintf(f, "%d\n%d,%d,%d\n",
 		atomic.LoadInt64(&d.diskWriteEnd.totalMsgCnt),
-		d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.VirtualEnd)
+		d.diskWriteEnd.EndOffset.FileNum, d.diskWriteEnd.EndOffset.Pos, d.diskWriteEnd.Offset())
 	if err != nil {
 		f.Close()
 		return err
