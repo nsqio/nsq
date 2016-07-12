@@ -135,7 +135,15 @@ func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeIn
 	return nil
 }
 
+func (self *fakeNsqdLeadership) UpdateTopics(topic string, info map[int]*TopicPartitionMetaInfo) {
+	self.Lock()
+	self.fakeTopicsInfo[topic] = info
+	self.Unlock()
+}
+
 func (self *fakeNsqdLeadership) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
+	self.Lock()
+	self.Unlock()
 	t, ok := self.fakeTopicsInfo[topic]
 	if ok {
 		tp, ok2 := t[partition]

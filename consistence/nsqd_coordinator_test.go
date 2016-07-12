@@ -246,7 +246,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
 
 	tmp := make(map[int]*TopicPartitionMetaInfo)
-	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.UpdateTopics(topic, tmp)
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
 
@@ -357,7 +357,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	fakeInfo.ISR = append(fakeInfo.ISR, nodeInfo3.GetID())
 
 	tmp := make(map[int]*TopicPartitionMetaInfo)
-	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.UpdateTopics(topic, tmp)
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
 
@@ -436,7 +436,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
 
 	tmp := make(map[int]*TopicPartitionMetaInfo)
-	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.UpdateTopics(topic, tmp)
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
 
@@ -664,7 +664,7 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	fakeInfo.CatchupList = append(fakeInfo.CatchupList, nodeInfo3.GetID())
 
 	tmp := make(map[int]*TopicPartitionMetaInfo)
-	fakeLeadership.fakeTopicsInfo[topic] = tmp
+	fakeLeadership.UpdateTopics(topic, tmp)
 	fakeLeadership.AcquireTopicLeader(topic, partition, nodeInfo1, fakeInfo.Epoch)
 	tmp[partition] = fakeInfo
 
