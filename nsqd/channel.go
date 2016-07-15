@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,6 +82,7 @@ func NewChannel(topic *Topic, channelName string, ctx *context) *Channel {
 		memoryMsgChan: make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
 		clients:       make(map[int64]Consumer),
 		ctx:           ctx,
+		ephemeral:     strings.HasSuffix(channelName, "#ephemeral"),
 	}
 	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -206,7 +208,11 @@ finish:
 	if len(c.rs.Ranges) > 0 {
 		low = c.rs.Ranges[0].Low
 	}
-	c.rs.AddRange(Range{Low: low, High: int64(idx)})
+	high := int64(idx - 1)
+	if idx < 0 {
+		idx = 0
+	}
+	c.rs.AddRange(Range{Low: low, High: high})
 
 	return nil
 }
@@ -358,6 +364,12 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 
 	// deferred requeue
 	return c.StartDeferredTimeout(msg, timeout)
+}
+
+func (c *Channel) SkipMessage(id MessageID) {
+	c.Lock()
+	c.rs.AddInts(id.Int64())
+	c.Unlock()
 }
 
 // AddClient adds a client to the Channel's client list

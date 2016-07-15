@@ -302,11 +302,13 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				goto exit
 			}
 		case ev := <-backendMsgChan:
+			msg := NewMessage(guid(ev.ID).Hex(), ev.Body)
+
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
+				subChannel.SkipMessage(msg.ID)
 				continue
 			}
 
-			msg := NewMessage(guid(ev.ID).Hex(), ev.Body)
 			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)

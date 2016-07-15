@@ -20,7 +20,6 @@ func channelReceiveHelper(c *Channel) *Message {
 		msg = NewMessage(guid(ev.ID).Hex(), ev.Body)
 	}
 	c.StartInFlightTimeout(msg, 0, time.Second*60)
-	c.FinishMessage(0, msg.ID)
 	return msg
 }
 
@@ -140,18 +139,19 @@ func TestChannelEmpty(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
 
-	msgs := make([]*Message, 0, 25)
+	body := []byte("test")
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(guid(i).Hex(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
-		msgs = append(msgs, msg)
+		topic.Pub([][]byte{body})
 	}
 
-	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 100*time.Millisecond)
-	test.Equal(t, 24, len(channel.inFlightMessages))
-	test.Equal(t, 24, len(channel.inFlightPQ))
+	channelReceiveHelper(channel)
+	msg := channelReceiveHelper(channel)
+	channel.RequeueMessage(0, msg.ID, 100*time.Millisecond)
+	test.Equal(t, 1, len(channel.inFlightMessages))
+	test.Equal(t, 1, len(channel.inFlightPQ))
 	test.Equal(t, 1, len(channel.deferredMessages))
 	test.Equal(t, 1, len(channel.deferredPQ))
+	test.Equal(t, uint64(25), channel.Depth())
 
 	channel.Empty()
 
@@ -197,53 +197,3 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		test.Equal(t, int64(0), stats.InFlightCount)
 	}
 }
-
-// TODO: (WAL) fixme
-// func TestChannelHealth(t *testing.T) {
-// 	opts := NewOptions()
-// 	opts.Logger = test.NewTestLogger(t)
-// 	opts.MemQueueSize = 2
-//
-// 	_, httpAddr, nsqd := mustStartNSQD(opts)
-// 	defer os.RemoveAll(opts.DataPath)
-// 	defer nsqd.Exit()
-//
-// 	topic := nsqd.GetTopic("test")
-//
-// 	channel := topic.GetChannel("channel")
-//
-// 	channel.backend = &errorBackendQueue{}
-//
-// 	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
-// 	err := channel.PutMessage(msg)
-// 	test.Nil(t, err)
-//
-// 	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-// 	err = channel.PutMessage(msg)
-// 	test.Nil(t, err)
-//
-// 	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-// 	err = channel.PutMessage(msg)
-// 	test.NotNil(t, err)
-//
-// 	url := fmt.Sprintf("http://%s/ping", httpAddr)
-// 	resp, err := http.Get(url)
-// 	test.Nil(t, err)
-// 	test.Equal(t, 500, resp.StatusCode)
-// 	body, _ := ioutil.ReadAll(resp.Body)
-// 	resp.Body.Close()
-// 	test.Equal(t, "NOK - never gonna happen", string(body))
-//
-// 	channel.backend = &errorRecoveredBackendQueue{}
-//
-// 	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-// 	err = channel.PutMessage(msg)
-// 	test.Nil(t, err)
-//
-// 	resp, err = http.Get(url)
-// 	test.Nil(t, err)
-// 	test.Equal(t, 200, resp.StatusCode)
-// 	body, _ = ioutil.ReadAll(resp.Body)
-// 	resp.Body.Close()
-// 	test.Equal(t, "OK", string(body))
-// }

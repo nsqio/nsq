@@ -156,12 +156,12 @@ func (t *Topic) Pub(data [][]byte) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	// TODO: (WAL) health
 	crc := make([]uint32, 0, len(data))
 	for _, d := range data {
 		crc = append(crc, crc32.ChecksumIEEE(d))
 	}
 	startIdx, endIdx, err := t.wal.Append(data, crc)
+	t.ctx.nsqd.SetHealth(err)
 	if err != nil {
 		return err
 	}

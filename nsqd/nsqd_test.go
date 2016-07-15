@@ -84,6 +84,7 @@ func TestStartup(t *testing.T) {
 	t.Logf("reading %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
 		msg := channelReceiveHelper(channel1)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
@@ -129,6 +130,7 @@ func TestStartup(t *testing.T) {
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
 		msg := channelReceiveHelper(channel1)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}

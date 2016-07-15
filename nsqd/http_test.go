@@ -203,6 +203,8 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 }
 
 func TestHTTPpubDefer(t *testing.T) {
+	t.Skipf("TODO: DPUB")
+
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
