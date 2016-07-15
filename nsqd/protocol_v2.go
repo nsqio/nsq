@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -201,8 +202,9 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 
 func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
-	var memoryMsgChan chan *Message
-	var backendMsgChan chan []byte
+	var buf bytes.Buffer
+	var memoryMsgChan <-chan *Message
+	var backendMsgChan <-chan wal.Entry
 	var subChannel *Channel
 	// NOTE: `flusherChan` is used to bound message latency for
 	// the pathological case of a channel on a low volume topic
@@ -247,13 +249,13 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			// last iteration we flushed...
 			// do not select on the flusher ticker channel
 			memoryMsgChan = subChannel.memoryMsgChan
-			backendMsgChan = subChannel.backend.ReadChan()
+			backendMsgChan = subChannel.cursor.ReadCh()
 			flusherChan = nil
 		} else {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
 			memoryMsgChan = subChannel.memoryMsgChan
-			backendMsgChan = subChannel.backend.ReadChan()
+			backendMsgChan = subChannel.cursor.ReadCh()
 			flusherChan = outputBufferTicker.C
 		}
 
@@ -299,16 +301,12 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			if err != nil {
 				goto exit
 			}
-		case b := <-backendMsgChan:
+		case ev := <-backendMsgChan:
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				continue
 			}
 
-			msg, err := decodeMessage(b)
-			if err != nil {
-				p.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
-				continue
-			}
+			msg := NewMessage(guid(ev.ID).Hex(), ev.Body)
 			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)

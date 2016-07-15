@@ -39,8 +39,6 @@ func getMetadata(n *NSQD) (*meta, error) {
 }
 
 func TestStartup(t *testing.T) {
-	var msg *Message
-
 	iterations := 300
 	doneExitChan := make(chan int)
 
@@ -85,13 +83,7 @@ func TestStartup(t *testing.T) {
 
 	t.Logf("reading %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
-		select {
-		case msg = <-channel1.memoryMsgChan:
-		case b := <-channel1.backend.ReadChan():
-			msg, _ = decodeMessage(b)
-		}
-		channel1.StartInFlightTimeout(msg, 0, time.Second*60)
-		channel1.FinishMessage(0, msg.ID)
+		msg := channelReceiveHelper(channel1)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
@@ -136,13 +128,7 @@ func TestStartup(t *testing.T) {
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
-		select {
-		case msg = <-channel1.memoryMsgChan:
-		case b := <-channel1.backend.ReadChan():
-			msg, _ = decodeMessage(b)
-		}
-		channel1.StartInFlightTimeout(msg, 0, time.Second*60)
-		channel1.FinishMessage(0, msg.ID)
+		msg := channelReceiveHelper(channel1)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
@@ -180,7 +166,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	ephemeralChannel.AddClient(client.ID, client)
 
 	topic.Pub([][]byte{body})
-	msg := <-ephemeralChannel.memoryMsgChan
+	msg := channelReceiveHelper(ephemeralChannel)
 	test.Equal(t, body, msg.Body)
 
 	ephemeralChannel.RemoveClient(client.ID)

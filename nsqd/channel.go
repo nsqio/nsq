@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"container/heap"
 	"encoding/json"
 	"errors"
@@ -202,13 +201,17 @@ finish:
 	if err != nil {
 		return err
 	}
-	c.rs.AddRange(Range{Low: c.rs.Ranges[0].Low, High: int64(idx)})
+
+	var low int64
+	if len(c.rs.Ranges) > 0 {
+		low = c.rs.Ranges[0].Low
+	}
+	c.rs.AddRange(Range{Low: low, High: int64(idx)})
+
 	return nil
 }
 
 func (c *Channel) flush() error {
-	var msgBuf bytes.Buffer
-
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
 		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
