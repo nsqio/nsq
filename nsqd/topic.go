@@ -51,10 +51,10 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		exitChan:       make(chan int),
 		ctx:            ctx,
 		deleteCallback: deleteCallback,
+		ephemeral:      strings.HasSuffix(topicName, "#ephemeral"),
 	}
 
-	if strings.HasSuffix(topicName, "#ephemeral") {
-		t.ephemeral = true
+	if t.ephemeral {
 		t.wal = wal.NewEphemeral()
 	} else {
 		dqLogf := func(level lg.LogLevel, f string, args ...interface{}) {
