@@ -64,7 +64,7 @@ func (d *errorWAL) Empty() error                             { return nil }
 func (d *errorWAL) Depth() uint64                            { return 0 }
 func (d *errorWAL) GetCursor(idx uint64) (wal.Cursor, error) { return nil, nil }
 
-func TestHealth(t *testing.T) {
+func TestTopicHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.MemQueueSize = 2
@@ -101,7 +101,7 @@ func TestHealth(t *testing.T) {
 	equal(t, string(body), "OK")
 }
 
-func TestDeletes(t *testing.T) {
+func TestTopicDeletes(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
@@ -126,7 +126,7 @@ func TestDeletes(t *testing.T) {
 	test.Equal(t, 0, len(nsqd.topicMap))
 }
 
-func TestDeleteLast(t *testing.T) {
+func TestTopicDeleteLast(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
@@ -149,7 +149,7 @@ func TestDeleteLast(t *testing.T) {
 	test.Equal(t, uint64(1), topic.Depth())
 }
 
-func TestPause(t *testing.T) {
+func TestTopicPause(t *testing.T) {
 	t.Skipf("TODO: topic pausing")
 
 	opts := NewOptions()
