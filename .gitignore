@@ -48,3 +48,5 @@ profile
 
 # vim stuff
 *.sw[op]
+
+apps/to_nsq/to_nsq
