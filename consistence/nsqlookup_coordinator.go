@@ -344,9 +344,12 @@ func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struc
 
 func (self *NsqLookupCoordinator) triggerCheckTopics(topic string, part int, delay time.Duration) {
 	time.Sleep(delay)
+
 	select {
 	case self.checkTopicFailChan <- TopicNameInfo{topic, part}:
 	case <-self.stopChan:
+		return
+	case <-time.After(time.Second * 3):
 		return
 	}
 }
