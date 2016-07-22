@@ -302,7 +302,15 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				goto exit
 			}
 		case ev := <-backendMsgChan:
-			msg := NewMessage(guid(ev.ID).Hex(), ev.Body)
+			entry, _ := DecodeWireEntry(ev.Body)
+			msg := NewMessage(guid(ev.ID).Hex(), entry.Body)
+			if entry.Deadline != 0 {
+				deferred := time.Unix(0, entry.Deadline).Sub(time.Now())
+				if deferred > 0 {
+					subChannel.StartDeferredTimeout(msg, deferred)
+					continue
+				}
+			}
 
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				subChannel.SkipMessage(msg.ID)
@@ -795,7 +803,8 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	err = topic.Pub([][]byte{msgBody})
+	entry := NewEntry(msgBody, 0)
+	err = topic.Pub([]wal.WriteEntry{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
 	}
@@ -839,7 +848,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
 	}
 
-	msgs, err := readMPUB(client.Reader, client.lenSlice,
+	entries, err := readMPUB(client.Reader, client.lenSlice,
 		p.ctx.nsqd.getOpts().MaxMsgSize, p.ctx.nsqd.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
@@ -848,7 +857,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
 	// this next call (and no messages will be queued in that case)
-	err = topic.Pub(msgs)
+	err = topic.Pub(entries)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())
 	}
@@ -910,8 +919,8 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	// TODO: (WAL) handle deferred PUB
-	err = topic.Pub([][]byte{msgBody})
+	entry := NewEntry(msgBody, time.Now().Add(timeoutDuration).UnixNano())
+	err = topic.Pub([]wal.WriteEntry{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
 	}
@@ -948,7 +957,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([][]byte, error) {
+func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]wal.WriteEntry, error) {
 	numMsgs, err := readLen(r, tmp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
@@ -961,7 +970,7 @@ func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([][
 			fmt.Sprintf("MPUB invalid message count %d", numMsgs))
 	}
 
-	msgs := make([][]byte, 0, numMsgs)
+	entries := make([]wal.WriteEntry, 0, numMsgs)
 	for i := int32(0); i < numMsgs; i++ {
 		size, err := readLen(r, tmp)
 		if err != nil {
@@ -985,10 +994,10 @@ func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([][
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		msgs = append(msgs, body)
+		entries = append(entries, NewEntry(body, 0))
 	}
 
-	return msgs, nil
+	return entries, nil
 }
 
 // validate and cast the bytes on the wire to a message ID

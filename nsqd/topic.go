@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/klauspost/crc32"
 	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/quantile"
@@ -150,26 +149,22 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	return nil
 }
 
-func (t *Topic) Pub(data [][]byte) error {
+func (t *Topic) Pub(entries []wal.WriteEntry) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	crc := make([]uint32, 0, len(data))
-	for _, d := range data {
-		crc = append(crc, crc32.ChecksumIEEE(d))
-	}
-	startIdx, endIdx, err := t.wal.Append(data, crc)
+	startIdx, endIdx, err := t.wal.AppendFast(entries)
 	t.ctx.nsqd.SetHealth(err)
 	if err != nil {
 		return err
 	}
 	t.rs.AddRange(Range{Low: int64(startIdx), High: int64(endIdx)})
-	atomic.AddUint64(&t.messageCount, uint64(len(data)))
+	atomic.AddUint64(&t.messageCount, uint64(len(entries)))
 	var total uint64
-	for _, b := range data {
-		total += uint64(len(b))
+	for _, e := range entries {
+		total += uint64(len(e.Body))
 	}
 	atomic.AddUint64(&t.messageBytes, total)
 	return nil

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 )
@@ -24,7 +25,7 @@ func TestStats(t *testing.T) {
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	body := []byte("test body")
-	topic.Pub([][]byte{body})
+	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	accompanyTopic := nsqd.GetTopic(accompanyTopicName)

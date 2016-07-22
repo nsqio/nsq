@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
@@ -222,8 +223,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		}
 	}
 
-	// TODO: (WAL) handle deferred PUB
-	err = topic.Pub([][]byte{body})
+	entry := NewEntry(body, time.Now().Add(deferred).UnixNano())
+	err = topic.Pub([]wal.WriteEntry{entry})
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
@@ -232,7 +233,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var msgs [][]byte
+	var entries []wal.WriteEntry
 	var exit bool
 
 	// TODO: one day I'd really like to just error on chunked requests
@@ -296,11 +297,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msgs = append(msgs, block)
+			entries = append(entries, NewEntry(block, 0))
 		}
 	}
 
-	err = topic.Pub(msgs)
+	err = topic.Pub(entries)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}

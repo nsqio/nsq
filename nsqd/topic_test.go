@@ -58,6 +58,9 @@ type errorWAL struct{}
 func (d *errorWAL) Append([][]byte, []uint32) (uint64, uint64, error) {
 	return 0, 0, errors.New("never gonna happen")
 }
+func (d *errorWAL) AppendFast([]wal.WriteEntry) (uint64, uint64, error) {
+	return 0, 0, errors.New("never gonna happen")
+}
 func (d *errorWAL) Close() error                             { return nil }
 func (d *errorWAL) Delete() error                            { return nil }
 func (d *errorWAL) Empty() error                             { return nil }
@@ -77,7 +80,7 @@ func TestTopicHealth(t *testing.T) {
 
 	body := make([]byte, 100)
 
-	err := topic.Pub([][]byte{body})
+	err := topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	test.NotNil(t, err)
 
 	url := fmt.Sprintf("http://%s/ping", httpAddr)
@@ -90,7 +93,7 @@ func TestTopicHealth(t *testing.T) {
 
 	topic.wal = wal.NewEphemeral()
 
-	err = topic.Pub([][]byte{body})
+	err = topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	equal(t, err, nil)
 
 	resp, err = http.Get(url)
@@ -143,7 +146,7 @@ func TestTopicDeleteLast(t *testing.T) {
 	test.Equal(t, 0, len(topic.channelMap))
 
 	body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	err = topic.Pub([][]byte{body})
+	err = topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	time.Sleep(100 * time.Millisecond)
 	test.Nil(t, err)
 	test.Equal(t, uint64(1), topic.Depth())
@@ -167,7 +170,7 @@ func TestTopicPause(t *testing.T) {
 	test.NotNil(t, channel)
 
 	body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	err = topic.Pub([][]byte{body})
+	err = topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	test.Nil(t, err)
 
 	time.Sleep(15 * time.Millisecond)
@@ -212,7 +215,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
 		body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-		topic.Pub([][]byte{body})
+		topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	}
 }
 
@@ -232,7 +235,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
 		body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-		topic.Pub([][]byte{body})
+		topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	}
 
 	for {

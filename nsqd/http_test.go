@@ -203,11 +203,9 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 }
 
 func TestHTTPpubDefer(t *testing.T) {
-	t.Skipf("TODO: DPUB")
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	_, httpAddr, nsqd := mustStartNSQD(opts)
+	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -222,6 +220,15 @@ func TestHTTPpubDefer(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	equal(t, err, nil)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	equal(t, err, nil)
 
 	time.Sleep(5 * time.Millisecond)
 

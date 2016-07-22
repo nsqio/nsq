@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqlookupd"
@@ -74,7 +75,7 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		topic.Pub([][]byte{body})
+		topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	}
 
 	t.Logf("pulling from channel")
@@ -167,7 +168,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	topic.Pub([][]byte{body})
+	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	msg := channelReceiveHelper(ephemeralChannel)
 	test.Equal(t, body, msg.Body)
 

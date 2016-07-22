@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/test"
 )
 
@@ -17,7 +18,8 @@ func channelReceiveHelper(c *Channel) *Message {
 	select {
 	case msg = <-c.memoryMsgChan:
 	case ev := <-c.cursor.ReadCh():
-		msg = NewMessage(guid(ev.ID).Hex(), ev.Body)
+		entry, _ := DecodeWireEntry(ev.Body)
+		msg = NewMessage(guid(ev.ID).Hex(), entry.Body)
 	}
 	c.StartInFlightTimeout(msg, 0, time.Second*60)
 	return msg
@@ -36,7 +38,7 @@ func TestPutMessage(t *testing.T) {
 	channel1 := topic.GetChannel("ch")
 
 	body := []byte("test")
-	topic.Pub([][]byte{body})
+	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 
 	outputMsg := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg.ID)
@@ -57,7 +59,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel2 := topic.GetChannel("ch2")
 
 	body := []byte("test")
-	topic.Pub([][]byte{body})
+	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 
 	outputMsg1 := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg1.ID)
@@ -141,7 +143,7 @@ func TestChannelEmpty(t *testing.T) {
 
 	body := []byte("test")
 	for i := 0; i < 25; i++ {
-		topic.Pub([][]byte{body})
+		topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
 	}
 
 	channelReceiveHelper(channel)
