@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -62,6 +63,14 @@ func nequal(t *testing.T, act, exp interface{}) {
 			filepath.Base(file), line, exp, act)
 		t.FailNow()
 	}
+}
+
+func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	lookupd := nsqlookupd.New(opts)
+	lookupd.Main()
+	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
 }
 
 func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQLookupd, *NSQAdmin) {
@@ -504,4 +513,40 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	resp.Body.Close()
 
 	equal(t, channel.Depth(), int64(0))
+}
+
+func TestHTTPconfig(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	lopts := nsqlookupd.NewOptions()
+	lopts.Logger = newTestLogger(t)
+	_, _, lookupd1 := mustStartNSQLookupd(lopts)
+	defer lookupd1.Exit()
+	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	defer lookupd2.Exit()
+
+	url := fmt.Sprintf("http://%s/config/nsqlookupd_http_addresses", nsqadmin1.RealHTTPAddr())
+	resp, err := http.Get(url)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	origaddrs := fmt.Sprintf(`["%s"]`, nsqlookupds[0].RealHTTPAddr().String())
+	equal(t, string(body), origaddrs)
+
+	client := http.Client{}
+	addrs := fmt.Sprintf(`["%s","%s"]`, lookupd1.RealHTTPAddr().String(), lookupd2.RealHTTPAddr().String())
+	url = fmt.Sprintf("http://%s/config/nsqlookupd_http_addresses", nsqadmin1.RealHTTPAddr())
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(addrs)))
+	equal(t, err, nil)
+	resp, err = client.Do(req)
+	equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	equal(t, string(body), addrs)
 }
