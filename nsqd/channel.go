@@ -232,7 +232,9 @@ func (c *Channel) flush() error {
 	}
 
 finish:
+	c.RLock()
 	data, err := json.Marshal(&c.rs)
+	c.RUnlock()
 	if err != nil {
 		return err
 	}
