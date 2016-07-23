@@ -68,6 +68,8 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="https://talky.io"><img src="http://nsq.io/static/img/talky_logo.png" width="97" align="middle"/></a><br/>
 
 <a href="https://groupme.com"><img src="http://nsq.io/static/img/groupme_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://deis.com"><img src="http://nsq.io/static/img/deis_logo.svg" width="75" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://wiredcraft.com"><img src="http://nsq.io/static/img/wiredcraft_logo.jpg" width="97" align="middle"/></a>&nbsp;&nbsp;
 
 ## Code of Conduct
 
