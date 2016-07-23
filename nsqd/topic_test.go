@@ -80,7 +80,7 @@ func TestTopicHealth(t *testing.T) {
 
 	body := make([]byte, 100)
 
-	err := topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	err := topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	test.NotNil(t, err)
 
 	url := fmt.Sprintf("http://%s/ping", httpAddr)
@@ -93,7 +93,7 @@ func TestTopicHealth(t *testing.T) {
 
 	topic.wal = wal.NewEphemeral()
 
-	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	equal(t, err, nil)
 
 	resp, err = http.Get(url)
@@ -146,7 +146,7 @@ func TestTopicDeleteLast(t *testing.T) {
 	test.Equal(t, 0, len(topic.channelMap))
 
 	body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	time.Sleep(100 * time.Millisecond)
 	test.Nil(t, err)
 	test.Equal(t, uint64(1), topic.Depth())
@@ -170,7 +170,7 @@ func TestTopicPause(t *testing.T) {
 	test.NotNil(t, channel)
 
 	body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	test.Nil(t, err)
 
 	time.Sleep(15 * time.Millisecond)
@@ -215,7 +215,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
 		body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-		topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 }
 
@@ -235,7 +235,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
 		body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
-		topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 
 	for {

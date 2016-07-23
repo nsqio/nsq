@@ -25,7 +25,7 @@ func TestStats(t *testing.T) {
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	body := []byte("test body")
-	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	accompanyTopic := nsqd.GetTopic(accompanyTopicName)

@@ -19,7 +19,7 @@ func channelReceiveHelper(c *Channel) *Message {
 	case msg = <-c.memoryMsgChan:
 	case ev := <-c.cursor.ReadCh():
 		entry, _ := DecodeWireEntry(ev.Body)
-		msg = NewMessage(guid(ev.ID).Hex(), entry.Body)
+		msg = NewMessage(guid(ev.ID).Hex(), time.Now().UnixNano(), entry.Body)
 	}
 	c.StartInFlightTimeout(msg, 0, time.Second*60)
 	return msg
@@ -38,7 +38,7 @@ func TestPutMessage(t *testing.T) {
 	channel1 := topic.GetChannel("ch")
 
 	body := []byte("test")
-	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
 	outputMsg := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg.ID)
@@ -59,7 +59,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel2 := topic.GetChannel("ch2")
 
 	body := []byte("test")
-	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
 	outputMsg1 := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg1.ID)
@@ -101,7 +101,7 @@ func TestInFlightWorker(t *testing.T) {
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < count; i++ {
-		msg := NewMessage(guid(i).Hex(), []byte("test"))
+		msg := NewMessage(guid(i).Hex(), time.Now().UnixNano(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 	}
 
@@ -143,7 +143,7 @@ func TestChannelEmpty(t *testing.T) {
 
 	body := []byte("test")
 	for i := 0; i < 25; i++ {
-		topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 
 	channelReceiveHelper(channel)
@@ -182,7 +182,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	channel.AddClient(client.ID, client)
 
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(guid(0).Hex(), []byte("test"))
+		msg := NewMessage(guid(0).Hex(), time.Now().UnixNano(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 		client.SendingMessage()
 	}

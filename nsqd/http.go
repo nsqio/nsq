@@ -223,7 +223,8 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		}
 	}
 
-	entry := NewEntry(body, time.Now().Add(deferred).UnixNano())
+	now := time.Now().UnixNano()
+	entry := NewEntry(body, now, now+int64(deferred))
 	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
@@ -297,7 +298,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			entries = append(entries, NewEntry(block, 0))
+			entries = append(entries, NewEntry(block, time.Now().UnixNano(), 0))
 		}
 	}
 

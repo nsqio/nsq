@@ -33,11 +33,11 @@ type Message struct {
 	index      int
 }
 
-func NewMessage(id MessageID, body []byte) *Message {
+func NewMessage(id MessageID, timestamp int64, body []byte) *Message {
 	return &Message{
 		ID:        id,
 		Body:      body,
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: timestamp,
 	}
 }
 

@@ -75,7 +75,7 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 
 	t.Logf("pulling from channel")
@@ -168,7 +168,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	msg := channelReceiveHelper(ephemeralChannel)
 	test.Equal(t, body, msg.Body)
 

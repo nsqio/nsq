@@ -302,8 +302,13 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				goto exit
 			}
 		case ev := <-backendMsgChan:
-			entry, _ := DecodeWireEntry(ev.Body)
-			msg := NewMessage(guid(ev.ID).Hex(), entry.Body)
+			entry, err := DecodeWireEntry(ev.Body)
+			if err != nil {
+				p.ctx.nsqd.logf("PROTOCOL(V2): [%s] DecodeWireEntry error - %s", client, err)
+				// TODO: FIN this ID?
+				continue
+			}
+			msg := NewMessage(guid(ev.ID).Hex(), entry.Timestamp, entry.Body)
 			if entry.Deadline != 0 {
 				deferred := time.Unix(0, entry.Deadline).Sub(time.Now())
 				if deferred > 0 {
@@ -803,7 +808,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	entry := NewEntry(msgBody, 0)
+	entry := NewEntry(msgBody, time.Now().UnixNano(), 0)
 	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
@@ -919,7 +924,8 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	entry := NewEntry(msgBody, time.Now().Add(timeoutDuration).UnixNano())
+	now := time.Now().UnixNano()
+	entry := NewEntry(msgBody, now, now+int64(timeoutDuration))
 	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
@@ -994,7 +1000,7 @@ func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]w
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		entries = append(entries, NewEntry(body, 0))
+		entries = append(entries, NewEntry(body, time.Now().UnixNano(), 0))
 	}
 
 	return entries, nil
