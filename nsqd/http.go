@@ -224,7 +224,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	}
 
 	entry := NewEntry(body, time.Now().Add(deferred).UnixNano())
-	err = topic.Pub([]wal.WriteEntry{entry})
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
@@ -233,7 +233,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var entries []wal.WriteEntry
+	var entries []wal.EntryWriterTo
 	var exit bool
 
 	// TODO: one day I'd really like to just error on chunked requests

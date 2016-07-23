@@ -804,7 +804,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
 	entry := NewEntry(msgBody, 0)
-	err = topic.Pub([]wal.WriteEntry{entry})
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
 	}
@@ -920,7 +920,7 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
 	entry := NewEntry(msgBody, time.Now().Add(timeoutDuration).UnixNano())
-	err = topic.Pub([]wal.WriteEntry{entry})
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
 	}
@@ -957,7 +957,7 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]wal.WriteEntry, error) {
+func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]wal.EntryWriterTo, error) {
 	numMsgs, err := readLen(r, tmp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
@@ -970,7 +970,7 @@ func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]w
 			fmt.Sprintf("MPUB invalid message count %d", numMsgs))
 	}
 
-	entries := make([]wal.WriteEntry, 0, numMsgs)
+	entries := make([]wal.EntryWriterTo, 0, numMsgs)
 	for i := int32(0); i < numMsgs; i++ {
 		size, err := readLen(r, tmp)
 		if err != nil {

@@ -149,13 +149,13 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	return nil
 }
 
-func (t *Topic) Pub(entries []wal.WriteEntry) error {
+func (t *Topic) Pub(entries []wal.EntryWriterTo) error {
 	t.RLock()
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	startIdx, endIdx, err := t.wal.AppendFast(entries)
+	startIdx, endIdx, err := t.wal.Append(entries)
 	t.ctx.nsqd.SetHealth(err)
 	if err != nil {
 		return err

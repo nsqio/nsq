@@ -38,7 +38,7 @@ func TestPutMessage(t *testing.T) {
 	channel1 := topic.GetChannel("ch")
 
 	body := []byte("test")
-	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
 
 	outputMsg := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg.ID)
@@ -59,7 +59,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel2 := topic.GetChannel("ch2")
 
 	body := []byte("test")
-	topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
 
 	outputMsg1 := channelReceiveHelper(channel1)
 	// test.Equal(t, msg.ID, outputMsg1.ID)
@@ -143,7 +143,7 @@ func TestChannelEmpty(t *testing.T) {
 
 	body := []byte("test")
 	for i := 0; i < 25; i++ {
-		topic.Pub([]wal.WriteEntry{NewEntry(body, 0)})
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, 0)})
 	}
 
 	channelReceiveHelper(channel)
