@@ -305,7 +305,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			entry, err := DecodeWireEntry(ev.Body)
 			if err != nil {
 				p.ctx.nsqd.logf("PROTOCOL(V2): [%s] DecodeWireEntry error - %s", client, err)
-				// TODO: FIN this ID?
+				// TODO: (WAL) FIN this ID?
 				continue
 			}
 			msg := NewMessage(guid(ev.ID).Hex(), entry.Timestamp, entry.Body)

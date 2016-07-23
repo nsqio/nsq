@@ -153,8 +153,6 @@ func TestTopicDeleteLast(t *testing.T) {
 }
 
 func TestTopicPause(t *testing.T) {
-	t.Skipf("TODO: topic pausing")
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
