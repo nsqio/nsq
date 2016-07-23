@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -21,7 +22,7 @@ import (
 
 type NSQAdmin struct {
 	sync.RWMutex
-	opts                *Options
+	opts                atomic.Value
 	httpListener        net.Listener
 	waitGroup           util.WaitGroupWrapper
 	notifications       chan *AdminAction
@@ -31,9 +32,9 @@ type NSQAdmin struct {
 
 func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
-		opts:          opts,
 		notifications: make(chan *AdminAction),
 	}
+	n.swapOpts(opts)
 
 	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
 		n.logf("--nsqd-http-address or --lookupd-http-address required.")
@@ -116,10 +117,18 @@ func New(opts *Options) *NSQAdmin {
 }
 
 func (n *NSQAdmin) logf(f string, args ...interface{}) {
-	if n.opts.Logger == nil {
+	if n.getOpts().Logger == nil {
 		return
 	}
-	n.opts.Logger.Output(2, fmt.Sprintf(f, args...))
+	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
+}
+
+func (n *NSQAdmin) getOpts() *Options {
+	return n.opts.Load().(*Options)
+}
+
+func (n *NSQAdmin) swapOpts(opts *Options) {
+	n.opts.Store(opts)
 }
 
 func (n *NSQAdmin) RealHTTPAddr() *net.TCPAddr {
@@ -135,8 +144,8 @@ func (n *NSQAdmin) handleAdminActions() {
 			n.logf("ERROR: failed to serialize admin action - %s", err)
 		}
 		httpclient := &http.Client{Transport: http_api.NewDeadlineTransport(10 * time.Second)}
-		n.logf("POSTing notification to %s", n.opts.NotificationHTTPEndpoint)
-		resp, err := httpclient.Post(n.opts.NotificationHTTPEndpoint,
+		n.logf("POSTing notification to %s", n.getOpts().NotificationHTTPEndpoint)
+		resp, err := httpclient.Post(n.getOpts().NotificationHTTPEndpoint,
 			"application/json", bytes.NewBuffer(content))
 		if err != nil {
 			n.logf("ERROR: failed to POST notification - %s", err)
@@ -146,9 +155,9 @@ func (n *NSQAdmin) handleAdminActions() {
 }
 
 func (n *NSQAdmin) Main() {
-	httpListener, err := net.Listen("tcp", n.opts.HTTPAddress)
+	httpListener, err := net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.opts.HTTPAddress, err)
+		n.logf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()
@@ -156,7 +165,7 @@ func (n *NSQAdmin) Main() {
 	n.Unlock()
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.opts.Logger)
+		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.getOpts().Logger)
 	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }
