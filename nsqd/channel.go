@@ -217,20 +217,8 @@ finish:
 }
 
 func (c *Channel) flush() error {
-	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
-			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
-	}
+	c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing", c.name)
 
-	for {
-		select {
-		case <-c.memoryMsgChan:
-		default:
-			goto finish
-		}
-	}
-
-finish:
 	c.RLock()
 	data, err := json.Marshal(&c.rs)
 	c.RUnlock()
