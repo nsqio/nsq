@@ -22,14 +22,16 @@ import (
 )
 
 var (
-	showVersion      = flag.Bool("version", false, "print version")
-	topic            = flag.String("topic", "", "NSQ topic")
-	channel          = flag.String("channel", "", "NSQ channel")
-	statusEvery      = flag.Duration("status-every", -1, "(deprecated) duration of time between polling/printing output")
-	interval         = flag.Duration("interval", 2*time.Second, "duration of time between polling/printing output")
-	countNum         = numValue{}
-	nsqdHTTPAddrs    = app.StringArray{}
-	lookupdHTTPAddrs = app.StringArray{}
+	showVersion        = flag.Bool("version", false, "print version")
+	topic              = flag.String("topic", "", "NSQ topic")
+	channel            = flag.String("channel", "", "NSQ channel")
+	statusEvery        = flag.Duration("status-every", -1, "(deprecated) duration of time between polling/printing output")
+	interval           = flag.Duration("interval", 2*time.Second, "duration of time between polling/printing output")
+	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
+	httpRequestTimeout = flag.Duration("http-client-request-timeout", 5*time.Second, "timeout for HTTP request")
+	countNum           = numValue{}
+	nsqdHTTPAddrs      = app.StringArray{}
+	lookupdHTTPAddrs   = app.StringArray{}
 )
 
 type numValue struct {
@@ -55,9 +57,9 @@ func init() {
 	flag.Var(&countNum, "count", "number of reports")
 }
 
-func statLoop(interval time.Duration, topic string, channel string,
-	nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
-	ci := clusterinfo.New(nil, http_api.NewClient(nil))
+func statLoop(interval time.Duration, connectTimeout time.Duration, requestTimeout time.Duration,
+	topic string, channel string, nsqdTCPAddrs []string, lookupdHTTPAddrs []string) {
+	ci := clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout))
 	var o *clusterinfo.ChannelStats
 	for i := 0; !countNum.isSet || countNum.value >= i; i++ {
 		var producers clusterinfo.Producers
@@ -149,6 +151,16 @@ func main() {
 		log.Fatal("--interval should be positive")
 	}
 
+	connectTimeout := *httpConnectTimeout
+	if int64(connectTimeout) <= 0 {
+		log.Fatal("--http-client-connect-timeout should be positive")
+	}
+
+	requestTimeout := *httpRequestTimeout
+	if int64(requestTimeout) <= 0 {
+		log.Fatal("--http-client-request-timeout should be positive")
+	}
+
 	if countNum.isSet && countNum.value <= 0 {
 		log.Fatal("--count should be positive")
 	}
@@ -171,7 +183,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
-	go statLoop(intvl, *topic, *channel, nsqdHTTPAddrs, lookupdHTTPAddrs)
+	go statLoop(intvl, connectTimeout, requestTimeout, *topic, *channel, nsqdHTTPAddrs, lookupdHTTPAddrs)
 
 	<-termChan
 }

@@ -42,9 +42,12 @@ var (
 	numPublishers = flag.Int("n", 100, "number of concurrent publishers")
 	mode          = flag.String("mode", "hostpool", "the upstream request mode options: multicast, round-robin, hostpool (default), epsilon-greedy")
 	sample        = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
-	httpTimeout   = flag.Duration("http-timeout", 20*time.Second, "timeout for HTTP connect/read/write (each)")
-	statusEvery   = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
-	contentType   = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
+	// TODO: remove; deprecated in favor of http-client-connect-timeout, http-client-request-timeout
+	httpTimeout        = flag.Duration("http-timeout", 20*time.Second, "timeout for HTTP connect/read/write (each)")
+	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
+	httpRequestTimeout = flag.Duration("http-client-request-timeout", 20*time.Second, "timeout for HTTP request")
+	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
+	contentType        = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 
 	getAddrs         = app.StringArray{}
 	postAddrs        = app.StringArray{}
@@ -247,6 +250,13 @@ func main() {
 	if hasArg("http-timeout-ms") {
 		log.Printf("WARNING: --http-timeout-ms is deprecated in favor of --http-timeout=X")
 		*httpTimeout = time.Duration(*httpTimeoutMs) * time.Millisecond
+	}
+
+	// TODO: remove, deprecated
+	if hasArg("http-timeout") {
+		log.Printf("WARNING: --http-timeout is deprecated in favor of --http-client-connect-timeout=X and --http-client-request-timeout=Y")
+		*httpConnectTimeout = *httpTimeout
+		*httpRequestTimeout = *httpTimeout
 	}
 
 	termChan := make(chan os.Signal, 1)
