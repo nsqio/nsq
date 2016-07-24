@@ -10,7 +10,7 @@ require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 	github.com/judwhite/go-svc v1.0.0
 	github.com/julienschmidt/httprouter v1.2.0
-	github.com/klauspost/crc32 v1.2.0 // indirect
+	github.com/klauspost/crc32 v1.2.0
 	github.com/mreiferson/go-options v0.0.0-20161229190002-77551d20752b
 	github.com/mreiferson/wal v0.0.0-20170104013612-38b376d388c5
 	github.com/nsqio/go-nsq v1.0.7
