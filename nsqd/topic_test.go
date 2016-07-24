@@ -55,6 +55,8 @@ func TestGetChannel(t *testing.T) {
 
 type errorWAL struct{}
 
+func (d *errorWAL) Index() uint64 { return 0 }
+
 func (d *errorWAL) AppendBytes([][]byte, []uint32) (uint64, uint64, error) {
 	return 0, 0, errors.New("never gonna happen")
 }

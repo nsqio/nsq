@@ -39,10 +39,9 @@ type Consumer interface {
 // messages, timeouts, requeuing, etc.
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	requeueCount  uint64
-	messageCount  uint64
-	timeoutCount  uint64
-	bufferedCount int32
+	requeueCount uint64
+	messageCount uint64
+	timeoutCount uint64
 
 	sync.RWMutex
 
@@ -260,11 +259,14 @@ finish:
 func (c *Channel) Depth() uint64 {
 	c.topic.RLock()
 	tc := c.topic.rs.Count()
+	if c.topic.IsPaused() {
+		tc -= c.topic.wal.Index() - atomic.LoadUint64(&c.topic.pauseIdx)
+	}
 	c.topic.RUnlock()
 	c.RLock()
 	cc := c.rs.Count()
 	c.RUnlock()
-	return tc - cc + uint64(atomic.LoadInt32(&c.bufferedCount))
+	return tc - cc
 }
 
 func (c *Channel) Pause() error {

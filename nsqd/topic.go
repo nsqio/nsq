@@ -22,6 +22,7 @@ type Topic struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	messageCount uint64
 	messageBytes uint64
+	pauseIdx     uint64
 
 	sync.RWMutex
 
@@ -160,6 +161,7 @@ func (t *Topic) Pub(entries []wal.EntryWriterTo) error {
 	if err != nil {
 		return err
 	}
+	// TODO: (WAL) this is racey
 	t.rs.AddRange(Range{Low: int64(startIdx), High: int64(endIdx)})
 	atomic.AddUint64(&t.messageCount, uint64(len(entries)))
 	var total uint64
@@ -173,10 +175,16 @@ func (t *Topic) Pub(entries []wal.EntryWriterTo) error {
 func (t *Topic) Depth() uint64 {
 	t.RLock()
 	defer t.RUnlock()
+	var depth uint64
 	if len(t.channelMap) > 0 {
-		return 0
+		depth = 0
+	} else {
+		depth = t.rs.Count()
 	}
-	return t.rs.Count()
+	if t.IsPaused() {
+		depth += t.wal.Index() - atomic.LoadUint64(&t.pauseIdx)
+	}
+	return depth
 }
 
 // Delete empties the topic and all its channels and closes
@@ -262,12 +270,12 @@ func (t *Topic) Empty() error {
 func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	var latencyStream *quantile.Quantile
 	t.RLock()
-	realChannels := make([]*Channel, 0, len(t.channelMap))
+	channels := make([]*Channel, 0, len(t.channelMap))
 	for _, c := range t.channelMap {
-		realChannels = append(realChannels, c)
+		channels = append(channels, c)
 	}
 	t.RUnlock()
-	for _, c := range realChannels {
+	for _, c := range channels {
 		if c.e2eProcessingLatencyStream == nil {
 			continue
 		}
@@ -290,13 +298,26 @@ func (t *Topic) UnPause() error {
 }
 
 func (t *Topic) doPause(pause bool) error {
+	t.RLock()
+	channels := make([]*Channel, 0, len(t.channelMap))
+	for _, c := range t.channelMap {
+		channels = append(channels, c)
+	}
+	t.RUnlock()
+
 	if pause {
 		atomic.StoreInt32(&t.paused, 1)
+		for _, c := range channels {
+			c.Pause()
+		}
 	} else {
 		atomic.StoreInt32(&t.paused, 0)
+		for _, c := range channels {
+			c.UnPause()
+		}
 	}
 
-	// TODO: (WAL) implement topic pausing
+	atomic.StoreUint64(&t.pauseIdx, t.wal.Index())
 
 	return nil
 }
