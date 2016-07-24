@@ -1,13 +1,7 @@
 package nsqd
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io/ioutil"
-	"math/rand"
-	"os"
-	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,7 +23,6 @@ type Topic struct {
 	name       string
 	channelMap map[string]*Channel
 	wal        wal.WriteAheadLogger
-	rs         RangeSet
 
 	paused    int32
 	ephemeral bool
@@ -67,19 +60,6 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 			ctx.nsqd.getOpts().SyncTimeout,
 			dqLogf,
 		)
-	}
-
-	fn := fmt.Sprintf(path.Join(ctx.nsqd.getOpts().DataPath, "meta.%s.dat"), t.name)
-	data, err := ioutil.ReadFile(fn)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			t.ctx.nsqd.logf("ERROR: failed to read topic metadata from %s - %s", fn, err)
-		}
-	} else {
-		err := json.Unmarshal(data, &t.rs)
-		if err != nil {
-			t.ctx.nsqd.logf("ERROR: failed to decode topic metadata - %s", err)
-		}
 	}
 
 	t.ctx.nsqd.Notify(t)
@@ -163,13 +143,11 @@ func (t *Topic) Pub(entries []wal.EntryWriterTo) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	startIdx, endIdx, err := t.wal.Append(entries)
+	_, _, err := t.wal.Append(entries)
 	t.ctx.nsqd.SetHealth(err)
 	if err != nil {
 		return err
 	}
-	// TODO: (WAL) this is racey
-	t.rs.AddRange(Range{Low: int64(startIdx), High: int64(endIdx)})
 	atomic.AddUint64(&t.messageCount, uint64(len(entries)))
 	var total uint64
 	for _, e := range entries {
@@ -188,7 +166,7 @@ func (t *Topic) Depth() uint64 {
 			depth = t.wal.Index() - atomic.LoadUint64(&t.pauseIdx)
 		}
 	} else {
-		depth = t.rs.Count()
+		depth = t.wal.Index()
 	}
 	return depth
 }
@@ -239,32 +217,6 @@ func (t *Topic) exit(deleted bool) error {
 			// we need to continue regardless of error to close all the channels
 			t.ctx.nsqd.logf(LOG_ERROR, "channel(%s) close - %s", channel.name, err)
 		}
-	}
-
-	// TODO: (WAL) this is racey
-	data, err := json.Marshal(&t.rs)
-	if err != nil {
-		return err
-	}
-
-	fn := fmt.Sprintf(path.Join(t.ctx.nsqd.getOpts().DataPath, "meta.%s.dat"), t.name)
-	tmpFn := fmt.Sprintf("%s.%d.tmp", fn, rand.Int())
-	f, err := os.OpenFile(tmpFn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-
-	_, err = f.Write(data)
-	if err != nil {
-		f.Close()
-		return err
-	}
-	f.Sync()
-	f.Close()
-
-	err = os.Rename(tmpFn, fn)
-	if err != nil {
-		return err
 	}
 
 	return t.wal.Close()
