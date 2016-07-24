@@ -21,6 +21,11 @@ nsqlookupd_tcp_addresses = [
     "127.0.0.1:4160"
 ]
 
+## duration to wait before HTTP client connection timeout
+http_client_connect_timeout = "2s"
+
+## duration to wait before HTTP client request timeout
+http_client_request_timeout = "5s"
 
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"

@@ -45,6 +45,9 @@ var (
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
+	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
+	httpRequestTimeout = flag.Duration("http-client-request-timeout", 5*time.Second, "timeout for HTTP request")
+
 	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
 	topics           = app.StringArray{}
@@ -404,8 +407,9 @@ func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
 	return match
 }
 
-func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
-	newTopics, err := clusterinfo.New(nil, http_api.NewClient(nil)).GetLookupdTopics(addrs)
+func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string,
+	connectTimeout time.Duration, requestTimeout time.Duration) {
+	newTopics, err := clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout)).GetLookupdTopics(addrs)
 	if err != nil {
 		log.Printf("ERROR: could not retrieve topic list: %s", err)
 	}
@@ -438,13 +442,14 @@ func (t *TopicDiscoverer) hup() {
 	}
 }
 
-func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string) {
+func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string,
+	connectTimeout time.Duration, requestTimeout time.Duration) {
 	ticker := time.Tick(*topicPollRate)
 	for {
 		select {
 		case <-ticker:
 			if sync {
-				t.syncTopics(addrs, pattern)
+				t.syncTopics(addrs, pattern, connectTimeout, requestTimeout)
 			}
 		case <-t.termChan:
 			t.stop()
@@ -472,6 +477,16 @@ func main() {
 
 	if *channel == "" {
 		log.Fatal("--channel is required")
+	}
+
+	connectTimeout := *httpConnectTimeout
+	if int64(connectTimeout) <= 0 {
+		log.Fatal("--http-client-connect-timeout should be positive")
+	}
+
+	requestTimeout := *httpRequestTimeout
+	if int64(requestTimeout) <= 0 {
+		log.Fatal("--http-client-request-timeout should be positive")
 	}
 
 	var topicsFromNSQLookupd bool
@@ -516,7 +531,7 @@ func main() {
 		}
 		topicsFromNSQLookupd = true
 		var err error
-		topics, err = clusterinfo.New(nil, http_api.NewClient(nil)).GetLookupdTopics(lookupdHTTPAddrs)
+		topics, err = clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout)).GetLookupdTopics(lookupdHTTPAddrs)
 		if err != nil {
 			log.Fatalf("ERROR: could not retrieve topic list: %s", err)
 		}
@@ -536,5 +551,5 @@ func main() {
 		go discoverer.startTopicRouter(logger)
 	}
 
-	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd, *topicPattern)
+	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd, *topicPattern, connectTimeout, requestTimeout)
 }

@@ -13,7 +13,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/util"
@@ -143,7 +142,9 @@ func (n *NSQAdmin) handleAdminActions() {
 		if err != nil {
 			n.logf("ERROR: failed to serialize admin action - %s", err)
 		}
-		httpclient := &http.Client{Transport: http_api.NewDeadlineTransport(10 * time.Second)}
+		httpclient := &http.Client{
+			Transport: http_api.NewDeadlineTransport(n.getOpts().HTTPClientConnectTimeout, n.getOpts().HTTPClientRequestTimeout),
+		}
 		n.logf("POSTing notification to %s", n.getOpts().NotificationHTTPEndpoint)
 		resp, err := httpclient.Post(n.getOpts().NotificationHTTPEndpoint,
 			"application/json", bytes.NewBuffer(content))

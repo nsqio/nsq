@@ -13,7 +13,7 @@ var httpclient *http.Client
 var userAgent string
 
 func init() {
-	httpclient = &http.Client{Transport: http_api.NewDeadlineTransport(*httpTimeout)}
+	httpclient = &http.Client{Transport: http_api.NewDeadlineTransport(*httpConnectTimeout, *httpRequestTimeout), Timeout: *httpRequestTimeout}
 	userAgent = fmt.Sprintf("nsq_to_http v%s", version.Binary)
 }
 
