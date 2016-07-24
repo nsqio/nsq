@@ -235,6 +235,7 @@ func (t *Topic) exit(deleted bool) error {
 		}
 	}
 
+	// TODO: (WAL) this is racey
 	data, err := json.Marshal(&t.rs)
 	if err != nil {
 		return err
