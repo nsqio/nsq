@@ -106,7 +106,14 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
-		channel = NewChannel(t, channelName, t.ctx)
+		var startIdx uint64
+		if len(t.channelMap) > 0 {
+			startIdx = t.wal.Index()
+			if t.IsPaused() {
+				startIdx = atomic.LoadUint64(&t.pauseIdx)
+			}
+		}
+		channel = NewChannel(t, channelName, startIdx, t.ctx)
 		t.channelMap[channelName] = channel
 		t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
@@ -177,12 +184,11 @@ func (t *Topic) Depth() uint64 {
 	defer t.RUnlock()
 	var depth uint64
 	if len(t.channelMap) > 0 {
-		depth = 0
+		if t.IsPaused() {
+			depth = t.wal.Index() - atomic.LoadUint64(&t.pauseIdx)
+		}
 	} else {
 		depth = t.rs.Count()
-	}
-	if t.IsPaused() {
-		depth += t.wal.Index() - atomic.LoadUint64(&t.pauseIdx)
 	}
 	return depth
 }

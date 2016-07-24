@@ -96,10 +96,10 @@ func TestTopicHealth(t *testing.T) {
 	topic.wal = wal.NewEphemeral()
 
 	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	resp, err = http.Get(url)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	equal(t, resp.StatusCode, 200)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -161,30 +161,55 @@ func TestTopicPause(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
+	body := make([]byte, 100)
 	topicName := "test_topic_pause" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	err := topic.Pause()
+
+	err := topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	test.Nil(t, err)
 
-	channel := topic.GetChannel("ch1")
-	test.NotNil(t, channel)
+	test.Equal(t, 1, int(topic.Depth()))
 
-	body := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	err = topic.Pause()
+	test.Nil(t, err)
+
 	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	test.Nil(t, err)
 
-	time.Sleep(15 * time.Millisecond)
+	test.Equal(t, 2, int(topic.Depth()))
 
-	test.Equal(t, uint64(1), topic.Depth())
-	test.Equal(t, uint64(0), channel.Depth())
+	ch1 := topic.GetChannel("ch1")
+	test.NotNil(t, ch1)
 
 	err = topic.UnPause()
 	test.Nil(t, err)
 
-	time.Sleep(15 * time.Millisecond)
+	test.Equal(t, 0, int(topic.Depth()))
+	test.Equal(t, 2, int(ch1.Depth()))
 
-	test.Equal(t, uint64(0), topic.Depth())
-	test.Equal(t, uint64(1), channel.Depth())
+	err = topic.Pause()
+	test.Nil(t, err)
+
+	ch2 := topic.GetChannel("ch2")
+	test.NotNil(t, ch2)
+
+	test.Equal(t, 0, int(topic.Depth()))
+	test.Equal(t, 2, int(ch1.Depth()))
+	test.Equal(t, 0, int(ch2.Depth()))
+
+	err = topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
+	test.Nil(t, err)
+
+	test.Equal(t, 1, int(topic.Depth()))
+	test.Equal(t, 2, int(ch1.Depth()))
+	test.Equal(t, 0, int(ch2.Depth()))
+
+	err = topic.UnPause()
+	test.Nil(t, err)
+
+	test.Equal(t, 0, int(topic.Depth()))
+	test.Equal(t, 3, int(ch1.Depth()))
+	test.Equal(t, 1, int(ch2.Depth()))
 }
 
 // TODO: (WAL) fixme

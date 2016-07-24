@@ -74,7 +74,7 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topic *Topic, channelName string, ctx *context) *Channel {
+func NewChannel(topic *Topic, channelName string, startIdx uint64, ctx *context) *Channel {
 	c := &Channel{
 		topic:         topic,
 		name:          channelName,
@@ -103,10 +103,12 @@ func NewChannel(topic *Topic, channelName string, ctx *context) *Channel {
 		}
 	}
 
-	var startIdx uint64
 	if c.rs.Len() > 0 {
 		startIdx = uint64(c.rs.Ranges[0].High) + 1
+	} else if startIdx > 0 {
+		c.rs.AddRange(Range{Low: 0, High: int64(startIdx - 1)})
 	}
+	// TODO: (WAL) how should we handle errors on cursor creation?
 	cursor, _ := c.topic.wal.GetCursor(startIdx)
 	c.cursor = cursor
 
