@@ -31,4 +31,4 @@ tombstone_lifetime = "45s"
 log_level = 2
 
 ## if empty, use the default flag value in glog
-log_dir = ""
+log_dir = "./"
