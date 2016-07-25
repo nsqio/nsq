@@ -380,7 +380,13 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
 	}
+	deferCnt := atomic.LoadInt64(&c.DeferredCount)
+	if deferCnt > readyCount*100 || deferCnt > 1000 {
+		nsqLog.Infof("[%s] too much deferred message : %v rdy: %4d inflt: %4d",
+			c, deferCnt, readyCount, inFlightCount)
 
+		return false
+	}
 	return true
 }
 
