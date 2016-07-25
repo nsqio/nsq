@@ -148,7 +148,6 @@ var (
 	ErrLocalTopicPartitionMismatch         = NewCoordErr("local topic partition not match", CoordLocalErr)
 	ErrLocalFallBehind                     = NewCoordErr("local data fall behind", CoordElectionErr)
 	ErrLocalForwardThanLeader              = NewCoordErr("local data is more than leader", CoordElectionErr)
-	ErrLocalWriteFailed                    = NewCoordErr("write data to local failed", CoordLocalErr)
 	ErrLocalSetChannelOffsetNotFirstClient = NewCoordErr("failed to set channel offset since not first client", CoordLocalErr)
 	ErrLocalMissingTopic                   = NewCoordErr("local topic missing", CoordLocalErr)
 	ErrLocalNotReadyForWrite               = NewCoordErr("local topic is not ready for write.", CoordLocalErr)
