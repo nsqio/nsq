@@ -249,7 +249,7 @@ func (c *Channel) flush() error {
 func (c *Channel) Depth() uint64 {
 	tc := c.topic.wal.Index()
 	if c.topic.IsPaused() {
-		tc -= atomic.LoadUint64(&c.topic.pauseIdx)
+		tc -= c.topic.wal.Index() - atomic.LoadUint64(&c.topic.pauseIdx)
 	}
 	c.RLock()
 	cc := c.rs.Count()
