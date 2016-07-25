@@ -464,8 +464,8 @@ func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, e
 func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
-	self.flushCommitLogsNoLock()
 	if start == self.currentStart {
+		self.flushCommitLogsNoLock()
 		return getCommitLogFromFile(self.appender, offset)
 	} else if start > self.currentStart || start < 0 {
 		return nil, ErrCommitLogOutofBound
@@ -482,8 +482,8 @@ func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int6
 func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64, *CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
-	self.flushCommitLogsNoLock()
 	if self.currentStart == index {
+		self.flushCommitLogsNoLock()
 		l, readOffset, err := getLastCommitLogDataFromFile(self.appender)
 		return readOffset, l, err
 	} else {
