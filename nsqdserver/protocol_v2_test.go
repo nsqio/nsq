@@ -73,7 +73,11 @@ func subTrace(t *testing.T, conn io.ReadWriter, topicName string, channelName st
 
 func subOffset(t *testing.T, conn io.ReadWriter, topicName string, channelName string, queueOffset int64) {
 	var startFrom nsq.ConsumeOffset
-	startFrom.SetVirtualQueueOffset(queueOffset)
+	if queueOffset == -1 {
+		startFrom.SetToEnd()
+	} else {
+		startFrom.SetVirtualQueueOffset(queueOffset)
+	}
 	_, err := nsq.SubscribeAdvanced(topicName, channelName, "0", startFrom).WriteTo(conn)
 	test.Equal(t, err, nil)
 	readValidate(t, conn, frameTypeResponse, "OK")
@@ -1537,7 +1541,7 @@ func TestSampling(t *testing.T) {
 	}()
 
 	time.Sleep(time.Second * 15)
-	test.Equal(t, channel.GetChannelEnd(),
+	test.Equal(t, channel.GetChannelEnd().Offset(),
 		nsqdNs.BackendOffset(num*(4+len(testBody)+10+16)))
 	//doneChan := make(chan int)
 	//go func() {
@@ -1786,27 +1790,24 @@ func TestSetChannelOffset(t *testing.T) {
 		"msg_timeout": 1000,
 	}, frameTypeResponse)
 
-	subOffset(t, conn, topicName, "ch", int64(msgOut.RawSize*10))
+	subOffset(t, conn, topicName, "ch", int64(-1))
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Equal(t, err, nil)
+	for i := 0; i < 100; i++ {
+		topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+	}
+
 	resp, _ = nsq.ReadResponse(conn)
 	_, data, _ = nsq.UnpackResponse(resp)
 	msgOut, err = nsq.DecodeMessage(data)
 	msgOut.Offset = uint64(binary.BigEndian.Uint64(msgOut.Body[:8]))
 	msgOut.RawSize = uint32(binary.BigEndian.Uint32(msgOut.Body[8:12]))
 	msgOut.Body = msgOut.Body[12:]
-	test.Equal(t, int64(msgRawSize*10), int64(msgOut.Offset))
-	test.Equal(t, uint64(nsq.GetNewMessageID(msgOut.ID[:])), uint64(msg.ID+10))
+	test.Equal(t, int64(msgRawSize*101), int64(msgOut.Offset))
+	test.Equal(t, uint64(nsq.GetNewMessageID(msgOut.ID[:])), uint64(msg.ID+101))
 	test.Equal(t, msgOut.Body, msg.Body)
 
 	conn.Close()
-	conn, err = mustConnectNSQD(tcpAddr)
-	test.Equal(t, err, nil)
-	identify(t, conn, map[string]interface{}{
-		"msg_timeout": 1000,
-	}, frameTypeResponse)
-
-	subOffset(t, conn, topicName, "ch", int64(msgOut.RawSize*10))
 }
 
 func TestBadFin(t *testing.T) {

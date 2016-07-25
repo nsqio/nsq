@@ -37,6 +37,11 @@ type Consumer interface {
 	Empty()
 }
 
+type resetChannelData struct {
+	Offset BackendOffset
+	Cnt    int64
+}
+
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
@@ -88,7 +93,7 @@ type Channel struct {
 	confirmMutex    sync.Mutex
 	waitingConfirm  int32
 	tryReadBackend  chan bool
-	readerChanged   chan BackendOffset
+	readerChanged   chan resetChannelData
 	endUpdatedChan  chan bool
 	needNotifyRead  int32
 	consumeDisabled int32
@@ -120,7 +125,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
 		tryReadBackend:  make(chan bool, 1),
-		readerChanged:   make(chan BackendOffset, 1),
+		readerChanged:   make(chan resetChannelData, 1),
 		endUpdatedChan:  make(chan bool, 1),
 		deleteCallback:  deleteCallback,
 		option:          opt,
@@ -193,7 +198,7 @@ func (c *Channel) SetTrace(enable bool) {
 	}
 }
 
-func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
+func (c *Channel) SetConsumeOffset(offset BackendOffset, cnt int64, force bool) error {
 	c.Lock()
 	defer c.Unlock()
 	num := len(c.clients)
@@ -207,7 +212,7 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, force bool) error {
 	_, ok := c.backend.(*diskQueueReader)
 	if ok {
 		select {
-		case c.readerChanged <- offset:
+		case c.readerChanged <- resetChannelData{offset, cnt}:
 		default:
 		}
 		for _, c := range c.clients {
@@ -225,7 +230,7 @@ func (c *Channel) SetOrdered(enable bool) {
 			return
 		}
 		select {
-		case c.readerChanged <- BackendOffset(-1):
+		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
 		default:
 		}
 		c.Lock()
@@ -326,9 +331,7 @@ func (c *Channel) exit(deleted bool) error {
 func (c *Channel) skipChannelToEnd() (BackendQueueEnd, error) {
 	c.Lock()
 	defer c.Unlock()
-	e := c.backend.GetQueueReadEnd()
-	d := c.backend.(*diskQueueReader)
-	_, err := d.ResetReadToOffset(e.Offset())
+	e, err := c.backend.SkipReadToEnd()
 	if err != nil {
 		nsqLog.Warningf("failed to reset reader to end %v", err)
 	} else {
@@ -436,7 +439,11 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 	return nil
 }
 
-func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, allowBackward bool) error {
+func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, allowBackward bool) error {
+	if cnt == 0 && offset != 0 {
+		nsqLog.LogWarningf("the count is not valid: %v:%v. (This may happen while upgrade from old)", offset, cnt)
+		return nil
+	}
 	// TODO: confirm on slave may exceed the current end, because the buffered write
 	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
@@ -444,15 +451,15 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, allowBackward
 		nsqLog.LogWarningf("should empty confirmed queue on slave.")
 	}
 	var err error
-	var newConfirmed BackendOffset
-	if offset < c.GetConfirmedOffset() {
+	var newConfirmed BackendQueueEnd
+	if offset < c.GetConfirmed().Offset() {
 		if nsqLog.Level() > levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("confirm offset less than current: %v, %v", offset, c.GetConfirmedOffset())
+			nsqLog.LogDebugf("confirm offset less than current: %v, %v", offset, c.GetConfirmed())
 		}
 		if allowBackward {
 			d, ok := c.backend.(*diskQueueReader)
 			if ok {
-				newConfirmed, err = d.ResetReadToOffset(offset)
+				newConfirmed, err = d.ResetReadToOffset(offset, cnt)
 				if err != nil {
 					if err != ErrExiting {
 						nsqLog.Logf("reset read failed: %v, offset: %v", err, offset)
@@ -462,7 +469,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, allowBackward
 			}
 		}
 	} else {
-		_, err = c.backend.SkipReadToOffset(offset)
+		_, err = c.backend.SkipReadToOffset(offset, cnt)
 		if err != nil {
 			if err != ErrExiting {
 				nsqLog.Logf("confirm read failed: %v, offset: %v", err, offset)
@@ -477,24 +484,26 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, allowBackward
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
 // indicated weather the confirmed offset is changed
-func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
+func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool, error) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	//c.finMsgs[msg.ID] = msg
-	curConfirm := c.GetConfirmedOffset()
-	if msg.offset < curConfirm {
+	curConfirm := c.GetConfirmed()
+	if msg.offset < curConfirm.Offset() {
 		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, curConfirm)
-		return curConfirm, false
+		return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false, nil
 	}
 	c.confirmedMsgs[int64(msg.offset)] = msg
 	reduced := false
-	newConfirmed := curConfirm
+	newConfirmed := curConfirm.Offset()
+	confirmedCnt := int64(0)
 	tmpRemoved := make(map[int64]*Message)
 	for {
 		if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
 			nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
 				newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
 			newConfirmed += m.rawMoveSize
+			confirmedCnt = m.queueCntIndex
 			delete(c.confirmedMsgs, int64(m.offset))
 			tmpRemoved[int64(m.offset)] = m
 			reduced = true
@@ -504,7 +513,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 	}
 	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 	if reduced {
-		err := c.backend.ConfirmRead(newConfirmed)
+		err := c.backend.ConfirmRead(newConfirmed, confirmedCnt)
 		if err != nil {
 			if err != ErrExiting {
 				nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
@@ -515,7 +524,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 				}
 				atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 			}
-			return c.GetConfirmedOffset(), reduced
+			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced, err
 		}
 		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 &&
 			atomic.LoadInt32(&c.needNotifyRead) == 1 &&
@@ -527,7 +536,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 		}
 	}
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
-		curConfirm = newConfirmed
+		curConfirm = c.GetConfirmed()
 		flightCnt := len(c.inFlightMessages)
 		c.waitingRequeueMutex.Lock()
 		reqLen := len(c.waitingRequeueMsgs)
@@ -543,7 +552,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, bool) {
 				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 		}
 	}
-	return newConfirmed, reduced
+	return newConfirmed, confirmedCnt, reduced, nil
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
 	// in inflight queue and also not wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
@@ -561,14 +570,14 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bool, error) {
+func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, int64, bool, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
 		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
 			clientID)
-		return 0, false, err
+		return 0, 0, false, err
 	}
 	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "FIN", msg.TraceID, msg, strconv.Itoa(int(clientID)))
@@ -576,8 +585,8 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, bo
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
-	offset, changed := c.ConfirmBackendQueue(msg)
-	return offset, changed, nil
+	offset, cnt, changed, err := c.ConfirmBackendQueue(msg)
+	return offset, cnt, changed, err
 }
 
 func (c *Channel) ContinueConsumeForOrder() {
@@ -729,12 +738,12 @@ func (c *Channel) GetInflightNum() int {
 	return n
 }
 
-func (c *Channel) GetConfirmedOffset() BackendOffset {
+func (c *Channel) GetConfirmed() BackendQueueEnd {
 	return c.backend.GetQueueConfirmed()
 }
 
-func (c *Channel) GetChannelEnd() BackendOffset {
-	return c.backend.GetQueueReadEnd().Offset()
+func (c *Channel) GetChannelEnd() BackendQueueEnd {
+	return c.backend.GetQueueReadEnd()
 }
 
 // doRequeue performs the low level operations to requeue a message
@@ -830,7 +839,7 @@ func (c *Channel) DisableConsume(disable bool) {
 		}
 		atomic.StoreInt32(&c.consumeDisabled, 0)
 		select {
-		case c.readerChanged <- BackendOffset(-1):
+		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
 		default:
 		}
 	}
@@ -906,14 +915,14 @@ func (c *Channel) resetReaderToConfirmed() error {
 	return nil
 }
 
-func (c *Channel) resetChannelReader(resetOffset BackendOffset, lastDataNeedRead *bool, origReadChan chan ReadResult,
+func (c *Channel) resetChannelReader(resetOffset resetChannelData, lastDataNeedRead *bool, origReadChan chan ReadResult,
 	lastMsg *Message, needReadBackend *bool, readBackendWait *bool) {
 	var err error
-	if resetOffset == BackendOffset(-1) {
+	if resetOffset.Offset == BackendOffset(-1) {
 		atomic.StoreInt32(&c.needResetReader, 1)
 	} else {
 		d := c.backend.(*diskQueueReader)
-		_, err = d.ResetReadToOffset(resetOffset)
+		_, err = d.ResetReadToOffset(resetOffset.Offset, resetOffset.Cnt)
 		if err != nil {
 			nsqLog.Warningf("failed to reset reader to %v, %v", resetOffset, err)
 		} else {
@@ -955,7 +964,7 @@ LOOP:
 		}
 
 		if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
-			nsqLog.Warningf("reset the reader : %v", c.GetConfirmedOffset())
+			nsqLog.Warningf("reset the reader : %v", c.GetConfirmed())
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {
@@ -972,7 +981,7 @@ LOOP:
 			if nsqLog.Level() >= levellogger.LOG_DEBUG {
 				nsqLog.LogDebugf("channel reader is holding: %v, %v, %v",
 					atomic.LoadInt32(&c.waitingConfirm),
-					c.GetConfirmedOffset(),
+					c.GetConfirmed(),
 					c.name)
 			}
 			atomic.StoreInt32(&c.needNotifyRead, 1)
@@ -1046,6 +1055,7 @@ LOOP:
 			}
 			msg.offset = data.Offset
 			msg.rawMoveSize = data.MovedSize
+			msg.queueCntIndex = data.CurCnt
 			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
 			}
@@ -1057,7 +1067,7 @@ LOOP:
 				nsqLog.Warningf("last raw data: %v", lastDataResult)
 				time.Sleep(time.Millisecond * 5)
 				if diskQ, ok := c.backend.(*diskQueueReader); ok {
-					diskQ.resetLastReadOne(data.Offset, int32(data.MovedSize))
+					diskQ.resetLastReadOne(data.Offset, data.CurCnt-1, int32(data.MovedSize))
 				}
 				lastMsg = *msg
 				lastDataResult = data
@@ -1100,8 +1110,8 @@ LOOP:
 			continue
 		}
 		if c.IsOrdered() {
-			curConfirm := c.GetConfirmedOffset()
-			if msg.offset != curConfirm {
+			curConfirm := c.GetConfirmed()
+			if msg.offset != curConfirm.Offset() {
 				nsqLog.Infof("read a message not in ordered: %v, %v", msg.offset, curConfirm)
 				atomic.StoreInt32(&c.needResetReader, 1)
 				continue
@@ -1146,7 +1156,7 @@ func (c *Channel) GetChannelDebugStats() string {
 	c.confirmMutex.Lock()
 	debugStr += fmt.Sprintf("channel end : %v, current confirm %v, confirmed %v messages: ",
 		c.GetChannelEnd(),
-		c.GetConfirmedOffset(), len(c.confirmedMsgs))
+		c.GetConfirmed(), len(c.confirmedMsgs))
 	for _, msg := range c.confirmedMsgs {
 		debugStr += fmt.Sprintf("%v(%v), ", msg.ID, msg.offset)
 	}
@@ -1179,7 +1189,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			if atomic.LoadInt32(&c.waitingConfirm) > 1 || flightCnt > 1 {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
 					flightCnt, atomic.LoadInt32(&c.waitingConfirm),
-					c.GetConfirmedOffset())
+					c.GetConfirmed())
 			}
 			c.inFlightMutex.Unlock()
 			goto exit
@@ -1251,7 +1261,7 @@ exit:
 
 			atomic.StoreInt32(&c.needResetReader, 1)
 			select {
-			case c.readerChanged <- BackendOffset(-1):
+			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
 			default:
 			}
 		}

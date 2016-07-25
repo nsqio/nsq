@@ -42,14 +42,16 @@ type ReadResult struct {
 
 // for channel consumer
 type BackendQueueReader interface {
-	ConfirmRead(BackendOffset) error
-	ResetReadToConfirmed() (BackendOffset, error)
-	SkipReadToOffset(BackendOffset) (BackendOffset, error)
+	ConfirmRead(BackendOffset, int64) error
+	ResetReadToConfirmed() (BackendQueueEnd, error)
+	SkipReadToOffset(BackendOffset, int64) (BackendQueueEnd, error)
+	SkipReadToEnd() (BackendQueueEnd, error)
 	Close() error
 	// left data to be read
 	Depth() int64
+	DepthSize() int64
 	GetQueueReadEnd() BackendQueueEnd
-	GetQueueConfirmed() BackendOffset
+	GetQueueConfirmed() BackendQueueEnd
 	Delete() error
 	UpdateQueueEnd(BackendQueueEnd, bool) (bool, error)
 	TryReadOne() (ReadResult, bool)

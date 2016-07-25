@@ -98,7 +98,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		test.Equal(t, stats.InFlightCount, int64(25))
 	}
 
-	channel.SetConsumeOffset(channel.GetChannelEnd(), true)
+	channel.SetConsumeOffset(channel.GetChannelEnd().Offset(), channel.GetChannelEnd().TotalMsgCnt(), true)
 	time.Sleep(time.Second)
 
 	for _, cl := range channel.GetClients() {

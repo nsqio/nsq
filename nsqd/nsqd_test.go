@@ -170,22 +170,24 @@ func TestStartup(t *testing.T) {
 	err = nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	equal(t, err, nil)
 	t.Logf("read %d msgs", iterations/2)
-	equal(t, channel1.Depth(), int64(iterations)*msgRawSize)
+	equal(t, channel1.Depth(), int64(iterations))
+	equal(t, channel1.DepthSize(), int64(iterations)*msgRawSize)
 	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.Offset(),
-		BackendOffset(channel1.Depth()))
+		BackendOffset(channel1.DepthSize()))
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
 		//t.Logf("read message %d", i+1)
 		equal(t, msg.Body, body)
 	}
-	channel1.backend.ConfirmRead(BackendOffset(int64(iterations/2) *
-		msgRawSize))
+	channel1.backend.ConfirmRead(BackendOffset(int64(iterations/2)*
+		msgRawSize), int64(iterations/2))
 	equal(t, channel1.backend.(*diskQueueReader).confirmedQueueInfo.Offset(),
 		BackendOffset(int64(iterations/2)*msgRawSize))
-	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
+	equal(t, channel1.Depth(), int64(iterations/2))
+	equal(t, channel1.DepthSize(), int64(iterations/2)*msgRawSize)
 
 	for {
-		if channel1.Depth() == int64(iterations/2)*msgRawSize {
+		if channel1.Depth() == int64(iterations/2) {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -235,7 +237,8 @@ func TestStartup(t *testing.T) {
 	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.Offset(),
 		backEnd.Offset())
 
-	equal(t, channel1.Depth(), int64(iterations/2)*msgRawSize)
+	equal(t, channel1.Depth(), int64(iterations/2))
+	equal(t, channel1.DepthSize(), int64(iterations/2)*msgRawSize)
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {

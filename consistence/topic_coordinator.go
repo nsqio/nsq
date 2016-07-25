@@ -8,6 +8,7 @@ import (
 
 type ChannelConsumerOffset struct {
 	VOffset       int64
+	VCnt          int64
 	Flush         bool
 	AllowBackward bool
 }
@@ -64,9 +65,14 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
 		return nil, err
 	}
+	// sync 1 means flush every message
+	// all other sync we can make the default buffer, since the commit log
+	// is just index of disk data and can be restored from disk queue.
 	buf := syncEvery - 1
-	if buf < 0 {
-		buf = DEFAULT_COMMIT_BUF_SIZE
+	if buf != 0 {
+		if buf < DEFAULT_COMMIT_BUF_SIZE {
+			buf = DEFAULT_COMMIT_BUF_SIZE
+		}
 	}
 	tc.logMgr, err = InitTopicCommitLogMgr(name, partition, basepath, buf)
 	if err != nil {

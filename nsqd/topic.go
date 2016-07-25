@@ -707,7 +707,7 @@ func (t *Topic) exit(deleted bool) error {
 	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {
-		nsqLog.Logf("[TRACE_DATA] exiting channel : %v, %v, %v, %v", channel.GetName(), channel.GetConfirmedOffset(), channel.Depth(), channel.backend.GetQueueReadEnd())
+		nsqLog.Logf("[TRACE_DATA] exiting channel : %v, %v, %v, %v", channel.GetName(), channel.GetConfirmed(), channel.Depth(), channel.backend.GetQueueReadEnd())
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
@@ -737,7 +737,7 @@ func (t *Topic) DisableForSlave() {
 		}
 
 		nsqLog.Logf("[TRACE_DATA] while disable channel : %v, %v, %v, %v, %v", c.GetName(),
-			c.GetConfirmedOffset(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
+			c.GetConfirmed(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
@@ -757,7 +757,7 @@ func (t *Topic) EnableForMaster() {
 			curRead = d.GetQueueCurrentRead()
 		}
 		nsqLog.Logf("[TRACE_DATA] while enable channel : %v, %v, %v, %v, %v", c.GetName(),
-			c.GetConfirmedOffset(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
+			c.GetConfirmed(), c.Depth(), c.backend.GetQueueReadEnd(), curRead)
 	}
 	t.channelLock.RUnlock()
 	atomic.StoreInt32(&t.writeDisabled, 0)
@@ -821,7 +821,7 @@ func (t *Topic) PrintCurrentStats() {
 	t.channelLock.RLock()
 	for _, ch := range t.channelMap {
 		nsqLog.Logf("channel(%s) depth: %v, confirmed: %v, debug: %v", ch.GetName(), ch.Depth(),
-			ch.GetConfirmedOffset(), ch.GetChannelDebugStats())
+			ch.GetConfirmed(), ch.GetChannelDebugStats())
 	}
 	t.channelLock.RUnlock()
 }

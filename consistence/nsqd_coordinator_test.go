@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
-	"reflect"
 	"strconv"
 	"sync"
 	"testing"
@@ -174,13 +173,6 @@ func ensureCatchupForTopic(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicIn
 		panic(err)
 	}
 	tc.topicInfo.CatchupList = topicInfo.CatchupList
-}
-
-func TestNsqdCoordLookupdChanged(t *testing.T) {
-	errInter := ErrLocalWriteFailed
-	commonErr := reflect.ValueOf(errInter).Interface().(error)
-	test.NotNil(t, commonErr)
-	t.Log(commonErr.Error())
 }
 
 func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, string) {
@@ -1008,8 +1000,10 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 
 	channel1 := topicData1.GetChannel("ch1")
 	channel2 := topicData2.GetChannel("ch1")
-	test.Equal(t, channel1.Depth(), int64(msgCnt)*msgRawSize)
-	test.Equal(t, channel2.Depth(), int64(msgCnt)*msgRawSize)
+	test.Equal(t, channel1.Depth(), int64(msgCnt))
+	test.Equal(t, channel1.DepthSize(), int64(msgCnt)*msgRawSize)
+	test.Equal(t, channel2.Depth(), int64(msgCnt))
+	test.Equal(t, channel2.DepthSize(), int64(msgCnt)*msgRawSize)
 	msgConsumed := 0
 	time.Sleep(time.Second)
 	coordLog.Infof("==== test client consume messages ====")
@@ -1019,9 +1013,11 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, msg.ID)
 		test.Nil(t, err)
 
-		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel1.DepthSize(), int64(msgCnt-i-1)*msgRawSize)
+		test.Equal(t, channel1.Depth(), int64(msgCnt-i-1))
 		time.Sleep(time.Millisecond * 10)
-		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel2.DepthSize(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel2.Depth(), int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
 
@@ -1090,12 +1086,14 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	}
 	topicData2.ForceFlush()
 	time.Sleep(time.Second)
-	test.Equal(t, int64(channel1.GetChannelEnd()), int64(msgCnt)*msgRawSize)
-	test.Equal(t, int64(channel2.GetChannelEnd()), int64(msgCnt)*msgRawSize)
-	test.Equal(t, int64(channel1.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
-	test.Equal(t, int64(channel2.GetConfirmedOffset()), int64(msgConsumed)*msgRawSize)
-	test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
-	test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-msgConsumed))
+	test.Equal(t, int64(channel1.GetChannelEnd().Offset()), int64(msgCnt)*msgRawSize)
+	test.Equal(t, int64(channel2.GetChannelEnd().Offset()), int64(msgCnt)*msgRawSize)
+	test.Equal(t, int64(channel1.GetConfirmed().Offset()), int64(msgConsumed)*msgRawSize)
+	test.Equal(t, int64(channel2.GetConfirmed().Offset()), int64(msgConsumed)*msgRawSize)
+	test.Equal(t, channel2.Depth(), int64(msgCnt-msgConsumed))
+	test.Equal(t, channel2.DepthSize(), msgRawSize*int64(msgCnt-msgConsumed))
+	test.Equal(t, channel1.Depth(), int64(msgCnt-msgConsumed))
+	test.Equal(t, channel1.DepthSize(), msgRawSize*int64(msgCnt-msgConsumed))
 	channel2.SetTrace(true)
 	channel1.SetTrace(true)
 	topicData1.SetTrace(true)
@@ -1107,8 +1105,10 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
 		test.Nil(t, err)
 		time.Sleep(time.Millisecond)
-		test.Equal(t, channel2.Depth(), msgRawSize*int64(msgCnt-i-1))
-		test.Equal(t, channel1.Depth(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel2.Depth(), int64(msgCnt-i-1))
+		test.Equal(t, channel2.DepthSize(), msgRawSize*int64(msgCnt-i-1))
+		test.Equal(t, channel1.Depth(), int64(msgCnt-i-1))
+		test.Equal(t, channel1.DepthSize(), msgRawSize*int64(msgCnt-i-1))
 	}
 	msgConsumed = msgCnt
 	// TODO: test retry write

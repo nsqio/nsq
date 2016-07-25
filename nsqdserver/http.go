@@ -434,12 +434,12 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 		var startFrom ConsumeOffset
 		startFrom.OffsetType = offsetSpecialType
 		startFrom.OffsetValue = -1
-		queueOffset, err := s.ctx.SetChannelOffset(channel, &startFrom, true)
+		queueOffset, cnt, err := s.ctx.SetChannelOffset(channel, &startFrom, true)
 		if err != nil {
 			return nil, http_api.Err{500, err.Error()}
 		}
-		nsqd.NsqLogger().Logf("empty the channel to end offset: %v, by client:%v",
-			queueOffset, req.RemoteAddr)
+		nsqd.NsqLogger().Logf("empty the channel to end offset: %v:%v, by client:%v",
+			queueOffset, cnt, req.RemoteAddr)
 	} else {
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
@@ -505,12 +505,12 @@ func (s *httpServer) doSetChannelOffset(w http.ResponseWriter, req *http.Request
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		queueOffset, err := s.ctx.SetChannelOffset(channel, startFrom, true)
+		queueOffset, cnt, err := s.ctx.SetChannelOffset(channel, startFrom, true)
 		if err != nil {
 			return nil, http_api.Err{500, err.Error()}
 		}
-		nsqd.NsqLogger().Logf("set the channel offset: %v (actual set : %v), by client:%v",
-			startFrom, queueOffset, req.RemoteAddr)
+		nsqd.NsqLogger().Logf("set the channel offset: %v (actual set : %v:%v), by client:%v",
+			startFrom, queueOffset, cnt, req.RemoteAddr)
 	} else {
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)

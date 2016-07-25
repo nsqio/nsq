@@ -49,6 +49,9 @@ func (d *dummyBackendQueue) Depth() int64 {
 	return int64(0)
 }
 
+func (d *dummyBackendQueue) DepthSize() int64 {
+	return int64(0)
+}
 func (d *dummyBackendQueue) Empty() error {
 	return nil
 }
@@ -78,20 +81,24 @@ func (d *dummyBackendQueueReader) TryReadOne() (ReadResult, bool) {
 	return ReadResult{}, true
 }
 
-func (d *dummyBackendQueueReader) ConfirmRead(offset BackendOffset) error {
+func (d *dummyBackendQueueReader) ConfirmRead(offset BackendOffset, cnt int64) error {
 	return nil
 }
 
-func (d *dummyBackendQueueReader) ResetReadToConfirmed() (BackendOffset, error) {
-	return 0, nil
+func (d *dummyBackendQueueReader) ResetReadToConfirmed() (BackendQueueEnd, error) {
+	return nil, nil
 }
 
-func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset) (BackendOffset, error) {
-	return 0, nil
+func (d *dummyBackendQueueReader) SkipReadToOffset(offset BackendOffset, cnt int64) (BackendQueueEnd, error) {
+	return nil, nil
 }
 
-func (d *dummyBackendQueueReader) GetQueueConfirmed() BackendOffset {
-	return 0
+func (d *dummyBackendQueueReader) SkipReadToEnd() (BackendQueueEnd, error) {
+	return nil, nil
+}
+
+func (d *dummyBackendQueueReader) GetQueueConfirmed() BackendQueueEnd {
+	return nil
 }
 
 func (d *dummyBackendQueue) UpdateQueueEnd(end BackendQueueEnd, force bool) (bool, error) {

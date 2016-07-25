@@ -716,6 +716,11 @@ func (self *NsqdCoordRpcServer) TestRpcTimeout() error {
 	return nil
 }
 
+type TopicCoordStats struct {
+	migrateProgress map[string]int
+}
+
 type CoordStats struct {
-	RpcStats gorpc.ConnStats
+	RpcStats   gorpc.ConnStats
+	TopicStats map[string]TopicCoordStats
 }

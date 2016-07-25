@@ -517,7 +517,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
-				offset, _ := subChannel.ConfirmBackendQueue(msg)
+				offset, _, _, _ := subChannel.ConfirmBackendQueue(msg)
 				// TODO: sync to replica nodes.
 				_ = offset
 				continue
@@ -886,12 +886,12 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		if cnt > 1 {
 			nsqd.NsqLogger().LogDebugf("the consume offset: %v can only be set by the first client: %v", startFrom, cnt)
 		} else {
-			queueOffset, err := p.ctx.SetChannelOffset(channel, startFrom, false)
+			queueOffset, cnt, err := p.ctx.SetChannelOffset(channel, startFrom, false)
 			if err != nil {
 				return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 			}
-			nsqd.NsqLogger().Logf("set the channel offset: %v (actual set : %v), by client:%v, %v",
-				startFrom, queueOffset, client.String(), client.UserAgent)
+			nsqd.NsqLogger().Logf("set the channel offset: %v (actual set : %v:%v), by client:%v, %v",
+				startFrom, queueOffset, cnt, client.String(), client.UserAgent)
 		}
 	}
 	client.EnableTrace = enableTrace

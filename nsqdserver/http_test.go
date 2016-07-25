@@ -440,12 +440,13 @@ func BenchmarkHTTPpub(b *testing.B) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
-	_, httpAddr, _, nsqdServer := mustStartNSQD(opts)
+	_, httpAddr, nsqdData, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, 256)
 	topicName := "bench_http_pub" + strconv.Itoa(int(time.Now().Unix()))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
 	client := &http.Client{}
+	nsqdData.GetTopic(topicName, 0)
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()
 
@@ -462,7 +463,7 @@ func BenchmarkHTTPpub(b *testing.B) {
 				}
 				body, _ := ioutil.ReadAll(resp.Body)
 				if !bytes.Equal(body, []byte("OK")) {
-					panic("bad response")
+					panic("bad response:" + string(body))
 				}
 				resp.Body.Close()
 			}

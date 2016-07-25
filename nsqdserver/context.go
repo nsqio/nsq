@@ -143,7 +143,7 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
-		_, _, err := ch.FinishMessage(clientID, msgID)
+		_, _, _, err := ch.FinishMessage(clientID, msgID)
 		if err == nil {
 			ch.ContinueConsumeForOrder()
 		}
@@ -152,55 +152,64 @@ func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.Mes
 	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)
 }
 
-func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, error) {
+func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, int64, error) {
 	var l *consistence.CommitLogData
 	var queueOffset int64
+	cnt := int64(0)
 	var err error
 	if startFrom.OffsetType == offsetTimestampType {
 		if c.nsqdCoord != nil {
-			l, queueOffset, err = c.nsqdCoord.SearchLogByMsgTimestamp(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
+			l, queueOffset, cnt, err = c.nsqdCoord.SearchLogByMsgTimestamp(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
 		} else {
 			err = errors.New("Not supported while coordinator disabled")
 		}
 	} else if startFrom.OffsetType == offsetSpecialType {
 		if startFrom.OffsetValue == -1 {
-			queueOffset = int64(ch.GetChannelEnd())
+			e := ch.GetChannelEnd()
+			queueOffset = int64(e.Offset())
+			cnt = e.TotalMsgCnt()
 		} else {
 			nsqd.NsqLogger().Logf("not known special offset :%v", startFrom)
 			err = errors.New("not supported offset type")
 		}
 	} else if startFrom.OffsetType == offsetVirtualQueueType {
 		queueOffset = startFrom.OffsetValue
+		cnt = 0
+		if c.nsqdCoord != nil {
+			l, queueOffset, cnt, err = c.nsqdCoord.SearchLogByMsgOffset(ch.GetTopicName(), ch.GetTopicPart(), queueOffset)
+		} else {
+			err = errors.New("Not supported while coordinator disabled")
+		}
 	} else {
 		nsqd.NsqLogger().Logf("not supported offset type:%v", startFrom)
 		err = errors.New("not supported offset type")
 	}
 	if err != nil {
 		nsqd.NsqLogger().Logf("failed to search the consume offset: %v, err:%v", startFrom, err)
-		return 0, err
+		return 0, 0, err
 	}
-	nsqd.NsqLogger().Logf("%v searched log : %v, offset: %v", startFrom, l, queueOffset)
+	nsqd.NsqLogger().Logf("%v searched log : %v, offset: %v:%v", startFrom, l, queueOffset, cnt)
 	if c.nsqdCoord == nil {
-		err = ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
+		err = ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), cnt, force)
 		if err != nil {
 			if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
 				nsqd.NsqLogger().Logf("failed to set the consume offset: %v, err:%v", startFrom, err)
-				return 0, err
+				return 0, 0, err
 			}
 			nsqd.NsqLogger().Logf("the consume offset: %v can only be set by the first client", startFrom, err)
 		}
 	} else {
-		err = c.nsqdCoord.SetChannelConsumeOffsetToCluster(ch, queueOffset, force)
+		err = c.nsqdCoord.SetChannelConsumeOffsetToCluster(ch, queueOffset, cnt, force)
 		if err != nil {
 			if coordErr, ok := err.(*consistence.CoordErr); ok {
 				if coordErr.IsEqual(consistence.ErrLocalSetChannelOffsetNotFirstClient) {
 					nsqd.NsqLogger().Logf("the consume offset: %v can only be set by the first client", startFrom)
-					return queueOffset, nil
+					return queueOffset, cnt, nil
 				}
 			}
-			nsqd.NsqLogger().Logf("failed to set the consume offset: %v (%v), err: %v ", startFrom, queueOffset, err)
-			return 0, err
+			nsqd.NsqLogger().Logf("failed to set the consume offset: %v (%v:%v), err: %v ", startFrom, queueOffset, cnt, err)
+			return 0, 0, err
 		}
 	}
-	return queueOffset, nil
+	return queueOffset, cnt, nil
 }

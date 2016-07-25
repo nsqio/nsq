@@ -38,12 +38,12 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
 		topic.Lock()
-		id, offset, writeBytes, qe, putErr := topic.PutMessageNoLock(msg)
+		id, offset, writeBytes, qe, localErr := topic.PutMessageNoLock(msg)
 		queueEnd = qe
 		topic.Unlock()
-		if putErr != nil {
-			coordLog.Warningf("put message to local failed: %v", putErr)
-			return ErrLocalWriteFailed
+		if localErr != nil {
+			coordLog.Warningf("put message to local failed: %v", localErr)
+			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		commitLog.LogID = int64(id)
 		// epoch should not be changed.
@@ -128,12 +128,12 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	doLocalWrite := func(d *coordData) *CoordErr {
 		topic.Lock()
 		logMgr = d.logMgr
-		id, offset, writeBytes, totalCnt, qe, putErr := topic.PutMessagesNoLock(msgs)
+		id, offset, writeBytes, totalCnt, qe, localErr := topic.PutMessagesNoLock(msgs)
 		queueEnd = qe
 		topic.Unlock()
-		if putErr != nil {
-			coordLog.Warningf("put batch messages to local failed: %v", putErr)
-			return ErrLocalWriteFailed
+		if localErr != nil {
+			coordLog.Warningf("put batch messages to local failed: %v", localErr)
+			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		commitLog.LogID = int64(id)
 		// epoch should not be changed.
@@ -243,7 +243,7 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 
 	localErr := doLocalWrite(tcData)
 	if localErr != nil {
-		clusterWriteErr = ErrLocalWriteFailed
+		clusterWriteErr = localErr
 		goto exitsync
 	}
 	needLeaveISR = true
@@ -638,7 +638,7 @@ exitpubslave:
 	return slaveErr
 }
 
-func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, queueOffset int64, force bool) error {
+func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, queueOffset int64, cnt int64, force bool) error {
 	topicName := ch.GetTopicName()
 	partition := ch.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
@@ -648,18 +648,19 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 
 	var syncOffset ChannelConsumerOffset
 	syncOffset.AllowBackward = true
+	syncOffset.VCnt = cnt
+	syncOffset.VOffset = queueOffset
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		err := ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), force)
+		err := ch.SetConsumeOffset(nsqd.BackendOffset(queueOffset), cnt, force)
 		if err != nil {
 			if err != nsqd.ErrSetConsumeOffsetNotFirstClient {
 				coordLog.Infof("failed to set the consume offset: %v, err:%v", queueOffset, err)
-				return ErrLocalWriteFailed
+				return &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
 			}
 			coordLog.Debugf("the consume offset: %v can only be set by the first client", queueOffset)
 			return ErrLocalSetChannelOffsetNotFirstClient
 		}
-		syncOffset.VOffset = queueOffset
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {}
@@ -702,13 +703,14 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		offset, tmpChanged, localErr := channel.FinishMessage(clientID, msgID)
+		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, msgID)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
-			return ErrLocalWriteFailed
+			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		changed = tmpChanged
 		syncOffset.VOffset = int64(offset)
+		syncOffset.VCnt = cnt
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {}
@@ -769,7 +771,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	if localErr != nil {
 		coordLog.Warningf("slave missing topic : %v", topicName)
 		// TODO: leave the isr and try re-sync with leader
-		return &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
+		return &CoordErr{localErr.Error(), RpcCommonErr, CoordSlaveErr}
 	}
 
 	if topic.GetTopicPart() != partition {
@@ -778,7 +780,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	}
 	ch := topic.GetChannel(channelName)
 	currentEnd := ch.GetChannelEnd()
-	if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+	if nsqd.BackendOffset(offset.VOffset) > currentEnd.Offset() {
 		coordLog.Debugf("update channel(%v) consume offset exceed end %v on slave : %v", channelName, offset, currentEnd)
 		// cache the offset (using map?) to reduce the slave channel flush.
 		coord.consumeMgr.Lock()
@@ -791,21 +793,22 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		if offset.Flush {
 			topic.ForceFlush()
 			currentEnd = ch.GetChannelEnd()
-			if nsqd.BackendOffset(offset.VOffset) > currentEnd {
-				offset.VOffset = int64(currentEnd)
+			if nsqd.BackendOffset(offset.VOffset) > currentEnd.Offset() {
+				offset.VOffset = int64(currentEnd.Offset())
+				offset.VCnt = currentEnd.TotalMsgCnt()
 			}
 		} else {
 			return nil
 		}
 	}
-	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.AllowBackward)
+	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.VCnt, offset.AllowBackward)
 	if err != nil {
 		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
 			channelName, offset, err, currentEnd, topic.TotalDataSize())
 		if err == nsqd.ErrExiting {
 			return &CoordErr{err.Error(), RpcNoErr, CoordTmpErr}
 		}
-		return &CoordErr{err.Error(), RpcCommonErr, CoordLocalErr}
+		return &CoordErr{err.Error(), RpcCommonErr, CoordSlaveErr}
 	}
 	return nil
 }
