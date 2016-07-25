@@ -12,8 +12,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/coreos/go-etcd/etcd"
 	"github.com/coreos/etcd/client"
+	"github.com/coreos/go-etcd/etcd"
 )
 
 var (

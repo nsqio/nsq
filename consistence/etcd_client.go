@@ -62,7 +62,7 @@ func (self *EtcdClient) CreateDir(key string, ttl uint64) (*client.Response, err
 
 func (self *EtcdClient) Set(key string, value string, ttl uint64) (*client.Response, error) {
 	setOptions := &client.SetOptions{
-		TTL:     time.Duration(ttl) * time.Second,
+		TTL: time.Duration(ttl) * time.Second,
 	}
 	return self.kapi.Set(context.Background(), key, value, setOptions)
 }

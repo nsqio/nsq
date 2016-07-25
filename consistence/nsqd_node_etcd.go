@@ -13,9 +13,10 @@ import (
 	"path"
 	"strconv"
 	"time"
+	"sync"
 
-	"github.com/coreos/go-etcd/etcd"
 	"github.com/coreos/etcd/client"
+	"github.com/coreos/go-etcd/etcd"
 	etcdlock "github.com/reechou/xlock"
 	"golang.org/x/net/context"
 )
@@ -30,6 +31,8 @@ type MasterChanInfo struct {
 }
 
 type NsqdEtcdMgr struct {
+	sync.Mutex
+	
 	eClient     *etcd.Client
 	client      *EtcdClient
 	clusterID   string
@@ -95,6 +98,9 @@ func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 }
 
 func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
+	self.Lock()
+	defer self.Unlock()
+	
 	// clear
 	for k, v := range self.topicLockMap {
 		v.Unlock()
@@ -140,8 +146,11 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		return err
 	}
 	coordLog.Infof("[AcquireTopicLeader] topic_key[%s] lock success.", topicKey)
+	
+	self.Lock()
 	self.topicLockMap[topicKey] = lock
 	coordLog.Infof("[AcquireTopicLeader] map: %v", self.topicLockMap)
+	self.Unlock()
 
 	return nil
 }
@@ -177,6 +186,9 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 //}
 
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
+	self.Lock()
+	defer self.Unlock()
+	
 	coordLog.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] leader", topic, partition)
 	coordLog.Infof("[ReleaseTopicLeader] map: %v", self.topicLockMap)
 	topicKey := self.createTopicLeaderPath(topic, partition)

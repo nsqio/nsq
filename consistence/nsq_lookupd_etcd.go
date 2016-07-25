@@ -35,7 +35,10 @@ type WatchTopicLeaderInfo struct {
 }
 
 type NsqLookupdEtcdMgr struct {
-	sync.Mutex
+	tmisMutex sync.Mutex
+	tmiMutex  sync.Mutex
+	wtliMutex sync.Mutex
+	itcMutex  sync.Mutex
 
 	eClient           *etcd.Client
 	client            *EtcdClient
@@ -329,22 +332,22 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 			}
 			continue
 		}
-		self.Lock()
+		self.itcMutex.Lock()
 		self.ifTopicChanged = true
-		self.Unlock()
+		self.itcMutex.Unlock()
 	}
 }
 
 func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
-	self.Lock()
+	self.itcMutex.Lock()
 	self.ifTopicChanged = false
-	self.Unlock()
+	self.itcMutex.Unlock()
 
 	rsp, err := self.client.Get(self.topicRoot, true, true)
 	if err != nil {
-		self.Lock()
+		self.itcMutex.Lock()
 		self.ifTopicChanged = true
-		self.Unlock()
+		self.itcMutex.Unlock()
 		if client.IsKeyNotFound(err) {
 			return nil, ErrKeyNotFound
 		}
@@ -375,9 +378,9 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
 		}
 	}
 
-	self.Lock()
+	self.tmisMutex.Lock()
 	self.topicMetaInfos = topicMetaInfos
-	self.Unlock()
+	self.tmisMutex.Unlock()
 
 	return self.topicMetaInfos, nil
 }
@@ -430,14 +433,16 @@ func (self *NsqLookupdEtcdMgr) processTopicNode(nodes client.Nodes, topicMetaMap
 
 func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
 	var topicInfo TopicPartitionMetaInfo
+	self.tmiMutex.Lock()
 	metaInfo, ok := self.topicMetaMap[topic]
+	self.tmiMutex.Unlock()
 	if !ok {
 		rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 		if err != nil {
 			if client.IsKeyNotFound(err) {
-				self.Lock()
+				self.itcMutex.Lock()
 				self.ifTopicChanged = true
-				self.Unlock()
+				self.itcMutex.Unlock()
 				return nil, ErrKeyNotFound
 			}
 			return nil, err
@@ -448,18 +453,19 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 			return nil, err
 		}
 		topicInfo.TopicMetaInfo = mInfo
-		self.Lock()
+		self.tmiMutex.Lock()
 		self.topicMetaMap[topic] = &mInfo
-		self.Unlock()
+		self.tmiMutex.Unlock()
 	} else {
 		topicInfo.TopicMetaInfo = *metaInfo
 	}
+	
 	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
-			self.Lock()
+			self.itcMutex.Lock()
 			self.ifTopicChanged = true
-			self.Unlock()
+			self.itcMutex.Unlock()
 			return nil, ErrKeyNotFound
 		}
 		return nil, err
@@ -485,12 +491,15 @@ func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int)
 		return err
 	}
 	// if replica == 1, no need watch leader session
+	self.tmiMutex.Lock()
 	v, ok := self.topicMetaMap[topic]
 	if ok {
 		if v.Replica == 1 {
 			return nil
 		}
 	}
+	self.tmiMutex.Unlock()
+	
 	// start to watch topic leader session
 	watchTopicLeaderInfo := &WatchTopicLeaderInfo{
 		event:       EVENT_WATCH_TOPIC_L_CREATE,
@@ -519,9 +528,10 @@ func (self *NsqLookupdEtcdMgr) CreateTopic(topic string, meta *TopicMetaInfo) er
 		}
 		return err
 	}
-	self.Lock()
-	defer self.Unlock()
+	
+	self.tmiMutex.Lock()
 	self.topicMetaMap[topic] = meta
+	self.tmiMutex.Unlock()
 
 	return nil
 }
@@ -578,13 +588,14 @@ func (self *NsqLookupdEtcdMgr) DeleteTopic(topic string, partition int) error {
 	}
 	// stop watch topic leader and delete
 	topicLeaderSession := self.createTopicLeaderSessionPath(topic, partition)
+	
+	self.wtliMutex.Lock()
+	defer self.wtliMutex.Unlock()
 	v, ok := self.watchTopicLeaderChanMap[topicLeaderSession]
 	if ok {
 		close(v.watchStopCh)
 		<-v.stoppedCh
-		self.Lock()
 		delete(self.watchTopicLeaderChanMap, topicLeaderSession)
-		self.Unlock()
 	}
 
 	return nil
@@ -631,9 +642,11 @@ func (self *NsqLookupdEtcdMgr) GetTopicLeaderSession(topic string, partition int
 // maybe use: go WatchTopicLeader()...
 func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error {
 	// start watch goroutine
+	self.wtliMutex.Lock()
 	for _, v := range self.watchTopicLeaderChanMap {
 		go self.watchTopicLeaderSession(v, leader)
 	}
+	self.wtliMutex.Unlock()
 
 	for {
 		select {
@@ -641,24 +654,28 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 			topicLeaderSession := self.createTopicLeaderSessionPath(event.topic, event.partition)
 			if event.event == EVENT_WATCH_TOPIC_L_CREATE {
 				// add to watch topic leader map
-				self.Lock()
+				self.wtliMutex.Lock()
 				self.watchTopicLeaderChanMap[topicLeaderSession] = event
-				self.Unlock()
+				self.wtliMutex.Unlock()
 				coordLog.Infof("[WatchTopicLeader]create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
 				go self.watchTopicLeaderSession(event, leader)
 			}
 		case <-stop:
+			self.wtliMutex.Lock()
 			for _, v := range self.watchTopicLeaderChanMap {
 				v.watchStopCh <- true
 				<-v.stoppedCh
 			}
+			self.wtliMutex.Unlock()
 			close(leader)
 			return nil
 		case <-self.watchTopicLeaderStopCh:
+			self.wtliMutex.Lock()
 			for _, v := range self.watchTopicLeaderChanMap {
 				v.watchStopCh <- true
 				<-v.stoppedCh
 			}
+			self.wtliMutex.Unlock()
 			close(leader)
 			return nil
 		}
