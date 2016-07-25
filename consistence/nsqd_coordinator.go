@@ -210,11 +210,11 @@ func (self *NsqdCoordinator) Stop() {
 
 func (self *NsqdCoordinator) periodFlushCommitLogs() {
 	tmpCoords := make(map[string]map[int]*TopicCoordinator)
-	syncChannelCounter := 0
+	syncCounter := 0
 	defer self.wg.Done()
-	flushTicker := time.NewTicker(time.Second)
+	flushTicker := time.NewTicker(time.Second * 2)
 	doFlush := func() {
-		syncChannelCounter++
+		syncCounter++
 		self.coordMutex.RLock()
 		for name, tc := range self.topicCoords {
 			coords, ok := tmpCoords[name]
@@ -230,12 +230,17 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 		for _, tc := range tmpCoords {
 			for pid, tpc := range tc {
 				tcData := tpc.GetData()
-				if tcData.GetLeader() == self.myNode.GetID() {
-					tcData.logMgr.FlushCommitLogs()
-				} else if syncChannelCounter%10 == 0 {
-					tcData.logMgr.FlushCommitLogs()
+				if tcData.GetLeader() == self.myNode.GetID() || (syncCounter%10 == 0) {
+					localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
+					if err != nil {
+						coordLog.Infof("no local topic: %v", tcData.topicInfo.GetTopicDesp())
+					} else {
+						localTopic.ForceFlush()
+						tcData.logMgr.FlushCommitLogs()
+					}
 				}
-				if syncChannelCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
+
+				if syncCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
 					self.trySyncTopicChannels(tcData)
 				}
 				delete(tc, pid)
@@ -530,48 +535,92 @@ func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, part int) bool {
 	return tcData.GetLeader() == self.myNode.GetID() && tcData.GetLeaderSessionID() == self.myNode.GetID()
 }
 
-func (self *NsqdCoordinator) SearchLogByMsgCnt(topic string, part int, count int64) (*CommitLogData, int64, error) {
+func (self *NsqdCoordinator) SearchLogByMsgOffset(topic string, part int, offset int64) (*CommitLogData, int64, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {
-		return nil, 0, errors.New(err.Error())
+		return nil, 0, 0, errors.New(err.Error())
 	}
-	_, _, l, localErr := tcData.logMgr.SearchLogDataByMsgCnt(count)
+	_, _, l, localErr := tcData.logMgr.SearchLogDataByMsgOffset(offset)
 	if localErr != nil {
 		coordLog.Infof("search data failed: %v", localErr)
-		return nil, 0, localErr
+		return nil, 0, 0, localErr
 	}
 	realOffset := l.MsgOffset
-	if l.MsgCnt < count {
+	curCount := l.MsgCnt - 1
+	if l.MsgOffset < offset {
 		t, localErr := self.localNsqd.GetExistingTopic(topic, part)
 		if localErr != nil {
-			return l, realOffset, localErr
+			return l, 0, 0, localErr
 		}
 		snap := t.GetDiskQueueSnapshot()
 		localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
 		if localErr != nil {
 			coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
-			return l, realOffset, localErr
+			return l, 0, 0, localErr
 		}
-		curCount := l.MsgCnt
 
 		for {
 			ret := snap.ReadOne()
 			if ret.Err != nil {
 				coordLog.Infof("read disk queue error: %v", ret.Err)
 				if ret.Err == io.EOF {
-					return l, realOffset, nil
+					return l, realOffset, curCount, nil
 				}
-				return l, realOffset, ret.Err
+				return l, realOffset, curCount, ret.Err
 			} else {
-				realOffset = int64(ret.Offset)
-				if curCount >= count || curCount > l.MsgCnt+int64(l.MsgNum-1) {
+				if int64(ret.Offset) >= offset || curCount > l.MsgCnt+int64(l.MsgNum-1) {
 					break
 				}
+				realOffset = int64(ret.Offset) + int64(ret.MovedSize)
 				curCount++
 			}
 		}
 	}
-	return l, realOffset, nil
+	return l, realOffset, curCount, nil
+}
+
+func (self *NsqdCoordinator) SearchLogByMsgCnt(topic string, part int, count int64) (*CommitLogData, int64, int64, error) {
+	tcData, err := self.getTopicCoordData(topic, part)
+	if err != nil || tcData.logMgr == nil {
+		return nil, 0, 0, errors.New(err.Error())
+	}
+	_, _, l, localErr := tcData.logMgr.SearchLogDataByMsgCnt(count)
+	if localErr != nil {
+		coordLog.Infof("search data failed: %v", localErr)
+		return nil, 0, 0, localErr
+	}
+	realOffset := l.MsgOffset
+	curCount := l.MsgCnt - 1
+	if l.MsgCnt < count {
+		t, localErr := self.localNsqd.GetExistingTopic(topic, part)
+		if localErr != nil {
+			return l, 0, 0, localErr
+		}
+		snap := t.GetDiskQueueSnapshot()
+		localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
+		if localErr != nil {
+			coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
+			return l, 0, 0, localErr
+		}
+
+		for {
+			ret := snap.ReadOne()
+			if ret.Err != nil {
+				coordLog.Infof("read disk queue error: %v", ret.Err)
+				if ret.Err == io.EOF {
+					return l, realOffset, curCount, nil
+				}
+				return l, realOffset, curCount, ret.Err
+			} else {
+				if curCount >= count-1 || curCount > l.MsgCnt+int64(l.MsgNum-1) {
+					break
+				}
+				realOffset = int64(ret.Offset) + int64(ret.MovedSize)
+				curCount++
+			}
+		}
+	}
+	return l, realOffset, curCount, nil
 }
 
 type MsgTimestampComparator struct {
@@ -629,14 +678,15 @@ func (self *MsgTimestampComparator) GreatThanRightBoundary(l *CommitLogData) boo
 	return false
 }
 
-func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_sec int64) (*CommitLogData, int64, error) {
+// return the searched log data and the exact offset the reader should be reset and the total count before the offset.
+func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_sec int64) (*CommitLogData, int64, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {
-		return nil, 0, errors.New(err.Error())
+		return nil, 0, 0, errors.New(err.Error())
 	}
 	t, localErr := self.localNsqd.GetExistingTopic(topic, part)
 	if localErr != nil {
-		return nil, 0, localErr
+		return nil, 0, 0, localErr
 	}
 
 	snap := t.GetDiskQueueSnapshot()
@@ -649,31 +699,30 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 	_, _, l, localErr := tcData.logMgr.SearchLogDataByComparator(comp)
 	coordLog.Infof("search log cost: %v", time.Since(startSearch))
 	if localErr != nil {
-		return nil, 0, localErr
+		return nil, 0, 0, localErr
 	}
 	realOffset := l.MsgOffset
 	// check if the message timestamp is fit the require
 	localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
 	if localErr != nil {
 		coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
-		return l, realOffset, localErr
+		return l, 0, 0, localErr
 	}
-	curCount := l.MsgCnt
+	curCount := l.MsgCnt - 1
 
 	for {
 		ret := snap.ReadOne()
 		if ret.Err != nil {
 			coordLog.Infof("read disk queue error: %v", ret.Err)
 			if ret.Err == io.EOF {
-				return l, realOffset, nil
+				return l, realOffset, curCount, nil
 			}
-			return l, realOffset, ret.Err
+			return l, realOffset, curCount, ret.Err
 		} else {
-			realOffset = int64(ret.Offset)
 			msg, err := nsqd.DecodeMessage(ret.Data)
 			if err != nil {
 				coordLog.Errorf("failed to decode message - %v - %v", err, ret)
-				return l, realOffset, err
+				return l, realOffset, curCount, err
 			}
 			// we allow to read the next message count exceed the current log
 			// in case the current log contains only one message (the returned timestamp may be
@@ -681,10 +730,11 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 			if msg.Timestamp >= comp.searchTs || curCount > l.MsgCnt+int64(l.MsgNum-1) {
 				break
 			}
+			realOffset = int64(ret.Offset) + int64(ret.MovedSize)
 			curCount++
 		}
 	}
-	return l, realOffset, nil
+	return l, realOffset, curCount, nil
 }
 
 // for isr node to check with leader
@@ -991,12 +1041,15 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				break
 			}
 		}
-		logMgr.FlushCommitLogs()
-		localTopic.UpdateCommittedOffset(lastCommitOffset)
+		if !hasErr {
+			logMgr.FlushCommitLogs()
+			localTopic.UpdateCommittedOffset(lastCommitOffset)
+		}
 		localTopic.Unlock()
 		if hasErr {
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
+		localTopic.ForceFlush()
 		logIndex, offset = logMgr.GetCurrentEnd()
 
 		if synced && joinISRSession == "" {
@@ -1012,9 +1065,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			break
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
+			localTopic.ForceFlush()
 			logMgr.FlushCommitLogs()
 			logMgr.switchForMaster(false)
-			localTopic.ForceFlush()
 			coordLog.Infof("local topic is ready for isr: %v", topicInfo.GetTopicDesp())
 			go func() {
 				rpcErr := self.notifyReadyForTopicISR(&topicInfo, &leaderSession, joinISRSession)
@@ -1188,15 +1241,15 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 	tcData.consumeMgr.Unlock()
 	for chName, offset := range offsetMap {
 		ch := localTopic.GetChannel(chName)
-		currentConfirmed := ch.GetConfirmedOffset()
-		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed {
+		currentConfirmed := ch.GetConfirmed()
+		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed.Offset() {
 			continue
 		}
 		currentEnd := ch.GetChannelEnd()
-		if nsqd.BackendOffset(offset.VOffset) > currentEnd {
+		if nsqd.BackendOffset(offset.VOffset) > currentEnd.Offset() {
 			continue
 		}
-		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.AllowBackward)
+		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.VCnt, offset.AllowBackward)
 		if err != nil {
 			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
 				chName, offset, err, currentEnd, localTopic.TotalDataSize())
@@ -1336,7 +1389,9 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 		var syncOffset ChannelConsumerOffset
 		syncOffset.Flush = true
 		for _, ch := range channels {
-			syncOffset.VOffset = int64(ch.GetConfirmedOffset())
+			confirmed := ch.GetConfirmed()
+			syncOffset.VOffset = int64(confirmed.Offset())
+			syncOffset.VCnt = confirmed.TotalMsgCnt()
 
 			for _, nodeID := range tcData.topicInfo.ISR {
 				if nodeID == self.myNode.GetID() {
@@ -1429,9 +1484,17 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 	for topicName, topicData := range tmpTopicCoords {
 		for pid, tpCoord := range topicData {
 			tcData := tpCoord.GetData()
-			tcData.logMgr.FlushCommitLogs()
+			localTopic, err := self.localNsqd.GetExistingTopic(topicName, pid)
+			if err != nil {
+				coordLog.Infof("no local topic")
+				continue
+			}
+
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) == -1 {
 				tpCoord.Exiting()
+				localTopic.PrintCurrentStats()
+				localTopic.ForceFlush()
+				tcData.logMgr.FlushCommitLogs()
 				continue
 			}
 			if len(tcData.topicInfo.ISR)-1 <= tcData.topicInfo.Replica/2 {
@@ -1467,13 +1530,11 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
 			}
-			localTopic, err := self.localNsqd.GetExistingTopic(topicName, pid)
-			if err != nil {
-				coordLog.Infof("no local topic")
-			} else {
-				localTopic.PrintCurrentStats()
-				localTopic.Close()
-			}
+
+			localTopic.PrintCurrentStats()
+			localTopic.ForceFlush()
+			tcData.logMgr.FlushCommitLogs()
+			localTopic.Close()
 		}
 	}
 	coordLog.Infof("prepare leaving finished.")
