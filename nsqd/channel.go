@@ -441,7 +441,7 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, allowBackward bool) error {
 	if cnt == 0 && offset != 0 {
-		nsqLog.LogWarningf("the count is not valid: %v:%v. (This may happen while upgrade from old)", offset, cnt)
+		nsqLog.LogWarningf("channel (%v) the count is not valid: %v:%v. (This may happen while upgrade from old)", c.GetName(), offset, cnt)
 		return nil
 	}
 	// TODO: confirm on slave may exceed the current end, because the buffered write
@@ -516,7 +516,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 		err := c.backend.ConfirmRead(newConfirmed, confirmedCnt)
 		if err != nil {
 			if err != ErrExiting {
-				nsqLog.LogErrorf("confirm read failed: %v, msg: %v", err, msg)
+				nsqLog.LogErrorf("channel (%v): confirm read failed: %v, msg: %v", c.GetName(), err, msg)
 			} else {
 				// rollback removed confirmed messages
 				for id, m := range tmpRemoved {
@@ -575,7 +575,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, in
 	defer c.inFlightMutex.Unlock()
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
-		nsqLog.LogWarningf("message %v fin error: %v from client %v", id, err,
+		nsqLog.Logf("channel (%v): message %v fin error: %v from client %v", c.GetName(), id, err,
 			clientID)
 		return 0, 0, false, err
 	}
@@ -611,7 +611,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		// remove from inflight first
 		msg, err := c.popInFlightMessage(clientID, id)
 		if err != nil {
-			nsqLog.LogWarningf("message %v requeue error: %v from client %v", id, err,
+			nsqLog.Logf("channel (%v): message %v requeue error: %v from client %v", c.GetName(), id, err,
 				clientID)
 			return err
 		}
@@ -796,7 +796,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 			msg.clientID, clientID)
 	}
 	if msg.isDeferred {
-		nsqLog.LogWarningf("should never pop a deferred message here unless the timeout : %v", msg.ID)
+		nsqLog.LogWarningf("channel (%v): should never pop a deferred message here unless the timeout : %v", c.GetName(), msg.ID)
 		return nil, ErrMsgDeferred
 	}
 	delete(c.inFlightMessages, id)
@@ -908,7 +908,7 @@ func (c *Channel) resetReaderToConfirmed() error {
 	atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0)
 	confirmed, err := c.backend.ResetReadToConfirmed()
 	if err != nil {
-		nsqLog.LogWarningf("reset read to confirmed error: %v", err)
+		nsqLog.LogWarningf("channel(%v): reset read to confirmed error: %v", c.GetName(), err)
 		return err
 	}
 	nsqLog.Logf("reset channel %v reader to confirm: %v", c.name, confirmed)
@@ -1037,20 +1037,24 @@ LOOP:
 		case data = <-readChan:
 			lastDataNeedRead = false
 			if data.Err != nil {
-				nsqLog.LogErrorf("failed to read message - %s", data.Err)
-				// TODO: fix corrupt file from other replica.
-				// and should handle the confirm offset, since some skipped data
-				// may never be confirmed any more
-				_, skipErr := c.backend.(*diskQueueReader).SkipToNext()
-				if skipErr != nil {
+				nsqLog.LogErrorf("channel (%v): failed to read message - %s", c.GetName(), data.Err)
+				if data.Err == ErrReadQueueCountMissing {
+					time.Sleep(time.Second)
+				} else {
+					// TODO: fix corrupt file from other replica.
+					// and should handle the confirm offset, since some skipped data
+					// may never be confirmed any more
+					_, skipErr := c.backend.(*diskQueueReader).SkipToNext()
+					if skipErr != nil {
+					}
+					isSkipped = true
 				}
-				isSkipped = true
 				time.Sleep(time.Millisecond * 100)
 				continue LOOP
 			}
 			msg, err = decodeMessage(data.Data)
 			if err != nil {
-				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
+				nsqLog.LogErrorf("channel (%v): failed to decode message - %s - %v", c.GetName(), err, data)
 				continue LOOP
 			}
 			msg.offset = data.Offset
@@ -1078,7 +1082,7 @@ LOOP:
 			lastDataResult = data
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
-				nsqLog.LogWarningf("skipped message from %v:%v to the : %v:%v", lastMsg.ID, lastMsg.offset, msg.ID, msg.offset)
+				nsqLog.LogWarningf("channel (%v): skipped message from %v:%v to the : %v:%v", c.GetName(), lastMsg.ID, lastMsg.offset, msg.ID, msg.offset)
 			}
 			if resumedFirst {
 				if nsqLog.Level() >= levellogger.LOG_DEBUG {

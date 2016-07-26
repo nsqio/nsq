@@ -1226,7 +1226,23 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 		coordLog.Infof("current topic %v write state: %v",
 			tcData.topicInfo.GetTopicDesp(), topicCoord.IsWriteDisabled())
 		if !topicCoord.IsWriteDisabled() {
+			// try fix channel consume count here, since the old version has not count info,
+			// we need restore from commit log.
 			localTopic.EnableForMaster()
+			chs := localTopic.GetChannelMapCopy()
+			for _, ch := range chs {
+				confirmed := ch.GetConfirmed()
+				if confirmed.Offset() > 0 && confirmed.TotalMsgCnt() <= 0 {
+					l, offset, cnt, err := self.SearchLogByMsgOffset(tcData.topicInfo.Name, tcData.topicInfo.Partition, int64(confirmed.Offset()))
+					if err != nil {
+						coordLog.Infof("search msg offset failed: %v", err)
+					} else {
+						coordLog.Infof("try fix the channel %v confirmed queue info from %v to %v:%v, commitlog: %v",
+							ch.GetName(), confirmed, offset, cnt, l)
+						ch.SetConsumeOffset(nsqd.BackendOffset(offset), cnt, true)
+					}
+				}
+			}
 		}
 	} else {
 		localTopic.DisableForSlave()
@@ -1390,6 +1406,20 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 		syncOffset.Flush = true
 		for _, ch := range channels {
 			confirmed := ch.GetConfirmed()
+			// try fix message count here, since old version has no count info.
+			if confirmed.Offset() > 0 && confirmed.TotalMsgCnt() <= 0 {
+				l, offset, cnt, err := self.SearchLogByMsgOffset(tcData.topicInfo.Name, tcData.topicInfo.Partition, int64(confirmed.Offset()))
+				if err != nil {
+					coordLog.Infof("search msg offset failed: %v", err)
+				} else {
+					coordLog.Infof("try fix the channel %v confirmed queue info from %v to %v:%v, commitlog: %v",
+						ch.GetName(), confirmed, offset, cnt, l)
+					ch.SetConsumeOffset(nsqd.BackendOffset(offset), cnt, true)
+					time.Sleep(time.Millisecond * 10)
+					confirmed = ch.GetConfirmed()
+				}
+			}
+
 			syncOffset.VOffset = int64(confirmed.Offset())
 			syncOffset.VCnt = confirmed.TotalMsgCnt()
 

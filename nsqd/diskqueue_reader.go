@@ -20,11 +20,12 @@ const (
 )
 
 var (
-	ErrConfirmSizeInvalid = errors.New("Confirm data size invalid.")
-	ErrConfirmCntInvalid  = errors.New("Confirm message count invalid.")
-	ErrMoveOffsetInvalid  = errors.New("move offset invalid")
-	ErrOffsetTypeMismatch = errors.New("offset type mismatch")
-	ErrExiting            = errors.New("exiting")
+	ErrConfirmSizeInvalid    = errors.New("Confirm data size invalid.")
+	ErrConfirmCntInvalid     = errors.New("Confirm message count invalid.")
+	ErrMoveOffsetInvalid     = errors.New("move offset invalid")
+	ErrOffsetTypeMismatch    = errors.New("offset type mismatch")
+	ErrReadQueueCountMissing = errors.New("read queue count info missing")
+	ErrExiting               = errors.New("exiting")
 )
 
 type diskQueueOffset struct {
@@ -351,7 +352,6 @@ func (d *diskQueueReader) SkipToNext() (BackendQueueEnd, error) {
 	if d.exitFlag == 1 {
 		return nil, ErrExiting
 	}
-	// TODO: skip to next file number.
 	err := d.skipToNextFile()
 	if err != nil {
 		return nil, err
@@ -371,7 +371,7 @@ func (d *diskQueueReader) TryReadOne() (ReadResult, bool) {
 			if rerr != nil {
 				nsqLog.LogErrorf("reading from diskqueue(%s) at %d of %s - %s",
 					d.readerMetaName, d.readQueueInfo, d.fileName(d.readQueueInfo.EndOffset.FileNum), dataRead.Err)
-				if d.autoSkipError {
+				if rerr != ErrReadQueueCountMissing && d.autoSkipError {
 					d.handleReadError()
 					continue
 				}
@@ -520,6 +520,9 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset, cnt int64) error
 		return ErrConfirmSizeInvalid
 	}
 	if offset == d.readQueueInfo.Offset() {
+		if cnt == 0 {
+			cnt = d.readQueueInfo.TotalMsgCnt()
+		}
 		if cnt != d.readQueueInfo.TotalMsgCnt() {
 			nsqLog.LogErrorf("confirm read count invalid: %v:%v, %v", offset, cnt, d.readQueueInfo)
 			return ErrConfirmCntInvalid
@@ -600,6 +603,8 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 }
 
 func (d *diskQueueReader) skipToNextFile() error {
+	nsqLog.LogWarningf("diskqueue(%s) skip to next from %v, %v",
+		d.readerMetaName, d.readQueueInfo, d.confirmedQueueInfo)
 	if d.readQueueInfo.EndOffset.FileNum >= d.queueEndInfo.EndOffset.FileNum {
 		return d.skipToEndofQueue()
 	}
@@ -657,7 +662,9 @@ func (d *diskQueueReader) resetLastReadOne(offset BackendOffset, cnt int64, last
 	}
 	d.readQueueInfo.EndOffset.Pos -= int64(lastMoved)
 	d.readQueueInfo.virtualEnd = offset
-	atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
+	if cnt > 0 || (offset == 0 && cnt == 0) {
+		atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
+	}
 	d.Unlock()
 }
 
@@ -668,6 +675,11 @@ func (d *diskQueueReader) readOne() ReadResult {
 	var msgSize int32
 	var stat os.FileInfo
 	result.Offset = BackendOffset(0)
+	if d.readQueueInfo.totalMsgCnt <= 0 && d.readQueueInfo.Offset() > 0 {
+		result.Err = ErrReadQueueCountMissing
+		nsqLog.Warningf("diskqueue(%v) read offset invalid: %v (this may happen while upgrade, wait to fix)", d.readerMetaName, d.readQueueInfo)
+		return result
+	}
 
 CheckFileOpen:
 
@@ -744,6 +756,12 @@ CheckFileOpen:
 	d.readQueueInfo.EndOffset.Pos = d.readQueueInfo.EndOffset.Pos + totalBytes
 	result.CurCnt = atomic.AddInt64(&d.readQueueInfo.totalMsgCnt, 1)
 	d.readQueueInfo.virtualEnd += BackendOffset(totalBytes)
+	if d.readQueueInfo.virtualEnd == d.queueEndInfo.virtualEnd {
+		if d.readQueueInfo.totalMsgCnt != 0 && d.readQueueInfo.totalMsgCnt != d.queueEndInfo.totalMsgCnt {
+			nsqLog.LogWarningf("message read count not match with end: %v, %v", d.readQueueInfo, d.queueEndInfo)
+		}
+		d.readQueueInfo.totalMsgCnt = d.queueEndInfo.totalMsgCnt
+	}
 
 	if nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqLog.LogDebugf("=== read move forward: from %v (cnt:%v) to %v", oldPos, oldCnt,
@@ -836,9 +854,23 @@ func (d *diskQueueReader) retrieveMetaData() error {
 		if err != nil {
 			return err
 		}
-		// TODO: read the total message count info for confirmed
+		if d.confirmedQueueInfo.virtualEnd == d.queueEndInfo.virtualEnd {
+			d.confirmedQueueInfo.totalMsgCnt = d.queueEndInfo.totalMsgCnt
+		}
 
 		d.persistMetaData()
+	}
+	if d.confirmedQueueInfo.TotalMsgCnt() == 0 && d.confirmedQueueInfo.Offset() != BackendOffset(0) {
+		nsqLog.Warningf("reader (%v) count is missing, need fix: %v", d.readerMetaName, d.confirmedQueueInfo)
+		// the message count info for confirmed will be handled by coordinator.
+		if d.confirmedQueueInfo.Offset() == d.queueEndInfo.Offset() {
+			d.confirmedQueueInfo.totalMsgCnt = d.queueEndInfo.totalMsgCnt
+		}
+	} else if d.confirmedQueueInfo.Offset() == d.queueEndInfo.Offset() &&
+		d.confirmedQueueInfo.TotalMsgCnt() != d.queueEndInfo.TotalMsgCnt() {
+		nsqLog.Warningf("the reader (%v) meta count is not matched with end: %v, %v",
+			d.readerMetaName, d.confirmedQueueInfo, d.queueEndInfo)
+		d.confirmedQueueInfo = d.queueEndInfo
 	}
 	d.readQueueInfo = d.confirmedQueueInfo
 	d.updateDepth()
