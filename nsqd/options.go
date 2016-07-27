@@ -12,14 +12,16 @@ import (
 
 type Options struct {
 	// basic options
-	ID                     int64    `flag:"worker-id" cfg:"id"`
-	Verbose                bool     `flag:"verbose"`
-	TCPAddress             string   `flag:"tcp-address"`
-	HTTPAddress            string   `flag:"http-address"`
-	HTTPSAddress           string   `flag:"https-address"`
-	BroadcastAddress       string   `flag:"broadcast-address"`
-	NSQLookupdTCPAddresses []string `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
-	AuthHTTPAddresses      []string `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	ID                       int64         `flag:"worker-id" cfg:"id"`
+	Verbose                  bool          `flag:"verbose"`
+	TCPAddress               string        `flag:"tcp-address"`
+	HTTPAddress              string        `flag:"http-address"`
+	HTTPSAddress             string        `flag:"https-address"`
+	BroadcastAddress         string        `flag:"broadcast-address"`
+	NSQLookupdTCPAddresses   []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses        []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
+	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -94,6 +96,9 @@ func NewOptions() *Options {
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),
+
+		HTTPClientConnectTimeout: 2 * time.Second,
+		HTTPClientRequestTimeout: 5 * time.Second,
 
 		MemQueueSize:    10000,
 		MaxBytesPerFile: 100 * 1024 * 1024,

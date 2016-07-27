@@ -30,7 +30,7 @@ func maybeWarnMsg(msgs []string) string {
 }
 
 // this is similar to httputil.NewSingleHostReverseProxy except it passes along basic auth
-func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil.ReverseProxy {
+func NewSingleHostReverseProxy(target *url.URL, connectTimeout time.Duration, requestTimeout time.Duration) *httputil.ReverseProxy {
 	director := func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
@@ -41,7 +41,7 @@ func NewSingleHostReverseProxy(target *url.URL, timeout time.Duration) *httputil
 	}
 	return &httputil.ReverseProxy{
 		Director:  director,
-		Transport: http_api.NewDeadlineTransport(timeout),
+		Transport: http_api.NewDeadlineTransport(connectTimeout, requestTimeout),
 	}
 }
 
@@ -55,7 +55,8 @@ type httpServer struct {
 func NewHTTPServer(ctx *Context) *httpServer {
 	log := http_api.Log(ctx.nsqadmin.getOpts().Logger)
 
-	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig)
+	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
+		ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
@@ -83,7 +84,8 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	if s.ctx.nsqadmin.getOpts().ProxyGraphite {
-		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, 20*time.Second)
+		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
+			ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
 		router.Handler("GET", "/render", proxy)
 	}
 
@@ -697,7 +699,7 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 	if req.Method == "PUT" {
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
-		readMax := int64(1024 * 1024 + 1)
+		readMax := int64(1024*1024 + 1)
 		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 		if err != nil {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}

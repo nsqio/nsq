@@ -19,25 +19,24 @@ type deadlinedConn struct {
 }
 
 func (c *deadlinedConn) Read(b []byte) (n int, err error) {
-	c.Conn.SetReadDeadline(time.Now().Add(c.Timeout))
 	return c.Conn.Read(b)
 }
 
 func (c *deadlinedConn) Write(b []byte) (n int, err error) {
-	c.Conn.SetWriteDeadline(time.Now().Add(c.Timeout))
 	return c.Conn.Write(b)
 }
 
 // A custom http.Transport with support for deadline timeouts
-func NewDeadlineTransport(timeout time.Duration) *http.Transport {
+func NewDeadlineTransport(connectTimeout time.Duration, requestTimeout time.Duration) *http.Transport {
 	transport := &http.Transport{
 		Dial: func(netw, addr string) (net.Conn, error) {
-			c, err := net.DialTimeout(netw, addr, timeout)
+			c, err := net.DialTimeout(netw, addr, connectTimeout)
 			if err != nil {
 				return nil, err
 			}
-			return &deadlinedConn{timeout, c}, nil
+			return &deadlinedConn{connectTimeout, c}, nil
 		},
+		ResponseHeaderTimeout: requestTimeout,
 	}
 	return transport
 }
@@ -46,12 +45,13 @@ type Client struct {
 	c *http.Client
 }
 
-func NewClient(tlsConfig *tls.Config) *Client {
-	transport := NewDeadlineTransport(2 * time.Second)
+func NewClient(tlsConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration) *Client {
+	transport := NewDeadlineTransport(connectTimeout, requestTimeout)
 	transport.TLSClientConfig = tlsConfig
 	return &Client{
 		c: &http.Client{
 			Transport: transport,
+			Timeout:   requestTimeout,
 		},
 	}
 }

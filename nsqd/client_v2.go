@@ -574,7 +574,8 @@ func (c *clientV2) QueryAuthd() error {
 	}
 
 	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
-		remoteIP, tlsEnabled, c.AuthSecret)
+		remoteIP, tlsEnabled, c.AuthSecret, c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
+		c.ctx.nsqd.getOpts().HTTPClientRequestTimeout)
 	if err != nil {
 		return err
 	}

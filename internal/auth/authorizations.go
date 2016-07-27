@@ -76,9 +76,10 @@ func (a *State) IsExpired() bool {
 	return false
 }
 
-func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string) (*State, error) {
+func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string,
+	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	for _, a := range authd {
-		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, authSecret)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, authSecret, connectTimeout, requestTimeout)
 		if err != nil {
 			log.Printf("Error: failed auth against %s %s", a, err)
 			continue
@@ -88,7 +89,8 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string) (*St
 	return nil, errors.New("Unable to access auth server")
 }
 
-func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) {
+func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
+	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
 	v.Set("tls", tlsEnabled)
@@ -97,7 +99,7 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string) (*State, error) 
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
 	var authState State
-	client := http_api.NewClient(nil)
+	client := http_api.NewClient(nil, connectTimeout, requestTimeout)
 	if err := client.GETV1(endpoint, &authState); err != nil {
 		return nil, err
 	}
