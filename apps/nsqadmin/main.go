@@ -25,6 +25,7 @@ var (
 
 	httpAddress = flagSet.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
 	templateDir = flagSet.String("template-dir", "", "path to templates directory")
+	logDir      = flagSet.String("log-dir", "", "directory for logs")
 
 	graphiteURL   = flagSet.String("graphite-url", "", "graphite HTTP address")
 	proxyGraphite = flagSet.Bool("proxy-graphite", false, "proxy HTTP requests to graphite")
@@ -54,7 +55,6 @@ func init() {
 func main() {
 	glog.InitWithFlag(flagSet)
 	flagSet.Parse(os.Args[1:])
-	glog.StartWorker(time.Second * 2)
 
 	if *showVersion {
 		fmt.Println(version.String("nsqadmin"))
@@ -84,6 +84,11 @@ func main() {
 
 	opts := nsqadmin.NewOptions()
 	options.Resolve(opts, flagSet, cfg)
+	if opts.LogDir != "" {
+		glog.SetGLogDir(opts.LogDir)
+	}
+	glog.StartWorker(time.Second * 2)
+
 	nsqadmin := nsqadmin.New(opts)
 
 	nsqadmin.Main()

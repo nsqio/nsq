@@ -289,7 +289,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	pnumStr := reqParams.Get("partition_num")
 	if pnumStr == "" {
-		pnumStr = "2"
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION_NUM"}
 	}
 	pnum, err := GetValidPartitionNum(pnumStr)
 	if err != nil {
@@ -297,7 +297,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 	replicatorStr := reqParams.Get("replicator")
 	if replicatorStr == "" {
-		replicatorStr = "2"
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_REPLICATOR"}
 	}
 	replicator, err := GetValidReplicator(replicatorStr)
 	if err != nil {

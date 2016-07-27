@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/internal/quantile"
 	"github.com/blang/semver"
 )
@@ -91,17 +92,32 @@ func (p *Producer) IsInconsistent(numLookupd int) bool {
 	return len(p.RemoteAddresses) != numLookupd
 }
 
+type ClientPubStats struct {
+	RemoteAddress string `json:"remote_address"`
+	UserAgent     string `json:"user_agent"`
+	Protocol      string `json:"protocol"`
+	PubCount      int64  `json:"pub_count"`
+	ErrCount      int64  `json:"err_count"`
+	LastPubTs     int64  `json:"last_pub_ts"`
+}
+
 type TopicStats struct {
-	Node         string          `json:"node"`
-	Hostname     string          `json:"hostname"`
-	TopicName    string          `json:"topic_name"`
-	Depth        int64           `json:"depth"`
-	MemoryDepth  int64           `json:"memory_depth"`
-	BackendDepth int64           `json:"backend_depth"`
-	MessageCount int64           `json:"message_count"`
-	NodeStats    []*TopicStats   `json:"nodes"`
-	Channels     []*ChannelStats `json:"channels"`
-	Paused       bool            `json:"paused"`
+	Node           string `json:"node"`
+	Hostname       string `json:"hostname"`
+	TopicName      string `json:"topic_name"`
+	TopicPartition string `json:"topic_partition"`
+	IsLeader       bool   `json:"is_leader"`
+	Depth          int64  `json:"depth"`
+	MemoryDepth    int64  `json:"memory_depth"`
+	// the queue maybe auto cleaned, so the start means the queue oldest offset.
+	BackendStart  int64            `json:"backend_start"`
+	BackendDepth  int64            `json:"backend_depth"`
+	MessageCount  int64            `json:"message_count"`
+	NodeStats     []*TopicStats    `json:"nodes"`
+	Channels      []*ChannelStats  `json:"channels"`
+	Paused        bool             `json:"paused"`
+	HourlyPubSize int64            `json:"hourly_pubsize"`
+	Clients       []ClientPubStats `json:"client_pub_stats"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -139,23 +155,25 @@ func (t *TopicStats) Add(a *TopicStats) {
 }
 
 type ChannelStats struct {
-	Node          string          `json:"node"`
-	Hostname      string          `json:"hostname"`
-	TopicName     string          `json:"topic_name"`
-	ChannelName   string          `json:"channel_name"`
-	Depth         int64           `json:"depth"`
-	MemoryDepth   int64           `json:"memory_depth"`
-	BackendDepth  int64           `json:"backend_depth"`
-	InFlightCount int64           `json:"in_flight_count"`
-	DeferredCount int64           `json:"deferred_count"`
-	RequeueCount  int64           `json:"requeue_count"`
-	TimeoutCount  int64           `json:"timeout_count"`
-	MessageCount  int64           `json:"message_count"`
-	ClientCount   int             `json:"-"`
-	Selected      bool            `json:"-"`
-	NodeStats     []*ChannelStats `json:"nodes"`
-	Clients       []*ClientStats  `json:"clients"`
-	Paused        bool            `json:"paused"`
+	Node           string          `json:"node"`
+	Hostname       string          `json:"hostname"`
+	TopicName      string          `json:"topic_name"`
+	ChannelName    string          `json:"channel_name"`
+	Depth          int64           `json:"depth"`
+	DepthSize      int64           `json:"depth_size"`
+	DepthTimestamp string          `json:"depth_ts"`
+	MemoryDepth    int64           `json:"memory_depth"`
+	BackendDepth   int64           `json:"backend_depth"`
+	InFlightCount  int64           `json:"in_flight_count"`
+	DeferredCount  int64           `json:"deferred_count"`
+	RequeueCount   int64           `json:"requeue_count"`
+	TimeoutCount   int64           `json:"timeout_count"`
+	MessageCount   int64           `json:"message_count"`
+	ClientCount    int             `json:"-"`
+	Selected       bool            `json:"-"`
+	NodeStats      []*ChannelStats `json:"nodes"`
+	Clients        []*ClientStats  `json:"clients"`
+	Paused         bool            `json:"paused"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -314,4 +332,16 @@ type ProducersByHost struct {
 
 func (c ProducersByHost) Less(i, j int) bool {
 	return c.Producers[i].Hostname < c.Producers[j].Hostname
+}
+
+type TopicCoordStats struct {
+	Name              string
+	Partition         int
+	ISR               []string
+	CatchupProgresses map[string]int
+}
+
+type CoordStats struct {
+	RpcStats       gorpc.ConnStats
+	TopicStatsList []TopicCoordStats
 }

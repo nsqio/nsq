@@ -636,7 +636,23 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 
 func (s *httpServer) doCoordStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	if s.ctx.nsqdCoord != nil {
-		return s.ctx.nsqdCoord.Stats(), nil
+		reqParams, err := url.ParseQuery(req.URL.RawQuery)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+			return nil, http_api.Err{400, "INVALID_REQUEST"}
+		}
+		topicName := reqParams.Get("topic")
+		topicPartStr := reqParams.Get("partition")
+		topicPart := -1
+		if topicPartStr != "" {
+			topicPart, err = strconv.Atoi(topicPartStr)
+			if err != nil {
+				nsqd.NsqLogger().LogErrorf("invalid partition: %v - %s", topicPartStr, err)
+				return nil, http_api.Err{400, "INVALID_REQUEST"}
+			}
+		}
+
+		return s.ctx.nsqdCoord.Stats(topicName, topicPart), nil
 	}
 	return nil, http_api.Err{500, "Coordinator is disabled."}
 }
@@ -663,7 +679,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		// Find the desired-topic-index:
 		for _, topicStats := range stats {
 			if topicStats.TopicName == topicName {
-				if len(topicPart) > 0 && strconv.Itoa(topicStats.TopicPartition) != topicPart {
+				if len(topicPart) > 0 && topicStats.TopicPartition != topicPart {
 					nsqd.NsqLogger().Logf("ignored stats topic partition mismatch - %v, %v", topicPart, topicStats.TopicPartition)
 					continue
 				}

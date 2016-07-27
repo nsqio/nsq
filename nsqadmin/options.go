@@ -28,6 +28,7 @@ type Options struct {
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
 
+	LogDir string `flag:"log-dir" cfg:"log_dir"`
 	Logger levellogger.Logger
 }
 

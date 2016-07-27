@@ -48,7 +48,7 @@
     <table class="table table-bordered table-condensed">
         <tr>
             <th>&nbsp;</th>
-            <th colspan="4" class="text-center">Message Queues</th>
+            <th colspan="5" class="text-center">Message Queues</th>
             <th colspan="{{#if graph_active}}5{{else}}4{{/if}}" class="text-center">Statistics</th>
             {{#if e2e_processing_latency.percentiles.length}}
             <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
@@ -57,7 +57,8 @@
         <tr>
             <th>NSQd Host</th>
             <th>Depth</th>
-            <th>Memory + Disk</th>
+            <th>DepthTimestamp</th>
+            <th>Memory + DiskSize</th>
             <th>In-Flight</th>
             <th>Deferred</th>
             <th>Requeued</th>
@@ -80,7 +81,8 @@
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy depth_ts}}</td>
+            <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
             <td>{{commafy in_flight_count}}</td>
             <td>{{commafy deferred_count}}</td>
             <td>{{commafy requeue_count}}</td>
@@ -103,6 +105,7 @@
             <td></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
             <td></td>
+            <td></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
@@ -121,7 +124,8 @@
         <tr class="info">
             <td>Total:</td>
             <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy depth_ts}}</td>
+            <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
             <td>{{commafy in_flight_count}}</td>
             <td>{{commafy deferred_count}}</td>
             <td>{{commafy requeue_count}}</td>
@@ -143,6 +147,7 @@
         <tr class="graph-row">
             <td></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
+            <td></td>
             <td></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
             <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>

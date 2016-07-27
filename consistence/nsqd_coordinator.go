@@ -1574,10 +1574,45 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 	}
 }
 
-func (self *NsqdCoordinator) Stats() *CoordStats {
+func (self *NsqdCoordinator) Stats(topic string, part int) *CoordStats {
 	s := &CoordStats{}
 	if self.rpcServer != nil && self.rpcServer.rpcServer != nil {
 		s.RpcStats = self.rpcServer.rpcServer.Stats
+	}
+	s.TopicStatsList = make([]TopicCoordStats, 0)
+	if len(topic) > 0 {
+		if part >= 0 {
+			tcData, err := self.getTopicCoordData(topic, part)
+			if err != nil {
+			} else {
+				var stat TopicCoordStats
+				stat.Name = topic
+				stat.Partition = part
+				stat.ISR = tcData.topicInfo.ISR
+				stat.CatchupProgresses = make(map[string]int)
+				for _, nid := range tcData.topicInfo.CatchupList {
+					stat.CatchupProgresses[nid] = 0
+				}
+				s.TopicStatsList = append(s.TopicStatsList, stat)
+			}
+		} else {
+			self.coordMutex.RLock()
+			defer self.coordMutex.RUnlock()
+			v, ok := self.topicCoords[topic]
+			if ok {
+				for _, tc := range v {
+					var stat TopicCoordStats
+					stat.Name = topic
+					stat.Partition = tc.topicInfo.Partition
+					stat.ISR = tc.topicInfo.ISR
+					stat.CatchupProgresses = make(map[string]int)
+					for _, nid := range tc.topicInfo.CatchupList {
+						stat.CatchupProgresses[nid] = 0
+					}
+					s.TopicStatsList = append(s.TopicStatsList, stat)
+				}
+			}
+		}
 	}
 	return s
 }

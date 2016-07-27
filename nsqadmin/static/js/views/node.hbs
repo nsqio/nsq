@@ -50,7 +50,7 @@
         {{#each topics}}
         <tr>
             <th colspan="3">Topic</th>
-            <th>Depth</th>
+            <th>PartitionInfo</th>
             <th>Memory + Disk</th>
             <th colspan="4"></th>
             <th>Messages</th>
@@ -61,8 +61,7 @@
                 <button class="btn-link red tombstone-link" data-node="{{../name}}" data-topic="{{topic_name}}" style="padding: 0 6px; border: 0;">✘</button> {{topic_name}}
             </td>
             <td>
-                {{#if ../graph_active}}<a href="{{large_graph "topic" node name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a>{{/if}}
-                {{commafy depth}}
+                {{commafy topic_partition}}, {{#if is_leader}}Leader{{else}}Follower{{/if}}
             </td>
             <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
             <td colspan="4"></td>

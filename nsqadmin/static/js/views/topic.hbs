@@ -53,8 +53,8 @@
         {{/if}}
         <tr>
             <th>NSQd Host</th>
-            <th>Depth</th>
-            <th>Memory + Disk</th>
+            <th>PartitionInfo</th>
+            <th>QueueStart ~ QueueSize</th>
             <th>Messages</th>
             {{#if graph_active}}<th>Rate</th>{{/if}}
             <th>Channels</th>
@@ -73,8 +73,8 @@
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
-            <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy topic_partition}}, <a class="link" href="/topics/{{name}}/partitions/{{topic_partition}}">replica details</a></td>
+            <td>{{commafy queue_start}} ~ {{commafy backend_depth}}</td>
             <td>{{commafy message_count}}</td>
             {{#if ../graph_active}}
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
@@ -106,8 +106,8 @@
         {{/each}}
         <tr class="info">
             <td>Total:</td>
-            <td>{{commafy depth}}</td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td></td>
+            <td>{{commafy backend_start}} ~ {{commafy backend_depth}}</td>
             <td>{{commafy message_count}}</td>
             {{#if graph_active}}<td class="bold rate" target="{{rate "topic" "*" topic_name ""}}"></td>{{/if}}
             <td>{{commafy channels.length}}</td>
@@ -122,7 +122,7 @@
         {{#if graph_active}}
             <tr class="graph-row">
                 <td></td>
-                <td><a href="{{large_graph "topic" "*" topic_name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a></td>
+                <td></td>
                 <td></td>
                 <td><a href="{{large_graph "topic" "*" topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a></td>
                 <td></td>
@@ -161,7 +161,8 @@
             <tr>
                 <th>Channel</th>
                 <th>Depth</th>
-                <th>Memory + Disk</th>
+                <th>DepthTimestamp</th>
+                <th>Memory + DiskSize</th>
                 <th>In-Flight</th>
                 <th>Deferred</th>
                 <th>Requeued</th>
@@ -180,7 +181,8 @@
                     {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
                 </th>
                 <td>{{commafy depth}}</td>
-                <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+                <td>{{commafy depth_ts}}</td>
+                <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
                 <td>{{commafy in_flight_count}}</td>
                 <td>{{commafy deferred_count}}</td>
                 <td>{{commafy requeue_count}}</td>
@@ -199,6 +201,7 @@
             <tr class="graph-row">
                 <td></td>
                 <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
+                <td></td>
                 <td></td>
                 <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
                 <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>

@@ -572,6 +572,10 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 	return producers, nil
 }
 
+func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic string, part string) (*CoordStats, error) {
+	return nil, nil
+}
+
 // GetNSQDStats returns aggregate topic and channel stats from the given Producers
 //
 // if selectedTopic is empty, this will return stats for *all* topic/channels
@@ -595,6 +599,9 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 
 			addr := p.HTTPAddress()
 			endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+			if selectedTopic != "" {
+				endpoint = fmt.Sprintf("http://%s/stats?format=json&topic=%s", addr, selectedTopic)
+			}
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var resp respType
@@ -699,11 +706,12 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 	return nil
 }
 
-func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, lookupdHTTPAddrs []string) error {
+func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, lookupdHTTPAddrs []string) error {
 	var errs []error
 
+	// TODO: found the master lookup node first
 	// create the topic on all the nsqlookupd
-	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
+	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d", url.QueryEscape(topicName), partitionNum, replica)
 	err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "create_topic", "topic/create", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
@@ -711,38 +719,6 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 			return err
 		}
 		errs = append(errs, pe.Errors()...)
-	}
-
-	if len(channelName) > 0 {
-		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-
-		// create the channel on all the nsqlookupd
-		err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "create_channel", "channel/create", qs)
-		if err != nil {
-			pe, ok := err.(PartialErr)
-			if !ok {
-				return err
-			}
-			errs = append(errs, pe.Errors()...)
-		}
-
-		// create the channel on all the nsqd that produce the topic
-		producers, _, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-		if err != nil {
-			pe, ok := err.(PartialErr)
-			if !ok {
-				return err
-			}
-			errs = append(errs, pe.Errors()...)
-		}
-		err = c.versionPivotProducers(producers, "create_channel", "channel/create", qs)
-		if err != nil {
-			pe, ok := err.(PartialErr)
-			if !ok {
-				return err
-			}
-			errs = append(errs, pe.Errors()...)
-		}
 	}
 
 	if len(errs) > 0 {
