@@ -410,8 +410,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	var messages []string
 
 	var body struct {
-		Topic   string `json:"topic"`
-		Channel string `json:"channel"`
+		Topic        string `json:"topic"`
+		Channel      string `json:"channel"`
+		PartitionNum int    `json:"partition_num"`
+		Replicator   int    `json:"replicator"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -425,8 +427,14 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	if len(body.Channel) > 0 && !protocol.IsValidChannelName(body.Channel) {
 		return nil, http_api.Err{400, "INVALID_CHANNEL"}
 	}
+	if body.PartitionNum <= 0 {
+		return nil, http_api.Err{400, "INVALID_TOPIC_PARTITION_NUM"}
+	}
+	if body.Replicator <= 0 {
+		return nil, http_api.Err{400, "INVALID_TOPIC_REPLICATOR"}
+	}
 
-	err = s.ci.CreateTopicChannel(body.Topic, body.Channel,
+	err = s.ci.CreateTopic(body.Topic, body.PartitionNum, body.Replicator,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
