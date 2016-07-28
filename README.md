@@ -11,6 +11,7 @@
 </p>
 
 [![Build Status](https://secure.travis-ci.org/nsqio/nsq.svg?branch=master)](http://travis-ci.org/nsqio/nsq) [![GitHub release](https://img.shields.io/github/release/nsqio/nsq.svg)](https://github.com/nsqio/nsq/releases/latest)
+[![Coverage Status](https://coveralls.io/repos/github/nsqio/nsq/badge.svg)](https://coveralls.io/github/nsqio/nsq)
 
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.

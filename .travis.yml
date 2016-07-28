@@ -6,10 +6,13 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 sudo: false
+before_install:
+  - go get github.com/mattn/goveralls
 script:
   - curl -s https://raw.githubusercontent.com/pote/gpm/v1.4.0/bin/gpm > gpm
   - chmod +x gpm
   - ./gpm install
   - ./test.sh
+  - ./coverage.sh --coveralls
 notifications:
   email: false
