@@ -1,5 +1,6 @@
 .godeps
 ./build
+.cover/
 apps/nsqlookupd/nsqlookupd
 apps/nsqd/nsqd
 apps/nsqadmin/nsqadmin
