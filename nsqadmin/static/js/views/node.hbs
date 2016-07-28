@@ -51,7 +51,7 @@
         <tr>
             <th colspan="3">Topic</th>
             <th>PartitionInfo</th>
-            <th>Memory + Disk</th>
+            <th>QueueStart ~ QueueSize</th>
             <th colspan="4"></th>
             <th>Messages</th>
             <th>Channels</th>
@@ -63,7 +63,7 @@
             <td>
                 {{commafy topic_partition}}, {{#if is_leader}}Leader{{else}}Follower{{/if}}
             </td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy backend_start}} ~ {{commafy backend_depth}}</td>
             <td colspan="4"></td>
             <td>
                 {{#if ../graph_active}}<a href="{{large_graph "topic" node topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a>{{/if}}
@@ -83,7 +83,7 @@
             <th width="25"></th>
             <th colspan="2">Channel</th>
             <th>Depth</th>
-            <th>Memory + Disk</th>
+            <th>Memory + DiskSize</th>
             <th>In-Flight</th>
             <th>Deferred</th>
             <th>Requeued</th>
@@ -101,7 +101,7 @@
                 {{#if ../../../graph_active}}<a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20" src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a>{{/if}}
                 {{commafy depth}}
             </td>
-            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
             <td>{{commafy in_flight_count}}</td>
             <td>{{commafy deferred_count}}</td>
             <td>{{commafy requeue_count}}</td>
