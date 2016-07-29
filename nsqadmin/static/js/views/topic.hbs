@@ -27,17 +27,38 @@
 {{else}}
 <div class="row topic-actions">
     <div class="col-md-2">
-        <button class="btn btn-medium btn-warning" data-action="empty">Empty Queue</button>
-    </div>
-    <div class="col-md-2">
         <button class="btn btn-medium btn-danger" data-action="delete">Delete Topic</button>
     </div>
-    <div class="col-md-2">
-        {{#if paused}}
-        <button class="btn btn-medium btn-success" data-action="unpause">UnPause Topic</button>
-        {{else}}
-        <button class="btn btn-medium btn-primary" data-action="pause">Pause Topic</button>
-        {{/if}}
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+    <h4>Topic Coordinator Status </h4>
+    <table class="table table-bordered table-condensed">
+        <tr>
+            <th>Partition ID</th>
+            <th>ISR and Catchup Info</th>
+            <th>Sync Status</th>
+        </tr>
+        {{#each nodes}}
+        <tr>
+            <th rowspan="{{syncing_num}}">{{topic_partition}}</th>
+            <th colspan="2"></th>
+        </tr>
+        {{#each isr_stats}}
+        <tr>
+            <td>{{hostname}}({{node_id}})</td>
+            <td>Synced</td>
+        </tr>
+        {{/each}}
+        {{#each catchup_stats}}
+        <tr>
+            <td>{{hostname}}({{node_id}})</td>
+            <td>Catching up: {{progress}}%</td>
+        </tr>
+        {{/each}}
+        {{/each}}
+    </table>
     </div>
 </div>
 
@@ -73,8 +94,8 @@
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
-            <td>{{commafy topic_partition}}, <a class="link" href="/topics/{{name}}/partitions/{{topic_partition}}">replica details</a></td>
-            <td>{{commafy queue_start}} ~ {{commafy backend_depth}}</td>
+            <td>{{commafy topic_partition}}, <a class="link" href="/coordinators/{{node}}/{{topic_name}}/{{topic_partition}}">replica details</a></td>
+            <td>{{commafy backend_start}} ~ {{commafy backend_depth}}</td>
             <td>{{commafy message_count}}</td>
             {{#if ../graph_active}}
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
@@ -181,7 +202,7 @@
                     {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
                 </th>
                 <td>{{commafy depth}}</td>
-                <td>{{commafy depth_ts}}</td>
+                <td>{{depth_ts}}</td>
                 <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
                 <td>{{commafy in_flight_count}}</td>
                 <td>{{commafy deferred_count}}</td>

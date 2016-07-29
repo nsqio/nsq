@@ -102,13 +102,16 @@ type ClientPubStats struct {
 }
 
 type TopicStats struct {
-	Node           string `json:"node"`
-	Hostname       string `json:"hostname"`
-	TopicName      string `json:"topic_name"`
-	TopicPartition string `json:"topic_partition"`
-	IsLeader       bool   `json:"is_leader"`
-	Depth          int64  `json:"depth"`
-	MemoryDepth    int64  `json:"memory_depth"`
+	Node           string        `json:"node"`
+	Hostname       string        `json:"hostname"`
+	TopicName      string        `json:"topic_name"`
+	TopicPartition string        `json:"topic_partition"`
+	IsLeader       bool          `json:"is_leader"`
+	SyncingNum     int           `json:syncing_num`
+	ISRStats       []ISRStat     `json:"isr_stats"`
+	CatchupStats   []CatchupStat `json:"catchup_stats"`
+	Depth          int64         `json:"depth"`
+	MemoryDepth    int64         `json:"memory_depth"`
 	// the queue maybe auto cleaned, so the start means the queue oldest offset.
 	BackendStart  int64            `json:"backend_start"`
 	BackendDepth  int64            `json:"backend_depth"`
@@ -334,14 +337,39 @@ func (c ProducersByHost) Less(i, j int) bool {
 	return c.Producers[i].Hostname < c.Producers[j].Hostname
 }
 
-type TopicCoordStats struct {
-	Name              string
-	Partition         int
-	ISR               []string
-	CatchupProgresses map[string]int
+type ISRStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:"node_id"`
+}
+
+type CatchupStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:node_id`
+	Progress int    `json:progress`
+}
+
+type TopicCoordStat struct {
+	Node         string        `json:"node"`
+	Name         string        `json:"name"`
+	Partition    int           `json:"partition"`
+	ISRStats     []ISRStat     `json:"isr_stats"`
+	CatchupStats []CatchupStat `json:"catchup_stats"`
 }
 
 type CoordStats struct {
-	RpcStats       gorpc.ConnStats
-	TopicStatsList []TopicCoordStats
+	RpcStats        gorpc.ConnStats  `json:"rpc_stats"`
+	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
+}
+
+type NsqLookupdNodeInfo struct {
+	ID       string
+	NodeIP   string
+	TcpPort  string
+	HttpPort string
+	RpcPort  string
+}
+
+type LookupdNodes struct {
+	LeaderNode NsqLookupdNodeInfo   `json:"lookupdleader"`
+	AllNodes   []NsqLookupdNodeInfo `json:"lookupdnodes"`
 }

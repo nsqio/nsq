@@ -42,7 +42,7 @@ var statsdPrefix = function(host) {
 var metricType = function(key) {
     return {
         'depth':                  'gauge',
-        'depth_size':                  'gauge',
+        'depth_size':             'gauge',
         'in_flight_count':        'gauge',
         'deferred_count':         'gauge',
         'requeue_count':          'counter',

@@ -50,6 +50,7 @@ var BaseView = Backbone.View.extend({
             'graph_active': AppState.get('GRAPH_ENABLED') &&
                 AppState.get('graph_interval') !== 'off',
             'nsqlookupd': AppState.get('NSQLOOKUPD'),
+            'allnsqlookupds': AppState.get('ALLNSQLOOKUPDS'),
             'version': AppState.get('VERSION')
         };
         if (this.model) {

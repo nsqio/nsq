@@ -133,7 +133,7 @@ func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, err
 
 // GetLookupdTopicChannels returns a []string containing a union of all the channels
 // from all the given lookupd for the given topic
-func (c *ClusterInfo) GetLookupdTopicChannels(topic string, part int, lookupdHTTPAddrs []string) ([]string, error) {
+func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
 	var channels []string
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -149,8 +149,8 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, part int, lookupdHTT
 			defer wg.Done()
 
 			endpoint :=
-				fmt.Sprintf("http://%s/channels?topic=%s&partition=%s", addr,
-					url.QueryEscape(topic), url.QueryEscape(strconv.Itoa(part)))
+				fmt.Sprintf("http://%s/channels?topic=%s", addr,
+					url.QueryEscape(topic))
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
@@ -572,8 +572,84 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 	return producers, nil
 }
 
+func (c *ClusterInfo) ListAllLookupdNodes(lookupdHTTPAddrs []string) (*LookupdNodes, error) {
+	var errs []error
+	var resp LookupdNodes
+
+	for _, addr := range lookupdHTTPAddrs {
+		endpoint := fmt.Sprintf("http://%s/listlookup", addr)
+		c.logf("CI: querying nsqlookupd %s", endpoint)
+
+		err := c.client.NegotiateV1(endpoint, &resp)
+		if err != nil {
+			c.logf("CI: querying nsqlookupd %s err: %v", endpoint, err)
+			errs = append(errs, err)
+			continue
+		}
+		break
+	}
+
+	if len(errs) == len(lookupdHTTPAddrs) {
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
+	}
+
+	return &resp, nil
+}
+
 func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic string, part string) (*CoordStats, error) {
-	return nil, nil
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	var topicCoordStats CoordStats
+	var errs []error
+
+	for _, p := range producers {
+		wg.Add(1)
+		go func(p *Producer) {
+			defer wg.Done()
+
+			addr := p.HTTPAddress()
+			endpoint := fmt.Sprintf("http://%s/coordinator/stats?format=json", addr)
+			if selectedTopic != "" {
+				endpoint = fmt.Sprintf("http://%s/coordinator/stats?format=json&topic=%s", addr, url.QueryEscape(selectedTopic))
+			}
+			if part != "" {
+				endpoint = fmt.Sprintf("http://%s/coordinator/stats?format=json&topic=%s&partition=%s",
+					addr, url.QueryEscape(selectedTopic), url.QueryEscape(part))
+			}
+			c.logf("CI: querying nsqd %s", endpoint)
+
+			var resp CoordStats
+			err := c.client.NegotiateV1(endpoint, &resp)
+			if err != nil {
+				lock.Lock()
+				errs = append(errs, err)
+				lock.Unlock()
+				return
+			}
+
+			lock.Lock()
+			defer lock.Unlock()
+			c.logf("CI: querying nsqd %s resp: %v", endpoint, resp)
+			topicCoordStats.RpcStats = resp.RpcStats
+			for _, topicStat := range resp.TopicCoordStats {
+				topicStat.Node = addr
+				if selectedTopic != "" && topicStat.Name != selectedTopic {
+					continue
+				}
+				topicCoordStats.TopicCoordStats = append(topicCoordStats.TopicCoordStats, topicStat)
+			}
+		}(p)
+	}
+	wg.Wait()
+
+	if len(errs) == len(producers) {
+		return nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
+	}
+
+	if len(errs) > 0 {
+		return &topicCoordStats, ErrList(errs)
+	}
+	return &topicCoordStats, nil
 }
 
 // GetNSQDStats returns aggregate topic and channel stats from the given Producers
@@ -727,6 +803,7 @@ func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica in
 	return nil
 }
 
+// this will delete all partitions of topic on all nsqd node.
 func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	var errs []error
 
@@ -740,7 +817,7 @@ func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, n
 		errs = append(errs, pe.Errors()...)
 	}
 
-	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
+	qs := fmt.Sprintf("topic=%s&partition=**", url.QueryEscape(topicName))
 
 	// remove the topic from all the nsqlookupd
 	err = c.versionPivotNSQLookupd(lookupdHTTPAddrs, "delete_topic", "topic/delete", qs)

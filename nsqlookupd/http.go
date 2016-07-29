@@ -20,7 +20,7 @@ import (
 const (
 	MAX_PARTITION_NUM = 255
 	MAX_REPLICATOR    = 5
-	MAX_LOAD_FACTOR   = 100
+	MAX_LOAD_FACTOR   = 10000
 )
 
 func GetValidPartitionNum(numStr string) (int, error) {
@@ -392,7 +392,7 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		}
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
 		if thisNode == node {
-			nsqlookupLog.Logf("DB: setting tombstone  producer %v", p)
+			nsqlookupLog.Logf("DB: setting tombstone  producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
 			p.Tombstone()
 		}
 	}

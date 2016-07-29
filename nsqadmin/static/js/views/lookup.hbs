@@ -19,6 +19,9 @@
                 <th>nsqlookupd Host</th>
             </tr>
             {{#each nsqlookupd}}
+            <tr><td>{{this}} (configured)</td></tr>
+            {{/each}}
+            {{#each allnsqlookupds}}
             <tr><td>{{this}}</td></tr>
             {{/each}}
         </table>

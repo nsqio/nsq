@@ -716,14 +716,26 @@ func (self *NsqdCoordRpcServer) TestRpcTimeout() error {
 	return nil
 }
 
-type TopicCoordStats struct {
-	Name              string
-	Partition         int
-	ISR               []string
-	CatchupProgresses map[string]int
+type ISRStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:"node_id"`
+}
+
+type CatchupStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:node_id`
+	Progress int    `json:progress`
+}
+
+type TopicCoordStat struct {
+	Node         string        `json:"node"`
+	Name         string        `json:"name"`
+	Partition    int           `json:"partition"`
+	ISRStats     []ISRStat     `json:"isr_stats"`
+	CatchupStats []CatchupStat `json:"catchup_stats"`
 }
 
 type CoordStats struct {
-	RpcStats       gorpc.ConnStats
-	TopicStatsList []TopicCoordStats
+	RpcStats        gorpc.ConnStats  `json:"rpc_stats"`
+	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
 }

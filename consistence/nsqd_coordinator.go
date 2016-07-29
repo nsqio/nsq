@@ -1579,21 +1579,22 @@ func (self *NsqdCoordinator) Stats(topic string, part int) *CoordStats {
 	if self.rpcServer != nil && self.rpcServer.rpcServer != nil {
 		s.RpcStats = self.rpcServer.rpcServer.Stats
 	}
-	s.TopicStatsList = make([]TopicCoordStats, 0)
+	s.TopicCoordStats = make([]TopicCoordStat, 0)
 	if len(topic) > 0 {
 		if part >= 0 {
 			tcData, err := self.getTopicCoordData(topic, part)
 			if err != nil {
 			} else {
-				var stat TopicCoordStats
+				var stat TopicCoordStat
 				stat.Name = topic
 				stat.Partition = part
-				stat.ISR = tcData.topicInfo.ISR
-				stat.CatchupProgresses = make(map[string]int)
-				for _, nid := range tcData.topicInfo.CatchupList {
-					stat.CatchupProgresses[nid] = 0
+				for _, nid := range tcData.topicInfo.ISR {
+					stat.ISRStats = append(stat.ISRStats, ISRStat{HostName: "", NodeID: nid})
 				}
-				s.TopicStatsList = append(s.TopicStatsList, stat)
+				for _, nid := range tcData.topicInfo.CatchupList {
+					stat.CatchupStats = append(stat.CatchupStats, CatchupStat{HostName: "", NodeID: nid, Progress: 0})
+				}
+				s.TopicCoordStats = append(s.TopicCoordStats, stat)
 			}
 		} else {
 			self.coordMutex.RLock()
@@ -1601,15 +1602,17 @@ func (self *NsqdCoordinator) Stats(topic string, part int) *CoordStats {
 			v, ok := self.topicCoords[topic]
 			if ok {
 				for _, tc := range v {
-					var stat TopicCoordStats
+					var stat TopicCoordStat
 					stat.Name = topic
 					stat.Partition = tc.topicInfo.Partition
-					stat.ISR = tc.topicInfo.ISR
-					stat.CatchupProgresses = make(map[string]int)
-					for _, nid := range tc.topicInfo.CatchupList {
-						stat.CatchupProgresses[nid] = 0
+					for _, nid := range tc.topicInfo.ISR {
+						stat.ISRStats = append(stat.ISRStats, ISRStat{HostName: "", NodeID: nid})
 					}
-					s.TopicStatsList = append(s.TopicStatsList, stat)
+					for _, nid := range tc.topicInfo.CatchupList {
+						stat.CatchupStats = append(stat.CatchupStats, CatchupStat{HostName: "", NodeID: nid, Progress: 0})
+					}
+
+					s.TopicCoordStats = append(s.TopicCoordStats, stat)
 				}
 			}
 		}

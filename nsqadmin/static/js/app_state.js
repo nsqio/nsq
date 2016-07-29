@@ -13,6 +13,7 @@ var AppState = Backbone.Model.extend({
             'STATSD_GAUGE_FORMAT': STATSD_GAUGE_FORMAT,
             'STATSD_PREFIX': STATSD_PREFIX,
             'NSQLOOKUPD': NSQLOOKUPD,
+            'ALLNSQLOOKUPDS': ALLNSQLOOKUPDS,
             'graph_interval': '2h'
         };
     },
