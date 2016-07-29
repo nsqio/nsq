@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,7 +108,7 @@ type TopicStats struct {
 	TopicName      string        `json:"topic_name"`
 	TopicPartition string        `json:"topic_partition"`
 	IsLeader       bool          `json:"is_leader"`
-	SyncingNum     int           `json:syncing_num`
+	SyncingNum     int           `json:"syncing_num"`
 	ISRStats       []ISRStat     `json:"isr_stats"`
 	CatchupStats   []CatchupStat `json:"catchup_stats"`
 	Depth          int64         `json:"depth"`
@@ -147,7 +148,7 @@ func (t *TopicStats) Add(a *TopicStats) {
 		}
 	}
 	t.NodeStats = append(t.NodeStats, a)
-	sort.Sort(TopicStatsByHost{t.NodeStats})
+	sort.Sort(TopicStatsByPartitionAndHost{t.NodeStats})
 	if t.E2eProcessingLatency == nil {
 		t.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{
 			Addr:  t.Node,
@@ -299,12 +300,17 @@ type TopicStatsList []*TopicStats
 func (t TopicStatsList) Len() int      { return len(t) }
 func (t TopicStatsList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 
-type TopicStatsByHost struct {
+type TopicStatsByPartitionAndHost struct {
 	TopicStatsList
 }
 
-func (c TopicStatsByHost) Less(i, j int) bool {
-	return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
+func (c TopicStatsByPartitionAndHost) Less(i, j int) bool {
+	if c.TopicStatsList[i].TopicPartition == c.TopicStatsList[j].TopicPartition {
+		return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
+	}
+	l, _ := strconv.Atoi(c.TopicStatsList[i].TopicPartition)
+	r, _ := strconv.Atoi(c.TopicStatsList[j].TopicPartition)
+	return l < r
 }
 
 type Producers []*Producer

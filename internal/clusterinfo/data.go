@@ -732,7 +732,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 		return nil, nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 
-	sort.Sort(TopicStatsByHost{topicStatsList})
+	sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 
 	if len(errs) > 0 {
 		return topicStatsList, channelStatsMap, ErrList(errs)
@@ -747,27 +747,11 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 
 	// tombstone the topic on all the lookupds
 	qs := fmt.Sprintf("topic=%s&node=%s", url.QueryEscape(topic), url.QueryEscape(node))
+	lookupdNodes, _ := c.ListAllLookupdNodes(lookupdHTTPAddrs)
+	for _, node := range lookupdNodes.AllNodes {
+		lookupdHTTPAddrs = append(lookupdHTTPAddrs, net.JoinHostPort(node.NodeIP, node.HttpPort))
+	}
 	err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "tombstone_topic_producer", "topic/tombstone", qs)
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
-		}
-		errs = append(errs, pe.Errors()...)
-	}
-
-	producers, err := c.GetNSQDProducers([]string{node})
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
-		}
-		errs = append(errs, pe.Errors()...)
-	}
-
-	// delete the topic on the producer
-	qs = fmt.Sprintf("topic=%s", url.QueryEscape(topic))
-	err = c.versionPivotProducers(producers, "delete_topic", "topic/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -782,13 +766,21 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 	return nil
 }
 
-func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, lookupdHTTPAddrs []string) error {
+func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int, lookupdHTTPAddrs []string) error {
 	var errs []error
 
 	// TODO: found the master lookup node first
 	// create the topic on all the nsqlookupd
-	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d", url.QueryEscape(topicName), partitionNum, replica)
-	err := c.versionPivotNSQLookupd(lookupdHTTPAddrs, "create_topic", "topic/create", qs)
+	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d",
+		url.QueryEscape(topicName), partitionNum, replica, syncDisk)
+	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
+	if err != nil {
+		c.logf("failed to list lookupd nodes while create topic: %v", err)
+		return err
+	}
+	leaderAddr := make([]string, 0)
+	leaderAddr = append(leaderAddr, net.JoinHostPort(lookupdNodes.LeaderNode.NodeIP, lookupdNodes.LeaderNode.HttpPort))
+	err = c.versionPivotNSQLookupd(leaderAddr, "create_topic", "topic/create", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -807,30 +799,17 @@ func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica in
 func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	var errs []error
 
-	// for topic removal, you need to get all the producers _first_
-	producers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
+	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
 	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
-		}
-		errs = append(errs, pe.Errors()...)
+		c.logf("failed to list lookupd nodes while delete topic: %v", err)
+		return err
 	}
+	leaderAddr := make([]string, 0)
+	leaderAddr = append(leaderAddr, net.JoinHostPort(lookupdNodes.LeaderNode.NodeIP, lookupdNodes.LeaderNode.HttpPort))
 
 	qs := fmt.Sprintf("topic=%s&partition=**", url.QueryEscape(topicName))
-
 	// remove the topic from all the nsqlookupd
-	err = c.versionPivotNSQLookupd(lookupdHTTPAddrs, "delete_topic", "topic/delete", qs)
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
-		}
-		errs = append(errs, pe.Errors()...)
-	}
-
-	// remove the topic from all the nsqd that produce this topic
-	err = c.versionPivotProducers(producers, "delete_topic", "topic/delete", qs)
+	err = c.versionPivotNSQLookupd(leaderAddr, "delete_topic", "topic/delete", qs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -858,16 +837,6 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 	}
 
 	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-
-	// remove the channel from all the nsqlookupd
-	err = c.versionPivotNSQLookupd(lookupdHTTPAddrs, "delete_channel", "channel/delete", qs)
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
-		}
-		errs = append(errs, pe.Errors()...)
-	}
 
 	// remove the channel from all the nsqd that produce this topic
 	err = c.versionPivotProducers(producers, "delete_channel", "channel/delete", qs)

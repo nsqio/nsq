@@ -43,17 +43,26 @@
         {{#each nodes}}
         <tr>
             <th rowspan="{{syncing_num}}">{{topic_partition}}</th>
-            <th colspan="2"></th>
+            {{#if isr_stats.length}}
+                <td>{{isr_stats.[0].hostname}}(ID:{{isr_stats.[0].node_id}})</td>
+                <td>Synced</td>
+            {{else}}
+                <td>ISR Empty!!</td>
+                <td>Unknown</td>
+            {{/if}}
         </tr>
         {{#each isr_stats}}
+        {{#if @first}}
+        {{else}}
         <tr>
-            <td>{{hostname}}({{node_id}})</td>
+            <td>{{hostname}}(ID:{{node_id}})</td>
             <td>Synced</td>
         </tr>
+        {{/if}}
         {{/each}}
         {{#each catchup_stats}}
         <tr>
-            <td>{{hostname}}({{node_id}})</td>
+            <td>{{hostname}}(ID:{{node_id}})</td>
             <td>Catching up: {{progress}}%</td>
         </tr>
         {{/each}}
@@ -94,7 +103,7 @@
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
-            <td>{{commafy topic_partition}}, <a class="link" href="/coordinators/{{node}}/{{topic_name}}/{{topic_partition}}">replica details</a></td>
+            <td>{{commafy topic_partition}}</td>
             <td>{{commafy backend_start}} ~ {{commafy backend_depth}}</td>
             <td>{{commafy message_count}}</td>
             {{#if ../graph_active}}

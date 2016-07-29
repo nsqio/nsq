@@ -39,13 +39,17 @@ var LookupView = BaseView.extend({
         e.preventDefault();
         e.stopPropagation();
         var topic = $(e.target.form.elements['topic']).val();
-        var channel = $(e.target.form.elements['channel']).val();
-        if (topic === '' && channel === '') {
+        var partition_num = $(e.target.form.elements['partition_num']).val();
+        var replicator = $(e.target.form.elements['replicator']).val();
+        var syncdisk = $(e.target.form.elements['syncdisk']).val();
+        if (topic === '' || partition_num === '' || replicator === '') {
             return;
         }
         $.post(AppState.url('/topics'), JSON.stringify({
                 'topic': topic,
-                'channel': channel
+                'partition_num': partition_num,
+                'replicator': replicator,
+                'syncdisk': syncdisk
             }))
             .done(function() { window.location.reload(true); })
             .fail(this.handleAJAXError.bind(this));

@@ -526,9 +526,9 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 
 	var body struct {
 		Topic        string `json:"topic"`
-		Channel      string `json:"channel"`
-		PartitionNum int    `json:"partition_num"`
-		Replicator   int    `json:"replicator"`
+		PartitionNum string `json:"partition_num"`
+		Replicator   string `json:"replicator"`
+		SyncDisk     string `json:"syncdisk"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -539,17 +539,28 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		return nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
 
-	if len(body.Channel) > 0 && !protocol.IsValidChannelName(body.Channel) {
-		return nil, http_api.Err{400, "INVALID_CHANNEL"}
-	}
-	if body.PartitionNum <= 0 {
+	if body.PartitionNum == "" {
 		return nil, http_api.Err{400, "INVALID_TOPIC_PARTITION_NUM"}
 	}
-	if body.Replicator <= 0 {
-		return nil, http_api.Err{400, "INVALID_TOPIC_REPLICATOR"}
+	pnum, err := strconv.Atoi(body.PartitionNum)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
 	}
 
-	err = s.ci.CreateTopic(body.Topic, body.PartitionNum, body.Replicator,
+	if body.Replicator == "" {
+		return nil, http_api.Err{400, "INVALID_TOPIC_REPLICATOR"}
+	}
+	replica, err := strconv.Atoi(body.Replicator)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	if body.SyncDisk == "" {
+		body.SyncDisk = "5000"
+	}
+	syncDisk, _ := strconv.Atoi(body.SyncDisk)
+	err = s.ci.CreateTopic(body.Topic, pnum, replica,
+		syncDisk,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
@@ -562,9 +573,6 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 
 	s.notifyAdminAction("create_topic", body.Topic, "", "", req)
-	if len(body.Channel) > 0 {
-		s.notifyAdminAction("create_channel", body.Topic, body.Channel, "", req)
-	}
 
 	return struct {
 		Message string `json:"message"`

@@ -124,7 +124,11 @@ func (r *RegistrationDB) RemoveChannelReg(topic string, k ChannelReg) bool {
 		}
 	}
 	if removed {
-		r.registrationChannelMap[topic] = cleaned
+		if len(cleaned) == 0 {
+			delete(r.registrationChannelMap, topic)
+		} else {
+			r.registrationChannelMap[topic] = cleaned
+		}
 	}
 	return removed
 }
@@ -234,7 +238,11 @@ func (r *RegistrationDB) RemoveTopicProducer(topic string, pid string, id string
 		}
 	}
 	if removed {
-		r.registrationTopicMap[topic] = producers
+		if len(producers) == 0 {
+			delete(r.registrationTopicMap, topic)
+		} else {
+			r.registrationTopicMap[topic] = producers
+		}
 	}
 	return removed
 }

@@ -32,19 +32,12 @@
     <div class="col-md-4">
         {{#if topics}}
         <div class="alert alert-info">
-            Below is a tree of Topics/Channels that are currently inactive (i.e. not produced on any nsqd in the cluster but are present in the lookup data)
+            Below is a tree of Topics that are currently inactive (i.e. not produced on any nsqd in the cluster but are present in the lookup data)
         </div>
         <ul>
             {{#each topics}}
             <li>
                 <button class="btn-link red delete-topic-link" data-topic="{{name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{name}}">{{name}}</a>
-                <ul>
-                    {{#each channels}}
-                    <li>
-                        <button class="btn-link red delete-channel-link" data-topic="{{../name}}" data-channel="{{this}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{../name}}/{{this}}">{{this}}</a>
-                    </li>
-                    {{/each}}
-                </ul>
             </li>
             {{/each}}
         </ul>
@@ -57,15 +50,16 @@
 <div class="row">
     <div class="col-md-4">
         <form class="hierarchy">
-            <legend>Create Topic/Channel</legend>
+            <legend>Create Topic</legend>
             <div class="alert alert-info">
                 <p>This provides a way to setup a stream hierarchy
                 before services are deployed to production.
-                <p>If <em>Channel Name</em> is empty, just the topic is created.
             </div>
             <div class="form-group">
                 <input type="text" name="topic" placeholder="Topic Name">
-                <input type="text" name="channel" placeholder="Channel Name">
+                <input type="number" min=1 max=255 name="partition_num" style="width:100px;" placeholder="Partition Num">
+                <input type="number" min=1 max=5 name="replicator" style="width:100px;" placeholder="Replicator">
+                <input type="number" min=0 max=50000 step=100 name="syncdisk" style="width:150px;" placeholder="SyncDisk(5000)">
             </div>
             <button class="btn btn-default" type="submit">Create</button>
         </form>
