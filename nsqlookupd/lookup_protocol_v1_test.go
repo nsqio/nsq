@@ -33,17 +33,17 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	}
 
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	opts.Verbose = true
 
 	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: New(opts)}}
 
 	errChan := make(chan error)
-	test := func() {
+	testIOLoop := func() {
 		errChan <- prot.IOLoop(fakeConn)
 		defer prot.ctx.nsqlookupd.Exit()
 	}
-	go test()
+	go testIOLoop()
 
 	var err error
 	var timeout bool
@@ -54,9 +54,9 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 		timeout = true
 	}
 
-	equal(t, timeout, false)
+	test.Equal(t, false, timeout)
 
-	nequal(t, err, nil)
-	equal(t, err.Error(), "E_INVALID invalid command INVALID_COMMAND")
-	nequal(t, err.(*protocol.FatalClientErr), nil)
+	test.NotNil(t, err)
+	test.Equal(t, "E_INVALID invalid command INVALID_COMMAND", err.Error())
+	test.NotNil(t, err.(*protocol.FatalClientErr))
 }

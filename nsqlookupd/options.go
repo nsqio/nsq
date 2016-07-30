@@ -16,7 +16,7 @@ type Options struct {
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	TombstoneLifetime       time.Duration `flag:"tombstone-lifetime"`
 
-	Logger logger
+	Logger Logger
 }
 
 func NewOptions() *Options {

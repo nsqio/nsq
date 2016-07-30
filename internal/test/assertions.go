@@ -17,10 +17,10 @@ func Equal(t *testing.T, expected, actual interface{}) {
 }
 
 func NotEqual(t *testing.T, expected, actual interface{}) {
-	if !reflect.DeepEqual(expected, actual) {
+	if reflect.DeepEqual(expected, actual) {
 		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\tvalue should not equal %#v\033[39m\n\n",
-			filepath.Base(file), line, actual)
+		t.Logf("\033[31m%s:%d:\n\n\tnexp: %#v\n\n\tgot:  %#v\033[39m\n\n",
+			filepath.Base(file), line, expected, actual)
 		t.FailNow()
 	}
 }

@@ -3,6 +3,8 @@ package nsqlookupd
 import (
 	"testing"
 	"time"
+
+	"github.com/nsqio/nsq/internal/test"
 )
 
 func TestRegistrationDB(t *testing.T) {
@@ -27,63 +29,70 @@ func TestRegistrationDB(t *testing.T) {
 
 	// find producers
 	r := db.FindRegistrations("c", "*", "").Keys()
-	equal(t, len(r), 1)
-	equal(t, r[0], "a")
+	test.Equal(t, 1, len(r))
+	test.Equal(t, "a", r[0])
 
 	p := db.FindProducers("t", "*", "")
-	equal(t, len(p), 1)
+	t.Logf("%s", p)
+	test.Equal(t, 1, len(p))
 	p = db.FindProducers("c", "*", "")
-	equal(t, len(p), 2)
+	t.Logf("%s", p)
+	test.Equal(t, 2, len(p))
 	p = db.FindProducers("c", "a", "")
-	equal(t, len(p), 2)
+	t.Logf("%s", p)
+	test.Equal(t, 2, len(p))
 	p = db.FindProducers("c", "*", "b")
-	equal(t, len(p), 1)
-	equal(t, p[0].peerInfo.id, p2.peerInfo.id)
+	t.Logf("%s", p)
+	test.Equal(t, 1, len(p))
+	test.Equal(t, p2.peerInfo.id, p[0].peerInfo.id)
 
 	// filter by active
-	equal(t, len(p.FilterByActive(sec30, sec30)), 0)
+	test.Equal(t, 0, len(p.FilterByActive(sec30, sec30)))
 	p2.peerInfo.lastUpdate = time.Now().UnixNano()
-	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+	test.Equal(t, 1, len(p.FilterByActive(sec30, sec30)))
 	p = db.FindProducers("c", "*", "")
-	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+	t.Logf("%s", p)
+	test.Equal(t, 1, len(p.FilterByActive(sec30, sec30)))
 
 	// tombstoning
 	fewSecAgo := time.Now().Add(-5 * time.Second).UnixNano()
 	p1.peerInfo.lastUpdate = fewSecAgo
 	p2.peerInfo.lastUpdate = fewSecAgo
-	equal(t, len(p.FilterByActive(sec30, sec30)), 2)
+	test.Equal(t, 2, len(p.FilterByActive(sec30, sec30)))
 	p1.Tombstone()
-	equal(t, len(p.FilterByActive(sec30, sec30)), 1)
+	test.Equal(t, 1, len(p.FilterByActive(sec30, sec30)))
 	time.Sleep(10 * time.Millisecond)
-	equal(t, len(p.FilterByActive(sec30, 5*time.Millisecond)), 2)
+	test.Equal(t, 2, len(p.FilterByActive(sec30, 5*time.Millisecond)))
 	// make sure we can still retrieve p1 from another registration see #148
-	equal(t, len(db.FindProducers("t", "*", "").FilterByActive(sec30, sec30)), 1)
+	test.Equal(t, 1, len(db.FindProducers("t", "*", "").FilterByActive(sec30, sec30)))
 
 	// keys and subkeys
 	k := db.FindRegistrations("c", "b", "").Keys()
-	equal(t, len(k), 0)
+	test.Equal(t, 0, len(k))
 	k = db.FindRegistrations("c", "a", "").Keys()
-	equal(t, len(k), 1)
-	equal(t, k[0], "a")
+	test.Equal(t, 1, len(k))
+	test.Equal(t, "a", k[0])
 	k = db.FindRegistrations("c", "*", "b").SubKeys()
-	equal(t, len(k), 1)
-	equal(t, k[0], "b")
+	test.Equal(t, 1, len(k))
+	test.Equal(t, "b", k[0])
 
 	// removing producers
 	db.RemoveProducer(Registration{"c", "a", ""}, p1.peerInfo.id)
 	p = db.FindProducers("c", "*", "*")
-	equal(t, len(p), 1)
+	t.Logf("%s", p)
+	test.Equal(t, 1, len(p))
 
 	db.RemoveProducer(Registration{"c", "a", ""}, p2.peerInfo.id)
 	db.RemoveProducer(Registration{"c", "a", "b"}, p2.peerInfo.id)
 	p = db.FindProducers("c", "*", "*")
-	equal(t, len(p), 0)
+	t.Logf("%s", p)
+	test.Equal(t, 0, len(p))
 
 	// do some key removals
 	k = db.FindRegistrations("c", "*", "*").Keys()
-	equal(t, len(k), 2)
+	test.Equal(t, 2, len(k))
 	db.RemoveRegistration(Registration{"c", "a", ""})
 	db.RemoveRegistration(Registration{"c", "a", "b"})
 	k = db.FindRegistrations("c", "*", "*").Keys()
-	equal(t, len(k), 0)
+	test.Equal(t, 0, len(k))
 }
