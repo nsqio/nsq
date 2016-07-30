@@ -475,7 +475,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			// check topic leader session key.
 			leaderSession, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
 			if err != nil {
-				coordLog.Infof("topic %v leader session not found.", t.GetTopicDesp())
+				coordLog.Infof("topic %v leader session failed to get: %v", t.GetTopicDesp(), err)
 				// notify the nsqd node to acquire the leader session.
 				self.notifyISRTopicMetaInfo(&t)
 				self.notifyAcquireTopicLeader(&t)
