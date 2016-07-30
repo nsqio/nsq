@@ -262,7 +262,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, http_api.Err{400, FailedOnNotWritable}
 				}
@@ -362,7 +362,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		//s.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, http_api.Err{400, FailedOnNotWritable}
 				}

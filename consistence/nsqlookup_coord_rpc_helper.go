@@ -298,7 +298,7 @@ func (self *NsqLookupCoordinator) isTopicWriteDisabled(topicInfo *TopicPartition
 func (self *NsqLookupCoordinator) getNsqdTopicStat(node NsqdNodeInfo) (*NodeTopicStats, error) {
 	c, err := self.acquireRpcClient(node.GetID())
 	if err != nil {
-		return nil, err
+		return nil, err.ToErrorType()
 	}
 	return c.GetTopicStats("")
 }

@@ -921,7 +921,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
 			err)
-		if clusterErr, ok := err.(*consistence.CoordErr); ok {
+		if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 			if !clusterErr.IsLocalErr() {
 				return nil, protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
 			}
@@ -1154,7 +1154,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		//p.ctx.setHealth(err)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}
@@ -1200,7 +1200,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}

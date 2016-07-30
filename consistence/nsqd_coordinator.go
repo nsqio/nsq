@@ -569,6 +569,16 @@ func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) *Co
 	return err
 }
 
+func (self *NsqdCoordinator) requestNotifyNewTopicInfo(topic string, partition int) {
+	c, err := self.getLookupRemoteProxy()
+	if err != nil {
+		coordLog.Infof("get lookup failed: %v", err)
+		return
+	}
+	defer c.Close()
+	c.RequestNotifyNewTopicInfo(topic, partition, self.myNode.GetID())
+}
+
 func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	// request change catchup to isr list and wait for nsqlookupd response to temp disable all new write.
 	c, err := self.getLookupRemoteProxy()
@@ -1103,7 +1113,7 @@ func (self *NsqdCoordinator) GetMasterTopicCoordData(topic string) (int, *coordD
 			}
 		}
 	}
-	return -1, nil, ErrMissingTopicCoord
+	return -1, nil, ErrMissingTopicCoord.ToErrorType()
 }
 
 func (self *NsqdCoordinator) getTopicCoordData(topic string, partition int) (*coordData, *CoordErr) {
@@ -1236,7 +1246,11 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	clusterErr := self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
 
-	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, clusterErr
+	var err error
+	if clusterErr != nil {
+		err = clusterErr.ToErrorType()
+	}
+	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, err
 }
 
 func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
@@ -1316,12 +1330,17 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	clusterErr := self.doWriteOpToCluster(topic, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
 
-	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, clusterErr
+	var err error
+	if clusterErr != nil {
+		err = clusterErr.ToErrorType()
+	}
+
+	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, err
 }
 
 func (self *NsqdCoordinator) doWriteOpToCluster(topic *nsqd.Topic, doLocalWrite localWriteFunc,
 	doLocalExit localExitFunc, doLocalCommit localCommitFunc, doLocalRollback localRollbackFunc,
-	doRefresh refreshCoordFunc, doSlaveSync slaveSyncFunc, handleSyncResult handleSyncResultFunc) error {
+	doRefresh refreshCoordFunc, doSlaveSync slaveSyncFunc, handleSyncResult handleSyncResultFunc) *CoordErr {
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
@@ -1371,6 +1390,7 @@ retrypub:
 			clusterWriteErr = ErrTopicExiting
 			goto exitpub
 		}
+		time.Sleep(time.Second * 3)
 	}
 	if needRefreshISR {
 		tcData = coord.GetData()
@@ -1414,7 +1434,7 @@ retrypub:
 			coordLog.Infof("sync write to replica %v failed: %v", nodeID, rpcErr)
 			clusterWriteErr = rpcErr
 			failedNodes[nodeID] = struct{}{}
-			if !rpcErr.CanRetryWrite() {
+			if !rpcErr.CanRetryWrite(int(retryCnt)) {
 				exitErr++
 				coordLog.Infof("write failed and no retry type: %v, %v", rpcErr.ErrType, exitErr)
 				if exitErr > len(tcData.topicInfo.ISR)/2 {
@@ -1450,10 +1470,15 @@ retrypub:
 			}
 			time.Sleep(time.Second)
 		}
+		if retryCnt > MAX_WRITE_RETRY*2 {
+			coordLog.Warningf("topic %v sync write failed due to max retry: %v, %v")
+			needLeaveISR = true
+			goto exitpub
+		}
 
 		needRefreshISR = true
-		sleepTime := time.Millisecond * time.Duration(2<<retryCnt)
-		if sleepTime < MaxRetryWait {
+		sleepTime := time.Millisecond * time.Duration(uint32(2)<<retryCnt)
+		if (sleepTime > 0) && sleepTime < MaxRetryWait {
 			time.Sleep(sleepTime)
 		} else {
 			time.Sleep(MaxRetryWait)
@@ -1515,7 +1540,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 
 		if topic.GetTopicPart() != partition {
 			coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
-			return &CoordErr{ErrLocalTopicPartitionMismatch.Error(), RpcErrTopicNotExist, CoordSlaveErr}
+			return &CoordErr{ErrLocalTopicPartitionMismatch.String(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
 		topic.Lock()
@@ -1726,14 +1751,14 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	partition := channel.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
-		return checkErr
+		return checkErr.ToErrorType()
 	}
 
 	tcData := coord.GetData()
 	var clusterWriteErr *CoordErr
 	if clusterWriteErr = tcData.checkWriteForLeader(self.myNode.GetID()); clusterWriteErr != nil {
 		coordLog.Warningf("topic(%v) check write failed :%v", topicName, clusterWriteErr)
-		return clusterWriteErr
+		return clusterWriteErr.ToErrorType()
 	}
 
 	success := 0
@@ -1742,7 +1767,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	if localErr != nil {
 		coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 		clusterWriteErr = ErrLocalWriteFailed
-		return clusterWriteErr
+		return clusterWriteErr.ToErrorType()
 	}
 	// this confirmed offset not changed, so we no need to sync with replica.
 	if !changed {

@@ -2,13 +2,13 @@ package consistence
 
 import (
 	"fmt"
+	"github.com/absolute8511/glog"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"io/ioutil"
 	"math/rand"
 	"os"
-	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -33,6 +33,13 @@ func (self *fakeLookupRemoteProxy) Reconnect() error {
 }
 
 func (self *fakeLookupRemoteProxy) Close() {
+}
+
+func (self *fakeLookupRemoteProxy) RequestNotifyNewTopicInfo(topic string, partition int, nid string) {
+	if self.t != nil {
+		self.t.Log("requesting notify topic info")
+	}
+	return
 }
 
 func (self *fakeLookupRemoteProxy) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
@@ -173,10 +180,6 @@ func ensureCatchupForTopic(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicIn
 }
 
 func TestNsqdCoordLookupdChanged(t *testing.T) {
-	errInter := ErrLocalWriteFailed
-	commonErr := reflect.ValueOf(errInter).Interface().(error)
-	test.NotNil(t, commonErr)
-	t.Log(commonErr.Error())
 }
 
 func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, string) {
@@ -185,6 +188,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	if testing.Verbose() {
 		opts.Logger = &levellogger.GLogger{}
 		opts.LogLevel = levellogger.LOG_DETAIL
+		glog.StartWorker(time.Second)
 	} else {
 		opts.LogLevel = levellogger.LOG_ERR
 	}
@@ -207,6 +211,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -315,6 +320,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -392,6 +398,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.Logger = newTestLogger(t)
 	}
@@ -494,8 +501,8 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	time.Sleep(time.Second * 3)
 	topicData3 := nsqd3.GetTopic(topic, partition)
 	topicData3.ForceFlush()
-	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
-	test.Nil(t, err)
+	tc3, coordErr := nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, coordErr)
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err := tc3.logMgr.GetCommitLogs(0, msgCnt)
@@ -609,6 +616,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	if testing.Verbose() {
 		coordLog.SetLevel(levellogger.LOG_DETAIL)
 		coordLog.Logger = &levellogger.GLogger{}
+		glog.StartWorker(time.Second)
 	} else {
 		coordLog.SetLevel(levellogger.LOG_ERR)
 	}

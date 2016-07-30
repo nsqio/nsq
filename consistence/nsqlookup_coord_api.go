@@ -138,7 +138,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	defer state.Unlock()
 	if state.waitingJoin {
 		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
-		return ErrWaitingJoinISR
+		return ErrWaitingJoinISR.ToErrorType()
 	}
 
 	existPart := make(map[int]*TopicPartitionMetaInfo)
@@ -162,14 +162,10 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
-		return err
+		return err.ToErrorType()
 	}
 	if len(leaders) != meta.PartitionNum || len(isrList) != meta.PartitionNum {
-		return ErrNodeUnavailable
-	}
-	if err != nil {
-		coordLog.Infof("failed alloc nodes for topic: %v", err)
-		return err
+		return ErrNodeUnavailable.ToErrorType()
 	}
 	for i := 0; i < meta.PartitionNum; i++ {
 		if _, ok := existPart[i]; ok {
@@ -180,9 +176,9 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		tmpTopicReplicaInfo.Leader = leaders[i]
 		tmpTopicReplicaInfo.EpochForWrite = 1
 
-		err = self.leadership.UpdateTopicNodeInfo(topic, i, &tmpTopicReplicaInfo, tmpTopicReplicaInfo.Epoch)
-		if err != nil {
-			coordLog.Infof("failed update info for topic : %v-%v, %v", topic, i, err)
+		commonErr := self.leadership.UpdateTopicNodeInfo(topic, i, &tmpTopicReplicaInfo, tmpTopicReplicaInfo.Epoch)
+		if commonErr != nil {
+			coordLog.Infof("failed update info for topic : %v-%v, %v", topic, i, commonErr)
 			continue
 		}
 		tmpTopicInfo := TopicPartitionMetaInfo{}

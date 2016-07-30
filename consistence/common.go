@@ -24,12 +24,23 @@ const (
 	CoordLocalErr
 	CoordLocalTmpErr
 	CoordTmpErr
+	CoordClusterNoRetryWriteErr
 )
 
+// note: since the gorpc will treat error type as special,
+// we should not implement the error interface for CoordErr as response type
 type CoordErr struct {
 	ErrMsg  string
 	ErrCode ErrRPCRetCode
 	ErrType CoordErrType
+}
+
+type CommonCoordErr struct {
+	CoordErr
+}
+
+func (self *CommonCoordErr) Error() string {
+	return self.String()
 }
 
 func NewCoordErr(msg string, etype CoordErrType) *CoordErr {
@@ -48,7 +59,15 @@ func NewCoordErrWithCode(msg string, etype CoordErrType, code ErrRPCRetCode) *Co
 	}
 }
 
-func (self *CoordErr) Error() string {
+func (self *CoordErr) ToErrorType() error {
+	e := &CommonCoordErr{}
+	e.ErrMsg = self.ErrMsg
+	e.ErrType = self.ErrType
+	e.ErrCode = self.ErrCode
+	return e
+}
+
+func (self *CoordErr) String() string {
 	var tmpbuf bytes.Buffer
 	tmpbuf.WriteString("ErrType:")
 	tmpbuf.WriteString(strconv.Itoa(int(self.ErrType)))
@@ -57,10 +76,6 @@ func (self *CoordErr) Error() string {
 	tmpbuf.WriteString(" : ")
 	tmpbuf.WriteString(self.ErrMsg)
 	return tmpbuf.String()
-}
-
-func (self *CoordErr) String() string {
-	return self.Error()
 }
 
 func (self *CoordErr) HasError() bool {
@@ -101,24 +116,38 @@ func (self *CoordErr) IsLocalErr() bool {
 	return self.ErrType == CoordLocalErr
 }
 
-func (self *CoordErr) CanRetryWrite() bool {
-	return self.ErrType == CoordTmpErr ||
+func (self *CoordErr) CanRetryWrite(retryTimes int) bool {
+	if self.ErrType == CoordClusterNoRetryWriteErr {
+		return false
+	}
+	if self.ErrType == CoordElectionErr {
+		if retryTimes > MAX_WRITE_RETRY {
+			return false
+		}
+		return true
+	}
+	if self.ErrType == CoordTmpErr ||
 		self.ErrType == CoordElectionTmpErr ||
-		self.ErrType == CoordLocalTmpErr ||
-		self.ErrType == CoordSlaveErr ||
+		self.ErrType == CoordLocalTmpErr {
+		if retryTimes > MAX_WRITE_RETRY*3 {
+			return false
+		}
+		return true
+	}
+	return self.ErrType == CoordSlaveErr ||
 		self.IsNetErr()
 }
 
 var (
 	ErrTopicInfoNotFound = NewCoordErr("topic info not found", CoordClusterErr)
 
-	ErrNotTopicLeader                = NewCoordErrWithCode("not topic leader", CoordElectionErr, RpcErrNotTopicLeader)
-	ErrEpochMismatch                 = NewCoordErrWithCode("commit epoch not match", CoordElectionErr, RpcErrEpochMismatch)
+	ErrNotTopicLeader                = NewCoordErrWithCode("not topic leader", CoordClusterNoRetryWriteErr, RpcErrNotTopicLeader)
+	ErrEpochMismatch                 = NewCoordErrWithCode("commit epoch not match", CoordElectionTmpErr, RpcErrEpochMismatch)
 	ErrEpochLessThanCurrent          = NewCoordErrWithCode("epoch should be increased", CoordElectionErr, RpcErrEpochLessThanCurrent)
 	ErrWriteQuorumFailed             = NewCoordErrWithCode("write to quorum failed.", CoordElectionTmpErr, RpcErrWriteQuorumFailed)
 	ErrCommitLogIDDup                = NewCoordErrWithCode("commit id duplicated", CoordElectionErr, RpcErrCommitLogIDDup)
 	ErrMissingTopicLeaderSession     = NewCoordErrWithCode("missing topic leader session", CoordElectionErr, RpcErrMissingTopicLeaderSession)
-	ErrLeaderSessionMismatch         = NewCoordErrWithCode("leader session mismatch", CoordElectionErr, RpcErrLeaderSessionMismatch)
+	ErrLeaderSessionMismatch         = NewCoordErrWithCode("leader session mismatch", CoordElectionTmpErr, RpcErrLeaderSessionMismatch)
 	ErrWriteDisabled                 = NewCoordErrWithCode("write is disabled on the topic", CoordElectionErr, RpcErrWriteDisabled)
 	ErrLeavingISRWait                = NewCoordErrWithCode("leaving isr need wait.", CoordElectionTmpErr, RpcErrLeavingISRWait)
 	ErrTopicCoordExistingAndMismatch = NewCoordErrWithCode("topic coordinator existing with a different partition", CoordClusterErr, RpcErrTopicCoordExistingAndMismatch)

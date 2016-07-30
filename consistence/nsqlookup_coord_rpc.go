@@ -21,6 +21,9 @@ type RpcReqJoinISR struct {
 	RpcLookupReqBase
 }
 
+type RpcReqNewTopicInfo struct {
+	RpcLookupReqBase
+}
 type RpcReadyForISR struct {
 	RpcLookupReqBase
 	LeaderSession  TopicLeaderSession
@@ -45,12 +48,14 @@ type NsqLookupCoordRpcServer struct {
 	nsqLookupCoord *NsqLookupCoordinator
 	rpcDispatcher  *gorpc.Dispatcher
 	rpcServer      *gorpc.Server
+	lastNotify     time.Time
 }
 
 func NewNsqLookupCoordRpcServer(coord *NsqLookupCoordinator) *NsqLookupCoordRpcServer {
 	return &NsqLookupCoordRpcServer{
 		nsqLookupCoord: coord,
 		rpcDispatcher:  gorpc.NewDispatcher(),
+		lastNotify:     time.Now(),
 	}
 }
 
@@ -81,7 +86,13 @@ func (self *NsqLookupCoordRpcServer) RequestJoinCatchup(req *RpcReqJoinCatchup) 
 			coordLog.Infof("rpc call used: %v", e-s)
 		}
 	}()
-	return self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
+	var ret CoordErr
+	err := self.nsqLookupCoord.handleRequestJoinCatchup(req.TopicName, req.TopicPartition, req.NodeID)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req *RpcReqJoinISR) *CoordErr {
@@ -93,7 +104,13 @@ func (self *NsqLookupCoordRpcServer) RequestJoinTopicISR(req *RpcReqJoinISR) *Co
 		}
 	}()
 
-	return self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
+	var ret CoordErr
+	err := self.nsqLookupCoord.handleRequestJoinISR(req.TopicName, req.TopicPartition, req.NodeID)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req *RpcReadyForISR) *CoordErr {
@@ -105,7 +122,13 @@ func (self *NsqLookupCoordRpcServer) ReadyForTopicISR(req *RpcReadyForISR) *Coor
 		}
 	}()
 
-	return self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
+	var ret CoordErr
+	err := self.nsqLookupCoord.handleReadyForISR(req.TopicName, req.TopicPartition, req.NodeID, req.LeaderSession, req.JoinISRSession)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req *RpcReqLeaveFromISR) *CoordErr {
@@ -117,7 +140,13 @@ func (self *NsqLookupCoordRpcServer) RequestLeaveFromISR(req *RpcReqLeaveFromISR
 		}
 	}()
 
-	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
+	var ret CoordErr
+	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, nil, req.NodeID)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req *RpcReqLeaveFromISRByLeader) *CoordErr {
@@ -129,5 +158,20 @@ func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req *RpcReqLeav
 		}
 	}()
 
-	return self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
+	var ret CoordErr
+	err := self.nsqLookupCoord.handleLeaveFromISR(req.TopicName, req.TopicPartition, &req.LeaderSession, req.NodeID)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
+func (self *NsqLookupCoordRpcServer) RequestNotifyNewTopicInfo(req *RpcReqJoinCatchup) *CoordErr {
+	var coordErr CoordErr
+	if time.Since(self.lastNotify) < time.Millisecond*10 {
+		return &coordErr
+	}
+	self.nsqLookupCoord.handleRequestNewTopicInfo(req.TopicName, req.TopicPartition, req.NodeID)
+	return &coordErr
 }

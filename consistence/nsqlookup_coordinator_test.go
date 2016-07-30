@@ -254,7 +254,7 @@ func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition
 		return ErrTopicNotCreated
 	}
 	if tp.metaInfo.Epoch != oldGen {
-		return ErrEpochMismatch
+		return ErrEpochMismatch.ToErrorType()
 	}
 	newEpoch := tp.metaInfo.Epoch
 	tp.metaInfo.TopicPartitionReplicaInfo = *topicInfo
@@ -386,7 +386,7 @@ func (self *FakeNsqlookupLeadership) ReleaseTopicLeader(topic string, partition 
 	coordLog.Infof("try release leader session with: %v", session)
 	if !l.IsSame(session) {
 		coordLog.Infof("failed release with mismatch session : %v", l)
-		return ErrLeaderSessionMismatch
+		return ErrLeaderSessionMismatch.ToErrorType()
 	}
 	l.LeaderNode = nil
 	l.Session = ""
@@ -560,15 +560,15 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	t0LeaderCoord := nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
-	tc0, err := t0LeaderCoord.getTopicCoord(topic, 0)
-	test.Nil(t, err)
+	tc0, coordErr := t0LeaderCoord.getTopicCoord(topic, 0)
+	test.Nil(t, coordErr)
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 	test.Equal(t, len(tc0.topicInfo.ISR), 2)
 
 	t1LeaderCoord := nsqdCoordList[t1.Leader]
 	test.NotNil(t, t1LeaderCoord)
-	tc1, err := t1LeaderCoord.getTopicCoord(topic, 1)
-	test.Nil(t, err)
+	tc1, coordErr := t1LeaderCoord.getTopicCoord(topic, 1)
+	test.Nil(t, coordErr)
 	test.Equal(t, tc1.topicInfo.Leader, t1.Leader)
 	test.Equal(t, len(tc1.topicInfo.ISR), 2)
 
@@ -618,8 +618,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, len(t0.CatchupList), 1)
 	t0LeaderCoord = nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
-	tc0, err = t0LeaderCoord.getTopicCoord(topic, 0)
-	test.Nil(t, err)
+	tc0, coordErr = t0LeaderCoord.getTopicCoord(topic, 0)
+	test.Nil(t, coordErr)
 	test.Equal(t, len(tc0.topicInfo.ISR), 1)
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 
@@ -634,8 +634,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, len(t0.ISR), 2)
 	t0LeaderCoord = nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
-	tc0, err = t0LeaderCoord.getTopicCoord(topic, 0)
-	test.Nil(t, err)
+	tc0, coordErr = t0LeaderCoord.getTopicCoord(topic, 0)
+	test.Nil(t, coordErr)
 	test.Equal(t, len(tc0.topicInfo.ISR), 2)
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 	time.Sleep(time.Second * 3)
@@ -667,8 +667,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	t0LeaderCoord = nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
-	tc0, err = t0LeaderCoord.getTopicCoord(topic, 0)
-	test.Nil(t, err)
+	tc0, coordErr = t0LeaderCoord.getTopicCoord(topic, 0)
+	test.Nil(t, coordErr)
 	test.Equal(t, len(tc0.topicInfo.ISR), 2)
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 	time.Sleep(time.Second * 3)
