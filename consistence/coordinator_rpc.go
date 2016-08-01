@@ -158,11 +158,22 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		ret = *err
 		return &ret
 	}
-	if rpcTopicReq.JoinSession != "" && !topicCoord.IsWriteDisabled() {
-		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
-			coordLog.Errorf("join session should disable write first")
-			ret = *ErrTopicCoordStateInvalid
-			return &ret
+	if !topicCoord.IsWriteDisabled() {
+		if rpcTopicReq.JoinSession != "" {
+			if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
+				coordLog.Errorf("join session should disable write first")
+				ret = *ErrTopicCoordStateInvalid
+				return &ret
+			}
+		}
+		if rpcTopicReq.LeaderNode.ID != topicCoord.topicInfo.Leader {
+			// Not allow to change the leader session to another during write
+			// but we can be notified to know the lost leader session
+			if rpcTopicReq.TopicLeaderSession != "" {
+				coordLog.Errorf("change leader session to another should disable write first")
+				ret = *ErrTopicCoordStateInvalid
+				return &ret
+			}
 		}
 	}
 	newSession := &TopicLeaderSession{
@@ -735,6 +746,14 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 		return nil, err.ToErrorType()
 	}
 	return &ret, nil
+}
+
+func (self *NsqdCoordRpcServer) TestRpcCoordErr(req *RpcTestReq) *CoordErr {
+	var ret CoordErr
+	ret.ErrMsg = req.Data
+	ret.ErrCode = RpcCommonErr
+	ret.ErrType = CoordCommonErr
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) TestRpcError(req *RpcTestReq) *RpcTestRsp {

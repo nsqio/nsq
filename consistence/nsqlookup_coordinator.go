@@ -334,7 +334,7 @@ func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struc
 				self.triggerCheckTopics("", 0, time.Millisecond)
 				coordLog.Warningf("topic leader is missing: %v", n)
 			} else {
-				coordLog.Infof("topic leader session changed : %v, %v", n, n.LeaderNode)
+				coordLog.Warningf("topic leader session changed : %v, %v", n, n.LeaderNode)
 				go self.revokeEnableTopicWrite(n.Topic, n.Partition, true)
 			}
 		}
@@ -529,14 +529,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		} else {
 			if _, ok := lostLeaderSessions[t.GetTopicDesp()]; ok {
-				coordLog.Infof("notify %v topic info and leadership since lost before ", t.GetTopicDesp())
-				self.notifyISRTopicMetaInfo(&t)
+				coordLog.Infof("notify %v topic leadership since lost before ", t.GetTopicDesp())
 				leaderSession, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
-				if err == nil {
-					delete(lostLeaderSessions, t.GetTopicDesp())
-					self.notifyTopicLeaderSession(&t, leaderSession, "")
+				if err != nil {
+					coordLog.Infof("failed to get topic %v leader session: %v", t.GetTopicDesp(), err)
 				} else {
-					coordLog.Infof("get topic %v leader session failed: %v", t.GetTopicDesp(), err)
+					self.notifyTopicLeaderSession(&t, leaderSession, "")
+					delete(lostLeaderSessions, t.GetTopicDesp())
 				}
 			}
 			if aliveCount > t.Replica {
@@ -1238,6 +1237,7 @@ func (self *NsqLookupCoordinator) notifySingleNsqdForTopicReload(topicInfo Topic
 	// TODO: maybe should disable write if reload node is in isr.
 	rpcErr := self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nodeID, &topicInfo)
 	if rpcErr != nil {
+		coordLog.Infof("failed to notify topic %v info to %v : %v", topicInfo.GetTopicDesp(), nodeID, rpcErr)
 		if rpcErr.IsEqual(ErrTopicCoordStateInvalid) {
 			go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, false)
 		}
@@ -1245,14 +1245,17 @@ func (self *NsqLookupCoordinator) notifySingleNsqdForTopicReload(topicInfo Topic
 	}
 	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
 	if err != nil {
+		coordLog.Infof("get leader session failed: %v", err)
 		return &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
 	}
 	return self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nodeID, &topicInfo, leaderSession, "")
 }
 
 func (self *NsqLookupCoordinator) notifyAllNsqdsForTopicReload(topicInfo TopicPartitionMetaInfo) *CoordErr {
+	coordLog.Infof("reload topic %v for all nodes ", topicInfo.GetTopicDesp())
 	rpcErr := self.notifyISRTopicMetaInfo(&topicInfo)
 	if rpcErr != nil {
+		coordLog.Infof("failed to notify topic %v info : %v", topicInfo.GetTopicDesp(), rpcErr)
 		if rpcErr.IsEqual(ErrTopicCoordStateInvalid) {
 			go self.revokeEnableTopicWrite(topicInfo.Name, topicInfo.Partition, false)
 		}
@@ -1626,5 +1629,12 @@ func (self *NsqLookupCoordinator) handleRequestNewTopicInfo(topic string, partit
 		coordLog.Infof("get topic info failed : %v", err.Error())
 		return nil
 	}
-	return self.notifySingleNsqdForTopicReload(*topicInfo, nodeID)
+	self.sendTopicInfoToNsqd(self.leaderNode.Epoch, nodeID, topicInfo)
+	leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
+	if err != nil {
+		coordLog.Infof("get leader session failed: %v", err)
+		return nil
+	}
+	self.sendTopicLeaderSessionToNsqd(self.leaderNode.Epoch, nodeID, topicInfo, leaderSession, "")
+	return nil
 }

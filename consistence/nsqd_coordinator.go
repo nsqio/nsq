@@ -85,7 +85,7 @@ type NsqdCoordinator struct {
 	rpcServer              *NsqdCoordRpcServer
 	tryCheckUnsynced       chan bool
 	wg                     sync.WaitGroup
-	stopping               bool
+	stopping               int32
 }
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -382,9 +382,15 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 
 			if topicInfo.Leader == self.myNode.GetID() {
 				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())
-				err := self.acquireTopicLeader(topicInfo)
+				tc, err := self.getTopicCoord(topicInfo.Name, topicInfo.Partition)
 				if err != nil {
-					coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
+					coordLog.Errorf("no coordinator for topic: %v", topicInfo.GetTopicDesp())
+				} else {
+					tc.DisableWrite(true)
+					err := self.acquireTopicLeader(topicInfo)
+					if err != nil {
+						coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
+					}
 				}
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
@@ -519,7 +525,7 @@ func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, part int) bool {
 
 // for isr node to check with leader
 // The lookup will wait all isr sync to new leader during the leader switch
-func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession string) *CoordErr {
+func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession string, mustSynced bool) *CoordErr {
 	// If leadership changed, all isr nodes should sync to new leader and check
 	// consistent with leader, after all isr nodes notify ready, the leader can
 	// accept new write.
@@ -532,12 +538,16 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession 
 			coordLog.Infof("isr begin sync with new leader")
 			go self.catchupFromLeader(topicCoord.topicInfo, joinSession)
 		} else {
-			coordLog.Infof("isr not synced with new leader, should retry catchup")
-			err := self.requestLeaveFromISR(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
-			if err != nil {
-				coordLog.Infof("request leave isr failed: %v", err)
+			coordLog.Infof("topic %v isr not synced with new leader ", topicCoord.topicInfo.GetTopicDesp())
+			if mustSynced {
+				err := self.requestLeaveFromISR(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
+				if err != nil {
+					coordLog.Infof("request leave isr failed: %v", err)
+				} else {
+					self.requestJoinCatchup(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
+				}
 			} else {
-				self.requestJoinCatchup(topicCoord.topicInfo.Name, topicCoord.topicInfo.Partition)
+				coordLog.Infof("topic %v ignore current isr node out of synced since write is not disabled", topicCoord.topicInfo.GetTopicDesp())
 			}
 		}
 		return err
@@ -852,8 +862,53 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 	return nil
 }
 
+// Note:
+// update epoch should be increased
+// if write epoch keep unchanged, the leader should be the same and no new node in isr
+// write epoch should be changed only when write is disabled
+// Any new ISR or leader change should be allowed only when write is disabled
+// any removal of isr or leader session change can be done without disable write
+// if I am not in isr anymore, all update should be allowed
+func (self *NsqdCoordinator) checkUpdateState(topicCoord *coordData, writeDisabled bool, newData *TopicPartitionMetaInfo) *CoordErr {
+	topicDesp := topicCoord.topicInfo.GetTopicDesp()
+	if newData.EpochForWrite < topicCoord.topicInfo.EpochForWrite ||
+		newData.Epoch < topicCoord.topicInfo.Epoch {
+		coordLog.Warningf("topic (%v) epoch should be increased: %v, %v", topicDesp,
+			newData, topicCoord.topicInfo)
+		return ErrEpochLessThanCurrent
+	}
+	if newData.EpochForWrite == topicCoord.topicInfo.EpochForWrite {
+		if newData.Leader != topicCoord.topicInfo.Leader {
+			coordLog.Warningf("topic (%v) write epoch should be changed since the leader is changed: %v, %v", topicDesp, newData, topicCoord.topicInfo)
+			return ErrTopicCoordStateInvalid
+		}
+		if len(newData.ISR) > len(topicCoord.topicInfo.ISR) {
+			coordLog.Warningf("topic (%v) write epoch should be changed since new node in isr: %v, %v",
+				topicDesp, newData, topicCoord.topicInfo)
+			return ErrTopicCoordStateInvalid
+		}
+		for _, nid := range newData.ISR {
+			if FindSlice(topicCoord.topicInfo.ISR, nid) == -1 {
+				coordLog.Warningf("topic %v write epoch should be changed since new node in isr: %v, %v",
+					topicDesp, newData, topicCoord.topicInfo)
+				return ErrTopicCoordStateInvalid
+			}
+		}
+	}
+	if writeDisabled {
+		return nil
+	}
+	if FindSlice(newData.ISR, self.myNode.GetID()) == -1 {
+		return nil
+	}
+	if newData.EpochForWrite != topicCoord.topicInfo.EpochForWrite {
+		return ErrTopicCoordStateInvalid
+	}
+	return nil
+}
+
 func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shouldDisableWrite bool, newTopicInfo *TopicPartitionMetaInfo) *CoordErr {
-	if self.stopping {
+	if atomic.LoadInt32(&self.stopping) == 1 {
 		return ErrClusterChanged
 	}
 	oldData := topicCoord.GetData()
@@ -868,31 +923,14 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 	disableWrite := topicCoord.IsWriteDisabled()
 	topicCoord.dataMutex.Lock()
-	if newTopicInfo.Epoch < topicCoord.topicInfo.Epoch {
-		coordLog.Warningf("topic (%v) info epoch is less while update: %v vs %v",
-			topicCoord.topicInfo.GetTopicDesp(), newTopicInfo.Epoch, topicCoord.topicInfo.Epoch)
-
-		topicCoord.dataMutex.Unlock()
-		return ErrEpochLessThanCurrent
-	}
 	// if any of new node in isr or leader is changed, the write disabled should be set first on isr nodes.
-	if newTopicInfo.Epoch != topicCoord.topicInfo.Epoch {
-		if !disableWrite && newTopicInfo.Leader != "" && FindSlice(newTopicInfo.ISR, self.myNode.GetID()) != -1 {
-			if newTopicInfo.Leader != topicCoord.topicInfo.Leader || len(newTopicInfo.ISR) > len(topicCoord.topicInfo.ISR) {
-				coordLog.Errorf("should disable the write before changing the leader or isr of topic")
-				topicCoord.dataMutex.Unlock()
-				return ErrTopicCoordStateInvalid
-			}
-			// note: removing failed node no need to disable write.
-			for _, newNode := range newTopicInfo.ISR {
-				if FindSlice(topicCoord.topicInfo.ISR, newNode) == -1 {
-					coordLog.Errorf("should disable the write before adding new ISR node ")
-					topicCoord.dataMutex.Unlock()
-					return ErrTopicCoordStateInvalid
-				}
-			}
-		}
+	if checkErr := self.checkUpdateState(oldData, disableWrite, newTopicInfo); checkErr != nil {
+		coordLog.Warningf("topic (%v) check update failed : %v ",
+			topicCoord.topicInfo.GetTopicDesp(), checkErr)
+		topicCoord.dataMutex.Unlock()
+		return checkErr
 	}
+
 	if topicCoord.IsExiting() {
 		coordLog.Infof("update the topic info: %v while exiting.", oldData.topicInfo.GetTopicDesp())
 		topicCoord.dataMutex.Unlock()
@@ -955,7 +993,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 }
 
 func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordErr {
-	if self.stopping {
+	if atomic.LoadInt32(&self.stopping) == 1 {
 		return ErrClusterChanged
 	}
 	coordLog.Infof("I am notified to acquire topic leader %v.", coord.topicInfo)
@@ -1031,7 +1069,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 }
 
 func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinator, newLS *TopicLeaderSession, joinSession string) *CoordErr {
-	if self.stopping {
+	if atomic.LoadInt32(&self.stopping) == 1 {
 		return ErrClusterChanged
 	}
 	topicCoord.dataMutex.Lock()
@@ -1060,6 +1098,8 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("update the topic info: %v while exiting.", tcData.topicInfo.GetTopicDesp())
 		return nil
 	}
+	// if the write is disabled currently, we should make sure all isr is in synced
+	mustSynced := topicCoord.IsWriteDisabled()
 
 	localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if err != nil {
@@ -1086,7 +1126,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 			// if isr, make sure sync to the new leader
 			if FindSlice(tcData.topicInfo.ISR, self.myNode.GetID()) != -1 {
 				coordLog.Infof("I am in isr while update leader session.")
-				go self.syncToNewLeader(tcData, joinSession)
+				go self.syncToNewLeader(tcData, joinSession, mustSynced)
 			} else if FindSlice(tcData.topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 				coordLog.Infof("I am in catchup while update leader session.")
 				select {
@@ -1493,6 +1533,7 @@ exitpub:
 		newCoordData.topicLeaderSession.LeaderNode = nil
 		coord.coordData = newCoordData
 		coord.dataMutex.Unlock()
+		atomic.StoreInt32(&coord.disableWrite, 1)
 		// leave isr
 		go func() {
 			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -2021,7 +2062,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 	}
 	coordLog.Infof("prepare leaving finished.")
 	if self.leadership != nil {
-		self.stopping = true
+		atomic.StoreInt32(&self.stopping, 1)
 		self.leadership.UnregisterNsqd(&self.myNode)
 	}
 }

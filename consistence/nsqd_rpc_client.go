@@ -297,3 +297,13 @@ func (self *NsqdRpcClient) CallRpcTesttimeout(data string) error {
 	_, err := self.CallWithRetry("TestRpcTimeout", "req")
 	return err
 }
+
+func (self *NsqdRpcClient) CallRpcTestCoordErr(data string) *CoordErr {
+	var req RpcTestReq
+	req.Data = data
+	reply, err := self.CallWithRetry("TestRpcCoordErr", &req)
+	if err != nil {
+		return convertRpcError(err, nil)
+	}
+	return reply.(*CoordErr)
+}

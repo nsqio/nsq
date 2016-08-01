@@ -226,10 +226,11 @@ func TestNsqdCoordStartup(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -335,10 +336,11 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -379,6 +381,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	// create topic on nsqdcoord
 	var topicInitInfo RpcAdminTopicInfo
 	topicInitInfo.TopicPartitionMetaInfo = *fakeInfo
+	topicInitInfo.EpochForWrite++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
@@ -413,10 +416,11 @@ func TestNsqdCoordCatchup(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -529,6 +533,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	changedInfo.Replica = 1
 	changedInfo.CatchupList = make([]string, 0)
 	changedInfo.Epoch++
+	changedInfo.EpochForWrite++
 	fakeSession.LeaderNode = nodeInfo3
 	fakeSession.Session = fakeSession.Session + fakeSession.Session
 	fakeSession.LeaderEpoch++
@@ -545,6 +550,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	fakeSession.Session = fakeSession.Session
 	fakeSession.LeaderEpoch++
 	topicInitInfo.Epoch = changedInfo.Epoch + 1
+	topicInitInfo.EpochForWrite = changedInfo.EpochForWrite + 1
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	time.Sleep(time.Second * 3)
@@ -562,6 +568,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicInitInfo.CatchupList = make([]string, 0)
 	topicInitInfo.DisableWrite = true
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)

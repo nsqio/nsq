@@ -201,6 +201,7 @@ func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 func TestNsqdRPCClient(t *testing.T) {
 	coordLog.SetLevel(2)
 	//coordLog.Logger = &levellogger.GLogger{}
+	coordLog.Logger = newTestLogger(t)
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
 		panic(err)
@@ -215,6 +216,12 @@ func TestNsqdRPCClient(t *testing.T) {
 	test.Nil(t, err)
 	_, err = client.CallWithRetry("TestRpcCallNotExist", "req")
 	test.NotNil(t, err)
+	coordErr := client.CallRpcTestCoordErr("coorderr")
+	test.NotNil(t, coordErr)
+	test.NotEqual(t, coordErr.ErrType, CoordNetErr)
+	test.Equal(t, coordErr.ErrMsg, "coorderr")
+	test.Equal(t, coordErr.ErrCode, RpcCommonErr)
+	test.Equal(t, coordErr.ErrType, CoordCommonErr)
 
 	rsp, rpcErr := client.CallRpcTest("reqdata")
 	test.NotNil(t, rpcErr)
