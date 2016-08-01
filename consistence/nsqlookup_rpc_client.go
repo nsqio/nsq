@@ -13,6 +13,7 @@ type INsqlookupRemoteProxy interface {
 	ReadyForTopicISR(topic string, partition int, nid string, leaderSession *TopicLeaderSession, joinISRSession string) *CoordErr
 	RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
+	RequestNotifyNewTopicInfo(topic string, partition int, nid string)
 }
 
 type nsqlookupRemoteProxyCreateFunc func(string, time.Duration) (INsqlookupRemoteProxy, error)
@@ -55,8 +56,12 @@ func (self *NsqLookupRpcClient) Reconnect() error {
 }
 
 func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}) (interface{}, error) {
-	for {
-		reply, err := self.dc.Call(method, arg)
+	retry := 0
+	var err error
+	var reply interface{}
+	for retry < 5 {
+		retry++
+		reply, err = self.dc.Call(method, arg)
 		if err != nil && err.(*gorpc.ClientError).Connection {
 			err = self.Reconnect()
 			if err != nil {
@@ -69,6 +74,7 @@ func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}) (i
 			return reply, err
 		}
 	}
+	return reply, err
 }
 
 func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
@@ -78,6 +84,14 @@ func (self *NsqLookupRpcClient) RequestJoinCatchup(topic string, partition int, 
 	req.TopicPartition = partition
 	ret, err := self.CallWithRetry("RequestJoinCatchup", &req)
 	return convertRpcError(err, ret)
+}
+
+func (self *NsqLookupRpcClient) RequestNotifyNewTopicInfo(topic string, partition int, nid string) {
+	var req RpcReqNewTopicInfo
+	req.NodeID = nid
+	req.TopicName = topic
+	req.TopicPartition = partition
+	self.CallWithRetry("RequestNotifyNewTopicInfo", &req)
 }
 
 func (self *NsqLookupRpcClient) RequestJoinTopicISR(topic string, partition int, nid string) *CoordErr {

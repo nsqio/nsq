@@ -970,7 +970,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
 			err)
-		if clusterErr, ok := err.(*consistence.CoordErr); ok {
+		if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 			if !clusterErr.IsLocalErr() {
 				return nil, protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
 			}
@@ -1208,7 +1208,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		if err != nil {
 			topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}
@@ -1257,7 +1257,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 			topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 
-			if clusterErr, ok := err.(*consistence.CoordErr); ok {
+			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
 					return nil, protocol.NewClientErr(err, FailedOnNotWritable, "")
 				}

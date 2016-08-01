@@ -36,6 +36,13 @@ func (self *fakeLookupRemoteProxy) Reconnect() error {
 func (self *fakeLookupRemoteProxy) Close() {
 }
 
+func (self *fakeLookupRemoteProxy) RequestNotifyNewTopicInfo(topic string, partition int, nid string) {
+	if self.t != nil {
+		self.t.Log("requesting notify topic info")
+	}
+	return
+}
+
 func (self *fakeLookupRemoteProxy) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting join catchup")
@@ -181,6 +188,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	if testing.Verbose() {
 		opts.Logger = &levellogger.GLogger{}
 		opts.LogLevel = levellogger.LOG_DETAIL
+		glog.StartWorker(time.Second)
 	} else {
 		opts.LogLevel = levellogger.LOG_ERR
 	}
@@ -222,10 +230,11 @@ func TestNsqdCoordStartup(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -332,10 +341,11 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -376,6 +386,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	// create topic on nsqdcoord
 	var topicInitInfo RpcAdminTopicInfo
 	topicInitInfo.TopicPartitionMetaInfo = *fakeInfo
+	topicInitInfo.EpochForWrite++
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
@@ -411,10 +422,11 @@ func TestNsqdCoordCatchup(t *testing.T) {
 		PartitionNum: 1,
 	}
 	fakeReplicaInfo := &TopicPartitionReplicaInfo{
-		Leader:      nodeInfo1.GetID(),
-		ISR:         make([]string, 0),
-		CatchupList: make([]string, 0),
-		Epoch:       1,
+		Leader:        nodeInfo1.GetID(),
+		ISR:           make([]string, 0),
+		CatchupList:   make([]string, 0),
+		Epoch:         1,
+		EpochForWrite: 1,
 	}
 	fakeInfo := &TopicPartitionMetaInfo{
 		Name:                      topic,
@@ -499,8 +511,8 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	time.Sleep(time.Second * 3)
 	topicData3 := nsqd3.GetTopic(topic, partition)
 	topicData3.ForceFlush()
-	tc3, err := nsqdCoord3.getTopicCoord(topic, partition)
-	test.Nil(t, err)
+	tc3, coordErr := nsqdCoord3.getTopicCoord(topic, partition)
+	test.Nil(t, coordErr)
 	test.Equal(t, topicData3.TotalDataSize(), msgRawSize*int64(msgCnt))
 	test.Equal(t, topicData3.TotalMessageCnt(), uint64(msgCnt))
 	logs3, err := tc3.logMgr.GetCommitLogsV2(0, 0, msgCnt)
@@ -527,6 +539,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	changedInfo.Replica = 1
 	changedInfo.CatchupList = make([]string, 0)
 	changedInfo.Epoch++
+	changedInfo.EpochForWrite++
 	fakeSession.LeaderNode = nodeInfo3
 	fakeSession.Session = fakeSession.Session + fakeSession.Session
 	fakeSession.LeaderEpoch++
@@ -543,6 +556,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	fakeSession.Session = fakeSession.Session
 	fakeSession.LeaderEpoch++
 	topicInitInfo.Epoch = changedInfo.Epoch + 1
+	topicInitInfo.EpochForWrite = changedInfo.EpochForWrite + 1
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	time.Sleep(time.Second * 3)
@@ -560,6 +574,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topicInitInfo.CatchupList = make([]string, 0)
 	topicInitInfo.DisableWrite = true
 	topicInitInfo.Epoch++
+	topicInitInfo.EpochForWrite++
 
 	ensureTopicOnNsqdCoord(nsqdCoord1, topicInitInfo)
 	ensureTopicOnNsqdCoord(nsqdCoord2, topicInitInfo)

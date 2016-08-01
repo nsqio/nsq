@@ -158,11 +158,22 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		ret = *err
 		return &ret
 	}
-	if rpcTopicReq.JoinSession != "" && !topicCoord.IsWriteDisabled() {
-		if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
-			coordLog.Errorf("join session should disable write first")
-			ret = *ErrTopicCoordStateInvalid
-			return &ret
+	if !topicCoord.IsWriteDisabled() {
+		if rpcTopicReq.JoinSession != "" {
+			if FindSlice(topicCoord.topicInfo.ISR, self.nsqdCoord.myNode.GetID()) != -1 {
+				coordLog.Errorf("join session should disable write first")
+				ret = *ErrTopicCoordStateInvalid
+				return &ret
+			}
+		}
+		if rpcTopicReq.LeaderNode.ID != topicCoord.topicInfo.Leader {
+			// Not allow to change the leader session to another during write
+			// but we can be notified to know the lost leader session
+			if rpcTopicReq.TopicLeaderSession != "" {
+				coordLog.Errorf("change leader session to another should disable write first")
+				ret = *ErrTopicCoordStateInvalid
+				return &ret
+			}
 		}
 	}
 	newSession := &TopicLeaderSession{
@@ -170,7 +181,12 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,
 	}
-	return self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
+	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq *RpcAcquireTopicLeaderReq) *CoordErr {
@@ -201,9 +217,15 @@ func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq *RpcAcquire
 		tcData.GetLeader() != rpcTopicReq.LeaderNodeID ||
 		tcData.GetLeader() != self.nsqdCoord.myNode.GetID() {
 		coordLog.Infof("not topic leader while acquire leader: %v, %v", tcData, rpcTopicReq)
-		return nil
+		return &ret
 	}
-	return self.nsqdCoord.notifyAcquireTopicLeader(tcData)
+	err = self.nsqdCoord.notifyAcquireTopicLeader(tcData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+
 }
 
 func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
@@ -279,7 +301,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 			}
 		}
 		self.nsqdCoord.coordMutex.Unlock()
-		return nil
+		return &ret
 	}
 	if !ok {
 		coords = make(map[int]*TopicCoordinator)
@@ -313,7 +335,12 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 	}
 
 	self.nsqdCoord.coordMutex.Unlock()
-	return self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartitionMetaInfo)
+	err := self.nsqdCoord.updateTopicInfo(tpCoord, rpcTopicReq.DisableWrite, &rpcTopicReq.TopicPartitionMetaInfo)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
@@ -362,7 +389,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 		ret = *err
 		return &ret
 	}
-	return nil
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
@@ -407,7 +434,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 		ret = *err
 		return &ret
 	}
-	return nil
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicInfo) bool {
@@ -437,7 +464,7 @@ func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) 
 		ret = CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
 		return &ret
 	}
-	return nil
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
@@ -552,10 +579,12 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 	tcData := topicCoord.GetData()
 	if tcData.GetTopicEpochForWrite() != rpcData.TopicWriteEpoch {
 		coordLog.Infof("rpc call with wrong epoch :%v, current: %v", rpcData, tcData.GetTopicEpochForWrite())
+		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
 		return nil, ErrEpochMismatch
 	}
 	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
 		coordLog.Infof("rpc call with wrong session:%v, local: %v", rpcData, tcData.GetLeaderSession())
+		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
 		return nil, ErrLeaderSessionMismatch
 	}
 	//if !tcData.localDataLoaded {
@@ -566,12 +595,19 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 }
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *CoordErr {
+	var ret CoordErr
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		return err
+		ret = *err
+		return &ret
 	}
 	// update local channel offset
-	return self.nsqdCoord.updateChannelOffsetOnSlave(tc.GetData(), info.Channel, info.ChannelOffset)
+	err = self.nsqdCoord.updateChannelOffsetOnSlave(tc.GetData(), info.Channel, info.ChannelOffset)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 // receive from leader
@@ -587,12 +623,19 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 		}()
 	}
 
+	var ret CoordErr
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		return err
+		ret = *err
+		return &ret
 	}
 	// do local pub message
-	return self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
@@ -606,19 +649,26 @@ func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
 		}()
 	}
 
+	var ret CoordErr
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
-		return err
+		ret = *err
+		return &ret
 	}
 	// do local pub message
-	return self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)
+	err = self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) GetLastCommitLogID(req *RpcCommitLogReq) (int64, error) {
 	var ret int64
 	tc, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
-		return ret, err
+		return ret, err.ToErrorType()
 	}
 	ret = tc.logMgr.GetLastCommitLogID()
 	return ret, nil
@@ -666,7 +716,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	var ret RpcPullCommitLogsRsp
 	tcData, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
-		return nil, err
+		return nil, err.ToErrorType()
 	}
 
 	var localErr error
@@ -695,9 +745,17 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	ret.DataList, err = self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, offsetList, sizeList)
 	ret.Logs = ret.Logs[:len(ret.DataList)]
 	if err != nil {
-		return nil, err
+		return nil, err.ToErrorType()
 	}
 	return &ret, nil
+}
+
+func (self *NsqdCoordRpcServer) TestRpcCoordErr(req *RpcTestReq) *CoordErr {
+	var ret CoordErr
+	ret.ErrMsg = req.Data
+	ret.ErrCode = RpcCommonErr
+	ret.ErrType = CoordCommonErr
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) TestRpcError(req *RpcTestReq) *RpcTestRsp {

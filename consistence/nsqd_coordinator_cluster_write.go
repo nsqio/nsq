@@ -4,6 +4,7 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqd"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,7 +31,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	partition := topic.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
-		return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, checkErr
+		return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, checkErr.ToErrorType()
 	}
 
 	var logMgr *TopicCommitLogMgr
@@ -108,7 +109,11 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	clusterErr := self.doSyncOpToCluster(true, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
 
-	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, clusterErr
+	var err error
+	if clusterErr != nil {
+		err = clusterErr.ToErrorType()
+	}
+	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, err
 }
 
 func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
@@ -119,7 +124,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	partition := topic.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
-		return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, checkErr
+		return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, checkErr.ToErrorType()
 	}
 
 	var queueEnd nsqd.BackendQueueEnd
@@ -196,12 +201,17 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	clusterErr := self.doSyncOpToCluster(true, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
 
-	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, clusterErr
+	var err error
+	if clusterErr != nil {
+		err = clusterErr.ToErrorType()
+	}
+
+	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, err
 }
 
 func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordinator, doLocalWrite localWriteFunc,
 	doLocalExit localExitFunc, doLocalCommit localCommitFunc, doLocalRollback localRollbackFunc,
-	doRefresh refreshCoordFunc, doSlaveSync slaveSyncFunc, handleSyncResult handleSyncResultFunc) error {
+	doRefresh refreshCoordFunc, doSlaveSync slaveSyncFunc, handleSyncResult handleSyncResultFunc) *CoordErr {
 
 	if isWrite {
 		coord.writeHold.Lock()
@@ -256,6 +266,7 @@ retrysync:
 			clusterWriteErr = ErrTopicExiting
 			goto exitsync
 		}
+		time.Sleep(time.Second * 3)
 	}
 	if needRefreshISR {
 		tcData = coord.GetData()
@@ -313,7 +324,7 @@ retrysync:
 			coordLog.Infof("sync operation to replica %v failed: %v", nodeID, rpcErr)
 			clusterWriteErr = rpcErr
 			failedNodes[nodeID] = struct{}{}
-			if !rpcErr.CanRetryWrite() {
+			if !rpcErr.CanRetryWrite(int(retryCnt)) {
 				exitErr++
 				coordLog.Infof("operation failed and no retry type: %v, %v", rpcErr.ErrType, exitErr)
 				if exitErr > len(tcData.topicInfo.ISR)/2 {
@@ -355,9 +366,15 @@ retrysync:
 			needLeaveISR = true
 		}
 
+		if retryCnt > MAX_WRITE_RETRY*2 {
+			coordLog.Warningf("topic %v sync write failed due to max retry: %v, %v")
+			needLeaveISR = true
+			goto exitsync
+		}
+
 		needRefreshISR = true
 		sleepTime := time.Millisecond * time.Duration(2<<retryCnt)
-		if sleepTime < MaxRetryWait {
+		if (sleepTime > 0) && (sleepTime < MaxRetryWait) {
 			time.Sleep(sleepTime)
 		} else {
 			time.Sleep(MaxRetryWait)
@@ -372,6 +389,8 @@ exitsync:
 		newCoordData.topicLeaderSession.LeaderNode = nil
 		coord.coordData = newCoordData
 		coord.dataMutex.Unlock()
+		atomic.StoreInt32(&coord.disableWrite, 1)
+		coordLog.Warningf("topic %v failed to sync to isr, need leader isr", tcData.topicInfo.GetTopicDesp())
 		// leave isr
 		go func() {
 			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -419,7 +438,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 
 		if topic.GetTopicPart() != partition {
 			coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
-			return &CoordErr{ErrLocalTopicPartitionMismatch.Error(), RpcErrTopicNotExist, CoordSlaveErr}
+			return &CoordErr{ErrLocalTopicPartitionMismatch.String(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
 		topic.Lock()
@@ -643,7 +662,7 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 	partition := ch.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
-		return checkErr
+		return checkErr.ToErrorType()
 	}
 
 	var syncOffset ChannelConsumerOffset
@@ -687,7 +706,10 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 	}
 	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
-	return clusterErr
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
 }
 
 func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
@@ -695,7 +717,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	partition := channel.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
 	if checkErr != nil {
-		return checkErr
+		return checkErr.ToErrorType()
 	}
 
 	var syncOffset ChannelConsumerOffset
@@ -748,7 +770,10 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	}
 	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
 		doRefresh, doSlaveSync, handleSyncResult)
-	return clusterErr
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
 }
 
 func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelName string, offset ChannelConsumerOffset) *CoordErr {

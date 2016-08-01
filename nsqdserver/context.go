@@ -201,7 +201,7 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 	} else {
 		err = c.nsqdCoord.SetChannelConsumeOffsetToCluster(ch, queueOffset, cnt, force)
 		if err != nil {
-			if coordErr, ok := err.(*consistence.CoordErr); ok {
+			if coordErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if coordErr.IsEqual(consistence.ErrLocalSetChannelOffsetNotFirstClient) {
 					nsqd.NsqLogger().Logf("the consume offset: %v can only be set by the first client", startFrom)
 					return queueOffset, cnt, nil

@@ -830,7 +830,11 @@ func (c *Channel) DisableConsume(disable bool) {
 		done := false
 		for !done {
 			select {
-			case m := <-c.clientMsgChan:
+			case m, ok := <-c.clientMsgChan:
+				if !ok {
+					done = true
+					break
+				}
 				nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.offset)
 			case <-c.requeuedMsgChan:
 			default:
@@ -866,15 +870,21 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	}
 
 	done := false
+	clientMsgChan := c.clientMsgChan
 	for !done {
 		select {
-		case m := <-c.clientMsgChan:
+		case m, ok := <-clientMsgChan:
+			if !ok {
+				clientMsgChan = nil
+				continue
+			}
 			nsqLog.Logf("ignored a read message %v at offset %v while drain channel", m.ID, m.offset)
 		case <-c.requeuedMsgChan:
 		default:
 			done = true
 		}
 	}
+
 	if lastDataNeedRead != nil {
 		*lastDataNeedRead = false
 	}
