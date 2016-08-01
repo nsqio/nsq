@@ -146,8 +146,8 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}) (interf
 		reply, err = self.dc.Call(method, arg)
 		if err != nil && err.(*gorpc.ClientError).Connection {
 			coordLog.Infof("rpc connection closed, error: %v", err)
-			err = self.Reconnect()
-			if err != nil {
+			connErr := self.Reconnect()
+			if connErr != nil {
 				return reply, err
 			}
 		} else {

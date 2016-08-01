@@ -63,8 +63,8 @@ func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}) (i
 		retry++
 		reply, err = self.dc.Call(method, arg)
 		if err != nil && err.(*gorpc.ClientError).Connection {
-			err = self.Reconnect()
-			if err != nil {
+			connErr := self.Reconnect()
+			if connErr != nil {
 				return reply, err
 			}
 		} else {
