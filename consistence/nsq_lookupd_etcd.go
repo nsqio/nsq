@@ -714,7 +714,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 		if rsp == nil {
 			continue
 		}
-		coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s]", rsp.Node.Key, rsp.Action, rsp.Node.Value)
+		coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] pre_modified[%d] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.PrevNode.ModifiedIndex, rsp.Node.ModifiedIndex)
 		if rsp.Action == "compareAndDelete" || rsp.Action == "delete" || rsp.Action == "expire" {
 			keys := strings.Split(rsp.Node.Key, "/")
 			keyLen := len(keys)
