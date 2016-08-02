@@ -198,8 +198,10 @@ func (self *NsqLookupdEtcdMgr) processMasterEvents(master etcdlock.Master, leade
 					leader <- &lookupdNode
 					continue
 				}
+				coordLog.Infof("[processMasterEvents] master event type[%d] lookupdNode[%v].", e.Type, lookupdNode)
 				leader <- &lookupdNode
 			} else if e.Type == etcdlock.MASTER_DELETE {
+				coordLog.Infof("[processMasterEvents] master event delete.")
 				// Lost the lock.
 				var lookupdNode NsqLookupdNodeInfo
 				leader <- &lookupdNode
@@ -269,6 +271,7 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 		}
 		nsqdNodes, err := self.getNsqdNodes()
 		if err != nil {
+			coordLog.Errorf("[WatchNsqdNodes] key[%s] getNsqdNodes error: %s", key, err.Error())
 			continue
 		}
 		select {
@@ -332,6 +335,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 			}
 			continue
 		}
+		coordLog.Infof("[watchTopics] topic changed.")
 		self.itcMutex.Lock()
 		self.ifTopicChanged = true
 		self.itcMutex.Unlock()
@@ -721,7 +725,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			if err != nil {
 				continue
 			}
-			coordLog.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] leader deleted.", keys[keyLen-3], partition)
+			coordLog.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] action[%s] leader deleted.", keys[keyLen-3], partition, rsp.Action)
 			topicLeaderSession := &TopicLeaderSession{
 				Topic:     keys[keyLen-3],
 				Partition: partition,
@@ -732,6 +736,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			if err := json.Unmarshal([]byte(rsp.Node.Value), &topicLeaderSession); err != nil {
 				continue
 			}
+			coordLog.Infof("[watchTopicLeaderSession] topicLeaderSession[%v] create.", topicLeaderSession)
 			leader <- &topicLeaderSession
 		}
 	}
