@@ -766,6 +766,47 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 	return nil
 }
 
+func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, lookupdHTTPAddrs []string) error {
+	var errs []error
+
+	producers, partitionProducers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nil)
+	if err != nil {
+		pe, ok := err.(PartialErr)
+		if !ok {
+			return err
+		}
+		errs = append(errs, pe.Errors()...)
+	}
+
+	if len(partitionProducers) == 0 {
+		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
+		err = c.versionPivotProducers(producers, "create_channel", "channel/create", qs)
+		if err != nil {
+			pe, ok := err.(PartialErr)
+			if !ok {
+				return err
+			}
+			errs = append(errs, pe.Errors()...)
+		}
+	} else {
+		for pid, pp := range partitionProducers {
+			qs := fmt.Sprintf("topic=%s&channel=%s&partition=%s", url.QueryEscape(topicName), url.QueryEscape(channelName), pid)
+			err = c.versionPivotProducers(pp, "create_channel", "channel/create", qs)
+			if err != nil {
+				pe, ok := err.(PartialErr)
+				if !ok {
+					return err
+				}
+				errs = append(errs, pe.Errors()...)
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return ErrList(errs)
+	}
+	return nil
+}
+
 func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int, lookupdHTTPAddrs []string) error {
 	var errs []error
 
@@ -827,7 +868,7 @@ func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, n
 func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	var errs []error
 
-	producers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
+	producers, partitionProducers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -836,18 +877,31 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 		errs = append(errs, pe.Errors()...)
 	}
 
-	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
-
-	// remove the channel from all the nsqd that produce this topic
-	err = c.versionPivotProducers(producers, "delete_channel", "channel/delete", qs)
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
+	if len(partitionProducers) == 0 {
+		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
+		// remove the channel from all the nsqd that produce this topic
+		err = c.versionPivotProducers(producers, "delete_channel", "channel/delete", qs)
+		if err != nil {
+			pe, ok := err.(PartialErr)
+			if !ok {
+				return err
+			}
+			errs = append(errs, pe.Errors()...)
 		}
-		errs = append(errs, pe.Errors()...)
+	} else {
+		for pid, pp := range partitionProducers {
+			qs := fmt.Sprintf("topic=%s&channel=%s&partition=%s", url.QueryEscape(topicName), url.QueryEscape(channelName), pid)
+			// remove the channel from all the nsqd that produce this topic
+			err = c.versionPivotProducers(pp, "delete_channel", "channel/delete", qs)
+			if err != nil {
+				pe, ok := err.(PartialErr)
+				if !ok {
+					return err
+				}
+				errs = append(errs, pe.Errors()...)
+			}
+		}
 	}
-
 	if len(errs) > 0 {
 		return ErrList(errs)
 	}
@@ -887,7 +941,7 @@ func (c *ClusterInfo) EmptyChannel(topicName string, channelName string, lookupd
 func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string, deprecatedURI string, v1URI string, qs string) error {
 	var errs []error
 
-	producers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
+	producers, partitionProducers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
 		if !ok {
@@ -895,15 +949,28 @@ func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, 
 		}
 		errs = append(errs, pe.Errors()...)
 	}
-	c.logf("CI: got %v producer nodes for topic %v", len(producers), topicName)
-
-	err = c.versionPivotProducers(producers, deprecatedURI, v1URI, qs)
-	if err != nil {
-		pe, ok := err.(PartialErr)
-		if !ok {
-			return err
+	c.logf("CI: got %v producer nodes %v partition producers for topic %v", len(producers), len(partitionProducers), topicName)
+	if len(partitionProducers) == 0 {
+		err = c.versionPivotProducers(producers, deprecatedURI, v1URI, qs)
+		if err != nil {
+			pe, ok := err.(PartialErr)
+			if !ok {
+				return err
+			}
+			errs = append(errs, pe.Errors()...)
 		}
-		errs = append(errs, pe.Errors()...)
+	} else {
+		for pid, pp := range partitionProducers {
+			qs = qs + "&partition=" + pid
+			err = c.versionPivotProducers(pp, deprecatedURI, v1URI, qs)
+			if err != nil {
+				pe, ok := err.(PartialErr)
+				if !ok {
+					return err
+				}
+				errs = append(errs, pe.Errors()...)
+			}
+		}
 	}
 
 	if len(errs) > 0 {
@@ -919,12 +986,13 @@ func (c *ClusterInfo) GetProducers(lookupdHTTPAddrs []string, nsqdHTTPAddrs []st
 	return c.GetNSQDProducers(nsqdHTTPAddrs)
 }
 
-func (c *ClusterInfo) GetTopicProducers(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) (Producers, error) {
+func (c *ClusterInfo) GetTopicProducers(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) (Producers, map[string]Producers, error) {
 	if len(lookupdHTTPAddrs) != 0 {
-		p, _, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
-		return p, err
+		p, pp, err := c.GetLookupdTopicProducers(topicName, lookupdHTTPAddrs)
+		return p, pp, err
 	}
-	return c.GetNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	p, err := c.GetNSQDTopicProducers(topicName, nsqdHTTPAddrs)
+	return p, nil, err
 }
 
 func (c *ClusterInfo) versionPivotNSQLookupd(addrs []string, deprecatedURI string, v1URI string, qs string) error {

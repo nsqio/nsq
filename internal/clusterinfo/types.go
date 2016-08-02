@@ -185,6 +185,8 @@ type ChannelStats struct {
 func (c *ChannelStats) Add(a *ChannelStats) {
 	c.Node = "*"
 	c.Depth += a.Depth
+	c.DepthSize += a.DepthSize
+	c.DepthTimestamp = a.DepthTimestamp
 	c.MemoryDepth += a.MemoryDepth
 	c.BackendDepth += a.BackendDepth
 	c.InFlightCount += a.InFlightCount

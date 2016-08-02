@@ -408,10 +408,6 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	delete(t.channelMap, channelName)
 	// not defered so that we can continue while the channel async closes
 	numChannels := len(t.channelMap)
-	chans := make([]*Channel, 0, len(t.channelMap))
-	for _, c := range t.channelMap {
-		chans = append(chans, c)
-	}
 	t.channelLock.Unlock()
 
 	nsqLog.Logf("TOPIC(%s): deleting channel %s", t.GetFullName(), channel.name)

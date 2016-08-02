@@ -525,6 +525,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 
+	// TODO: sync to replica to delete this channel.
 	err = topic.DeleteExistingChannel(channelName)
 	if err != nil {
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}

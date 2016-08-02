@@ -283,7 +283,7 @@ func (s *httpServer) coordinatorHandler(w http.ResponseWriter, req *http.Request
 	var messages []string
 	node := ps.ByName("node")
 
-	producers, err := s.ci.GetTopicProducers(topicName,
+	producers, _, err := s.ci.GetTopicProducers(topicName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	if err != nil {
@@ -320,7 +320,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 
 	topicName := ps.ByName("topic")
 
-	producers, err := s.ci.GetTopicProducers(topicName,
+	producers, _, err := s.ci.GetTopicProducers(topicName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	if err != nil {
@@ -385,7 +385,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
 
-	producers, err := s.ci.GetTopicProducers(topicName,
+	producers, _, err := s.ci.GetTopicProducers(topicName,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	if err != nil {
