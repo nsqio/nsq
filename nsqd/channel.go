@@ -125,7 +125,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
 		tryReadBackend:  make(chan bool, 1),
-		readerChanged:   make(chan resetChannelData, 1),
+		readerChanged:   make(chan resetChannelData, 10),
 		endUpdatedChan:  make(chan bool, 1),
 		deleteCallback:  deleteCallback,
 		option:          opt,
@@ -214,6 +214,14 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, cnt int64, force bool) 
 		select {
 		case c.readerChanged <- resetChannelData{offset, cnt}:
 		default:
+			nsqLog.Logf("ignored the reader reset: %v:%v", offset, cnt)
+			if offset > 0 && cnt > 0 {
+				select {
+				case c.readerChanged <- resetChannelData{offset, cnt}:
+				case <-time.After(time.Second):
+					nsqLog.Logf("ignored the reader reset finally: %v:%v", offset, cnt)
+				}
+			}
 		}
 		for _, c := range c.clients {
 			c.Empty()

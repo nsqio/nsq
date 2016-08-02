@@ -280,7 +280,7 @@ func (d *diskQueueReader) ResetReadToOffset(offset BackendOffset, cnt int64) (Ba
 	}
 
 	old := d.confirmedQueueInfo.Offset()
-	nsqLog.Infof("reset from: %v, %v", d.readQueueInfo, d.confirmedQueueInfo)
+	nsqLog.Infof("reset from: %v, %v to: %v:%v", d.readQueueInfo, d.confirmedQueueInfo, offset, cnt)
 	err := d.internalSkipTo(offset, cnt, offset < old)
 	if err == nil {
 		if old != d.confirmedQueueInfo.Offset() {
@@ -548,7 +548,22 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset, cnt int64) error
 }
 
 func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backToConfirmed bool) error {
-	if voffset == d.readQueueInfo.Offset() && voffset == d.confirmedQueueInfo.Offset() {
+	if voffset == d.readQueueInfo.Offset() {
+		if cnt != 0 && d.readQueueInfo.TotalMsgCnt() != cnt {
+			nsqLog.Logf("try sync the message count since the cnt is not matched: %v, %v", cnt, d.readQueueInfo)
+			atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
+		}
+		d.confirmedQueueInfo = d.readQueueInfo
+		d.updateDepth()
+		return nil
+	}
+	if voffset == d.confirmedQueueInfo.Offset() {
+		if cnt != 0 && d.confirmedQueueInfo.TotalMsgCnt() != cnt {
+			nsqLog.Logf("try sync the message count since the cnt is not matched: %v, %v", cnt, d.confirmedQueueInfo)
+			atomic.StoreInt64(&d.confirmedQueueInfo.totalMsgCnt, cnt)
+		}
+		d.readQueueInfo = d.confirmedQueueInfo
+		d.updateDepth()
 		return nil
 	}
 

@@ -1285,7 +1285,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 					if err != nil {
 						coordLog.Infof("search msg offset failed: %v", err)
 					} else {
-						coordLog.Infof("try fix the channel %v confirmed queue info from %v to %v:%v, commitlog: %v",
+						coordLog.Warningf("try fix the channel %v confirmed queue info from %v to %v:%v, commitlog: %v",
 							ch.GetName(), confirmed, offset, cnt, l)
 						ch.SetConsumeOffset(nsqd.BackendOffset(offset), cnt, true)
 					}
