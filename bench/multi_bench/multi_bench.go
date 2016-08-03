@@ -259,7 +259,7 @@ func startSimpleTest(msg []byte, batch [][]byte) {
 	if len(currentTopics) == 0 {
 		return
 	}
-	chs, err := cluster.GetLookupdTopicChannels(currentTopics[0], 0, tmpList)
+	chs, err := cluster.GetLookupdTopicChannels(currentTopics[0], tmpList)
 	if err != nil {
 		log.Printf("failed : %v\n", err)
 	} else {
