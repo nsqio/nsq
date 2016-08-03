@@ -1166,7 +1166,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	disableWrite := topicCoord.IsWriteDisabled()
 	topicCoord.dataMutex.Lock()
 	// if any of new node in isr or leader is changed, the write disabled should be set first on isr nodes.
-	if checkErr := self.checkUpdateState(oldData, disableWrite, newTopicInfo); checkErr != nil {
+	if checkErr := self.checkUpdateState(topicCoord.coordData, disableWrite, newTopicInfo); checkErr != nil {
 		coordLog.Warningf("topic (%v) check update failed : %v ",
 			topicCoord.topicInfo.GetTopicDesp(), checkErr)
 		topicCoord.dataMutex.Unlock()
@@ -1180,9 +1180,9 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
-	if oldData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
-		coordLog.Infof("my leader should release: %v", oldData)
-		self.releaseTopicLeader(&oldData.topicInfo, &oldData.topicLeaderSession)
+	if topicCoord.coordData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
+		coordLog.Infof("my leader should release: %v", topicCoord.coordData)
+		self.releaseTopicLeader(&topicCoord.coordData.topicInfo, &topicCoord.coordData.topicLeaderSession)
 	}
 	needAcquireLeaderSession := true
 	if topicCoord.IsMineLeaderSessionReady(self.myNode.GetID()) {

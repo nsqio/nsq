@@ -219,7 +219,7 @@ func (self *NsqLookupCoordinator) sendTopicInfoToNsqd(epoch EpochType, nid strin
 	}
 	rpcErr = c.UpdateTopicInfo(epoch, topicInfo)
 	if rpcErr != nil {
-		coordLog.Infof("failed to update topic info: %v", rpcErr)
+		coordLog.Infof("failed to update topic info: %v, %v, %v", topicInfo.GetTopicDesp(), nid, rpcErr)
 		self.addRetryFailedRpc(topicInfo.Name, topicInfo.Partition, nid)
 	}
 	return rpcErr
