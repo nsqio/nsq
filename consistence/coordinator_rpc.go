@@ -129,6 +129,7 @@ func (self *NsqdCoordRpcServer) stop() {
 func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *CoordErr {
 	if lookupEpoch < self.nsqdCoord.lookupLeader.Epoch {
 		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
+		coordErrStats.incRpcCheckFailed()
 		return ErrEpochMismatch
 	}
 	if self.disableRpcTest {
@@ -139,14 +140,15 @@ func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *Coor
 
 func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLeaderSession) *CoordErr {
 	s := time.Now().Unix()
+	var ret CoordErr
 	defer func() {
+		coordErrStats.incCoordErr(&ret)
 		e := time.Now().Unix()
 		if e-s > int64(RPC_TIMEOUT/2) {
 			coordLog.Infof("rpc call used: %v", e-s)
 		}
 	}()
 
-	var ret CoordErr
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		ret = *err
 		return &ret
@@ -184,21 +186,21 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 	err = self.nsqdCoord.updateTopicLeaderSession(topicCoord, newSession, rpcTopicReq.JoinSession)
 	if err != nil {
 		ret = *err
-		return &ret
 	}
 	return &ret
 }
 
 func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq *RpcAcquireTopicLeaderReq) *CoordErr {
 	s := time.Now().Unix()
+	var ret CoordErr
 	defer func() {
+		coordErrStats.incCoordErr(&ret)
 		e := time.Now().Unix()
 		if e-s > int64(RPC_TIMEOUT/2) {
 			coordLog.Infof("rpc call used: %v", e-s)
 		}
 	}()
 
-	var ret CoordErr
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		ret = *err
 		return &ret
@@ -230,14 +232,15 @@ func (self *NsqdCoordRpcServer) NotifyAcquireTopicLeader(rpcTopicReq *RpcAcquire
 
 func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
 	s := time.Now().Unix()
+	var ret CoordErr
 	defer func() {
+		coordErrStats.incCoordErr(&ret)
 		e := time.Now().Unix()
 		if e-s > int64(RPC_TIMEOUT/2) {
 			coordLog.Infof("UpdateTopicInfo rpc call used: %v", e-s)
 		}
 	}()
 
-	var ret CoordErr
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		ret = *err
 		return &ret
@@ -345,14 +348,15 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 
 func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
 	s := time.Now().Unix()
+	var ret CoordErr
 	defer func() {
+		coordErrStats.incCoordErr(&ret)
 		e := time.Now().Unix()
 		if e-s > int64(RPC_TIMEOUT/2) {
 			coordLog.Infof("rpc call used: %v", e-s)
 		}
 	}()
 
-	var ret CoordErr
 	// set the topic as not writable.
 	coordLog.Infof("got enable write for topic : %v", rpcTopicReq)
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
@@ -394,14 +398,15 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 
 func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
 	s := time.Now().Unix()
+	var ret CoordErr
 	defer func() {
+		coordErrStats.incCoordErr(&ret)
 		e := time.Now().Unix()
 		if e-s > int64(RPC_TIMEOUT/2) {
 			coordLog.Infof("rpc call used: %v", e-s)
 		}
 	}()
 
-	var ret CoordErr
 	coordLog.Infof("got disable write for topic : %v", rpcTopicReq)
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		ret = *err
@@ -447,6 +452,7 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicI
 
 func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
 	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
 	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
 		ret = *err
 		return &ret
@@ -574,17 +580,19 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 	topicCoord, err := self.getTopicCoord(rpcData.TopicName, rpcData.TopicPartition)
 	if err != nil || topicCoord == nil {
 		coordLog.Infof("rpc call with missing topic :%v", rpcData)
-		return nil, ErrMissingTopicCoord
+		return nil, err
 	}
 	tcData := topicCoord.GetData()
 	if tcData.GetTopicEpochForWrite() != rpcData.TopicWriteEpoch {
 		coordLog.Infof("rpc call with wrong epoch :%v, current: %v", rpcData, tcData.GetTopicEpochForWrite())
 		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
+		coordErrStats.incRpcCheckFailed()
 		return nil, ErrEpochMismatch
 	}
 	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
 		coordLog.Infof("rpc call with wrong session:%v, local: %v", rpcData, tcData.GetLeaderSession())
 		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
+		coordErrStats.incRpcCheckFailed()
 		return nil, ErrLeaderSessionMismatch
 	}
 	//if !tcData.localDataLoaded {
@@ -596,6 +604,7 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *CoordErr {
 	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
 		ret = *err
@@ -624,6 +633,7 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 	}
 
 	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
 		ret = *err
@@ -650,6 +660,7 @@ func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
 	}
 
 	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
 	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
 	if err != nil {
 		ret = *err
@@ -794,6 +805,7 @@ type TopicCoordStat struct {
 }
 
 type CoordStats struct {
-	RpcStats        gorpc.ConnStats  `json:"rpc_stats"`
+	RpcStats        gorpc.ConnStats `json:"rpc_stats"`
+	ErrStats        CoordErrStats
 	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
 }

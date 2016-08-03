@@ -1428,6 +1428,7 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 			return topicCoord, nil
 		}
 	}
+	coordErrStats.incTopicCoordMissingErr()
 	return nil, ErrMissingTopicCoord
 }
 
@@ -1629,6 +1630,7 @@ func (self *NsqdCoordinator) Stats(topic string, part int) *CoordStats {
 	if self.rpcServer != nil && self.rpcServer.rpcServer != nil {
 		s.RpcStats = self.rpcServer.rpcServer.Stats
 	}
+	s.ErrStats = *coordErrStats.GetCopy()
 	s.TopicCoordStats = make([]TopicCoordStat, 0)
 	if len(topic) > 0 {
 		if part >= 0 {

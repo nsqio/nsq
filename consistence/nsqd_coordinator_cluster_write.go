@@ -232,10 +232,12 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 	var clusterWriteErr *CoordErr
 	if clusterWriteErr = tcData.checkWriteForLeader(self.myNode.GetID()); clusterWriteErr != nil {
 		coordLog.Warningf("topic(%v) check write failed :%v", topicFullName, clusterWriteErr)
+		coordErrStats.incWriteErr(clusterWriteErr)
 		return clusterWriteErr
 	}
 	if !tcData.IsISRReadyForWrite() {
 		coordLog.Infof("topic(%v) operation failed since no enough ISR:%v", topicFullName, tcData.topicInfo)
+		coordErrStats.incWriteErr(ErrWriteQuorumFailed)
 		return ErrWriteQuorumFailed
 	}
 
@@ -403,6 +405,8 @@ exitsync:
 	if clusterWriteErr == nil {
 		// should return nil since the return type error is different with *CoordErr
 		return nil
+	} else {
+		coordErrStats.incWriteErr(clusterWriteErr)
 	}
 	return clusterWriteErr
 }
@@ -598,6 +602,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 		return ErrWriteDisabled
 	}
 	if !tc.IsMineISR(self.myNode.GetID()) {
+		coordErrStats.incWriteErr(ErrTopicWriteOnNonISR)
 		return ErrTopicWriteOnNonISR
 	}
 
@@ -633,6 +638,7 @@ func (self *NsqdCoordinator) doWriteOpOnSlave(coord *TopicCoordinator, checkDupO
 	}
 exitpubslave:
 	if slaveErr != nil {
+		coordErrStats.incWriteErr(slaveErr)
 		coordLog.Infof("I am leaving topic %v-%v from isr since write on slave failed: %v", topicName, partition, slaveErr)
 		// leave isr
 		go func() {
