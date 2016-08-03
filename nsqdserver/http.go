@@ -142,6 +142,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		HTTPPort         int    `json:"http_port"`
 		TCPPort          int    `json:"tcp_port"`
 		StartTime        int64  `json:"start_time"`
+		HASupport        bool   `json:"ha_support"`
 	}{
 		Version:          version.Binary,
 		BroadcastAddress: s.ctx.getOpts().BroadcastAddress,
@@ -149,6 +150,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		TCPPort:          s.ctx.realTCPAddr().Port,
 		HTTPPort:         s.ctx.realHTTPAddr().Port,
 		StartTime:        s.ctx.getStartTime().Unix(),
+		HASupport:        s.ctx.nsqdCoord != nil,
 	}, nil
 }
 

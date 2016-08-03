@@ -141,9 +141,11 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	return struct {
-		Version string `json:"version"`
+		Version   string `json:"version"`
+		HASupport bool   `json:"ha_support"`
 	}{
-		Version: version.Binary,
+		Version:   version.Binary,
+		HASupport: s.ctx.nsqlookupd.coordinator != nil,
 	}, nil
 }
 
