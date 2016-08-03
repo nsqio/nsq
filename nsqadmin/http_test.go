@@ -8,61 +8,42 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
-	"reflect"
-	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/bitly/go-simplejson"
+	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
 	"github.com/nsqio/nsq/nsqlookupd"
 )
 
-type tbLog interface {
-	Log(...interface{})
+type TopicsDoc struct {
+	Topics []interface{} `json:"topics"`
 }
 
-type testLogger struct {
-	tbLog
+type TopicStatsDoc struct {
+	*clusterinfo.TopicStats
+	Message string `json:"message"`
 }
 
-func (tl *testLogger) Output(maxdepth int, s string) error {
-	tl.Log(s)
-	return nil
+type NodesDoc struct {
+	Nodes   clusterinfo.Producers `json:"nodes"`
+	Message string                `json:"message"`
 }
 
-func newTestLogger(tbl tbLog) logger {
-	return &testLogger{tbl}
+type NodeStatsDoc struct {
+	Node          string                    `json:"node"`
+	TopicStats    []*clusterinfo.TopicStats `json:"topics"`
+	TotalMessages int64                     `json:"total_messages"`
+	TotalClients  int64                     `json:"total_clients"`
+	Message       string                    `json:"message"`
 }
 
-func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
-	if !condition {
-		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d: "+msg+"\033[39m\n\n",
-			append([]interface{}{filepath.Base(file), line}, v...)...)
-		t.FailNow()
-	}
-}
-
-func equal(t *testing.T, act, exp interface{}) {
-	if !reflect.DeepEqual(exp, act) {
-		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
-			filepath.Base(file), line, exp, act)
-		t.FailNow()
-	}
-}
-
-func nequal(t *testing.T, act, exp interface{}) {
-	if reflect.DeepEqual(exp, act) {
-		_, file, line, _ := runtime.Caller(1)
-		t.Logf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n",
-			filepath.Base(file), line, exp, act)
-		t.FailNow()
-	}
+type ChannelStatsDoc struct {
+	*clusterinfo.ChannelStats
+	Message string `json:"message"`
 }
 
 func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
@@ -74,7 +55,7 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 }
 
 func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQLookupd, *NSQAdmin) {
-	lgr := newTestLogger(t)
+	lgr := test.NewTestLogger(t)
 
 	nsqlookupdOpts := nsqlookupd.NewOptions()
 	nsqlookupdOpts.TCPAddress = "127.0.0.1:0"
@@ -112,6 +93,25 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQL
 	return tmpDir, []*nsqd.NSQD{nsqd1}, []*nsqlookupd.NSQLookupd{nsqlookupd1}, nsqadmin1
 }
 
+func TestPing(t *testing.T) {
+	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/ping", nsqadmin1.RealHTTPAddr())
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	test.Equal(t, []byte("OK"), body)
+}
+
 func TestHTTPTopicsGET(t *testing.T) {
 	dataPath, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
 	defer os.RemoveAll(dataPath)
@@ -127,15 +127,17 @@ func TestHTTPTopicsGET(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	js, err := simplejson.NewJson(body)
-	equal(t, err, nil)
-	equal(t, len(js.Get("topics").MustArray()), 1)
-	equal(t, js.Get("topics").GetIndex(0).MustString(), topicName)
+	t.Logf("%s", body)
+	tr := TopicsDoc{}
+	err = json.Unmarshal(body, &tr)
+	test.Nil(t, err)
+	test.Equal(t, 1, len(tr.Topics))
+	test.Equal(t, topicName, tr.Topics[0])
 }
 
 func TestHTTPTopicGET(t *testing.T) {
@@ -153,20 +155,21 @@ func TestHTTPTopicGET(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	js, err := simplejson.NewJson(body)
-	equal(t, err, nil)
 	t.Logf("%s", body)
-	equal(t, js.Get("topic_name").MustString(), topicName)
-	equal(t, js.Get("depth").MustInt(), 0)
-	equal(t, js.Get("memory_depth").MustInt(), 0)
-	equal(t, js.Get("backend_depth").MustInt(), 0)
-	equal(t, js.Get("message_count").MustInt(), 0)
-	equal(t, js.Get("paused").MustBool(), false)
+	ts := TopicStatsDoc{}
+	err = json.Unmarshal(body, &ts)
+	test.Nil(t, err)
+	test.Equal(t, topicName, ts.TopicName)
+	test.Equal(t, 0, int(ts.Depth))
+	test.Equal(t, 0, int(ts.MemoryDepth))
+	test.Equal(t, 0, int(ts.BackendDepth))
+	test.Equal(t, 0, int(ts.MessageCount))
+	test.Equal(t, false, ts.Paused)
 }
 
 func TestHTTPNodesGET(t *testing.T) {
@@ -182,23 +185,25 @@ func TestHTTPNodesGET(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/nodes", nsqadmin1.RealHTTPAddr())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	hostname, _ := os.Hostname()
 
-	js, err := simplejson.NewJson(body)
-	equal(t, err, nil)
-	equal(t, len(js.Get("nodes").MustArray()), 1)
-	testNode := js.Get("nodes").GetIndex(0)
-	equal(t, testNode.Get("hostname").MustString(), hostname)
-	equal(t, testNode.Get("broadcast_address").MustString(), "127.0.0.1")
-	equal(t, testNode.Get("tcp_port").MustInt(), nsqds[0].RealTCPAddr().Port)
-	equal(t, testNode.Get("http_port").MustInt(), nsqds[0].RealHTTPAddr().Port)
-	equal(t, testNode.Get("version").MustString(), version.Binary)
-	equal(t, len(testNode.Get("topics").MustArray()), 0)
+	t.Logf("%s", body)
+	ns := NodesDoc{}
+	err = json.Unmarshal(body, &ns)
+	test.Nil(t, err)
+	test.Equal(t, 1, len(ns.Nodes))
+	testNode := ns.Nodes[0]
+	test.Equal(t, hostname, testNode.Hostname)
+	test.Equal(t, "127.0.0.1", testNode.BroadcastAddress)
+	test.Equal(t, nsqds[0].RealTCPAddr().Port, testNode.TCPPort)
+	test.Equal(t, nsqds[0].RealHTTPAddr().Port, testNode.HTTPPort)
+	test.Equal(t, version.Binary, testNode.Version)
+	test.Equal(t, 0, len(testNode.Topics))
 }
 
 func TestHTTPChannelGET(t *testing.T) {
@@ -217,25 +222,27 @@ func TestHTTPChannelGET(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	js, err := simplejson.NewJson(body)
-	equal(t, err, nil)
-	equal(t, js.Get("topic_name").MustString(), topicName)
-	equal(t, js.Get("channel_name").MustString(), "ch")
-	equal(t, js.Get("depth").MustInt(), 0)
-	equal(t, js.Get("memory_depth").MustInt(), 0)
-	equal(t, js.Get("backend_depth").MustInt(), 0)
-	equal(t, js.Get("message_count").MustInt(), 0)
-	equal(t, js.Get("paused").MustBool(), false)
-	equal(t, js.Get("in_flight_count").MustInt(), 0)
-	equal(t, js.Get("deferred_count").MustInt(), 0)
-	equal(t, js.Get("requeue_count").MustInt(), 0)
-	equal(t, js.Get("timeout_count").MustInt(), 0)
-	equal(t, len(js.Get("clients").MustArray()), 0)
+	t.Logf("%s", body)
+	cs := ChannelStatsDoc{}
+	err = json.Unmarshal(body, &cs)
+	test.Nil(t, err)
+	test.Equal(t, topicName, cs.TopicName)
+	test.Equal(t, "ch", cs.ChannelName)
+	test.Equal(t, 0, int(cs.Depth))
+	test.Equal(t, 0, int(cs.MemoryDepth))
+	test.Equal(t, 0, int(cs.BackendDepth))
+	test.Equal(t, 0, int(cs.MessageCount))
+	test.Equal(t, false, cs.Paused)
+	test.Equal(t, 0, int(cs.InFlightCount))
+	test.Equal(t, 0, int(cs.DeferredCount))
+	test.Equal(t, 0, int(cs.RequeueCount))
+	test.Equal(t, 0, int(cs.TimeoutCount))
+	test.Equal(t, 0, len(cs.Clients))
 }
 
 func TestHTTPNodesSingleGET(t *testing.T) {
@@ -255,26 +262,24 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 		nsqds[0].RealHTTPAddr().String())
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	js, err := simplejson.NewJson(body)
-	equal(t, err, nil)
-	equal(t, js.Get("node").MustString(), nsqds[0].RealHTTPAddr().String())
-	equal(t, len(js.Get("topics").MustArray()), 1)
-	testTopic := js.Get("topics").GetIndex(0)
-	equal(t, testTopic.Get("topic_name").MustString(), topicName)
-	equal(t, testTopic.Get("depth").MustInt(), 0)
-	equal(t, testTopic.Get("memory_depth").MustInt(), 0)
-	equal(t, testTopic.Get("backend_depth").MustInt(), 0)
-	equal(t, testTopic.Get("message_count").MustInt(), 0)
-	equal(t, testTopic.Get("paused").MustBool(), false)
-	equal(t, testTopic.Get("in_flight_count").MustInt(), 0)
-	equal(t, testTopic.Get("deferred_count").MustInt(), 0)
-	equal(t, testTopic.Get("requeue_count").MustInt(), 0)
-	equal(t, testTopic.Get("timeout_count").MustInt(), 0)
+	t.Logf("%s", body)
+	ns := NodeStatsDoc{}
+	err = json.Unmarshal(body, &ns)
+	test.Nil(t, err)
+	test.Equal(t, nsqds[0].RealHTTPAddr().String(), ns.Node)
+	test.Equal(t, 1, len(ns.TopicStats))
+	testTopic := ns.TopicStats[0]
+	test.Equal(t, topicName, testTopic.TopicName)
+	test.Equal(t, 0, int(testTopic.Depth))
+	test.Equal(t, 0, int(testTopic.MemoryDepth))
+	test.Equal(t, 0, int(testTopic.BackendDepth))
+	test.Equal(t, 0, int(testTopic.MessageCount))
+	test.Equal(t, false, testTopic.Paused)
 }
 
 func TestHTTPCreateTopicPOST(t *testing.T) {
@@ -295,8 +300,8 @@ func TestHTTPCreateTopicPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -319,8 +324,8 @@ func TestHTTPCreateTopicChannelPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -342,8 +347,8 @@ func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -362,8 +367,8 @@ func TestHTTPDeleteTopicPOST(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -383,8 +388,8 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -406,9 +411,9 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
 	url = fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
@@ -417,8 +422,8 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	})
 	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -441,9 +446,9 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
 	url = fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
@@ -452,8 +457,8 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	})
 	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err = client.Do(req)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -467,7 +472,7 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	topicName := "test_empty_topic_post" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqds[0].GetTopic(topicName)
 	topic.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
-	equal(t, topic.Depth(), int64(1))
+	test.Equal(t, int64(1), topic.Depth())
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -477,12 +482,12 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
-	equal(t, topic.Depth(), int64(0))
+	test.Equal(t, int64(0), topic.Depth())
 }
 
 func TestHTTPEmptyChannelPOST(t *testing.T) {
@@ -498,7 +503,7 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	channel.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 
 	time.Sleep(100 * time.Millisecond)
-	equal(t, channel.Depth(), int64(1))
+	test.Equal(t, int64(1), channel.Depth())
 
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
@@ -507,12 +512,12 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
+	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
-	equal(t, channel.Depth(), int64(0))
+	test.Equal(t, int64(0), channel.Depth())
 }
 
 func TestHTTPconfig(t *testing.T) {
@@ -523,7 +528,7 @@ func TestHTTPconfig(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	lopts := nsqlookupd.NewOptions()
-	lopts.Logger = newTestLogger(t)
+	lopts.Logger = test.NewTestLogger(t)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
 	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)
@@ -531,22 +536,22 @@ func TestHTTPconfig(t *testing.T) {
 
 	url := fmt.Sprintf("http://%s/config/nsqlookupd_http_addresses", nsqadmin1.RealHTTPAddr())
 	resp, err := http.Get(url)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
+	test.Equal(t, 200, resp.StatusCode)
 	origaddrs := fmt.Sprintf(`["%s"]`, nsqlookupds[0].RealHTTPAddr().String())
-	equal(t, string(body), origaddrs)
+	test.Equal(t, origaddrs, string(body))
 
 	client := http.Client{}
 	addrs := fmt.Sprintf(`["%s","%s"]`, lookupd1.RealHTTPAddr().String(), lookupd2.RealHTTPAddr().String())
 	url = fmt.Sprintf("http://%s/config/nsqlookupd_http_addresses", nsqadmin1.RealHTTPAddr())
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(addrs)))
-	equal(t, err, nil)
+	test.Nil(t, err)
 	resp, err = client.Do(req)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)
-	equal(t, resp.StatusCode, 200)
-	equal(t, string(body), addrs)
+	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, addrs, string(body))
 }
