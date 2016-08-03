@@ -32,7 +32,7 @@ type Options struct {
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
 
-	Logger logger
+	Logger Logger
 }
 
 func NewOptions() *Options {
