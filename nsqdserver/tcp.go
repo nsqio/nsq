@@ -4,6 +4,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/nsqd"
 	"time"
@@ -27,8 +28,10 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	}
 	protocolMagic := string(buf)
 
-	nsqd.NsqLogger().LogDebugf("new CLIENT(%s): desired protocol magic '%s'",
-		clientConn.RemoteAddr(), protocolMagic)
+	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
+		nsqd.NsqLogger().LogDebugf("new CLIENT(%s): desired protocol magic '%s'",
+			clientConn.RemoteAddr(), protocolMagic)
+	}
 
 	var prot protocol.Protocol
 	switch protocolMagic {

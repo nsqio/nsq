@@ -1034,7 +1034,6 @@ LOOP:
 					}
 					readChan = nil
 					waitEndUpdated = c.endUpdatedChan
-					atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 				}
 			} else {
 				readChan = origReadChan

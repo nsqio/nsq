@@ -178,3 +178,7 @@ func TestChannelSkip(t *testing.T) {
 
 func TestChannelResetReadEnd(t *testing.T) {
 }
+
+func TestChannelDepthTimestamp(t *testing.T) {
+	// handle read no data, reset, etc
+}
