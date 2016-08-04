@@ -833,26 +833,33 @@ func (c *Channel) DisableConsume(disable bool) {
 		c.drainChannelWaiting(true, nil, nil)
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
-		// we need reset backend read position to confirm position
-		// since we dropped all inflight and requeue data while disable consume.
-		done := false
-		for !done {
+		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 1, 0) {
 			select {
-			case m, ok := <-c.clientMsgChan:
-				if !ok {
-					done = true
-					break
-				}
-				nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.offset)
-			case <-c.requeuedMsgChan:
+			case c.tryReadBackend <- true:
 			default:
-				done = true
 			}
-		}
-		atomic.StoreInt32(&c.consumeDisabled, 0)
-		select {
-		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
-		default:
+			nsqLog.Logf("channel %v already enabled for consume", c.name)
+		} else {
+			// we need reset backend read position to confirm position
+			// since we dropped all inflight and requeue data while disable consume.
+			done := false
+			for !done {
+				select {
+				case m, ok := <-c.clientMsgChan:
+					if !ok {
+						done = true
+						break
+					}
+					nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.offset)
+				case <-c.requeuedMsgChan:
+				default:
+					done = true
+				}
+			}
+			select {
+			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
+			default:
+			}
 		}
 	}
 	c.notifyCall(c)
@@ -971,6 +978,7 @@ func (c *Channel) messagePump() {
 	needReadBackend := true
 	lastDataNeedRead := false
 	readBackendWait := false
+	backendErr := 0
 
 LOOP:
 	for {
@@ -1061,14 +1069,25 @@ LOOP:
 					// TODO: fix corrupt file from other replica.
 					// and should handle the confirm offset, since some skipped data
 					// may never be confirmed any more
-					_, skipErr := c.backend.(*diskQueueReader).SkipToNext()
-					if skipErr != nil {
+					if backendErr > 10 {
+						_, skipErr := c.backend.(*diskQueueReader).SkipToNext()
+						if skipErr != nil {
+						}
+						nsqLog.Warningf("channel %v skip to next because of backend error: %v", c.GetName(), backendErr)
+						isSkipped = true
+						backendErr = 0
+					} else {
+						backendErr++
+						time.Sleep(time.Second)
 					}
-					isSkipped = true
 				}
 				time.Sleep(time.Millisecond * 100)
 				continue LOOP
 			}
+			if backendErr > 0 {
+				nsqLog.Infof("channel %v backend error auto recovery: %v", c.GetName(), backendErr)
+			}
+			backendErr = 0
 			msg, err = decodeMessage(data.Data)
 			if err != nil {
 				nsqLog.LogErrorf("channel (%v): failed to decode message - %s - %v", c.GetName(), err, data)

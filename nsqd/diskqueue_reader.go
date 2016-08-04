@@ -369,8 +369,8 @@ func (d *diskQueueReader) TryReadOne() (ReadResult, bool) {
 			dataRead := d.readOne()
 			rerr := dataRead.Err
 			if rerr != nil {
-				nsqLog.LogErrorf("reading from diskqueue(%s) at %d of %s - %s",
-					d.readerMetaName, d.readQueueInfo, d.fileName(d.readQueueInfo.EndOffset.FileNum), dataRead.Err)
+				nsqLog.LogErrorf("reading from diskqueue(%s) at %d of %s - %s, current end: %v",
+					d.readerMetaName, d.readQueueInfo, d.fileName(d.readQueueInfo.EndOffset.FileNum), dataRead.Err, d.queueEndInfo)
 				if rerr != ErrReadQueueCountMissing && d.autoSkipError {
 					d.handleReadError()
 					continue
@@ -557,6 +557,11 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 		d.updateDepth()
 		return nil
 	}
+	if voffset != d.readQueueInfo.Offset() && d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+
 	if voffset == d.confirmedQueueInfo.Offset() {
 		if cnt != 0 && d.confirmedQueueInfo.TotalMsgCnt() != cnt {
 			nsqLog.Logf("try sync the message count since the cnt is not matched: %v, %v", cnt, d.confirmedQueueInfo)
@@ -567,10 +572,6 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 		return nil
 	}
 
-	if voffset != d.readQueueInfo.Offset() && d.readFile != nil {
-		d.readFile.Close()
-		d.readFile = nil
-	}
 	newPos := d.queueEndInfo.EndOffset
 	var err error
 	if voffset < d.confirmedQueueInfo.Offset() {
@@ -713,6 +714,13 @@ CheckFileOpen:
 		if d.readQueueInfo.EndOffset.Pos > 0 {
 			_, result.Err = d.readFile.Seek(d.readQueueInfo.EndOffset.Pos, 0)
 			if result.Err != nil {
+				nsqLog.LogWarningf("DISKQUEUE(%s): seek %v error %s", d.readerMetaName, curFileName, result.Err)
+				tmpStat, tmpErr := d.readFile.Stat()
+				if tmpErr != nil {
+					nsqLog.LogWarningf("DISKQUEUE(%s): stat error %s", d.readerMetaName, tmpErr)
+				} else {
+					nsqLog.LogWarningf("DISKQUEUE(%s): stat %v", d.readerMetaName, tmpStat)
+				}
 				d.readFile.Close()
 				d.readFile = nil
 				return result
@@ -737,6 +745,14 @@ CheckFileOpen:
 
 	result.Err = binary.Read(d.readFile, binary.BigEndian, &msgSize)
 	if result.Err != nil {
+		nsqLog.LogWarningf("DISKQUEUE(%s): read %v error %v", d.readerMetaName, d.readQueueInfo, result.Err)
+		tmpStat, tmpErr := d.readFile.Stat()
+		if tmpErr != nil {
+			nsqLog.LogWarningf("DISKQUEUE(%s): stat error %s", d.readerMetaName, tmpErr)
+		} else {
+			nsqLog.LogWarningf("DISKQUEUE(%s): stat %v", d.readerMetaName, tmpStat)
+		}
+
 		d.readFile.Close()
 		d.readFile = nil
 		return result
@@ -754,6 +770,14 @@ CheckFileOpen:
 	result.Data = make([]byte, msgSize)
 	_, result.Err = io.ReadFull(d.readFile, result.Data)
 	if result.Err != nil {
+		nsqLog.LogWarningf("DISKQUEUE(%s): read %v error %v", d.readerMetaName, d.readQueueInfo, result.Err)
+		tmpStat, tmpErr := d.readFile.Stat()
+		if tmpErr != nil {
+			nsqLog.LogWarningf("DISKQUEUE(%s): stat error %s", d.readerMetaName, tmpErr)
+		} else {
+			nsqLog.LogWarningf("DISKQUEUE(%s): stat %v", d.readerMetaName, tmpStat)
+		}
+
 		d.readFile.Close()
 		d.readFile = nil
 		return result
