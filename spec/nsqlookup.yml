@@ -1,0 +1,448 @@
+swagger: '2.0'
+info:
+  version: '0.4.0'
+  title: 'nsqlookupd'
+  description: |
+    nsqlookupd is the daemon that manages topology information. Clients query nsqlookupd to discover nsqd producers for a specific topic and nsqd nodes broadcasts topic and channel information.
+  license:
+    name: Free Public License 1.0.0
+    url: https://raw.githubusercontent.com/nsqio/nsq/master/LICENSE
+  contact:
+    name: nsqio
+    url: http://nsq.io/
+
+schemes:
+  - http
+consumes:
+  - application/json
+produces:
+  - application/json
+
+paths:
+  /ping:
+    get:
+      operationId: pingHandler
+      summary: Monitoring endpoint, should return OK
+      description: |
+        Monitoring endpoint, should return OK
+      tags:
+        - nsqlookupd
+      produces:
+        - text/plain; charset=utf-8
+      responses:
+        200:
+          description: OK
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}/nodes:
+  /lookup:
+    get:
+      operationId: doLookup
+      summary: Returns a list of producers for a topic
+      description: |
+        Returns a list of producers for a topic
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the topic to list producers for
+          type: string
+          required: true
+      responses:
+        200:
+          description: List of producers
+          schema:
+            type: object
+            properties:
+              channels:
+                type: array
+                items:
+                  type: string
+              producers:
+                type: array
+                items:
+                  $ref: '#/definitions/PeerInfo'
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+        404:
+          description: Not found
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: TOPIC_NOT_FOUND
+                enum:
+                  - TOPIC_NOT_FOUND
+
+  /topics:
+    get:
+      operationId: doTopics
+      summary: Returns a list of all known topics
+      description: |
+        Returns a list of all known topics
+      tags:
+        - nsqlookupd
+      responses:
+        200:
+          description: List of topics
+          schema:
+            type: object
+            properties:
+              topics:
+                type: array
+                items:
+                  type: string
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}/channels:
+  /channels:
+    get:
+      operationId: doChannels
+      summary: Returns a list of all known channels of a topic
+      description: |
+        Returns a list of all known channels of a topic
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the topic to list channels for
+          type: string
+          required: true
+      responses:
+        200:
+          description: List of channels
+          schema:
+            type: object
+            properties:
+              channels:
+                type: array
+                items:
+                  type: string
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+        # TODO: Consider TOPIC_ALREADY_EXISTS
+        # 404:
+          # description: Not found
+          # schema:
+            # type: object
+            # properties:
+              # message:
+                # description: Specific error condition
+                # type: string
+                # default: TOPIC_NOT_FOUND
+                # enum:
+                  # - TOPIC_NOT_FOUND
+
+  /nodes:
+    get:
+      operationId: doNodes
+      summary: Returns a list of all known nsqd
+      description: |
+        Returns a list of all known nsqd
+      tags:
+        - nsqlookupd
+      responses:
+        200:
+          description: List of nodes
+          schema:
+            type: object
+            properties:
+              producers:
+                type: array
+                items:
+                  $ref: '#/definitions/Node'
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}:
+  /topic/create:
+    post:
+      operationId: doCreateTopic
+      summary: Creates a topic
+      description: |
+        Creates a topic
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the name of topic to create
+          type: string
+          pattern: '^[\.a-zA-Z0-9_-]+(#ephemeral)?$'
+          minLength: 1
+          maxLength: 64
+          required: true
+      responses:
+        # TODO: Consider 201 or 204
+        200:
+          description: Success
+        # TODO: Consider TOPIC_ALREADY_EXISTS
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+                  - INVALID_ARG_TOPIC
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}:
+  #   delete:
+  /topic/delete:
+    # TODO: Consider 'delete' vs. 'post'
+    post:
+      operationId: doDeleteTopic
+      summary: Deletes a topic
+      description: |
+        Deletes a topic and any channels defined under the specific topic
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the name of topic to delete
+          type: string
+          required: true
+      responses:
+        # TODO: Consider 201 or 204
+        200:
+          description: Success
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+        # TODO: 404 TOPIC_NOT_FOUND
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}/nodes/{node}:
+  #   delete:
+  /topic/tombstone:
+    # TODO: Consider 'delete' vs. 'post'
+    post:
+      operationId: doTombstoneTopicProducer
+      summary: Tombstones a specific producer of an existing topic.
+      description: |
+        Handles scenario of deleting a topic from a subset of nodes due to the additional complexities. Because of the way consumers query nsqlookupd and connect to all producers you enter into race conditions with attempting to remove the information from the cluster and consumers discovering that node and reconnecting (thus pushing updates that the topic is still produced on that node). The solution in these cases is to use “tombstones”. A tombstone in nsqlookupd context is producer specific and lasts for a configurable --tombstone-lifetime time. During that window the producer will not be listed in /lookup queries, allowing the node to delete the topic, propagate that information to nsqlookupd (which then removes the tombstoned producer), and prevent any consumer from re-discovering that node.
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the name of topic to delete
+          type: string
+          required: true
+        - name: node
+          in: query
+          description: |
+            the producer (nsqd) to tombstone (identified by <broadcast_address>:<http_port>)
+          type: string
+          required: true
+      responses:
+        # TODO: Consider 201 or 204
+        200:
+          description: Success
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+                  - MISSING_ARG_NODE
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}/channels/{channel}:
+  /channel/create:
+    post:
+      operationId: doCreateChannel
+      summary: Creates a channel
+      description: |
+        Creates a channel and the topic if it does not already exist
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the name of topic to create channel under
+          type: string
+          pattern: '^[\.a-zA-Z0-9_-]+(#ephemeral)?$'
+          minLength: 1
+          maxLength: 64
+          required: true
+        - name: channel
+          in: query
+          description: the name of channel to create
+          type: string
+          pattern: '^[\.a-zA-Z0-9_-]+(#ephemeral)?$'
+          minLength: 1
+          maxLength: 64
+          required: true
+      responses:
+        # TODO: Consider 201 or 204
+        200:
+          description: Success
+        # TODO: Consider CHANNEL_ALREADY_EXISTS
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+                  - INVALID_ARG_TOPIC
+                  - MISSING_ARG_CHANNEL
+                  - INVALID_ARG_CHANNEL
+
+  # TODO: Alternate path based on REST
+  # /topics/{topic}/channels/{channel}:
+  #   delete:
+  /channel/delete:
+    # TODO: Consider 'delete' vs. 'post'
+    post:
+      operationId: doDeleteChannel
+      summary: Deletes a channel
+      description: |
+        Deletes a channel
+      tags:
+        - nsqlookupd
+      parameters:
+        - name: topic
+          in: query
+          description: the name of topic to create channel under
+          type: string
+          pattern: '^[\.a-zA-Z0-9_-]+(#ephemeral)?$'
+          minLength: 1
+          maxLength: 64
+          required: true
+        - name: channel
+          in: query
+          description: the name of channel to create
+          type: string
+          pattern: '^[\.a-zA-Z0-9_-]+(#ephemeral)?$'
+          minLength: 1
+          maxLength: 64
+          required: true
+      responses:
+        # TODO: Consider 201 or 204
+        200:
+          description: Success
+        400:
+          description: Bad request
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: INVALID_REQUEST
+                enum:
+                  - INVALID_REQUEST
+                  - MISSING_ARG_TOPIC
+                  - INVALID_ARG_TOPIC
+                  - MISSING_ARG_CHANNEL
+                  - INVALID_ARG_CHANNEL
+        404:
+          description: Not found
+          schema:
+            type: object
+            properties:
+              message:
+                description: Specific error condition
+                type: string
+                default: CHANNEL_NOT_FOUND
+                enum:
+                  - CHANNEL_NOT_FOUND
+
+definitions:
+
+  Node:
+    type: object
+    properties:
+      remote_address:
+        type: string
+      hostname:
+        type: string
+      broadcast_address:
+        type: string
+      tcp_port:
+        type: integer
+      http_port:
+        type: integer
+      version:
+        type: string
+      tombstones:
+        type: array
+        items:
+          type: boolean
+      topics:
+        type: array
+        items:
+          type: string
+
+  PeerInfo:
+    type: object
+    properties:
+      id:
+        type: string
+      lastUpdate:
+        type: integer
+        format: int64
+      remote_address:
+        type: string
+      hostname:
+        type: string
+      broadcast_address:
+        type: string
+      tcp_port:
+        type: integer
+      http_port:
+        type: integer
+      version:
+        type: string
