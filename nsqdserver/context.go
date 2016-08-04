@@ -22,6 +22,7 @@ type context struct {
 	tlsConfig        *tls.Config
 	httpAddr         *net.TCPAddr
 	tcpAddr          *net.TCPAddr
+	reverseProxyPort string
 }
 
 func (c *context) getOpts() *nsqd.Options {

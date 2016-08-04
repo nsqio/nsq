@@ -135,6 +135,12 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	if err != nil {
 		return nil, http_api.Err{500, err.Error()}
 	}
+	httpPort := 0
+	if s.ctx.reverseProxyPort == "" {
+		httpPort = s.ctx.realHTTPAddr().Port
+	} else {
+		httpPort, _ = strconv.Atoi(s.ctx.reverseProxyPort)
+	}
 	return struct {
 		Version          string `json:"version"`
 		BroadcastAddress string `json:"broadcast_address"`
@@ -148,7 +154,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		BroadcastAddress: s.ctx.getOpts().BroadcastAddress,
 		Hostname:         hostname,
 		TCPPort:          s.ctx.realTCPAddr().Port,
-		HTTPPort:         s.ctx.realHTTPAddr().Port,
+		HTTPPort:         httpPort,
 		StartTime:        s.ctx.getStartTime().Unix(),
 		HASupport:        s.ctx.nsqdCoord != nil,
 	}, nil

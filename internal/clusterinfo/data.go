@@ -262,7 +262,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 
 	type respType struct {
 		Producers          Producers            `json:"producers"`
-		partitionProducers map[string]*Producer `json:"partitions"`
+		PartitionProducers map[string]*Producer `json:"partitions"`
 	}
 
 	for _, addr := range lookupdHTTPAddrs {
@@ -282,7 +282,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 				return
 			}
 
-			c.logf("CI: querying nsqlookupd return %v", resp)
+			c.logf("CI: querying nsqlookupd return %v, partitions: %v", resp, resp.PartitionProducers)
 			lock.Lock()
 			defer lock.Unlock()
 			for _, p := range resp.Producers {
@@ -301,7 +301,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 				producers = append(producers, p)
 			skip:
 			}
-			for pid, p := range resp.partitionProducers {
+			for pid, p := range resp.PartitionProducers {
 				version, err := semver.Parse(p.Version)
 				if err != nil {
 					c.logf("CI: parse version failed %s: %v", p.Version, err)

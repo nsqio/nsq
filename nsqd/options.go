@@ -23,6 +23,7 @@ type Options struct {
 	ClusterLeadershipAddresses string        `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 	TCPAddress                 string        `flag:"tcp-address"`
 	RPCPort                    string        `flag:"rpc-port"`
+	ReverseProxyPort           string        `flag:"reverse-proxy-port"`
 	HTTPAddress                string        `flag:"http-address"`
 	HTTPSAddress               string        `flag:"https-address"`
 	BroadcastAddress           string        `flag:"broadcast-address"`

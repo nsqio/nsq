@@ -227,6 +227,7 @@ func (s *NsqdServer) Main() {
 	}
 	s.httpListener = httpListener
 	s.ctx.httpAddr = httpListener.Addr().(*net.TCPAddr)
+	s.ctx.reverseProxyPort = opts.ReverseProxyPort
 
 	httpServer := newHTTPServer(s.ctx, false, opts.TLSRequired == TLSRequired)
 	s.waitGroup.Wrap(func() {

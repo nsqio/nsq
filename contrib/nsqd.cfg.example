@@ -21,6 +21,9 @@ http_address = "0.0.0.0:4151"
 ## <addr>:<port> to listen on for HTTPS clients
 # https_address = "0.0.0.0:4152"
 
+## local reverse proxy port, basically used for collecting the stats 
+reverse_proxy_port = "4153"
+
 ## keep alive heartbeat interval between the nsqd node with the nsqlookupd
 lookup_ping_interval = "5s"
 

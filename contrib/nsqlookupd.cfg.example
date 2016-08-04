@@ -13,7 +13,7 @@ rpc_port = "4260"
 broadcast_interface = "eth0"
 
 ## local reverse proxy port, basically used for collecting the stats 
-reverse_proxy_port = "5460"
+reverse_proxy_port = "4163"
 
 cluster_id = "test-nsq-cluster-dev-1"
 ## the etcd cluster ip list

@@ -19,7 +19,12 @@ func connectCallback(ctx *context, hostname string, syncTopicChan chan *clusteri
 		ci := make(map[string]interface{})
 		ci["version"] = version.Binary
 		ci["tcp_port"] = ctx.realTCPAddr().Port
-		ci["http_port"] = ctx.realHTTPAddr().Port
+		if ctx.reverseProxyPort == "" {
+			ci["http_port"] = ctx.realHTTPAddr().Port
+		} else {
+			port, _ := strconv.Atoi(ctx.reverseProxyPort)
+			ci["http_port"] = port
+		}
 		ci["hostname"] = hostname
 		ci["broadcast_address"] = ctx.getOpts().BroadcastAddress
 		ci["distributed_id"] = ctx.GetDistributedID()

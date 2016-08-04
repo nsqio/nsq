@@ -42,7 +42,7 @@
         </tr>
         {{#each nodes}}
         <tr>
-            <th align="center" valign="middle" rowspan="{{syncing_num}}">{{topic_partition}}</th>
+            <th style="text-align:center;vertical-align:middle" rowspan="{{syncing_num}}">{{topic_partition}}</th>
             {{#if isr_stats.length}}
                 <td>{{isr_stats.[0].hostname}}(ID:{{isr_stats.[0].node_id}})</td>
                 <td>Synced</td>
