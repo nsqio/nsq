@@ -189,9 +189,16 @@ type md struct {
 	writePos     int64
 }
 
-func readMetaDataFile(fileName string) md {
+func readMetaDataFile(fileName string, retried int) md {
 	f, err := os.OpenFile(fileName, os.O_RDONLY, 0600)
 	if err != nil {
+		// provide a simple retry that results in up to
+		// another 250ms for the file to be written.
+		if retried < 5 {
+			retried++
+			time.Sleep(50 * time.Millisecond)
+			return readMetaDataFile(fileName, retried)
+		}
 		panic(err)
 	}
 	defer f.Close()
@@ -221,9 +228,15 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 	msg := make([]byte, 1000)
 	dq.Put(msg)
 
+	// sync loop is every 50ms so wait 3x to make sure the file has time
+	// to actually get written prior to attempting to read it.
 	time.Sleep(150 * time.Millisecond)
 
-	d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+	// attempt to read and load metadata of the file; initialize the number
+	// of retry attempts to 0; the max retries is 5 with a delay of 50ms each
+	// meaning that a total of 400ms between message put and message metadata
+	// read should be sufficient for heavy write disks on the travis servers.
+	d := readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
 	equal(t, d.depth, int64(1))
 	equal(t, d.readFileNum, int64(0))
 	equal(t, d.writeFileNum, int64(0))
@@ -235,7 +248,7 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	d = readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+	d = readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
 	equal(t, d.depth, int64(1))
 	equal(t, d.readFileNum, int64(0))
 	equal(t, d.writeFileNum, int64(0))
