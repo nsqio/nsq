@@ -536,7 +536,7 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	return nil
 }
 
-func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix bool) {
+func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix bool) error {
 	localTopic, err := n.GetExistingTopic(name, partition)
 	if err != nil {
 		// not exist, create temp for check
@@ -554,17 +554,18 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 	}
 	if magicCodeWrong {
 		if !tryFix {
-			panic("magic code is wrong.")
+			return errors.New("magic code is wrong")
 		} else {
 			nsqLog.Warningf("local topic %v removed for wrong magic code: %v vs %v", localTopic.GetFullName(), localTopic.GetMagicCode(), code)
 			n.deleteTopic(localTopic.GetTopicName(), localTopic.GetTopicPart())
 			localTopic.Close()
 			err := localTopic.MarkAsRemoved()
 			if err != nil {
-				panic(err)
+				return err
 			}
 		}
 	}
+	return nil
 }
 
 func (n *NSQD) SetTopicMagicCode(t *Topic, code int64) error {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
-	"github.com/absolute8511/nsq/internal/util"
 )
 
 const (
@@ -143,7 +142,7 @@ func (t *Topic) saveMagicCode() error {
 	var f *os.File
 	var err error
 
-	fileName := path.Join(t.dataPath, "magic")
+	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
 	f, err = os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
@@ -161,7 +160,7 @@ func (t *Topic) saveMagicCode() error {
 }
 
 func (t *Topic) removeMagicCode() {
-	fileName := path.Join(t.dataPath, "magic")
+	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
 	err := os.Remove(fileName)
 	if err != nil {
 		nsqLog.Errorf("remove the magic file %v failed:%v", fileName, err)
@@ -172,7 +171,7 @@ func (t *Topic) loadMagicCode() error {
 	var f *os.File
 	var err error
 
-	fileName := path.Join(t.dataPath, "magic")
+	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
 	f, err = os.OpenFile(fileName, os.O_RDONLY, 0644)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -194,9 +193,24 @@ func (t *Topic) loadMagicCode() error {
 }
 
 func (t *Topic) MarkAsRemoved() error {
+	t.Lock()
+	defer t.Unlock()
+	atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1)
+	nsqLog.Logf("TOPIC(%s): deleting", t.GetFullName())
+	// since we are explicitly deleting a topic (not just at system exit time)
+	// de-register this from the lookupd
+	t.notifyCall(t)
+
+	t.channelLock.Lock()
+	for _, channel := range t.channelMap {
+		delete(t.channelMap, channel.name)
+		channel.Delete()
+	}
+	t.channelLock.Unlock()
+	// we should move our partition only
 	renamePath := t.dataPath + "-removed-" + strconv.Itoa(int(time.Now().Unix()))
 	nsqLog.Warningf("mark the topic %v as removed: %v", t.GetFullName(), renamePath)
-	err := util.AtomicRename(t.dataPath, renamePath)
+	err := t.backend.RemoveTo(renamePath)
 	if err != nil {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}

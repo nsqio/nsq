@@ -244,6 +244,42 @@ func (d *diskQueueWriter) Delete() error {
 	return d.exit(true)
 }
 
+func (d *diskQueueWriter) RemoveTo(destPath string) error {
+	d.Lock()
+	defer d.Unlock()
+	d.exitFlag = 1
+	nsqLog.Logf("DISKQUEUE(%s): removing to %v", d.name, destPath)
+	d.sync()
+	d.closeCurrentFile()
+	d.saveFileOffsetMeta()
+	for i := int64(0); i <= d.diskWriteEnd.EndOffset.FileNum; i++ {
+		fn := d.fileName(i)
+		destFile := fmt.Sprintf(path.Join(destPath, "%s.diskqueue.%06d.dat"), d.name, i)
+		innerErr := util.AtomicRename(fn, destFile)
+		nsqLog.Logf("DISKQUEUE(%s): renamed data file %v to %v", d.name, fn, destFile)
+		if innerErr != nil && !os.IsNotExist(innerErr) {
+			nsqLog.LogErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
+		}
+		fName := d.fileName(i) + ".offsetmeta.dat"
+		innerErr = util.AtomicRename(fName, destFile+".offsetmeta.dat")
+		nsqLog.Logf("DISKQUEUE(%s): rename offset meta file %v ", d.name, fName)
+		if innerErr != nil && !os.IsNotExist(innerErr) {
+			nsqLog.LogErrorf("diskqueue(%s) failed to remove offset meta file %v - %s", d.name, fName, innerErr)
+		}
+	}
+	d.diskWriteEnd.EndOffset.FileNum++
+	d.diskWriteEnd.EndOffset.Pos = 0
+	d.diskReadEnd = d.diskWriteEnd
+	destFile := fmt.Sprintf(path.Join(destPath, "%s.diskqueue.meta.writer.dat"), d.name)
+	nsqLog.Logf("DISKQUEUE(%s): rename meta file to %v", d.name, destFile)
+	innerErr := util.AtomicRename(d.metaDataFileName(), destFile)
+	if innerErr != nil && !os.IsNotExist(innerErr) {
+		nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
+		return innerErr
+	}
+	return nil
+}
+
 func (d *diskQueueWriter) exit(deleted bool) error {
 	d.Lock()
 	defer d.Unlock()
@@ -286,6 +322,14 @@ func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
 		if innerErr != nil && !os.IsNotExist(innerErr) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
 			return innerErr
+		}
+		for i := int64(0); i <= d.diskWriteEnd.EndOffset.FileNum; i++ {
+			fName := d.fileName(i) + ".offsetmeta.dat"
+			innerErr := os.Remove(fName)
+			nsqLog.Logf("DISKQUEUE(%s): removed offset meta file", fName)
+			if innerErr != nil && !os.IsNotExist(innerErr) {
+				nsqLog.LogErrorf("diskqueue(%s) failed to remove offset meta file %v - %s", d.name, fName, innerErr)
+			}
 		}
 	}
 	return nil
