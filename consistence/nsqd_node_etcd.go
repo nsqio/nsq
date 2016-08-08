@@ -249,7 +249,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			}
 		}
 	} else {
-		coordLog.Infof("[WatchLookupdLeader] get error: %s", err.Error())
+		coordLog.Errorf("[WatchLookupdLeader] get error: %s", err.Error())
 	}
 
 	watcher := self.client.Watch(key, 0, true)
