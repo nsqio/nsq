@@ -499,6 +499,7 @@ func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int)
 	v, ok := self.topicMetaMap[topic]
 	if ok {
 		if v.Replica == 1 {
+			self.tmiMutex.Unlock()
 			return nil
 		}
 	}
