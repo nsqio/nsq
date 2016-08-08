@@ -210,6 +210,7 @@ func (t *Topic) MarkAsRemoved() error {
 	// we should move our partition only
 	renamePath := t.dataPath + "-removed-" + strconv.Itoa(int(time.Now().Unix()))
 	nsqLog.Warningf("mark the topic %v as removed: %v", t.GetFullName(), renamePath)
+	os.MkdirAll(renamePath, 0755)
 	err := t.backend.RemoveTo(renamePath)
 	if err != nil {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)

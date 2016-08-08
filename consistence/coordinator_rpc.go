@@ -784,28 +784,3 @@ func (self *NsqdCoordRpcServer) TestRpcTimeout() error {
 	time.Sleep(time.Second)
 	return nil
 }
-
-type ISRStat struct {
-	HostName string `json:"hostname"`
-	NodeID   string `json:"node_id"`
-}
-
-type CatchupStat struct {
-	HostName string `json:"hostname"`
-	NodeID   string `json:node_id`
-	Progress int    `json:progress`
-}
-
-type TopicCoordStat struct {
-	Node         string        `json:"node"`
-	Name         string        `json:"name"`
-	Partition    int           `json:"partition"`
-	ISRStats     []ISRStat     `json:"isr_stats"`
-	CatchupStats []CatchupStat `json:"catchup_stats"`
-}
-
-type CoordStats struct {
-	RpcStats        gorpc.ConnStats `json:"rpc_stats"`
-	ErrStats        CoordErrStats
-	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
-}

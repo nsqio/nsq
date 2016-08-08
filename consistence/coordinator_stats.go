@@ -1,9 +1,46 @@
 package consistence
 
 import (
+	"github.com/absolute8511/gorpc"
 	"sync"
 	"sync/atomic"
 )
+
+const maxNumCounters = 1024
+
+var (
+	cnames       = make([]string, maxNumCounters)
+	counters     = make([]uint64, maxNumCounters)
+	curCounterID = new(uint32)
+)
+
+func AddCounter(name string) uint32 {
+	id := atomic.AddUint32(curCounterID, 1) - 1
+	if id >= maxNumCounters {
+		panic("Too many counters")
+	}
+	cnames[id] = name
+	return id
+}
+
+func IncCounter(id uint32) {
+	atomic.AddUint64(&counters[id], 1)
+}
+
+func IncCounterBy(id uint32, amount uint64) {
+	atomic.AddUint64(&counters[id], amount)
+}
+
+func getAllCounters() map[string]uint64 {
+	ret := make(map[string]uint64)
+	numIDs := int(atomic.LoadUint32(curCounterID))
+
+	for i := 0; i < numIDs; i++ {
+		ret[cnames[i]] = atomic.LoadUint64(&counters[i])
+	}
+
+	return ret
+}
 
 type CoordErrStats struct {
 	sync.Mutex
@@ -80,3 +117,28 @@ func (self *CoordErrStats) incCoordErr(e *CoordErr) {
 }
 
 var coordErrStats = newCoordErrStats()
+
+type ISRStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:"node_id"`
+}
+
+type CatchupStat struct {
+	HostName string `json:"hostname"`
+	NodeID   string `json:node_id`
+	Progress int    `json:progress`
+}
+
+type TopicCoordStat struct {
+	Node         string        `json:"node"`
+	Name         string        `json:"name"`
+	Partition    int           `json:"partition"`
+	ISRStats     []ISRStat     `json:"isr_stats"`
+	CatchupStats []CatchupStat `json:"catchup_stats"`
+}
+
+type CoordStats struct {
+	RpcStats        gorpc.ConnStats `json:"rpc_stats"`
+	ErrStats        CoordErrStats
+	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
+}

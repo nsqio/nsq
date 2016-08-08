@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	//"runtime"
+	"path"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -75,6 +77,73 @@ type errorRecoveredBackendQueue struct{ errorBackendQueue }
 
 func (d *errorRecoveredBackendQueue) Put([]byte) (BackendOffset, int32, int64, error) {
 	return 0, 0, 0, nil
+}
+
+func TestTopicMarkRemoved(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	origPath := topic.dataPath
+
+	channel1 := topic.GetChannel("ch1")
+	nequal(t, nil, channel1)
+	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	for i := 0; i <= 1000; i++ {
+		msg.ID = 0
+		topic.PutMessage(msg)
+	}
+	topic1 := nsqd.GetTopic("test", 1)
+	channel1 = topic1.GetChannel("ch1")
+	nequal(t, nil, channel1)
+	for i := 0; i <= 1000; i++ {
+		msg.ID = 0
+		topic1.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	topic1.ForceFlush()
+	oldName := topic.backend.fileName(0)
+	oldMetaName := topic.backend.metaDataFileName()
+	oldName1 := topic1.backend.fileName(0)
+	oldMetaName1 := topic1.backend.metaDataFileName()
+
+	curTime1 := strconv.Itoa(int(time.Now().Unix()))
+	err := topic.MarkAsRemoved()
+	equal(t, nil, err)
+	equal(t, 0, len(topic.channelMap))
+	curTime2 := strconv.Itoa(int(time.Now().Unix()))
+	// mark as removed should keep the topic base directory
+	_, err = os.Stat(origPath)
+	equal(t, nil, err)
+	// partition data should be removed
+	newPath1 := origPath + "-removed-" + curTime1
+	newPath2 := origPath + "-removed-" + curTime2
+	newPath := newPath1
+	if _, err := os.Stat(newPath1); err != nil {
+		newPath = newPath2
+	}
+
+	_, err = os.Stat(newPath)
+	defer os.RemoveAll(newPath)
+	equal(t, nil, err)
+	newName := path.Join(newPath, filepath.Base(oldName))
+	newMetaName := path.Join(newPath, filepath.Base(oldMetaName))
+	// should keep other topic partition
+	_, err = os.Stat(oldName1)
+	equal(t, nil, err)
+	_, err = os.Stat(oldMetaName1)
+	equal(t, nil, err)
+	_, err = os.Stat(oldName)
+	nequal(t, nil, err)
+	_, err = os.Stat(oldMetaName)
+	nequal(t, nil, err)
+	_, err = os.Stat(newName)
+	equal(t, nil, err)
+	_, err = os.Stat(newMetaName)
+	equal(t, nil, err)
 }
 
 func TestDeletes(t *testing.T) {
