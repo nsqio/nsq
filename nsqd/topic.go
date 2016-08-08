@@ -192,7 +192,7 @@ func (t *Topic) loadMagicCode() error {
 	return nil
 }
 
-func (t *Topic) MarkAsRemoved() error {
+func (t *Topic) MarkAsRemoved() (string, error) {
 	t.Lock()
 	defer t.Unlock()
 	atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1)
@@ -215,7 +215,7 @@ func (t *Topic) MarkAsRemoved() error {
 	if err != nil {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}
-	return err
+	return renamePath, err
 }
 
 // should be protected by the topic lock for all partitions

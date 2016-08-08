@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"github.com/absolute8511/nsq/internal/util"
 	"github.com/absolute8511/nsq/nsqd"
 	"io"
 	"net"
@@ -307,7 +308,21 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 }
 
 func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo, tryFix bool) {
-	self.localNsqd.CheckMagicCode(topicInfo.Name, topicInfo.Partition, topicInfo.MagicCode, tryFix)
+	removedPath, err := self.localNsqd.CheckMagicCode(topicInfo.Name, topicInfo.Partition, topicInfo.MagicCode, tryFix)
+	if err != nil {
+		coordLog.Infof("check magic code error: %v", err)
+		return
+	}
+	if removedPath != "" {
+		basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
+		logPath := GetTopicPartitionLogPath(basepath, topicInfo.Name, topicInfo.Partition)
+		newLogPath := GetTopicPartitionLogPath(removedPath, topicInfo.Name, topicInfo.Partition)
+		coordLog.Infof("rename the topic %v commit log to :%v", topicInfo.GetTopicDesp(), newLogPath)
+		err := util.AtomicRename(logPath, newLogPath)
+		if err != nil {
+			coordLog.Infof("rename the topic %v commit log failed :%v", topicInfo.GetTopicDesp(), err)
+		}
+	}
 }
 
 func (self *NsqdCoordinator) loadLocalTopicData() error {
