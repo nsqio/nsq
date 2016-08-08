@@ -149,12 +149,13 @@ func (l *NSQLookupd) Exit() {
 	if l.tcpListener != nil {
 		l.tcpListener.Close()
 	}
-	if l.httpListener != nil {
-		l.httpListener.Close()
-	}
 	if l.coordinator != nil {
 		l.coordinator.Stop()
 	}
+	if l.httpListener != nil {
+		l.httpListener.Close()
+	}
+
 	l.waitGroup.Wait()
 	nsqlookupLog.Logf("lookup stopped.")
 }

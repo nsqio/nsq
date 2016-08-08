@@ -162,15 +162,15 @@ func (s *NsqdServer) Exit() {
 	if s.tcpListener != nil {
 		s.tcpListener.Close()
 	}
+	if s.ctx.nsqdCoord != nil {
+		s.ctx.nsqdCoord.Stop()
+	}
+
 	if s.httpListener != nil {
 		s.httpListener.Close()
 	}
 	if s.httpsListener != nil {
 		s.httpsListener.Close()
-	}
-
-	if s.ctx.nsqdCoord != nil {
-		s.ctx.nsqdCoord.Stop()
 	}
 
 	if s.ctx.nsqd != nil {

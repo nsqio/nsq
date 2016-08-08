@@ -961,8 +961,8 @@ func (c *ClusterInfo) actionHelper(topicName string, lookupdHTTPAddrs []string, 
 		}
 	} else {
 		for pid, pp := range partitionProducers {
-			qs = qs + "&partition=" + pid
-			err = c.versionPivotProducers(pp, deprecatedURI, v1URI, qs)
+			qsPart := qs + "&partition=" + pid
+			err = c.versionPivotProducers(pp, deprecatedURI, v1URI, qsPart)
 			if err != nil {
 				pe, ok := err.(PartialErr)
 				if !ok {
