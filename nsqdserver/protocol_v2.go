@@ -552,7 +552,9 @@ exit:
 func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	var err error
 
-	if atomic.LoadInt32(&client.State) != stateInit {
+	state := atomic.LoadInt32(&client.State)
+	if state != stateInit {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot IDENTIFY in current state")
 	}
 
@@ -692,7 +694,9 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 }
 
 func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	if atomic.LoadInt32(&client.State) != stateInit {
+	state := atomic.LoadInt32(&client.State)
+	if state != stateInit {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot AUTH in current state")
 	}
 
@@ -808,7 +812,10 @@ func (p *protocolV2) SUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableTrace bool,
 	ordered bool, startFrom *ConsumeOffset) ([]byte, error) {
-	if atomic.LoadInt32(&client.State) != stateInit {
+
+	state := atomic.LoadInt32(&client.State)
+	if state != stateInit {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot SUB in current state")
 	}
 
@@ -913,6 +920,7 @@ func (p *protocolV2) RDY(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if state != stateSubscribed {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot RDY in current state")
 	}
 
@@ -941,7 +949,7 @@ func (p *protocolV2) RDY(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
-		nsqd.NsqLogger().Logf("FIN error at state: %v", state)
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot FIN in current state")
 	}
 
@@ -986,6 +994,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot REQ in current state")
 	}
 
@@ -1025,7 +1034,9 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) CLS(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	if atomic.LoadInt32(&client.State) != stateSubscribed {
+	state := atomic.LoadInt32(&client.State)
+	if state != stateSubscribed {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot CLS in current state")
 	}
 
@@ -1282,6 +1293,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
+		nsqd.NsqLogger().LogWarningf("[%s] command in wrong state: %v", client, state)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "cannot TOUCH in current state")
 	}
 

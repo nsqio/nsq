@@ -30,7 +30,7 @@ var (
 	ErrCommitLogSearchFailed    = errors.New("commit log data search failed")
 )
 
-var LOGROTATE_NUM = 10000000
+var LOGROTATE_NUM = 2000000
 
 type CommitLogData struct {
 	LogID int64

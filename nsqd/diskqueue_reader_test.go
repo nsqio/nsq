@@ -10,12 +10,6 @@ import (
 	"time"
 )
 
-func TestDiskQueueReaderInitReadEnd(t *testing.T) {
-	// init empty with end
-	// init old reader with end
-	// reader position should read from meta file
-}
-
 func TestDiskQueueReaderResetConfirmed(t *testing.T) {
 	l := newTestLogger(t)
 	nsqLog.Logger = l
@@ -185,11 +179,162 @@ func TestDiskQueueReaderResetRead(t *testing.T) {
 func TestDiskQueueReaderSkip(t *testing.T) {
 	// skip offset, skip next, skip end
 	// skip to read, skip to confirmed
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+
+	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	test.Nil(t, err)
+	defer os.RemoveAll(tmpDir)
+	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	defer dqWriter.Close()
+	test.NotNil(t, dqWriter)
+
+	msg := []byte("test")
+	msgNum := 2000
+	for i := 0; i < msgNum; i++ {
+		dqWriter.Put(msg)
+	}
+	dqWriter.Flush()
+	end := dqWriter.GetQueueWriteEnd()
+	test.Nil(t, err)
+
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, nil, true)
+	dqReader.UpdateQueueEnd(end, false)
+	firstReadMsg, _ := dqReader.TryReadOne()
+	equal(t, firstReadMsg.Data, msg)
+	test.Equal(t, firstReadMsg.Offset+BackendOffset(firstReadMsg.MovedSize), dqReader.(*diskQueueReader).readQueueInfo.Offset())
+	test.Equal(t, firstReadMsg.CurCnt, dqReader.(*diskQueueReader).readQueueInfo.TotalMsgCnt())
+	defer dqReader.Close()
+	// skip to current read position
+	oldReadInfo := dqReader.(*diskQueueReader).readQueueInfo
+	newReaderInfo, err := dqReader.SkipReadToOffset(oldReadInfo.Offset(), oldReadInfo.TotalMsgCnt())
+	test.Nil(t, err)
+	test.Equal(t, &oldReadInfo, newReaderInfo.(*diskQueueEndInfo))
+	confirmed := dqReader.GetQueueConfirmed()
+	test.Equal(t, newReaderInfo.(*diskQueueEndInfo), confirmed.(*diskQueueEndInfo))
+
+	// should fail on exceed the end
+	_, err = dqReader.(*diskQueueReader).SkipReadToOffset(end.Offset()+1, end.TotalMsgCnt()+1)
+	test.NotNil(t, err)
+
+	// skip to current confirmed position
+	msgOut, _ := dqReader.TryReadOne()
+	test.Equal(t, newReaderInfo.Offset(), msgOut.Offset)
+	test.Equal(t, newReaderInfo.TotalMsgCnt()+1, msgOut.CurCnt)
+	dqReader.TryReadOne()
+	newReaderInfo, err = dqReader.SkipReadToOffset(confirmed.Offset(), confirmed.TotalMsgCnt())
+	test.Nil(t, err)
+	test.Equal(t, confirmed.(*diskQueueEndInfo), newReaderInfo.(*diskQueueEndInfo))
+	test.Equal(t, confirmed.(*diskQueueEndInfo), &dqReader.(*diskQueueReader).readQueueInfo)
+	msgOut, hasData := dqReader.TryReadOne()
+	test.Equal(t, true, hasData)
+	test.Equal(t, confirmed.Offset(), msgOut.Offset)
+	test.Equal(t, confirmed.TotalMsgCnt()+1, msgOut.CurCnt)
+
+	curFileNum := dqReader.(*diskQueueReader).confirmedQueueInfo.EndOffset.FileNum
+	// skip to next file
+	newReaderInfo2, err := dqReader.(*diskQueueReader).SkipToNext()
+	test.Nil(t, err)
+	test.Equal(t, newReaderInfo2.(*diskQueueEndInfo), &dqReader.(*diskQueueReader).readQueueInfo)
+	test.Equal(t, newReaderInfo2, dqReader.GetQueueConfirmed())
+	test.Equal(t, newReaderInfo2.(*diskQueueEndInfo).EndOffset.FileNum, curFileNum+1)
+
+	// skip backward should fail
+	newReaderInfo, err = dqReader.SkipReadToOffset(newReaderInfo.Offset(), newReaderInfo.TotalMsgCnt())
+	test.NotNil(t, err)
+
+	var resetReadMsg ReadResult
+	for i := 0; i < msgNum/2; i++ {
+		msgOut, _ := dqReader.TryReadOne()
+		equal(t, msgOut.Data, msg)
+		if i == msgNum/4 {
+			resetReadMsg = msgOut
+		}
+	}
+	newReaderInfo, err = dqReader.SkipReadToOffset(resetReadMsg.Offset+resetReadMsg.MovedSize, resetReadMsg.CurCnt)
+	test.Nil(t, err)
+	test.Equal(t, newReaderInfo, dqReader.GetQueueConfirmed())
+	test.Equal(t, newReaderInfo.(*diskQueueEndInfo), &dqReader.(*diskQueueReader).readQueueInfo)
+	msgOut, hasData = dqReader.TryReadOne()
+	test.Equal(t, true, hasData)
+	test.Nil(t, msgOut.Err)
+	test.Equal(t, resetReadMsg.Offset+resetReadMsg.MovedSize, msgOut.Offset)
+	test.Equal(t, resetReadMsg.CurCnt+1, msgOut.CurCnt)
+	curEnd := dqReader.GetQueueReadEnd()
+	newReaderInfo, err = dqReader.SkipReadToEnd()
+	test.Nil(t, err)
+	test.Equal(t, newReaderInfo, curEnd)
+	test.Equal(t, &dqReader.(*diskQueueReader).readQueueInfo, curEnd.(*diskQueueEndInfo))
 }
 
 func TestDiskQueueReaderUpdateEnd(t *testing.T) {
-}
+	// init empty with end
+	// init old reader with end
+	// reader position should read from meta file
 
-func TestDiskQueueReaderUpgradeToV2(t *testing.T) {
-	// handle the reset with the same offset as reader but with different count
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+
+	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	test.Nil(t, err)
+	defer os.RemoveAll(tmpDir)
+	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	defer dqWriter.Close()
+	test.NotNil(t, dqWriter)
+
+	msg := []byte("test")
+	msgNum := 2000
+	var midEnd BackendQueueEnd
+	for i := 0; i < msgNum; i++ {
+		dqWriter.Put(msg)
+		if i == msgNum/2 {
+			midEnd = dqWriter.GetQueueWriteEnd()
+		}
+	}
+	dqWriter.Flush()
+	end := dqWriter.GetQueueWriteEnd()
+	test.Nil(t, err)
+
+	dqReaderWithEnd := newDiskQueueReader(dqName, dqName+"-meta1", tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, end, true)
+	test.Equal(t, dqReaderWithEnd.GetQueueReadEnd(), end)
+	test.Equal(t, dqReaderWithEnd.GetQueueConfirmed(), end)
+	_, hasData := dqReaderWithEnd.TryReadOne()
+	equal(t, hasData, false)
+	dqReaderWithEnd.Close()
+	dqReaderWithEnd = newDiskQueueReader(dqName, dqName+"-meta1", tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, midEnd, true)
+	test.Equal(t, dqReaderWithEnd.GetQueueReadEnd(), end)
+	test.Equal(t, dqReaderWithEnd.GetQueueConfirmed(), end)
+	_, hasData = dqReaderWithEnd.TryReadOne()
+	equal(t, hasData, false)
+
+	dqReaderWithEnd.Close()
+	dqReaderWithEnd = newDiskQueueReader(dqName, dqName+"-meta2", tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, midEnd, true)
+	test.Equal(t, dqReaderWithEnd.GetQueueReadEnd(), midEnd)
+	test.Equal(t, dqReaderWithEnd.GetQueueConfirmed(), midEnd)
+	_, hasData = dqReaderWithEnd.TryReadOne()
+	equal(t, hasData, false)
+
+	dqReaderWithEnd.Close()
+	dqReaderWithEnd = newDiskQueueReader(dqName, dqName+"-meta2", tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, end, true)
+	test.Equal(t, dqReaderWithEnd.GetQueueReadEnd(), midEnd)
+	test.Equal(t, dqReaderWithEnd.GetQueueConfirmed(), midEnd)
+	_, hasData = dqReaderWithEnd.TryReadOne()
+	equal(t, hasData, false)
+	dqReaderWithEnd.UpdateQueueEnd(end, false)
+	dqReaderWithEnd.Close()
+	dqReaderWithEnd = newDiskQueueReader(dqName, dqName+"-meta2", tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, end, true)
+	test.Equal(t, dqReaderWithEnd.GetQueueReadEnd(), end)
+	test.Equal(t, dqReaderWithEnd.GetQueueConfirmed(), midEnd)
+	_, hasData = dqReaderWithEnd.TryReadOne()
+	equal(t, hasData, true)
+
+	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024, 4, 1<<10, 1, 2*time.Second, nil, true)
+	dqReader.UpdateQueueEnd(end, false)
+	defer dqReader.Close()
+	test.Equal(t, dqReader.GetQueueReadEnd(), end)
+	test.Equal(t, dqReader.GetQueueConfirmed().Offset(), BackendOffset(0))
+	_, hasData = dqReader.TryReadOne()
+	equal(t, hasData, true)
 }
