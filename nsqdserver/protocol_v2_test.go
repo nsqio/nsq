@@ -1760,6 +1760,7 @@ func TestSetChannelOffset(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
 	}
+	topic.ForceFlush()
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)

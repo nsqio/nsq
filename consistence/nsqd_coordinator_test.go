@@ -906,6 +906,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	ensureTopicDisableWrite(nsqdCoord1, topic, partition, false)
 	ensureTopicDisableWrite(nsqdCoord2, topic, partition, false)
 	topicData1 := nsqd1.GetTopic(topic, partition)
+	channel1 := topicData1.GetChannel("ch1")
 	_, _, _, _, err := nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
 	test.Nil(t, err)
 	// message header is 26 bytes
@@ -1017,8 +1018,11 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	test.Equal(t, len(logs), msgCnt)
 	test.Equal(t, logs[msgCnt-1].Epoch, topicInitInfo.EpochForWrite)
 
-	channel1 := topicData1.GetChannel("ch1")
 	channel2 := topicData2.GetChannel("ch1")
+	// since the new channel on node2 is init to end , we need sync node1 channel offset to node2
+	nsqdCoord1.SetChannelConsumeOffsetToCluster(channel1, int64(channel1.GetConfirmed().Offset()), channel1.GetConfirmed().TotalMsgCnt(), true)
+	t.Logf("topic end: %v, channel %v, %v", topicData2.GetCommitted(), channel2.GetChannelEnd(), channel2.GetConfirmed())
+	time.Sleep(time.Second)
 	test.Equal(t, channel1.Depth(), int64(msgCnt))
 	test.Equal(t, channel1.DepthSize(), int64(msgCnt)*msgRawSize)
 	test.Equal(t, channel2.Depth(), int64(msgCnt))
