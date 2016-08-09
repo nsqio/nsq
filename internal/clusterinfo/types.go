@@ -114,14 +114,15 @@ type TopicStats struct {
 	Depth          int64         `json:"depth"`
 	MemoryDepth    int64         `json:"memory_depth"`
 	// the queue maybe auto cleaned, so the start means the queue oldest offset.
-	BackendStart  int64            `json:"backend_start"`
-	BackendDepth  int64            `json:"backend_depth"`
-	MessageCount  int64            `json:"message_count"`
-	NodeStats     []*TopicStats    `json:"nodes"`
-	Channels      []*ChannelStats  `json:"channels"`
-	Paused        bool             `json:"paused"`
-	HourlyPubSize int64            `json:"hourly_pubsize"`
-	Clients       []ClientPubStats `json:"client_pub_stats"`
+	BackendStart      int64           `json:"backend_start"`
+	BackendDepth      int64           `json:"backend_depth"`
+	MessageCount      int64           `json:"message_count"`
+	NodeStats         []*TopicStats   `json:"nodes"`
+	Channels          []*ChannelStats `json:"channels"`
+	totalChannelDepth int64
+	Paused            bool             `json:"paused"`
+	HourlyPubSize     int64            `json:"hourly_pubsize"`
+	Clients           []ClientPubStats `json:"client_pub_stats"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -313,6 +314,19 @@ func (c TopicStatsByPartitionAndHost) Less(i, j int) bool {
 	l, _ := strconv.Atoi(c.TopicStatsList[i].TopicPartition)
 	r, _ := strconv.Atoi(c.TopicStatsList[j].TopicPartition)
 	return l < r
+}
+
+type TopicStatsByChannelDepth struct {
+	TopicStatsList
+}
+
+func (c TopicStatsByChannelDepth) Less(i, j int) bool {
+	if c.TopicStatsList[i].totalChannelDepth == c.TopicStatsList[j].totalChannelDepth {
+		return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
+	}
+	l := c.TopicStatsList[i].totalChannelDepth
+	r := c.TopicStatsList[j].totalChannelDepth
+	return l > r
 }
 
 type Producers []*Producer

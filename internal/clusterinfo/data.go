@@ -656,7 +656,7 @@ func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic strin
 //
 // if selectedTopic is empty, this will return stats for *all* topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
-func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([]*TopicStats, map[string]*ChannelStats, error) {
+func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, sortBy string) ([]*TopicStats, map[string]*ChannelStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var topicStatsList TopicStatsList
@@ -722,6 +722,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 						c.Node = addr
 					}
 					channelStats.Add(channel)
+					topic.totalChannelDepth += channel.Depth
 				}
 			}
 		}(p)
@@ -732,7 +733,13 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 		return nil, nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 
-	sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
+	if sortBy == "partition" {
+		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
+	} else if sortBy == "channel-depth" {
+		sort.Sort(TopicStatsByChannelDepth{topicStatsList})
+	} else {
+		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
+	}
 
 	if len(errs) > 0 {
 		return topicStatsList, channelStatsMap, ErrList(errs)
