@@ -302,7 +302,7 @@ func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *
 			return err
 		}
 	} else {
-		_, err := msg.WriteToV2(buf)
+		_, err := msg.WriteToWithDetail(buf)
 		if err != nil {
 			return err
 		}

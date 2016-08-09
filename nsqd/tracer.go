@@ -27,8 +27,8 @@ func (self *LogMsgTracer) TracePub(topic string, traceID uint64, msg *Message, d
 }
 
 func (self *LogMsgTracer) TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string) {
-	nsqLog.Logf("[TRACE] topic %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v", topic, msg.TraceID,
-		msg.ID, msg.offset, state, clientID, time.Now().UnixNano())
+	nsqLog.Logf("[TRACE] topic %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v", topic, msg.TraceID,
+		msg.ID, msg.offset, state, clientID, time.Now().UnixNano(), msg.Attempts)
 }
 
 // this tracer will send the trace info to remote server for each seconds

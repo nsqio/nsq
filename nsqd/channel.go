@@ -624,6 +624,10 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 				clientID)
 			return err
 		}
+		// requeue by intend should treat as not fail attempt
+		if msg.Attempts > 0 {
+			msg.Attempts--
+		}
 		return c.doRequeue(msg)
 	}
 	// change the timeout for inflight
@@ -728,6 +732,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	msg.clientID = clientID
 	msg.deliveryTS = now
 	msg.pri = now.Add(timeout).UnixNano()
+	msg.Attempts++
 	err := c.pushInFlightMessage(msg)
 	if err != nil {
 		nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
@@ -1158,7 +1163,6 @@ LOOP:
 				continue
 			}
 		}
-		msg.Attempts++
 		msg.isDeferred = false
 		if c.IsOrdered() {
 			atomic.StoreInt32(&c.needNotifyRead, 1)

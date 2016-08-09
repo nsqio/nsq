@@ -75,7 +75,7 @@ func (m *Message) GetFullMsgID() FullMessageID {
 	return buf
 }
 
-func (m *Message) WriteToV2(w io.Writer) (int64, error) {
+func (m *Message) WriteToWithDetail(w io.Writer) (int64, error) {
 	return m.internalWriteTo(w, true)
 }
 
@@ -83,7 +83,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	return m.internalWriteTo(w, false)
 }
 
-func (m *Message) internalWriteTo(w io.Writer, isNewVer bool) (int64, error) {
+func (m *Message) internalWriteTo(w io.Writer, writeDetail bool) (int64, error) {
 	var buf [16]byte
 	var total int64
 
@@ -104,7 +104,7 @@ func (m *Message) internalWriteTo(w io.Writer, isNewVer bool) (int64, error) {
 		return total, err
 	}
 
-	if isNewVer {
+	if writeDetail {
 		binary.BigEndian.PutUint64(buf[:8], uint64(m.offset))
 		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.rawMoveSize))
 		n, err = w.Write(buf[:8+4])
