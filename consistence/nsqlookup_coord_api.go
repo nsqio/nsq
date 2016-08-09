@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+const (
+	MAX_PARTITION_NUM = 255
+)
+
 func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
 	return self.leadership.GetAllLookupdNodes()
 }
@@ -24,6 +28,31 @@ func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid stri
 		return false
 	}
 	return t.Leader == nid
+}
+
+func (self *NsqLookupCoordinator) DeleteTopicForce(topic string, partition string) error {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
+		coordLog.Infof("not leader while delete topic")
+		return ErrNotNsqLookupLeader
+	}
+
+	coordLog.Infof("delete topic: %v, with partition: %v", topic, partition)
+
+	if partition == "**" {
+		// delete all
+		for pid := 0; pid < MAX_PARTITION_NUM; pid++ {
+			self.deleteTopicPartitionForce(topic, pid)
+		}
+		self.leadership.DeleteWholeTopic(topic)
+	} else {
+		pid, err := strconv.Atoi(partition)
+		if err != nil {
+			coordLog.Infof("failed to parse the partition id : %v, %v", partition, err)
+			return err
+		}
+		self.deleteTopicPartitionForce(topic, pid)
+	}
+	return nil
 }
 
 func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) error {
@@ -60,6 +89,39 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 		}
 
 		return self.deleteTopicPartition(topic, pid)
+	}
+	return nil
+}
+
+func (self *NsqLookupCoordinator) deleteTopicPartitionForce(topic string, pid int) error {
+	self.leadership.DeleteTopic(topic, pid)
+	self.nodesMutex.RLock()
+	currentNodes := self.nsqdNodes
+	self.nodesMutex.RUnlock()
+	var topicInfo TopicPartitionMetaInfo
+	topicInfo.Name = topic
+	topicInfo.Partition = pid
+	for _, node := range currentNodes {
+		c, rpcErr := self.acquireRpcClient(node.ID)
+		if rpcErr != nil {
+			coordLog.Infof("failed to get rpc client: %v, %v", node.ID, rpcErr)
+			continue
+		}
+		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, &topicInfo)
+		if rpcErr != nil {
+			coordLog.Infof("failed to call rpc : %v, %v", node.ID, rpcErr)
+		}
+	}
+	for _, node := range currentNodes {
+		c, rpcErr := self.acquireRpcClient(node.ID)
+		if rpcErr != nil {
+			coordLog.Infof("failed to get rpc client: %v, %v", node.ID, rpcErr)
+			continue
+		}
+		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, &topicInfo)
+		if rpcErr != nil {
+			coordLog.Infof("failed to call rpc : %v, %v", node.ID, rpcErr)
+		}
 	}
 	return nil
 }
@@ -108,6 +170,9 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	}
 
 	// TODO: handle default load factor
+	if meta.PartitionNum >= MAX_PARTITION_NUM {
+		return errors.New("max partition allowed exceed")
+	}
 
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		meta.MagicCode = time.Now().UnixNano()

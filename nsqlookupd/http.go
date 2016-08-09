@@ -360,10 +360,18 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	} else if partStr == "**" {
 		nsqlookupLog.LogWarningf("removing all the partitions of topic: %v", topicName)
 	}
+	force := reqParams.Get("force")
 
 	nsqlookupLog.Logf("deleting topic(%s) with partition %v ", topicName, partStr)
 	err = s.ctx.nsqlookupd.coordinator.DeleteTopic(topicName, partStr)
 	if err != nil {
+		nsqlookupLog.Logf("deleting topic(%s) with partition %v failed : %v", topicName, partStr, err)
+		if force == "true" {
+			err = s.ctx.nsqlookupd.coordinator.DeleteTopicForce(topicName, partStr)
+			if err == nil {
+				return nil, nil
+			}
+		}
 		return nil, http_api.Err{500, err.Error()}
 	}
 	return nil, nil
