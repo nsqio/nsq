@@ -73,7 +73,7 @@ type Options struct {
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
 
-	Logger logger
+	Logger Logger
 }
 
 func NewOptions() *Options {

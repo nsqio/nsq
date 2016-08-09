@@ -16,7 +16,7 @@ import (
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
 type lookupPeer struct {
-	l               logger
+	l               Logger
 	addr            string
 	conn            net.Conn
 	state           int32
@@ -36,7 +36,7 @@ type peerInfo struct {
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, maxBodySize int64, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, maxBodySize int64, l Logger, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
 		l:               l,
 		addr:            addr,

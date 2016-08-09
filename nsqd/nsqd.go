@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bitly/go-simplejson"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -261,9 +260,21 @@ func (n *NSQD) Main() {
 	}
 }
 
+type meta struct {
+	Topics []struct {
+		Name     string `json:"name"`
+		Paused   bool   `json:"paused"`
+		Channels []struct {
+			Name   string `json:"name"`
+			Paused bool   `json:"paused"`
+		} `json:"channels"`
+	} `json:"topics"`
+}
+
 func (n *NSQD) LoadMetadata() {
 	atomic.StoreInt32(&n.isLoading, 1)
 	defer atomic.StoreInt32(&n.isLoading, 0)
+
 	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
@@ -273,59 +284,30 @@ func (n *NSQD) LoadMetadata() {
 		return
 	}
 
-	js, err := simplejson.NewJson(data)
+	var m meta
+	err = json.Unmarshal(data, &m)
 	if err != nil {
 		n.logf("ERROR: failed to parse metadata - %s", err)
 		return
 	}
 
-	topics, err := js.Get("topics").Array()
-	if err != nil {
-		n.logf("ERROR: failed to parse metadata - %s", err)
-		return
-	}
-
-	for ti := range topics {
-		topicJs := js.Get("topics").GetIndex(ti)
-
-		topicName, err := topicJs.Get("name").String()
-		if err != nil {
-			n.logf("ERROR: failed to parse metadata - %s", err)
-			return
-		}
-		if !protocol.IsValidTopicName(topicName) {
-			n.logf("WARNING: skipping creation of invalid topic %s", topicName)
+	for _, t := range m.Topics {
+		if !protocol.IsValidTopicName(t.Name) {
+			n.logf("WARNING: skipping creation of invalid topic %s", t.Name)
 			continue
 		}
-		topic := n.GetTopic(topicName)
-
-		paused, _ := topicJs.Get("paused").Bool()
-		if paused {
+		topic := n.GetTopic(t.Name)
+		if t.Paused {
 			topic.Pause()
 		}
 
-		channels, err := topicJs.Get("channels").Array()
-		if err != nil {
-			n.logf("ERROR: failed to parse metadata - %s", err)
-			return
-		}
-
-		for ci := range channels {
-			channelJs := topicJs.Get("channels").GetIndex(ci)
-
-			channelName, err := channelJs.Get("name").String()
-			if err != nil {
-				n.logf("ERROR: failed to parse metadata - %s", err)
-				return
-			}
-			if !protocol.IsValidChannelName(channelName) {
-				n.logf("WARNING: skipping creation of invalid channel %s", channelName)
+		for _, c := range t.Channels {
+			if !protocol.IsValidChannelName(c.Name) {
+				n.logf("WARNING: skipping creation of invalid channel %s", c.Name)
 				continue
 			}
-			channel := topic.GetChannel(channelName)
-
-			paused, _ = channelJs.Get("paused").Bool()
-			if paused {
+			channel := topic.GetChannel(c.Name)
+			if c.Paused {
 				channel.Pause()
 			}
 		}

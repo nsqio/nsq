@@ -61,7 +61,7 @@ type diskQueue struct {
 	exitChan          chan int
 	exitSyncChan      chan int
 
-	logger logger
+	logger Logger
 }
 
 // newDiskQueue instantiates a new instance of diskQueue, retrieving metadata
@@ -69,7 +69,7 @@ type diskQueue struct {
 func newDiskQueue(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64, syncTimeout time.Duration,
-	logger logger) BackendQueue {
+	logger Logger) BackendQueue {
 	d := diskQueue{
 		name:              name,
 		dataPath:          dataPath,
