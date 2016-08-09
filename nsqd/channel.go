@@ -108,7 +108,7 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, part int, channelName string, opt *Options,
+func NewChannel(topicName string, part int, channelName string, chEnd BackendQueueEnd, opt *Options,
 	deleteCallback func(*Channel), consumeDisabled int32, notify func(v interface{})) *Channel {
 
 	c := &Channel{
@@ -160,6 +160,7 @@ func NewChannel(topicName string, part int, channelName string, opt *Options,
 			int32(opt.MaxMsgSize)+minValidMsgLength,
 			syncEvery,
 			opt.SyncTimeout,
+			chEnd,
 			false)
 	}
 

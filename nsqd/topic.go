@@ -380,17 +380,19 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
-		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName,
-			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
-		e := t.backend.GetQueueReadEnd()
+		readEnd := t.backend.GetQueueReadEnd()
 		curCommit := t.GetCommitted()
-		if curCommit != nil && e.Offset() > curCommit.Offset() {
+		if curCommit != nil && readEnd.Offset() > curCommit.Offset() {
 			if nsqLog.Level() >= levellogger.LOG_DEBUG {
-				nsqLog.Logf("channel %v, end to commit: %v, read end: %v", channel.GetName(), curCommit, e)
+				nsqLog.Logf("channel %v, end to commit: %v, read end: %v", channelName, curCommit, readEnd)
 			}
-			e = curCommit
+			readEnd = curCommit
 		}
-		channel.UpdateQueueEnd(e, false)
+
+		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, readEnd,
+			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
+
+		channel.UpdateQueueEnd(readEnd, false)
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}

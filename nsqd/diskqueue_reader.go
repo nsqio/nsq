@@ -100,7 +100,7 @@ type diskQueueReader struct {
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64, syncTimeout time.Duration, autoSkip bool) BackendQueueReader {
+	syncEvery int64, syncTimeout time.Duration, readEnd BackendQueueEnd, autoSkip bool) BackendQueueReader {
 
 	d := diskQueueReader{
 		readFrom:        readFrom,
@@ -114,6 +114,13 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		autoSkipError:   autoSkip,
 	}
 
+	// init the channel to end, so if any new channel without meta will be init to read at end
+	if diskEnd, ok := readEnd.(*diskQueueEndInfo); ok {
+		d.confirmedQueueInfo = *diskEnd
+		d.readQueueInfo = d.confirmedQueueInfo
+		d.queueEndInfo = *diskEnd
+		d.updateDepth()
+	}
 	// no need to lock here, nothing else could possibly be touching this instance
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {

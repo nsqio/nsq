@@ -110,22 +110,14 @@ func TestTopicMarkRemoved(t *testing.T) {
 	oldName1 := topic1.backend.fileName(0)
 	oldMetaName1 := topic1.backend.metaDataFileName()
 
-	curTime1 := strconv.Itoa(int(time.Now().Unix()))
-	err := topic.MarkAsRemoved()
+	removedPath, err := topic.MarkAsRemoved()
 	equal(t, nil, err)
 	equal(t, 0, len(topic.channelMap))
-	curTime2 := strconv.Itoa(int(time.Now().Unix()))
 	// mark as removed should keep the topic base directory
 	_, err = os.Stat(origPath)
 	equal(t, nil, err)
 	// partition data should be removed
-	newPath1 := origPath + "-removed-" + curTime1
-	newPath2 := origPath + "-removed-" + curTime2
-	newPath := newPath1
-	if _, err := os.Stat(newPath1); err != nil {
-		newPath = newPath2
-	}
-
+	newPath := removedPath
 	_, err = os.Stat(newPath)
 	defer os.RemoveAll(newPath)
 	equal(t, nil, err)

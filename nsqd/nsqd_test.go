@@ -156,23 +156,31 @@ func TestStartup(t *testing.T) {
 	msgRawSize, _ := tmpmsg.WriteTo(tmpbuf)
 	msgRawSize += 4
 	topic := nsqd.GetTopicIgnPart(topicName)
+	channel1 := topic.GetChannel("ch1")
 	for i := 0; i < iterations; i++ {
 		msg := NewMessage(0, body)
 		topic.PutMessage(msg)
 	}
 
-	topic.flush(true)
+	topic.ForceFlush()
+	t.Logf("topic: %v. %v", topic.GetCommitted(), topic.backend.GetQueueReadEnd())
 	backEnd := topic.backend.GetQueueReadEnd()
 	equal(t, backEnd.Offset(), BackendOffset(int64(iterations)*msgRawSize))
 	equal(t, backEnd.TotalMsgCnt(), int64(iterations))
-	channel1 := topic.GetChannel("ch1")
+	channel2 := topic.GetChannel("ch2")
 
 	err = nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	equal(t, err, nil)
-	t.Logf("read %d msgs", iterations/2)
+	t.Logf("msgs: depth: %v. %v", channel1.Depth(), channel1.DepthSize())
 	equal(t, channel1.Depth(), int64(iterations))
 	equal(t, channel1.DepthSize(), int64(iterations)*msgRawSize)
 	equal(t, channel1.backend.(*diskQueueReader).queueEndInfo.Offset(),
+		BackendOffset(channel1.DepthSize()))
+
+	// new channel should consume from end
+	equal(t, channel2.Depth(), int64(0))
+	equal(t, channel2.DepthSize(), int64(0)*msgRawSize)
+	equal(t, channel2.backend.(*diskQueueReader).queueEndInfo.Offset(),
 		BackendOffset(channel1.DepthSize()))
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
