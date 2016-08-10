@@ -10,30 +10,32 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/nsqio/nsq/internal/test"
 )
 
 func TestGetTopic(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topic1 := nsqd.GetTopic("test")
-	nequal(t, nil, topic1)
-	equal(t, "test", topic1.name)
+	test.NotNil(t, topic1)
+	test.Equal(t, "test", topic1.name)
 
 	topic2 := nsqd.GetTopic("test")
-	equal(t, topic1, topic2)
+	test.Equal(t, topic1, topic2)
 
 	topic3 := nsqd.GetTopic("test2")
-	equal(t, "test2", topic3.name)
-	nequal(t, topic2, topic3)
+	test.Equal(t, "test2", topic3.name)
+	test.NotEqual(t, topic2, topic3)
 }
 
 func TestGetChannel(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -41,13 +43,13 @@ func TestGetChannel(t *testing.T) {
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
-	equal(t, "ch1", channel1.name)
+	test.NotNil(t, channel1)
+	test.Equal(t, "ch1", channel1.name)
 
 	channel2 := topic.GetChannel("ch2")
 
-	equal(t, channel1, topic.channelMap["ch1"])
-	equal(t, channel2, topic.channelMap["ch2"])
+	test.Equal(t, channel1, topic.channelMap["ch1"])
+	test.Equal(t, channel2, topic.channelMap["ch2"])
 }
 
 type errorBackendQueue struct{}
@@ -65,7 +67,7 @@ func (d *errorRecoveredBackendQueue) Put([]byte) error { return nil }
 
 func TestHealth(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	opts.MemQueueSize = 2
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -76,45 +78,45 @@ func TestHealth(t *testing.T) {
 
 	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err := topic.PutMessage(msg)
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessage(msg)
-	nequal(t, err, nil)
+	test.NotNil(t, err)
 
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
-	nequal(t, err, nil)
+	test.NotNil(t, err)
 
 	url := fmt.Sprintf("http://%s/ping", httpAddr)
 	resp, err := http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 500)
+	test.Nil(t, err)
+	test.Equal(t, 500, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	equal(t, string(body), "NOK - never gonna happen")
+	test.Equal(t, "NOK - never gonna happen", string(body))
 
 	topic.backend = &errorRecoveredBackendQueue{}
 
 	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	resp, err = http.Get(url)
-	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	equal(t, string(body), "OK")
+	test.Equal(t, "OK", string(body))
 }
 
 func TestDeletes(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -122,24 +124,24 @@ func TestDeletes(t *testing.T) {
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Nil(t, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	channel2 := topic.GetChannel("ch2")
-	nequal(t, nil, channel2)
+	test.NotNil(t, channel2)
 
 	err = nsqd.DeleteExistingTopic("test")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
-	equal(t, 0, len(nsqd.topicMap))
+	test.Nil(t, err)
+	test.Equal(t, 0, len(topic.channelMap))
+	test.Equal(t, 0, len(nsqd.topicMap))
 }
 
 func TestDeleteLast(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -147,22 +149,22 @@ func TestDeleteLast(t *testing.T) {
 	topic := nsqd.GetTopic("test")
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Nil(t, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
-	equal(t, nil, err)
-	equal(t, topic.Depth(), int64(1))
+	test.Nil(t, err)
+	test.Equal(t, int64(1), topic.Depth())
 }
 
 func TestPause(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -170,32 +172,32 @@ func TestPause(t *testing.T) {
 	topicName := "test_topic_pause" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	err := topic.Pause()
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	channel := topic.GetChannel("ch1")
-	nequal(t, channel, nil)
+	test.NotNil(t, channel)
 
 	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	time.Sleep(15 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(1))
-	equal(t, channel.Depth(), int64(0))
+	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, int64(0), channel.Depth())
 
 	err = topic.UnPause()
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	time.Sleep(15 * time.Millisecond)
 
-	equal(t, topic.Depth(), int64(0))
-	equal(t, channel.Depth(), int64(1))
+	test.Equal(t, int64(0), topic.Depth())
+	test.Equal(t, int64(1), channel.Depth())
 }
 
 func TestTopicBackendMaxMsgSize(t *testing.T) {
 	opts := NewOptions()
-	opts.Logger = newTestLogger(t)
+	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -203,14 +205,14 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 
-	equal(t, topic.backend.(*diskQueue).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	test.Equal(t, int32(opts.MaxMsgSize+minValidMsgLength), topic.backend.(*diskQueue).maxMsgSize)
 }
 
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
 	opts := NewOptions()
-	opts.Logger = newTestLogger(b)
+	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -229,7 +231,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	topicName := "bench_topic_to_channel_put" + strconv.Itoa(b.N)
 	channelName := "bench"
 	opts := NewOptions()
-	opts.Logger = newTestLogger(b)
+	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
