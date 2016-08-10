@@ -189,6 +189,10 @@ func (c *Channel) IsTraced() bool {
 	return atomic.LoadInt32(&c.EnableTrace) == 1
 }
 
+func (c *Channel) IsEphemeral() bool {
+	return c.ephemeral
+}
+
 func (c *Channel) SetTrace(enable bool) {
 	if enable {
 		atomic.StoreInt32(&c.EnableTrace, 1)

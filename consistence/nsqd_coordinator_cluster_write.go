@@ -697,6 +697,9 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		if ch.IsEphemeral() {
+			return nil
+		}
 		rpcErr := c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 		if rpcErr != nil {
 			coordLog.Infof("sync channel(%v) offset to replica %v failed: %v, offset: %v", ch.GetName(),
@@ -751,7 +754,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
-		if !changed {
+		if !changed || channel.IsEphemeral() {
 			return nil
 		}
 		var rpcErr *CoordErr
@@ -810,6 +813,9 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		return ErrLocalMissingTopic
 	}
 	ch := topic.GetChannel(channelName)
+	if ch.IsEphemeral() {
+		coordLog.Errorf("ephemeral channel %v should not be synced on slave", channelName)
+	}
 	currentEnd := ch.GetChannelEnd()
 	if nsqd.BackendOffset(offset.VOffset) > currentEnd.Offset() {
 		coordLog.Debugf("update channel(%v) consume offset exceed end %v on slave : %v", channelName, offset, currentEnd)

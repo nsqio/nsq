@@ -546,6 +546,10 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset, cnt int64) error
 		nsqLog.LogErrorf("confirmed exceed the read pos: %v, %v", offset, d.readQueueInfo.Offset())
 		return ErrConfirmSizeInvalid
 	}
+	if newConfirm.GreatThan(&d.queueEndInfo.EndOffset) || offset > d.queueEndInfo.Offset() {
+		nsqLog.LogErrorf("confirmed exceed the end pos: %v, %v, %v", newConfirm, offset, d.queueEndInfo)
+		return ErrConfirmSizeInvalid
+	}
 	d.confirmedQueueInfo.EndOffset = newConfirm
 	d.confirmedQueueInfo.virtualEnd = offset
 	atomic.StoreInt64(&d.confirmedQueueInfo.totalMsgCnt, cnt)

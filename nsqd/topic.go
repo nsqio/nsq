@@ -13,6 +13,7 @@ import (
 
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/util"
 )
 
 const (
@@ -138,11 +139,15 @@ func NewTopic(topicName string, part int, opt *Options,
 	return t
 }
 
+func (t *Topic) getMagicCodeFileName() string {
+	return path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
+}
+
 func (t *Topic) saveMagicCode() error {
 	var f *os.File
 	var err error
 
-	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
+	fileName := t.getMagicCodeFileName()
 	f, err = os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
@@ -160,7 +165,7 @@ func (t *Topic) saveMagicCode() error {
 }
 
 func (t *Topic) removeMagicCode() {
-	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
+	fileName := t.getMagicCodeFileName()
 	err := os.Remove(fileName)
 	if err != nil {
 		nsqLog.Errorf("remove the magic file %v failed:%v", fileName, err)
@@ -171,7 +176,7 @@ func (t *Topic) loadMagicCode() error {
 	var f *os.File
 	var err error
 
-	fileName := path.Join(t.dataPath, "magic"+strconv.Itoa(t.partition))
+	fileName := t.getMagicCodeFileName()
 	f, err = os.OpenFile(fileName, os.O_RDONLY, 0644)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -215,6 +220,8 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	if err != nil {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}
+	util.AtomicRename(t.getMagicCodeFileName(), path.Join(renamePath, "magic"+strconv.Itoa(t.partition)))
+	t.removeMagicCode()
 	return renamePath, err
 }
 

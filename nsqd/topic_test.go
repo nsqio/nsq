@@ -97,6 +97,9 @@ func TestTopicMarkRemoved(t *testing.T) {
 		topic.PutMessage(msg)
 	}
 	topic1 := nsqd.GetTopic("test", 1)
+	err := topic.SetMagicCode(time.Now().UnixNano())
+	err = topic1.SetMagicCode(time.Now().UnixNano())
+	equal(t, nil, err)
 	channel1 = topic1.GetChannel("ch1")
 	nequal(t, nil, channel1)
 	for i := 0; i <= 1000; i++ {
@@ -109,6 +112,12 @@ func TestTopicMarkRemoved(t *testing.T) {
 	oldMetaName := topic.backend.metaDataFileName()
 	oldName1 := topic1.backend.fileName(0)
 	oldMetaName1 := topic1.backend.metaDataFileName()
+	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
+	oldMagicFile1 := path.Join(topic1.dataPath, "magic"+strconv.Itoa(topic1.partition))
+	_, err = os.Stat(oldMagicFile)
+	equal(t, nil, err)
+	_, err = os.Stat(oldMagicFile1)
+	equal(t, nil, err)
 
 	removedPath, err := topic.MarkAsRemoved()
 	equal(t, nil, err)
@@ -123,18 +132,25 @@ func TestTopicMarkRemoved(t *testing.T) {
 	equal(t, nil, err)
 	newName := path.Join(newPath, filepath.Base(oldName))
 	newMetaName := path.Join(newPath, filepath.Base(oldMetaName))
+	newMagicFile := path.Join(newPath, filepath.Base(oldMagicFile))
 	// should keep other topic partition
 	_, err = os.Stat(oldName1)
 	equal(t, nil, err)
 	_, err = os.Stat(oldMetaName1)
 	equal(t, nil, err)
+	_, err = os.Stat(oldMagicFile1)
+	equal(t, nil, err)
 	_, err = os.Stat(oldName)
 	nequal(t, nil, err)
 	_, err = os.Stat(oldMetaName)
 	nequal(t, nil, err)
+	_, err = os.Stat(oldMagicFile)
+	nequal(t, nil, err)
 	_, err = os.Stat(newName)
 	equal(t, nil, err)
 	_, err = os.Stat(newMetaName)
+	equal(t, nil, err)
+	_, err = os.Stat(newMagicFile)
 	equal(t, nil, err)
 }
 
