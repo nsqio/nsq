@@ -162,11 +162,15 @@ func TestDeletes(t *testing.T) {
 	defer nsqd.Exit()
 
 	topic := nsqd.GetTopicIgnPart("test")
+	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
 
 	channel1 := topic.GetChannel("ch1")
 	nequal(t, nil, channel1)
 
-	err := topic.DeleteExistingChannel("ch1")
+	err := topic.SetMagicCode(time.Now().UnixNano())
+	_, err = os.Stat(oldMagicFile)
+	equal(t, nil, err)
+	err = topic.DeleteExistingChannel("ch1")
 	equal(t, nil, err)
 	equal(t, 0, len(topic.channelMap))
 
@@ -177,6 +181,8 @@ func TestDeletes(t *testing.T) {
 	equal(t, nil, err)
 	equal(t, 0, len(topic.channelMap))
 	equal(t, 0, len(nsqd.topicMap))
+	_, err = os.Stat(oldMagicFile)
+	nequal(t, nil, err)
 }
 
 func TestDeleteLast(t *testing.T) {

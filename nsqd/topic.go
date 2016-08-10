@@ -718,6 +718,7 @@ func (t *Topic) exit(deleted bool) error {
 		t.channelLock.Unlock()
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
+		t.removeMagicCode()
 		return t.backend.Delete()
 	}
 
