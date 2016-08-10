@@ -148,21 +148,19 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeral = true
-		c.backend = newDummyBackendQueueReader()
-	} else {
-		// backend names, for uniqueness, automatically include the topic...
-		backendReaderName := getBackendReaderName(c.topicName, c.topicPart, channelName)
-		backendName := getBackendName(c.topicName, c.topicPart)
-		c.backend = newDiskQueueReader(backendName, backendReaderName,
-			path.Join(opt.DataPath, c.topicName),
-			opt.MaxBytesPerFile,
-			int32(minValidMsgLength),
-			int32(opt.MaxMsgSize)+minValidMsgLength,
-			syncEvery,
-			opt.SyncTimeout,
-			chEnd,
-			false)
 	}
+	// backend names, for uniqueness, automatically include the topic...
+	backendReaderName := getBackendReaderName(c.topicName, c.topicPart, channelName)
+	backendName := getBackendName(c.topicName, c.topicPart)
+	c.backend = newDiskQueueReader(backendName, backendReaderName,
+		path.Join(opt.DataPath, c.topicName),
+		opt.MaxBytesPerFile,
+		int32(minValidMsgLength),
+		int32(opt.MaxMsgSize)+minValidMsgLength,
+		syncEvery,
+		opt.SyncTimeout,
+		chEnd,
+		false)
 
 	go c.messagePump()
 

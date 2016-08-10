@@ -239,6 +239,9 @@ func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartitionMetaInf
 
 func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) {
 	stat, err := self.CallWithRetry("GetTopicStats", topic)
+	if err != nil {
+		return nil, err
+	}
 	return stat.(*NodeTopicStats), err
 }
 

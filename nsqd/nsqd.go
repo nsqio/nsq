@@ -307,14 +307,12 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 			topic.channelLock.RLock()
 			for _, channel := range topic.channelMap {
 				channel.RLock()
-				if channel.ephemeral {
-					channel.Unlock()
-					continue
+				if !channel.ephemeral {
+					channelData := make(map[string]interface{})
+					channelData["name"] = channel.name
+					channelData["paused"] = channel.IsPaused()
+					channels = append(channels, channelData)
 				}
-				channelData := make(map[string]interface{})
-				channelData["name"] = channel.name
-				channelData["paused"] = channel.IsPaused()
-				channels = append(channels, channelData)
 				channel.RUnlock()
 			}
 			topic.channelLock.RUnlock()
