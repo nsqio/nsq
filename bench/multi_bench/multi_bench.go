@@ -25,7 +25,7 @@ var (
 
 	runfor        = flagSet.Duration("runfor", 10*time.Second, "duration of time to run")
 	sleepfor      = flagSet.Duration("sleepfor", 1*time.Second, " time to sleep between pub")
-	lookupAddress = flagSet.String("lookup-address", "127.0.0.1:4161", "<addr>:<port> to connect to nsqd")
+	lookupAddress = flagSet.String("lookupd-http-address", "127.0.0.1:4161", "<addr>:<port> to connect to nsqlookupd")
 	topics        = app.StringArray{}
 	size          = flagSet.Int("size", 100, "size of messages")
 	batchSize     = flagSet.Int("batch-size", 10, "batch size of messages")

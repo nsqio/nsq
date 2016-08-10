@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	topic     = flag.String("topic", "", "NSQ topic to publish to")
-	delimiter = flag.String("delimiter", "\n", "character to split input from stdin (defaults to '\n')")
+	topic         = flag.String("topic", "", "NSQ topic to publish to")
+	delimiter     = flag.String("delimiter", "\n", "character to split input from stdin (defaults to '\n')")
+	lookupAddress = flag.String("lookupd-http-address", "", "<addr>:<port> to connect to nsqlookupd")
 
 	destNsqdTCPAddrs = app.StringArray{}
 )
@@ -59,15 +60,27 @@ func main() {
 		producers[addr] = producer
 	}
 
-	if len(producers) == 0 {
-		log.Fatal("--nsqd-tcp-address required")
+	var lookupProducer *nsq.TopicProducerMgr
+	if *lookupAddress != "" {
+		topics := make([]string, 0)
+		topics = append(topics, *topic)
+		lookupProducer, _ = nsq.NewTopicProducerMgr(topics, nsq.PubRR, cfg)
+		lookupProducer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelDebug)
+		err := lookupProducer.ConnectToNSQLookupd(*lookupAddress)
+		if err != nil {
+			log.Printf("lookup connect error: %v", err)
+			return
+		}
+	}
+	if len(producers) == 0 && lookupProducer == nil {
+		log.Fatal("--nsqd-tcp-address or --lookup-address required")
 	}
 
 	r := bufio.NewReader(os.Stdin)
 	delim := (*delimiter)[0]
 	go func() {
 		for {
-			err := readAndPublish(r, delim, producers)
+			err := readAndPublish(r, delim, producers, lookupProducer)
 			if err != nil {
 				if err != io.EOF {
 					log.Fatal(err)
@@ -90,7 +103,7 @@ func main() {
 
 // readAndPublish reads to the delim from r and publishes the bytes
 // to the map of producers.
-func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Producer) error {
+func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Producer, lookupProducer *nsq.TopicProducerMgr) error {
 	line, readErr := r.ReadBytes(delim)
 
 	if len(line) > 0 {
@@ -102,10 +115,17 @@ func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Produ
 		return readErr
 	}
 
-	for _, producer := range producers {
-		err := producer.Publish(*topic, line)
+	if lookupProducer != nil {
+		err := lookupProducer.Publish(*topic, line)
 		if err != nil {
 			return err
+		}
+	} else {
+		for _, producer := range producers {
+			err := producer.Publish(*topic, line)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
