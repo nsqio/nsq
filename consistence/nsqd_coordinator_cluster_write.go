@@ -235,7 +235,7 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 		coordErrStats.incWriteErr(clusterWriteErr)
 		return clusterWriteErr
 	}
-	if !tcData.IsISRReadyForWrite() {
+	if isWrite && !tcData.IsISRReadyForWrite() {
 		coordLog.Infof("topic(%v) operation failed since no enough ISR:%v", topicFullName, tcData.topicInfo)
 		coordErrStats.incWriteErr(ErrWriteQuorumFailed)
 		return ErrWriteQuorumFailed
