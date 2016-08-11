@@ -12,6 +12,8 @@ type tcpServer struct {
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
+	defer clientConn.Close()
+
 	p.ctx.nsqlookupd.logf("TCP: new client(%s)", clientConn.RemoteAddr())
 
 	// The client should initialize itself by sending a 4 byte sequence indicating
