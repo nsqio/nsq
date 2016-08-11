@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/cenkalti/backoff"
 	"math"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -154,7 +155,21 @@ func (self *NsqLookupCoordinator) handleLeadership() {
 	if self.leadership != nil {
 		go self.leadership.AcquireAndWatchLeader(lookupdLeaderChan, self.stopChan)
 	}
-	defer close(self.nsqdMonitorChan)
+	defer func() {
+		if e := recover(); e != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			buf = buf[0:n]
+			coordLog.Errorf("panic %s:%v", buf, e)
+		}
+
+		coordLog.Warningf("leadership watch exit.")
+		time.Sleep(time.Second)
+		if self.nsqdMonitorChan != nil {
+			close(self.nsqdMonitorChan)
+			self.nsqdMonitorChan = nil
+		}
+	}()
 	for {
 		select {
 		case l, ok := <-lookupdLeaderChan:
@@ -172,7 +187,9 @@ func (self *NsqLookupCoordinator) handleLeadership() {
 				self.leaderNode = *l
 				if self.leaderNode.GetID() != self.myNode.GetID() {
 					// remove watchers.
-					close(self.nsqdMonitorChan)
+					if self.nsqdMonitorChan != nil {
+						close(self.nsqdMonitorChan)
+					}
 					self.nsqdMonitorChan = make(chan struct{})
 				}
 				self.notifyLeaderChanged(self.nsqdMonitorChan)
