@@ -370,7 +370,6 @@ retrysync:
 
 		if retryCnt > MAX_WRITE_RETRY*2 {
 			coordLog.Warningf("topic %v sync write failed due to max retry: %v, %v")
-			needLeaveISR = true
 			goto exitsync
 		}
 
@@ -731,6 +730,16 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 
 	var syncOffset ChannelConsumerOffset
 	changed := false
+	var confirmed nsqd.BackendQueueEnd
+	if channel.IsOrdered() {
+		if !coord.GetData().IsISRReadyForWrite() {
+			coordLog.Warningf("topic(%v) finish message ordered failed since no enough ISR", topicName)
+			coordErrStats.incWriteErr(ErrWriteQuorumFailed)
+			return ErrWriteQuorumFailed.ToErrorType()
+		}
+
+		confirmed = channel.GetConfirmed()
+	}
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 
 	doLocalWrite := func(d *coordData) *CoordErr {
@@ -749,7 +758,13 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		channel.ContinueConsumeForOrder()
 		return nil
 	}
-	doLocalRollback := func() {}
+	doLocalRollback := func() {
+		if channel.IsOrdered() && confirmed != nil {
+			coordLog.Warningf("rollback channel confirm to : %v", confirmed)
+			// reset read to last confirmed
+			channel.SetConsumeOffset(confirmed.Offset(), confirmed.TotalMsgCnt(), true)
+		}
+	}
 	doRefresh := func(d *coordData) *CoordErr {
 		return nil
 	}
