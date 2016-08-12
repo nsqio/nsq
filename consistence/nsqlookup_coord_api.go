@@ -174,6 +174,18 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		return errors.New("max partition allowed exceed")
 	}
 
+	self.nodesMutex.RLock()
+	currentNodes := self.nsqdNodes
+	self.nodesMutex.RUnlock()
+	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
+		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
+		return ErrNodeUnavailable.ToErrorType()
+	}
+	if len(currentNodes) < meta.Replica*meta.PartitionNum {
+		coordLog.Infof("nodes is less than replica*partition")
+		return ErrNodeUnavailable.ToErrorType()
+	}
+
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		meta.MagicCode = time.Now().UnixNano()
 		err := self.leadership.CreateTopic(topic, &meta)
@@ -221,9 +233,6 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	}
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
 	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)

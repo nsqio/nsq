@@ -1138,13 +1138,13 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 }
 
 func TestNsqdCoordLeaderChangeWhileWrite(t *testing.T) {
-	// old leader write and part of the isr got the write,
+	// TODO: old leader write and part of the isr got the write,
 	// then leader failed, choose new leader from isr
 	// RESULT: all new isr nodes should be synced
 }
 
 func TestNsqdCoordISRChangedWhileWrite(t *testing.T) {
-	// leader write while network split, and part of isr agreed with write
+	// TODO: leader write while network split, and part of isr agreed with write
 	// leader need rollback (or just move leader out from isr and sync with new leader )
 	// RESULT: all new isr nodes should be synced
 }
