@@ -109,10 +109,14 @@ func New(opts *Options) *NSQD {
 
 	if opts.StatsdPrefix != "" {
 		var port string
-		_, port, err = net.SplitHostPort(opts.HTTPAddress)
-		if err != nil {
-			nsqLog.LogErrorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
-			os.Exit(1)
+		if opts.ReverseProxyPort != "" {
+			port = opts.ReverseProxyPort
+		} else {
+			_, port, err = net.SplitHostPort(opts.HTTPAddress)
+			if err != nil {
+				nsqLog.LogErrorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
+				os.Exit(1)
+			}
 		}
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
 		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)

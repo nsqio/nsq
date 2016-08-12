@@ -13,16 +13,10 @@
         <table class="table table-condensed table-bordered">
             <tr>
                 <th>Topic</th>
-                {{#if graph_active}}<th width="120">Depth</th>{{/if}}
-                {{#if graph_active}}<th width="120">Messages</th>{{/if}}
-                {{#if graph_active}}<th width="120">Rate</th>{{/if}}
             </tr>
             {{#each collection}}
             <tr>
                 <td><a class="link" href="/topics/{{urlencode name}}">{{name}}</a></td>
-                {{#if ../graph_active}}<td><a class="link" href="/topics/{{urlencode name}}"><img width="120" height="20" src="{{sparkline "topic" "" name "" "depth"}}"></a></td>{{/if}}
-                {{#if ../graph_active}}<td><a class="link" href="/topics/{{urlencode name}}"><img width="120" height="20" src="{{sparkline "topic" "" name "" "message_count"}}"></a></td>{{/if}}
-                {{#if ../graph_active}}<td class="bold rate" target="{{rate "topic" "*" name ""}}"></td>{{/if}}
             </tr>
             {{/each}}
         </table>

@@ -66,7 +66,6 @@
             <td>{{commafy backend_start}} ~ {{commafy backend_depth}}</td>
             <td colspan="4"></td>
             <td>
-                {{#if ../graph_active}}<a href="{{large_graph "topic" node topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a>{{/if}}
                 {{commafy message_count}}
             </td>
             <td>{{commafy channels.length}}</td>
@@ -98,7 +97,6 @@
                 {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>
-                {{#if ../../../graph_active}}<a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20" src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a>{{/if}}
                 {{commafy depth}}
             </td>
             <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
@@ -108,7 +106,6 @@
             <td>{{commafy timeout_count}}</td>
             <td>{{commafy message_count}}</td>
             <td>
-                {{#if ../../../graph_active}}<a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20" src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a>{{/if}}
                 {{commafy clients.length}}
             </td>
         </tr>
