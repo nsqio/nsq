@@ -366,8 +366,8 @@ type ISRStat struct {
 
 type CatchupStat struct {
 	HostName string `json:"hostname"`
-	NodeID   string `json:node_id`
-	Progress int    `json:progress`
+	NodeID   string `json:"node_id"`
+	Progress int    `json:"progress"`
 }
 
 type TopicCoordStat struct {
