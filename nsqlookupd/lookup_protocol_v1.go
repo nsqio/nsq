@@ -66,6 +66,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
+	conn.Close()
 	p.ctx.nsqlookupd.logf("CLIENT(%s): closing", client)
 	if client.peerInfo != nil {
 		registrations := p.ctx.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
