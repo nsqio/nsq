@@ -1319,9 +1319,18 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 	}
 	tcData.consumeMgr.Unlock()
 	for chName, offset := range offsetMap {
-		ch := localTopic.GetChannel(chName)
+		// it may not synced for  the new create channel and the leader changed.
+		// to avoid init channel with end we need check here.
+		ch, localErr := localTopic.GetExistingChannel(chName)
+		if localErr != nil {
+			offset.AllowBackward = true
+			ch = localTopic.GetChannel(chName)
+			coordLog.Warningf("slave init the channel : %v, %v, offset: %v",
+				tcData.topicInfo.GetTopicDesp(), chName, ch.GetConfirmed())
+		}
+
 		currentConfirmed := ch.GetConfirmed()
-		if nsqd.BackendOffset(offset.VOffset) <= currentConfirmed.Offset() {
+		if !offset.AllowBackward && (nsqd.BackendOffset(offset.VOffset) <= currentConfirmed.Offset()) {
 			continue
 		}
 		currentEnd := ch.GetChannelEnd()

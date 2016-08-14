@@ -827,7 +827,14 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
 		return ErrLocalMissingTopic
 	}
-	ch := topic.GetChannel(channelName)
+	var ch *nsqd.Channel
+	ch, localErr = topic.GetExistingChannel(channelName)
+	// if a new channel on slave, we should set the consume offset by force
+	if localErr != nil {
+		offset.AllowBackward = true
+		ch = topic.GetChannel(channelName)
+		coordLog.Infof("slave init the channel : %v, %v, offset: %v", topic.GetTopicName(), channelName, ch.GetConfirmed())
+	}
 	if ch.IsEphemeral() {
 		coordLog.Errorf("ephemeral channel %v should not be synced on slave", channelName)
 	}
