@@ -566,6 +566,8 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	}
 	if self.currentCount >= int32(LOGROTATE_NUM) {
 		self.flushCommitLogsNoLock()
+		self.appender.Sync()
+		self.appender.Close()
 		newName := self.path + "." + getSuffixString(self.currentStart)
 		err := util.AtomicRename(self.path, newName)
 		if err != nil {
@@ -573,8 +575,6 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 			return err
 		}
 		coordLog.Infof("rotate file %v to %v", self.path, newName)
-		self.appender.Sync()
-		self.appender.Close()
 		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			coordLog.Infof("open topic commit log file error: %v", err)
@@ -620,6 +620,9 @@ func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 }
 
 func (self *TopicCommitLogMgr) flushCommitLogsNoLock() {
+	if len(self.committedLogs) == 0 {
+		return
+	}
 	// write buffered commit logs to file.
 	tmpBuf := bytes.NewBuffer(self.buffer[:0])
 	for _, v := range self.committedLogs {

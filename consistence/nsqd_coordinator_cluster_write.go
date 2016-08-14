@@ -88,6 +88,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
 			return ErrEpochMismatch
 		}
+		self.requestNotifyNewTopicInfo(d.topicInfo.Name, d.topicInfo.Partition)
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
@@ -181,6 +182,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
 			return ErrEpochMismatch
 		}
+		self.requestNotifyNewTopicInfo(d.topicInfo.Name, d.topicInfo.Partition)
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
