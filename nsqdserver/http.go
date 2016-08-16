@@ -257,7 +257,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{406, "MSG_EMPTY"}
 	}
 
-	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
@@ -269,7 +268,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body, traceID)
 		//s.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -279,7 +277,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, false)
 		if enableTrace {
 			return struct {
 				Status      string `json:"status"`
@@ -292,7 +289,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return "OK", nil
 		}
 	} else {
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		topic.DisableForSlave()
@@ -368,12 +364,10 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		}
 	}
 
-	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		_, _, _, err := s.ctx.PutMessages(topic, msgs)
 		//s.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -383,7 +377,6 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 		//should we forward to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
@@ -391,7 +384,6 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
-	topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), false)
 	return "OK", nil
 }
 

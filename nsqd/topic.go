@@ -884,7 +884,7 @@ func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, cou
 				if time.Since(scanStart) > time.Millisecond*200 {
 					break
 				}
-				if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60*60 {
+				if time.Now().Unix()-s.LastPubTs > 60*60 {
 					delete(t.clientPubStats, s.RemoteAddress)
 					cleanCnt++
 				}
@@ -913,14 +913,7 @@ func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, cou
 
 func (t *Topic) RemovePubStats(remote string, protocol string) {
 	t.statsMutex.Lock()
-	if protocol == "tcp" {
-		delete(t.clientPubStats, remote)
-	} else {
-		s, ok := t.clientPubStats[remote]
-		if ok && time.Now().Unix()-s.LastPubTs > 60*60 {
-			delete(t.clientPubStats, remote)
-		}
-	}
+	delete(t.clientPubStats, remote)
 	t.statsMutex.Unlock()
 }
 
@@ -928,11 +921,7 @@ func (t *Topic) GetPubStats() []ClientPubStats {
 	t.statsMutex.Lock()
 	stats := make([]ClientPubStats, 0, len(t.clientPubStats))
 	for _, s := range t.clientPubStats {
-		if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60*60 {
-			delete(t.clientPubStats, s.RemoteAddress)
-		} else {
-			stats = append(stats, *s)
-		}
+		stats = append(stats, *s)
 	}
 	t.statsMutex.Unlock()
 	return stats
