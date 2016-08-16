@@ -23,10 +23,6 @@ type NSQLookupd struct {
 }
 
 func New(opts *Options) *NSQLookupd {
-	nsqlookupLog.Logger = opts.Logger
-	nsqlookupLog.SetLevel(opts.LogLevel)
-	consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
-
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
@@ -79,9 +75,11 @@ func (l *NSQLookupd) Main() {
 	l.Lock()
 	l.tcpListener = tcpListener
 	l.Unlock()
+	nsqlookupLog.Logf("TCP: listening on %s", tcpListener.Addr())
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
+		protocol.TCPServer(tcpListener, tcpServer)
+		nsqlookupLog.Logf("TCP: closing %s", tcpListener.Addr())
 	})
 
 	var node consistence.NsqLookupdNodeInfo

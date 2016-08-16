@@ -82,6 +82,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqdserver.Nsqd
 	nsqlookupdOpts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
+	nsqlookupd.SetLogger(nsqlookupdOpts)
 	nsqlookupd1 := nsqlookupd.New(nsqlookupdOpts)
 	go nsqlookupd1.Main()
 

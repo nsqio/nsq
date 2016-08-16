@@ -202,10 +202,12 @@ func (s *NsqdServer) Main() {
 	}
 	s.tcpListener = tcpListener
 	s.ctx.tcpAddr = tcpListener.Addr().(*net.TCPAddr)
+	nsqd.NsqLogger().Logf("TCP: listening on %s", tcpListener.Addr())
 
 	tcpServer := &tcpServer{ctx: s.ctx}
 	s.waitGroup.Wrap(func() {
-		protocol.TCPServer(s.tcpListener, tcpServer, opts.Logger)
+		protocol.TCPServer(s.tcpListener, tcpServer)
+		nsqd.NsqLogger().Logf("TCP: closing %s", s.tcpListener.Addr())
 	})
 
 	if s.ctx.GetTlsConfig() != nil && opts.HTTPSAddress != "" {

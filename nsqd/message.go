@@ -39,7 +39,7 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
-	isDeferred bool
+	isDeferred int32
 	//for backend queue
 	offset        BackendOffset
 	rawMoveSize   BackendOffset

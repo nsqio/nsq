@@ -516,6 +516,7 @@ func TestHTTPgetStatusText(t *testing.T) {
 func TestHTTPconfig(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
+	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
 	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)

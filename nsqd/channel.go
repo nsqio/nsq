@@ -458,6 +458,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 	// TODO: confirm on slave may exceed the current end, because the buffered write
 	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
+	defer c.confirmMutex.Unlock()
 	if len(c.confirmedMsgs) != 0 {
 		nsqLog.LogWarningf("should empty confirmed queue on slave.")
 	}
@@ -487,7 +488,6 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 			}
 		}
 	}
-	c.confirmMutex.Unlock()
 	return err
 }
 
@@ -652,7 +652,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 	}
 	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
-	msg.isDeferred = true
+	atomic.StoreInt32(&msg.isDeferred, 1)
 	return nil
 }
 
@@ -810,7 +810,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
-	if msg.isDeferred {
+	if atomic.LoadInt32(&msg.isDeferred) == 1 {
 		nsqLog.LogWarningf("channel (%v): should never pop a deferred message here unless the timeout : %v", c.GetName(), msg.ID)
 		return nil, ErrMsgDeferred
 	}
@@ -1114,7 +1114,7 @@ LOOP:
 				nsqLog.Warningf("last raw data: %v", lastDataResult)
 				time.Sleep(time.Millisecond * 5)
 				if diskQ, ok := c.backend.(*diskQueueReader); ok {
-					diskQ.resetLastReadOne(data.Offset, data.CurCnt-1, int32(data.MovedSize))
+					diskQ.ResetLastReadOne(data.Offset, data.CurCnt-1, int32(data.MovedSize))
 				}
 				lastMsg = *msg
 				lastDataResult = data
@@ -1164,7 +1164,7 @@ LOOP:
 				continue
 			}
 		}
-		msg.isDeferred = false
+		atomic.StoreInt32(&msg.isDeferred, 0)
 		if c.IsOrdered() {
 			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readBackendWait = true
@@ -1186,7 +1186,6 @@ exit:
 	nsqLog.Logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 	close(c.exitSyncChan)
-	c.clientMsgChan = nil
 }
 
 func (c *Channel) GetChannelDebugStats() string {
@@ -1250,12 +1249,13 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		delete(c.inFlightMessages, msg.ID)
 		// note: if this message is deferred by client, we treat it as a delay message,
 		// so we consider it is by demanded to delay not timeout of message.
-		if msg.isDeferred {
+		if atomic.LoadInt32(&msg.isDeferred) == 1 {
 			atomic.AddInt64(&c.deferredCount, -1)
 		} else {
 			atomic.AddUint64(&c.timeoutCount, 1)
 		}
 		requeuedCnt++
+		msgCopy := *msg
 		c.doRequeue(msg)
 		c.inFlightMutex.Unlock()
 
@@ -1263,10 +1263,10 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()
 		if ok {
-			client.TimedOutMessage(msg.isDeferred)
+			client.TimedOutMessage(atomic.LoadInt32(&msg.isDeferred) == 1)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
-			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msg.TraceID, msg, strconv.Itoa(int(msg.clientID)))
+			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, strconv.Itoa(int(msgCopy.clientID)))
 		}
 	}
 

@@ -301,6 +301,23 @@ func (d *diskQueueReader) ResetReadToOffset(offset BackendOffset, cnt int64) (Ba
 	return &e, err
 }
 
+func (d *diskQueueReader) ResetLastReadOne(offset BackendOffset, cnt int64, lastMoved int32) {
+	d.Lock()
+	defer d.Unlock()
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+	if d.readQueueInfo.EndOffset.Pos < int64(lastMoved) {
+		return
+	}
+	d.readQueueInfo.EndOffset.Pos -= int64(lastMoved)
+	d.readQueueInfo.virtualEnd = offset
+	if cnt > 0 || (offset == 0 && cnt == 0) {
+		atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
+	}
+}
+
 func (d *diskQueueReader) SkipReadToOffset(offset BackendOffset, cnt int64) (BackendQueueEnd, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -675,24 +692,6 @@ func (d *diskQueueReader) skipToEndofQueue() error {
 	d.updateDepth()
 
 	return nil
-}
-
-func (d *diskQueueReader) resetLastReadOne(offset BackendOffset, cnt int64, lastMoved int32) {
-	d.Lock()
-	if d.readFile != nil {
-		d.readFile.Close()
-		d.readFile = nil
-	}
-	if d.readQueueInfo.EndOffset.Pos < int64(lastMoved) {
-		d.Unlock()
-		return
-	}
-	d.readQueueInfo.EndOffset.Pos -= int64(lastMoved)
-	d.readQueueInfo.virtualEnd = offset
-	if cnt > 0 || (offset == 0 && cnt == 0) {
-		atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
-	}
-	d.Unlock()
 }
 
 // readOne performs a low level filesystem read for a single []byte

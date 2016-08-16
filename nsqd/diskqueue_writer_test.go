@@ -442,7 +442,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	readExitChan := make(chan int)
 	writeExitChan := make(chan int)
 
-	var depth int64
+	var incDepth int64
 	for i := 0; i < numWriters; i++ {
 		wg.Add(1)
 		go func() {
@@ -455,7 +455,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 				default:
 					_, _, _, err := dq.Put(msg)
 					if err == nil {
-						atomic.AddInt64(&depth, int64(msgRawSize))
+						atomic.AddInt64(&incDepth, int64(msgRawSize))
 					} else {
 						t.Logf("put error %v", err)
 					}
@@ -470,6 +470,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	t.Logf("closing writeExitChan")
 	close(writeExitChan)
 	wg.Wait()
+	depth := atomic.LoadInt64(&incDepth)
 
 	dq.Flush()
 	e = dq.GetQueueReadEnd()
@@ -514,13 +515,13 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 
 	t.Logf("waiting for depth 0")
 	for {
-		if read == depth {
+		if atomic.LoadInt64(&read) == depth {
 			break
 		}
 		time.Sleep(time.Second)
 	}
-	equal(t, read, depth)
-	equal(t, dqReader.(*diskQueueReader).confirmedQueueInfo.Offset(),
+	equal(t, atomic.LoadInt64(&read), depth)
+	equal(t, dqReader.(*diskQueueReader).GetQueueConfirmed().Offset(),
 		BackendOffset(depth))
 	equal(t, dqReader.Depth(), int64(0))
 	equal(t, dqReader.DepthSize(), int64(0))
@@ -529,7 +530,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	close(readExitChan)
 	wg.Wait()
 
-	equal(t, read, depth)
+	equal(t, atomic.LoadInt64(&read), depth)
 }
 
 func BenchmarkDiskQueueWriterPut16(b *testing.B) {
