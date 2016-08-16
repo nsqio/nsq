@@ -39,9 +39,9 @@ var (
 	channel     = flag.String("channel", "nsq_to_http", "nsq channel")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
-	numPublishers = flag.Int("n", 100, "number of concurrent publishers")
-	mode          = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
-	sample        = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
+	numPublishers      = flag.Int("n", 100, "number of concurrent publishers")
+	mode               = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
+	sample             = flag.Float64("sample", 1.0, "% of messages to publish (float b/w 0 -> 1)")
 	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
 	httpRequestTimeout = flag.Duration("http-client-request-timeout", 20*time.Second, "timeout for HTTP request")
 	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")

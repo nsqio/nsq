@@ -498,7 +498,6 @@ func main() {
 		log.Fatalf("invalid --gzip-level value (%d), should be 1-9", *gzipLevel)
 	}
 
-
 	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 
