@@ -926,3 +926,8 @@ func (t *Topic) GetPubStats() []ClientPubStats {
 	t.statsMutex.Unlock()
 	return stats
 }
+
+func (t *Topic) TryCleanOldData(retention int) error {
+	// clean the data that has been consumed and keep the retention policy
+	return nil
+}

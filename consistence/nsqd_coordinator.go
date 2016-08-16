@@ -351,7 +351,11 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 							coord, err := self.getTopicCoord(topicName, partition)
 							if err == nil {
 								if topicLeaderSession.LeaderEpoch >= tc.topicLeaderSession.LeaderEpoch {
-									coord.topicLeaderSession = *topicLeaderSession
+									coord.dataMutex.Lock()
+									newCoordData := coord.coordData.GetCopy()
+									newCoordData.topicLeaderSession = *topicLeaderSession
+									coord.coordData = newCoordData
+									coord.dataMutex.Unlock()
 								}
 							}
 						}
@@ -367,7 +371,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			if commonErr != nil {
 				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, commonErr)
 				if commonErr == ErrKeyNotFound {
-					self.localNsqd.CloseExistingTopic(topicName, partition)
+					self.localNsqd.DeleteExistingTopic(topicName, partition)
 				}
 				continue
 			}
@@ -408,6 +412,13 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 				tc.writeHold.Unlock()
 			} else {
+				coordLog.Infof("topic %v starting as not relevant", topicInfo.GetTopicDesp())
+				if len(topicInfo.ISR) >= topicInfo.Replica {
+					coordLog.Infof("no need load the local topic since the replica is enough: %v", topicInfo.GetTopicDesp())
+					self.localNsqd.DeleteExistingTopic(topicName, partition)
+				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
+					go self.requestJoinCatchup(topicName, partition)
+				}
 				continue
 			}
 
@@ -427,6 +438,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				}
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
+				// restart node should rejoin the isr
 				coordLog.Infof("topic starting as isr .")
 				if len(topicInfo.ISR) > 1 && topicInfo.Leader != self.myNode.GetID() {
 					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
@@ -434,14 +446,6 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			} else if FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1 {
 				coordLog.Infof("topic %v starting as catchup", topicInfo.GetTopicDesp())
 				go self.catchupFromLeader(*topicInfo, "")
-			} else {
-				coordLog.Infof("topic %v starting as not relevant", topicInfo.GetTopicDesp())
-				if len(topicInfo.ISR) >= topicInfo.Replica {
-					coordLog.Infof("no need load the local topic since the replica is enough: %v-%v", topicName, partition)
-					self.localNsqd.CloseExistingTopic(topicName, partition)
-				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
-					go self.requestJoinCatchup(topicName, partition)
-				}
 			}
 		}
 	}
