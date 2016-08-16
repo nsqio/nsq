@@ -500,6 +500,15 @@ func (d *diskQueueWriter) Flush() error {
 	return nil
 }
 
+func (d *diskQueueWriter) FlushBuffer() {
+	d.Lock()
+	if d.bufferWriter != nil {
+		d.bufferWriter.Flush()
+	}
+	d.diskReadEnd = d.diskWriteEnd
+	d.Unlock()
+}
+
 // sync fsyncs the current writeFile and persists metadata
 func (d *diskQueueWriter) sync() error {
 	if d.bufferWriter != nil {

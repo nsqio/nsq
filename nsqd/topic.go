@@ -477,6 +477,7 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, Backend
 	t.Lock()
 	if m.ID > 0 {
 		nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
+		t.Unlock()
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 	id, offset, writeBytes, dend, err := t.PutMessageNoLock(m)
@@ -486,7 +487,6 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, Backend
 
 func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		t.Unlock()
 		return 0, 0, 0, nil, errors.New("exiting")
 	}
 	if m.ID > 0 {
@@ -521,7 +521,10 @@ func (t *Topic) flushForChannels() {
 	}
 	t.channelLock.RUnlock()
 	if needFlush {
-		t.flush(true)
+		// flush buffer only to allow the channel read recent write
+		// no need sync to disk, since sync is heavy IO.
+		t.backend.FlushBuffer()
+		t.updateChannelsEnd(false)
 	}
 }
 

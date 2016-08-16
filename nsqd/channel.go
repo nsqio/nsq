@@ -787,17 +787,16 @@ func (c *Channel) doRequeue(m *Message) error {
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
 func (c *Channel) pushInFlightMessage(msg *Message) error {
 	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
 	if c.IsConsumeDisabled() {
 		return ErrConsumeDisabled
 	}
 	_, ok := c.inFlightMessages[msg.ID]
 	if ok {
-		c.inFlightMutex.Unlock()
 		return ErrMsgAlreadyInFlight
 	}
 	c.inFlightMessages[msg.ID] = msg
 	c.inFlightPQ.Push(msg)
-	c.inFlightMutex.Unlock()
 	return nil
 }
 

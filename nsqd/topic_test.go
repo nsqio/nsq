@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	//"runtime"
+	"github.com/absolute8511/nsq/internal/test"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -19,22 +20,22 @@ func TestGetTopic(t *testing.T) {
 	defer nsqd.Exit()
 
 	topic1 := nsqd.GetTopic("test", 0)
-	nequal(t, nil, topic1)
-	equal(t, "test", topic1.GetTopicName())
+	test.NotNil(t, topic1)
+	test.Equal(t, "test", topic1.GetTopicName())
 
 	topic2 := nsqd.GetTopic("test", 0)
-	equal(t, topic1, topic2)
+	test.Equal(t, topic1, topic2)
 
 	topic3 := nsqd.GetTopic("test2", 1)
-	equal(t, "test2", topic3.GetTopicName())
-	nequal(t, topic2, topic3)
+	test.Equal(t, "test2", topic3.GetTopicName())
+	test.NotEqual(t, topic2, topic3)
 
 	topic1_1 := nsqd.GetTopicIgnPart("test")
-	equal(t, "test", topic1_1.GetTopicName())
-	equal(t, 0, topic1_1.GetTopicPart())
+	test.Equal(t, "test", topic1_1.GetTopicName())
+	test.Equal(t, 0, topic1_1.GetTopicPart())
 	topic3_1 := nsqd.GetTopicIgnPart("test2")
-	equal(t, "test2", topic3_1.GetTopicName())
-	equal(t, 1, topic3_1.GetTopicPart())
+	test.Equal(t, "test2", topic3_1.GetTopicName())
+	test.Equal(t, 1, topic3_1.GetTopicPart())
 
 }
 
@@ -48,13 +49,13 @@ func TestGetChannel(t *testing.T) {
 	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
-	equal(t, "ch1", channel1.name)
+	test.NotNil(t, channel1)
+	test.Equal(t, "ch1", channel1.name)
 
 	channel2 := topic.GetChannel("ch2")
 
-	equal(t, channel1, topic.channelMap["ch1"])
-	equal(t, channel2, topic.channelMap["ch2"])
+	test.Equal(t, channel1, topic.channelMap["ch1"])
+	test.Equal(t, channel2, topic.channelMap["ch2"])
 }
 
 type errorBackendQueue struct{}
@@ -90,7 +91,7 @@ func TestTopicMarkRemoved(t *testing.T) {
 	origPath := topic.dataPath
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	for i := 0; i <= 1000; i++ {
 		msg.ID = 0
@@ -99,9 +100,9 @@ func TestTopicMarkRemoved(t *testing.T) {
 	topic1 := nsqd.GetTopic("test", 1)
 	err := topic.SetMagicCode(time.Now().UnixNano())
 	err = topic1.SetMagicCode(time.Now().UnixNano())
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	channel1 = topic1.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 	for i := 0; i <= 1000; i++ {
 		msg.ID = 0
 		topic1.PutMessage(msg)
@@ -115,43 +116,43 @@ func TestTopicMarkRemoved(t *testing.T) {
 	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
 	oldMagicFile1 := path.Join(topic1.dataPath, "magic"+strconv.Itoa(topic1.partition))
 	_, err = os.Stat(oldMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMagicFile1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 
 	removedPath, err := topic.MarkAsRemoved()
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
 	// mark as removed should keep the topic base directory
 	_, err = os.Stat(origPath)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	// partition data should be removed
 	newPath := removedPath
 	_, err = os.Stat(newPath)
 	defer os.RemoveAll(newPath)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	newName := path.Join(newPath, filepath.Base(oldName))
 	newMetaName := path.Join(newPath, filepath.Base(oldMetaName))
 	newMagicFile := path.Join(newPath, filepath.Base(oldMagicFile))
 	// should keep other topic partition
 	_, err = os.Stat(oldName1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMetaName1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMagicFile1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldName)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 	_, err = os.Stat(oldMetaName)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 	_, err = os.Stat(oldMagicFile)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 	_, err = os.Stat(newName)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(newMetaName)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(newMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 }
 
 func TestDeletes(t *testing.T) {
@@ -165,24 +166,24 @@ func TestDeletes(t *testing.T) {
 	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.SetMagicCode(time.Now().UnixNano())
 	_, err = os.Stat(oldMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	err = topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	channel2 := topic.GetChannel("ch2")
-	nequal(t, nil, channel2)
+	test.NotNil(t, channel2)
 
 	err = nsqd.DeleteExistingTopic("test", topic.GetTopicPart())
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
-	equal(t, 0, len(nsqd.topicMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
+	test.Equal(t, 0, len(nsqd.topicMap))
 	_, err = os.Stat(oldMagicFile)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 }
 
 func TestDeleteLast(t *testing.T) {
@@ -195,16 +196,16 @@ func TestDeleteLast(t *testing.T) {
 	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Nil(t, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	_, _, _, _, err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
-	equal(t, nil, err)
+	test.Nil(t, err)
 }
 
 func TestTopicBackendMaxMsgSize(t *testing.T) {
@@ -217,11 +218,63 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName, 0)
 
-	equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	test.Equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
-func TestTopicResetWriteEnd(t *testing.T) {
-	// TODO
+func TestTopicPutChannelWait(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.autoCommit = 1
+	topic.syncEvery = 10
+
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	for i := 0; i <= 10; i++ {
+		msg.ID = 0
+		topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	for i := 0; i <= 10; i++ {
+		select {
+		case outMsg := <-channel.clientMsgChan:
+			test.Equal(t, msg.Body, outMsg.Body)
+			channel.ConfirmBackendQueue(outMsg)
+		case <-time.After(time.Second):
+			t.Fatalf("should read message in channel")
+		}
+	}
+	test.Equal(t, true, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.Equal(t, false, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	select {
+	case outMsg := <-channel.clientMsgChan:
+		test.Equal(t, msg.Body, outMsg.Body)
+		channel.ConfirmBackendQueue(outMsg)
+	case <-time.After(time.Second):
+		t.Fatalf("should read the message in channel")
+	}
+	test.Equal(t, true, channel.IsWaitingMoreData())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.Equal(t, false, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.NotEqual(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
 }
 
 func benchmarkTopicPut(b *testing.B, size int) {

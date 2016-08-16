@@ -338,14 +338,6 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	equal(t, readResult.Data, msg)
 }
 
-func TestDiskQueueWriterHandleError(t *testing.T) {
-	// TODO: handle error manually.
-}
-
-func TestDiskQueueWriterSkipTo(t *testing.T) {
-	//TODO: skip and msg count check
-}
-
 func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 	//rollback and reset write end across file test
 	l := newTestLogger(t)
