@@ -137,7 +137,6 @@ func TestStartup(t *testing.T) {
 	}
 
 	// verify we drained things
-	test.Equal(t, 0, len(topic.memoryMsgChan))
 	test.Equal(t, uint64(0), channel1.Depth())
 
 	exitChan <- 1

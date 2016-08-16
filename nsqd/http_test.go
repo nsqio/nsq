@@ -222,13 +222,13 @@ func TestHTTPpubDefer(t *testing.T) {
 	test.Equal(t, "OK", string(body))
 
 	conn, err := mustConnectNSQD(tcpAddr)
-	equal(t, err, nil)
+	test.Nil(t, err)
 	defer conn.Close()
 
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn)
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	time.Sleep(5 * time.Millisecond)
 

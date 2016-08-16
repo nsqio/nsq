@@ -152,7 +152,7 @@ func TestBasicV2(t *testing.T) {
 	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	// test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, msg.Body, msgOut.Body)
+	test.Equal(t, body, msgOut.Body)
 	test.Equal(t, uint16(1), msgOut.Attempts)
 }
 
@@ -577,7 +577,7 @@ func TestDPUB(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn)
-	equal(t, err, nil)
+	test.Nil(t, err)
 
 	// valid
 	nsq.DeferredPublish(topicName, time.Second, make([]byte, 100)).WriteTo(conn)
@@ -689,7 +689,7 @@ func TestMaxRdyCount(t *testing.T) {
 	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	// test.Equal(t, msg.ID, msgOut.ID)
-	test.Equal(t, body, msgOut.body)
+	test.Equal(t, body, msgOut.Body)
 
 	_, err = nsq.Ready(int(opts.MaxRdyCount) + 1).WriteTo(conn)
 	test.Nil(t, err)

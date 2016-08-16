@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/internal/version"
@@ -478,13 +479,15 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 
 	topicName := "test_empty_topic_post" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqds[0].GetTopic(topicName)
-	topic.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
+
+	body := []byte("test")
+	topic.Pub([]wal.EntryWriterTo{nsqd.NewEntry(body, time.Now().UnixNano(), 0)})
+
 	test.Equal(t, int64(1), topic.Depth())
-	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
-	body, _ := json.Marshal(map[string]interface{}{
+	body, _ = json.Marshal(map[string]interface{}{
 		"action": "empty",
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
@@ -507,14 +510,15 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	topicName := "test_empty_channel_post" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqds[0].GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	channel.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 
-	time.Sleep(100 * time.Millisecond)
+	body := []byte("test")
+	topic.Pub([]wal.EntryWriterTo{nsqd.NewEntry(body, time.Now().UnixNano(), 0)})
+
 	test.Equal(t, int64(1), channel.Depth())
 
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
-	body, _ := json.Marshal(map[string]interface{}{
+	body, _ = json.Marshal(map[string]interface{}{
 		"action": "empty",
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))

@@ -100,10 +100,10 @@ func TestTopicHealth(t *testing.T) {
 
 	resp, err = http.Get(url)
 	test.Nil(t, err)
-	equal(t, resp.StatusCode, 200)
-	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 200, resp.StatusCode)
+	rbody, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	equal(t, string(body), "OK")
+	test.Equal(t, "OK", string(rbody))
 }
 
 func TestTopicDeletes(t *testing.T) {
