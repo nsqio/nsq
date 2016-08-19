@@ -525,10 +525,17 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 
-	// TODO: sync to replica to delete this channel.
-	err = topic.DeleteExistingChannel(channelName)
-	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		clusterErr := s.ctx.DeleteExistingChannel(topic, channelName)
+		if clusterErr != nil {
+			return nil, http_api.Err{500, clusterErr.Error()}
+		}
+		nsqd.NsqLogger().Logf("deleted the channel : %v, by client:%v",
+			channelName, req.RemoteAddr)
+	} else {
+		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
 	return nil, nil

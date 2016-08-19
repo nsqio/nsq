@@ -328,14 +328,14 @@ func (c *Channel) exit(deleted bool) error {
 	close(c.exitChan)
 	<-c.exitSyncChan
 
+	// write anything leftover to disk
+	c.flush()
 	if deleted {
 		// empty the queue (deletes the backend files, too)
 		c.skipChannelToEnd()
 		return c.backend.Delete()
 	}
 
-	// write anything leftover to disk
-	c.flush()
 	return c.backend.Close()
 }
 

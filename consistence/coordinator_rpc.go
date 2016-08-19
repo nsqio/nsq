@@ -619,6 +619,23 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 	return &ret
 }
 
+func (self *NsqdCoordRpcServer) DeleteChannel(info *RpcChannelOffsetArg) *CoordErr {
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// update local channel offset
+	err = self.nsqdCoord.deleteChannelOnSlave(tc.GetData(), info.Channel)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
 // receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 	if self.nsqdCoord.enableBenchCost || coordLog.Level() >= levellogger.LOG_DEBUG {

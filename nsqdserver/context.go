@@ -153,6 +153,14 @@ func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.Mes
 	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)
 }
 
+func (c *context) DeleteExistingChannel(topic *nsqd.Topic, channelName string) error {
+	if c.nsqdCoord == nil {
+		err := topic.DeleteExistingChannel(channelName)
+		return err
+	}
+	return c.nsqdCoord.DeleteChannel(topic, channelName)
+}
+
 func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, int64, error) {
 	var l *consistence.CommitLogData
 	var queueOffset int64

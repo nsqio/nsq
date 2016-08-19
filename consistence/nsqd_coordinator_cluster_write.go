@@ -873,3 +873,72 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 	}
 	return nil
 }
+
+func (self *NsqdCoordinator) DeleteChannel(topic *nsqd.Topic, channelName string) error {
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
+	coord, checkErr := self.getTopicCoord(topicName, partition)
+	if checkErr != nil {
+		return checkErr.ToErrorType()
+	}
+
+	doLocalWrite := func(d *coordData) *CoordErr {
+		localErr := topic.DeleteExistingChannel(channelName)
+		if localErr != nil {
+			coordLog.Infof("deleteing local channel %v error: %v", channelName, localErr)
+		}
+		return nil
+	}
+	doLocalExit := func(err *CoordErr) {}
+	doLocalCommit := func() error {
+		return nil
+	}
+	doLocalRollback := func() {
+	}
+	doRefresh := func(d *coordData) *CoordErr {
+		return nil
+	}
+	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		rpcErr := c.DeleteChannel(&tcData.topicLeaderSession, &tcData.topicInfo, channelName)
+		if rpcErr != nil {
+			coordLog.Infof("delete channel(%v) to replica %v failed: %v", channelName,
+				nodeID, rpcErr)
+		}
+		return rpcErr
+	}
+	handleSyncResult := func(successNum int, tcData *coordData) bool {
+		// we can ignore the error if this channel is not ordered. (just sync next time)
+		if successNum == len(tcData.topicInfo.ISR) {
+			return true
+		}
+		return false
+	}
+	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+		doRefresh, doSlaveSync, handleSyncResult)
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) deleteChannelOnSlave(tc *coordData, channelName string) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
+
+	coordLog.Logf("got delete channel(%v) offset on slave ", channelName)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+	if localErr != nil {
+		coordLog.Warningf("slave missing topic : %v", topicName)
+		return nil
+	}
+
+	localErr = topic.DeleteExistingChannel(channelName)
+	if localErr != nil {
+		coordLog.Logf("delete channel %v on slave failed: %v ", channelName, localErr)
+	}
+	return nil
+}
