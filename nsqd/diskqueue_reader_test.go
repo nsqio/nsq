@@ -338,3 +338,45 @@ func TestDiskQueueReaderUpdateEnd(t *testing.T) {
 	_, hasData = dqReader.TryReadOne()
 	equal(t, hasData, true)
 }
+
+func TestDiskQueueSnapshotReader(t *testing.T) {
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	test.Nil(t, err)
+	defer os.RemoveAll(tmpDir)
+	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	defer dqWriter.Close()
+	test.NotNil(t, dqWriter)
+
+	msg := []byte("test")
+	msgNum := 2000
+	var midEnd BackendQueueEnd
+	for i := 0; i < msgNum; i++ {
+		dqWriter.Put(msg)
+		if i == msgNum/2 {
+			midEnd = dqWriter.GetQueueWriteEnd()
+		}
+	}
+	dqWriter.Flush()
+	end := dqWriter.GetQueueWriteEnd()
+	test.Nil(t, err)
+
+	dqReader := NewDiskQueueSnapshot(dqName, tmpDir, end)
+	defer dqReader.Close()
+
+	queueStart := dqReader.queueStart
+	test.Equal(t, BackendOffset(0), queueStart.Offset())
+	dqReader.SetQueueStart(&queueStart)
+	err = dqReader.SeekTo(midEnd.Offset())
+	test.Nil(t, err)
+	test.Equal(t, midEnd.Offset(), dqReader.readPos.virtualEnd)
+	result := dqReader.ReadOne()
+	test.Nil(t, result.Err)
+	test.Equal(t, midEnd.Offset(), result.Offset)
+	data, err := dqReader.ReadRaw(100)
+	test.Nil(t, err)
+	test.Equal(t, 100, len(data))
+	// remove some begin of queue, and test queue start
+}

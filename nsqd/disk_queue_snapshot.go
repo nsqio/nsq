@@ -13,10 +13,9 @@ import (
 
 type DiskQueueSnapshot struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	readPos           diskQueueOffset
-	endPos            diskQueueOffset
-	virtualReadOffset BackendOffset
-	virtualEnd        BackendOffset
+	queueStart diskQueueEndInfo
+	readPos    diskQueueEndInfo
+	endPos     diskQueueEndInfo
 
 	sync.RWMutex
 
@@ -37,6 +36,7 @@ func NewDiskQueueSnapshot(readFrom string, dataPath string, endInfo BackendQueue
 	}
 
 	d.UpdateQueueEnd(endInfo)
+
 	return &d
 }
 
@@ -47,6 +47,23 @@ func (d *DiskQueueSnapshot) getCurrentFileEnd(offset diskQueueOffset) (int64, er
 		return 0, err
 	}
 	return f.Size(), nil
+}
+
+func (d *DiskQueueSnapshot) SetQueueStart(start BackendQueueEnd) {
+	startPos, ok := start.(*diskQueueEndInfo)
+	if !ok || startPos == nil {
+		return
+	}
+	d.Lock()
+	defer d.Unlock()
+
+	if d.exitFlag == 1 {
+		return
+	}
+	d.queueStart = *startPos
+	if d.queueStart.EndOffset.GreatThan(&d.readPos.EndOffset) {
+		d.readPos = d.queueStart
+	}
 }
 
 // Put writes a []byte to the queue
@@ -61,18 +78,10 @@ func (d *DiskQueueSnapshot) UpdateQueueEnd(e BackendQueueEnd) {
 	if d.exitFlag == 1 {
 		return
 	}
-	if d.readPos.FileNum > endPos.EndOffset.FileNum {
-		d.readPos.FileNum = endPos.EndOffset.FileNum
-		d.readPos.Pos = endPos.EndOffset.Pos
-		d.virtualReadOffset = endPos.Offset()
+	if d.readPos.EndOffset.GreatThan(&endPos.EndOffset) {
+		d.readPos = *endPos
 	}
-	if (d.readPos.FileNum == endPos.EndOffset.FileNum) && (d.readPos.Pos > endPos.EndOffset.Pos) {
-		d.readPos.Pos = endPos.EndOffset.Pos
-		d.virtualReadOffset = endPos.Offset()
-	}
-	d.endPos.Pos = endPos.EndOffset.Pos
-	d.endPos.FileNum = endPos.EndOffset.FileNum
-	d.virtualEnd = endPos.Offset()
+	d.endPos = *endPos
 }
 
 // Close cleans up the queue and persists metadata
@@ -92,26 +101,11 @@ func (d *DiskQueueSnapshot) exit() error {
 	return nil
 }
 
-func (d *DiskQueueSnapshot) getVirtualOffsetDistance(prev diskQueueOffset, next diskQueueOffset) (BackendOffset, error) {
-	diff := int64(0)
-	if prev.GreatThan(&next) {
-		return BackendOffset(diff), ErrMoveOffsetInvalid
-	}
-	if prev.FileNum == next.FileNum {
-		diff = next.Pos - prev.Pos
-		return BackendOffset(diff), nil
-	}
-
-	fsize, err := d.getCurrentFileEnd(prev)
-	if err != nil {
-		return BackendOffset(diff), err
-	}
-	left := fsize - prev.Pos
-	prev.FileNum++
-	prev.Pos = 0
-	vdiff := BackendOffset(0)
-	vdiff, err = d.getVirtualOffsetDistance(prev, next)
-	return BackendOffset(int64(vdiff) + left), err
+func (d *DiskQueueSnapshot) GetQueueCurrentReadFile() diskQueueOffset {
+	d.Lock()
+	cur := d.readPos
+	d.Unlock()
+	return cur.EndOffset
 }
 
 func (d *DiskQueueSnapshot) stepOffset(cur diskQueueOffset, step int64, maxStep diskQueueOffset) (diskQueueOffset, error) {
@@ -122,6 +116,9 @@ func (d *DiskQueueSnapshot) stepOffset(cur diskQueueOffset, step int64, maxStep 
 	}
 	if step == 0 {
 		return newOffset, nil
+	}
+	if step < 0 {
+		return newOffset, fmt.Errorf("can not step backward")
 	}
 	for {
 		end := int64(0)
@@ -156,6 +153,27 @@ func (d *DiskQueueSnapshot) stepOffset(cur diskQueueOffset, step int64, maxStep 
 	}
 }
 
+func (d *DiskQueueSnapshot) SkipToNext() error {
+	d.Lock()
+	defer d.Unlock()
+	if d.readPos.EndOffset.FileNum >= d.endPos.EndOffset.FileNum {
+		return ErrReadEndOfQueue
+	}
+
+	if d.readFile != nil {
+		d.readFile.Close()
+		d.readFile = nil
+	}
+	_, _, endPos, err := getQueueFileOffsetMeta(d.fileName(d.readPos.EndOffset.FileNum))
+	if err != nil {
+		return err
+	}
+	d.readPos.EndOffset.FileNum++
+	d.readPos.EndOffset.Pos = 0
+	d.readPos.virtualEnd = BackendOffset(endPos)
+	return nil
+}
+
 func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
 	d.Lock()
 	defer d.Unlock()
@@ -163,25 +181,30 @@ func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
 		d.readFile.Close()
 		d.readFile = nil
 	}
-	newPos := d.endPos
 	var err error
-	if voffset > d.virtualEnd {
-		nsqLog.LogErrorf("internal skip error : skipping overflow to : %v, %v", voffset, d.virtualEnd)
+	newPos := d.endPos.EndOffset
+	if voffset > d.endPos.virtualEnd {
+		nsqLog.LogErrorf("internal skip error : skipping overflow to : %v, %v", voffset, d.endPos)
 		return ErrMoveOffsetInvalid
-	} else if voffset == d.virtualEnd {
-		newPos = d.endPos
+	} else if voffset == d.endPos.virtualEnd {
+		newPos = d.endPos.EndOffset
 	} else {
-		newPos, err = d.stepOffset(d.readPos, int64(voffset-d.virtualReadOffset), d.endPos)
+		if voffset < d.queueStart.Offset() {
+			nsqLog.LogWarningf("seek error : seek queue position cleaned : %v, %v", voffset, d.queueStart)
+			return ErrReadQueueAlreadyCleaned
+		}
+
+		newPos, err = d.stepOffset(d.readPos.EndOffset, int64(voffset-d.readPos.virtualEnd), d.endPos.EndOffset)
 		if err != nil {
-			nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
+			nsqLog.LogErrorf("internal skip error : %v, step from %v to : %v", err, d.readPos, voffset)
 			return err
 		}
 	}
 
 	nsqLog.LogDebugf("===snapshot read seek from %v, %v to: %v, %v", d.readPos,
-		d.virtualReadOffset, newPos, voffset)
-	d.readPos = newPos
-	d.virtualReadOffset = voffset
+		d.readPos, newPos, voffset)
+	d.readPos.EndOffset = newPos
+	d.readPos.virtualEnd = voffset
 	return nil
 }
 
@@ -193,7 +216,6 @@ func (d *DiskQueueSnapshot) SeekToEnd() error {
 	}
 
 	d.readPos = d.endPos
-	d.virtualReadOffset = d.virtualEnd
 	d.Unlock()
 	return nil
 }
@@ -211,14 +233,14 @@ func (d *DiskQueueSnapshot) ReadRaw(size int32) ([]byte, error) {
 
 	CheckFileOpen:
 		if d.readFile == nil {
-			curFileName := d.fileName(d.readPos.FileNum)
+			curFileName := d.fileName(d.readPos.EndOffset.FileNum)
 			d.readFile, err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
 			if err != nil {
 				return result, err
 			}
 			nsqLog.LogDebugf("DISKQUEUE snapshot(%s): readRaw() opened %s", d.readFrom, curFileName)
-			if d.readPos.Pos > 0 {
-				_, err = d.readFile.Seek(d.readPos.Pos, 0)
+			if d.readPos.EndOffset.Pos > 0 {
+				_, err = d.readFile.Seek(d.readPos.EndOffset.Pos, 0)
 				if err != nil {
 					d.readFile.Close()
 					d.readFile = nil
@@ -231,20 +253,20 @@ func (d *DiskQueueSnapshot) ReadRaw(size int32) ([]byte, error) {
 		if err != nil {
 			return result, err
 		}
-		if d.readPos.FileNum < d.endPos.FileNum {
-			if d.readPos.Pos >= stat.Size() {
-				d.readPos.FileNum++
-				d.readPos.Pos = 0
+		if d.readPos.EndOffset.FileNum < d.endPos.EndOffset.FileNum {
+			if d.readPos.EndOffset.Pos >= stat.Size() {
+				d.readPos.EndOffset.FileNum++
+				d.readPos.EndOffset.Pos = 0
 				nsqLog.Logf("DISKQUEUE snapshot(%s): readRaw() read end, try next: %v",
-					d.readFrom, d.readPos.FileNum)
+					d.readFrom, d.readPos)
 				d.readFile.Close()
 				d.readFile = nil
 				goto CheckFileOpen
 			}
 		}
 
-		fileLeft := stat.Size() - d.readPos.Pos
-		if d.readPos.FileNum == d.endPos.FileNum && fileLeft == 0 {
+		fileLeft := stat.Size() - d.readPos.EndOffset.Pos
+		if d.readPos.EndOffset.FileNum == d.endPos.EndOffset.FileNum && fileLeft == 0 {
 			return result[:readOffset], io.EOF
 		}
 		currentRead := int64(size - readOffset)
@@ -259,25 +281,25 @@ func (d *DiskQueueSnapshot) ReadRaw(size int32) ([]byte, error) {
 		}
 
 		oldPos := d.readPos
-		d.readPos.Pos = d.readPos.Pos + currentRead
+		d.readPos.EndOffset.Pos = d.readPos.EndOffset.Pos + currentRead
 		readOffset += int32(currentRead)
-		d.virtualReadOffset += BackendOffset(currentRead)
+		d.readPos.virtualEnd += BackendOffset(currentRead)
 		if nsqLog.Level() >= levellogger.LOG_DETAIL {
-			nsqLog.LogDebugf("===snapshot read move forward: %v, %v, %v", oldPos,
-				d.virtualReadOffset, d.readPos)
+			nsqLog.LogDebugf("===snapshot read move forward: %v to  %v", oldPos,
+				d.readPos)
 		}
 
 		isEnd := false
-		if d.readPos.FileNum < d.endPos.FileNum {
-			isEnd = d.readPos.Pos >= stat.Size()
+		if d.readPos.EndOffset.FileNum < d.endPos.EndOffset.FileNum {
+			isEnd = d.readPos.EndOffset.Pos >= stat.Size()
 		}
 		if isEnd {
 			if d.readFile != nil {
 				d.readFile.Close()
 				d.readFile = nil
 			}
-			d.readPos.FileNum++
-			d.readPos.Pos = 0
+			d.readPos.EndOffset.FileNum++
+			d.readPos.EndOffset.Pos = 0
 		}
 	}
 	return result, nil
@@ -296,9 +318,9 @@ func (d *DiskQueueSnapshot) ReadOne() ReadResult {
 
 CheckFileOpen:
 
-	result.Offset = d.virtualReadOffset
+	result.Offset = d.readPos.virtualEnd
 	if d.readFile == nil {
-		curFileName := d.fileName(d.readPos.FileNum)
+		curFileName := d.fileName(d.readPos.EndOffset.FileNum)
 		d.readFile, result.Err = os.OpenFile(curFileName, os.O_RDONLY, 0600)
 		if result.Err != nil {
 			return result
@@ -306,8 +328,8 @@ CheckFileOpen:
 
 		nsqLog.Logf("DISKQUEUE(%s): readOne() opened %s", d.readFrom, curFileName)
 
-		if d.readPos.Pos > 0 {
-			_, result.Err = d.readFile.Seek(d.readPos.Pos, 0)
+		if d.readPos.EndOffset.Pos > 0 {
+			_, result.Err = d.readFile.Seek(d.readPos.EndOffset.Pos, 0)
 			if result.Err != nil {
 				d.readFile.Close()
 				d.readFile = nil
@@ -317,16 +339,16 @@ CheckFileOpen:
 
 		d.reader = bufio.NewReader(d.readFile)
 	}
-	if d.readPos.FileNum < d.endPos.FileNum {
+	if d.readPos.EndOffset.FileNum < d.endPos.EndOffset.FileNum {
 		stat, result.Err = d.readFile.Stat()
 		if result.Err != nil {
 			return result
 		}
-		if d.readPos.Pos >= stat.Size() {
-			d.readPos.FileNum++
-			d.readPos.Pos = 0
+		if d.readPos.EndOffset.Pos >= stat.Size() {
+			d.readPos.EndOffset.FileNum++
+			d.readPos.EndOffset.Pos = 0
 			nsqLog.Logf("DISKQUEUE(%s): readOne() read end, try next: %v",
-				d.readFrom, d.readPos.FileNum)
+				d.readFrom, d.readPos.EndOffset.FileNum)
 			d.readFile.Close()
 			d.readFile = nil
 			goto CheckFileOpen
@@ -357,22 +379,22 @@ CheckFileOpen:
 		return result
 	}
 
-	result.Offset = d.virtualReadOffset
+	result.Offset = d.readPos.virtualEnd
 
 	totalBytes := int64(4 + msgSize)
 	result.MovedSize = BackendOffset(totalBytes)
 
 	oldPos := d.readPos
-	d.readPos.Pos = d.readPos.Pos + totalBytes
-	d.virtualReadOffset += BackendOffset(totalBytes)
-	nsqLog.LogDebugf("=== read move forward: %v, %v, %v", oldPos,
-		d.virtualReadOffset, d.readPos)
+	d.readPos.EndOffset.Pos = d.readPos.EndOffset.Pos + totalBytes
+	d.readPos.virtualEnd += BackendOffset(totalBytes)
+	nsqLog.LogDebugf("=== read move forward: %v to %v", oldPos,
+		d.readPos)
 
 	isEnd := false
-	if d.readPos.FileNum < d.endPos.FileNum {
+	if d.readPos.EndOffset.FileNum < d.endPos.EndOffset.FileNum {
 		stat, result.Err = d.readFile.Stat()
 		if result.Err == nil {
-			isEnd = d.readPos.Pos >= stat.Size()
+			isEnd = d.readPos.EndOffset.Pos >= stat.Size()
 		} else {
 			return result
 		}
@@ -383,8 +405,8 @@ CheckFileOpen:
 			d.readFile = nil
 		}
 
-		d.readPos.FileNum++
-		d.readPos.Pos = 0
+		d.readPos.EndOffset.FileNum++
+		d.readPos.EndOffset.Pos = 0
 	}
 	return result
 }
