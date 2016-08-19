@@ -353,10 +353,14 @@ func TestDiskQueueSnapshotReader(t *testing.T) {
 	msg := []byte("test")
 	msgNum := 2000
 	var midEnd BackendQueueEnd
+	var midEnd2 BackendQueueEnd
 	for i := 0; i < msgNum; i++ {
 		dqWriter.Put(msg)
 		if i == msgNum/2 {
 			midEnd = dqWriter.GetQueueWriteEnd()
+		}
+		if i == msgNum/4 {
+			midEnd2 = dqWriter.GetQueueWriteEnd()
 		}
 	}
 	dqWriter.Flush()
@@ -368,11 +372,15 @@ func TestDiskQueueSnapshotReader(t *testing.T) {
 
 	queueStart := dqReader.queueStart
 	test.Equal(t, BackendOffset(0), queueStart.Offset())
-	dqReader.SetQueueStart(&queueStart)
+	dqReader.SetQueueStart(midEnd2)
+	test.Equal(t, midEnd2.Offset(), dqReader.readPos.Offset())
+	result := dqReader.ReadOne()
+	test.Nil(t, result.Err)
+	test.Equal(t, midEnd2.Offset(), result.Offset)
 	err = dqReader.SeekTo(midEnd.Offset())
 	test.Nil(t, err)
 	test.Equal(t, midEnd.Offset(), dqReader.readPos.virtualEnd)
-	result := dqReader.ReadOne()
+	result = dqReader.ReadOne()
 	test.Nil(t, result.Err)
 	test.Equal(t, midEnd.Offset(), result.Offset)
 	data, err := dqReader.ReadRaw(100)

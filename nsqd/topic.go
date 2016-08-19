@@ -1006,7 +1006,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 		}
 		err = snapReader.SkipToNext()
 		if err != nil {
-			nsqLog.LogErrorf("failed to skip - %s ", err)
+			nsqLog.LogWarningf("failed to skip - %s ", err)
 			break
 		}
 		readNum = snapReader.GetQueueCurrentReadFile().FileNum

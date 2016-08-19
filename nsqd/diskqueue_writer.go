@@ -174,10 +174,10 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanFileNum int64, cleanOffse
 	d.Lock()
 	defer d.Unlock()
 	if cleanFileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
-		return nil
+		cleanFileNum = d.diskReadEnd.EndOffset.FileNum - 1
 	}
 	if cleanOffset >= d.diskReadEnd.Offset()-BackendOffset(d.diskReadEnd.EndOffset.Pos) {
-		return nil
+		cleanOffset = d.diskReadEnd.Offset() - BackendOffset(d.diskReadEnd.EndOffset.Pos)
 	}
 	if cleanFileNum >= 0 {
 		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(cleanFileNum - 1))
