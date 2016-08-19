@@ -19,6 +19,27 @@ var (
 	writeBufSize     = 1024 * 128
 )
 
+func getQueueFileOffsetMeta(dataFileName string) (int64, int64, int64, error) {
+	fName := dataFileName + ".offsetmeta.dat"
+	f, err := os.OpenFile(fName, os.O_RDONLY, 0644)
+	if err != nil {
+		nsqLog.LogErrorf("failed to read offset meta file (%v): %v", fName, err)
+		return 0, 0, 0, err
+	}
+	defer f.Close()
+	cnt := int64(0)
+	startPos := int64(0)
+	endPos := int64(0)
+	_, err = fmt.Fscanf(f, "%d\n%d,%d\n",
+		&cnt,
+		&startPos, &endPos)
+	if err != nil {
+		nsqLog.LogErrorf("failed to read offset meta (%v): %v", fName, err)
+		return 0, 0, 0, err
+	}
+	return cnt, startPos, endPos, nil
+}
+
 // diskQueueWriter implements the BackendQueue interface
 // providing a filesystem backed FIFO queue
 type diskQueueWriter struct {
@@ -26,6 +47,8 @@ type diskQueueWriter struct {
 	// run-time state (also persisted to disk)
 	diskWriteEnd diskQueueEndInfo
 	diskReadEnd  diskQueueEndInfo
+	// the start of the queue , will be set to the cleaned offset
+	diskQueueStart diskQueueEndInfo
 	sync.RWMutex
 
 	// instantiation time metadata
@@ -65,6 +88,10 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	err := d.retrieveMetaData()
 	if err != nil && !os.IsNotExist(err) {
 		nsqLog.LogErrorf("diskqueue(%s) failed to retrieveMetaData - %s", d.name, err)
+	}
+	err = d.initQueueReadStart()
+	if err != nil && !os.IsNotExist(err) {
+		nsqLog.LogErrorf("diskqueue(%s) failed to init queue start- %s", d.name, err)
 	}
 
 	return &d
@@ -141,6 +168,61 @@ func (d *diskQueueWriter) RollbackWrite(offset BackendOffset, diffCnt uint64) er
 func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) error {
 	_, err := d.ResetWriteEndV2(offset, totalCnt)
 	return err
+}
+
+func (d *diskQueueWriter) CleanOldDataByRetention(cleanFileNum int64, cleanOffset BackendOffset) error {
+	d.Lock()
+	defer d.Unlock()
+	if cleanFileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
+		return nil
+	}
+	if cleanOffset >= d.diskReadEnd.Offset()-BackendOffset(d.diskReadEnd.EndOffset.Pos) {
+		return nil
+	}
+	if cleanFileNum >= 0 {
+		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(cleanFileNum - 1))
+		if err != nil {
+			nsqLog.LogWarningf("disk %v failed to get queue offset meta: %v", d.fileName(cleanFileNum), err)
+			return err
+		}
+		d.diskQueueStart.EndOffset.FileNum = cleanFileNum
+		d.diskQueueStart.EndOffset.Pos = 0
+		d.diskQueueStart.virtualEnd = BackendOffset(endPos)
+		d.diskQueueStart.totalMsgCnt = cnt
+	} else if cleanOffset >= 0 {
+		for {
+			cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(d.diskQueueStart.EndOffset.FileNum))
+			if err != nil {
+				nsqLog.LogWarningf("disk %v failed to get queue offset meta: %v", d.diskQueueStart, err)
+				return err
+			}
+			if BackendOffset(endPos) < cleanOffset {
+				if cleanFileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
+					break
+				}
+				d.diskQueueStart.EndOffset.FileNum++
+				d.diskQueueStart.EndOffset.Pos = 0
+				d.diskQueueStart.virtualEnd = BackendOffset(endPos)
+				d.diskQueueStart.totalMsgCnt = cnt
+				cleanFileNum = d.diskQueueStart.EndOffset.FileNum
+			} else {
+				break
+			}
+		}
+	}
+	for i := int64(0); i < cleanFileNum; i++ {
+		fn := d.fileName(i)
+		innerErr := os.Remove(fn)
+		if innerErr != nil {
+			if !os.IsNotExist(innerErr) {
+				nsqLog.LogErrorf("diskqueue(%s) failed to remove data file %v - %s", d.name, fn, innerErr)
+			}
+		} else {
+			nsqLog.Logf("DISKQUEUE(%s): removed data file: %v", d.name, fn)
+		}
+	}
+
+	return nil
 }
 
 func (d *diskQueueWriter) closeCurrentFile() {
@@ -353,6 +435,7 @@ func (d *diskQueueWriter) cleanOldData() error {
 	d.diskWriteEnd.EndOffset.FileNum++
 	d.diskWriteEnd.EndOffset.Pos = 0
 	d.diskReadEnd = d.diskWriteEnd
+	d.diskQueueStart = d.diskWriteEnd
 	return nil
 }
 
@@ -379,6 +462,14 @@ func (d *diskQueueWriter) GetQueueWriteEnd() BackendQueueEnd {
 	d.RLock()
 	e := &diskQueueEndInfo{}
 	*e = d.diskWriteEnd
+	d.RUnlock()
+	return e
+}
+
+func (d *diskQueueWriter) GetQueueReadStart() BackendQueueEnd {
+	d.RLock()
+	e := &diskQueueEndInfo{}
+	*e = d.diskQueueStart
 	d.RUnlock()
 	return e
 }
@@ -530,6 +621,42 @@ func (d *diskQueueWriter) sync() error {
 	}
 
 	d.needSync = false
+	return nil
+}
+
+func (d *diskQueueWriter) initQueueReadStart() error {
+	var readStart diskQueueEndInfo
+	needFix := false
+	for {
+		curFile := d.fileName(readStart.EndOffset.FileNum)
+		_, err := os.Stat(curFile)
+		if err != nil {
+			needFix = true
+			if os.IsNotExist(err) {
+				readStart.EndOffset.FileNum++
+				readStart.EndOffset.Pos = 0
+				if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			break
+		}
+	}
+	if !needFix {
+		d.diskQueueStart = readStart
+	} else {
+		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(readStart.EndOffset.FileNum - 1))
+		if err != nil {
+			return err
+		}
+		readStart.virtualEnd = BackendOffset(endPos)
+		readStart.totalMsgCnt = cnt
+		d.diskQueueStart = readStart
+		nsqLog.Logf("init the disk queue start: %v", d.diskQueueStart)
+	}
 	return nil
 }
 

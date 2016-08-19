@@ -20,12 +20,14 @@ const (
 )
 
 var (
-	ErrConfirmSizeInvalid    = errors.New("Confirm data size invalid.")
-	ErrConfirmCntInvalid     = errors.New("Confirm message count invalid.")
-	ErrMoveOffsetInvalid     = errors.New("move offset invalid")
-	ErrOffsetTypeMismatch    = errors.New("offset type mismatch")
-	ErrReadQueueCountMissing = errors.New("read queue count info missing")
-	ErrExiting               = errors.New("exiting")
+	ErrReadQueueAlreadyCleaned = errors.New("the queue position has been cleaned")
+	ErrConfirmSizeInvalid      = errors.New("Confirm data size invalid.")
+	ErrConfirmCntInvalid       = errors.New("Confirm message count invalid.")
+	ErrMoveOffsetInvalid       = errors.New("move offset invalid")
+	ErrOffsetTypeMismatch      = errors.New("offset type mismatch")
+	ErrReadQueueCountMissing   = errors.New("read queue count info missing")
+	ErrReadEndOfQueue          = errors.New("read to the end of queue")
+	ErrExiting                 = errors.New("exiting")
 )
 
 type diskQueueOffset struct {
@@ -487,7 +489,10 @@ func (d *diskQueueReader) stepOffset(virtualCur BackendOffset, cur diskQueueOffs
 			var f os.FileInfo
 			f, err = os.Stat(d.fileName(newOffset.FileNum))
 			if err != nil {
-				nsqLog.LogErrorf("stat data file error %v, %v", step, newOffset)
+				nsqLog.LogErrorf("stat data file error %v, %v: %v", step, newOffset, err)
+				if os.IsNotExist(err) {
+					return newOffset, ErrReadQueueAlreadyCleaned
+				}
 				return newOffset, err
 			}
 			newOffset.Pos = f.Size()
@@ -656,7 +661,7 @@ func (d *diskQueueReader) skipToNextFile() error {
 		d.readFile.Close()
 		d.readFile = nil
 	}
-	cnt, _, end, err := d.getQueueFileOffsetMeta(d.confirmedQueueInfo.EndOffset.FileNum)
+	cnt, _, end, err := getQueueFileOffsetMeta(d.fileName(d.confirmedQueueInfo.EndOffset.FileNum))
 	if err != nil {
 		nsqLog.LogErrorf("diskqueue(%s) failed to skip to next %v : %v",
 			d.readerMetaName, d.confirmedQueueInfo, err)
@@ -840,7 +845,7 @@ CheckFileOpen:
 
 		d.readQueueInfo.EndOffset.FileNum++
 		d.readQueueInfo.EndOffset.Pos = 0
-		fixCnt, _, metaEnd, err := d.getQueueFileOffsetMeta(d.readQueueInfo.EndOffset.FileNum - 1)
+		fixCnt, _, metaEnd, err := getQueueFileOffsetMeta(d.fileName(d.readQueueInfo.EndOffset.FileNum - 1))
 		if err == nil {
 			// we compare the meta file to check if any wrong on the count of message
 			if metaEnd != int64(d.readQueueInfo.Offset()) {
@@ -983,27 +988,6 @@ func (d *diskQueueReader) checkTailCorruption() {
 		d.skipToEndofQueue()
 		d.needSync = true
 	}
-}
-
-func (d *diskQueueReader) getQueueFileOffsetMeta(num int64) (int64, int64, int64, error) {
-	fName := d.fileName(num) + ".offsetmeta.dat"
-	f, err := os.OpenFile(fName, os.O_RDONLY, 0644)
-	if err != nil {
-		nsqLog.LogErrorf("failed to read offset meta file (%v): %v", fName, err)
-		return 0, 0, 0, err
-	}
-	defer f.Close()
-	cnt := int64(0)
-	startPos := int64(0)
-	endPos := int64(0)
-	_, err = fmt.Fscanf(f, "%d\n%d,%d\n",
-		&cnt,
-		&startPos, &endPos)
-	if err != nil {
-		nsqLog.LogErrorf("failed to read offset meta (%v): %v", fName, err)
-		return 0, 0, 0, err
-	}
-	return cnt, startPos, endPos, nil
 }
 
 func (d *diskQueueReader) handleReadError() {

@@ -277,6 +277,9 @@ func TestTopicPutChannelWait(t *testing.T) {
 	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
 }
 
+func TestTopicCleanOldData(t *testing.T) {
+}
+
 func benchmarkTopicPut(b *testing.B, size int) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)

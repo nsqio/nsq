@@ -39,6 +39,12 @@ type MsgIDGenerator interface {
 	Reset(uint64)
 }
 
+type TopicDynamicConf struct {
+	AutoCommit   int32
+	RetentionDay int32
+	SyncEvery    int64
+}
+
 type Topic struct {
 	sync.Mutex
 
@@ -62,17 +68,16 @@ type Topic struct {
 	defaultIDSeq    uint64
 	needFlush       int32
 	EnableTrace     int32
-	syncEvery       int64
 	lastSyncCnt     int64
 	putBuffer       bytes.Buffer
 	bp              sync.Pool
 	writeDisabled   int32
-	committedOffset atomic.Value
-	autoCommit      int32
+	dynamicConf     *TopicDynamicConf
 	magicCode       int64
-	// 100bytes, 1KB, 4KB, 16KB, 64KB, 512KB, 1MB, 2MB, 4MB, 8MB
+	committedOffset atomic.Value
+	// 100bytes, 1KB, 4KB, 16KB, 64KB, 256KB, 512KB, 1MB, 2MB, 4MB
 	msgSizeStats [10]int64
-	// 1ms, 8ms, 16ms, 32ms, 64ms, 128ms, 512ms, 1s, 2s, 4s
+	// 1ms, 8ms, 16ms, 32ms, 64ms, 128ms, 512ms, 1024ms, 2046ms, 4098ms
 	msgWriteLatencyStats [10]int64
 	writeErrCnt          int64
 	statsMutex           sync.Mutex
@@ -97,15 +102,14 @@ func NewTopic(topicName string, part int, opt *Options,
 		flushChan:      make(chan int, 10),
 		option:         opt,
 		deleteCallback: deleteCallback,
-		syncEvery:      opt.SyncEvery,
+		dynamicConf:    &TopicDynamicConf{SyncEvery: opt.SyncEvery, AutoCommit: 1},
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		autoCommit:     1,
 		clientPubStats: make(map[string]*ClientPubStats),
 	}
-	if t.syncEvery < 1 {
-		t.syncEvery = 1
+	if t.dynamicConf.SyncEvery < 1 {
+		t.dynamicConf.SyncEvery = 1
 	}
 	t.bp.New = func() interface{} {
 		return &bytes.Buffer{}
@@ -319,12 +323,15 @@ func (t *Topic) GetMsgGenerator() MsgIDGenerator {
 	return cursor
 }
 
-func (t *Topic) SetAutoCommit(enable bool) {
-	if enable {
-		atomic.StoreInt32(&t.autoCommit, 1)
-	} else {
-		atomic.StoreInt32(&t.autoCommit, 0)
+func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
+	t.Lock()
+	if idGen != nil {
+		t.msgIDCursor = idGen
 	}
+	atomic.StoreInt64(&t.dynamicConf.SyncEvery, dynamicConf.SyncEvery)
+	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
+	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
+	t.Unlock()
 }
 
 func (t *Topic) nextMsgID() MessageID {
@@ -496,7 +503,7 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 
 	id, offset, writeBytes, dend, err := t.put(m)
 	if err == nil {
-		if t.syncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
+		if t.dynamicConf.SyncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
 			if !t.IsWriteDisabled() {
 				t.flush(true)
 			}
@@ -603,7 +610,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		}
 	}
 
-	if int64(len(msgs)) >= t.syncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
+	if int64(len(msgs)) >= t.dynamicConf.SyncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
 		if !t.IsWriteDisabled() {
 			t.flush(true)
 		}
@@ -634,7 +641,7 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		return m.ID, offset, writeBytes, dend, err
 	}
 
-	if atomic.LoadInt32(&t.autoCommit) == 1 {
+	if atomic.LoadInt32(&t.dynamicConf.AutoCommit) == 1 {
 		t.UpdateCommittedOffset(&dend)
 	}
 
@@ -675,6 +682,10 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 
 func (t *Topic) TotalMessageCnt() uint64 {
 	return uint64(t.backend.GetQueueWriteEnd().TotalMsgCnt())
+}
+
+func (t *Topic) GetQueueReadStart() int64 {
+	return int64(t.backend.GetQueueReadStart().Offset())
 }
 
 func (t *Topic) TotalDataSize() int64 {
@@ -930,7 +941,89 @@ func (t *Topic) GetPubStats() []ClientPubStats {
 	return stats
 }
 
-func (t *Topic) TryCleanOldData(retention int) error {
+// maybe should return the cleaned offset to allow commit log clean
+func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	// clean the data that has been consumed and keep the retention policy
+	var oldestPos BackendQueueEnd
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		pos := ch.GetConfirmed()
+		if oldestPos == nil {
+			oldestPos = pos
+		} else if oldestPos.Offset() > pos.Offset() {
+			oldestPos = pos
+		}
+	}
+	t.channelLock.RUnlock()
+	if oldestPos == nil {
+		nsqLog.Logf("no consume position found")
+		return nil
+	}
+	if BackendOffset(retentionSize) >= oldestPos.Offset() {
+		return nil
+	}
+	nsqLog.Logf("clean topic %v data current oldest confirmed %v",
+		t.GetFullName(), oldestPos)
+
+	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
+	cleanStart := t.backend.GetQueueReadStart()
+	snapReader.SetQueueStart(cleanStart)
+	err := snapReader.SeekTo(cleanStart.Offset())
+	if err != nil {
+		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
+		return err
+	}
+	readNum := snapReader.GetQueueCurrentReadFile().FileNum
+	data := snapReader.ReadOne()
+	if data.Err != nil {
+		return data.Err
+	}
+	cleanOffset := BackendOffset(0)
+	cleanFileNum := int64(0)
+	t.Lock()
+	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(t.dynamicConf.RetentionDay))
+	t.Unlock()
+	for {
+		if retentionSize > 0 {
+			// clean data ignore the retention day
+			// only keep the retention size (start from the last consumed)
+			if data.Offset > oldestPos.Offset()-BackendOffset(retentionSize) {
+				break
+			}
+			cleanOffset = data.Offset
+			cleanFileNum = readNum
+		} else {
+			msg, err := decodeMessage(data.Data)
+			if err != nil {
+				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
+			} else {
+				if msg.Timestamp >= cleanTime.UnixNano() {
+					break
+				}
+				cleanOffset = data.Offset
+				cleanFileNum = readNum
+			}
+		}
+		err = snapReader.SkipToNext()
+		if err != nil {
+			nsqLog.LogErrorf("failed to skip - %s ", err)
+			break
+		}
+		readNum = snapReader.GetQueueCurrentReadFile().FileNum
+		data = snapReader.ReadOne()
+		if data.Err != nil {
+			nsqLog.LogErrorf("failed to read - %s ", data.Err)
+			break
+		}
+	}
+
+	nsqLog.Warningf("clean topic %v data from %v:%v under retention %v, %v",
+		t.GetFullName(), cleanFileNum, cleanOffset, cleanTime, retentionSize)
+	if cleanOffset >= oldestPos.Offset() {
+		nsqLog.Warningf("clean topic %v data could not exceed current oldest confirmed %v",
+			t.GetFullName(), oldestPos)
+		return nil
+	}
+	t.backend.CleanOldDataByRetention(cleanFileNum, cleanOffset)
 	return nil
 }

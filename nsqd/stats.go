@@ -16,6 +16,7 @@ type TopicStats struct {
 	Channels       []ChannelStats   `json:"channels"`
 	Depth          int64            `json:"depth"`
 	BackendDepth   int64            `json:"backend_depth"`
+	BackendStart   int64            `json:"backend_start"`
 	MessageCount   uint64           `json:"message_count"`
 	IsLeader       bool             `json:"is_leader"`
 	HourlyPubSize  int64            `json:"hourly_pubsize"`
@@ -32,6 +33,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Channels:       channels,
 		Depth:          t.TotalDataSize(),
 		BackendDepth:   t.TotalDataSize(),
+		BackendStart:   t.GetQueueReadStart(),
 		MessageCount:   t.TotalMessageCnt(),
 		IsLeader:       !t.IsWriteDisabled(),
 		Clients:        t.GetPubStats(),

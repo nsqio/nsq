@@ -376,7 +376,6 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				continue
 			}
 
-			topic.SetAutoCommit(false)
 			self.checkLocalTopicMagicCode(topicInfo, topicInfo.Leader != self.myNode.GetID())
 
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
@@ -418,23 +417,30 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					self.localNsqd.DeleteExistingTopic(topicName, partition)
 				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
 					go self.requestJoinCatchup(topicName, partition)
+				} else {
+					self.localNsqd.CloseExistingTopic(topicName, partition)
 				}
 				continue
 			}
 
+			tc, err := self.getTopicCoord(topicInfo.Name, topicInfo.Partition)
+			if err != nil {
+				coordLog.Errorf("no coordinator for topic: %v", topicInfo.GetTopicDesp())
+				panic(err)
+			}
+			dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
+				AutoCommit:   0,
+				RetentionDay: topicInfo.RetentionDay,
+			}
+			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
 			// TODO: check the last commit log data logid is equal with the disk queue message
 			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
 			if topicInfo.Leader == self.myNode.GetID() {
 				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())
-				tc, err := self.getTopicCoord(topicInfo.Name, topicInfo.Partition)
+				tc.DisableWrite(true)
+				err := self.acquireTopicLeader(topicInfo)
 				if err != nil {
-					coordLog.Errorf("no coordinator for topic: %v", topicInfo.GetTopicDesp())
-				} else {
-					tc.DisableWrite(true)
-					err := self.acquireTopicLeader(topicInfo)
-					if err != nil {
-						coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
-					}
+					coordLog.Warningf("failed to acquire leader while start as leader: %v", err)
 				}
 			}
 			if FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 {
@@ -975,8 +981,11 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		coordLog.Errorf("local topic partition mismatch:%v vs %v", topicInfo.Partition, localTopic.GetTopicPart())
 		return ErrLocalTopicPartitionMismatch
 	}
-	localTopic.SetAutoCommit(false)
-	localTopic.SetMsgGenerator(logMgr)
+	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
+		AutoCommit:   0,
+		RetentionDay: topicInfo.RetentionDay,
+	}
+	localTopic.SetDynamicInfo(*dyConf, logMgr)
 	if offset > 0 || logIndex > 0 {
 		lastLog, localErr := logMgr.GetCommitLogFromOffsetV2(logIndex, offset)
 		if localErr != nil {
@@ -1389,8 +1398,11 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 		return ErrLocalMissingTopic
 	}
-	localTopic.SetAutoCommit(false)
-	localTopic.SetMsgGenerator(tcData.logMgr)
+	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(tcData.topicInfo.SyncEvery),
+		AutoCommit:   0,
+		RetentionDay: tcData.topicInfo.RetentionDay,
+	}
+	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, tcData.IsMineLeaderSessionReady(self.myNode.GetID()), false)
 
@@ -1568,8 +1580,11 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 	if localErr != nil {
 		return t, ErrLocalInitTopicFailed
 	}
-	t.SetAutoCommit(false)
-	t.SetMsgGenerator(logMgr)
+	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
+		AutoCommit:   0,
+		RetentionDay: topicInfo.RetentionDay,
+	}
+	t.SetDynamicInfo(*dyConf, logMgr)
 	return t, nil
 }
 
