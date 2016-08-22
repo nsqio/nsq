@@ -170,16 +170,29 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	return err
 }
 
-func (d *diskQueueWriter) CleanOldDataByRetention(cleanFileNum int64, cleanOffset BackendOffset) error {
+func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd) error {
+	if cleanEndInfo == nil {
+		return nil
+	}
 	d.Lock()
 	defer d.Unlock()
-	if cleanFileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
-		cleanFileNum = d.diskReadEnd.EndOffset.FileNum - 1
+	cleanDiskEnd, ok := cleanEndInfo.(*diskQueueEndInfo)
+	cleanOffset := cleanEndInfo.Offset()
+	if ok {
+		if cleanDiskEnd.EndOffset.FileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
+			cleanDiskEnd.EndOffset.FileNum = d.diskReadEnd.EndOffset.FileNum - 1
+		}
+	} else {
+		if cleanOffset >= d.diskReadEnd.Offset()-BackendOffset(d.diskReadEnd.EndOffset.Pos) {
+			cleanOffset = d.diskReadEnd.Offset() - BackendOffset(d.diskReadEnd.EndOffset.Pos)
+		}
 	}
-	if cleanOffset >= d.diskReadEnd.Offset()-BackendOffset(d.diskReadEnd.EndOffset.Pos) {
-		cleanOffset = d.diskReadEnd.Offset() - BackendOffset(d.diskReadEnd.EndOffset.Pos)
-	}
-	if cleanFileNum >= 0 {
+	cleanFileNum := int64(0)
+	if ok {
+		cleanFileNum = cleanDiskEnd.EndOffset.FileNum
+		if cleanFileNum <= 0 {
+			return nil
+		}
 		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(cleanFileNum - 1))
 		if err != nil {
 			nsqLog.LogWarningf("disk %v failed to get queue offset meta: %v", d.fileName(cleanFileNum), err)

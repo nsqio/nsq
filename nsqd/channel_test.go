@@ -71,9 +71,8 @@ func TestChannelBackendMaxMsgSize(t *testing.T) {
 
 	topicName := "test_channel_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopicIgnPart(topicName)
-	ch := topic.GetChannel("ch")
 
-	equal(t, ch.backend.(*diskQueueReader).maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
 func TestInFlightWorker(t *testing.T) {

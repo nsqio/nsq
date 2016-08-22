@@ -759,7 +759,6 @@ func (t *Topic) IsWriteDisabled() bool {
 }
 
 func (t *Topic) DisableForSlave() {
-	// TODO : log the last logid and message offset
 	atomic.StoreInt32(&t.writeDisabled, 1)
 	nsqLog.Logf("[TRACE_DATA] while disable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
@@ -780,8 +779,6 @@ func (t *Topic) DisableForSlave() {
 }
 
 func (t *Topic) EnableForMaster() {
-	// TODO : log the last logid and message offset
-	// TODO : log the first logid and message offset after enable master
 	nsqLog.Logf("[TRACE_DATA] while enable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
@@ -973,13 +970,12 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
 		return err
 	}
-	readNum := snapReader.GetQueueCurrentReadFile().FileNum
+	readInfo := snapReader.GetQueueCurrentReadInfo()
 	data := snapReader.ReadOne()
 	if data.Err != nil {
 		return data.Err
 	}
-	cleanOffset := BackendOffset(0)
-	cleanFileNum := int64(0)
+	var cleanEndInfo BackendQueueEnd
 	t.Lock()
 	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(t.dynamicConf.RetentionDay))
 	t.Unlock()
@@ -990,8 +986,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 			if data.Offset > oldestPos.Offset()-BackendOffset(retentionSize) {
 				break
 			}
-			cleanOffset = data.Offset
-			cleanFileNum = readNum
+			cleanEndInfo = readInfo
 		} else {
 			msg, err := decodeMessage(data.Data)
 			if err != nil {
@@ -1000,8 +995,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 				if msg.Timestamp >= cleanTime.UnixNano() {
 					break
 				}
-				cleanOffset = data.Offset
-				cleanFileNum = readNum
+				cleanEndInfo = readInfo
 			}
 		}
 		err = snapReader.SkipToNext()
@@ -1009,7 +1003,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 			nsqLog.LogWarningf("failed to skip - %s ", err)
 			break
 		}
-		readNum = snapReader.GetQueueCurrentReadFile().FileNum
+		readInfo = snapReader.GetQueueCurrentReadInfo()
 		data = snapReader.ReadOne()
 		if data.Err != nil {
 			nsqLog.LogErrorf("failed to read - %s ", data.Err)
@@ -1017,13 +1011,13 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 		}
 	}
 
-	nsqLog.Warningf("clean topic %v data from %v:%v under retention %v, %v",
-		t.GetFullName(), cleanFileNum, cleanOffset, cleanTime, retentionSize)
-	if cleanOffset >= oldestPos.Offset() {
+	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
+		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
+	if cleanEndInfo == nil || cleanEndInfo.Offset() >= oldestPos.Offset() {
 		nsqLog.Warningf("clean topic %v data could not exceed current oldest confirmed %v",
 			t.GetFullName(), oldestPos)
 		return nil
 	}
-	t.backend.CleanOldDataByRetention(cleanFileNum, cleanOffset)
+	t.backend.CleanOldDataByRetention(cleanEndInfo)
 	return nil
 }

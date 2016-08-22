@@ -455,7 +455,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 		nsqLog.LogWarningf("channel (%v) the count is not valid: %v:%v. (This may happen while upgrade from old)", c.GetName(), offset, cnt)
 		return nil
 	}
-	// TODO: confirm on slave may exceed the current end, because the buffered write
+	// confirm on slave may exceed the current end, because the buffered write
 	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()

@@ -101,11 +101,11 @@ func (d *DiskQueueSnapshot) exit() error {
 	return nil
 }
 
-func (d *DiskQueueSnapshot) GetQueueCurrentReadFile() diskQueueOffset {
+func (d *DiskQueueSnapshot) GetQueueCurrentReadInfo() BackendQueueEnd {
 	d.Lock()
 	cur := d.readPos
 	d.Unlock()
-	return cur.EndOffset
+	return &cur
 }
 
 func (d *DiskQueueSnapshot) stepOffset(cur diskQueueOffset, step int64, maxStep diskQueueOffset) (diskQueueOffset, error) {

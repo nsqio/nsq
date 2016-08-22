@@ -84,7 +84,6 @@ type diskQueueReader struct {
 	dataPath        string
 	maxBytesPerFile int64 // currently this cannot change once created
 	minMsgSize      int32
-	maxMsgSize      int32
 	syncEvery       int64 // number of writes per fsync
 	exitFlag        int32
 	needSync        bool
@@ -110,7 +109,6 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 		dataPath:        dataPath,
 		maxBytesPerFile: maxBytesPerFile,
 		minMsgSize:      minMsgSize,
-		maxMsgSize:      maxMsgSize,
 		exitChan:        make(chan int),
 		syncEvery:       syncEvery,
 		autoSkipError:   autoSkip,
@@ -992,7 +990,6 @@ func (d *diskQueueReader) checkTailCorruption() {
 
 func (d *diskQueueReader) handleReadError() {
 	// should not change the bad file, just log it.
-	// TODO: maybe we can try to find next message position from index log to avoid skip the whole file.
 	err := d.skipToNextFile()
 	if err != nil {
 		return
