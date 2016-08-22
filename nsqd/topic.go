@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	MAX_TOPIC_PARTITION = 1023
+	MAX_TOPIC_PARTITION    = 1023
+	DEFAULT_RETENTION_DAYS = 7
 )
 
 var (
@@ -977,7 +978,11 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	}
 	var cleanEndInfo BackendQueueEnd
 	t.Lock()
-	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(t.dynamicConf.RetentionDay))
+	retentionDay := atomic.LoadInt32(&t.dynamicConf.RetentionDay)
+	if retentionDay == 0 {
+		retentionDay = DEFAULT_RETENTION_DAYS
+	}
+	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(retentionDay))
 	t.Unlock()
 	for {
 		if retentionSize > 0 {
