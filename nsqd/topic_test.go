@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	//"runtime"
+	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"path"
 	"path/filepath"
@@ -425,6 +427,114 @@ func TestTopicCleanOldDataByRetentionDay(t *testing.T) {
 		_, err = os.Stat(startFileName)
 		test.NotNil(t, err)
 		test.Equal(t, true, os.IsNotExist(err))
+	}
+}
+
+func TestTopicResetWithQueueStart(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	if testing.Verbose() {
+		opts.Logger = &levellogger.GLogger{}
+		opts.LogLevel = 3
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
+	}
+	opts.MaxBytesPerFile = 1024 * 1024
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.dynamicConf.AutoCommit = 1
+	topic.dynamicConf.SyncEvery = 10
+
+	msgNum := 5000
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, make([]byte, 1000))
+	msg.Timestamp = time.Now().Add(-1 * time.Hour * time.Duration(24*4)).UnixNano()
+	msgSize := int32(0)
+	var dend BackendQueueEnd
+	for i := 0; i <= msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
+	}
+	topic.ForceFlush()
+
+	fileNum := topic.backend.diskWriteEnd.EndOffset.FileNum
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+
+	test.Equal(t, true, fileNum >= 4)
+	nsqLog.Warningf("reading the topic %v backend ", topic.GetFullName())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+
+	topic.dynamicConf.RetentionDay = 2
+
+	oldEnd := topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	// reset with new start
+	resetStart := &diskQueueEndInfo{}
+	resetStart.virtualEnd = topic.backend.GetQueueWriteEnd().Offset() + BackendOffset(msgSize*10)
+	resetStart.totalMsgCnt = topic.backend.GetQueueWriteEnd().TotalMsgCnt() + 10
+	err := topic.ResetBackendWithQueueStartNoLock(resetStart)
+	test.NotNil(t, err)
+	topic.DisableForSlave()
+	err = topic.ResetBackendWithQueueStartNoLock(resetStart)
+	test.Nil(t, err)
+	topic.EnableForMaster()
+
+	nsqLog.Warningf("reset the topic %v backend with queue start: %v", topic.GetFullName(), resetStart)
+	test.Equal(t, resetStart.Offset(), BackendOffset(topic.GetQueueReadStart()))
+	newEnd := topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.Offset(), newEnd.Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), newEnd.TotalMsgCnt())
+	test.Equal(t, true, newEnd.EndOffset.GreatThan(&oldEnd.EndOffset))
+	test.Equal(t, int64(0), newEnd.EndOffset.Pos)
+	test.Equal(t, resetStart.Offset(), channel.GetConfirmed().Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), channel.GetChannelEnd().TotalMsgCnt())
+
+	for i := 0; i < msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, _, _ = topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.TotalMsgCnt()+int64(msgNum), newEnd.TotalMsgCnt())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
+	}
+
+	// reset with old start
+	topic.DisableForSlave()
+	err = topic.ResetBackendWithQueueStartNoLock(resetStart)
+	test.Nil(t, err)
+
+	topic.EnableForMaster()
+	test.Equal(t, resetStart.Offset(), BackendOffset(topic.GetQueueReadStart()))
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.Offset(), newEnd.Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), newEnd.TotalMsgCnt())
+	test.Equal(t, true, newEnd.EndOffset.GreatThan(&oldEnd.EndOffset))
+	test.Equal(t, int64(0), newEnd.EndOffset.Pos)
+	test.Equal(t, resetStart.Offset(), channel.GetConfirmed().Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), channel.GetChannelEnd().TotalMsgCnt())
+	for i := 0; i < msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
+	}
+	topic.ForceFlush()
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.TotalMsgCnt()+int64(msgNum), newEnd.TotalMsgCnt())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
 	}
 }
 

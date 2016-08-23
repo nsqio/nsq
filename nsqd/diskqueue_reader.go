@@ -1015,11 +1015,7 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 		return false, nil
 	}
 	d.needSync = true
-	if d.readQueueInfo.EndOffset.FileNum > endPos.EndOffset.FileNum {
-		nsqLog.Logf("new end old than the read end: %v, %v", d.readQueueInfo.EndOffset, endPos)
-		d.readQueueInfo = *endPos
-	}
-	if (d.readQueueInfo.EndOffset.FileNum == endPos.EndOffset.FileNum) && (d.readQueueInfo.EndOffset.Pos > endPos.EndOffset.Pos) {
+	if d.readQueueInfo.EndOffset.GreatThan(&endPos.EndOffset) {
 		nsqLog.Logf("new end old than the read end: %v, %v", d.readQueueInfo.EndOffset, endPos)
 		d.readQueueInfo = *endPos
 	}

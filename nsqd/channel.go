@@ -472,22 +472,26 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 			d, ok := c.backend.(*diskQueueReader)
 			if ok {
 				newConfirmed, err = d.ResetReadToOffset(offset, cnt)
-				if err != nil {
-					if err != ErrExiting {
-						nsqLog.Logf("reset read failed: %v, offset: %v", err, offset)
-					}
-				}
 				nsqLog.LogDebugf("channel (%v) reset to backward: %v", c.GetName(), newConfirmed)
 			}
 		}
 	} else {
-		_, err = c.backend.SkipReadToOffset(offset, cnt)
-		if err != nil {
-			if err != ErrExiting {
-				nsqLog.Logf("confirm read failed: %v, offset: %v", err, offset)
+		if allowBackward {
+			d, ok := c.backend.(*diskQueueReader)
+			if ok {
+				newConfirmed, err = d.ResetReadToOffset(offset, cnt)
+				nsqLog.LogDebugf("channel (%v) reset to backward: %v", c.GetName(), newConfirmed)
 			}
+		} else {
+			_, err = c.backend.SkipReadToOffset(offset, cnt)
 		}
 	}
+	if err != nil {
+		if err != ErrExiting {
+			nsqLog.Logf("confirm read failed: %v, offset: %v", err, offset)
+		}
+	}
+
 	return err
 }
 

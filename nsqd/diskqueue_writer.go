@@ -170,6 +170,25 @@ func (d *diskQueueWriter) ResetWriteEnd(offset BackendOffset, totalCnt int64) er
 	return err
 }
 
+func (d *diskQueueWriter) ResetWriteWithQueueStart(queueStart BackendQueueEnd) error {
+	d.Lock()
+	defer d.Unlock()
+	nsqLog.Warningf("DISKQUEUE %v reset the queue start from %v:%v to new queue start: %v", d.name,
+		d.diskQueueStart, d.diskWriteEnd, queueStart)
+	d.cleanOldData()
+
+	d.diskWriteEnd.EndOffset.FileNum++
+	d.diskWriteEnd.EndOffset.Pos = 0
+	d.diskQueueStart = d.diskWriteEnd
+	d.diskQueueStart.virtualEnd = queueStart.Offset()
+	d.diskQueueStart.totalMsgCnt = queueStart.TotalMsgCnt()
+	d.diskWriteEnd = d.diskQueueStart
+	d.diskReadEnd = d.diskWriteEnd
+	nsqLog.Warningf("DISKQUEUE %v new queue start : %v:%v", d.name,
+		d.diskQueueStart, d.diskWriteEnd)
+	return nil
+}
+
 func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd) error {
 	if cleanEndInfo == nil {
 		return nil

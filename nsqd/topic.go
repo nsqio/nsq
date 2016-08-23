@@ -22,8 +22,9 @@ const (
 )
 
 var (
-	ErrInvalidMessageID    = errors.New("message id is invalid")
-	ErrWriteOffsetMismatch = errors.New("write offset mismatch")
+	ErrInvalidMessageID      = errors.New("message id is invalid")
+	ErrWriteOffsetMismatch   = errors.New("write offset mismatch")
+	ErrOperationInvalidState = errors.New("the operation is not allowed under current state")
 )
 
 func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
@@ -1024,5 +1025,30 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 		return nil
 	}
 	t.backend.CleanOldDataByRetention(cleanEndInfo)
+	return nil
+}
+
+func (t *Topic) ResetBackendWithQueueStartNoLock(queueStart BackendQueueEnd) error {
+	if queueStart == nil {
+		return errors.New("queue end info is nil")
+	}
+	if !t.IsWriteDisabled() {
+		return ErrOperationInvalidState
+	}
+	nsqLog.Warningf("reset the topic %v backend with queue start: %v", t.GetFullName(), queueStart)
+	err := t.backend.ResetWriteWithQueueStart(queueStart)
+	if err != nil {
+		return err
+	}
+	newEnd := t.backend.GetQueueReadEnd()
+	t.UpdateCommittedOffset(newEnd)
+
+	t.channelLock.Lock()
+	for _, ch := range t.channelMap {
+		nsqLog.Infof("channel stats: %v", ch.GetChannelDebugStats())
+		ch.UpdateQueueEnd(newEnd, true)
+		ch.ConfirmBackendQueueOnSlave(newEnd.Offset(), newEnd.TotalMsgCnt(), true)
+	}
+	t.channelLock.Unlock()
 	return nil
 }
