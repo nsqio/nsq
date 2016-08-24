@@ -165,6 +165,8 @@ func TestCommitLogTruncate(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64(0), logMgr.pLogID)
 	test.Nil(t, prevLog)
+
+	// TODO: test truncate to less than queue start
 }
 
 func TestCommitLogForBatchWrite(t *testing.T) {
@@ -602,8 +604,8 @@ func TestCommitLogCleanOld(t *testing.T) {
 			test.NotNil(t, err)
 			test.Equal(t, true, os.IsNotExist(err))
 		}
-		test.Equal(t, i, logMgr.logStartInfo.segmentStartIndex)
-		test.Equal(t, i*int64(LOGROTATE_NUM), logMgr.logStartInfo.segmentStartCount)
+		test.Equal(t, i, logMgr.logStartInfo.SegmentStartIndex)
+		test.Equal(t, i*int64(LOGROTATE_NUM), logMgr.logStartInfo.SegmentStartCount)
 		for j := int64(0); j < currentStart-1; j++ {
 			for k := 0; k < LOGROTATE_NUM; k++ {
 				if j < i {
@@ -676,28 +678,28 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	logMgr.FlushCommitLogs()
 
 	var newStart LogStartInfo
-	newStart.segmentStartIndex = currentStart * 2
-	newStart.segmentStartCount = int64(num * 2)
+	newStart.SegmentStartIndex = currentStart * 2
+	newStart.SegmentStartCount = int64(num * 2)
 	// reset with new start
 	err = logMgr.ResetLogWithStart(newStart)
 	test.Nil(t, err)
 
 	test.Equal(t, newStart, *logMgr.GetLogStartInfo())
-	test.Equal(t, newStart.segmentStartIndex, logMgr.GetCurrentStart())
+	test.Equal(t, newStart.SegmentStartIndex, logMgr.GetCurrentStart())
 	fileNum, offset := logMgr.GetCurrentEnd()
-	test.Equal(t, newStart.segmentStartIndex, fileNum)
+	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
-	logs, err := logMgr.GetCommitLogsV2(newStart.segmentStartIndex, 0, 1)
+	logs, err := logMgr.GetCommitLogsV2(newStart.SegmentStartIndex, 0, 1)
 	test.NotNil(t, err)
 	test.Equal(t, ErrCommitLogEOF, err)
 	test.Equal(t, 0, len(logs))
-	_, err = logMgr.GetCommitLogFromOffsetV2(newStart.segmentStartIndex, 0)
+	_, err = logMgr.GetCommitLogFromOffsetV2(newStart.SegmentStartIndex, 0)
 	test.NotNil(t, err)
 	test.Equal(t, ErrCommitLogEOF, err)
 
 	fileNum, offset, _, err = logMgr.GetLastCommitLogOffsetV2()
 	test.Equal(t, ErrCommitLogEOF, err)
-	test.Equal(t, newStart.segmentStartIndex, fileNum)
+	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
 
 	for i := 0; i < num; i++ {
@@ -715,9 +717,9 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
 	test.Equal(t, currentStart, logMgr.GetCurrentStart())
-	test.Equal(t, newStart.segmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
+	test.Equal(t, newStart.SegmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
 	cntIndex, _ := logMgr.ConvertToCountIndex(currentStart, lastOffset)
-	test.Equal(t, newStart.segmentStartCount+int64(num-1), cntIndex)
+	test.Equal(t, newStart.SegmentStartCount+int64(num-1), cntIndex)
 
 	logMgr.FlushCommitLogs()
 	// reset with old start
@@ -725,21 +727,21 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Nil(t, err)
 
 	test.Equal(t, newStart, *logMgr.GetLogStartInfo())
-	test.Equal(t, newStart.segmentStartIndex, logMgr.GetCurrentStart())
+	test.Equal(t, newStart.SegmentStartIndex, logMgr.GetCurrentStart())
 	fileNum, offset = logMgr.GetCurrentEnd()
-	test.Equal(t, newStart.segmentStartIndex, fileNum)
+	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
-	logs, err = logMgr.GetCommitLogsV2(newStart.segmentStartIndex, 0, 1)
+	logs, err = logMgr.GetCommitLogsV2(newStart.SegmentStartIndex, 0, 1)
 	test.NotNil(t, err)
 	test.Equal(t, ErrCommitLogEOF, err)
 	test.Equal(t, 0, len(logs))
-	_, err = logMgr.GetCommitLogFromOffsetV2(newStart.segmentStartIndex, 0)
+	_, err = logMgr.GetCommitLogFromOffsetV2(newStart.SegmentStartIndex, 0)
 	test.NotNil(t, err)
 	test.Equal(t, ErrCommitLogEOF, err)
 
 	fileNum, offset, _, err = logMgr.GetLastCommitLogOffsetV2()
 	test.Equal(t, ErrCommitLogEOF, err)
-	test.Equal(t, newStart.segmentStartIndex, fileNum)
+	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
 
 	for i := 0; i < num; i++ {
@@ -757,7 +759,7 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
 	test.Equal(t, currentStart, logMgr.GetCurrentStart())
-	test.Equal(t, newStart.segmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
+	test.Equal(t, newStart.SegmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
 	cntIndex, _ = logMgr.ConvertToCountIndex(currentStart, lastOffset)
-	test.Equal(t, newStart.segmentStartCount+int64(num-1), cntIndex)
+	test.Equal(t, newStart.SegmentStartCount+int64(num-1), cntIndex)
 }
