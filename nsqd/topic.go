@@ -1028,13 +1028,17 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	return nil
 }
 
-func (t *Topic) ResetBackendWithQueueStartNoLock(queueStart BackendQueueEnd) error {
-	if queueStart == nil {
-		return errors.New("queue end info is nil")
-	}
+func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueStartCnt int64) error {
 	if !t.IsWriteDisabled() {
+		nsqLog.Warningf("reset the topic %v backend only allow while write disabled", t.GetFullName())
 		return ErrOperationInvalidState
 	}
+	if queueStartOffset < 0 || queueStartCnt < 0 {
+		return errors.New("queue start should not less than 0")
+	}
+	queueStart := t.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	queueStart.virtualEnd = BackendOffset(queueStartOffset)
+	queueStart.totalMsgCnt = queueStartCnt
 	nsqLog.Warningf("reset the topic %v backend with queue start: %v", t.GetFullName(), queueStart)
 	err := t.backend.ResetWriteWithQueueStart(queueStart)
 	if err != nil {

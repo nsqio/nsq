@@ -420,6 +420,10 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 
 }
 
+func TestDiskQueueWriterRollbackToQueueStart(t *testing.T) {
+	//TODO:
+}
+
 func TestDiskQueueWriterTorture(t *testing.T) {
 	var wg sync.WaitGroup
 
