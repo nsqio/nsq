@@ -456,11 +456,20 @@ func (self *TopicCommitLogMgr) ResetLogWithStart(newStart LogStartInfo) error {
 	return self.saveLogSegStartInfo()
 }
 
-func (self *TopicCommitLogMgr) GetLogStartInfo() *LogStartInfo {
+func (self *TopicCommitLogMgr) GetLogStartInfo() (*LogStartInfo, *CommitLogData, error) {
 	self.Lock()
+	defer self.Unlock()
 	logStart := self.logStartInfo
-	self.Unlock()
-	return &logStart
+	f, err := getCommitLogFile(self.path, logStart.SegmentStartIndex, false)
+	if err != nil {
+		if logStart.SegmentStartIndex == self.currentStart && os.IsNotExist(err) {
+			return &logStart, nil, ErrCommitLogEOF
+		}
+		return &logStart, nil, err
+	}
+	defer f.Close()
+	l, err := getCommitLogFromFile(f, logStart.SegmentStartOffset)
+	return &logStart, l, err
 }
 
 func (self *TopicCommitLogMgr) GetCurrentStart() int64 {
@@ -609,7 +618,7 @@ func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, e
 func (self *TopicCommitLogMgr) ConvertToCountIndex(start int64, offset int64) (int64, error) {
 	self.Lock()
 	defer self.Unlock()
-	if start > self.currentStart || start < 0 {
+	if start > self.currentStart {
 		return 0, ErrCommitLogOutofBound
 	}
 	if offset%int64(GetLogDataSize()) != 0 {
@@ -638,30 +647,31 @@ func (self *TopicCommitLogMgr) ConvertToOffsetIndex(countIndex int64) (int64, in
 	if countIndex < self.logStartInfo.SegmentStartCount {
 		return 0, 0, ErrCommitLogLessThanSegmentStart
 	}
-	index := self.logStartInfo.SegmentStartIndex
+	segIndex := self.logStartInfo.SegmentStartIndex
 	offset := int64(0)
 	countIndex -= self.logStartInfo.SegmentStartCount
-	for countIndex > 0 && index < self.currentStart {
-		cnt, err := getCommitLogCountFromFile(self.path, index)
+	for countIndex > 0 && segIndex < self.currentStart {
+		cnt, err := getCommitLogCountFromFile(self.path, segIndex)
 		if err != nil {
-			coordLog.Warningf("get count from segment %v failed: %v", index, err)
+			coordLog.Warningf("get count from segment %v failed: %v", segIndex, err)
 			return 0, 0, err
 		}
 		if countIndex < cnt {
 			offset = countIndex * int64(GetLogDataSize())
-			return index, offset, nil
+			return segIndex, offset, nil
 		}
 		countIndex -= cnt
-		index++
+		segIndex++
 	}
-	if index == self.currentStart && countIndex > 0 {
+	if segIndex == self.currentStart && countIndex > 0 {
 		if countIndex > int64(self.currentCount) {
+			coordLog.Warningf("count out of bound: %v, %v:%v", countIndex, self.currentStart, self.currentCount)
 			return 0, 0, ErrCommitLogOutofBound
 		}
 		self.flushCommitLogsNoLock()
 		offset = countIndex * int64(GetLogDataSize())
 	}
-	return index, offset, nil
+	return segIndex, offset, nil
 }
 
 func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
@@ -670,7 +680,7 @@ func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int6
 	if start == self.currentStart {
 		self.flushCommitLogsNoLock()
 		return getCommitLogFromFile(self.appender, offset)
-	} else if start > self.currentStart || start < 0 {
+	} else if start > self.currentStart {
 		return nil, ErrCommitLogOutofBound
 	} else if start < self.logStartInfo.SegmentStartIndex {
 		return nil, ErrCommitLogLessThanSegmentStart
@@ -691,7 +701,7 @@ func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64
 		self.flushCommitLogsNoLock()
 		l, readOffset, err := getLastCommitLogDataFromFile(self.appender)
 		return readOffset, l, err
-	} else if index > self.currentStart || index < 0 {
+	} else if index > self.currentStart {
 		return 0, nil, ErrCommitLogOutofBound
 	} else if index < self.logStartInfo.SegmentStartIndex {
 		return 0, nil, ErrCommitLogLessThanSegmentStart

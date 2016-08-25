@@ -28,6 +28,7 @@ const (
 	RpcErrCommitLogIDDup
 	RpcErrCommitLogEOF
 	RpcErrCommitLogOutofBound
+	RpcErrCommitLogLessThanSegmentStart
 	RpcErrMissingTopicLeaderSession
 	RpcErrLeaderSessionMismatch
 	RpcErrWriteDisabled
@@ -544,27 +545,42 @@ type RpcPutMessage struct {
 
 type RpcCommitLogReq struct {
 	RpcTopicData
-	LogOffset     int64
-	LogStartIndex int64
+	LogOffset        int64
+	LogStartIndex    int64
+	LogCountNumIndex int64
+	UseCountIndex    bool
 }
 
 type RpcCommitLogRsp struct {
-	LogStartIndex int64
-	LogOffset     int64
-	LogData       CommitLogData
-	ErrInfo       CoordErr
+	LogStartIndex    int64
+	LogOffset        int64
+	LogData          CommitLogData
+	ErrInfo          CoordErr
+	LogCountNumIndex int64
+	UseCountIndex    bool
 }
 
 type RpcPullCommitLogsReq struct {
 	RpcTopicData
-	StartLogOffset int64
-	LogMaxNum      int
-	StartIndexCnt  int64
+	StartLogOffset   int64
+	LogMaxNum        int
+	StartIndexCnt    int64
+	LogCountNumIndex int64
+	UseCountIndex    bool
 }
 
 type RpcPullCommitLogsRsp struct {
 	Logs     []CommitLogData
 	DataList [][]byte
+}
+
+type RpcGetFullSyncInfoReq struct {
+	RpcTopicData
+}
+
+type RpcGetFullSyncInfoRsp struct {
+	FirstLogData CommitLogData
+	StartInfo    LogStartInfo
 }
 
 type RpcTestReq struct {
@@ -702,6 +718,32 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req *RpcCommitLogReq) (int64,
 	return ret, nil
 }
 
+func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, ret *RpcCommitLogRsp) {
+	var err2 error
+	var logData *CommitLogData
+	ret.LogStartIndex, ret.LogOffset, logData, err2 = logMgr.GetLastCommitLogOffsetV2()
+	if err2 != nil {
+		if err2 == ErrCommitLogEOF {
+			ret.ErrInfo = *ErrTopicCommitLogEOF
+		} else {
+			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+		}
+		return
+	}
+	ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
+	ret.UseCountIndex = true
+	ret.LogData = *logData
+	if err == ErrCommitLogOutofBound {
+		ret.ErrInfo = *ErrTopicCommitLogOutofBound
+	} else if err == ErrCommitLogEOF {
+		ret.ErrInfo = *ErrTopicCommitLogEOF
+	} else if err == ErrCommitLogLessThanSegmentStart {
+		ret.ErrInfo = *ErrTopicCommitLogLessThanSegmentStart
+	} else {
+		ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+	}
+}
+
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
 func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *RpcCommitLogRsp {
@@ -711,31 +753,27 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *Rp
 		ret.ErrInfo = *coorderr
 		return &ret
 	}
-	logData, err := tcData.logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
-	if err != nil {
-		var err2 error
-		ret.LogStartIndex, ret.LogOffset, logData, err2 = tcData.logMgr.GetLastCommitLogOffsetV2()
-		if err2 != nil {
-			if err2 == ErrCommitLogEOF {
-				ret.ErrInfo = *ErrTopicCommitLogEOF
-			} else {
-				ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
-			}
+	var err error
+	if req.UseCountIndex {
+		newFileNum, newOffset, err := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
+		if err != nil {
+			coordLog.Warningf("failed to convert to offset index: %v, err:%v", req.LogCountNumIndex, err)
+			handleCommitLogError(err, tcData.logMgr, &ret)
 			return &ret
 		}
-		ret.LogData = *logData
-		if err == ErrCommitLogOutofBound {
-			ret.ErrInfo = *ErrTopicCommitLogOutofBound
-		} else if err == ErrCommitLogEOF {
-			ret.ErrInfo = *ErrTopicCommitLogEOF
-		} else {
-			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
-		}
+		req.LogStartIndex = newFileNum
+		req.LogOffset = newOffset
+	}
+
+	logData, err := tcData.logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
+	if err != nil {
+		handleCommitLogError(err, tcData.logMgr, &ret)
 		return &ret
 	} else {
 		ret.LogStartIndex = req.LogStartIndex
 		ret.LogOffset = req.LogOffset
 		ret.LogData = *logData
+		ret.LogCountNumIndex, _ = tcData.logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
 	}
 	return &ret
 }
@@ -748,6 +786,17 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	}
 
 	var localErr error
+	if req.UseCountIndex {
+		newFileNum, newOffset, localErr := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
+		if localErr != nil {
+			coordLog.Warningf("failed to convert to offset index: %v, err:%v", req.LogCountNumIndex, localErr)
+			if localErr != ErrCommitLogEOF {
+				return nil, localErr
+			}
+		}
+		req.StartIndexCnt = newFileNum
+		req.StartLogOffset = newOffset
+	}
 	ret.Logs, localErr = tcData.logMgr.GetCommitLogsV2(req.StartIndexCnt, req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
 		if localErr != ErrCommitLogEOF {
@@ -774,6 +823,28 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	ret.Logs = ret.Logs[:len(ret.DataList)]
 	if err != nil {
 		return nil, err.ToErrorType()
+	}
+	return &ret, nil
+}
+
+func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*RpcGetFullSyncInfoRsp, error) {
+	var ret RpcGetFullSyncInfoRsp
+	tcData, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
+	if err != nil {
+		return nil, err.ToErrorType()
+	}
+
+	var localErr error
+	startInfo, firstLog, localErr := tcData.logMgr.GetLogStartInfo()
+	if localErr != nil {
+		if localErr != ErrCommitLogEOF {
+			return nil, localErr
+		}
+	}
+
+	ret.StartInfo = *startInfo
+	if firstLog != nil {
+		ret.FirstLogData = *firstLog
 	}
 	return &ret, nil
 }

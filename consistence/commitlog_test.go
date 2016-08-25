@@ -41,7 +41,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -54,10 +54,19 @@ func TestCommitLogWrite(t *testing.T) {
 	cntIndex, err = logMgr.ConvertToCountIndex(startIndex, lastOffset)
 	test.Nil(t, err)
 	test.Equal(t, int64(num-1), cntIndex)
+
 	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
 	test.Nil(t, err)
 	test.Equal(t, startIndex, convertedIndex)
 	test.Equal(t, lastOffset, convertedOffset)
+	cntIndex, err = logMgr.ConvertToCountIndex(startIndex, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, int64(num), cntIndex)
+	convertedIndex, convertedOffset, err = logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, startIndex, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
+
 	lastLog, err := logMgr.GetCommitLogFromOffsetV2(startIndex, lastOffset)
 	test.Nil(t, err)
 	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
@@ -93,7 +102,7 @@ func TestCommitLogWrite(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -145,7 +154,7 @@ func TestCommitLogTruncate(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -160,7 +169,7 @@ func TestCommitLogTruncate(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, truncateId, logMgr.pLogID)
 	test.Equal(t, truncateId, prevLog.LogID)
-	test.Equal(t, int64(truncateAtCnt-1), prevLog.MsgCnt)
+	test.Equal(t, int64(truncateAtCnt), prevLog.MsgCnt)
 	prevLog, err = logMgr.TruncateToOffsetV2(0, 0)
 	test.Nil(t, err)
 	test.Equal(t, int64(0), logMgr.pLogID)
@@ -207,6 +216,15 @@ func TestCommitLogForBatchWrite(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
 	test.Equal(t, lastLog.MsgNum, int32(batchNum))
+
+	cntIndex, err := logMgr.ConvertToCountIndex(lastIndex, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, int64(1), cntIndex)
+	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, lastIndex, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
+
 }
 
 func TestCommitLogTruncateMultiSegments(t *testing.T) {
@@ -232,7 +250,7 @@ func TestCommitLogTruncateMultiSegments(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -247,7 +265,7 @@ func TestCommitLogTruncateMultiSegments(t *testing.T) {
 	test.Equal(t, currentLogIndex, endIndex)
 	test.Equal(t, prevLog.LogID, logMgr.pLogID)
 	test.Equal(t, int64(num-LOGROTATE_NUM+1), prevLog.LogID)
-	test.Equal(t, int64(num-LOGROTATE_NUM-1), prevLog.MsgCnt)
+	test.Equal(t, int64(num-LOGROTATE_NUM), prevLog.MsgCnt)
 	currentLogIndex = logMgr.GetCurrentStart()
 	prevLog, err = logMgr.TruncateToOffsetV2(currentLogIndex-1, int64(LOGROTATE_NUM)*int64(GetLogDataSize()))
 	test.Nil(t, err)
@@ -257,7 +275,7 @@ func TestCommitLogTruncateMultiSegments(t *testing.T) {
 	test.Equal(t, currentLogIndex-1, endIndex)
 	test.Equal(t, prevLog.LogID, logMgr.pLogID)
 	test.Equal(t, int64(num-LOGROTATE_NUM+1), prevLog.LogID)
-	test.Equal(t, int64(num-LOGROTATE_NUM-1), prevLog.MsgCnt)
+	test.Equal(t, int64(num-LOGROTATE_NUM), prevLog.MsgCnt)
 
 	currentLogIndex = logMgr.GetCurrentStart()
 	prevLog, err = logMgr.TruncateToOffsetV2(currentLogIndex-1, int64(GetLogDataSize()))
@@ -269,7 +287,7 @@ func TestCommitLogTruncateMultiSegments(t *testing.T) {
 	test.Equal(t, currentLogIndex-1, endIndex)
 	test.Equal(t, prevLog.LogID, logMgr.pLogID)
 	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount+1), prevLog.LogID)
-	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount-1), prevLog.MsgCnt)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount), prevLog.MsgCnt)
 	logs, err := logMgr.GetCommitLogsV2(logMgr.currentStart, 0, 1)
 	test.Nil(t, err)
 	test.Equal(t, len(logs), 1)
@@ -287,7 +305,7 @@ func TestCommitLogTruncateMultiSegments(t *testing.T) {
 	test.Equal(t, currentLogIndex-1, endIndex)
 	test.Equal(t, prevLog.LogID, logMgr.pLogID)
 	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount+1), prevLog.LogID)
-	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount-1), prevLog.MsgCnt)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount), prevLog.MsgCnt)
 
 }
 
@@ -323,7 +341,7 @@ func TestCommitLogRotate(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -335,14 +353,14 @@ func TestCommitLogRotate(t *testing.T) {
 		test.Equal(t, nil, err)
 		test.Equal(t, int64(i/LOGROTATE_NUM), logIndex)
 		test.Equal(t, int64(logMgr.currentCount-1)*int64(GetLogDataSize()), logOffset)
-		test.Equal(t, int64(i), lastLogData.MsgCnt)
+		test.Equal(t, int64(i+1), lastLogData.MsgCnt)
 
 		cntIndex, err := logMgr.ConvertToCountIndex(logMgr.GetCurrentStart(), logOffset)
 		test.Nil(t, err)
 		test.Equal(t, int64(i), cntIndex)
 		convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
 		test.Nil(t, err)
-		test.Equal(t, logIndex, convertedIndex)
+		test.Equal(t, logMgr.GetCurrentStart(), convertedIndex)
 		test.Equal(t, logOffset, convertedOffset)
 
 	}
@@ -350,6 +368,14 @@ func TestCommitLogRotate(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
 	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+
+	cntIndex, err := logMgr.ConvertToCountIndex(currentStart, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, int64(num), cntIndex)
+	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, currentStart, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
 
 	lastLog, err := logMgr.GetCommitLogFromOffsetV2(currentStart, lastOffset)
 	test.Nil(t, err)
@@ -387,13 +413,13 @@ func TestCommitLogRotate(t *testing.T) {
 		l, err := logMgr.GetCommitLogFromOffsetV2(logMgr.currentStart, int64(cnt*GetLogDataSize()))
 		test.Nil(t, err)
 		test.Equal(t, l.LogID, logMgr.currentStart*int64(LOGROTATE_NUM)+int64(cnt)+2)
-		test.Equal(t, l.MsgCnt, logMgr.currentStart*int64(LOGROTATE_NUM)+int64(cnt))
+		test.Equal(t, l.MsgCnt, logMgr.currentStart*int64(LOGROTATE_NUM)+int64(cnt+1))
 	}
 	for i := int64(0); i < logMgr.currentStart; i++ {
 		for cnt := 0; cnt < LOGROTATE_NUM; cnt++ {
 			l, err := logMgr.GetCommitLogFromOffsetV2(i, int64(cnt*GetLogDataSize()))
 			test.Nil(t, err)
-			test.Equal(t, i*int64(LOGROTATE_NUM)+int64(cnt), l.MsgCnt)
+			test.Equal(t, i*int64(LOGROTATE_NUM)+int64(cnt+1), l.MsgCnt)
 
 			cntIndex, err := logMgr.ConvertToCountIndex(i, int64(cnt*GetLogDataSize()))
 			test.Nil(t, err)
@@ -577,7 +603,7 @@ func TestCommitLogCleanOld(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -590,14 +616,30 @@ func TestCommitLogCleanOld(t *testing.T) {
 	test.Equal(t, currentStart, logMgr.GetCurrentStart())
 	logMgr.FlushCommitLogs()
 
+	cntIndex, err := logMgr.ConvertToCountIndex(currentStart, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, int64(num), cntIndex)
+	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, currentStart, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
+
 	// should keep 2 files at least
 	logMgr.CleanOldData(currentStart - 1)
 	tmpFileName := getSegmentFilename(logMgr.path, currentStart-1)
 	_, err = os.Stat(tmpFileName)
 	test.Nil(t, err)
+	_, _, err = logMgr.GetLogStartInfo()
+	test.Nil(t, err)
 	for i := int64(0); i < currentStart-1; i++ {
 		err = logMgr.CleanOldData(i)
 		test.Nil(t, err)
+		realStart, firstLog, err := logMgr.GetLogStartInfo()
+		test.Nil(t, err)
+		test.Equal(t, i, realStart.SegmentStartIndex)
+		test.Equal(t, int64(0), realStart.SegmentStartOffset)
+		test.Equal(t, i*int64(LOGROTATE_NUM), realStart.SegmentStartCount)
+		test.Equal(t, i*int64(LOGROTATE_NUM)*int64(msgRawSize), firstLog.MsgOffset)
 		for j := int64(0); j < i; j++ {
 			tmpFileName = getSegmentFilename(logMgr.path, j)
 			_, err = os.Stat(tmpFileName)
@@ -619,7 +661,7 @@ func TestCommitLogCleanOld(t *testing.T) {
 				} else {
 					l, err := logMgr.GetCommitLogFromOffsetV2(j, int64(k*GetLogDataSize()))
 					test.Nil(t, err)
-					test.Equal(t, j*int64(LOGROTATE_NUM)+int64(k), l.MsgCnt)
+					test.Equal(t, j*int64(LOGROTATE_NUM)+int64(k+1), l.MsgCnt)
 
 					for num := 1; num < 100-int(j)*LOGROTATE_NUM-k; num++ {
 						logs, err := logMgr.GetCommitLogsV2(j, int64(k*GetLogDataSize()), num)
@@ -665,7 +707,7 @@ func TestCommitLogResetWithStart(t *testing.T) {
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -683,8 +725,9 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	// reset with new start
 	err = logMgr.ResetLogWithStart(newStart)
 	test.Nil(t, err)
-
-	test.Equal(t, newStart, *logMgr.GetLogStartInfo())
+	realStart, _, err := logMgr.GetLogStartInfo()
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, newStart, *realStart)
 	test.Equal(t, newStart.SegmentStartIndex, logMgr.GetCurrentStart())
 	fileNum, offset := logMgr.GetCurrentEnd()
 	test.Equal(t, newStart.SegmentStartIndex, fileNum)
@@ -702,13 +745,21 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
 
+	cntIndex, err := logMgr.ConvertToCountIndex(fileNum, offset)
+	test.Nil(t, err)
+	test.Equal(t, realStart.SegmentStartCount, cntIndex)
+	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, fileNum, convertedIndex)
+	test.Equal(t, offset, convertedOffset)
+
 	for i := 0; i < num; i++ {
 		var logData CommitLogData
 		logData.LogID = int64(logMgr.NextID())
 		logData.LastMsgLogID = logData.LogID
 		logData.Epoch = 1
 		logData.MsgOffset = int64(i * msgRawSize)
-		logData.MsgCnt = int64(i)
+		logData.MsgCnt = int64(i + 1)
 		logData.MsgNum = 1
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
@@ -718,7 +769,7 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
 	test.Equal(t, currentStart, logMgr.GetCurrentStart())
 	test.Equal(t, newStart.SegmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
-	cntIndex, _ := logMgr.ConvertToCountIndex(currentStart, lastOffset)
+	cntIndex, _ = logMgr.ConvertToCountIndex(currentStart, lastOffset)
 	test.Equal(t, newStart.SegmentStartCount+int64(num-1), cntIndex)
 
 	logMgr.FlushCommitLogs()
@@ -726,7 +777,9 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	err = logMgr.ResetLogWithStart(newStart)
 	test.Nil(t, err)
 
-	test.Equal(t, newStart, *logMgr.GetLogStartInfo())
+	realStart, _, err = logMgr.GetLogStartInfo()
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, newStart, *realStart)
 	test.Equal(t, newStart.SegmentStartIndex, logMgr.GetCurrentStart())
 	fileNum, offset = logMgr.GetCurrentEnd()
 	test.Equal(t, newStart.SegmentStartIndex, fileNum)
@@ -743,6 +796,13 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, ErrCommitLogEOF, err)
 	test.Equal(t, newStart.SegmentStartIndex, fileNum)
 	test.Equal(t, int64(0), offset)
+	cntIndex, err = logMgr.ConvertToCountIndex(fileNum, offset)
+	test.Nil(t, err)
+	test.Equal(t, realStart.SegmentStartCount, cntIndex)
+	convertedIndex, convertedOffset, err = logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, fileNum, convertedIndex)
+	test.Equal(t, offset, convertedOffset)
 
 	for i := 0; i < num; i++ {
 		var logData CommitLogData
@@ -762,4 +822,11 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, newStart.SegmentStartIndex+int64(num/LOGROTATE_NUM)-1, logMgr.GetCurrentStart())
 	cntIndex, _ = logMgr.ConvertToCountIndex(currentStart, lastOffset)
 	test.Equal(t, newStart.SegmentStartCount+int64(num-1), cntIndex)
+
+	cntIndex, err = logMgr.ConvertToCountIndex(currentStart, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	convertedIndex, convertedOffset, err = logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, currentStart, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
 }

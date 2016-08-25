@@ -428,22 +428,25 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo)
 	return ret.(int64), convertRpcError(err, &retErr)
 }
 
-func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logIndex int64, offset int64) (int64, int64, CommitLogData, *CoordErr) {
+func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logCountNumIndex int64,
+	logIndex int64, offset int64) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
 	var req RpcCommitLogReq
 	req.LogStartIndex = logIndex
 	req.LogOffset = offset
 	req.TopicName = topicInfo.Name
 	req.TopicPartition = topicInfo.Partition
+	req.LogCountNumIndex = logCountNumIndex
+	req.UseCountIndex = true
 	var rsp *RpcCommitLogRsp
 	rspVar, err := self.CallWithRetry("GetCommitLogFromOffset", &req)
 	if err != nil {
-		return 0, 0, CommitLogData{}, convertRpcError(err, nil)
+		return false, 0, 0, 0, CommitLogData{}, convertRpcError(err, nil)
 	}
 	rsp = rspVar.(*RpcCommitLogRsp)
-	return rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
+	return rsp.UseCountIndex, rsp.LogCountNumIndex, rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
 }
 
-func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
+func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, logCountNumIndex int64,
 	logIndex int64, startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
 	var r RpcPullCommitLogsReq
 	r.TopicName = topic
@@ -451,6 +454,8 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
 	r.StartLogOffset = startOffset
 	r.StartIndexCnt = logIndex
 	r.LogMaxNum = num
+	r.LogCountNumIndex = logCountNumIndex
+	r.UseCountIndex = true
 	var ret *RpcPullCommitLogsRsp
 	retVar, err := self.CallWithRetry("PullCommitLogsAndData", &r)
 	if err != nil {
@@ -458,6 +463,19 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int,
 	}
 	ret = retVar.(*RpcPullCommitLogsRsp)
 	return ret.Logs, ret.DataList, nil
+}
+
+func (self *NsqdRpcClient) GetFullSyncInfo(topic string, partition int) (*LogStartInfo, *CommitLogData, error) {
+	var r RpcGetFullSyncInfoReq
+	r.TopicName = topic
+	r.TopicPartition = partition
+	var ret *RpcGetFullSyncInfoRsp
+	retVar, err := self.CallWithRetry("GetFullSyncInfo", &r)
+	if err != nil {
+		return nil, nil, err
+	}
+	ret = retVar.(*RpcGetFullSyncInfoRsp)
+	return &ret.StartInfo, &ret.FirstLogData, nil
 }
 
 func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {

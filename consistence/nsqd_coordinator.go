@@ -919,7 +919,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 	}
 
 	retryCnt := 0
-	for offset > 0 || logIndex > 0 {
+	needFullSync := false
+	localLogSegStart, _, _ := logMgr.GetLogStartInfo()
+	for offset > localLogSegStart.SegmentStartOffset || logIndex > localLogSegStart.SegmentStartIndex {
 		// if leader changed we abort and wait next time
 		if tc.GetData().GetLeader() != topicInfo.Leader {
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetData().GetLeader(), topicInfo.GetTopicDesp())
@@ -932,22 +934,38 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				logIndex--
 				offset, _, localErr = logMgr.GetLastCommitLogDataOnSegment(logIndex)
 				if localErr != nil {
-					coordLog.Warningf("topic %v read commit log failed: %v, %v", topicInfo.GetTopicDesp(), logIndex, localErr)
+					coordLog.Warningf("topic %v read commit log failed: %v:%v, %v", topicInfo.GetTopicDesp(),
+						logIndex, offset, localErr)
 					return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 				}
 			}
 			continue
 		}
 
-		leaderLogIndex, leaderOffset, leaderLogData, err := c.GetCommitLogFromOffset(&topicInfo, logIndex, offset)
+		countNumIndex, _ := logMgr.ConvertToCountIndex(logIndex, offset)
+		useCountIndex, leaderCountNumIndex, leaderLogIndex, leaderOffset, leaderLogData, err := c.GetCommitLogFromOffset(&topicInfo, countNumIndex, logIndex, offset)
 		if err.IsEqual(ErrTopicCommitLogOutofBound) || err.IsEqual(ErrTopicCommitLogEOF) {
-			coordLog.Infof("local commit log is more than leader while catchup: %v:%v vs %v:%v",
-				logIndex, offset, leaderLogIndex, leaderOffset)
+			coordLog.Infof("local commit log is more than leader while catchup: %v:%v:%v vs %v:%v:%v",
+				logIndex, offset, countNumIndex, leaderLogIndex, leaderOffset, leaderCountNumIndex)
 			// local log is ahead of the leader, must truncate local data.
 			// truncate commit log and truncate the data file to last log
 			// commit offset.
-			offset = leaderOffset
-			logIndex = leaderLogIndex
+			if useCountIndex {
+				logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCountNumIndex)
+				if localErr != nil {
+					coordLog.Infof("convert The leader commit log count index %v failed: %v", leaderCountNumIndex, localErr)
+					needFullSync = true
+					break
+				}
+			} else {
+				offset = leaderOffset
+				logIndex = leaderLogIndex
+			}
+		} else if err.IsEqual(ErrTopicCommitLogLessThanSegmentStart) {
+			coordLog.Infof("The leader commit log has been cleaned here, maybe the follower fall behind too much")
+			// need a full sync
+			needFullSync = true
+			break
 		} else if err != nil {
 			coordLog.Warningf("something wrong while get leader logdata while catchup: %v", err)
 			if retryCnt > MAX_CATCHUP_RETRY {
@@ -977,16 +995,27 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		coordLog.Errorf("get local topic failed:%v", localErr)
 		return ErrLocalMissingTopic
 	}
-	if localTopic.GetTopicPart() != topicInfo.Partition {
-		coordLog.Errorf("local topic partition mismatch:%v vs %v", topicInfo.Partition, localTopic.GetTopicPart())
-		return ErrLocalTopicPartitionMismatch
-	}
 	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 	}
 	localTopic.SetDynamicInfo(*dyConf, logMgr)
-	if offset > 0 || logIndex > 0 {
+	compatibleMethod := false
+	if offset == 0 && logIndex == localLogSegStart.SegmentStartIndex {
+		if logIndex == 0 {
+			// for compatible, if all replica start with 0 (no auto clean happen)
+			_, _, _, _, _, err := c.GetCommitLogFromOffset(&topicInfo, 0, 0, 0)
+			coordLog.Infof("catchup start with 0, check return: %v", err)
+			if err != nil && err.IsEqual(ErrTopicCommitLogLessThanSegmentStart) {
+				coordLog.Infof("catchup start with 0, need do full sync in new way")
+			} else {
+				coordLog.Infof("catchup start with 0, We can do full sync in old way since leader is also start with 0")
+				compatibleMethod = true
+			}
+		}
+		needFullSync = true
+	}
+	if !needFullSync {
 		lastLog, localErr := logMgr.GetCommitLogFromOffsetV2(logIndex, offset)
 		if localErr != nil {
 			coordLog.Errorf("failed to get local commit log: %v", localErr)
@@ -1007,17 +1036,46 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 	} else {
-		localTopic.Lock()
-		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(0), 0)
-		localTopic.Unlock()
-		if err != nil {
-			coordLog.Errorf("failed to reset local topic data: %v", err)
-			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
-		}
-		_, localErr = logMgr.TruncateToOffsetV2(0, 0)
-		if localErr != nil {
-			coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", 0, 0, localErr)
-			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+		// need sync the commit log segment start info and the topic diskqueue start info
+		// we should clean local data, since the local start info maybe different with leader start info
+		coordLog.Infof("local topic %v should do full sync", localTopic.GetFullName())
+		localTopic.PrintCurrentStats()
+		if compatibleMethod {
+			localTopic.Lock()
+			localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(0), 0)
+			localTopic.Unlock()
+			if err != nil {
+				coordLog.Errorf("failed to reset local topic data: %v", err)
+				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+			_, localErr = logMgr.TruncateToOffsetV2(0, 0)
+			if localErr != nil {
+				coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", 0, 0, localErr)
+				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+		} else {
+			leaderCommitStartInfo, firstLogData, rpcErr := c.GetFullSyncInfo(topicInfo.Name, topicInfo.Partition)
+			if rpcErr != nil {
+				coordLog.Warningf("failed to get full sync info: %v", rpcErr)
+				return &CoordErr{rpcErr.Error(), RpcCommonErr, CoordNetErr}
+			}
+			coordLog.Infof("topic %v full sync with start: %v, %v", localTopic.GetFullName(), leaderCommitStartInfo, firstLogData)
+			localErr = logMgr.ResetLogWithStart(*leaderCommitStartInfo)
+			if localErr != nil {
+				coordLog.Warningf("reset commit log with start %v failed: %v", leaderCommitStartInfo, localErr)
+				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+			localTopic.Lock()
+			localErr = localTopic.ResetBackendWithQueueStartNoLock(firstLogData.MsgOffset, firstLogData.MsgCnt-1)
+			localTopic.Unlock()
+			if localErr != nil {
+				coordLog.Warningf("reset topic queue with start %v failed: %v", firstLogData, localErr)
+				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
+			if localErr != nil {
+				return &CoordErr{}
+			}
 		}
 	}
 
@@ -1030,7 +1088,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			coordLog.Warningf("topic leader changed from %v to %v, abort current catchup: %v", topicInfo.Leader, tc.GetData().GetLeader(), topicInfo.GetTopicDesp())
 			return ErrTopicLeaderChanged
 		}
-		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition, logIndex, offset, MAX_LOG_PULL)
+		countNumIndex, localErr := logMgr.ConvertToCountIndex(logIndex, offset)
+		if localErr != nil {
+			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+		}
+		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition,
+			countNumIndex, logIndex, offset, MAX_LOG_PULL)
 		if rpcErr != nil {
 			// if not network error, something wrong with commit log file, we need return to abort.
 			coordLog.Infof("topic %v error while get logs :%v, offset: %v", topicInfo.GetTopicDesp(), rpcErr, offset)
