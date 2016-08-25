@@ -22,8 +22,8 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
+		nsqd.NsqLogger().Logf(" failed to read protocol version - %s from client: %v", err, clientConn.RemoteAddr())
 		clientConn.Close()
-		nsqd.NsqLogger().LogErrorf(" failed to read protocol version - %s", err)
 		return
 	}
 	protocolMagic := string(buf)
