@@ -594,7 +594,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, in
 			clientID)
 		return 0, 0, false, err
 	}
-	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "FIN", msg.TraceID, msg, strconv.Itoa(int(clientID)))
 	}
 	if c.e2eProcessingLatencyStream != nil {
@@ -745,7 +745,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 			msg.GetFullMsgID())
 		return err
 	}
-	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "START", msg.TraceID, msg, strconv.Itoa(int(clientID)))
 	}
 	return nil
@@ -782,7 +782,7 @@ func (c *Channel) doRequeue(m *Message) error {
 		c.waitingRequeueMutex.Unlock()
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
-	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
 	}
 	return nil
@@ -1066,7 +1066,7 @@ LOOP:
 		case <-c.exitChan:
 			goto exit
 		case msg = <-c.requeuedMsgChan:
-			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
+			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("read message %v from requeue", msg.ID)
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_REQ", msg.TraceID, msg, "0")
 			}
@@ -1107,7 +1107,7 @@ LOOP:
 			msg.offset = data.Offset
 			msg.rawMoveSize = data.MovedSize
 			msg.queueCntIndex = data.CurCnt
-			if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
+			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
 			}
 
@@ -1269,7 +1269,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if ok {
 			client.TimedOutMessage(atomic.LoadInt32(&msg.isDeferred) == 1)
 		}
-		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
+		if msgCopy.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, strconv.Itoa(int(msgCopy.clientID)))
 		}
 	}

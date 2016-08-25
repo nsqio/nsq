@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
@@ -150,7 +151,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			break
 		}
 
-		if p.ctx.getOpts().Verbose {
+		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
 		}
 		// handle the compatible for message id.
@@ -224,7 +225,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			}
 			client.SetReadDeadline(zeroTime)
 		}
-		if p.ctx.getOpts().Verbose {
+		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
 		}
 		if !isSpecial {
@@ -237,7 +238,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			params = bytes.Split(line, separatorBytes)
 		}
 
-		if p.ctx.getOpts().Verbose {
+		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %v", client, params)
 		}
 
