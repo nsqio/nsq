@@ -1023,7 +1023,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if client.Channel == nil {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
-	err = client.Channel.RequeueMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration)
+	err = client.Channel.RequeueMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration, true)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))

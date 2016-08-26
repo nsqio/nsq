@@ -619,7 +619,7 @@ func (c *Channel) ContinueConsumeForOrder() {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message
 //
-func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration, byClient bool) error {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	if timeout == 0 {
@@ -631,7 +631,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 			return err
 		}
 		// requeue by intend should treat as not fail attempt
-		if msg.Attempts > 0 {
+		if msg.Attempts > 0 && !byClient {
 			msg.Attempts--
 		}
 		return c.doRequeue(msg)
@@ -676,7 +676,7 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 	}
 	c.inFlightMutex.Unlock()
 	for _, id := range idList {
-		c.RequeueMessage(clientID, id, 0)
+		c.RequeueMessage(clientID, id, 0, false)
 	}
 	if len(idList) > 0 {
 		nsqLog.Logf("client: %v requeued %v messages ",
