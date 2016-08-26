@@ -39,6 +39,21 @@ func (self *NsqLookupCoordinator) DeleteTopicForce(topic string, partition strin
 	coordLog.Infof("delete topic: %v, with partition: %v", topic, partition)
 
 	if partition == "**" {
+		self.joinStateMutex.Lock()
+		state, ok := self.joinISRState[topic]
+		self.joinStateMutex.Unlock()
+		if ok {
+			state.Lock()
+			if state.waitingJoin {
+				state.waitingJoin = false
+				state.waitingSession = ""
+				if state.doneChan != nil {
+					close(state.doneChan)
+					state.doneChan = nil
+				}
+			}
+			state.Unlock()
+		}
 		// delete all
 		for pid := 0; pid < MAX_PARTITION_NUM; pid++ {
 			self.deleteTopicPartitionForce(topic, pid)
@@ -74,6 +89,22 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 			coordLog.Infof("failed to get meta for topic: %v", err)
 			return err
 		}
+		self.joinStateMutex.Lock()
+		state, ok := self.joinISRState[topic]
+		self.joinStateMutex.Unlock()
+		if ok {
+			state.Lock()
+			if state.waitingJoin {
+				state.waitingJoin = false
+				state.waitingSession = ""
+				if state.doneChan != nil {
+					close(state.doneChan)
+					state.doneChan = nil
+				}
+			}
+			state.Unlock()
+		}
+
 		for pid := 0; pid < meta.PartitionNum; pid++ {
 			err := self.deleteTopicPartition(topic, pid)
 			if err != nil {
@@ -186,6 +217,20 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		return ErrNodeUnavailable.ToErrorType()
 	}
 
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topic]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topic] = state
+	}
+	self.joinStateMutex.Unlock()
+	state.Lock()
+	defer state.Unlock()
+	if state.waitingJoin {
+		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
+		return ErrWaitingJoinISR.ToErrorType()
+	}
+
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		meta.MagicCode = time.Now().UnixNano()
 		err := self.leadership.CreateTopic(topic, &meta)
@@ -201,22 +246,10 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 				return err
 			}
 		}
+	} else {
+		return ErrAlreadyExist
 	}
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
-
-	self.joinStateMutex.Lock()
-	state, ok := self.joinISRState[topic]
-	if !ok {
-		state = &JoinISRState{}
-		self.joinISRState[topic] = state
-	}
-	self.joinStateMutex.Unlock()
-	state.Lock()
-	defer state.Unlock()
-	if state.waitingJoin {
-		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
-		return ErrWaitingJoinISR.ToErrorType()
-	}
 
 	existPart := make(map[int]*TopicPartitionMetaInfo)
 	for i := 0; i < meta.PartitionNum; i++ {
@@ -227,6 +260,9 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			t, err := self.leadership.GetTopicInfo(topic, i)
 			if err != nil {
 				coordLog.Warningf("exist topic partition failed to get info: %v", err)
+				if err != ErrKeyNotFound {
+					return err
+				}
 			} else {
 				coordLog.Infof("create topic partition already exist %v-%v", topic, i)
 				existPart[i] = t

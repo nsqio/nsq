@@ -1226,7 +1226,15 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartition
 	coordLog.Infof("topic %v isr waiting session init : %v", topicInfo.GetTopicDesp(), state)
 	if len(topicInfo.ISR) <= 1 {
 		rpcErr := self.notifyISRTopicMetaInfo(topicInfo)
+		state.waitingJoin = false
+		state.waitingSession = ""
+		if state.doneChan != nil {
+			close(state.doneChan)
+			state.doneChan = nil
+		}
+
 		if rpcErr != nil {
+			coordLog.Warningf("failed to notify ISR for topic: %v, %v ", topicInfo.GetTopicDesp(), rpcErr)
 			return
 		}
 
@@ -1238,12 +1246,6 @@ func (self *NsqLookupCoordinator) initJoinStateAndWait(topicInfo *TopicPartition
 			}
 		} else {
 			coordLog.Infof("leaving the topic %v without enable write since not enough replicas.", topicInfo)
-		}
-		state.waitingJoin = false
-		state.waitingSession = ""
-		if state.doneChan != nil {
-			close(state.doneChan)
-			state.doneChan = nil
 		}
 		coordLog.Infof("isr join state is ready since only leader in isr")
 		return
