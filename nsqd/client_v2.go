@@ -371,16 +371,17 @@ func (c *ClientV2) IsReadyForMessages() bool {
 
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
 	if nsqLog.Level() > 1 {
 		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d",
 			c, readyCount, inFlightCount)
 	}
 
-	if inFlightCount >= readyCount || readyCount <= 0 {
+	// deferCnt should consider as not in flight
+	if inFlightCount >= readyCount+deferCnt || readyCount <= 0 {
 		return false
 	}
-	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 	if deferCnt > readyCount*100 || deferCnt > 1000 {
 		nsqLog.Infof("[%s] too much deferred message : %v rdy: %4d inflt: %4d",
 			c, deferCnt, readyCount, inFlightCount)
