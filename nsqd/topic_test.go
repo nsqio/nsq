@@ -479,10 +479,10 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 	resetStart := &diskQueueEndInfo{}
 	resetStart.virtualEnd = topic.backend.GetQueueWriteEnd().Offset() + BackendOffset(msgSize*10)
 	resetStart.totalMsgCnt = topic.backend.GetQueueWriteEnd().TotalMsgCnt() + 10
-	err := topic.ResetBackendWithQueueStartNoLock(resetStart)
+	err := topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
 	test.NotNil(t, err)
 	topic.DisableForSlave()
-	err = topic.ResetBackendWithQueueStartNoLock(resetStart)
+	err = topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
 	test.Nil(t, err)
 	topic.EnableForMaster()
 
@@ -511,7 +511,7 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 
 	// reset with old start
 	topic.DisableForSlave()
-	err = topic.ResetBackendWithQueueStartNoLock(resetStart)
+	err = topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
 	test.Nil(t, err)
 
 	topic.EnableForMaster()
