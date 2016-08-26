@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"errors"
+	"github.com/absolute8511/nsq/internal/protocol"
 	"strconv"
 	"time"
 )
@@ -87,7 +88,7 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 		meta, err := self.leadership.GetTopicMetaInfo(topic)
 		if err != nil {
 			coordLog.Infof("failed to get meta for topic: %v", err)
-			return err
+			meta.PartitionNum = MAX_PARTITION_NUM
 		}
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[topic]
@@ -200,6 +201,10 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		return ErrNotNsqLookupLeader
 	}
 
+	if !protocol.IsValidTopicName(topic) {
+		return errors.New("invalid topic name")
+	}
+
 	// TODO: handle default load factor
 	if meta.PartitionNum >= MAX_PARTITION_NUM {
 		return errors.New("max partition allowed exceed")
@@ -227,7 +232,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	state.Lock()
 	defer state.Unlock()
 	if state.waitingJoin {
-		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
+		coordLog.Warningf("topic state is not ready:%v, %v ", topic, state)
 		return ErrWaitingJoinISR.ToErrorType()
 	}
 
@@ -247,6 +252,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	} else {
+		coordLog.Warningf("topic already exist :%v ", topic)
 		return ErrAlreadyExist
 	}
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
