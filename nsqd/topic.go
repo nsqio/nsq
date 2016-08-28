@@ -941,7 +941,7 @@ func (t *Topic) GetPubStats() []ClientPubStats {
 }
 
 // maybe should return the cleaned offset to allow commit log clean
-func (t *Topic) TryCleanOldData(retentionSize int64) error {
+func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanEnd BackendQueueEnd) (BackendQueueEnd, error) {
 	// clean the data that has been consumed and keep the retention policy
 	var oldestPos BackendQueueEnd
 	t.channelLock.RLock()
@@ -956,10 +956,10 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	t.channelLock.RUnlock()
 	if oldestPos == nil {
 		nsqLog.Logf("no consume position found")
-		return nil
+		return nil, nil
 	}
 	if BackendOffset(retentionSize) >= oldestPos.Offset() {
-		return nil
+		return nil, nil
 	}
 	nsqLog.Logf("clean topic %v data current oldest confirmed %v",
 		t.GetFullName(), oldestPos)
@@ -970,12 +970,12 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	err := snapReader.SeekTo(cleanStart.Offset())
 	if err != nil {
 		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
-		return err
+		return nil, err
 	}
 	readInfo := snapReader.GetQueueCurrentReadInfo()
 	data := snapReader.ReadOne()
 	if data.Err != nil {
-		return data.Err
+		return nil, data.Err
 	}
 	var cleanEndInfo BackendQueueEnd
 	t.Lock()
@@ -1022,10 +1022,9 @@ func (t *Topic) TryCleanOldData(retentionSize int64) error {
 	if cleanEndInfo == nil || cleanEndInfo.Offset() >= oldestPos.Offset() {
 		nsqLog.Warningf("clean topic %v data could not exceed current oldest confirmed %v",
 			t.GetFullName(), oldestPos)
-		return nil
+		return nil, nil
 	}
-	t.backend.CleanOldDataByRetention(cleanEndInfo)
-	return nil
+	return t.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanEnd)
 }
 
 func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueStartCnt int64) error {

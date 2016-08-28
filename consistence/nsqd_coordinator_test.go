@@ -973,7 +973,7 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 			t.Fatalf("failed to consume message")
 		}
 	}
-	tc1.logMgr.CleanOldData(2)
+	tc1.logMgr.CleanOldData(2, int64(GetLogDataSize()))
 	newStart, _, err := tc1.logMgr.GetLogStartInfo()
 	test.Nil(t, err)
 	logs1, _ = tc1.logMgr.GetCommitLogsV2(newStart.SegmentStartIndex, newStart.SegmentStartOffset, msgCnt)

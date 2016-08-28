@@ -724,6 +724,8 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, ret *RpcCommitLo
 	ret.LogStartIndex, ret.LogOffset, logData, err2 = logMgr.GetLastCommitLogOffsetV2()
 	if err2 != nil {
 		if err2 == ErrCommitLogEOF {
+			ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
+			ret.UseCountIndex = true
 			ret.ErrInfo = *ErrTopicCommitLogEOF
 		} else {
 			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
