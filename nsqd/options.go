@@ -87,6 +87,8 @@ type Options struct {
 	LogLevel int32  `flag:"log-level" cfg:"log_level"`
 	LogDir   string `flag:"log-dir" cfg:"log_dir"`
 	Logger   levellogger.Logger
+
+	RetentionDays int32 `flag:"retention-days" cfg:"retention_days"`
 }
 
 func NewOptions() *Options {
@@ -154,5 +156,7 @@ func NewOptions() *Options {
 		LogLevel: levellogger.LOG_INFO,
 		LogDir:   "",
 		Logger:   &levellogger.GLogger{},
+
+		RetentionDays: 1,
 	}
 }

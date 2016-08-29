@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	MAX_TOPIC_PARTITION    = 1023
-	DEFAULT_RETENTION_DAYS = 7
+	MAX_TOPIC_PARTITION = 1023
 )
 
 var (
@@ -969,6 +968,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 
 	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
 	cleanStart := t.backend.GetQueueReadStart()
+	snapReader.SetQueueStart(cleanStart)
 	err := snapReader.SeekTo(cleanStart.Offset())
 	if err != nil {
 		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
@@ -983,7 +983,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 	t.Lock()
 	retentionDay := atomic.LoadInt32(&t.dynamicConf.RetentionDay)
 	if retentionDay == 0 {
-		retentionDay = DEFAULT_RETENTION_DAYS
+		retentionDay = int32(DEFAULT_RETENTION_DAYS)
 	}
 	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(retentionDay))
 	t.Unlock()

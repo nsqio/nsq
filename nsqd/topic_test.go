@@ -312,7 +312,7 @@ func TestTopicCleanOldDataByRetentionSize(t *testing.T) {
 		channel.ConfirmBackendQueue(msg)
 	}
 
-	topic.TryCleanOldData(1)
+	topic.TryCleanOldData(1, false, nil)
 	// should not clean not consumed data
 	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
 	startFileName := topic.backend.fileName(0)
@@ -325,7 +325,7 @@ func TestTopicCleanOldDataByRetentionSize(t *testing.T) {
 		msg := <-channel.clientMsgChan
 		channel.ConfirmBackendQueue(msg)
 	}
-	topic.TryCleanOldData(1024 * 1024 * 2)
+	topic.TryCleanOldData(1024*1024*2, false, nil)
 	test.Equal(t, int64(2), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
 	startFileName = topic.backend.fileName(0)
 	_, err = os.Stat(startFileName)
@@ -338,7 +338,7 @@ func TestTopicCleanOldDataByRetentionSize(t *testing.T) {
 	test.Equal(t, BackendOffset(2*fileSize), topic.backend.GetQueueReadStart().Offset())
 	test.Equal(t, 2*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
 
-	topic.TryCleanOldData(1)
+	topic.TryCleanOldData(1, false, nil)
 
 	// should keep at least 2 files
 	test.Equal(t, fileNum-1, topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
@@ -388,7 +388,7 @@ func TestTopicCleanOldDataByRetentionDay(t *testing.T) {
 	}
 
 	topic.dynamicConf.RetentionDay = 1
-	topic.TryCleanOldData(0)
+	topic.TryCleanOldData(0, false, nil)
 	// should not clean not consumed data
 	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
 	startFileName := topic.backend.fileName(0)
@@ -402,7 +402,7 @@ func TestTopicCleanOldDataByRetentionDay(t *testing.T) {
 		channel.ConfirmBackendQueue(msg)
 	}
 	topic.dynamicConf.RetentionDay = 2
-	topic.TryCleanOldData(0)
+	topic.TryCleanOldData(0, false, nil)
 	test.Equal(t, int64(2), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
 	startFileName = topic.backend.fileName(0)
 	_, err = os.Stat(startFileName)
@@ -416,7 +416,7 @@ func TestTopicCleanOldDataByRetentionDay(t *testing.T) {
 	test.Equal(t, 2*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
 
 	topic.dynamicConf.RetentionDay = 1
-	topic.TryCleanOldData(0)
+	topic.TryCleanOldData(0, false, nil)
 
 	// should keep at least 2 files
 	test.Equal(t, fileNum-1, topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)

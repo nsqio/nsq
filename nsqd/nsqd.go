@@ -39,6 +39,8 @@ var (
 	ErrTopicNotExist          = errors.New("topic does not exist")
 )
 
+var DEFAULT_RETENTION_DAYS = 1
+
 type NSQD struct {
 	sync.RWMutex
 
@@ -76,6 +78,7 @@ func New(opts *Options) *NSQD {
 		nsqLog.LogErrorf("failed to create directory: %v ", err)
 		os.Exit(1)
 	}
+	DEFAULT_RETENTION_DAYS = int(opts.RetentionDays)
 
 	nsqLog.Logger = opts.Logger
 	n := &NSQD{

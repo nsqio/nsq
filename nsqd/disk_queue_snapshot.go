@@ -60,6 +60,7 @@ func (d *DiskQueueSnapshot) SetQueueStart(start BackendQueueEnd) {
 	if d.exitFlag == 1 {
 		return
 	}
+	nsqLog.Infof("change start from %v to %v", d.queueStart, startPos)
 	d.queueStart = *startPos
 	if d.queueStart.EndOffset.GreatThan(&d.readPos.EndOffset) {
 		d.readPos = d.queueStart
@@ -196,7 +197,7 @@ func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
 
 		newPos, err = d.stepOffset(d.readPos.EndOffset, int64(voffset-d.readPos.virtualEnd), d.endPos.EndOffset)
 		if err != nil {
-			nsqLog.LogErrorf("internal skip error : %v, step from %v to : %v", err, d.readPos, voffset)
+			nsqLog.LogErrorf("internal skip error : %v, step from %v to : %v, current start: %v", err, d.readPos, voffset, d.queueStart)
 			return err
 		}
 	}

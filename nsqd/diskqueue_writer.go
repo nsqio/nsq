@@ -266,7 +266,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 	if noRealClean {
 		return &newStart, nil
 	}
-	newStart = d.diskQueueStart
+	d.diskQueueStart = newStart
 	for i := int64(0); i < cleanFileNum; i++ {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)

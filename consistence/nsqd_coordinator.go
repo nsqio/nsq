@@ -265,7 +265,7 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 				}
 				retentionDay := tcData.topicInfo.RetentionDay
 				if retentionDay == 0 {
-					retentionDay = nsqd.DEFAULT_RETENTION_DAYS
+					retentionDay = int32(nsqd.DEFAULT_RETENTION_DAYS)
 				}
 				cleanEndInfo, err := localTopic.TryCleanOldData(MAX_TOPIC_RETENTION_SIZE_PER_DAY*int64(retentionDay), true, nil)
 				if err != nil {

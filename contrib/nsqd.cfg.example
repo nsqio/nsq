@@ -30,6 +30,8 @@ lookup_ping_interval = "5s"
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"
 
+## default retention days to keep the consumed topic data
+retention_days = 7
 ## number of messages to keep in memory (per topic/channel)
 mem_queue_size = 10000
 
