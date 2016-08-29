@@ -41,6 +41,7 @@ var LookupView = BaseView.extend({
         var topic = $(e.target.form.elements['topic']).val();
         var partition_num = $(e.target.form.elements['partition_num']).val();
         var replicator = $(e.target.form.elements['replicator']).val();
+        var retention_days = $(e.target.form.elements['retention_days']).val();
         var syncdisk = $(e.target.form.elements['syncdisk']).val();
         if (topic === '' || partition_num === '' || replicator === '') {
             return;
@@ -49,6 +50,7 @@ var LookupView = BaseView.extend({
                 'topic': topic,
                 'partition_num': partition_num,
                 'replicator': replicator,
+                'retention_days': retention_days,
                 'syncdisk': syncdisk
             }))
             .done(function() { window.location.reload(true); })

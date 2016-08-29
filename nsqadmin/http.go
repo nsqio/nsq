@@ -525,10 +525,11 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	var messages []string
 
 	var body struct {
-		Topic        string `json:"topic"`
-		PartitionNum string `json:"partition_num"`
-		Replicator   string `json:"replicator"`
-		SyncDisk     string `json:"syncdisk"`
+		Topic         string `json:"topic"`
+		PartitionNum  string `json:"partition_num"`
+		Replicator    string `json:"replicator"`
+		RetentionDays string `json:"retention_days"`
+		SyncDisk      string `json:"syncdisk"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -560,7 +561,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 	syncDisk, _ := strconv.Atoi(body.SyncDisk)
 	err = s.ci.CreateTopic(body.Topic, pnum, replica,
-		syncDisk,
+		syncDisk, body.RetentionDays,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
