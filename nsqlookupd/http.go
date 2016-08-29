@@ -323,6 +323,15 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		nsqlookupLog.Logf("error sync disk param: %v, %v", syncEvery, err)
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_SYNC_DISK"}
 	}
+	retentionDaysStr := reqParams.Get("retention")
+	if retentionDaysStr == "" {
+		retentionDaysStr = "0"
+	}
+	retentionDays, err := strconv.Atoi(retentionDaysStr)
+	if err != nil {
+		nsqlookupLog.Logf("error retention param: %v, %v", retentionDaysStr, err)
+		return nil, http_api.Err{400, err.Error()}
+	}
 
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
@@ -335,6 +344,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	meta.Replica = replicator
 	meta.SuggestLF = suggestLF
 	meta.SyncEvery = syncEvery
+	meta.RetentionDay = int32(retentionDays)
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, meta)
 	if err != nil {
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)
