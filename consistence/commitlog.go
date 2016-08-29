@@ -206,7 +206,7 @@ func getCommitLogListFromFile(file *os.File, offset int64, num int) ([]CommitLog
 	return logList, err
 }
 
-func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
+func truncateFileToOffset(file *os.File, fileStartOffset int64, offset int64) (*CommitLogData, error) {
 	if offset > 0 && offset < int64(GetLogDataSize()) {
 		return nil, ErrCommitLogOffsetInvalid
 	}
@@ -216,8 +216,8 @@ func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
 		coordLog.Infof("truncate file %v failed: %v, offset:%v, %v, %v, %v", file, err, offset, s.Name(), s.Size(), s.IsDir())
 		return nil, err
 	}
-	if offset == 0 {
-		return nil, nil
+	if offset == fileStartOffset {
+		return nil, ErrCommitLogEOF
 	}
 	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
 	n, err := file.ReadAt(b.Bytes(), offset-int64(GetLogDataSize()))
@@ -602,6 +602,11 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 		return nil, ErrCommitLogLessThanSegmentStart
 	}
 
+	startOffset := int64(0)
+	if startIndex == self.logStartInfo.SegmentStartIndex {
+		startOffset = self.logStartInfo.SegmentStartOffset
+	}
+	coordLog.Infof("truncate commit log from: %v, %v", self.currentStart, self.currentCount)
 	if startIndex < self.currentStart {
 		oldStart := self.currentStart
 		self.currentStart = startIndex
@@ -627,26 +632,26 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 			os.Remove(getSegmentFilename(self.path, int64(i)))
 		}
 	}
-	return self.truncateToOffset(offset)
+	coordLog.Infof("truncate commit log to: %v, %v", self.currentStart, self.currentCount)
+	return self.truncateToOffset(startOffset, offset)
 }
 
-func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, error) {
-	l, err := truncateFileToOffset(self.appender, offset)
-	if err != nil {
-		return nil, err
-	}
+func (self *TopicCommitLogMgr) truncateToOffset(startOffset int64, offset int64) (*CommitLogData, error) {
+	l, err := truncateFileToOffset(self.appender, startOffset, offset)
 	self.currentCount = int32(offset / int64(GetLogDataSize()))
-	if offset == 0 {
-		if self.currentStart == 0 {
-			atomic.StoreInt64(&self.pLogID, 0)
-			return nil, nil
-		} else if self.currentStart < self.logStartInfo.SegmentStartIndex {
-			return nil, nil
-		} else {
-			l, _, err = getLastCommitLogData(self.path, self.currentStart-1)
-			if err != nil {
+	if err != nil {
+		if err == ErrCommitLogEOF {
+			if self.currentStart <= self.logStartInfo.SegmentStartIndex {
+				atomic.StoreInt64(&self.pLogID, 0)
 				return nil, err
+			} else {
+				l, _, err = getLastCommitLogData(self.path, self.currentStart-1)
+				if err != nil {
+					return nil, err
+				}
 			}
+		} else {
+			return nil, err
 		}
 	}
 	atomic.StoreInt64(&self.pLogID, l.LogID)
@@ -669,7 +674,6 @@ func (self *TopicCommitLogMgr) ConvertToCountIndex(start int64, offset int64) (i
 	startOffset := self.logStartInfo.SegmentStartOffset
 	if start < self.logStartInfo.SegmentStartIndex ||
 		(start == self.logStartInfo.SegmentStartIndex && offset < startOffset) {
-		coordLog.Warningf("get count from segment early than start: %v vs %v", start, self.logStartInfo)
 		return 0, ErrCommitLogLessThanSegmentStart
 	}
 	for i := self.logStartInfo.SegmentStartIndex; i < start; i++ {
@@ -1017,7 +1021,9 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 			coordLog.Infof("log file searching start failed: %v:%v, %v", searchIndex, searchBeginOffset, logStart)
 			return 0, 0, nil, err
 		}
-		coordLog.Debugf("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		if coordLog.Level() >= 4 {
+			coordLog.Debugf("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		}
 		if comp.GreatThanRightBoundary(segEndLog) {
 			searchLogIndexStart = searchIndex + 1
 		} else if comp.LessThanLeftBoundary(segStartLog) {
@@ -1047,7 +1053,9 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		}
 		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
 		searchOffset = searchCntPos * int64(GetLogDataSize())
-		coordLog.Debugf("log searching: %v:%v", searchLogIndexStart, searchOffset)
+		if coordLog.Level() >= 4 {
+			coordLog.Debugf("log searching: %v:%v", searchLogIndexStart, searchOffset)
+		}
 		cur, err = self.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
 		if err != nil {
 			coordLog.Infof("get log data from:%v:%v, failed:%v\n", searchLogIndexStart, searchOffset, err)

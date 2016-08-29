@@ -282,7 +282,10 @@ func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
 	if commit != nil && e.Offset() > commit.Offset() {
 		e = commit
 	}
-	return NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
+	start := t.backend.GetQueueReadStart()
+	d := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
+	d.SetQueueStart(start)
+	return d
 }
 
 func (t *Topic) BufferPoolGet(capacity int) *bytes.Buffer {
@@ -966,7 +969,6 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 
 	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
 	cleanStart := t.backend.GetQueueReadStart()
-	snapReader.SetQueueStart(cleanStart)
 	err := snapReader.SeekTo(cleanStart.Offset())
 	if err != nil {
 		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)

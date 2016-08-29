@@ -171,11 +171,9 @@ func TestCommitLogTruncate(t *testing.T) {
 	test.Equal(t, truncateId, prevLog.LogID)
 	test.Equal(t, int64(truncateAtCnt), prevLog.MsgCnt)
 	prevLog, err = logMgr.TruncateToOffsetV2(0, 0)
-	test.Nil(t, err)
+	test.Equal(t, ErrCommitLogEOF, err)
 	test.Equal(t, int64(0), logMgr.pLogID)
 	test.Nil(t, prevLog)
-
-	// TODO: test truncate to less than queue start
 }
 
 func TestCommitLogForBatchWrite(t *testing.T) {
@@ -346,7 +344,7 @@ func TestCommitLogRotate(t *testing.T) {
 		err = logMgr.AppendCommitLog(&logData, false)
 		test.Nil(t, err)
 		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
-		t.Logf("index:%v, %v, %v", i, logMgr.GetCurrentStart(), logMgr.currentCount)
+		//t.Logf("index:%v, %v, %v", i, logMgr.GetCurrentStart(), logMgr.currentCount)
 		test.Equal(t, logMgr.GetCurrentStart(), int64(i/LOGROTATE_NUM))
 		test.Equal(t, int64(logMgr.currentCount), int64(i)-int64(i/LOGROTATE_NUM)*int64(LOGROTATE_NUM)+1)
 		logIndex, logOffset, lastLogData, err := logMgr.GetLastCommitLogOffsetV2()
@@ -475,7 +473,7 @@ func TestCommitLogSearch(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 	coordLog.Logger = newTestLogger(t)
-	coordLog.SetLevel(4)
+	coordLog.SetLevel(3)
 	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
 
 	test.Nil(t, err)
@@ -958,6 +956,110 @@ func TestCommitLogCleanOldAtMiddleOfSeg(t *testing.T) {
 }
 
 func TestCommitLogTruncateAndCleanOld(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	oldMinItem := MIN_KEEP_LOG_ITEM
+	LOGROTATE_NUM = 10
+	MIN_KEEP_LOG_ITEM = LOGROTATE_NUM / 2
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+		MIN_KEEP_LOG_ITEM = oldMinItem
+	}()
+	logName := "test_log_clean_old" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	coordLog.SetLevel(4)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Nil(t, err)
+
+	num := 100
+	msgRawSize := 10
+	for i := 0; i < num; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
+		logData.Epoch = 1
+		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i + 1)
+		logData.MsgNum = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+	}
+
+	currentLogIndex, _, _, err := logMgr.GetLastCommitLogOffsetV2()
+
+	err = logMgr.CleanOldData(currentLogIndex/2, int64(GetLogDataSize()))
+	test.Nil(t, err)
+
+	prevLog, err := logMgr.TruncateToOffsetV2(currentLogIndex, 0)
+	test.Nil(t, err)
+	test.Equal(t, currentLogIndex, logMgr.GetCurrentStart())
+	endIndex, endOffset := logMgr.GetCurrentEnd()
+	test.Equal(t, int64(0), endOffset)
+	test.Equal(t, currentLogIndex, endIndex)
+	test.Equal(t, prevLog.LogID, logMgr.pLogID)
+	test.Equal(t, int64(num-LOGROTATE_NUM+1), prevLog.LogID)
+	test.Equal(t, int64(num-LOGROTATE_NUM), prevLog.MsgCnt)
+	currentLogIndex = logMgr.GetCurrentStart()
+	prevLog, err = logMgr.TruncateToOffsetV2(currentLogIndex-1, int64(LOGROTATE_NUM)*int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, currentLogIndex-1, logMgr.GetCurrentStart())
+	endIndex, endOffset = logMgr.GetCurrentEnd()
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(GetLogDataSize()), endOffset)
+	test.Equal(t, currentLogIndex-1, endIndex)
+	test.Equal(t, prevLog.LogID, logMgr.pLogID)
+	test.Equal(t, int64(num-LOGROTATE_NUM+1), prevLog.LogID)
+	test.Equal(t, int64(num-LOGROTATE_NUM), prevLog.MsgCnt)
+
+	currentLogIndex = logMgr.GetCurrentStart()
+	prevLog, err = logMgr.TruncateToOffsetV2(currentLogIndex-1, int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, currentLogIndex-1, logMgr.GetCurrentStart())
+	endIndex, endOffset = logMgr.GetCurrentEnd()
+	test.Equal(t, int32(1), logMgr.currentCount)
+	test.Equal(t, int64(GetLogDataSize())*int64(logMgr.currentCount), endOffset)
+	test.Equal(t, currentLogIndex-1, endIndex)
+	test.Equal(t, prevLog.LogID, logMgr.pLogID)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount+1), prevLog.LogID)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount), prevLog.MsgCnt)
+	logs, err := logMgr.GetCommitLogsV2(logMgr.currentStart, 0, 1)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), 1)
+	logs, err = logMgr.GetCommitLogsV2(logMgr.currentStart, 0, 2)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, len(logs), 1)
+
+	currentLogIndex = logMgr.GetCurrentStart()
+	prevLog, err = logMgr.TruncateToOffsetV2(currentLogIndex-1, 0)
+	test.Nil(t, err)
+	test.Equal(t, currentLogIndex-1, logMgr.GetCurrentStart())
+	endIndex, endOffset = logMgr.GetCurrentEnd()
+	test.Equal(t, int32(0), logMgr.currentCount)
+	test.Equal(t, int64(logMgr.currentCount)*int64(GetLogDataSize()), endOffset)
+	test.Equal(t, currentLogIndex-1, endIndex)
+	test.Equal(t, prevLog.LogID, logMgr.pLogID)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount+1), prevLog.LogID)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount), prevLog.MsgCnt)
+
+	logStart, _, _ := logMgr.GetLogStartInfo()
+	prevLog, err = logMgr.TruncateToOffsetV2(logStart.SegmentStartIndex, logStart.SegmentStartOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	cntIndex, _ := logMgr.ConvertToCountIndex(logStart.SegmentStartIndex, logStart.SegmentStartOffset+int64(GetLogDataSize()))
+	test.Equal(t, logStart.SegmentStartCount+int64(1), cntIndex)
+	test.Equal(t, int32(2), logMgr.currentCount)
+	test.Equal(t, prevLog.LogID, logMgr.pLogID)
+	test.Equal(t, int64(LOGROTATE_NUM)*int64(logMgr.currentStart)+int64(logMgr.currentCount+1), prevLog.LogID)
+
+	prevLog, err = logMgr.TruncateToOffsetV2(logStart.SegmentStartIndex, logStart.SegmentStartOffset)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, int32(1), logMgr.currentCount)
+	test.Equal(t, int64(0), logMgr.GetLastCommitLogID())
+	prevLog, err = logMgr.TruncateToOffsetV2(logStart.SegmentStartIndex, logStart.SegmentStartOffset-int64(GetLogDataSize()))
+	test.NotNil(t, err)
 }
 
 func TestCommitLogResetWithStart(t *testing.T) {
