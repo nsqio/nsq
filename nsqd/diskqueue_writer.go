@@ -266,6 +266,10 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 	if noRealClean {
 		return &newStart, nil
 	}
+
+	nsqLog.Warningf("DISKQUEUE %v clean queue from %v, %v to new start : %v", d.name,
+		d.diskQueueStart, d.diskWriteEnd, newStart)
+
 	d.diskQueueStart = newStart
 	for i := int64(0); i < cleanFileNum; i++ {
 		fn := d.fileName(i)

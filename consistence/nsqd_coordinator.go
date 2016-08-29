@@ -246,12 +246,13 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 						coordLog.Infof("failed to get clean end: %v", err)
 					}
 					if cleanEndInfo != nil {
-						coordLog.Infof("diskqueue try clean to : %v", cleanEndInfo)
+						coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 						matchIndex, matchOffset, l, err := tcData.logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
 						if err != nil {
 							coordLog.Infof("search log failed: %v", err)
+							continue
 						}
-						coordLog.Infof("clean commit log at : %v, %v", matchIndex, matchOffset, l)
+						coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
 						err = tcData.logMgr.CleanOldData(matchIndex, matchOffset)
 						if err != nil {
 							coordLog.Infof("clean commit log err : %v", err)
@@ -272,12 +273,13 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 					coordLog.Infof("failed to get clean end: %v", err)
 				}
 				if cleanEndInfo != nil {
-					coordLog.Infof("diskqueue try clean to : %v", cleanEndInfo)
+					coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 					matchIndex, matchOffset, l, err := tcData.logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
 					if err != nil {
 						coordLog.Infof("search log failed: %v", err)
+						continue
 					}
-					coordLog.Infof("clean commit log at : %v, %v", matchIndex, matchOffset, l)
+					coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
 					err = tcData.logMgr.CleanOldData(matchIndex, matchOffset)
 					if err != nil {
 						coordLog.Infof("clean commit log err : %v", err)
