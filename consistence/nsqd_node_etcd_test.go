@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	EtcdHost = "http://192.168.66.205:2379,http://192.168.66.237:2379"
+	EtcdHost = "http://10.9.3.13:2379,http://192.168.66.237:2379"
 )
 
 func TestNodeRe(t *testing.T) {
