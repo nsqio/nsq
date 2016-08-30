@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +22,10 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 
 func (self *NsqLookupCoordinator) IsMineLeader() bool {
 	return self.leaderNode.GetID() == self.myNode.GetID()
+}
+
+func (self *NsqLookupCoordinator) IsClusterStable() bool {
+	return atomic.LoadInt32(&self.isClusterUnstable) == 0
 }
 
 func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid string) bool {
@@ -309,5 +314,6 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			coordLog.Infof("topic %v init successful.", tmpTopicInfo)
 		}
 	}
+	self.triggerCheckTopics("", 0, 0)
 	return nil
 }

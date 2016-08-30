@@ -85,6 +85,7 @@ type NsqLookupCoordinator struct {
 	nsqlookupRpcServer *NsqLookupCoordRpcServer
 	wg                 sync.WaitGroup
 	nsqdMonitorChan    chan struct{}
+	isClusterUnstable  int32
 }
 
 func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo) *NsqLookupCoordinator {
@@ -322,6 +323,7 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 			}
 			if check {
 				atomic.AddInt64(&self.nodesEpoch, 1)
+				atomic.StoreInt32(&self.isClusterUnstable, 1)
 				self.triggerCheckTopics("", 0, time.Millisecond*10)
 			}
 		}
@@ -351,8 +353,10 @@ func (self *NsqLookupCoordinator) watchTopicLeaderSession(monitorChan chan struc
 				// try do election for topic
 				self.triggerCheckTopics("", 0, time.Millisecond)
 				coordLog.Warningf("topic leader is missing: %v", n)
+				atomic.StoreInt32(&self.isClusterUnstable, 1)
 			} else {
 				coordLog.Warningf("topic leader session changed : %v, %v", n, n.LeaderNode)
+				atomic.StoreInt32(&self.isClusterUnstable, 1)
 				go self.revokeEnableTopicWrite(n.Topic, n.Partition, true)
 			}
 		}
@@ -397,7 +401,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				continue
 			}
 			coordLog.Debugf("scan found topics: %v", topics)
-			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions)
+			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions, true)
 		case failedInfo := <-self.checkTopicFailChan:
 			if self.leadership == nil {
 				continue
@@ -420,13 +424,13 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				}
 				topics = append(topics, *t)
 			}
-			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions)
+			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions, failedInfo.TopicName == "")
 		}
 	}
 }
 
 func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
-	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool) {
+	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool, fullCheck bool) {
 	coordLog.Infof("do check topics...")
 	// TODO: check partition number for topic, maybe failed to create
 	// some partition when creating topic.
@@ -434,6 +438,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 	currentNodes := self.nsqdNodes
 	currentNodesEpoch := atomic.LoadInt64(&self.nodesEpoch)
 	self.nodesMutex.RUnlock()
+	checkOK := true
 	for _, t := range topics {
 		if currentNodesEpoch != atomic.LoadInt64(&self.nodesEpoch) {
 			coordLog.Infof("nodes changed while checking topics: %v, %v", currentNodesEpoch, atomic.LoadInt64(&self.nodesEpoch))
@@ -443,6 +448,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 		if len(t.ISR) < t.Replica {
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
 			needMigrate = true
+			checkOK = false
 		}
 
 		self.joinStateMutex.Lock()
@@ -453,6 +459,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			wj := state.waitingJoin
 			state.Unlock()
 			if wj {
+				checkOK = false
 				continue
 			}
 		}
@@ -463,6 +470,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			if _, ok := currentNodes[replica]; !ok {
 				coordLog.Warningf("topic %v isr node %v is lost.", t.GetTopicDesp(), replica)
 				needMigrate = true
+				checkOK = false
 				if replica != t.Leader {
 					// leader fail will be handled while leader election.
 					failedNodes = append(failedNodes, replica)
@@ -484,6 +492,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 
 		if _, ok := currentNodes[t.Leader]; !ok {
 			needMigrate = true
+			checkOK = false
 			coordLog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
 			coordErr := self.handleTopicLeaderElection(&t, currentNodes, currentNodesEpoch)
 			if coordErr != nil {
@@ -494,6 +503,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			// check topic leader session key.
 			leaderSession, err := self.leadership.GetTopicLeaderSession(t.Name, t.Partition)
 			if err != nil {
+				checkOK = false
 				coordLog.Infof("topic %v leader session failed to get: %v", t.GetTopicDesp(), err)
 				lostLeaderSessions[t.GetTopicDesp()] = true
 				// notify the nsqd node to acquire the leader session.
@@ -502,6 +512,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				continue
 			}
 			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
+				checkOK = false
 				lostLeaderSessions[t.GetTopicDesp()] = true
 				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
 				self.notifyISRTopicMetaInfo(&t)
@@ -536,6 +547,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			wj := state.waitingJoin
 			state.Unlock()
 			if wj {
+				checkOK = false
 				continue
 			}
 		}
@@ -547,6 +559,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 		// check if write disabled
 		if self.isTopicWriteDisabled(&t) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
+			checkOK = false
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
 		} else {
 			if _, ok := lostLeaderSessions[t.GetTopicDesp()]; ok {
@@ -576,6 +589,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				}
 			}
 		}
+	}
+	if checkOK {
+		if fullCheck {
+			atomic.StoreInt32(&self.isClusterUnstable, 0)
+		}
+	} else {
+		atomic.StoreInt32(&self.isClusterUnstable, 1)
 	}
 }
 
