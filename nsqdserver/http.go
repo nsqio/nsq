@@ -222,6 +222,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool) (interface{}, error) {
+	startPub := time.Now().UnixNano()
 	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -277,6 +278,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
+		cost := time.Now().UnixNano() - startPub
+		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
 		if enableTrace {
 			return struct {
 				Status      string `json:"status"`
@@ -297,6 +300,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	startPub := time.Now().UnixNano()
 	if req.ContentLength > s.ctx.getOpts().MaxBodySize {
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}
@@ -361,6 +365,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 
 			msg := nsqd.NewMessage(0, block)
 			msgs = append(msgs, msg)
+			topic.GetDetailStats().UpdateTopicMsgStats(int64(len(block)), 0)
 		}
 	}
 
@@ -384,6 +389,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
+	cost := time.Now().UnixNano() - startPub
+	topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(msgs)))
 	return "OK", nil
 }
 

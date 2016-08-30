@@ -602,7 +602,7 @@ func (n *NSQD) CleanClientPubStats(remote string, protocol string) {
 	tmpMap := n.GetTopicMapCopy()
 	for _, topics := range tmpMap {
 		for _, t := range topics {
-			t.RemovePubStats(remote, protocol)
+			t.detailStats.RemovePubStats(remote, protocol)
 		}
 	}
 }

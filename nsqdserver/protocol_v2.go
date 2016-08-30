@@ -1186,6 +1186,7 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 }
 
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
+	startPub := time.Now().UnixNano()
 	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
 	if err != nil {
 		return nil, err
@@ -1218,7 +1219,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, realBody, traceID)
 		//p.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
+			topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -1227,13 +1228,15 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 			}
 			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
 		}
-		topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, false)
+		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, false)
+		cost := time.Now().UnixNano() - startPub
+		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), cost/1000)
 		if !traceEnable {
 			return okBytes, nil
 		}
 		return getTracedReponse(messageBodyBuffer, id, traceID, offset, rawSize)
 	} else {
-		topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
+		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
@@ -1243,6 +1246,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 }
 
 func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
+	startPub := time.Now().UnixNano()
 	_, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
@@ -1266,7 +1270,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		id, offset, rawSize, err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
+			topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
@@ -1276,13 +1280,15 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 			}
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}
-		topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), false)
+		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), false)
+		cost := time.Now().UnixNano() - startPub
+		topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(messages)))
 		if !traceEnable {
 			return okBytes, nil
 		}
 		return getTracedReponse(buffers[0], id, 0, offset, rawSize)
 	} else {
-		topic.UpdatePubStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
+		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
@@ -1376,6 +1382,7 @@ func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64, 
 		msg := nsqd.NewMessage(0, realBody)
 		msg.TraceID = traceID
 		messages = append(messages, msg)
+		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), 0)
 	}
 
 	return messages, buffers, nil

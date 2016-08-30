@@ -45,6 +45,7 @@ func (n *NsqdServer) statsdLoop() {
 			nsqd.NsqLogger().LogDebugf("STATSD: pushing stats to %s", client)
 
 			stats := n.ctx.nsqd.GetStats()
+			n.ctx.nsqd.UpdateTopicHistoryStats()
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := nsqd.TopicStats{}

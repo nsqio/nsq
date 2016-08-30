@@ -771,19 +771,19 @@ func (c *Channel) doRequeue(m *Message) error {
 	if c.Exiting() {
 		return ErrExiting
 	}
+	atomic.AddUint64(&c.requeueCount, 1)
+	if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
+	}
 	select {
 	case <-c.exitChan:
-		nsqLog.LogDebugf("requeue message failed for existing: %v ", m.ID)
+		nsqLog.Logf("requeue message failed for existing: %v ", m.ID)
 		return ErrExiting
 	case c.requeuedMsgChan <- m:
 	default:
 		c.waitingRequeueMutex.Lock()
 		c.waitingRequeueMsgs[m.ID] = m
 		c.waitingRequeueMutex.Unlock()
-	}
-	atomic.AddUint64(&c.requeueCount, 1)
-	if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
 	}
 	return nil
 }

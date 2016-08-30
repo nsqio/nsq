@@ -76,13 +76,7 @@ type Topic struct {
 	dynamicConf     *TopicDynamicConf
 	magicCode       int64
 	committedOffset atomic.Value
-	// 100bytes, 1KB, 4KB, 16KB, 64KB, 256KB, 512KB, 1MB, 2MB, 4MB
-	msgSizeStats [10]int64
-	// 1ms, 8ms, 16ms, 32ms, 64ms, 128ms, 512ms, 1024ms, 2046ms, 4098ms
-	msgWriteLatencyStats [10]int64
-	writeErrCnt          int64
-	statsMutex           sync.Mutex
-	clientPubStats       map[string]*ClientPubStats
+	detailStats     *DetailStatsInfo
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -107,7 +101,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		clientPubStats: make(map[string]*ClientPubStats),
+		detailStats:    NewDetailStatsInfo(),
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -253,6 +247,10 @@ func (t *Topic) SetTrace(enable bool) {
 	} else {
 		atomic.StoreInt32(&t.EnableTrace, 0)
 	}
+}
+
+func (t *Topic) GetDetailStats() *DetailStatsInfo {
+	return t.detailStats
 }
 
 func (t *Topic) GetCommitted() BackendQueueEnd {
@@ -884,64 +882,6 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	return latencyStream
 }
 
-func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, count int64, hasErr bool) {
-	t.statsMutex.Lock()
-	s, ok := t.clientPubStats[remote]
-	if !ok {
-		// too much clients pub to this topic
-		// we just ignore stats
-		if len(t.clientPubStats) > 1000 {
-			scanStart := time.Now()
-			scanCnt := 0
-			cleanCnt := 0
-			for _, s := range t.clientPubStats {
-				scanCnt++
-				if time.Since(scanStart) > time.Millisecond*200 {
-					break
-				}
-				if time.Now().Unix()-s.LastPubTs > 60*60 {
-					delete(t.clientPubStats, s.RemoteAddress)
-					cleanCnt++
-				}
-			}
-			nsqLog.Logf("clean pub stats cost %v, scan: %v, clean:%v, left: %v", time.Since(scanStart),
-				scanCnt, cleanCnt, len(t.clientPubStats))
-			t.statsMutex.Unlock()
-			return
-		}
-		s = &ClientPubStats{
-			RemoteAddress: remote,
-			UserAgent:     agent,
-			Protocol:      protocol,
-		}
-		t.clientPubStats[remote] = s
-	}
-
-	if hasErr {
-		s.ErrCount++
-	} else {
-		s.PubCount += count
-		s.LastPubTs = time.Now().Unix()
-	}
-	t.statsMutex.Unlock()
-}
-
-func (t *Topic) RemovePubStats(remote string, protocol string) {
-	t.statsMutex.Lock()
-	delete(t.clientPubStats, remote)
-	t.statsMutex.Unlock()
-}
-
-func (t *Topic) GetPubStats() []ClientPubStats {
-	t.statsMutex.Lock()
-	stats := make([]ClientPubStats, 0, len(t.clientPubStats))
-	for _, s := range t.clientPubStats {
-		stats = append(stats, *s)
-	}
-	t.statsMutex.Unlock()
-	return stats
-}
-
 // maybe should return the cleaned offset to allow commit log clean
 func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanEnd BackendQueueEnd) (BackendQueueEnd, error) {
 	// clean the data that has been consumed and keep the retention policy
@@ -960,14 +900,14 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 		nsqLog.Logf("no consume position found")
 		return nil, nil
 	}
-	if BackendOffset(retentionSize) >= oldestPos.Offset() {
+	cleanStart := t.backend.GetQueueReadStart()
+	nsqLog.Logf("clean topic %v data current start: %v, oldest confirmed %v",
+		t.GetFullName(), cleanStart, oldestPos)
+	if cleanStart.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
 		return nil, nil
 	}
-	nsqLog.Logf("clean topic %v data current oldest confirmed %v",
-		t.GetFullName(), oldestPos)
 
 	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
-	cleanStart := t.backend.GetQueueReadStart()
 	snapReader.SetQueueStart(cleanStart)
 	err := snapReader.SeekTo(cleanStart.Offset())
 	if err != nil {
@@ -1021,7 +961,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 
 	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
 		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
-	if cleanEndInfo == nil || cleanEndInfo.Offset() >= oldestPos.Offset() {
+	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
 		nsqLog.Warningf("clean topic %v data could not exceed current oldest confirmed %v",
 			t.GetFullName(), oldestPos)
 		return nil, nil
