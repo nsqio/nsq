@@ -245,8 +245,8 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 					if err != nil {
 						coordLog.Infof("failed to get clean end: %v", err)
 					}
+					coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 					if cleanEndInfo != nil {
-						coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 						matchIndex, matchOffset, l, err := tcData.logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
 						if err != nil {
 							coordLog.Infof("search log failed: %v", err)
@@ -272,8 +272,8 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 				if err != nil {
 					coordLog.Infof("failed to get clean end: %v", err)
 				}
+				coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 				if cleanEndInfo != nil {
-					coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
 					matchIndex, matchOffset, l, err := tcData.logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
 					if err != nil {
 						coordLog.Infof("search log failed: %v", err)

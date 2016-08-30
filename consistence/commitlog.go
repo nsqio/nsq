@@ -384,7 +384,7 @@ func (self *TopicCommitLogMgr) saveLogSegStartInfo() error {
 		return err
 	}
 	defer file.Close()
-	_, err = fmt.Fprintf(file, "%d\n%d\n", atomic.LoadInt64(&self.logStartInfo.SegmentStartCount),
+	_, err = fmt.Fprintf(file, "%d\n%d\n%d\n", atomic.LoadInt64(&self.logStartInfo.SegmentStartCount),
 		atomic.LoadInt64(&self.logStartInfo.SegmentStartIndex),
 		atomic.LoadInt64(&self.logStartInfo.SegmentStartOffset))
 	if err != nil {
