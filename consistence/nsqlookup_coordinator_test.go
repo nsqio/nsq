@@ -544,7 +544,13 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	lookupCoord1.leadership.DeleteTopic(topic, 1)
 	topic3 := topic + topic
 	lookupCoord1.leadership.DeleteTopic(topic3, 0)
-	defer lookupCoord1.Stop()
+	defer func() {
+		lookupCoord1.DeleteTopic(topic, "**")
+		lookupCoord1.DeleteTopic(topic3, "**")
+		time.Sleep(time.Second * 3)
+
+		lookupCoord1.Stop()
+	}()
 
 	// test new topic create
 	err := lookupCoord1.CreateTopic(topic, TopicMetaInfo{2, 2, 0, 0, 0, 0})
@@ -857,7 +863,15 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	lookupCoord1.DeleteTopic(topic_p3_r1, "**")
 	lookupCoord1.DeleteTopic(topic_p2_r2, "**")
 	time.Sleep(time.Second * 3)
-	defer lookupCoord1.Stop()
+	defer func() {
+		lookupCoord1.DeleteTopic(topic_p1_r1, "**")
+		lookupCoord1.DeleteTopic(topic_p1_r3, "**")
+		lookupCoord1.DeleteTopic(topic_p3_r1, "**")
+		lookupCoord1.DeleteTopic(topic_p2_r2, "**")
+		time.Sleep(time.Second * 3)
+
+		lookupCoord1.Stop()
+	}()
 
 	// test new topic create
 	err := lookupCoord1.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
@@ -889,6 +903,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, len(t0.ISR), 3)
 
+	t.Logf("t0 leader is: %v", t0.Leader)
 	t0LeaderCoord = nsqdCoordList[t0.Leader]
 	test.NotNil(t, t0LeaderCoord)
 	tc0, coordErr = t0LeaderCoord.getTopicCoord(topic_p1_r3, 0)
@@ -958,11 +973,6 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, oldMeta, newMeta)
 
-	lookupCoord1.DeleteTopic(topic_p1_r1, "**")
-	lookupCoord1.DeleteTopic(topic_p1_r3, "**")
-	lookupCoord1.DeleteTopic(topic_p3_r1, "**")
-	lookupCoord1.DeleteTopic(topic_p2_r2, "**")
-	time.Sleep(time.Second * 3)
 }
 
 func TestNsqLookupNsqdMigrate(t *testing.T) {

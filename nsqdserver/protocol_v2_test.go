@@ -2049,7 +2049,7 @@ func benchmarkProtocolV2PubWithArg(b *testing.B, size int, single bool) {
 	wg.Wait()
 
 	b.StopTimer()
-	b.Log(testTopic.GetPubStats())
+	b.Log(testTopic.GetDetailStats().GetPubClientStats())
 	nsqdServer.Exit()
 
 }
