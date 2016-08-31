@@ -356,6 +356,10 @@ func (self *DetailStatsInfo) GetPubClientStats() []ClientPubStats {
 	return stats
 }
 
+func (self *DetailStatsInfo) GetHourlyStats() ([24]int64, [24]int64) {
+	return self.historyStatsInfo.HourlyPubSize, self.historyStatsInfo.HourlyConsumedSize
+}
+
 func (self *DetailStatsInfo) GetMsgSizeStats() []int64 {
 	s := self.msgStats.MsgSizeStats
 	return s[:]

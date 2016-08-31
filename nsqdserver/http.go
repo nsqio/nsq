@@ -58,6 +58,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.V1))
+	router.Handle("GET", "/message/historystats", http_api.Decorate(s.doMessageHistoryStats, log, http_api.V1))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
@@ -623,6 +624,40 @@ func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Reques
 		}
 	}
 	return nil, nil
+}
+
+func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	topicPartStr := reqParams.Get("partition")
+	topicPart, err := strconv.Atoi(topicPartStr)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
+	if err != nil {
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+	}
+	pubhs, subhs := t.GetDetailStats().GetHourlyStats()
+	// since the newest 2 hours data maybe update during get, we ignore the newest 2 points
+	cur := time.Now().Hour() + 2
+	pubhsNew := make([]int64, 0, 22)
+	subhsNew := make([]int64, 0, 22)
+	for len(pubhsNew) < 22 {
+		pubhsNew = append(pubhsNew, pubhs[cur%len(pubhs)])
+		subhsNew = append(subhsNew, subhs[cur%len(subhs)])
+		cur++
+	}
+	return struct {
+		HourlyPubSize      []int64 `json:"hourly_pub_size"`
+		HourlyConsumedSize []int64 `json:"hourly_sub_size"`
+	}{pubhsNew, subhsNew}, nil
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

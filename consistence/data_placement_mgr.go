@@ -17,8 +17,9 @@ const (
 
 type NodeTopicStats struct {
 	NodeID string
-	// the consumed data (MB) on the leader for all channels in the topic.
-	ChannelDepthData          map[string]int64
+	// the data (MB) need to be consumed on the leader for all channels in the topic.
+	ChannelDepthData map[string]int64
+	// the average data consumed every hour in past 24hr
 	ChannelHourlyConsumedData map[string]int64
 	TopicChannelSubQPS        map[string]int
 	// the data left on disk. unit: MB
@@ -27,6 +28,10 @@ type NodeTopicStats struct {
 	TopicTotalDataSize  map[string]int64
 	TopicPubQPS         map[string]int
 	NodeCPUs            int
+
+	// the pub and sub stat for past 24hr
+	ChannelHourlyConsumedDataList map[string][24]int64
+	TopicHourlyPubDataList        map[string][24]int64
 }
 
 // the load factor is something like cpu load factor that
@@ -39,7 +44,7 @@ func (self *NodeTopicStats) GetNodeLoadFactor() float64 {
 		totalDataSize += v
 	}
 	totalDataSize += int64(len(perCpuStat.TopicTotalDataSize))
-	return leaderLf + float64(totalDataSize)/2.00
+	return leaderLf + float64(totalDataSize)/4.00
 }
 
 // TODO: handle recent avg load in 24hr.
@@ -55,7 +60,21 @@ func (self *NodeTopicStats) GetNodeLeaderLoadFactor() (*NodeTopicStats, float64)
 		totalLeaderDataSize += v
 	}
 	totalLeaderDataSize += int64(len(perCpuStat.TopicLeaderDataSize))
-	return perCpuStat, float64(leftConsumed) + float64(totalLeaderDataSize)/2.00
+	return perCpuStat, float64(leftConsumed) + float64(totalLeaderDataSize)/4.00
+}
+
+func (self *NodeTopicStats) GetTopicLeaderLoadFactor(topic string) float64 {
+	perCpuStat := self.GetPerCPUStats()
+	topicConsume, ok := perCpuStat.ChannelDepthData[topic]
+	leftConsume := int64(0)
+	if ok {
+		leftConsume += topicConsume
+	}
+	topicData, ok := perCpuStat.TopicLeaderDataSize[topic]
+	if ok {
+		return float64(leftConsume + topicData/4)
+	}
+	return float64(leftConsume)
 }
 
 func (self *NodeTopicStats) GetTopicLoadFactor(topic string) float64 {
@@ -67,7 +86,7 @@ func (self *NodeTopicStats) GetTopicLoadFactor(topic string) float64 {
 	}
 	topicData, ok := perCpuStat.TopicTotalDataSize[topic]
 	if ok {
-		return float64(leftConsume + topicData/2)
+		return float64(leftConsume + topicData/4)
 	}
 	return float64(leftConsume)
 }
@@ -86,15 +105,17 @@ func (self *NodeTopicStats) GetPerCPUStats() *NodeTopicStats {
 		totalSize[tname] = v / int64(self.NodeCPUs/4+1)
 	}
 	return &NodeTopicStats{
-		NodeID:                    self.NodeID,
-		ChannelDepthData:          consumed,
-		ChannelHourlyConsumedData: self.ChannelHourlyConsumedData,
-		TopicChannelSubQPS:        self.TopicChannelSubQPS,
-		TopicLeaderDataSize:       leaderSize,
-		TopicTotalDataSize:        totalSize,
-		TopicHourlyPubData:        self.TopicHourlyPubData,
-		TopicPubQPS:               self.TopicPubQPS,
-		NodeCPUs:                  1,
+		NodeID:                        self.NodeID,
+		ChannelDepthData:              consumed,
+		ChannelHourlyConsumedData:     self.ChannelHourlyConsumedData,
+		TopicChannelSubQPS:            self.TopicChannelSubQPS,
+		TopicLeaderDataSize:           leaderSize,
+		TopicTotalDataSize:            totalSize,
+		TopicHourlyPubData:            self.TopicHourlyPubData,
+		TopicPubQPS:                   self.TopicPubQPS,
+		NodeCPUs:                      1,
+		ChannelHourlyConsumedDataList: self.ChannelHourlyConsumedDataList,
+		TopicHourlyPubDataList:        self.TopicHourlyPubDataList,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -493,21 +494,32 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 		topicStats = self.nsqdCoord.localNsqd.GetTopicStats(topic)
 	}
 	stat.NodeID = self.nsqdCoord.myNode.GetID()
-	stat.ChannelDepthData = make(map[string]int64, len(topicStats))
-	stat.ChannelHourlyConsumedData = make(map[string]int64, len(topicStats))
-	stat.TopicLeaderDataSize = make(map[string]int64, len(topicStats))
-	stat.TopicTotalDataSize = make(map[string]int64, len(topicStats))
+	stat.ChannelDepthData = make(map[string]int64, len(topicStats)*2)
+	stat.ChannelHourlyConsumedData = make(map[string]int64, len(topicStats)*2)
+	stat.TopicLeaderDataSize = make(map[string]int64, len(topicStats)*2)
+	stat.TopicTotalDataSize = make(map[string]int64, len(topicStats)*2)
 	stat.TopicPubQPS = nil
 	stat.TopicChannelSubQPS = nil
+	stat.ChannelHourlyConsumedDataList = make(map[string][24]int64, len(topicStats)*2)
+	stat.TopicHourlyPubDataList = make(map[string][24]int64, len(topicStats)*2)
 	stat.NodeCPUs = runtime.NumCPU()
 	for _, ts := range topicStats {
 		// plus 1 to handle the empty topic/channel
-		stat.TopicTotalDataSize[ts.TopicName] += ts.BackendDepth/1024/1024 + 1
+		stat.TopicTotalDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
+		pid, _ := strconv.Atoi(ts.TopicPartition)
+		localTopic, err := self.nsqdCoord.localNsqd.GetExistingTopic(ts.TopicName, pid)
+		if err != nil {
+			coordLog.Infof("get local topic %v, %v failed: %v", ts.TopicFullName, pid, err)
+			pubhs, subhs := localTopic.GetDetailStats().GetHourlyStats()
+			stat.TopicHourlyPubDataList[ts.TopicFullName] = pubhs
+			if ts.IsLeader {
+				stat.ChannelHourlyConsumedDataList[ts.TopicFullName] = subhs
+			}
+		}
 		if ts.IsLeader {
-			stat.TopicLeaderDataSize[ts.TopicName] += ts.BackendDepth/1024/1024 + 1
+			stat.TopicLeaderDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
 			for _, chStat := range ts.Channels {
-				stat.ChannelDepthData[ts.TopicName] += chStat.BackendDepth/1024/1024 + 1
-				stat.ChannelHourlyConsumedData[ts.TopicName] += chStat.HourlySubSize / 1024 / 1024
+				stat.ChannelDepthData[ts.TopicFullName] += chStat.DepthSize/1024/1024 + 1
 			}
 		}
 	}
