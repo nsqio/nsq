@@ -89,7 +89,7 @@ func New(opts *Options) *NSQAdmin {
 			n.logf("FATAL: failed to AppendCertsFromPEM %s", opts.HTTPClientTLSRootCAFile)
 			os.Exit(1)
 		}
-		n.httpClientTLSConfig.ClientCAs = tlsCertPool
+		n.httpClientTLSConfig.RootCAs = tlsCertPool
 	}
 
 	// require that both the hostname and port be specified
