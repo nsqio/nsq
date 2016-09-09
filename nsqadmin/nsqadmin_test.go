@@ -2,11 +2,17 @@ package nsqadmin
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/nsqio/nsq/internal/test"
+	"github.com/nsqio/nsq/nsqd"
 )
 
 func TestNoLogger(t *testing.T) {
@@ -55,4 +61,55 @@ func TestBothNSQDAndNSQLookup(t *testing.T) {
 		return
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestTLSHTTPClient(t *testing.T) {
+	nsqdOpts := nsqd.NewOptions()
+	nsqdOpts.Verbose = true
+	nsqdOpts.TLSCert = "./test/server.pem"
+	nsqdOpts.TLSKey = "./test/server-key.pem"
+	nsqdOpts.TLSRootCAFile = "./test/ca.pem"
+	nsqdOpts.TLSClientAuthPolicy = "require-verify"
+	_, nsqdHTTPAddr, nsqd := mustStartNSQD(nsqdOpts)
+	defer os.RemoveAll(nsqdOpts.DataPath)
+	defer nsqd.Exit()
+
+	opts := NewOptions()
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.NSQDHTTPAddresses = []string{nsqdHTTPAddr.String()}
+	opts.HTTPClientTLSRootCAFile = "./test/ca.pem"
+	opts.HTTPClientTLSCert = "./test/client.pem"
+	opts.HTTPClientTLSKey = "./test/client-key.pem"
+	nsqadmin := New(opts)
+	nsqadmin.Main()
+	defer nsqadmin.Exit()
+
+	httpAddr := nsqadmin.RealHTTPAddr()
+	u := url.URL{
+		Scheme: "http",
+		Host:   httpAddr.String(),
+		Path:   "/api/nodes/" + nsqdHTTPAddr.String(),
+	}
+
+	resp, err := http.Get(u.String())
+	defer resp.Body.Close()
+
+	test.Equal(t, nil, err)
+	test.Equal(t, resp.StatusCode < 500, true)
+}
+
+func mustStartNSQD(opts *nsqd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqd.NSQD) {
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.HTTPSAddress = "127.0.0.1:0"
+	if opts.DataPath == "" {
+		tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+		if err != nil {
+			panic(err)
+		}
+		opts.DataPath = tmpDir
+	}
+	nsqd := nsqd.New(opts)
+	nsqd.Main()
+	return nsqd.RealTCPAddr(), nsqd.RealHTTPAddr(), nsqd
 }
