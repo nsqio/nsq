@@ -96,6 +96,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -146,6 +147,18 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	}{
 		Version:   version.Binary,
 		HASupport: s.ctx.nsqlookupd.coordinator != nil,
+	}, nil
+}
+
+func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	stable := false
+	if s.ctx.nsqlookupd.coordinator != nil {
+		stable = s.ctx.nsqlookupd.coordinator.IsClusterStable()
+	}
+	return struct {
+		Stable bool `json:"stable"`
+	}{
+		Stable: stable,
 	}, nil
 }
 

@@ -35,6 +35,7 @@ func (n *NsqdServer) statsdLoop() {
 		case <-n.exitChan:
 			goto exit
 		case <-ticker.C:
+			n.ctx.nsqd.UpdateTopicHistoryStats()
 			client := statsd.NewClient(opts.StatsdAddress, opts.StatsdPrefix)
 			err := client.CreateSocket(opts.StatsdProtocol)
 			if err != nil {
@@ -45,7 +46,6 @@ func (n *NsqdServer) statsdLoop() {
 			nsqd.NsqLogger().LogDebugf("STATSD: pushing stats to %s", client)
 
 			stats := n.ctx.nsqd.GetStats()
-			n.ctx.nsqd.UpdateTopicHistoryStats()
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := nsqd.TopicStats{}
