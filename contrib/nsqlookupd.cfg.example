@@ -32,3 +32,5 @@ log_level = 2
 
 ## if empty, use the default flag value in glog
 log_dir = "./"
+
+balance_interval = ["1", "23"]

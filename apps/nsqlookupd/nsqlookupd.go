@@ -11,6 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/app"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqlookupd"
 	"github.com/judwhite/go-svc/svc"
@@ -39,9 +40,11 @@ var (
 	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
 	logLevel                = flagSet.Int("log-level", 1, "log verbose level")
 	logDir                  = flagSet.String("log-dir", "", "directory for log file")
+	balanceInterval         = app.StringArray{}
 )
 
 func init() {
+	flagSet.Var(&balanceInterval, "balance-interval", "the balance time interval")
 }
 
 type program struct {
