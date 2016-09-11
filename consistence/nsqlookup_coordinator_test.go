@@ -418,7 +418,11 @@ func startNsqLookupCoord(t *testing.T, useFakeLeadership bool) (*NsqLookupCoordi
 	n.RpcPort = strconv.Itoa(int(randPort))
 	n.Epoch = 1
 	n.ID = GenNsqLookupNodeID(&n, "")
-	coord := NewNsqLookupCoordinator(TEST_NSQ_CLUSTER_NAME, &n)
+	opts := &Options{
+		BalanceStart: 1,
+		BalanceEnd:   23,
+	}
+	coord := NewNsqLookupCoordinator(TEST_NSQ_CLUSTER_NAME, &n, opts)
 	if useFakeLeadership {
 		coord.leadership = NewFakeNsqlookupLeadership()
 	} else {

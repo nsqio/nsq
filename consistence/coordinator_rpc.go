@@ -79,6 +79,12 @@ type RpcAcquireTopicLeaderReq struct {
 	LookupdEpoch EpochType
 }
 
+type RpcReleaseTopicLeaderReq struct {
+	RpcTopicData
+	LeaderNodeID string
+	LookupdEpoch EpochType
+}
+
 type RpcTopicLeaderSession struct {
 	RpcTopicData
 	LeaderNode   NsqdNodeInfo
@@ -138,6 +144,41 @@ func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *Coor
 		return &CoordErr{"rpc disabled", RpcCommonErr, CoordNetErr}
 	}
 	return nil
+}
+
+func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcReleaseTopicLeaderReq) *CoordErr {
+	var ret CoordErr
+	if err := self.checkLookupForWrite(rpcTopicReq.LookupdEpoch); err != nil {
+		ret = *err
+		return &ret
+	}
+	coordLog.Infof("got release leader session notify : %v, on node: %v", rpcTopicReq, self.nsqdCoord.myNode.GetID())
+	topicCoord, err := self.nsqdCoord.getTopicCoord(rpcTopicReq.TopicName, rpcTopicReq.TopicPartition)
+	if err != nil {
+		coordLog.Infof("topic partition missing.")
+		ret = *err
+		return &ret
+	}
+	if !topicCoord.IsWriteDisabled() {
+		coordLog.Errorf("topic %v release leader should disable write first")
+		ret = *ErrTopicCoordStateInvalid
+		return &ret
+	}
+	coordData := topicCoord.GetData()
+	if coordData.topicInfo.Epoch != rpcTopicReq.Epoch ||
+		coordData.topicLeaderSession.LeaderEpoch != rpcTopicReq.TopicLeaderSessionEpoch {
+		coordLog.Warningf("topic info epoch mismatch while release leader: %v, %v", coordData,
+			rpcTopicReq)
+		ret = *ErrEpochMismatch
+		return &ret
+	}
+	if coordData.GetLeader() == self.nsqdCoord.myNode.GetID() {
+		coordLog.Infof("my leader should release: %v", coordData)
+		self.nsqdCoord.releaseTopicLeader(&coordData.topicInfo, &coordData.topicLeaderSession)
+	} else {
+		coordLog.Infof("Leader is not me while release: %v", coordData)
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLeaderSession) *CoordErr {
@@ -484,7 +525,6 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 		}
 	}()
 
-	var stat NodeTopicStats
 	var topicStats []nsqd.TopicStats
 	// TODO: get local coordinator stats and errors, get local topic data stats
 	if topic == "" {
@@ -493,16 +533,7 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 	} else {
 		topicStats = self.nsqdCoord.localNsqd.GetTopicStats(topic)
 	}
-	stat.NodeID = self.nsqdCoord.myNode.GetID()
-	stat.ChannelDepthData = make(map[string]int64, len(topicStats)*2)
-	stat.ChannelHourlyConsumedData = make(map[string]int64, len(topicStats)*2)
-	stat.TopicLeaderDataSize = make(map[string]int64, len(topicStats)*2)
-	stat.TopicTotalDataSize = make(map[string]int64, len(topicStats)*2)
-	stat.TopicPubQPS = nil
-	stat.TopicChannelSubQPS = nil
-	stat.ChannelHourlyConsumedDataList = make(map[string][24]int64, len(topicStats)*2)
-	stat.TopicHourlyPubDataList = make(map[string][24]int64, len(topicStats)*2)
-	stat.NodeCPUs = runtime.NumCPU()
+	stat := NewNodeTopicStats(self.nsqdCoord.myNode.GetID(), len(topicStats)*2, runtime.NumCPU())
 	for _, ts := range topicStats {
 		// plus 1 to handle the empty topic/channel
 		stat.TopicTotalDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
@@ -510,21 +541,19 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 		localTopic, err := self.nsqdCoord.localNsqd.GetExistingTopic(ts.TopicName, pid)
 		if err != nil {
 			coordLog.Infof("get local topic %v, %v failed: %v", ts.TopicFullName, pid, err)
-			pubhs, subhs := localTopic.GetDetailStats().GetHourlyStats()
+			pubhs := localTopic.GetDetailStats().GetHourlyStats()
 			stat.TopicHourlyPubDataList[ts.TopicFullName] = pubhs
-			if ts.IsLeader {
-				stat.ChannelHourlyConsumedDataList[ts.TopicFullName] = subhs
-			}
 		}
 		if ts.IsLeader {
 			stat.TopicLeaderDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
+			stat.ChannelNum[ts.TopicFullName] = len(ts.Channels)
 			for _, chStat := range ts.Channels {
 				stat.ChannelDepthData[ts.TopicFullName] += chStat.DepthSize/1024/1024 + 1
 			}
 		}
 	}
 	// the status of specific topic
-	return &stat
+	return stat
 }
 
 type RpcTopicData struct {

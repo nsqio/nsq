@@ -45,6 +45,10 @@ type TopicPartitionID struct {
 	TopicPartition int
 }
 
+func (self *TopicPartitionID) String() string {
+	return self.TopicName + "-" + strconv.Itoa(self.TopicPartition)
+}
+
 func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]*nsqd.Message, error) {
 	msgs = msgs[:0]
 	size := int32(len(data))

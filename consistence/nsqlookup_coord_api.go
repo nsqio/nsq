@@ -132,9 +132,7 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 
 func (self *NsqLookupCoordinator) deleteTopicPartitionForce(topic string, pid int) error {
 	self.leadership.DeleteTopic(topic, pid)
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
 	var topicInfo TopicPartitionMetaInfo
 	topicInfo.Name = topic
 	topicInfo.Partition = pid
@@ -215,9 +213,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		return errors.New("max partition allowed exceed")
 	}
 
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
 	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
 		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
 		return ErrNodeUnavailable.ToErrorType()
@@ -280,7 +276,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	}
-	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
+	leaders, isrList, err := self.dpm.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
 		return err.ToErrorType()

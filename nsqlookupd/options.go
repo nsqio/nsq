@@ -23,6 +23,7 @@ type Options struct {
 
 	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
 	NsqdPingTimeout         time.Duration `flag:"nsqd-ping-timeout"`
+	BalanceInterval         []string      `flag:"balance-interval"`
 
 	LogLevel int32  `flag:"log-level" cfg:"log_level"`
 	LogDir   string `flag:"log-dir" cfg:"log_dir"`
