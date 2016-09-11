@@ -153,6 +153,11 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	stable := false
 	if s.ctx.nsqlookupd.coordinator != nil {
+		if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
+			nsqlookupLog.Logf("request from remote %v should request to leader", req.RemoteAddr)
+			return nil, http_api.Err{400, consistence.ErrFailedOnNotLeader}
+		}
+
 		stable = s.ctx.nsqlookupd.coordinator.IsClusterStable()
 	}
 	return struct {

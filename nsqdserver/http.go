@@ -644,20 +644,17 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 	if err != nil {
 		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
 	}
-	pubhs, subhs := t.GetDetailStats().GetHourlyStats()
+	pubhs := t.GetDetailStats().GetHourlyStats()
 	// since the newest 2 hours data maybe update during get, we ignore the newest 2 points
 	cur := time.Now().Hour() + 2
 	pubhsNew := make([]int64, 0, 22)
-	subhsNew := make([]int64, 0, 22)
 	for len(pubhsNew) < 22 {
 		pubhsNew = append(pubhsNew, pubhs[cur%len(pubhs)])
-		subhsNew = append(subhsNew, subhs[cur%len(subhs)])
 		cur++
 	}
 	return struct {
-		HourlyPubSize      []int64 `json:"hourly_pub_size"`
-		HourlyConsumedSize []int64 `json:"hourly_sub_size"`
-	}{pubhsNew, subhsNew}, nil
+		HourlyPubSize []int64 `json:"hourly_pub_size"`
+	}{pubhsNew}, nil
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

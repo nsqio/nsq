@@ -101,7 +101,6 @@ func NewTopic(topicName string, part int, opt *Options,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		detailStats:    NewDetailStatsInfo(),
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -131,7 +130,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		nsqLog.LogErrorf("topic %v failed to load magic code: %v", t.fullName, err)
 		return nil
 	}
-
+	t.detailStats = NewDetailStatsInfo(t.TotalDataSize())
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 

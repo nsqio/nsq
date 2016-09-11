@@ -218,11 +218,12 @@ type DetailStatsInfo struct {
 	clientPubStats   map[string]*ClientPubStats
 }
 
-func NewDetailStatsInfo() *DetailStatsInfo {
+func NewDetailStatsInfo(initPubSize int64) *DetailStatsInfo {
 	return &DetailStatsInfo{
-		historyStatsInfo: &TopicHistoryStatsInfo{lastHour: int32(time.Now().Hour())},
-		msgStats:         &TopicMsgStatsInfo{},
-		clientPubStats:   make(map[string]*ClientPubStats),
+		historyStatsInfo: &TopicHistoryStatsInfo{lastHour: int32(time.Now().Hour()),
+			lastPubSize: initPubSize},
+		msgStats:       &TopicMsgStatsInfo{},
+		clientPubStats: make(map[string]*ClientPubStats),
 	}
 }
 
@@ -234,11 +235,9 @@ type TopicMsgStatsInfo struct {
 }
 
 type TopicHistoryStatsInfo struct {
-	lastHour           int32
-	lastPubSize        int64
-	lastConsumedSize   int64
-	HourlyPubSize      [24]int64
-	HourlyConsumedSize [24]int64
+	lastHour      int32
+	lastPubSize   int64
+	HourlyPubSize [24]int64
 }
 
 func (self *TopicMsgStatsInfo) UpdateMsgSizeStats(msgSize int64) {
@@ -274,19 +273,16 @@ func (self *TopicMsgStatsInfo) UpdateMsgStats(msgSize int64, latency int64) {
 
 // the slave should also update the pub size stat,
 // since the slave need sync with leader (which will cost the write performance)
-func (self *TopicHistoryStatsInfo) UpdateHourlySize(curPubSize int64, curConsumedSize int64) {
+func (self *TopicHistoryStatsInfo) UpdateHourlySize(curPubSize int64) {
 	now := int32(time.Now().Hour())
 	lastBucket := self.lastHour % 24
 	if now > self.lastHour {
 		lastBucket = (lastBucket + 1) % 24
 		atomic.StoreInt64(&self.HourlyPubSize[lastBucket], 0)
-		atomic.StoreInt64(&self.HourlyConsumedSize[lastBucket], 0)
 		atomic.StoreInt32(&self.lastHour, now)
 	}
 	atomic.AddInt64(&self.HourlyPubSize[lastBucket], curPubSize-self.lastPubSize)
-	atomic.AddInt64(&self.HourlyConsumedSize[lastBucket], curConsumedSize-self.lastConsumedSize)
 	atomic.StoreInt64(&self.lastPubSize, curPubSize)
-	atomic.StoreInt64(&self.lastConsumedSize, curConsumedSize)
 }
 
 func (self *DetailStatsInfo) UpdateTopicMsgStats(msgSize int64, latency int64) {
@@ -356,8 +352,8 @@ func (self *DetailStatsInfo) GetPubClientStats() []ClientPubStats {
 	return stats
 }
 
-func (self *DetailStatsInfo) GetHourlyStats() ([24]int64, [24]int64) {
-	return self.historyStatsInfo.HourlyPubSize, self.historyStatsInfo.HourlyConsumedSize
+func (self *DetailStatsInfo) GetHourlyStats() [24]int64 {
+	return self.historyStatsInfo.HourlyPubSize
 }
 
 func (self *DetailStatsInfo) GetMsgSizeStats() []int64 {
@@ -380,13 +376,7 @@ func (n *NSQD) UpdateTopicHistoryStats() {
 	}
 	n.RUnlock()
 	for _, t := range realTopics {
-		totalConsumed := int64(0)
-		t.channelLock.RLock()
-		for _, c := range t.channelMap {
-			totalConsumed += int64(c.GetConfirmed().Offset())
-		}
-		t.channelLock.RUnlock()
 		pubSize := t.TotalDataSize()
-		t.detailStats.historyStatsInfo.UpdateHourlySize(pubSize, totalConsumed)
+		t.detailStats.historyStatsInfo.UpdateHourlySize(pubSize)
 	}
 }
