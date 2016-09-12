@@ -438,7 +438,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(minLF float64, maxLF f
 
 	// avoid move the too busy topic to reduce the impaction of the online service.
 	// if the busiest topic is not so busy, we try move this topic to avoid move too much idle topics
-	if busyTopic != "" && busyLevel < 13 {
+	if busyTopic != "" && busyLevel < 13 && (busyLevel < maxLF-minLF) {
 		topicName, partitionID, err := splitTopicPartitionID(busyTopic)
 		if err != nil {
 			coordLog.Warningf("split topic name and partition failed: %v", err)

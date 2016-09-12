@@ -96,7 +96,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, http_api.V1))
+	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, debugLog, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -162,29 +162,30 @@ func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps
 		stable = s.ctx.nsqlookupd.coordinator.IsClusterStable()
 		leaderLFs, nodeLFs := s.ctx.nsqlookupd.coordinator.GetClusterNodeLoadFactor()
 		for nid, lf := range leaderLFs {
-			p := s.ctx.nsqlookupd.DB.SearchPeerClientByID(nid)
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nid)
 			if p == nil {
 				nsqlookupLog.Logf("node not found in peer: %v", nid)
 				continue
 			}
 			stat := &NodeStat{}
+			nodeStatMap[nid] = stat
 			stat.TCPPort = p.TCPPort
 			stat.HTTPPort = p.HTTPPort
 			stat.Hostname = p.Hostname
 			stat.BroadcastAddress = p.BroadcastAddress
 			stat.LeaderLoadFactor = lf
-			nodeStatMap[nid] = stat
 		}
 		for nid, lf := range nodeLFs {
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nid)
+			if p == nil {
+				nsqlookupLog.Logf("node not found in peer: %v", nid)
+				continue
+			}
+
 			stat, ok := nodeStatMap[nid]
 			if !ok {
 				stat = &NodeStat{}
 				nodeStatMap[nid] = stat
-			}
-			p := s.ctx.nsqlookupd.DB.SearchPeerClientByID(nid)
-			if p == nil {
-				nsqlookupLog.Logf("node not found in peer: %v", nid)
-				continue
 			}
 
 			stat.TCPPort = p.TCPPort
@@ -192,8 +193,8 @@ func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps
 			stat.Hostname = p.Hostname
 			stat.BroadcastAddress = p.BroadcastAddress
 			stat.NodeLoadFactor = lf
-			nodeStatMap[nid] = stat
 		}
+		nsqlookupLog.Logf("node stats map: %v", nodeStatMap)
 	}
 	nodeStatList := make([]*NodeStat, 0, len(nodeStatMap))
 	for _, v := range nodeStatMap {

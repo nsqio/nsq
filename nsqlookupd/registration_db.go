@@ -151,12 +151,23 @@ func (r *RegistrationDB) SearchPeerClientByID(id string) *PeerInfo {
 	return p
 }
 
+func (r *RegistrationDB) SearchPeerClientByClusterID(id string) *PeerInfo {
+	r.RLock()
+	defer r.RUnlock()
+	for _, n := range r.registrationNodeMap {
+		if n.DistributedID == id {
+			return n
+		}
+	}
+	return nil
+}
+
 func (r *RegistrationDB) GetAllPeerClients() PeerInfoList {
 	r.RLock()
 	defer r.RUnlock()
 	retList := make(PeerInfoList, 0, len(r.registrationNodeMap))
-	for _, r := range r.registrationNodeMap {
-		retList = append(retList, r)
+	for _, n := range r.registrationNodeMap {
+		retList = append(retList, n)
 	}
 	return retList
 }
