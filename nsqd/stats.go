@@ -393,7 +393,7 @@ func (self *DetailStatsInfo) LoadHistory(fileName string) {
 }
 
 func (self *DetailStatsInfo) SaveHistory(fileName string) error {
-	nsqLog.Logf("persisting history stats to %s", fileName)
+	nsqLog.LogDebugf("persisting history stats to %s", fileName)
 	data, err := json.Marshal(self.historyStatsInfo)
 	if err != nil {
 		nsqLog.LogWarningf("failed to save history stats: %v", err)

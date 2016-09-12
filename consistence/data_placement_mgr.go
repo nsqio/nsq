@@ -399,7 +399,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			coordLog.Infof("min/avg/max leader load %v, %v, %v", minLeaderLoad, avgLeaderLoad, maxLeaderLoad)
 			coordLog.Infof("min/avg/max node load %v, %v, %v", minNodeLoad, avgNodeLoad, maxNodeLoad)
 			if len(topicStatsMinMax[1].TopicHourlyPubDataList) <= 2 {
-				coordLog.Infof("the topic number is so less on both nodes, no need balance: %v", topicStatsMinMax)
+				coordLog.Infof("the topic number is so less on both nodes, no need balance: %v", topicStatsMinMax[1])
 				continue
 			}
 

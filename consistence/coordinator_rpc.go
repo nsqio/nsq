@@ -540,6 +540,7 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 		localTopic, err := self.nsqdCoord.localNsqd.GetExistingTopic(ts.TopicName, pid)
 		if err != nil {
 			coordLog.Infof("get local topic %v, %v failed: %v", ts.TopicFullName, pid, err)
+		} else {
 			pubhs := localTopic.GetDetailStats().GetHourlyStats()
 			stat.TopicHourlyPubDataList[ts.TopicFullName] = pubhs
 		}
