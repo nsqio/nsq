@@ -35,7 +35,7 @@ func (self *NsqLookupCoordinator) GetClusterNodeLoadFactor() (map[string]float64
 	for nodeID, nodeInfo := range currentNodes {
 		topicStat, err := self.getNsqdTopicStat(nodeInfo)
 		if err != nil {
-			coordLog.Infof("failed to get node topic status while checking balance: %v", nodeID)
+			coordLog.Infof("failed to get node topic status : %v", nodeID)
 			continue
 		}
 		leaderLF, nodeLF := topicStat.GetNodeLoadFactor()

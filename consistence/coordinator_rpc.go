@@ -526,7 +526,6 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 	}()
 
 	var topicStats []nsqd.TopicStats
-	// TODO: get local coordinator stats and errors, get local topic data stats
 	if topic == "" {
 		// all topic status
 		topicStats = self.nsqdCoord.localNsqd.GetStats()
