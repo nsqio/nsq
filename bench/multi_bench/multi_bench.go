@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"log"
-	"math/rand"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +35,7 @@ var (
 	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset)")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
+	topicListFile = flagSet.String("topic-list-file", "", "the file that contains one topic each line")
 )
 
 func getPartitionID(msgID nsq.NewMessageID) string {
@@ -125,7 +127,7 @@ func startBenchPub(msg []byte, batch [][]byte) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pubWorker(*runfor, pubMgr, *batchSize, batch, topics, rdyChan, goChan)
+			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan)
 		}()
 		<-rdyChan
 	}
@@ -321,7 +323,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pubWorker(*runfor, pubMgr, *batchSize, batch, topics, rdyChan, goChan)
+			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan)
 		}()
 		<-rdyChan
 	}
@@ -680,6 +682,20 @@ func main() {
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 	orderCheck = make(map[string]pubResp)
+	if *topicListFile != "" {
+		f, err := os.Open(*topicListFile)
+		if err != nil {
+			log.Printf("load topic list file error: %v", err)
+		} else {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+				line = strings.TrimSpace(line)
+				topics = append(topics, line)
+			}
+		}
+	}
+	log.Printf("testing topic list: %v", topics)
 
 	msg := make([]byte, *size)
 	batch := make([][]byte, *batchSize)
@@ -704,12 +720,11 @@ func main() {
 	}
 }
 
-func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, batch [][]byte, topics app.StringArray, rdyChan chan int, goChan chan int) {
+func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string, batchSize int, batch [][]byte, rdyChan chan int, goChan chan int) {
 	rdyChan <- 1
 	<-goChan
 	var msgCount int64
 	endTime := time.Now().Add(td)
-	r := rand.New(rand.NewSource(time.Now().Unix()))
 	traceIDs := make([]uint64, len(batch))
 	var traceResp pubResp
 	var err error
@@ -721,9 +736,8 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 			time.Sleep(*sleepfor)
 		}
 
-		i := r.Intn(len(topics))
 		if *trace {
-			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topics[i], traceIDs, batch)
+			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
 			if err != nil {
 				log.Println("pub error :" + err.Error())
 				atomic.AddInt64(&totalErrCount, 1)
@@ -733,10 +747,10 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 
 			pidStr := getPartitionID(traceResp.id)
 			mutex.Lock()
-			topicResp, ok := pubRespCheck[topics[i]+pidStr]
+			topicResp, ok := pubRespCheck[topicName+pidStr]
 			if !ok {
 				topicResp = make(map[uint64]pubResp)
-				pubRespCheck[topics[i]+pidStr] = topicResp
+				pubRespCheck[topicName+pidStr] = topicResp
 			}
 			oldResp, ok := topicResp[uint64(traceResp.id)]
 			if ok {
@@ -749,7 +763,7 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, batchSize int, ba
 			}
 			mutex.Unlock()
 		} else {
-			err := pubMgr.MultiPublish(topics[i], batch)
+			err := pubMgr.MultiPublish(topicName, batch)
 			if err != nil {
 				log.Println("pub error :" + err.Error())
 				atomic.AddInt64(&totalErrCount, 1)
