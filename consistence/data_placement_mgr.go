@@ -26,9 +26,9 @@ const (
 	HIGHEST_LEFT_DATA_MB_SIZE    = 200 * 1024
 )
 
-// pub qps level : 1~13 low (< 30 msgs/sec), 13 ~ 51 medium (<1000 msgs/sec), 51 ~ 74 high (<8000 msgs/sec), >74 very high (>8000 msgs/sec)
+// pub qps level : 1~13 low (< 30 KB/sec), 13 ~ 51 medium (<1000 KB/sec), 51 ~ 74 high (<8 MB/sec), >74 very high (>8 MB/sec)
 func convertQPSLevel(hourlyPubSize int64) float64 {
-	qps := hourlyPubSize / 3600
+	qps := hourlyPubSize / 3600 / 1024
 	if qps <= 3 {
 		return 1.0 + float64(qps)
 	} else if qps <= 30 {
@@ -415,15 +415,13 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			if minLeaderLoad*4 < avgLeaderLoad {
 				// move some topic from the most busy node to the most idle node
 				self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
-			} else if avgLeaderLoad < 10 && maxLeaderLoad < 30 {
+			} else if avgLeaderLoad < 5 && maxLeaderLoad < 10 {
 				// all nodes in the cluster are under low load, no need balance
 				continue
 			} else if avgLeaderLoad*2 < maxLeaderLoad {
 				self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
-			} else if avgLeaderLoad >= 30 {
-				if minLeaderLoad*2 < avgLeaderLoad {
-					self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
-				} else if maxLeaderLoad-avgLeaderLoad > 20 {
+			} else if avgLeaderLoad >= 20 {
+				if (minLeaderLoad*2 < avgLeaderLoad) || (maxLeaderLoad-avgLeaderLoad > 10) {
 					self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 				}
 			}

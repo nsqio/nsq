@@ -28,6 +28,23 @@ func (self *NsqLookupCoordinator) IsClusterStable() bool {
 	return atomic.LoadInt32(&self.isClusterUnstable) == 0
 }
 
+func (self *NsqLookupCoordinator) GetClusterNodeLoadFactor() (map[string]float64, map[string]float64) {
+	currentNodes := self.getCurrentNodes()
+	leaderFactors := make(map[string]float64, len(currentNodes))
+	nodeFactors := make(map[string]float64, len(currentNodes))
+	for nodeID, nodeInfo := range currentNodes {
+		topicStat, err := self.getNsqdTopicStat(nodeInfo)
+		if err != nil {
+			coordLog.Infof("failed to get node topic status while checking balance: %v", nodeID)
+			continue
+		}
+		leaderLF, nodeLF := topicStat.GetNodeLoadFactor()
+		leaderFactors[nodeID] = leaderLF
+		nodeFactors[nodeID] = nodeLF
+	}
+	return leaderFactors, nodeFactors
+}
+
 func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid string) bool {
 	t, err := self.leadership.GetTopicInfo(topic, part)
 	if err != nil {

@@ -152,6 +152,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 
 func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	stable := false
+	nodeStatMap := make(map[string]*NodeStat)
 	if s.ctx.nsqlookupd.coordinator != nil {
 		if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 			nsqlookupLog.Logf("request from remote %v should request to leader", req.RemoteAddr)
@@ -159,11 +160,51 @@ func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps
 		}
 
 		stable = s.ctx.nsqlookupd.coordinator.IsClusterStable()
+		leaderLFs, nodeLFs := s.ctx.nsqlookupd.coordinator.GetClusterNodeLoadFactor()
+		for nid, lf := range leaderLFs {
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByID(nid)
+			if p == nil {
+				nsqlookupLog.Logf("node not found in peer: %v", nid)
+				continue
+			}
+			stat := &NodeStat{}
+			stat.TCPPort = p.TCPPort
+			stat.HTTPPort = p.HTTPPort
+			stat.Hostname = p.Hostname
+			stat.BroadcastAddress = p.BroadcastAddress
+			stat.LeaderLoadFactor = lf
+			nodeStatMap[nid] = stat
+		}
+		for nid, lf := range nodeLFs {
+			stat, ok := nodeStatMap[nid]
+			if !ok {
+				stat = &NodeStat{}
+				nodeStatMap[nid] = stat
+			}
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByID(nid)
+			if p == nil {
+				nsqlookupLog.Logf("node not found in peer: %v", nid)
+				continue
+			}
+
+			stat.TCPPort = p.TCPPort
+			stat.HTTPPort = p.HTTPPort
+			stat.Hostname = p.Hostname
+			stat.BroadcastAddress = p.BroadcastAddress
+			stat.NodeLoadFactor = lf
+			nodeStatMap[nid] = stat
+		}
+	}
+	nodeStatList := make([]*NodeStat, 0, len(nodeStatMap))
+	for _, v := range nodeStatMap {
+		nodeStatList = append(nodeStatList, v)
 	}
 	return struct {
-		Stable bool `json:"stable"`
+		Stable       bool        `json:"stable"`
+		NodeStatList []*NodeStat `json:"node_stat_list"`
 	}{
-		Stable: stable,
+		Stable:       stable,
+		NodeStatList: nodeStatList,
 	}, nil
 }
 
@@ -438,6 +479,15 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 	return nil, nil
 }
 
+type NodeStat struct {
+	Hostname         string  `json:"hostname"`
+	BroadcastAddress string  `json:"broadcast_address"`
+	TCPPort          int     `json:"tcp_port"`
+	HTTPPort         int     `json:"http_port"`
+	LeaderLoadFactor float64 `json:"leader_load_factor"`
+	NodeLoadFactor   float64 `json:"node_load_factor"`
+}
+
 type node struct {
 	RemoteAddress    string              `json:"remote_address"`
 	Hostname         string              `json:"hostname"`
@@ -469,7 +519,7 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// dont filter out tombstoned nodes
-	producers := s.ctx.nsqlookupd.DB.FindPeerClients().FilterByActive(
+	producers := s.ctx.nsqlookupd.DB.GetAllPeerClients().FilterByActive(
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {

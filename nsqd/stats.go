@@ -1,7 +1,13 @@
 package nsqd
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"math"
+	"math/rand"
+	"os"
+	"path"
 	"sort"
 	"strconv"
 	"sync"
@@ -9,6 +15,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/util"
 )
 
 type TopicStats struct {
@@ -218,13 +225,15 @@ type DetailStatsInfo struct {
 	clientPubStats   map[string]*ClientPubStats
 }
 
-func NewDetailStatsInfo(initPubSize int64) *DetailStatsInfo {
-	return &DetailStatsInfo{
+func NewDetailStatsInfo(initPubSize int64, historyPath string) *DetailStatsInfo {
+	d := &DetailStatsInfo{
 		historyStatsInfo: &TopicHistoryStatsInfo{lastHour: int32(time.Now().Hour()),
 			lastPubSize: initPubSize},
 		msgStats:       &TopicMsgStatsInfo{},
 		clientPubStats: make(map[string]*ClientPubStats),
 	}
+	d.LoadHistory(historyPath)
+	return d
 }
 
 type TopicMsgStatsInfo struct {
@@ -366,6 +375,52 @@ func (self *DetailStatsInfo) GetMsgWriteLatencyStats() []int64 {
 	return s[:]
 }
 
+func (self *DetailStatsInfo) LoadHistory(fileName string) {
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			nsqLog.LogErrorf("failed to read history stats from %s - %s", fileName, err)
+		}
+		return
+	}
+	var historyStat TopicHistoryStatsInfo
+	err = json.Unmarshal(data, &historyStat)
+	if err != nil {
+		nsqLog.Warningf("load history stats failed: %v", err)
+		return
+	}
+	self.historyStatsInfo.HourlyPubSize = historyStat.HourlyPubSize
+}
+
+func (self *DetailStatsInfo) SaveHistory(fileName string) error {
+	nsqLog.Logf("persisting history stats to %s", fileName)
+	data, err := json.Marshal(self.historyStatsInfo)
+	if err != nil {
+		nsqLog.LogWarningf("failed to save history stats: %v", err)
+		return err
+	}
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
+	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		nsqLog.LogWarningf("failed to save history stats: %v", err)
+		return err
+	}
+	_, err = f.Write(data)
+	if err != nil {
+		f.Close()
+		nsqLog.LogWarningf("failed to save history stats: %v", err)
+		return err
+	}
+	f.Sync()
+	f.Close()
+
+	err = util.AtomicRename(tmpFileName, fileName)
+	if err != nil {
+		nsqLog.LogWarningf("failed to save history stats: %v", err)
+	}
+	return err
+}
+
 func (n *NSQD) UpdateTopicHistoryStats() {
 	n.RLock()
 	realTopics := make([]*Topic, 0, len(n.topicMap))
@@ -378,5 +433,7 @@ func (n *NSQD) UpdateTopicHistoryStats() {
 	for _, t := range realTopics {
 		pubSize := t.TotalDataSize()
 		t.detailStats.historyStatsInfo.UpdateHourlySize(pubSize)
+		t.detailStats.SaveHistory(path.Join(t.dataPath, HISTORY_STAT_FILE_NAME))
 	}
+
 }

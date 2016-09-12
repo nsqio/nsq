@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	MAX_TOPIC_PARTITION = 1023
+	MAX_TOPIC_PARTITION    = 1023
+	HISTORY_STAT_FILE_NAME = "stat.history.dat"
 )
 
 var (
@@ -130,7 +131,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		nsqLog.LogErrorf("topic %v failed to load magic code: %v", t.fullName, err)
 		return nil
 	}
-	t.detailStats = NewDetailStatsInfo(t.TotalDataSize())
+	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), path.Join(t.dataPath, HISTORY_STAT_FILE_NAME))
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 

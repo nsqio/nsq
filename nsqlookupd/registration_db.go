@@ -144,7 +144,14 @@ func (r *RegistrationDB) addPeerClient(id string, p *PeerInfo) bool {
 	return true
 }
 
-func (r *RegistrationDB) FindPeerClients() PeerInfoList {
+func (r *RegistrationDB) SearchPeerClientByID(id string) *PeerInfo {
+	r.RLock()
+	defer r.RUnlock()
+	p, _ := r.registrationNodeMap[id]
+	return p
+}
+
+func (r *RegistrationDB) GetAllPeerClients() PeerInfoList {
 	r.RLock()
 	defer r.RUnlock()
 	retList := make(PeerInfoList, 0, len(r.registrationNodeMap))
