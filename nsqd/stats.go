@@ -285,8 +285,8 @@ func (self *TopicMsgStatsInfo) UpdateMsgStats(msgSize int64, latency int64) {
 func (self *TopicHistoryStatsInfo) UpdateHourlySize(curPubSize int64) {
 	now := int32(time.Now().Hour())
 	lastBucket := self.lastHour % 24
-	if now > self.lastHour {
-		lastBucket = (lastBucket + 1) % 24
+	if now != self.lastHour {
+		lastBucket = now % 24
 		atomic.StoreInt64(&self.HourlyPubSize[lastBucket], 0)
 		atomic.StoreInt32(&self.lastHour, now)
 	}

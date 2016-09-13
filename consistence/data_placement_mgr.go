@@ -50,7 +50,7 @@ func convertQPSLevel(hourlyPubSize int64) float64 {
 func splitTopicPartitionID(topicFullName string) (string, int, error) {
 	partIndex := strings.LastIndex(topicFullName, "-")
 	if partIndex == -1 {
-		return "", 0, fmt.Errorf("invalide topic full name: %v", topicFullName)
+		return "", 0, fmt.Errorf("invalid topic full name: %v", topicFullName)
 	}
 	topicName := topicFullName[:partIndex]
 	partitionID, err := strconv.Atoi(topicFullName[partIndex+1:])
