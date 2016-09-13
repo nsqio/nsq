@@ -33,6 +33,7 @@ var (
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
 	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset)")
+	channelNum    = flagSet.Int("ch_num", 1, "the channel number under each topic")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
 	topicListFile = flagSet.String("topic-list-file", "", "the file that contains one topic each line")
@@ -186,12 +187,14 @@ func startBenchSub() {
 	goChan := make(chan int)
 	rdyChan := make(chan int)
 	for j := 0; j < *concurrency; j++ {
-		wg.Add(1)
-		go func(id int, topic string) {
-			subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
-			wg.Done()
-		}(j, topics[j%len(topics)])
-		<-rdyChan
+		for chIndex := 0; chIndex < *channelNum; chIndex++ {
+			wg.Add(1)
+			go func(id int, topic string, chSuffix string) {
+				subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch"+chSuffix, rdyChan, goChan, id)
+				wg.Done()
+			}(j, topics[j%len(topics)], strconv.Itoa(chIndex))
+			<-rdyChan
+		}
 	}
 
 	if *deadline != "" {
@@ -330,12 +333,14 @@ func startCheckData(msg []byte, batch [][]byte) {
 
 	quitChan := make(chan int)
 	for j := 0; j < *concurrency; j++ {
-		wg.Add(1)
-		go func(id int, topic string) {
-			subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
-			wg.Done()
-		}(j, topics[j%len(topics)])
-		<-rdyChan
+		for chIndex := 0; chIndex < *channelNum; chIndex++ {
+			wg.Add(1)
+			go func(id int, topic string, chSuffix string) {
+				subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
+				wg.Done()
+			}(j, topics[j%len(topics)], strconv.Itoa(chIndex))
+			<-rdyChan
+		}
 	}
 
 	close(goChan)
