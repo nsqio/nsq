@@ -677,6 +677,9 @@ func main() {
 	}
 	config = nsq.NewConfig()
 	config.MsgTimeout = time.Second * time.Duration(10*(*channelNum))
+	if config.MsgTimeout >= time.Second*200 {
+		config.MsgTimeout = time.Second * 200
+	}
 	config.DefaultRequeueDelay = time.Second * 20
 	config.MaxRequeueDelay = time.Second * 30
 	config.MaxInFlight = 10
