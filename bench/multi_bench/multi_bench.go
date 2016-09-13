@@ -676,7 +676,7 @@ func main() {
 		*trace = true
 	}
 	config = nsq.NewConfig()
-	config.MsgTimeout = time.Second * 10
+	config.MsgTimeout = time.Second * time.Duration(10*(*channelNum))
 	config.DefaultRequeueDelay = time.Second * 20
 	config.MaxRequeueDelay = time.Second * 30
 	config.MaxInFlight = 10

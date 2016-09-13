@@ -1193,7 +1193,7 @@ exit:
 }
 
 func (c *Channel) GetChannelDebugStats() string {
-	debugStr := ""
+	debugStr := "channel :" + c.GetName() + "\n"
 	c.inFlightMutex.Lock()
 	inFlightCount := len(c.inFlightMessages)
 	debugStr += fmt.Sprintf("inflight %v messages : ", inFlightCount)

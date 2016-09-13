@@ -414,7 +414,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		t.channelMap[channelName] = channel
 		nsqLog.Logf("TOPIC(%s): new channel(%s), end: %v", t.GetFullName(),
-			channel.name, channel.backend.Depth())
+			channel.name, channel.GetChannelEnd())
 		return channel, true
 	}
 	return channel, false
