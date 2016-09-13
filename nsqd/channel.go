@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	resetReaderTimeoutSec = 10
+	resetReaderTimeoutSec = 100
 )
 
 var (
@@ -1309,6 +1309,7 @@ exit:
 				diff,
 				atomic.LoadInt32(&c.waitingConfirm), requeuedCnt)
 
+			atomic.StoreInt64(&c.processResetReaderTime, time.Now().Unix())
 			atomic.StoreInt32(&c.needResetReader, 1)
 			select {
 			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
