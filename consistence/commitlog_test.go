@@ -126,6 +126,12 @@ func TestCommitLogWrite(t *testing.T) {
 		}
 		prevLog = logs[0]
 	}
+	currentStart := logMgr.currentStart
+	currentCount := logMgr.currentCount
+	logMgr.Close()
+	logMgr, err = InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Equal(t, currentStart, logMgr.currentStart)
+	test.Equal(t, currentCount, logMgr.currentCount)
 }
 
 func TestCommitLogTruncate(t *testing.T) {

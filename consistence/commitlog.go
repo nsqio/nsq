@@ -309,6 +309,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		return nil, err
 	}
 	fsize := f.Size()
+	mgr.currentCount = int32(fsize / int64(GetLogDataSize()))
 	// read latest logid and incr. combine the partition id at high.
 	if fsize > 0 {
 		num := fsize / int64(GetLogDataSize())
