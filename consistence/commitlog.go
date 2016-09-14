@@ -335,8 +335,18 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 			return nil, errors.New("init commit log id failed")
 		}
 	} else {
-		if mgr.currentStart <= 0 {
+		if mgr.currentStart <= mgr.logStartInfo.SegmentStartIndex {
+			coordLog.Infof("no last commit data : %v, log start: %v", mgr.currentStart, mgr.logStartInfo)
 			mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
+			if mgr.logStartInfo.SegmentStartIndex > 0 {
+				l, _, err := getLastCommitLogData(mgr.path, mgr.currentStart-1)
+				if err != nil {
+					coordLog.Infof("get last commit data from file %v error: %v", mgr.currentStart-1, err)
+				} else {
+					mgr.pLogID = l.LogID
+					mgr.nLogID = l.LastMsgLogID + 1
+				}
+			}
 		} else {
 			l, _, err := getLastCommitLogData(mgr.path, mgr.currentStart-1)
 			if err != nil {
