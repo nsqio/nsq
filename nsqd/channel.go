@@ -105,6 +105,7 @@ type Channel struct {
 	needResetReader        int32
 	processResetReaderTime int64
 	waitingProcessMsgTs    int64
+	waitingDeliveryState   int32
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -1062,6 +1063,7 @@ LOOP:
 			waitEndUpdated = nil
 		}
 
+		atomic.StoreInt32(&c.waitingDeliveryState, 0)
 		select {
 		case <-c.exitChan:
 			goto exit
@@ -1168,6 +1170,7 @@ LOOP:
 				continue
 			}
 		}
+		atomic.StoreInt32(&c.waitingDeliveryState, 1)
 		atomic.StoreInt32(&msg.isDeferred, 0)
 		if c.IsOrdered() {
 			atomic.StoreInt32(&c.needNotifyRead, 1)
@@ -1278,6 +1281,7 @@ exit:
 	// try requeue the messages that waiting.
 	stopScan := false
 	c.waitingRequeueMutex.Lock()
+	oldWaitingDeliveryState := atomic.LoadInt32(&c.waitingDeliveryState)
 	reqLen := len(c.requeuedMsgChan) + len(c.waitingRequeueMsgs)
 	if !c.IsConsumeDisabled() {
 		if len(c.waitingRequeueMsgs) > 1 {
@@ -1299,15 +1303,21 @@ exit:
 		reqLen += len(c.requeuedMsgChan)
 	}
 	c.waitingRequeueMutex.Unlock()
-	if (atomic.LoadInt32(&c.waitingConfirm) >=
-		int32(c.option.MaxConfirmWin)) &&
-		(flightCnt == 0) && (reqLen == 0) &&
-		(requeuedCnt <= 0) && (!dirty) {
+	c.RLock()
+	clientNum := len(c.clients)
+	c.RUnlock()
+
+	if ((flightCnt == 0) && (reqLen == 0) &&
+		(requeuedCnt <= 0) && (!dirty) && clientNum > 0 &&
+		oldWaitingDeliveryState == 0 &&
+		atomic.LoadInt32(&c.waitingConfirm) >=
+			int32(c.option.MaxConfirmWin)) &&
+		atomic.LoadInt32(&c.waitingDeliveryState) == 0 {
 		diff := time.Now().Unix() - atomic.LoadInt64(&c.processResetReaderTime)
 		if diff > resetReaderTimeoutSec && atomic.LoadInt64(&c.processResetReaderTime) > 0 {
-			nsqLog.Logf("try reset reader since no inflight and requeued for too long (%v): %v, %v",
+			nsqLog.Logf("try reset reader since no inflight and requeued for too long (%v): %v, %v, %v",
 				diff,
-				atomic.LoadInt32(&c.waitingConfirm), requeuedCnt)
+				atomic.LoadInt32(&c.waitingConfirm), c.GetConfirmed(), c.GetChannelDebugStats())
 
 			atomic.StoreInt64(&c.processResetReaderTime, time.Now().Unix())
 			atomic.StoreInt32(&c.needResetReader, 1)
