@@ -177,7 +177,7 @@ func (self *NodeTopicStats) GetNodeAvgWriteLevel() float64 {
 		for _, data := range dataList {
 			sum += data
 			cnt++
-			heap.Push(&tmp, data)
+			heap.Push(&tmp, int(data))
 		}
 		// remove the lowest 1/4 (at midnight all topics are low)
 		for i := 0; i < len(dataList)/4; i++ {
@@ -201,7 +201,7 @@ func (self *NodeTopicStats) GetNodeAvgReadLevel() float64 {
 		for _, data := range dataList {
 			sum += data
 			cnt++
-			heap.Push(&tmp, data)
+			heap.Push(&tmp, int(data))
 		}
 		for i := 0; i < len(dataList)/4; i++ {
 			v := heap.Pop(&tmp)
@@ -240,7 +240,7 @@ func (self *NodeTopicStats) GetTopicAvgWriteLevel(topicFullName string) float64 
 		for _, data := range dataList {
 			sum += data
 			cnt++
-			heap.Push(&tmp, data)
+			heap.Push(&tmp, int(data))
 		}
 		for i := 0; i < len(dataList)/4; i++ {
 			v := heap.Pop(&tmp)
@@ -407,6 +407,8 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			currentNodes := self.lookupCoord.getCurrentNodes()
 			validNum := 0
 			topicStatsMinMax := make([]*NodeTopicStats, 2)
+			var mostLeaderStats *NodeTopicStats
+			mostLeaderNum := 0
 			for nodeID, nodeInfo := range currentNodes {
 				topicStat, err := self.lookupCoord.getNsqdTopicStat(nodeInfo)
 				if err != nil {
@@ -429,6 +431,10 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				avgLeaderLoad += leaderLF
 				avgNodeLoad += nodeLF
 				validNum++
+				if len(topicStat.TopicLeaderDataSize) > mostLeaderNum {
+					mostLeaderNum = len(topicStat.TopicLeaderDataSize)
+					mostLeaderStats = topicStat
+				}
 			}
 			if validNum == 0 || topicStatsMinMax[0] == nil || topicStatsMinMax[1] == nil {
 				continue
@@ -471,6 +477,13 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			} else if avgLeaderLoad >= 20 {
 				if (minLeaderLoad*2 < avgLeaderLoad) || (maxLeaderLoad-avgLeaderLoad > 10) {
 					self.balanceTopicLeaderBetweenNodes(moveLeader, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
+				}
+			} else {
+				if mostLeaderStats != nil && mostLeaderNum > len(topicList)/len(currentNodes)*2 {
+					topicStatsMinMax[1] = mostLeaderStats
+					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
+					maxLeaderLoad = leaderLF
+					self.balanceTopicLeaderBetweenNodes(true, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 				}
 			}
 		}
