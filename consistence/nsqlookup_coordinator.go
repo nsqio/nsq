@@ -850,7 +850,7 @@ func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartiti
 				coordLog.Infof("ignore node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
 				continue
 			}
-			_, lf := stat.GetNodeLeaderLoadFactor()
+			lf := stat.GetNodeLeaderLoadFactor()
 
 			coordLog.Infof("node %v load factor is : %v", replica, lf)
 			if newLeader == "" || lf < minLF {
@@ -1480,7 +1480,7 @@ func (self *NsqLookupCoordinator) handleRequestNewTopicInfo(topic string, partit
 	return nil
 }
 
-func (self *NsqLookupCoordinator) handleMoveTopicLeader(topic string, partition int, nodeID string) *CoordErr {
+func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, partition int, nodeID string) *CoordErr {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("get topic info failed :%v", err)
@@ -1497,6 +1497,10 @@ func (self *NsqLookupCoordinator) handleMoveTopicLeader(topic string, partition 
 	}
 
 	if topicInfo.Leader == nodeID {
+		if !isLeader {
+			coordLog.Infof("try move topic %v not as leader, but we are leader topic %v ", topicInfo.GetTopicDesp(), nodeID)
+			return nil
+		}
 		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader for topic: %v", nodeID, topicInfo.GetTopicDesp())
 		self.nodesMutex.RLock()
 		currentNodes := self.nsqdNodes
@@ -1505,7 +1509,15 @@ func (self *NsqLookupCoordinator) handleMoveTopicLeader(topic string, partition 
 		go self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch)
 		return nil
 	} else {
-		coordLog.Infof("the topic %v leader node is %v , not : %v", topicInfo.GetTopicDesp(), topicInfo.Leader, nodeID)
+		coordLog.Infof("the topic %v isr node %v leaving ", topicInfo.GetTopicDesp(), nodeID)
+		failedNodes := make([]string, 0, 1)
+		failedNodes = append(failedNodes, nodeID)
+		coordErr := self.handleRemoveFailedISRNodes(failedNodes, topicInfo)
+		if coordErr != nil {
+			coordLog.Infof("node %v remove failed: %v", nodeID, coordErr)
+		} else {
+			coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
+		}
 	}
 	return nil
 }

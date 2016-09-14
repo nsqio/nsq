@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"container/heap"
 	"fmt"
 	"math"
 	"sort"
@@ -15,6 +16,7 @@ import (
 // use 1~10 to advise from lowest to highest. The 1 or 10 should be used with much careful.
 
 // TODO: support topic move from one to another by manual.
+// TODO: separate the high peak topics to avoid too much high peak on node
 
 // left consume data size level: 0~1GB low, < 5GB medium, < 50GB high , >=50GB very high
 // left data size level: <5GB low, <50GB medium , <200GB high, >=200GB very high
@@ -26,7 +28,7 @@ const (
 	HIGHEST_LEFT_DATA_MB_SIZE    = 200 * 1024
 )
 
-// pub qps level : 1~13 low (< 30 KB/sec), 13 ~ 51 medium (<1000 KB/sec), 51 ~ 74 high (<8 MB/sec), >74 very high (>8 MB/sec)
+// pub qps level : 1~13 low (< 30 KB/sec), 13 ~ 31 medium (<1000 KB/sec), 31 ~ 74 high (<8 MB/sec), >74 very high (>8 MB/sec)
 func convertQPSLevel(hourlyPubSize int64) float64 {
 	qps := hourlyPubSize / 3600 / 1024
 	if qps <= 3 {
@@ -55,6 +57,27 @@ func splitTopicPartitionID(topicFullName string) (string, int, error) {
 	topicName := topicFullName[:partIndex]
 	partitionID, err := strconv.Atoi(topicFullName[partIndex+1:])
 	return topicName, partitionID, err
+}
+
+// An IntHeap is a min-heap of ints.
+type IntHeap []int
+
+func (h IntHeap) Len() int           { return len(h) }
+func (h IntHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h IntHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *IntHeap) Push(x interface{}) {
+	// Push and Pop use pointer receivers because they modify the slice's length,
+	// not just its contents.
+	*h = append(*h, x.(int))
+}
+
+func (h *IntHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 type NodeTopicStats struct {
@@ -89,33 +112,32 @@ func NewNodeTopicStats(nid string, cap int, cpus int) *NodeTopicStats {
 // 60% recent avg load in 24hr + 30% left need to be consumed + 10% data size left
 
 func (self *NodeTopicStats) GetNodeLoadFactor() (float64, float64) {
-	perCpuStat, leaderLF := self.GetNodeLeaderLoadFactor()
+	leaderLF := self.GetNodeLeaderLoadFactor()
 	totalDataSize := int64(0)
-	for _, v := range perCpuStat.TopicTotalDataSize {
+	for _, v := range self.TopicTotalDataSize {
 		totalDataSize += v
 	}
-	totalDataSize += int64(len(perCpuStat.TopicTotalDataSize))
+	totalDataSize += int64(len(self.TopicTotalDataSize))
 	if totalDataSize > HIGHEST_LEFT_DATA_MB_SIZE {
 		totalDataSize = HIGHEST_LEFT_DATA_MB_SIZE
 	}
 	return leaderLF, leaderLF + float64(totalDataSize)/HIGHEST_LEFT_DATA_MB_SIZE*5
 }
 
-func (self *NodeTopicStats) GetNodeLeaderLoadFactor() (*NodeTopicStats, float64) {
-	perCpuStat := self.GetPerCPUStats()
+func (self *NodeTopicStats) GetNodeLeaderLoadFactor() float64 {
 	leftConsumed := int64(0)
-	for _, t := range perCpuStat.ChannelDepthData {
+	for _, t := range self.ChannelDepthData {
 		leftConsumed += t
 	}
-	leftConsumed += int64(len(perCpuStat.ChannelDepthData))
+	leftConsumed += int64(len(self.ChannelDepthData))
 	if leftConsumed > HIGHEST_LEFT_CONSUME_MB_SIZE {
 		leftConsumed = HIGHEST_LEFT_CONSUME_MB_SIZE
 	}
 	totalLeaderDataSize := int64(0)
-	for _, v := range perCpuStat.TopicLeaderDataSize {
+	for _, v := range self.TopicLeaderDataSize {
 		totalLeaderDataSize += v
 	}
-	totalLeaderDataSize += int64(len(perCpuStat.TopicLeaderDataSize))
+	totalLeaderDataSize += int64(len(self.TopicLeaderDataSize))
 	if totalLeaderDataSize > HIGHEST_LEFT_DATA_MB_SIZE {
 		totalLeaderDataSize = HIGHEST_LEFT_DATA_MB_SIZE
 	}
@@ -124,7 +146,7 @@ func (self *NodeTopicStats) GetNodeLeaderLoadFactor() (*NodeTopicStats, float64)
 		avgWrite = HIGHEST_PUB_QPS_LEVEL
 	}
 
-	return perCpuStat, avgWrite/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(leftConsumed)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(totalLeaderDataSize)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
+	return avgWrite/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(leftConsumed)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(totalLeaderDataSize)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
 }
 
 func (self *NodeTopicStats) GetNodePeakLevelList() []int64 {
@@ -149,10 +171,21 @@ func (self *NodeTopicStats) GetNodeAvgWriteLevel() float64 {
 	level := int64(0)
 	for _, dataList := range self.TopicHourlyPubDataList {
 		sum := int64(10)
+		cnt := 0
+		tmp := make(IntHeap, 0, len(dataList))
+		heap.Init(&tmp)
 		for _, data := range dataList {
 			sum += data
+			cnt++
+			heap.Push(&tmp, data)
 		}
-		sum = sum / int64(len(dataList))
+		// remove the lowest 1/4 (at midnight all topics are low)
+		for i := 0; i < len(dataList)/4; i++ {
+			v := heap.Pop(&tmp)
+			sum -= int64(v.(int))
+			cnt--
+		}
+		sum = sum / int64(cnt)
 		level += sum
 	}
 	return convertQPSLevel(level)
@@ -162,10 +195,21 @@ func (self *NodeTopicStats) GetNodeAvgReadLevel() float64 {
 	level := float64(0)
 	for topicName, dataList := range self.TopicHourlyPubDataList {
 		sum := int64(10)
+		cnt := 0
+		tmp := make(IntHeap, 0, len(dataList))
+		heap.Init(&tmp)
 		for _, data := range dataList {
 			sum += data
+			cnt++
+			heap.Push(&tmp, data)
 		}
-		sum = sum / int64(len(dataList))
+		for i := 0; i < len(dataList)/4; i++ {
+			v := heap.Pop(&tmp)
+			sum -= int64(v.(int))
+			cnt--
+		}
+
+		sum = sum / int64(cnt)
 		num, ok := self.ChannelNum[topicName]
 		if ok {
 			level += math.Log2(1.0+float64(num)) * float64(sum)
@@ -174,37 +218,66 @@ func (self *NodeTopicStats) GetNodeAvgReadLevel() float64 {
 	return convertQPSLevel(int64(level))
 }
 
-func (self *NodeTopicStats) GetTopicAvgWriteLevel(topic TopicPartitionID) float64 {
-	selectedTopic := topic.String()
-	dataList, ok := self.TopicHourlyPubDataList[selectedTopic]
+func (self *NodeTopicStats) GetTopicLoadFactor(topicFullName string) float64 {
+	data := self.TopicTotalDataSize[topicFullName]
+	return self.GetTopicLeaderLoadFactor(topicFullName) + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*5.0
+}
+
+func (self *NodeTopicStats) GetTopicLeaderLoadFactor(topicFullName string) float64 {
+	writeLevel := self.GetTopicAvgWriteLevel(topicFullName)
+	depth := self.ChannelDepthData[topicFullName]
+	data := self.TopicLeaderDataSize[topicFullName]
+	return writeLevel/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(depth)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
+}
+
+func (self *NodeTopicStats) GetTopicAvgWriteLevel(topicFullName string) float64 {
+	dataList, ok := self.TopicHourlyPubDataList[topicFullName]
 	if ok {
 		sum := int64(10)
+		cnt := 0
+		tmp := make(IntHeap, 0, len(dataList))
+		heap.Init(&tmp)
 		for _, data := range dataList {
 			sum += data
+			cnt++
+			heap.Push(&tmp, data)
 		}
-		sum = sum / int64(len(dataList))
+		for i := 0; i < len(dataList)/4; i++ {
+			v := heap.Pop(&tmp)
+			sum -= int64(v.(int))
+			cnt--
+		}
+
+		sum = sum / int64(cnt)
 		return convertQPSLevel(sum)
 	}
 	return 1.0
 }
 
 func (self *NodeTopicStats) GetMostBusyAndIdleTopicWriteLevel(leaderOnly bool) (string, string, float64, float64) {
-	busy := int64(0)
+	busy := float64(0.0)
 	busyTopic := ""
-	idle := int64(math.MaxInt32)
+	idle := float64(math.MaxInt32)
 	idleTopic := ""
-	for topicName, dataList := range self.TopicHourlyPubDataList {
+	for topicName, _ := range self.TopicHourlyPubDataList {
+		d, ok := self.TopicLeaderDataSize[topicName]
 		if leaderOnly {
-			d, ok := self.TopicLeaderDataSize[topicName]
 			if !ok || d <= 0 {
 				continue
 			}
+		} else {
+			if ok && d > 0 {
+				continue
+			}
 		}
-		sum := int64(0)
-		for _, d := range dataList {
-			sum += d
+
+		sum := 0.0
+		if leaderOnly {
+			sum = self.GetTopicLeaderLoadFactor(topicName)
+		} else {
+			sum = self.GetTopicLoadFactor(topicName)
 		}
-		sum = sum / int64(len(dataList))
+
 		if sum > busy {
 			busy = sum
 			busyTopic = topicName
@@ -214,17 +287,7 @@ func (self *NodeTopicStats) GetMostBusyAndIdleTopicWriteLevel(leaderOnly bool) (
 			idleTopic = topicName
 		}
 	}
-	return idleTopic, busyTopic, convertQPSLevel(idle), convertQPSLevel(busy)
-}
-
-func (self *NodeTopicStats) GetTopicAvgReadLevel(topic TopicPartitionID) float64 {
-	level := self.GetTopicAvgWriteLevel(topic)
-	selectedTopic := topic.String()
-	num, ok := self.ChannelNum[selectedTopic]
-	if ok {
-		return math.Log2(1.0+float64(num)) * level
-	}
-	return 0.0
+	return idleTopic, busyTopic, idle, busy
 }
 
 func (self *NodeTopicStats) GetTopicPeakLevel(topic TopicPartitionID) float64 {
@@ -242,33 +305,9 @@ func (self *NodeTopicStats) GetTopicPeakLevel(topic TopicPartitionID) float64 {
 	return 1.0
 }
 
-func (self *NodeTopicStats) GetPerCPUStats() *NodeTopicStats {
-	consumed := make(map[string]int64)
-	for tname, t := range self.ChannelDepthData {
-		consumed[tname] = t / int64(self.NodeCPUs/4+1)
-	}
-	leaderSize := make(map[string]int64)
-	for tname, v := range self.TopicLeaderDataSize {
-		leaderSize[tname] = v / int64(self.NodeCPUs/4+1)
-	}
-	totalSize := make(map[string]int64)
-	for tname, v := range self.TopicTotalDataSize {
-		totalSize[tname] = v / int64(self.NodeCPUs/4+1)
-	}
-	return &NodeTopicStats{
-		NodeID:                 self.NodeID,
-		ChannelDepthData:       consumed,
-		TopicLeaderDataSize:    leaderSize,
-		TopicTotalDataSize:     totalSize,
-		NodeCPUs:               1,
-		TopicHourlyPubDataList: self.TopicHourlyPubDataList,
-		ChannelNum:             self.ChannelNum,
-	}
-}
-
 func (self *NodeTopicStats) LeaderLessLoader(other *NodeTopicStats) bool {
-	_, left := self.GetNodeLeaderLoadFactor()
-	_, right := other.GetNodeLeaderLoadFactor()
+	left := self.GetNodeLeaderLoadFactor()
+	right := other.GetNodeLeaderLoadFactor()
 	if left < right {
 		return true
 	}
@@ -412,25 +451,34 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				coordLog.Infof("the topics less than nodes, no need balance: %v ", len(topicList))
 				continue
 			}
+			moveLeader := false
+			if len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicList)/len(currentNodes) {
+				// too many leader topics on this node, try move leader topic
+				coordLog.Infof("move leader topic since too many on this node")
+				moveLeader = true
+			} else {
+				// too many replica topics on this node, try move replica topic to others
+				coordLog.Infof("move replica topic since too many on this node")
+			}
 			if minLeaderLoad*4 < avgLeaderLoad {
 				// move some topic from the most busy node to the most idle node
-				self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
+				self.balanceTopicLeaderBetweenNodes(moveLeader, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 			} else if avgLeaderLoad < 5 && maxLeaderLoad < 10 {
 				// all nodes in the cluster are under low load, no need balance
 				continue
 			} else if avgLeaderLoad*2 < maxLeaderLoad {
-				self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
+				self.balanceTopicLeaderBetweenNodes(moveLeader, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 			} else if avgLeaderLoad >= 20 {
 				if (minLeaderLoad*2 < avgLeaderLoad) || (maxLeaderLoad-avgLeaderLoad > 10) {
-					self.balanceTopicLeaderBetweenNodes(minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
+					self.balanceTopicLeaderBetweenNodes(moveLeader, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 				}
 			}
 		}
 	}
 }
 
-func (self *DataPlacement) balanceTopicLeaderBetweenNodes(minLF float64, maxLF float64, statsMinMax []*NodeTopicStats) {
-	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(true)
+func (self *DataPlacement) balanceTopicLeaderBetweenNodes(moveLeader bool, minLF float64, maxLF float64, statsMinMax []*NodeTopicStats) {
+	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
 	if busyTopic == "" && idleTopic == "" {
 		coordLog.Infof("no idle or busy topic found")
 		return
@@ -445,14 +493,14 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(minLF float64, maxLF f
 			coordLog.Warningf("split topic name and partition failed: %v", err)
 			return
 		}
-		self.lookupCoord.handleMoveTopicLeader(topicName, partitionID, statsMinMax[1].NodeID)
+		self.lookupCoord.handleMoveTopic(moveLeader, topicName, partitionID, statsMinMax[1].NodeID)
 	} else if idleTopic != "" {
 		topicName, partitionID, err := splitTopicPartitionID(idleTopic)
 		if err != nil {
 			coordLog.Warningf("split topic name and partition failed: %v", err)
 			return
 		}
-		self.lookupCoord.handleMoveTopicLeader(topicName, partitionID, statsMinMax[1].NodeID)
+		self.lookupCoord.handleMoveTopic(moveLeader, topicName, partitionID, statsMinMax[1].NodeID)
 	}
 }
 

@@ -680,9 +680,9 @@ func main() {
 	if config.MsgTimeout >= time.Second*200 {
 		config.MsgTimeout = time.Second * 200
 	}
-	config.DefaultRequeueDelay = time.Second * 20
-	config.MaxRequeueDelay = time.Second * 30
-	config.MaxInFlight = 10
+	config.DefaultRequeueDelay = time.Second * 30
+	config.MaxRequeueDelay = time.Second * 60
+	config.MaxInFlight = 20
 	config.EnableTrace = *trace
 	config.EnableOrdered = *ordered
 
