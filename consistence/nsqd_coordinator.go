@@ -1056,6 +1056,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			// truncate commit log and truncate the data file to last log
 			// commit offset.
 			if useCountIndex {
+				if leaderCountNumIndex > countNumIndex {
+					coordLog.Infof("commit log changed while check leader commit log")
+					// the leader commit log end changed
+					time.Sleep(time.Second)
+					continue
+				}
 				logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCountNumIndex)
 				if localErr != nil {
 					coordLog.Infof("convert The leader commit log count index %v failed: %v", leaderCountNumIndex, localErr)
@@ -1063,6 +1069,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 					break
 				}
 			} else {
+				if leaderLogIndex > logIndex ||
+					(leaderLogIndex == logIndex && leaderOffset > offset) {
+					coordLog.Infof("commit log changed while check leader commit log")
+					time.Sleep(time.Second)
+					continue
+				}
 				offset = leaderOffset
 				logIndex = leaderLogIndex
 			}

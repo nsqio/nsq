@@ -449,6 +449,7 @@ func (self *TopicCommitLogMgr) ResetLogWithStart(newStart LogStartInfo) error {
 	os.Remove(self.path + ".start")
 	self.logStartInfo = newStart
 	self.logStartInfo.SegmentStartOffset = 0
+	atomic.StoreInt64(&self.pLogID, 0)
 	self.currentStart = newStart.SegmentStartIndex
 	self.currentCount = 0
 	self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)

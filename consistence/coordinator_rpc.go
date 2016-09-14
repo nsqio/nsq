@@ -759,7 +759,7 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req *RpcCommitLogReq) (int64,
 	return ret, nil
 }
 
-func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, ret *RpcCommitLogRsp) {
+func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, req *RpcCommitLogReq, ret *RpcCommitLogRsp) {
 	var err2 error
 	var logData *CommitLogData
 	ret.LogStartIndex, ret.LogOffset, logData, err2 = logMgr.GetLastCommitLogOffsetV2()
@@ -767,6 +767,18 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, ret *RpcCommitLo
 		if err2 == ErrCommitLogEOF {
 			ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
 			ret.UseCountIndex = true
+			if req.UseCountIndex {
+				if ret.LogCountNumIndex > req.LogCountNumIndex {
+					ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+					return
+				}
+			} else {
+				if ret.LogStartIndex > req.LogStartIndex ||
+					(ret.LogStartIndex == req.LogStartIndex && ret.LogOffset > req.LogOffset) {
+					ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+					return
+				}
+			}
 			ret.ErrInfo = *ErrTopicCommitLogEOF
 		} else {
 			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
@@ -776,6 +788,18 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, ret *RpcCommitLo
 	ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
 	ret.UseCountIndex = true
 	ret.LogData = *logData
+	if req.UseCountIndex {
+		if ret.LogCountNumIndex > req.LogCountNumIndex {
+			ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+			return
+		}
+	} else {
+		if ret.LogStartIndex > req.LogStartIndex ||
+			(ret.LogStartIndex == req.LogStartIndex && ret.LogOffset > req.LogOffset) {
+			ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+			return
+		}
+	}
 	if err == ErrCommitLogOutofBound {
 		ret.ErrInfo = *ErrTopicCommitLogOutofBound
 	} else if err == ErrCommitLogEOF {
@@ -801,7 +825,7 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *Rp
 		newFileNum, newOffset, err := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
 		if err != nil {
 			coordLog.Warningf("failed to convert to offset index: %v, err:%v", req.LogCountNumIndex, err)
-			handleCommitLogError(err, tcData.logMgr, &ret)
+			handleCommitLogError(err, tcData.logMgr, req, &ret)
 			return &ret
 		}
 		req.LogStartIndex = newFileNum
@@ -810,7 +834,7 @@ func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *Rp
 
 	logData, err := tcData.logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
 	if err != nil {
-		handleCommitLogError(err, tcData.logMgr, &ret)
+		handleCommitLogError(err, tcData.logMgr, req, &ret)
 		return &ret
 	} else {
 		ret.LogStartIndex = req.LogStartIndex

@@ -480,6 +480,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				}
 			} else {
 				if mostLeaderStats != nil && mostLeaderNum > len(topicList)/len(currentNodes)*2 {
+					coordLog.Infof("too many topic leader on node: %v, leader num: %v", mostLeaderStats.NodeID, mostLeaderNum)
 					topicStatsMinMax[1] = mostLeaderStats
 					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
 					maxLeaderLoad = leaderLF
@@ -491,6 +492,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 }
 
 func (self *DataPlacement) balanceTopicLeaderBetweenNodes(moveLeader bool, minLF float64, maxLF float64, statsMinMax []*NodeTopicStats) {
+	// TODO: we need to handle the topic move to the min load node, and make sure that node can accept the topic (no other leader/follower for this topic)
 	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
 	if busyTopic == "" && idleTopic == "" {
 		coordLog.Infof("no idle or busy topic found")
