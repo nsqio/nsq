@@ -185,7 +185,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 		removed := p.ctx.nsqlookupd.DB.RemoveChannelReg(topic, key)
 		if removed {
-			nsqlookupLog.LogErrorf(" client(%s) unexpected UNREGISTER all channels under topic:%s pid:%s",
+			nsqlookupLog.LogWarningf(" client(%s) unexpected UNREGISTER all channels under topic:%s pid:%s",
 				client, topic, pid)
 		}
 

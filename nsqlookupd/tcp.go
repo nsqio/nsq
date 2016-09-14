@@ -45,7 +45,11 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		nsqlookupLog.LogErrorf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		if err == io.EOF {
+			nsqlookupLog.Logf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		} else {
+			nsqlookupLog.LogWarningf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		}
 		return
 	}
 }
