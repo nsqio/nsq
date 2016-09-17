@@ -593,16 +593,32 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				//remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
 				failedNodes := make([]string, 0, 1)
+				maxLF := 0.0
+				removeNode := ""
 				for _, nodeID := range t.ISR {
 					if nodeID == t.Leader {
 						continue
 					}
-					failedNodes = append(failedNodes, nodeID)
-					break
+					n, ok := currentNodes[nodeID]
+					if !ok {
+						continue
+					}
+					stat, err := self.getNsqdTopicStat(n)
+					if err != nil {
+						continue
+					}
+					_, nlf := stat.GetNodeLoadFactor()
+					if nlf > maxLF {
+						maxLF = nlf
+						removeNode = nodeID
+					}
 				}
-				coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
-				if coordErr == nil {
-					coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
+				if removeNode != "" {
+					failedNodes = append(failedNodes, removeNode)
+					coordErr := self.handleRemoveISRNodes(failedNodes, &t, false)
+					if coordErr == nil {
+						coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
+					}
 				}
 			}
 		}
@@ -691,7 +707,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	return nil
 }
 
-func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+func (self *NsqLookupCoordinator) handleRemoveISRNodes(failedNodes []string, topicInfo *TopicPartitionMetaInfo, leaveCatchup bool) *CoordErr {
 	self.joinStateMutex.Lock()
 	state, ok := self.joinISRState[topicInfo.Name]
 	if !ok {
@@ -719,8 +735,15 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	topicInfo.ISR = newISR
 	if len(topicInfo.ISR) <= topicInfo.Replica/2 {
 		coordLog.Infof("no enough isr node while removing the failed nodes. %v", topicInfo.ISR)
+		if !leaveCatchup {
+			return ErrLeavingISRWait
+		}
 	}
-	topicInfo.CatchupList = MergeList(topicInfo.CatchupList, failedNodes)
+	if leaveCatchup {
+		topicInfo.CatchupList = MergeList(topicInfo.CatchupList, failedNodes)
+	} else {
+		topicInfo.CatchupList = FilterList(topicInfo.CatchupList, failedNodes)
+	}
 	coordLog.Infof("topic info updated: %v", topicInfo)
 	// remove isr node we keep the write epoch unchanged.
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
@@ -730,6 +753,10 @@ func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []strin
 	}
 	go self.notifyTopicMetaInfo(topicInfo)
 	return nil
+}
+
+func (self *NsqLookupCoordinator) handleRemoveFailedISRNodes(failedNodes []string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+	return self.handleRemoveISRNodes(failedNodes, topicInfo, true)
 }
 
 func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartitionMetaInfo,
@@ -786,6 +813,26 @@ func (self *NsqLookupCoordinator) handleTopicMigrate(topicInfo *TopicPartitionMe
 	} else {
 		self.notifyCatchupTopicMetaInfo(topicInfo)
 	}
+}
+
+func (self *NsqLookupCoordinator) addCatchupNode(topicInfo *TopicPartitionMetaInfo, nid string) *CoordErr {
+	catchupChanged := false
+	if FindSlice(topicInfo.CatchupList, nid) == -1 {
+		topicInfo.CatchupList = append(topicInfo.CatchupList, nid)
+		catchupChanged = true
+	}
+	if catchupChanged {
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
+			&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
+		if err != nil {
+			coordLog.Infof("update topic node info failed: %v", err.Error())
+			return &CoordErr{err.Error(), RpcNoErr, CoordCommonErr}
+		}
+		self.notifyTopicMetaInfo(topicInfo)
+	} else {
+		self.notifyCatchupTopicMetaInfo(topicInfo)
+	}
+	return nil
 }
 
 // make sure the previous leader is not holding its leader session.
@@ -1417,8 +1464,6 @@ func (self *NsqLookupCoordinator) waitForFinalSyncedISR(topicInfo TopicPartition
 }
 
 func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int, leader *TopicLeaderSession, nodeID string) *CoordErr {
-	// how to avoid the node be chosen as the new isr node??
-	// currently this node is available on etcd.
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("get topic info failed :%v", err)
@@ -1480,7 +1525,8 @@ func (self *NsqLookupCoordinator) handleRequestNewTopicInfo(topic string, partit
 	return nil
 }
 
-func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, partition int, nodeID string) *CoordErr {
+func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, partition int,
+	nodeID string) *CoordErr {
 	topicInfo, err := self.leadership.GetTopicInfo(topic, partition)
 	if err != nil {
 		coordLog.Infof("get topic info failed :%v", err)
@@ -1510,13 +1556,15 @@ func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, p
 		return nil
 	} else {
 		coordLog.Infof("the topic %v isr node %v leaving ", topicInfo.GetTopicDesp(), nodeID)
-		failedNodes := make([]string, 0, 1)
-		failedNodes = append(failedNodes, nodeID)
-		coordErr := self.handleRemoveFailedISRNodes(failedNodes, topicInfo)
+		nodeList := make([]string, 1)
+		nodeList[0] = nodeID
+		coordErr := self.handleRemoveISRNodes(nodeList, topicInfo, false)
 		if coordErr != nil {
-			coordLog.Infof("node %v remove failed: %v", nodeID, coordErr)
+			coordLog.Infof("topic %v remove node %v failed: %v", topicInfo.GetTopicDesp(),
+				nodeID, coordErr)
 		} else {
-			coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
+			coordLog.Infof("topic %v remove node %v to %v by plan", topicInfo.GetTopicDesp(),
+				nodeID)
 		}
 	}
 	return nil
