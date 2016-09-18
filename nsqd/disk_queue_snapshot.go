@@ -67,6 +67,13 @@ func (d *DiskQueueSnapshot) SetQueueStart(start BackendQueueEnd) {
 	}
 }
 
+func (d *DiskQueueSnapshot) GetQueueReadStart() BackendQueueEnd {
+	d.Lock()
+	defer d.Unlock()
+	s := d.queueStart
+	return &s
+}
+
 // Put writes a []byte to the queue
 func (d *DiskQueueSnapshot) UpdateQueueEnd(e BackendQueueEnd) {
 	endPos, ok := e.(*diskQueueEndInfo)

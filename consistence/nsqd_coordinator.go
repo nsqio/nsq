@@ -571,7 +571,19 @@ func (self *NsqdCoordinator) checkAndFixLocalTopicData(tc *coordData, localTopic
 			coordLog.Warningf("topic %v log start %v should be fixed: %v, %v", tc.topicInfo.GetTopicDesp(), logStart, log, err)
 			// try fix start
 			if err == nsqd.ErrReadQueueAlreadyCleaned {
-				err = tc.logMgr.CleanOldData(logStart.SegmentStartIndex, GetNextLogOffset(logStart.SegmentStartOffset))
+				start := snap.GetQueueReadStart()
+				logStart.SegmentStartOffset = GetNextLogOffset(logStart.SegmentStartOffset)
+				if log.MsgOffset+int64(log.MsgSize) < int64(start.Offset()) {
+					matchIndex, matchOffset, _, err := tc.logMgr.SearchLogDataByMsgOffset(int64(start.Offset()))
+					if err != nil {
+						coordLog.Infof("search log failed: %v", err)
+					} else if matchIndex > logStart.SegmentStartIndex ||
+						(matchIndex == logStart.SegmentStartIndex && matchOffset > logStart.SegmentStartOffset) {
+						logStart.SegmentStartIndex = matchIndex
+						logStart.SegmentStartOffset = matchOffset
+					}
+				}
+				err = tc.logMgr.CleanOldData(logStart.SegmentStartIndex, logStart.SegmentStartOffset)
 				if err != nil {
 					coordLog.Errorf("clean log failed : %v, %v", logStart, err)
 					return err
