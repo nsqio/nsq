@@ -595,6 +595,24 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 	diffCnt := (fileOffset - cleanStartOffset) / int64(GetLogDataSize())
 	self.logStartInfo.SegmentStartCount += diffCnt
 	atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, fileOffset)
+
+	if self.logStartInfo.SegmentStartIndex < self.currentStart {
+		fName := getSegmentFilename(self.path, self.logStartInfo.SegmentStartIndex)
+		stat, err := os.Stat(fName)
+		if err != nil {
+			return err
+		}
+		if fileOffset > stat.Size() {
+			coordLog.Warningf("commit clean offset %v more than segment size : %v", fileOffset, stat)
+			return ErrCommitLogOffsetInvalid
+		}
+		if fileOffset == stat.Size() {
+			atomic.AddInt64(&self.logStartInfo.SegmentStartIndex, 1)
+			atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, 0)
+			os.Remove(fName)
+		}
+	}
+
 	self.saveLogSegStartInfo()
 	coordLog.Warningf("commit segment start clean from %v to : %v (%v:%v)",
 		oldStartInfo, self.logStartInfo, fileIndex, fileOffset)

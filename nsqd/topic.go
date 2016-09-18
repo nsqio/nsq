@@ -883,7 +883,7 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 }
 
 // maybe should return the cleaned offset to allow commit log clean
-func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanEnd BackendQueueEnd) (BackendQueueEnd, error) {
+func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset BackendOffset) (BackendQueueEnd, error) {
 	// clean the data that has been consumed and keep the retention policy
 	var oldestPos BackendQueueEnd
 	t.channelLock.RLock()
@@ -901,12 +901,15 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 		return nil, nil
 	}
 	cleanStart := t.backend.GetQueueReadStart()
-	nsqLog.Logf("clean topic %v data current start: %v, oldest confirmed %v",
-		t.GetFullName(), cleanStart, oldestPos)
+	nsqLog.Logf("clean topic %v data current start: %v, oldest confirmed %v, max clean end: %v",
+		t.GetFullName(), cleanStart, oldestPos, maxCleanOffset)
 	if cleanStart.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
 		return nil, nil
 	}
 
+	if oldestPos.Offset() < maxCleanOffset || maxCleanOffset == BackendOffset(0) {
+		maxCleanOffset = oldestPos.Offset()
+	}
 	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
 	snapReader.SetQueueStart(cleanStart)
 	err := snapReader.SeekTo(cleanStart.Offset())
@@ -931,7 +934,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 		if retentionSize > 0 {
 			// clean data ignore the retention day
 			// only keep the retention size (start from the last consumed)
-			if data.Offset > oldestPos.Offset()-BackendOffset(retentionSize) {
+			if data.Offset > maxCleanOffset-BackendOffset(retentionSize) {
 				break
 			}
 			cleanEndInfo = readInfo
@@ -941,6 +944,9 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
 			} else {
 				if msg.Timestamp >= cleanTime.UnixNano() {
+					break
+				}
+				if data.Offset >= maxCleanOffset {
 					break
 				}
 				cleanEndInfo = readInfo
@@ -961,12 +967,12 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanE
 
 	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
 		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
-	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
-		nsqLog.Warningf("clean topic %v data could not exceed current oldest confirmed %v",
-			t.GetFullName(), oldestPos)
+	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
+		nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
+			t.GetFullName(), cleanEndInfo, oldestPos, maxCleanOffset)
 		return nil, nil
 	}
-	return t.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanEnd)
+	return t.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanOffset)
 }
 
 func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueStartCnt int64) error {

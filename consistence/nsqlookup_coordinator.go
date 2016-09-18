@@ -980,20 +980,29 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 	return ErrLeaderElectionFail
 }
 
-func (self *NsqLookupCoordinator) checkISRLogConsistence(topicInfo *TopicPartitionMetaInfo) *CoordErr {
-	logid := int64(-1)
+func (self *NsqLookupCoordinator) checkISRLogConsistence(topicInfo *TopicPartitionMetaInfo) ([]string, *CoordErr) {
+	wrongNodes := make([]string, 0)
+	leaderLogID, err := self.getNsqdLastCommitLogID(topicInfo.Leader, topicInfo)
+	if err != nil {
+		coordLog.Infof("failed to get the leader commit log: %v", err)
+		return wrongNodes, err
+	}
+
+	var coordErr *CoordErr
 	for _, nid := range topicInfo.ISR {
 		tmp, err := self.getNsqdLastCommitLogID(nid, topicInfo)
 		if err != nil {
-			return err
+			coordLog.Infof("failed to get log id for node: %v", nid)
+			coordErr = err
+			continue
 		}
-		if logid == -1 {
-			logid = tmp
-		} else if tmp != logid {
-			return ErrTopicCommitLogNotConsistent
+		if tmp != leaderLogID {
+			coordLog.Infof("isr log mismatched with leader %v, %v on node: %v", leaderLogID, tmp, nid)
+			wrongNodes = append(wrongNodes, nid)
+			coordErr = ErrTopicCommitLogNotConsistent
 		}
 	}
-	return nil
+	return wrongNodes, coordErr
 }
 
 // if any failed to enable topic write , we need start a new join isr session to
@@ -1331,8 +1340,10 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 			}
 		}
 		// check the newest log for isr to make sure consistence.
-		rpcErr := self.checkISRLogConsistence(topicInfo)
-		if rpcErr != nil {
+		wrongISR, rpcErr := self.checkISRLogConsistence(topicInfo)
+		if rpcErr != nil || len(wrongISR) > 0 {
+			// isr should be removed since not consistence
+			coordLog.Infof("the isr nodes: %v not consistence", wrongISR)
 			return
 		}
 		coordLog.Infof("topic %v isr new state is ready for all: %v", topicInfo.GetTopicDesp(), state)
@@ -1436,8 +1447,11 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartitionMeta
 		}
 
 		// check the newest log for isr to make sure consistence.
-		rpcErr := self.checkISRLogConsistence(&topicInfo)
-		if rpcErr != nil {
+		wrongISR, rpcErr := self.checkISRLogConsistence(&topicInfo)
+		if rpcErr != nil || len(wrongISR) > 0 {
+			// isr should be removed since not consistence
+			coordLog.Infof("remove the isr node: %v since not consistence", wrongISR)
+			go self.handleRemoveFailedISRNodes(wrongISR, &topicInfo)
 			return rpcErr
 		}
 		rpcErr = self.notifyEnableTopicWrite(&topicInfo)

@@ -197,7 +197,7 @@ func (d *diskQueueWriter) ResetWriteWithQueueStart(queueStart BackendQueueEnd) e
 }
 
 func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
-	noRealClean bool, maxCleanEnd BackendQueueEnd) (BackendQueueEnd, error) {
+	noRealClean bool, maxCleanOffset BackendOffset) (BackendQueueEnd, error) {
 	if cleanEndInfo == nil {
 		return nil, nil
 	}
@@ -210,20 +210,16 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 		if cleanDiskEnd.EndOffset.FileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
 			cleanDiskEnd.EndOffset.FileNum = d.diskReadEnd.EndOffset.FileNum - 1
 		}
-		if maxCleanEnd != nil {
-			maxCleanDiskEnd, maxOK := maxCleanEnd.(*diskQueueEndInfo)
-			if maxOK {
-				if cleanDiskEnd.EndOffset.GreatThan(&maxCleanDiskEnd.EndOffset) {
-					cleanDiskEnd = maxCleanDiskEnd
-				}
-			}
+		if maxCleanOffset != BackendOffset(0) && cleanDiskEnd.Offset() > maxCleanOffset {
+			nsqLog.LogWarningf("disk %v clean position %v exceed the max allowed clean end: %v", d.name, cleanDiskEnd, maxCleanOffset)
+			return nil, nil
 		}
 	} else {
 		if cleanOffset >= d.diskReadEnd.Offset()-BackendOffset(d.diskReadEnd.EndOffset.Pos) {
 			cleanOffset = d.diskReadEnd.Offset() - BackendOffset(d.diskReadEnd.EndOffset.Pos)
 		}
-		if maxCleanEnd != nil && cleanOffset > maxCleanEnd.Offset() {
-			cleanOffset = maxCleanEnd.Offset()
+		if maxCleanOffset != BackendOffset(0) && cleanOffset > maxCleanOffset {
+			cleanOffset = maxCleanOffset
 		}
 	}
 	cleanFileNum := int64(0)
@@ -236,6 +232,10 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 		if err != nil {
 			nsqLog.LogWarningf("disk %v failed to get queue offset meta: %v", d.fileName(cleanFileNum), err)
 			return &newStart, err
+		}
+		if maxCleanOffset != BackendOffset(0) && BackendOffset(endPos) > maxCleanOffset {
+			nsqLog.LogWarningf("disk %v clean position %v exceed the max allowed clean end: %v", d.name, endPos, maxCleanOffset)
+			return &newStart, errors.New("clean exceed the max allowed")
 		}
 		newStart.EndOffset.FileNum = cleanFileNum
 		newStart.EndOffset.Pos = 0

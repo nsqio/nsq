@@ -316,6 +316,10 @@ func (d *DiskQueueSnapshot) ReadOne() ReadResult {
 	var msgSize int32
 	var stat os.FileInfo
 	result.Offset = BackendOffset(0)
+	if d.readPos == d.endPos {
+		result.Err = io.EOF
+		return result
+	}
 
 CheckFileOpen:
 

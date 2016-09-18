@@ -916,8 +916,8 @@ func TestCommitLogCleanOldAtMiddleOfSeg(t *testing.T) {
 		test.Nil(t, err)
 		realStart, firstLog, err = logMgr.GetLogStartInfo()
 		test.Nil(t, err)
-		test.Equal(t, i, realStart.SegmentStartIndex)
-		test.Equal(t, int64(GetLogDataSize())*int64(LOGROTATE_NUM), realStart.SegmentStartOffset)
+		test.Equal(t, i+1, realStart.SegmentStartIndex)
+		test.Equal(t, int64(0), realStart.SegmentStartOffset)
 		test.Equal(t, i*int64(LOGROTATE_NUM)+int64(LOGROTATE_NUM), realStart.SegmentStartCount)
 		test.Equal(t, i*int64(LOGROTATE_NUM)*int64(msgRawSize)+int64(msgRawSize*LOGROTATE_NUM), firstLog.MsgOffset)
 		for j := int64(0); j < i; j++ {

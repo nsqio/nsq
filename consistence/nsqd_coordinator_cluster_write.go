@@ -150,6 +150,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		commitLog.LastMsgLogID = int64(msgs[len(msgs)-1].ID)
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
+		// This MsgCnt is the total count until now (include the current written batch message count)
 		commitLog.MsgCnt = totalCnt
 		commitLog.MsgNum = int32(len(msgs))
 		return nil
