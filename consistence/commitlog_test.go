@@ -715,11 +715,16 @@ func TestCommitLogCleanOld(t *testing.T) {
 		test.Equal(t, int64(0), realStart.SegmentStartOffset)
 		test.Equal(t, i*int64(LOGROTATE_NUM), realStart.SegmentStartCount)
 		test.Equal(t, i*int64(LOGROTATE_NUM)*int64(msgRawSize), firstLog.MsgOffset)
-		for j := int64(0); j < i; j++ {
+		for j := int64(0); j <= i; j++ {
 			tmpFileName := getSegmentFilename(logMgr.path, j)
 			_, err = os.Stat(tmpFileName)
-			test.NotNil(t, err)
-			test.Equal(t, true, os.IsNotExist(err))
+			if j < i-1 {
+				t.Logf("check file : %v", j)
+				test.NotNil(t, err)
+				test.Equal(t, true, os.IsNotExist(err))
+			} else {
+				test.Nil(t, err)
+			}
 		}
 		test.Equal(t, i, logMgr.logStartInfo.SegmentStartIndex)
 		test.Equal(t, i*int64(LOGROTATE_NUM), logMgr.logStartInfo.SegmentStartCount)
@@ -874,8 +879,12 @@ func TestCommitLogCleanOldAtMiddleOfSeg(t *testing.T) {
 		for j := int64(0); j < i; j++ {
 			tmpFileName := getSegmentFilename(logMgr.path, j)
 			_, err = os.Stat(tmpFileName)
-			test.NotNil(t, err)
-			test.Equal(t, true, os.IsNotExist(err))
+			if j < i-1 {
+				test.NotNil(t, err)
+				test.Equal(t, true, os.IsNotExist(err))
+			} else {
+				test.Nil(t, err)
+			}
 		}
 		for j := int64(0); j < currentStart; j++ {
 			for k := 0; k < LOGROTATE_NUM; k++ {
@@ -923,8 +932,12 @@ func TestCommitLogCleanOldAtMiddleOfSeg(t *testing.T) {
 		for j := int64(0); j < i; j++ {
 			tmpFileName := getSegmentFilename(logMgr.path, j)
 			_, err = os.Stat(tmpFileName)
-			test.NotNil(t, err)
-			test.Equal(t, true, os.IsNotExist(err))
+			if j < i-1 {
+				test.NotNil(t, err)
+				test.Equal(t, true, os.IsNotExist(err))
+			} else {
+				test.Nil(t, err)
+			}
 		}
 		for j := int64(0); j < currentStart; j++ {
 			for k := 0; k < LOGROTATE_NUM; k++ {

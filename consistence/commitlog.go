@@ -454,7 +454,9 @@ func (self *TopicCommitLogMgr) ResetLogWithStart(newStart LogStartInfo) error {
 		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
 	}
 	for i := int64(0); i < self.currentStart; i++ {
-		os.Remove(getSegmentFilename(self.path, int64(i)))
+		fn := getSegmentFilename(self.path, int64(i))
+		os.Remove(fn)
+		coordLog.Infof("commit log removed: %v", fn)
 	}
 	os.Remove(self.path + ".current")
 	os.Remove(self.path + ".start")
@@ -559,6 +561,17 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 	oldStartInfo := self.logStartInfo
 	cleanStart := self.logStartInfo.SegmentStartIndex
 	cleanStartOffset := self.logStartInfo.SegmentStartOffset
+	for i := int64(0); i < cleanStart; i++ {
+		if i < fileIndex-1 {
+			fName := getSegmentFilename(self.path, int64(i))
+			err := os.Remove(fName)
+			if err != nil {
+				coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+			} else {
+				coordLog.Infof("clean commit segment %v ", fName)
+			}
+		}
+	}
 	// clean the commit segment before the specific file index
 	for i := cleanStart; i < fileIndex; i++ {
 		fName := getSegmentFilename(self.path, int64(i))
@@ -583,9 +596,14 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 		cleanStartOffset = 0
 		atomic.AddInt64(&self.logStartInfo.SegmentStartIndex, 1)
 		atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, cleanStartOffset)
-		err = os.Remove(fName)
-		if err != nil {
-			coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+		// keep the previous file to read the last commit log
+		if int64(i) < fileIndex-1 {
+			err = os.Remove(fName)
+			if err != nil {
+				coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+			} else {
+				coordLog.Infof("clean commit segment %v ", fName)
+			}
 		}
 	}
 	if fileOffset < cleanStartOffset {
@@ -609,7 +627,8 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 		if fileOffset == stat.Size() {
 			atomic.AddInt64(&self.logStartInfo.SegmentStartIndex, 1)
 			atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, 0)
-			os.Remove(fName)
+			// keep the previous file to read the last commit log
+			// os.Remove(fName)
 		}
 	}
 
