@@ -7,10 +7,11 @@ import (
 
 	"github.com/absolute8511/nsq/internal/test"
 	"golang.org/x/net/context"
+	etcdlock "github.com/reechou/xlock2"
 )
 
 const (
-	EtcdHost = "http://192.168.66.205:2379,http://192.168.66.237:2379"
+	EtcdHost = "http://etcd-dev.s.qima-inc.com:2379"
 )
 
 func TestNodeRe(t *testing.T) {
@@ -31,7 +32,7 @@ func TestNodeRe(t *testing.T) {
 }
 
 func TestETCDWatch(t *testing.T) {
-	client := NewEClient(EtcdHost)
+	client := etcdlock.NewEClient(EtcdHost)
 	watcher := client.Watch("q11", 0, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
