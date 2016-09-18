@@ -561,28 +561,28 @@ func (self *NsqdCoordinator) checkAndFixLocalTopicData(tc *coordData, localTopic
 		if err == ErrCommitLogEOF {
 			return nil
 		}
-		coordLog.Infof("get log start failed: %v", err)
+		coordLog.Warningf("get log start failed: %v", err)
 		return err
 	}
 	snap := localTopic.GetDiskQueueSnapshot()
 	for {
 		err = snap.SeekTo(nsqd.BackendOffset(log.MsgOffset))
 		if err != nil {
-			coordLog.Infof("log start %v should be fixed: %v, %v", logStart, log, err)
+			coordLog.Warningf("topic %v log start %v should be fixed: %v, %v", tc.topicInfo.GetTopicDesp(), logStart, log, err)
 			// try fix start
 			if err == nsqd.ErrReadQueueAlreadyCleaned {
 				err = tc.logMgr.CleanOldData(logStart.SegmentStartIndex, GetNextLogOffset(logStart.SegmentStartOffset))
 				if err != nil {
-					coordLog.Infof("clean log failed : %v, %v", logStart, err)
+					coordLog.Errorf("clean log failed : %v, %v", logStart, err)
 					return err
 				}
 				logStart, log, err = tc.logMgr.GetLogStartInfo()
 				if err != nil {
 					return err
 				}
-				coordLog.Infof("log start fixed to: %v, %v", logStart, log)
+				coordLog.Warningf("topic %v log start fixed to: %v, %v", tc.topicInfo.GetTopicDesp(), logStart, log)
 			} else {
-				coordLog.Infof("read disk failed at log start: %v, %v, %v", logStart, log, err)
+				coordLog.Errorf("read disk failed at log start: %v, %v, %v", logStart, log, err)
 				return err
 			}
 		} else {
@@ -594,7 +594,7 @@ func (self *NsqdCoordinator) checkAndFixLocalTopicData(tc *coordData, localTopic
 		if r.Err == io.EOF {
 			return nil
 		}
-		coordLog.Infof("read the start of disk failed %v ", r.Err)
+		coordLog.Errorf("read the start of disk failed %v ", r.Err)
 		return r.Err
 	}
 	return nil

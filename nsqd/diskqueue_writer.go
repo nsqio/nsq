@@ -704,7 +704,20 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 				return err
 			}
 		} else {
-			break
+			_, _, _, err := getQueueFileOffsetMeta(d.fileName(readStart.EndOffset.FileNum - 1))
+			if err != nil {
+				if os.IsNotExist(err) {
+					readStart.EndOffset.FileNum++
+					readStart.EndOffset.Pos = 0
+					if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
+						return err
+					}
+				} else {
+					return err
+				}
+			} else {
+				break
+			}
 		}
 	}
 	if !needFix {
@@ -717,7 +730,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 		readStart.virtualEnd = BackendOffset(endPos)
 		readStart.totalMsgCnt = cnt
 		d.diskQueueStart = readStart
-		nsqLog.Logf("init the disk queue start: %v", d.diskQueueStart)
+		nsqLog.Logf("%v init the disk queue start: %v", d.name, d.diskQueueStart)
 	}
 	return nil
 }
