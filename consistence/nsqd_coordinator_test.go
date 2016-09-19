@@ -43,6 +43,13 @@ func (self *fakeLookupRemoteProxy) RequestNotifyNewTopicInfo(topic string, parti
 	return
 }
 
+func (self *fakeLookupRemoteProxy) RequestCheckTopicConsistence(topic string, partition int) {
+	if self.t != nil {
+		self.t.Log("requesting checking topic")
+	}
+	return
+}
+
 func (self *fakeLookupRemoteProxy) RequestJoinCatchup(topic string, partition int, nid string) *CoordErr {
 	if self.t != nil {
 		self.t.Log("requesting join catchup")

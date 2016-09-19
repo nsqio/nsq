@@ -485,7 +485,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					topicStatsMinMax[1] = mostLeaderStats
 					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
 					maxLeaderLoad = leaderLF
-					self.balanceTopicLeaderBetweenNodes(true, false, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
+					self.balanceTopicLeaderBetweenNodes(true, true, minLeaderLoad, maxLeaderLoad, topicStatsMinMax)
 				}
 			}
 		}
@@ -494,7 +494,6 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 
 func (self *DataPlacement) balanceTopicLeaderBetweenNodes(moveLeader bool, moveToMinLF bool,
 	minLF float64, maxLF float64, statsMinMax []*NodeTopicStats) {
-	// TODO: we need to handle the topic move to the min load node, and make sure that node can accept the topic (no other leader/follower for this topic)
 	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
 	if busyTopic == "" && idleTopic == "" {
 		coordLog.Infof("no idle or busy topic found")
@@ -519,6 +518,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(moveLeader bool, moveT
 			return
 		}
 		if moveToMinLF || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
+			// handle the topic move to the min load node, and make sure that node can accept the topic (no other leader/follower for this topic)
 			minNodeID := statsMinMax[0].NodeID
 			err := self.addToCatchupAndWaitISRReady(topicName, partitionID, minNodeID)
 			if err != nil {
