@@ -492,7 +492,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				((minLeaderLoad*2 < maxLeaderLoad) || (maxLeaderLoad > avgLeaderLoad*1.5)) {
 				self.balanceTopicLeaderBetweenNodes(moveLeader, minLeaderLoad*2 < maxLeaderLoad, minLeaderLoad, maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 			} else {
-				if mostLeaderStats != nil && mostLeaderNum > avgTopicNum*2 {
+				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > avgTopicNum*3/2 {
 					coordLog.Infof("too many topic leader on node: %v, leader num: %v", mostLeaderStats.NodeID, mostLeaderNum)
 					topicStatsMinMax[1] = mostLeaderStats
 					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
