@@ -593,6 +593,10 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(topicName string, partiti
 		} else {
 			if FindSlice(topicInfo.ISR, nid) != -1 {
 				break
+			} else if FindSlice(topicInfo.CatchupList, nid) != -1 {
+				// wait ready
+				time.Sleep(time.Second * 5)
+				continue
 			} else {
 				excludeNodes := self.getExcludeNodesForTopic(topicInfo)
 				if _, ok := excludeNodes[nid]; ok {
@@ -606,6 +610,7 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(topicName string, partiti
 		}
 		time.Sleep(time.Second * 5)
 		if retry > 5 {
+			coordLog.Infof("add catchup and wait timeout : %v", topicName)
 			return errors.New("wait timeout")
 		}
 		retry++
