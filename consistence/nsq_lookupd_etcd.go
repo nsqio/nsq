@@ -16,8 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/client"
-	"github.com/coreos/go-etcd/etcd"
-	etcdlock "github.com/reechou/xlock"
+	etcdlock "github.com/reechou/xlock2"
 	"golang.org/x/net/context"
 )
 
@@ -40,8 +39,7 @@ type NsqLookupdEtcdMgr struct {
 	wtliMutex sync.Mutex
 	itcMutex  sync.Mutex
 
-	eClient           *etcd.Client
-	client            *EtcdClient
+	client            *etcdlock.EtcdClient
 	clusterID         string
 	topicRoot         string
 	clusterPath       string
@@ -65,10 +63,8 @@ type NsqLookupdEtcdMgr struct {
 }
 
 func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
-	eClient := NewEtcdClient(host)
-	client := NewEClient(host)
+	client := etcdlock.NewEClient(host)
 	return &NsqLookupdEtcdMgr{
-		eClient:                   eClient,
 		client:                    client,
 		ifTopicChanged:            true,
 		watchTopicLeaderStopCh:    make(chan bool, 1),
@@ -115,7 +111,8 @@ func (self *NsqLookupdEtcdMgr) refresh() {
 		case <-self.refreshStopCh:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
-			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
+			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
+			//_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
 				coordLog.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
 			}
@@ -182,7 +179,7 @@ func (self *NsqLookupdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error
 }
 
 func (self *NsqLookupdEtcdMgr) AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{}) {
-	master := etcdlock.NewMaster(self.eClient, self.leaderSessionPath, self.leaderStr, ETCD_TTL)
+	master := etcdlock.NewMaster(self.client, self.leaderSessionPath, self.leaderStr, ETCD_TTL)
 	go self.processMasterEvents(master, leader, stop)
 	master.Start()
 }

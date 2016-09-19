@@ -16,8 +16,7 @@ import (
 	"sync"
 
 	"github.com/coreos/etcd/client"
-	"github.com/coreos/go-etcd/etcd"
-	etcdlock "github.com/reechou/xlock"
+	etcdlock "github.com/reechou/xlock2"
 	"golang.org/x/net/context"
 )
 
@@ -33,8 +32,7 @@ type MasterChanInfo struct {
 type NsqdEtcdMgr struct {
 	sync.Mutex
 	
-	eClient     *etcd.Client
-	client      *EtcdClient
+	client      *etcdlock.EtcdClient
 	clusterID   string
 	topicRoot   string
 	lookupdRoot string
@@ -47,10 +45,8 @@ type NsqdEtcdMgr struct {
 }
 
 func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
-	eClient := NewEtcdClient(host)
-	client := NewEClient(host)
+	client := etcdlock.NewEClient(host)
 	return &NsqdEtcdMgr{
-		eClient:      eClient,
 		client:       client,
 		topicLockMap: make(map[string]*etcdlock.SeizeLock),
 	}
@@ -89,7 +85,8 @@ func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 		case <-stopChan:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
-			_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
+			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
+			//_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
 				coordLog.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
 			}
@@ -136,7 +133,7 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		return err
 	}
 	topicKey := self.createTopicLeaderPath(topic, partition)
-	lock := etcdlock.NewSeizeLock(self.eClient, topicKey, string(valueB), ETCD_TTL)
+	lock := etcdlock.NewSeizeLock(self.client, topicKey, string(valueB), ETCD_TTL)
 	err = lock.Lock()
 	if err != nil {
 		coordLog.Errorf("[AcquireTopicLeader] topic_key[%s] lock error: %s", topicKey, err.Error())

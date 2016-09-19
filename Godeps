@@ -13,6 +13,6 @@ github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
 github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
 github.com/judwhite/go-svc/svc          63c12402f579f0bdf022653c821a1aa5d7544f01
-github.com/reechou/xlock                8b54bc7700dbb44b8b028ea05b2117cbec4c4a96
+github.com/reechou/xlock2               8d25813216f5d0c86d6c16c767f42f3b604281b7
 github.com/golang/protobuf/proto        3852dcfda249c2097355a6aabb199a28d97b30df
 google.golang.org/grpc  4f14d195bf76d2b7e8c1bd379549b88ffe5f4ee3
