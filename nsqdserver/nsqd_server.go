@@ -122,10 +122,10 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 		}
 		nsqd.NsqLogger().Logf("Start with broadcast: %s", ip)
 
+		consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
 		coord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)
 		l := consistence.NewNsqdEtcdMgr(opts.ClusterLeadershipAddresses)
 		coord.SetLeadershipMgr(l)
-		consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
 		ctx.nsqdCoord = coord
 	} else {
 		nsqd.NsqLogger().LogWarningf("Start without nsqd coordinator enabled")

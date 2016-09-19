@@ -124,6 +124,7 @@ func (l *NSQLookupd) Main() {
 		}
 
 		l.Lock()
+		consistence.SetCoordLogger(l.opts.Logger, l.opts.LogLevel)
 		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node, coordOpts)
 		l.Unlock()
 		// set etcd leader manager here
