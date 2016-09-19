@@ -566,7 +566,9 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 			fName := getSegmentFilename(self.path, int64(i))
 			err := os.Remove(fName)
 			if err != nil {
-				coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+				if !os.IsNotExist(err) {
+					coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+				}
 			} else {
 				coordLog.Infof("clean commit segment %v ", fName)
 			}

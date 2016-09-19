@@ -500,8 +500,10 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			coordLog.Infof("nodes changed while checking topics: %v, %v", currentNodesEpoch, atomic.LoadInt64(&self.nodesEpoch))
 			return
 		}
+		// should copy to avoid reused
+		topicInfo := t
 		// handle remove this node from ISR
-		coordErr := self.handleRemoveFailedISRNodes(failedNodes, &t)
+		coordErr := self.handleRemoveFailedISRNodes(failedNodes, &topicInfo)
 		if coordErr != nil {
 			go self.triggerCheckTopics(t.Name, t.Partition, time.Second*2)
 			continue
@@ -511,7 +513,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			needMigrate = true
 			checkOK = false
 			coordLog.Warningf("topic %v leader %v is lost.", t.GetTopicDesp(), t.Leader)
-			coordErr := self.handleTopicLeaderElection(&t, currentNodes, currentNodesEpoch)
+			coordErr := self.handleTopicLeaderElection(&topicInfo, currentNodes, currentNodesEpoch)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
 			}
@@ -524,16 +526,16 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				coordLog.Infof("topic %v leader session failed to get: %v", t.GetTopicDesp(), err)
 				lostLeaderSessions[t.GetTopicDesp()] = true
 				// notify the nsqd node to acquire the leader session.
-				self.notifyISRTopicMetaInfo(&t)
-				self.notifyAcquireTopicLeader(&t)
+				self.notifyISRTopicMetaInfo(&topicInfo)
+				self.notifyAcquireTopicLeader(&topicInfo)
 				continue
 			}
 			if leaderSession.LeaderNode == nil || leaderSession.Session == "" {
 				checkOK = false
 				lostLeaderSessions[t.GetTopicDesp()] = true
 				coordLog.Infof("topic %v leader session node is missing.", t.GetTopicDesp())
-				self.notifyISRTopicMetaInfo(&t)
-				self.notifyAcquireTopicLeader(&t)
+				self.notifyISRTopicMetaInfo(&topicInfo)
+				self.notifyAcquireTopicLeader(&topicInfo)
 				continue
 			}
 		}
@@ -551,7 +553,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			if (aliveCount <= t.Replica/2) ||
 				partitions[t.Partition].Before(time.Now().Add(-1*waitMigrateInterval)) {
 				coordLog.Infof("begin migrate the topic :%v", t.GetTopicDesp())
-				self.handleTopicMigrate(&t, currentNodes, currentNodesEpoch)
+				self.handleTopicMigrate(&topicInfo, currentNodes, currentNodesEpoch)
 				delete(partitions, t.Partition)
 			}
 		} else {
@@ -574,7 +576,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			return
 		}
 		// check if write disabled
-		if self.isTopicWriteDisabled(&t) {
+		if self.isTopicWriteDisabled(&topicInfo) {
 			coordLog.Infof("the topic write is disabled but not in waiting join state: %v", t)
 			checkOK = false
 			go self.revokeEnableTopicWrite(t.Name, t.Partition, true)
@@ -585,7 +587,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				if err != nil {
 					coordLog.Infof("failed to get topic %v leader session: %v", t.GetTopicDesp(), err)
 				} else {
-					self.notifyTopicLeaderSession(&t, leaderSession, "")
+					self.notifyTopicLeaderSession(&topicInfo, leaderSession, "")
 					delete(lostLeaderSessions, t.GetTopicDesp())
 				}
 			}
@@ -615,7 +617,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				}
 				if removeNode != "" {
 					failedNodes = append(failedNodes, removeNode)
-					coordErr := self.handleRemoveISRNodes(failedNodes, &t, false)
+					coordErr := self.handleRemoveISRNodes(failedNodes, &topicInfo, false)
 					if coordErr == nil {
 						coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
 					}
@@ -1521,6 +1523,11 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 		coordLog.Infof("node %v removed by plan from topic isr: %v", nodeID, topicInfo)
 	}
 	return coordErr
+}
+
+func (self *NsqLookupCoordinator) handleRequestCheckTopicConsistence(topic string, partition int) *CoordErr {
+	self.triggerCheckTopics(topic, partition, 0)
+	return nil
 }
 
 func (self *NsqLookupCoordinator) handleRequestNewTopicInfo(topic string, partition int, nodeID string) *CoordErr {

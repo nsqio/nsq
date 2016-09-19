@@ -283,6 +283,9 @@ retrysync:
 			coordLog.Warningf("topic(%v) failed refresh data:%v", topicFullName, clusterWriteErr)
 			goto exitsync
 		}
+		if retryCnt > 3 {
+			go self.requestNotifyNewTopicInfo(topicName, topicPartition)
+		}
 	}
 	success = 0
 	failedNodes = make(map[string]struct{})
@@ -363,6 +366,8 @@ retrysync:
 					if tmpErr != nil {
 						coordLog.Warningf("failed to request remove the failed isr node: %v, %v", nid, tmpErr)
 						break
+					} else {
+						coordLog.Infof("request the failed node: %v to leave topic %v isr", nid, topicFullName)
 					}
 				}
 				time.Sleep(time.Second)
@@ -372,7 +377,7 @@ retrysync:
 		}
 
 		if retryCnt > MAX_WRITE_RETRY*2 {
-			coordLog.Warningf("topic %v sync write failed due to max retry: %v, %v")
+			coordLog.Warningf("topic %v sync write failed due to max retry: %v", topicFullName, retryCnt)
 			goto exitsync
 		}
 
@@ -394,7 +399,7 @@ exitsync:
 		coord.coordData = newCoordData
 		coord.dataMutex.Unlock()
 		atomic.StoreInt32(&coord.disableWrite, 1)
-		coordLog.Warningf("topic %v failed to sync to isr, need leader isr", tcData.topicInfo.GetTopicDesp())
+		coordLog.Warningf("topic %v failed to sync to isr, need leave isr", tcData.topicInfo.GetTopicDesp())
 		// leave isr
 		go func() {
 			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -408,7 +413,10 @@ exitsync:
 		// should return nil since the return type error is different with *CoordErr
 		return nil
 	} else {
+		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
 		coordErrStats.incWriteErr(clusterWriteErr)
+		atomic.StoreInt32(&coord.disableWrite, 1)
+		go self.requestCheckTopicConsistence(topicName, topicPartition)
 	}
 	return clusterWriteErr
 }

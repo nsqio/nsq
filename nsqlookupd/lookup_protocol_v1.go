@@ -76,6 +76,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	if client.peerInfo != nil {
 		p.ctx.nsqlookupd.DB.RemoveAllByPeerId(client.peerInfo.Id)
 	}
+	conn.Close()
 	return err
 }
 

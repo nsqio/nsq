@@ -159,13 +159,13 @@ func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcRelease
 		ret = *err
 		return &ret
 	}
+	coordData := topicCoord.GetData()
 	if !topicCoord.IsWriteDisabled() {
-		coordLog.Errorf("topic %v release leader should disable write first")
+		coordLog.Errorf("topic %v release leader should disable write first", coordData.topicInfo.GetTopicDesp())
 		ret = *ErrTopicCoordStateInvalid
 		return &ret
 	}
-	coordData := topicCoord.GetData()
-	if coordData.topicInfo.Epoch != rpcTopicReq.Epoch ||
+	if rpcTopicReq.Epoch < coordData.topicInfo.Epoch ||
 		coordData.topicLeaderSession.LeaderEpoch != rpcTopicReq.TopicLeaderSessionEpoch {
 		coordLog.Warningf("topic info epoch mismatch while release leader: %v, %v", coordData,
 			rpcTopicReq)
