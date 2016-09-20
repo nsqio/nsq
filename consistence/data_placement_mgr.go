@@ -530,21 +530,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 			coordLog.Warningf("split topic name and partition failed: %v", err)
 			return
 		}
-		topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
-		if err != nil {
-			return
-		}
-		if moveToMinLF || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
-			// handle the topic move to the min load node, and make sure that node can accept the topic (no other leader/follower for this topic)
-			err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, sortedNodeTopicStats)
-			if err != nil {
-				checkMoveOK = false
-			} else {
-				checkMoveOK = true
-			}
-		} else {
-			checkMoveOK = true
-		}
+		checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
 	}
 	if !checkMoveOK && idleTopic != "" {
 		topicName, partitionID, err = splitTopicPartitionID(idleTopic)
@@ -552,23 +538,63 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 			coordLog.Warningf("split topic name and partition failed: %v", err)
 			return
 		}
-
-		topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
-		if err != nil {
-			return
-		}
-
-		checkMoveOK = true
-		if moveToMinLF || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
-			err = self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, sortedNodeTopicStats)
-			if err == ErrBalanceNodeUnavailable {
-				checkMoveOK = false
-			}
-		}
+		checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
 	}
 	if checkMoveOK {
 		self.lookupCoord.handleMoveTopic(moveLeader, topicName, partitionID, statsMinMax[1].NodeID)
 	}
+}
+
+func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicName string, partitionID int,
+	sortedNodeTopicStats []NodeTopicStats, moveToMinLF bool, moveLeader bool) bool {
+	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
+	if err != nil {
+		coordLog.Infof("failed to get topic %v info: %v", topicName, err)
+		return false
+	}
+	checkMoveOK := false
+	if moveToMinLF || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
+		if moveLeader {
+			// check if any of current isr nodes is already idle for move
+			for _, nid := range topicInfo.ISR {
+				if checkMoveOK {
+					break
+				}
+				for index, stat := range sortedNodeTopicStats {
+					if len(sortedNodeTopicStats) <= 5 {
+						if index > 0 {
+							break
+						}
+					} else if index > 1 {
+						break
+					}
+					if stat.NodeID == nid {
+						checkMoveOK = true
+						break
+					}
+				}
+			}
+		}
+		if !checkMoveOK {
+			// the isr not so idle , we try add a new idle node to the isr.
+			// and make sure that node can accept the topic (no other leader/follower for this topic)
+			err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, sortedNodeTopicStats)
+			if err != nil {
+				checkMoveOK = false
+				if moveLeader && err == ErrBalanceNodeUnavailable {
+					// no other node, just move the leader to any isr node
+					checkMoveOK = true
+				}
+			} else {
+				checkMoveOK = true
+			}
+		}
+	} else {
+		// we are allowed to move to any node and no need to add any node to isr
+		checkMoveOK = true
+	}
+
+	return checkMoveOK
 }
 
 func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}, topicName string, partitionID int, sortedNodeTopicStats []NodeTopicStats) error {
@@ -596,6 +622,7 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 	for {
 		// the most load node should not be chosen
 		if currentSelect >= len(filteredNodes) {
+			coordLog.Infof("currently no any node can be balanced for topic: %v", topicName)
 			return ErrBalanceNodeUnavailable
 		}
 		nid := filteredNodes[currentSelect]
