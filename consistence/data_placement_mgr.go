@@ -496,8 +496,27 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					minLeaderLoad*2 < maxLeaderLoad, minLeaderLoad, maxLeaderLoad,
 					topicStatsMinMax, nodeTopicStats)
 			} else {
-				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > avgTopicNum*3/2 {
+				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.6) {
+					if mostLeaderStats.NodeID == topicStatsMinMax[0].NodeID ||
+						len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
+						continue
+					}
 					coordLog.Infof("too many topic leader on node: %v, leader num: %v", mostLeaderStats.NodeID, mostLeaderNum)
+					//we should avoid move leader topic if the load is not so much
+					isNotBusy := false
+					for index, stat := range nodeTopicStats {
+						if index > len(nodeTopicStats)/2 {
+							break
+						}
+						if stat.NodeID == mostLeaderStats.NodeID {
+							isNotBusy = true
+							coordLog.Infof("although many topic leader, the load is not much: %v", index)
+							break
+						}
+					}
+					if isNotBusy {
+						continue
+					}
 					topicStatsMinMax[1] = mostLeaderStats
 					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
 					maxLeaderLoad = leaderLF
@@ -581,10 +600,6 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 			err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, sortedNodeTopicStats)
 			if err != nil {
 				checkMoveOK = false
-				if moveLeader && err == ErrBalanceNodeUnavailable {
-					// no other node, just move the leader to any isr node
-					checkMoveOK = true
-				}
 			} else {
 				checkMoveOK = true
 			}
