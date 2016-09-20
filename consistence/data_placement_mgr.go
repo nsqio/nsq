@@ -572,6 +572,9 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 }
 
 func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}, topicName string, partitionID int, sortedNodeTopicStats []NodeTopicStats) error {
+	if len(sortedNodeTopicStats) == 0 {
+		return errors.New("no stats data")
+	}
 	retry := 0
 	currentSelect := 0
 	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
@@ -579,7 +582,11 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 		coordLog.Infof("failed to get topic info: %v-%v: %v", topicName, partitionID, err)
 	}
 	filteredNodes := make([]string, 0)
-	for _, s := range sortedNodeTopicStats {
+	for index, s := range sortedNodeTopicStats {
+		if index >= len(sortedNodeTopicStats)-2 {
+			// never move to the most two busy nodes
+			break
+		}
 		if FindSlice(topicInfo.ISR, s.NodeID) != -1 {
 			// filter
 		} else {
@@ -588,7 +595,7 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 	}
 	for {
 		// the most load node should not be chosen
-		if currentSelect >= len(filteredNodes)-1 {
+		if currentSelect >= len(filteredNodes) {
 			return ErrBalanceNodeUnavailable
 		}
 		nid := filteredNodes[currentSelect]
