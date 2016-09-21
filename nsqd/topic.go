@@ -78,6 +78,7 @@ type Topic struct {
 	magicCode       int64
 	committedOffset atomic.Value
 	detailStats     *DetailStatsInfo
+	needFixData     int32
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -143,6 +144,18 @@ func NewTopic(topicName string, part int, opt *Options,
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) IsDataNeedFix() bool {
+	return atomic.LoadInt32(&t.needFixData) == 1
+}
+
+func (t *Topic) SetDataFixState(needFix bool) {
+	if needFix {
+		atomic.StoreInt32(&t.needFixData, 1)
+	} else {
+		atomic.StoreInt32(&t.needFixData, 0)
+	}
 }
 
 func (t *Topic) getMagicCodeFileName() string {
