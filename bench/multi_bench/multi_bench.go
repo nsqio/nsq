@@ -336,7 +336,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 		for chIndex := 0; chIndex < *channelNum; chIndex++ {
 			wg.Add(1)
 			go func(id int, topic string, chSuffix string) {
-				subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch", rdyChan, goChan, id)
+				subWorker(quitChan, *runfor, *lookupAddress, topic, topic+"_ch"+chSuffix, rdyChan, goChan, id)
 				wg.Done()
 			}(j, topics[j%len(topics)], strconv.Itoa(chIndex))
 			<-rdyChan
