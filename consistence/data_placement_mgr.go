@@ -504,62 +504,55 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					topicStatsMinMax, nodeTopicStats)
 			} else {
 				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.5) {
-					if mostLeaderStats.NodeID == topicStatsMinMax[0].NodeID ||
-						len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
+					needMove := checkMoveLotsOfTopics(true, mostLeaderNum, mostLeaderStats, avgTopicNum, topicStatsMinMax, nodeTopicStats)
+					if needMove {
+						topicStatsMinMax[1] = mostLeaderStats
+						leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
+						maxLeaderLoad = leaderLF
+						self.balanceTopicLeaderBetweenNodes(monitorChan, true, true, minLeaderLoad,
+							maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 						continue
 					}
-					coordLog.Infof("too many topic leader on node: %v, leader num: %v", mostLeaderStats.NodeID, mostLeaderNum)
-					//we should avoid move leader topic if the load is not so much
-					isNotBusy := false
-					for index, stat := range nodeTopicStats {
-						if index > len(nodeTopicStats)/2 {
-							break
-						}
-						if stat.NodeID == mostLeaderStats.NodeID {
-							isNotBusy = true
-							coordLog.Infof("although many topic leader, the load is not much: %v", index)
-							break
-						}
-					}
-					if isNotBusy {
+				}
+				if mostReplicaStats != nil && avgTopicNum > 10 && mostReplicaNum > int(float64(avgTopicNum)*1.5) {
+					needMove := checkMoveLotsOfTopics(false, mostReplicaNum, mostReplicaStats, avgTopicNum, topicStatsMinMax, nodeTopicStats)
+					if needMove {
+						topicStatsMinMax[1] = mostReplicaStats
+						leaderLF, _ := mostReplicaStats.GetNodeLoadFactor()
+						maxLeaderLoad = leaderLF
+						self.balanceTopicLeaderBetweenNodes(monitorChan, false, true, minLeaderLoad,
+							maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 						continue
 					}
-					topicStatsMinMax[1] = mostLeaderStats
-					leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
-					maxLeaderLoad = leaderLF
-					self.balanceTopicLeaderBetweenNodes(monitorChan, true, true, minLeaderLoad,
-						maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
-				} else if mostReplicaStats != nil && avgTopicNum > 10 && mostReplicaNum > int(float64(avgTopicNum)*1.5) {
-					if mostReplicaStats.NodeID == topicStatsMinMax[0].NodeID ||
-						len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
-						continue
-					}
-					coordLog.Infof("too many topic replicas on node: %v, num: %v", mostReplicaStats.NodeID, mostReplicaNum)
-					//we should avoid move topic if the load is not so much
-					isNotBusy := false
-					for index, stat := range nodeTopicStats {
-						if index > len(nodeTopicStats)/2 {
-							break
-						}
-						if stat.NodeID == mostReplicaStats.NodeID {
-							isNotBusy = true
-							coordLog.Infof("although many topic , the load is not much: %v", index)
-							break
-						}
-					}
-					if isNotBusy {
-						continue
-					}
-					topicStatsMinMax[1] = mostReplicaStats
-					leaderLF, _ := mostReplicaStats.GetNodeLoadFactor()
-					maxLeaderLoad = leaderLF
-					self.balanceTopicLeaderBetweenNodes(monitorChan, false, true, minLeaderLoad,
-						maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
-
 				}
 			}
 		}
 	}
+}
+
+func checkMoveLotsOfTopics(moveLeader bool, moveTopicNum int, moveNodeStats *NodeTopicStats, avgTopicNum int,
+	topicStatsMinMax []*NodeTopicStats, nodeTopicStats []NodeTopicStats) bool {
+	if moveNodeStats.NodeID == topicStatsMinMax[0].NodeID ||
+		len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
+		return false
+	}
+	coordLog.Infof("too many topic on node: %v, num: %v", moveNodeStats.NodeID, moveTopicNum)
+	//we should avoid move leader topic if the load is not so much
+	busyIndex := 0
+	for index, stat := range nodeTopicStats {
+		if stat.NodeID == moveNodeStats.NodeID {
+			busyIndex = index
+			break
+		}
+	}
+	if busyIndex == 0 {
+		return false
+	}
+	if busyIndex < len(nodeTopicStats)/2 && moveTopicNum < avgTopicNum*2 {
+		coordLog.Infof("although many topics , the load is not much: %v", busyIndex)
+		return false
+	}
+	return true
 }
 
 func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struct{}, moveLeader bool, moveToMinLF bool,
