@@ -415,6 +415,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			nodeTopicStats := make([]NodeTopicStats, 0, len(currentNodes))
 			var mostLeaderStats *NodeTopicStats
 			mostLeaderNum := 0
+			//mostReplicaNum := 0
 			for nodeID, nodeInfo := range currentNodes {
 				topicStat, err := self.lookupCoord.getNsqdTopicStat(nodeInfo)
 				if err != nil {
@@ -496,7 +497,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					minLeaderLoad*2 < maxLeaderLoad, minLeaderLoad, maxLeaderLoad,
 					topicStatsMinMax, nodeTopicStats)
 			} else {
-				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.6) {
+				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.5) {
 					if mostLeaderStats.NodeID == topicStatsMinMax[0].NodeID ||
 						len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
 						continue
