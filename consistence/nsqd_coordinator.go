@@ -402,11 +402,11 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 	}
 }
 
-func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo, tryFix bool) {
+func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionMetaInfo, tryFix bool) error {
 	removedPath, err := self.localNsqd.CheckMagicCode(topicInfo.Name, topicInfo.Partition, topicInfo.MagicCode, tryFix)
 	if err != nil {
 		coordLog.Infof("check magic code error: %v", err)
-		return
+		return err
 	}
 	if removedPath != "" {
 		basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
@@ -418,6 +418,7 @@ func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionM
 			coordLog.Infof("rename the topic %v commit log failed :%v", topicInfo.GetTopicDesp(), err)
 		}
 	}
+	return nil
 }
 
 func (self *NsqdCoordinator) loadLocalTopicData() error {
@@ -471,7 +472,11 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				continue
 			}
 
-			self.checkLocalTopicMagicCode(topicInfo, topicInfo.Leader != self.myNode.GetID())
+			checkErr := self.checkLocalTopicMagicCode(topicInfo, topicInfo.Leader != self.myNode.GetID())
+			if checkErr != nil {
+				coordLog.Errorf("failed to check topic :%v-%v, err:%v", topicName, partition, checkErr)
+				continue
+			}
 
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
