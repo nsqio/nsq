@@ -480,6 +480,19 @@ func TestDiskQueueWriterInitWithQueueStart(t *testing.T) {
 	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
 	test.Nil(t, err)
 	dqWriter = queue.(*diskQueueWriter)
+	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
+
+	newStart.(*diskQueueEndInfo).virtualEnd += BackendOffset(len(msg) + 4)
+	newStart.(*diskQueueEndInfo).totalMsgCnt++
+	dqWriter.ResetWriteWithQueueStart(newStart)
+	test.Equal(t, dqWriter.GetQueueReadStart(), dqWriter.GetQueueWriteEnd())
+	test.Equal(t, newStart.Offset(), dqWriter.GetQueueReadStart().Offset())
+	test.Equal(t, newStart.TotalMsgCnt(), dqWriter.GetQueueReadStart().TotalMsgCnt())
+	newStart = dqWriter.GetQueueReadStart()
+	dqWriter.Close()
+	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter = queue.(*diskQueueWriter)
 
 	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
 }

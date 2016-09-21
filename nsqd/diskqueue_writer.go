@@ -3,9 +3,11 @@ package nsqd
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/absolute8511/nsq/internal/util"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
@@ -65,6 +67,12 @@ type diskQueueWriter struct {
 	bufferWriter *bufio.Writer
 }
 
+type extraMeta struct {
+	SegOffset     diskQueueOffset
+	VirtualOffset BackendOffset
+	TotalMsgCnt   int64
+}
+
 func NewDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64) (BackendQueueWriter, error) {
@@ -95,6 +103,7 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		nsqLog.LogErrorf("diskqueue(%s) failed to init queue start- %s", d.name, err)
 		return &d, err
 	}
+	d.saveExtraMeta()
 
 	return &d, nil
 }
@@ -195,6 +204,7 @@ func (d *diskQueueWriter) ResetWriteWithQueueStart(queueStart BackendQueueEnd) e
 	d.diskReadEnd = d.diskWriteEnd
 	nsqLog.Warningf("DISKQUEUE %v new queue start : %v:%v", d.name,
 		d.diskQueueStart, d.diskWriteEnd)
+	d.saveExtraMeta()
 	return nil
 }
 
@@ -273,6 +283,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 		d.diskQueueStart, d.diskWriteEnd, newStart)
 
 	d.diskQueueStart = newStart
+	d.saveExtraMeta()
 	for i := int64(0); i < cleanFileNum; i++ {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
@@ -500,6 +511,7 @@ func (d *diskQueueWriter) cleanOldData() error {
 	d.diskWriteEnd.EndOffset.Pos = 0
 	d.diskReadEnd = d.diskWriteEnd
 	d.diskQueueStart = d.diskWriteEnd
+	d.saveExtraMeta()
 	return nil
 }
 
@@ -689,6 +701,13 @@ func (d *diskQueueWriter) sync() error {
 }
 
 func (d *diskQueueWriter) initQueueReadStart() error {
+	// first try read from meta file
+	err := d.loadExtraMeta()
+	if err != nil {
+		nsqLog.Warningf("failed to load extra meta from file: %v", err)
+	} else {
+		return nil
+	}
 	var readStart diskQueueEndInfo
 	needFix := false
 	for {
@@ -705,7 +724,9 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 				readStart.EndOffset.FileNum++
 				readStart.EndOffset.Pos = 0
 				if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
-					return ErrInitQueueStartFailed
+					nsqLog.Errorf("topic %v no data file found to end: %v, reset read start to end", d.name, d.diskWriteEnd)
+					d.diskQueueStart = d.diskWriteEnd
+					return nil
 				}
 			} else {
 				return err
@@ -717,7 +738,9 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 					readStart.EndOffset.FileNum++
 					readStart.EndOffset.Pos = 0
 					if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
-						return ErrInitQueueStartFailed
+						nsqLog.Errorf("topic %v no data meta file found to end: %v, reset read start to end", d.name, d.diskWriteEnd)
+						d.diskQueueStart = d.diskWriteEnd
+						return nil
 					}
 				} else {
 					return err
@@ -745,6 +768,43 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 		nsqLog.Logf("%v init the disk queue start: %v", d.name, d.diskQueueStart)
 	}
 	return nil
+}
+
+func (d *diskQueueWriter) loadExtraMeta() error {
+	fileName := d.extraMetaFileName()
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return err
+	}
+	var tmp extraMeta
+	err = json.Unmarshal(data, &tmp)
+	if err != nil {
+		return err
+	}
+	d.diskQueueStart.EndOffset = tmp.SegOffset
+	d.diskQueueStart.virtualEnd = tmp.VirtualOffset
+	d.diskQueueStart.totalMsgCnt = tmp.TotalMsgCnt
+	nsqLog.Infof("topic : %v load extra meta: %v", d.name, tmp)
+	return nil
+}
+
+func (d *diskQueueWriter) saveExtraMeta() error {
+	var err error
+
+	fileName := d.extraMetaFileName()
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
+
+	var tmp extraMeta
+	tmp.SegOffset = d.diskQueueStart.EndOffset
+	tmp.VirtualOffset = d.diskQueueStart.Offset()
+	tmp.TotalMsgCnt = d.diskQueueStart.TotalMsgCnt()
+	data, _ := json.Marshal(tmp)
+	err = ioutil.WriteFile(tmpFileName, data, 0644)
+	if err != nil {
+		return err
+	}
+	// atomically rename
+	return util.AtomicRename(tmpFileName, fileName)
 }
 
 // retrieveMetaData initializes state from the filesystem
@@ -806,4 +866,8 @@ func (d *diskQueueWriter) metaDataFileName() string {
 
 func (d *diskQueueWriter) fileName(fileNum int64) string {
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.name, fileNum)
+}
+
+func (d *diskQueueWriter) extraMetaFileName() string {
+	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.meta.extra.dat"), d.name)
 }
