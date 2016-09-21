@@ -17,9 +17,9 @@ import (
 )
 
 var (
-	ErrInvalidOffset        = errors.New("invalid offset")
-	ErrInitQueueStartFailed = errors.New("init queue start failed")
-	writeBufSize            = 1024 * 128
+	ErrInvalidOffset     = errors.New("invalid offset")
+	ErrNeedFixQueueStart = errors.New("init queue start should be fixed")
+	writeBufSize         = 1024 * 128
 )
 
 func getQueueFileOffsetMeta(dataFileName string) (int64, int64, int64, error) {
@@ -434,6 +434,8 @@ func (d *diskQueueWriter) RemoveTo(destPath string) error {
 		nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
 		return innerErr
 	}
+	destFile = fmt.Sprintf(path.Join(destPath, "%s.diskqueue.meta.extra.dat"), d.name)
+	util.AtomicRename(d.extraMetaFileName(), destFile)
 	return nil
 }
 
@@ -480,6 +482,7 @@ func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove metadata file - %s", d.name, innerErr)
 			return innerErr
 		}
+		os.Remove(d.extraMetaFileName())
 		for i := int64(0); i <= d.diskWriteEnd.EndOffset.FileNum; i++ {
 			fName := d.fileName(i) + ".offsetmeta.dat"
 			innerErr := os.Remove(fName)
@@ -726,7 +729,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 				if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
 					nsqLog.Errorf("topic %v no data file found to end: %v, reset read start to end", d.name, d.diskWriteEnd)
 					d.diskQueueStart = d.diskWriteEnd
-					return nil
+					return ErrNeedFixQueueStart
 				}
 			} else {
 				return err
@@ -740,7 +743,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 					if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
 						nsqLog.Errorf("topic %v no data meta file found to end: %v, reset read start to end", d.name, d.diskWriteEnd)
 						d.diskQueueStart = d.diskWriteEnd
-						return nil
+						return ErrNeedFixQueueStart
 					}
 				} else {
 					return err

@@ -129,7 +129,12 @@ func NewTopic(topicName string, part int, opt *Options,
 
 	if err != nil {
 		nsqLog.LogErrorf("topic(%v) failed to init disk queue: %v ", t.fullName, err)
-		return nil
+		if err == ErrNeedFixQueueStart {
+			t.SetDataFixState(true)
+		} else {
+			t.MarkAsRemoved()
+			return nil
+		}
 	}
 	t.backend = queue.(*diskQueueWriter)
 
