@@ -1273,6 +1273,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			break
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
+			// should sync the history stats to make sure balance stats data is ok
 			localTopic.ForceFlush()
 			logMgr.FlushCommitLogs()
 			logMgr.switchForMaster(false)

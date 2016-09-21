@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	traceModule = "msgtrace"
+	traceModule = "msgtracer"
 )
 
 type IMsgTracer interface {

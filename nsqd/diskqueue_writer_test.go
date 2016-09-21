@@ -495,6 +495,7 @@ func TestDiskQueueWriterInitWithQueueStart(t *testing.T) {
 	dqWriter = queue.(*diskQueueWriter)
 
 	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
+	dqWriter.Close()
 }
 
 func TestDiskQueueWriterTorture(t *testing.T) {
