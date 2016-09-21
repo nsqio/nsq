@@ -415,7 +415,8 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			nodeTopicStats := make([]NodeTopicStats, 0, len(currentNodes))
 			var mostLeaderStats *NodeTopicStats
 			mostLeaderNum := 0
-			//mostReplicaNum := 0
+			mostReplicaNum := 0
+			var mostReplicaStats *NodeTopicStats
 			for nodeID, nodeInfo := range currentNodes {
 				topicStat, err := self.lookupCoord.getNsqdTopicStat(nodeInfo)
 				if err != nil {
@@ -442,6 +443,11 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				if len(topicStat.TopicLeaderDataSize) > mostLeaderNum {
 					mostLeaderNum = len(topicStat.TopicLeaderDataSize)
 					mostLeaderStats = topicStat
+				}
+				replicaNum := len(topicStat.TopicTotalDataSize) - len(topicStat.TopicLeaderDataSize)
+				if replicaNum > mostReplicaNum {
+					mostReplicaNum = replicaNum
+					mostReplicaStats = topicStat
 				}
 			}
 			if validNum == 0 || topicStatsMinMax[0] == nil || topicStatsMinMax[1] == nil {
@@ -523,6 +529,33 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					maxLeaderLoad = leaderLF
 					self.balanceTopicLeaderBetweenNodes(monitorChan, true, true, minLeaderLoad,
 						maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
+				} else if mostReplicaStats != nil && avgTopicNum > 10 && mostReplicaNum > int(float64(avgTopicNum)*1.5) {
+					if mostReplicaStats.NodeID == topicStatsMinMax[0].NodeID ||
+						len(topicStatsMinMax[0].TopicLeaderDataSize) > avgTopicNum {
+						continue
+					}
+					coordLog.Infof("too many topic replicas on node: %v, num: %v", mostReplicaStats.NodeID, mostReplicaNum)
+					//we should avoid move topic if the load is not so much
+					isNotBusy := false
+					for index, stat := range nodeTopicStats {
+						if index > len(nodeTopicStats)/2 {
+							break
+						}
+						if stat.NodeID == mostReplicaStats.NodeID {
+							isNotBusy = true
+							coordLog.Infof("although many topic , the load is not much: %v", index)
+							break
+						}
+					}
+					if isNotBusy {
+						continue
+					}
+					topicStatsMinMax[1] = mostReplicaStats
+					leaderLF, _ := mostReplicaStats.GetNodeLoadFactor()
+					maxLeaderLoad = leaderLF
+					self.balanceTopicLeaderBetweenNodes(monitorChan, false, true, minLeaderLoad,
+						maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
+
 				}
 			}
 		}
