@@ -703,7 +703,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 			} else {
 				return err
 			}
-		} else {
+		} else if needFix {
 			_, _, _, err := getQueueFileOffsetMeta(d.fileName(readStart.EndOffset.FileNum - 1))
 			if err != nil {
 				if os.IsNotExist(err) {
@@ -718,9 +718,14 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 			} else {
 				break
 			}
+		} else {
+			break
 		}
 	}
 	if !needFix {
+		if readStart.EndOffset.FileNum != 0 {
+			nsqLog.Warningf("topic : %v not start as 0 but no fix : %v", d.name, readStart)
+		}
 		d.diskQueueStart = readStart
 	} else {
 		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(readStart.EndOffset.FileNum - 1))

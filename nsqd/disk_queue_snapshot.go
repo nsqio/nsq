@@ -60,7 +60,7 @@ func (d *DiskQueueSnapshot) SetQueueStart(start BackendQueueEnd) {
 	if d.exitFlag == 1 {
 		return
 	}
-	nsqLog.Infof("change start from %v to %v", d.queueStart, startPos)
+	nsqLog.Infof("topic : %v change start from %v to %v", d.readFrom, d.queueStart, startPos)
 	d.queueStart = *startPos
 	if d.queueStart.EndOffset.GreatThan(&d.readPos.EndOffset) {
 		d.readPos = d.queueStart

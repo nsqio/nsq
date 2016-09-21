@@ -1703,7 +1703,7 @@ func (self *NsqdCoordinator) readTopicRawData(topic string, partition int, offse
 		size := sizeList[i]
 		err = snap.SeekTo(nsqd.BackendOffset(offset))
 		if err != nil {
-			coordLog.Infof("read topic data at offset %v, size: %v, error: %v", offset, size, err)
+			coordLog.Infof("read topic %v data at offset %v, size: %v, error: %v", t.GetFullName(), offset, size, err)
 			break
 		}
 		buf, err := snap.ReadRaw(size)
