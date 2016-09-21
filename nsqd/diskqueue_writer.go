@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	ErrInvalidOffset = errors.New("invalid offset")
-	writeBufSize     = 1024 * 128
+	ErrInvalidOffset        = errors.New("invalid offset")
+	ErrInitQueueStartFailed = errors.New("init queue start failed")
+	writeBufSize            = 1024 * 128
 )
 
 func getQueueFileOffsetMeta(dataFileName string) (int64, int64, int64, error) {
@@ -66,7 +67,7 @@ type diskQueueWriter struct {
 
 func NewDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64) BackendQueueWriter {
+	syncEvery int64) (BackendQueueWriter, error) {
 	return newDiskQueueWriter(name, dataPath, maxBytesPerFile, minMsgSize, maxMsgSize, syncEvery)
 }
 
@@ -74,7 +75,7 @@ func NewDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64) BackendQueueWriter {
+	syncEvery int64) (BackendQueueWriter, error) {
 
 	d := diskQueueWriter{
 		name:            name,
@@ -92,9 +93,10 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	err = d.initQueueReadStart()
 	if err != nil && !os.IsNotExist(err) {
 		nsqLog.LogErrorf("diskqueue(%s) failed to init queue start- %s", d.name, err)
+		return &d, err
 	}
 
-	return &d
+	return &d, nil
 }
 
 func (d *diskQueueWriter) PutV2(data []byte) (BackendOffset, int32, diskQueueEndInfo, error) {
@@ -695,10 +697,15 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 		if err != nil {
 			needFix = true
 			if os.IsNotExist(err) {
+				if d.diskWriteEnd.EndOffset.FileNum == int64(0) &&
+					d.diskWriteEnd.EndOffset.Pos == int64(0) {
+					// init with empty
+					return nil
+				}
 				readStart.EndOffset.FileNum++
 				readStart.EndOffset.Pos = 0
 				if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
-					return err
+					return ErrInitQueueStartFailed
 				}
 			} else {
 				return err
@@ -710,7 +717,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 					readStart.EndOffset.FileNum++
 					readStart.EndOffset.Pos = 0
 					if readStart.EndOffset.FileNum > d.diskWriteEnd.EndOffset.FileNum {
-						return err
+						return ErrInitQueueStartFailed
 					}
 				} else {
 					return err

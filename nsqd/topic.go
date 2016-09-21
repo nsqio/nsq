@@ -119,12 +119,19 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 
 	backendName := getBackendName(t.tname, t.partition)
-	t.backend = newDiskQueueWriter(backendName,
+	queue, err := newDiskQueueWriter(backendName,
 		t.dataPath,
 		opt.MaxBytesPerFile,
 		int32(minValidMsgLength),
 		int32(opt.MaxMsgSize)+minValidMsgLength,
-		opt.SyncEvery).(*diskQueueWriter)
+		opt.SyncEvery)
+
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init disk queue: %v ", t.fullName, err)
+		return nil
+	}
+	t.backend = queue.(*diskQueueWriter)
+
 	t.UpdateCommittedOffset(t.backend.GetQueueWriteEnd())
 	err = t.loadMagicCode()
 	if err != nil {
