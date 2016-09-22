@@ -539,6 +539,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			// check the first log commit log is valid on the disk queue, so that we can fix the wrong start of the commit log
 			localErr := self.checkAndFixLocalTopicData(tc.GetData(), topic)
 			if localErr != nil {
+				coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
 				topic.SetDataFixState(true)
 				go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
 			}
@@ -1011,6 +1012,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 
 	localErr = self.checkAndFixLocalTopicData(tc.GetData(), localTopic)
 	if localErr != nil {
+		coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
 		localTopic.SetDataFixState(true)
 	}
 
@@ -1239,7 +1241,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			if len(newMsgs) == 1 {
 				queueEnd, localErr = localTopic.PutMessageOnReplica(newMsgs[0], nsqd.BackendOffset(l.MsgOffset))
 				if localErr != nil {
-					coordLog.Infof("Failed to put message on slave: %v, offset: %v", localErr, l.MsgOffset)
+					coordLog.Warningf("Failed to put message on slave: %v, offset: %v, need to be fixed", localErr, l.MsgOffset)
 					localTopic.SetDataFixState(true)
 					hasErr = true
 					break
@@ -1249,7 +1251,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				coordLog.Debugf("got batch messages: %v", len(newMsgs))
 				queueEnd, localErr = localTopic.PutMessagesOnReplica(newMsgs, nsqd.BackendOffset(l.MsgOffset))
 				if localErr != nil {
-					coordLog.Infof("Failed to batch put messages on slave: %v, offset: %v", localErr, l.MsgOffset)
+					coordLog.Warningf("Failed to batch put messages on slave: %v, offset: %v, need to be fixed", localErr, l.MsgOffset)
 					localTopic.SetDataFixState(true)
 					hasErr = true
 					break
@@ -1264,7 +1266,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			}
 			localErr = logMgr.AppendCommitLog(&l, true)
 			if localErr != nil {
-				coordLog.Infof("Failed to append local log: %v", localErr)
+				coordLog.Errorf("Failed to append local log: %v, need to be fixed ", localErr)
 				localTopic.SetDataFixState(true)
 				hasErr = true
 				break

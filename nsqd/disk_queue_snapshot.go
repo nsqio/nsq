@@ -424,5 +424,8 @@ CheckFileOpen:
 }
 
 func (d *DiskQueueSnapshot) fileName(fileNum int64) string {
+	if fileNum > int64(999990) {
+		return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%09d.dat"), d.readFrom, fileNum)
+	}
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.readFrom, fileNum)
 }

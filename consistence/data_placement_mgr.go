@@ -479,7 +479,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			}
 			moveLeader := false
 			avgTopicNum := len(topicList) / len(currentNodes)
-			if len(topicStatsMinMax[1].TopicLeaderDataSize) > int(1.2*float64(avgTopicNum)) {
+			if len(topicStatsMinMax[1].TopicLeaderDataSize) > int(1.1*float64(avgTopicNum)) {
 				// too many leader topics on this node, try move leader topic
 				coordLog.Infof("move leader topic since too many on this node")
 				moveLeader = true
