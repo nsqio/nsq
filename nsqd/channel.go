@@ -35,6 +35,7 @@ type Consumer interface {
 	Stats() ClientStats
 	Exit()
 	Empty()
+	String() string
 }
 
 type resetChannelData struct {
@@ -586,7 +587,7 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 }
 
 // FinishMessage successfully discards an in-flight message
-func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, int64, bool, error) {
+func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID) (BackendOffset, int64, bool, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	msg, err := c.popInFlightMessage(clientID, id)
@@ -596,7 +597,7 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) (BackendOffset, in
 		return 0, 0, false, err
 	}
 	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "FIN", msg.TraceID, msg, strconv.Itoa(int(clientID)))
+		nsqMsgTracer.TraceSub(c.GetTopicName(), "FIN", msg.TraceID, msg, clientAddr)
 	}
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
@@ -620,7 +621,7 @@ func (c *Channel) ContinueConsumeForOrder() {
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message
 //
-func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration, byClient bool) error {
+func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID, timeout time.Duration, byClient bool) error {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	if timeout == 0 {
@@ -635,7 +636,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		if msg.Attempts > 0 && !byClient {
 			msg.Attempts--
 		}
-		return c.doRequeue(msg)
+		return c.doRequeue(msg, clientAddr)
 	}
 	// change the timeout for inflight
 	msg, ok := c.inFlightMessages[id]
@@ -661,7 +662,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 	return nil
 }
 
-func (c *Channel) RequeueClientMessages(clientID int64) {
+func (c *Channel) RequeueClientMessages(clientID int64, clientAddr string) {
 	if c.Exiting() {
 		return
 	}
@@ -677,7 +678,7 @@ func (c *Channel) RequeueClientMessages(clientID int64) {
 	}
 	c.inFlightMutex.Unlock()
 	for _, id := range idList {
-		c.RequeueMessage(clientID, id, 0, false)
+		c.RequeueMessage(clientID, clientAddr, id, 0, false)
 	}
 	if len(idList) > 0 {
 		nsqLog.Logf("client: %v requeued %v messages ",
@@ -734,7 +735,7 @@ func (c *Channel) RemoveClient(clientID int64) {
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout time.Duration) error {
+func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, clientAddr string, timeout time.Duration) error {
 	now := time.Now()
 	msg.clientID = clientID
 	msg.deliveryTS = now
@@ -747,7 +748,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 		return err
 	}
 	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "START", msg.TraceID, msg, strconv.Itoa(int(clientID)))
+		nsqMsgTracer.TraceSub(c.GetTopicName(), "START", msg.TraceID, msg, clientAddr)
 	}
 	return nil
 }
@@ -768,13 +769,13 @@ func (c *Channel) GetChannelEnd() BackendQueueEnd {
 }
 
 // doRequeue performs the low level operations to requeue a message
-func (c *Channel) doRequeue(m *Message) error {
+func (c *Channel) doRequeue(m *Message, clientAddr string) error {
 	if c.Exiting() {
 		return ErrExiting
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
 	if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, strconv.Itoa(int(m.clientID)))
+		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, clientAddr)
 	}
 	select {
 	case <-c.exitChan:
@@ -1263,7 +1264,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		}
 		requeuedCnt++
 		msgCopy := *msg
-		c.doRequeue(msg)
+		c.doRequeue(msg, strconv.Itoa(int(msg.clientID)))
 		c.inFlightMutex.Unlock()
 
 		c.RLock()
@@ -1273,7 +1274,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			client.TimedOutMessage(atomic.LoadInt32(&msg.isDeferred) == 1)
 		}
 		if msgCopy.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
-			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, strconv.Itoa(int(msgCopy.clientID)))
+			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, client.String())
 		}
 	}
 

@@ -287,7 +287,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	<-msgPumpStoppedChan
 
 	if client.Channel != nil {
-		client.Channel.RequeueClientMessages(client.ID)
+		client.Channel.RequeueClientMessages(client.ID, client.String())
 		client.Channel.RemoveClient(client.ID)
 	}
 	client.FinalClose()
@@ -530,7 +530,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				continue
 			}
 
-			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
+			subChannel.StartInFlightTimeout(msg, client.ID, client.String(), msgTimeout)
 			client.SendingMessage()
 			err = p.SendMessage(client, msg, &buf, subChannel.IsOrdered())
 			if err != nil {
@@ -975,7 +975,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 
-	err = p.ctx.FinishMessage(client.Channel, client.ID, nsqd.GetMessageIDFromFullMsgID(*id))
+	err = p.ctx.FinishMessage(client.Channel, client.ID, client.String(), nsqd.GetMessageIDFromFullMsgID(*id))
 	if err != nil {
 		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
 			err)
@@ -1023,7 +1023,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if client.Channel == nil {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
-	err = client.Channel.RequeueMessage(client.ID, nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration, true)
+	err = client.Channel.RequeueMessage(client.ID, client.String(), nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration, true)
 	if err != nil {
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
