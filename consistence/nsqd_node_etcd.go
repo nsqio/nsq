@@ -266,7 +266,18 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 				return nil
 			} else {
 				coordLog.Errorf("watcher key[%s] error: %s", key, err.Error())
-				time.Sleep(5 * time.Second)
+				//rewatch
+				if etcdlock.IsEtcdWatchExpired(err) {
+					rsp, err = self.client.Get(key, false, true)
+					if err != nil {
+						coordLog.Errorf("rewatch and get key[%s] error: %s", key, err.Error())
+						continue
+					}
+					watcher = self.client.Watch(key, rsp.Index+1, true)
+					continue
+				} else {
+					time.Sleep(5 * time.Second)
+				}
 			}
 			continue
 		}

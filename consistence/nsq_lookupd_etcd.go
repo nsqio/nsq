@@ -259,7 +259,18 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 				return
 			} else {
 				coordLog.Errorf("[WatchNsqdNodes] watcher key[%s] error: %s", key, err.Error())
-				time.Sleep(5 * time.Second)
+				//rewatch
+				if etcdlock.IsEtcdWatchExpired(err) {
+					rsp, err = self.client.Get(key, false, true)
+					if err != nil {
+						coordLog.Errorf("[WatchNsqdNodes] rewatch and get key[%s] error: %s", key, err.Error())
+						continue
+					}
+					watcher = self.client.Watch(key, rsp.Index+1, true)
+					continue
+				} else {
+					time.Sleep(5 * time.Second)
+				}
 			}
 			continue
 		}
@@ -328,7 +339,18 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 				return
 			} else {
 				coordLog.Errorf("[watchTopics] watcher key[%s] error: %s", self.topicRoot, err.Error())
-				time.Sleep(5 * time.Second)
+				//rewatch
+				if etcdlock.IsEtcdWatchExpired(err) {
+					rsp, err := self.client.Get(self.topicRoot, false, true)
+					if err != nil {
+						coordLog.Errorf("[watchTopics] rewatch and get key[%s] error: %s", self.topicRoot, err.Error())
+						continue
+					}
+					watcher = self.client.Watch(self.topicRoot, rsp.Index+1, true)
+					continue
+				} else {
+					time.Sleep(5 * time.Second)
+				}
 			}
 			continue
 		}
@@ -705,7 +727,18 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 				return
 			} else {
 				coordLog.Errorf("[watchTopicLeaderSession] watcher key[%s] error: %s", topicLeaderSessionPath, err.Error())
-				time.Sleep(5 * time.Second)
+				//rewatch
+				if etcdlock.IsEtcdWatchExpired(err) {
+					rsp, err = self.client.Get(topicLeaderSessionPath, false, true)
+					if err != nil {
+						coordLog.Errorf("[watchTopics] rewatch and get key[%s] error: %s", topicLeaderSessionPath, err.Error())
+						continue
+					}
+					watcher = self.client.Watch(topicLeaderSessionPath, rsp.Index+1, true)
+					continue
+				} else {
+					time.Sleep(5 * time.Second)
+				}
 			}
 			continue
 		}
