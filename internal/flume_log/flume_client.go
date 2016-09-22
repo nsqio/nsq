@@ -1,6 +1,7 @@
 package flume_log
 
 import (
+	"bufio"
 	"errors"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 type FlumeClient struct {
 	remoteAddr string
 	conn       net.Conn
+	bw         *bufio.Writer
 	stopChan   chan bool
 	bufList    chan []byte
 	loopDone   chan bool
@@ -17,7 +19,7 @@ type FlumeClient struct {
 
 func NewFlumeClient(agentIP string) *FlumeClient {
 	client := &FlumeClient{
-		bufList:    make(chan []byte, 100),
+		bufList:    make(chan []byte, 1000),
 		stopChan:   make(chan bool),
 		remoteAddr: agentIP,
 		loopDone:   make(chan bool),
@@ -42,7 +44,7 @@ func (c *FlumeClient) writeLoop() {
 	defer func() {
 		select {
 		case buf := <-c.bufList:
-			_, err := c.conn.Write(buf)
+			_, err := c.bw.Write(buf)
 			if err != nil {
 				log.Printf("write log %v failed: %v, left data: %v", string(buf), err, len(c.bufList))
 				break
@@ -50,11 +52,14 @@ func (c *FlumeClient) writeLoop() {
 		default:
 		}
 		if c.conn != nil {
+			c.bw.Flush()
 			c.conn.Close()
+			c.conn = nil
 		}
 		close(c.loopDone)
 	}()
 	c.reconnect()
+	ticker := time.NewTicker(time.Second * 3)
 	for {
 		if c.conn == nil {
 			err := c.reconnect()
@@ -69,9 +74,15 @@ func (c *FlumeClient) writeLoop() {
 		}
 		select {
 		case buf := <-c.bufList:
-			_, err := c.conn.Write(buf)
+			_, err := c.bw.Write(buf)
 			if err != nil {
 				log.Printf("write log %v failed: %v", string(buf), err)
+				c.reconnect()
+			}
+		case <-ticker.C:
+			err := c.bw.Flush()
+			if err != nil {
+				log.Printf("flush write log failed: %v", err)
 				c.reconnect()
 			}
 		case <-c.stopChan:
@@ -93,8 +104,10 @@ func (c *FlumeClient) SendLog(d []byte) error {
 
 func (c *FlumeClient) reconnect() (err error) {
 	if c.conn != nil {
+		c.bw.Flush()
 		c.conn.Close()
 		c.conn = nil
+		c.bw = nil
 	}
 	conn, err := net.DialTimeout("tcp", c.remoteAddr, time.Second*5)
 	if err != nil {
@@ -102,6 +115,7 @@ func (c *FlumeClient) reconnect() (err error) {
 		return err
 	} else {
 		c.conn = conn
+		c.bw = bufio.NewWriterSize(conn, 1024*8)
 		go readLoop(conn)
 	}
 	return nil
