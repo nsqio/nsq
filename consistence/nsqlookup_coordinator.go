@@ -214,7 +214,7 @@ func (self *NsqLookupCoordinator) handleLeadership() {
 
 func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{}) {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
-		coordLog.Infof("I am slave.")
+		coordLog.Infof("I am slave (%v). Leader is: %v", self.myNode, self.leaderNode)
 		return
 	}
 	coordLog.Infof("I am master now.")

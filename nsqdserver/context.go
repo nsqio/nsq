@@ -142,15 +142,15 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 	return c.nsqdCoord.PutMessagesToCluster(topic, msgs)
 }
 
-func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
+func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
-		_, _, _, err := ch.FinishMessage(clientID, msgID)
+		_, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)
 		if err == nil {
 			ch.ContinueConsumeForOrder()
 		}
 		return err
 	}
-	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, msgID)
+	return c.nsqdCoord.FinishMessageToCluster(ch, clientID, clientAddr, msgID)
 }
 
 func (c *context) DeleteExistingChannel(topic *nsqd.Topic, channelName string) error {

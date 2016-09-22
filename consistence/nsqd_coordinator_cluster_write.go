@@ -731,7 +731,7 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 	return nil
 }
 
-func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
+func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	topicName := channel.GetTopicName()
 	partition := channel.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
@@ -754,7 +754,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, msgID)
+		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}

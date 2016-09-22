@@ -416,6 +416,7 @@ func startNsqLookupCoord(t *testing.T, useFakeLeadership bool) (*NsqLookupCoordi
 	n.NodeIP = "127.0.0.1"
 	randPort := rand.Int31n(20000) + 30000
 	n.RpcPort = strconv.Itoa(int(randPort))
+	n.TcpPort = "0"
 	n.Epoch = 1
 	n.ID = GenNsqLookupNodeID(&n, "")
 	opts := &Options{
@@ -438,8 +439,7 @@ func startNsqLookupCoord(t *testing.T, useFakeLeadership bool) (*NsqLookupCoordi
 }
 
 func TestNsqLookupLeadershipChange(t *testing.T) {
-	coordLog.SetLevel(levellogger.LOG_DEBUG)
-	coordLog.Logger = newTestLogger(t)
+	SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	coord1, _, node1 := startNsqLookupCoord(t, true)
 	coord2, _, node2 := startNsqLookupCoord(t, true)
 	fakeLeadership1 := coord1.leadership.(*FakeNsqlookupLeadership)
@@ -461,13 +461,11 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.SetLevel(levellogger.LOG_DEBUG)
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqdNodeInfoList := make(map[string]*NsqdNodeInfo)
@@ -800,13 +798,11 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	// 3 partition 1 replica
 	// 2 partition 2 replica
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.SetLevel(levellogger.LOG_INFO)
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqdNodeInfoList := make(map[string]*NsqdNodeInfo)

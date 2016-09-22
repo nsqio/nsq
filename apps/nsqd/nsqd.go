@@ -151,6 +151,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 	flagSet.Int("log-level", int(opts.LogLevel), "log verbose level")
 	flagSet.String("log-dir", opts.LogDir, "directory for logs")
+	flagSet.String("remote-tracer", opts.RemoteTracer, "server for message tracing")
 	flagSet.Int("retention-days", int(opts.RetentionDays), "the default retention days for topic data")
 
 	return flagSet

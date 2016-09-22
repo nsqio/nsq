@@ -30,6 +30,9 @@ lookup_ping_interval = "5s"
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"
 
+## the remote message trace server
+remote_tracer = "127.0.0.1:1234"
+
 ## default retention days to keep the consumed topic data
 retention_days = 7
 ## number of messages to keep in memory (per topic/channel)

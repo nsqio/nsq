@@ -4,7 +4,7 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
-var coordLog = levellogger.NewLevelLogger(levellogger.LOG_INFO, &levellogger.GLogger{})
+var coordLog = levellogger.NewLevelLogger(levellogger.LOG_INFO, nil)
 
 func SetCoordLogger(log levellogger.Logger, level int32) {
 	coordLog.Logger = log

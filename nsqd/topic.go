@@ -78,6 +78,7 @@ type Topic struct {
 	magicCode       int64
 	committedOffset atomic.Value
 	detailStats     *DetailStatsInfo
+	needFixData     int32
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -119,12 +120,24 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 
 	backendName := getBackendName(t.tname, t.partition)
-	t.backend = newDiskQueueWriter(backendName,
+	queue, err := newDiskQueueWriter(backendName,
 		t.dataPath,
 		opt.MaxBytesPerFile,
 		int32(minValidMsgLength),
 		int32(opt.MaxMsgSize)+minValidMsgLength,
-		opt.SyncEvery).(*diskQueueWriter)
+		opt.SyncEvery)
+
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init disk queue: %v ", t.fullName, err)
+		if err == ErrNeedFixQueueStart {
+			t.SetDataFixState(true)
+		} else {
+			t.MarkAsRemoved()
+			return nil
+		}
+	}
+	t.backend = queue.(*diskQueueWriter)
+
 	t.UpdateCommittedOffset(t.backend.GetQueueWriteEnd())
 	err = t.loadMagicCode()
 	if err != nil {
@@ -136,6 +149,18 @@ func NewTopic(topicName string, part int, opt *Options,
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	return t
+}
+
+func (t *Topic) IsDataNeedFix() bool {
+	return atomic.LoadInt32(&t.needFixData) == 1
+}
+
+func (t *Topic) SetDataFixState(needFix bool) {
+	if needFix {
+		atomic.StoreInt32(&t.needFixData, 1)
+	} else {
+		atomic.StoreInt32(&t.needFixData, 0)
+	}
 }
 
 func (t *Topic) getMagicCodeFileName() string {

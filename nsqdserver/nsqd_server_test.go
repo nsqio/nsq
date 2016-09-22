@@ -89,7 +89,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 
 	for i := 0; i < 25; i++ {
 		msg := nsqdNs.NewMessage(nsqdNs.MessageID(i), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
 		client.SendingMessage()
 	}
 

@@ -763,44 +763,40 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, req *RpcCommitLo
 	var err2 error
 	var logData *CommitLogData
 	ret.LogStartIndex, ret.LogOffset, logData, err2 = logMgr.GetLastCommitLogOffsetV2()
+	// if last err is ErrCommitLogEOF or OutOfBound, we need to check the log end again,
+	// because the log end maybe changed. and if the second new log end is large than request data,
+	// it means the log is changed during this
+	// return ErrCommitLogEOF or OutOfBound means the leader has less log data than the others.
 	if err2 != nil {
 		if err2 == ErrCommitLogEOF {
-			ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
-			ret.UseCountIndex = true
-			if req.UseCountIndex {
-				if ret.LogCountNumIndex > req.LogCountNumIndex {
-					ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
-					return
-				}
-			} else {
-				if ret.LogStartIndex > req.LogStartIndex ||
-					(ret.LogStartIndex == req.LogStartIndex && ret.LogOffset > req.LogOffset) {
-					ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
-					return
-				}
-			}
 			ret.ErrInfo = *ErrTopicCommitLogEOF
 		} else {
 			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
+			return
 		}
-		return
 	}
 	ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
 	ret.UseCountIndex = true
-	ret.LogData = *logData
-	if req.UseCountIndex {
-		if ret.LogCountNumIndex > req.LogCountNumIndex {
-			ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
-			return
-		}
-	} else {
-		if ret.LogStartIndex > req.LogStartIndex ||
-			(ret.LogStartIndex == req.LogStartIndex && ret.LogOffset > req.LogOffset) {
-			ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
-			return
+	if logData != nil {
+		ret.LogData = *logData
+	}
+	if err == ErrCommitLogEOF || err == ErrCommitLogOutofBound {
+		if req.UseCountIndex {
+			if ret.LogCountNumIndex > req.LogCountNumIndex {
+				ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+				return
+			}
+		} else {
+			if ret.LogStartIndex > req.LogStartIndex ||
+				(ret.LogStartIndex == req.LogStartIndex && ret.LogOffset > req.LogOffset) {
+				ret.ErrInfo = *NewCoordErr("commit log changed", CoordCommonErr)
+				return
+			}
 		}
 	}
-	if err == ErrCommitLogOutofBound {
+	if err2 == ErrCommitLogEOF {
+		ret.ErrInfo = *ErrTopicCommitLogEOF
+	} else if err == ErrCommitLogOutofBound {
 		ret.ErrInfo = *ErrTopicCommitLogOutofBound
 	} else if err == ErrCommitLogEOF {
 		ret.ErrInfo = *ErrTopicCommitLogEOF

@@ -223,12 +223,11 @@ func TestNsqdCoordStartup(t *testing.T) {
 	partition := 1
 
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
 	nsqd2, randPort2, nodeInfo2, data2 := newNsqdNode(t, "id2")
@@ -334,12 +333,11 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
@@ -415,12 +413,11 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
@@ -646,12 +643,11 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
@@ -874,12 +870,11 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.Logger = newTestLogger(t)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
@@ -1064,12 +1059,11 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	partition := 1
 
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_DETAIL)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.SetLevel(levellogger.LOG_ERR)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(t, "id1")
@@ -1358,13 +1352,11 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 	partition := 1
 
 	if testing.Verbose() {
-		coordLog.SetLevel(levellogger.LOG_WARN)
-		coordLog.Logger = &levellogger.GLogger{}
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		coordLog.SetLevel(levellogger.LOG_WARN)
-		coordLog.Logger = nil
+		SetCoordLogger(nil, levellogger.LOG_WARN)
 	}
 
 	nsqd1, randPort1, nodeInfo1, data1 := newNsqdNode(nil, "id1")

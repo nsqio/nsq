@@ -18,7 +18,8 @@ func TestDiskQueueReaderResetConfirmed(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	test.NotNil(t, dqWriter)
 
@@ -88,7 +89,8 @@ func TestDiskQueueReaderResetRead(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	test.NotNil(t, dqWriter)
 
@@ -186,7 +188,8 @@ func TestDiskQueueReaderSkip(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	test.NotNil(t, dqWriter)
 
@@ -280,7 +283,8 @@ func TestDiskQueueReaderUpdateEnd(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	test.NotNil(t, dqWriter)
 
@@ -346,7 +350,8 @@ func TestDiskQueueSnapshotReader(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	test.NotNil(t, dqWriter)
 

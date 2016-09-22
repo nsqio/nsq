@@ -81,6 +81,8 @@ func New(opts *Options) *NSQD {
 	DEFAULT_RETENTION_DAYS = int(opts.RetentionDays)
 
 	nsqLog.Logger = opts.Logger
+	SetRemoteMsgTracer(opts.RemoteTracer)
+
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]map[int]*Topic),
@@ -468,30 +470,18 @@ func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Top
 		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
 	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify)
-	topics[part] = t
+	if t == nil {
+		nsqLog.Errorf("TOPIC(%s): create failed", topicName)
+	} else {
+		topics[part] = t
+		nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
 
-	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
-
+	}
 	n.Unlock()
-
-	// if using lookupd, make a blocking call to get the topics, and immediately create them.
-	// this makes sure that any message received is buffered to the right channels
-	//lookupdHTTPAddrs := n.lookupdHTTPAddrs()
-	//if len(lookupdHTTPAddrs) > 0 {
-	//	channelNames, _ := n.ci.GetLookupdTopicChannels(t.GetTopicName(),
-	//		t.GetTopicPart(), lookupdHTTPAddrs)
-	//	for _, channelName := range channelNames {
-	//		if strings.HasSuffix(channelName, "#ephemeral") {
-	//			// we don't want to pre-create ephemeral channels
-	//			// because there isn't a client connected
-	//			continue
-	//		}
-	//		t.getOrCreateChannel(channelName)
-	//	}
-	//}
-
-	// update messagePump state
-	t.NotifyReloadChannels()
+	if t != nil {
+		// update messagePump state
+		t.NotifyReloadChannels()
+	}
 	return t
 }
 
@@ -549,6 +539,9 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 		}
 		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify)
+		if localTopic == nil {
+			return "", errors.New("failed to init new topic")
+		}
 		defer localTopic.Close()
 	}
 	magicCodeWrong := false

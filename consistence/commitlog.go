@@ -945,8 +945,8 @@ func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 			self.committedLogs = make([]CommitLogData, 0, self.bufSize)
 		}
 	} else {
-		if cap(self.committedLogs) != self.bufSize*100 {
-			self.committedLogs = make([]CommitLogData, 0, self.bufSize*100)
+		if cap(self.committedLogs) != self.bufSize*10 {
+			self.committedLogs = make([]CommitLogData, 0, self.bufSize*10)
 		}
 	}
 	self.Unlock()

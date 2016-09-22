@@ -60,7 +60,7 @@ func (d *DiskQueueSnapshot) SetQueueStart(start BackendQueueEnd) {
 	if d.exitFlag == 1 {
 		return
 	}
-	nsqLog.Infof("change start from %v to %v", d.queueStart, startPos)
+	nsqLog.Infof("topic : %v change start from %v to %v", d.readFrom, d.queueStart, startPos)
 	d.queueStart = *startPos
 	if d.queueStart.EndOffset.GreatThan(&d.readPos.EndOffset) {
 		d.readPos = d.queueStart
@@ -424,5 +424,8 @@ CheckFileOpen:
 }
 
 func (d *DiskQueueSnapshot) fileName(fileNum int64) string {
+	if fileNum > int64(999990) {
+		return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%09d.dat"), d.readFrom, fileNum)
+	}
 	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.readFrom, fileNum)
 }
