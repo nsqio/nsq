@@ -80,8 +80,7 @@ func (c *FlumeClient) writeLoop() {
 	}
 }
 
-func (c *FlumeClient) SendLog(log_info *LogInfo) error {
-	d := log_info.Serialize()
+func (c *FlumeClient) SendLog(d []byte) error {
 	select {
 	case <-c.stopChan:
 		return errors.New("flume client stopped")

@@ -1,8 +1,6 @@
 package flume_log
 
-import (
-	"errors"
-)
+import ()
 
 type DetailInfo struct {
 	module string
@@ -19,31 +17,8 @@ func NewDetailInfo(m string) *DetailInfo {
 	return detailInfo
 }
 
-func (d *DetailInfo) AddExtraInfo(extraInfo ExtraInfo) {
-	extraList := make([]ExtraInfo, 0)
-	extraList = append(extraList, extraInfo)
-	d.detail["extra"] = extraList
-}
-
-func (d *DetailInfo) AddLogItem(key string, value interface{}) error {
-	var extraList []ExtraInfo
-	var extraInfo ExtraInfo
-	if extraObj, ok := d.detail["extra"]; ok {
-		if extraList, ok = extraObj.([]ExtraInfo); !ok {
-			return errors.New("extraObj.([]ExtraInfo) failed")
-		}
-	} else {
-		extraList = make([]ExtraInfo, 0)
-	}
-	if len(extraList) > 0 {
-		extraInfo = extraList[0]
-	} else {
-		extraInfo = make(map[string]interface{})
-		extraList = append(extraList, extraInfo)
-	}
-	extraInfo[key] = value
-	d.detail["extra"] = extraList
-	return nil
+func (d *DetailInfo) SetExtraInfo(extra interface{}) {
+	d.detail["extra"] = extra
 }
 
 func (d *DetailInfo) AddKeyValue(key string, value interface{}) {

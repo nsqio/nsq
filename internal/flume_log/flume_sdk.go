@@ -46,9 +46,8 @@ func (l *FlumeLogger) log(typeInfo string, logInfo string, detail *DetailInfo) e
 	log_info.typ = typeInfo
 	log_info.tag = logInfo
 	log_info.detail = detail
-	//fmt.Println(log_info)
 	if l.client != nil {
-		return l.client.SendLog(log_info)
+		return l.client.SendLog(log_info.Serialize())
 	}
 	return errors.New("no client")
 }

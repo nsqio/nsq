@@ -20,6 +20,14 @@ type IMsgTracer interface {
 
 var nsqMsgTracer IMsgTracer
 
+type TraceLogItemInfo struct {
+	MsgID     uint64 `json:"msgid"`
+	TraceID   uint64 `json:"traceid"`
+	Topic     string `json:"topic"`
+	Timestamp int64  `json:"timestamp"`
+	Action    string `json:"action"`
+}
+
 func SetRemoteMsgTracer(remote string) {
 	if remote != "" {
 		nsqMsgTracer = NewRemoteMsgTracer(remote)
@@ -70,11 +78,13 @@ func (self *RemoteMsgTracer) Stop() {
 func (self *RemoteMsgTracer) TracePub(topic string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
 	now := time.Now().UnixNano()
 	detail := flume_log.NewDetailInfo(traceModule)
-	detail.AddLogItem("msgid", msg.ID)
-	detail.AddLogItem("traceid", msg.TraceID)
-	detail.AddLogItem("topic", topic)
-	detail.AddLogItem("timestamp", now)
-	detail.AddLogItem("action", "PUB")
+	var traceItem [1]TraceLogItemInfo
+	traceItem[0].MsgID = uint64(msg.ID)
+	traceItem[0].TraceID = msg.TraceID
+	traceItem[0].Topic = topic
+	traceItem[0].Timestamp = now
+	traceItem[0].Action = "PUB"
+	detail.SetExtraInfo(traceItem[:])
 
 	l := fmt.Sprintf("[TRACE] topic %v trace id %v: message %v put at offset: %v, current count: %v at time %v", topic, msg.TraceID,
 		msg.ID, diskOffset, currentCnt, now)
@@ -89,12 +99,14 @@ func (self *RemoteMsgTracer) TracePub(topic string, traceID uint64, msg *Message
 
 func (self *RemoteMsgTracer) TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string) {
 	now := time.Now().UnixNano()
+	var traceItem [1]TraceLogItemInfo
+	traceItem[0].MsgID = uint64(msg.ID)
+	traceItem[0].TraceID = msg.TraceID
+	traceItem[0].Topic = topic
+	traceItem[0].Timestamp = now
+	traceItem[0].Action = state
 	detail := flume_log.NewDetailInfo(traceModule)
-	detail.AddLogItem("msgid", msg.ID)
-	detail.AddLogItem("traceid", msg.TraceID)
-	detail.AddLogItem("topic", topic)
-	detail.AddLogItem("timestamp", now)
-	detail.AddLogItem("action", state)
+	detail.SetExtraInfo(traceItem[:])
 
 	l := fmt.Sprintf("[TRACE] topic %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v",
 		topic, msg.TraceID, msg.ID, msg.offset, state, clientID, time.Now().UnixNano(), msg.Attempts)

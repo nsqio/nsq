@@ -557,6 +557,7 @@ func checkMoveLotsOfTopics(moveLeader bool, moveTopicNum int, moveNodeStats *Nod
 
 func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struct{}, moveLeader bool, moveToMinLF bool,
 	minLF float64, maxLF float64, statsMinMax []*NodeTopicStats, sortedNodeTopicStats []NodeTopicStats) {
+
 	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
 	if busyTopic == "" && idleTopic == "" {
 		coordLog.Infof("no idle or busy topic found")
@@ -574,17 +575,20 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 		topicName, partitionID, err = splitTopicPartitionID(busyTopic)
 		if err != nil {
 			coordLog.Warningf("split topic name and partition failed: %v", err)
-			return
+		} else {
+			checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
 		}
-		checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
 	}
 	if !checkMoveOK && idleTopic != "" {
 		topicName, partitionID, err = splitTopicPartitionID(idleTopic)
 		if err != nil {
 			coordLog.Warningf("split topic name and partition failed: %v", err)
-			return
+		} else {
+			checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
 		}
-		checkMoveOK = self.checkAndPrepareMove(monitorChan, topicName, partitionID, sortedNodeTopicStats, moveToMinLF, moveLeader)
+	}
+	if !checkMoveOK {
+		// TODO: maybe we can move some other topic if both idle/busy is not movable
 	}
 	if checkMoveOK {
 		self.lookupCoord.handleMoveTopic(moveLeader, topicName, partitionID, statsMinMax[1].NodeID)
