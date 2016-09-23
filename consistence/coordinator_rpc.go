@@ -534,9 +534,17 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 	}
 	stat := NewNodeTopicStats(self.nsqdCoord.myNode.GetID(), len(topicStats)*2, runtime.NumCPU())
 	for _, ts := range topicStats {
+		pid, _ := strconv.Atoi(ts.TopicPartition)
+		// filter the catchup node
+		coordData, coordErr := self.nsqdCoord.getTopicCoordData(ts.TopicName, pid)
+		if coordErr != nil {
+			continue
+		}
+		if !coordData.IsMineISR(self.nsqdCoord.myNode.GetID()) {
+			continue
+		}
 		// plus 1 to handle the empty topic/channel
 		stat.TopicTotalDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
-		pid, _ := strconv.Atoi(ts.TopicPartition)
 		localTopic, err := self.nsqdCoord.localNsqd.GetExistingTopic(ts.TopicName, pid)
 		if err != nil {
 			coordLog.Infof("get local topic %v, %v failed: %v", ts.TopicFullName, pid, err)
