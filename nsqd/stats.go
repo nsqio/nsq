@@ -375,6 +375,14 @@ func (self *DetailStatsInfo) GetMsgWriteLatencyStats() []int64 {
 	return s[:]
 }
 
+func (self *DetailStatsInfo) UpdateHistory(historyList [24]int64) {
+	if len(historyList) != len(self.historyStatsInfo.HourlyPubSize) {
+		nsqLog.LogErrorf("failed to update history stats with wrong list size: %v", len(historyList))
+		return
+	}
+	copy(self.historyStatsInfo.HourlyPubSize[:], historyList[:])
+}
+
 func (self *DetailStatsInfo) LoadHistory(fileName string) {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil {

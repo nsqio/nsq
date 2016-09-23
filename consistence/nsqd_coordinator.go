@@ -1288,6 +1288,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			// notify nsqlookupd coordinator to add myself to isr list.
 			// if success, the topic leader will disable new write.
 			coordLog.Infof("I am requesting join isr: %v", self.myNode.GetID())
+			stat, err := c.GetTopicStats(topicInfo.Name)
+			if err != nil {
+				coordLog.Infof("try get stats from leader failed: %v", err)
+			} else {
+				localTopic.GetDetailStats().UpdateHistory(stat.TopicHourlyPubDataList[topicInfo.GetTopicDesp()])
+			}
 			go func() {
 				err := self.requestJoinTopicISR(&topicInfo)
 				if err != nil {
