@@ -413,7 +413,8 @@ exitsync:
 				coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
 			}
 		}()
-	} else if clusterWriteErr != nil {
+	}
+	if clusterWriteErr != nil {
 		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
 		coordErrStats.incWriteErr(clusterWriteErr)
 		atomic.StoreInt32(&coord.disableWrite, 1)

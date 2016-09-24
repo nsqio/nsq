@@ -415,8 +415,8 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			nodeTopicStats := make([]NodeTopicStats, 0, len(currentNodes))
 			var mostLeaderStats *NodeTopicStats
 			mostLeaderNum := 0
-			mostReplicaNum := 0
-			var mostReplicaStats *NodeTopicStats
+			var leastLeaderStats *NodeTopicStats
+			leastLeaderNum := math.MaxInt32
 			for nodeID, nodeInfo := range currentNodes {
 				topicStat, err := self.lookupCoord.getNsqdTopicStat(nodeInfo)
 				if err != nil {
@@ -440,14 +440,14 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				avgLeaderLoad += leaderLF
 				avgNodeLoad += nodeLF
 				validNum++
-				if len(topicStat.TopicLeaderDataSize) > mostLeaderNum {
-					mostLeaderNum = len(topicStat.TopicLeaderDataSize)
+				leaderNum := len(topicStat.TopicLeaderDataSize)
+				if leaderNum > mostLeaderNum {
+					mostLeaderNum = leaderNum
 					mostLeaderStats = topicStat
 				}
-				replicaNum := len(topicStat.TopicTotalDataSize) - len(topicStat.TopicLeaderDataSize)
-				if replicaNum > mostReplicaNum {
-					mostReplicaNum = replicaNum
-					mostReplicaStats = topicStat
+				if leaderNum < leastLeaderNum {
+					leastLeaderNum = leaderNum
+					leastLeaderStats = topicStat
 				}
 			}
 			if validNum == 0 || topicStatsMinMax[0] == nil || topicStatsMinMax[1] == nil {
@@ -514,12 +514,15 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 						continue
 					}
 				}
-				if mostReplicaStats != nil && avgTopicNum > 10 && mostReplicaNum > int(float64(avgTopicNum)*1.5) {
-					needMove := checkMoveLotsOfTopics(false, mostReplicaNum, mostReplicaStats, avgTopicNum, topicStatsMinMax, nodeTopicStats)
+				// so less leader topics maybe means too much replicas on this node
+				if leastLeaderStats != nil && avgTopicNum > 10 && leastLeaderNum < int(float64(avgTopicNum)*0.5) {
+					// TODO: check if we can move a follower topic to leader from other nodes
+					// needMove := checkMoveLotsOfTopics(false, leastLeaderNum, leastLeaderStats, avgTopicNum, topicStatsMinMax, nodeTopicStats)
+					needMove := true
 					if needMove {
-						topicStatsMinMax[1] = mostReplicaStats
-						leaderLF, _ := mostReplicaStats.GetNodeLoadFactor()
-						maxLeaderLoad = leaderLF
+						topicStatsMinMax[0] = leastLeaderStats
+						leaderLF, _ := leastLeaderStats.GetNodeLoadFactor()
+						minLeaderLoad = leaderLF
 						self.balanceTopicLeaderBetweenNodes(monitorChan, false, true, minLeaderLoad,
 							maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 						continue
