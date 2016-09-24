@@ -47,6 +47,13 @@ type TopicDynamicConf struct {
 	SyncEvery    int64
 }
 
+type PubInfo struct {
+	Client   *ClientV2
+	MsgBody  *bytes.Buffer
+	StartPub time.Time
+}
+type PubInfoChan chan PubInfo
+
 type Topic struct {
 	sync.Mutex
 
@@ -79,6 +86,10 @@ type Topic struct {
 	committedOffset atomic.Value
 	detailStats     *DetailStatsInfo
 	needFixData     int32
+	pubWaitingChan  PubInfoChan
+	quitChan        chan struct{}
+	pubLoopFunc     func(v *Topic)
+	wg              sync.WaitGroup
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -88,7 +99,7 @@ func GetTopicFullName(topic string, part int) string {
 // Topic constructor
 func NewTopic(topicName string, part int, opt *Options,
 	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{})) *Topic {
+	notify func(v interface{}), loopFunc func(v *Topic)) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -103,6 +114,9 @@ func NewTopic(topicName string, part int, opt *Options,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
+		pubWaitingChan: make(PubInfoChan, 1000),
+		quitChan:       make(chan struct{}),
+		pubLoopFunc:    loopFunc,
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -148,7 +162,22 @@ func NewTopic(topicName string, part int, opt *Options,
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
+	if t.pubLoopFunc != nil {
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
+			t.pubLoopFunc(t)
+		}()
+	}
 	return t
+}
+
+func (t *Topic) GetWaitChan() PubInfoChan {
+	return t.pubWaitingChan
+}
+
+func (t *Topic) QuitChan() <-chan struct{} {
+	return t.quitChan
 }
 
 func (t *Topic) IsDataNeedFix() bool {
@@ -749,6 +778,8 @@ func (t *Topic) exit(deleted bool) error {
 	} else {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
+	close(t.quitChan)
+	t.wg.Wait()
 
 	if deleted {
 		t.channelLock.Lock()

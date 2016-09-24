@@ -146,6 +146,7 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 		os.Exit(1)
 	}
 	s.ctx.tlsConfig = tlsConfig
+	s.ctx.nsqd.SetPubLoop(s.ctx.internalPubLoop)
 
 	nsqd.NsqLogger().Logf(version.String("nsqd"))
 	nsqd.NsqLogger().Logf("ID: %d", opts.ID)

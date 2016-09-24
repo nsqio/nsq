@@ -59,6 +59,7 @@ var offsetSpecialType = "special"
 
 var (
 	ErrOrderChannelOnSampleRate = errors.New("order consume is not allowed while sample rate is not 0")
+	ErrPubToWaitTimeout         = errors.New("pub to wait channel timeout")
 )
 
 type protocolV2 struct {
@@ -164,8 +165,6 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		isSpecial := false
 		params := make([][]byte, 0)
 		if len(line) >= 3 {
-			// since we read a command, then left data should come quickly.
-			client.SetReadDeadline(time.Now().Add(time.Second * 10))
 			if bytes.Equal(line[:3], []byte("FIN")) ||
 				bytes.Equal(line[:3], []byte("REQ")) {
 				isSpecial = true
@@ -223,7 +222,6 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 					}
 				}
 			}
-			client.SetReadDeadline(zeroTime)
 		}
 		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
@@ -239,40 +237,16 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 
 		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
-			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %v", client, params)
+			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %v, %v", client, string(params[0]), params)
 		}
 
 		var response []byte
 		response, err = p.Exec(client, params)
-		if err != nil {
-			ctx := ""
-
-			if childErr, ok := err.(protocol.ChildErr); ok {
-				if parentErr := childErr.Parent(); parentErr != nil {
-					ctx = " - " + parentErr.Error()
-				}
-			}
-
-			nsqd.NsqLogger().LogWarningf("Error response for [%s] - %s - %s, rawline: %v",
-				client, err, ctx, line)
-
-			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
-			if sendErr != nil {
-				nsqd.NsqLogger().LogErrorf("Send response error: [%s] - %s%s", client, sendErr, ctx)
-				break
-			}
-
-			// errors of type FatalClientErr should forceably close the connection
-			if _, ok := err.(*protocol.FatalClientErr); ok {
-				break
-			}
-			continue
-		}
-
-		if response != nil {
-			err = p.Send(client, frameTypeResponse, response)
+		if err == nil && shouldHandleAsync(client, params) {
+			// PUB handle async
+		} else {
+			err = handleRequestReponseForClient(client, response, err)
 			if err != nil {
-				err = fmt.Errorf("failed to send response - %s", err)
 				break
 			}
 		}
@@ -295,7 +269,47 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	return err
 }
 
-func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer, needFlush bool) error {
+func shouldHandleAsync(client *nsqd.ClientV2, params [][]byte) bool {
+	return bytes.Equal(params[0], []byte("PUB"))
+}
+
+func handleRequestReponseForClient(client *nsqd.ClientV2, response []byte, err error) error {
+	if err != nil {
+		ctx := ""
+
+		if childErr, ok := err.(protocol.ChildErr); ok {
+			if parentErr := childErr.Parent(); parentErr != nil {
+				ctx = " - " + parentErr.Error()
+			}
+		}
+
+		nsqd.NsqLogger().LogWarningf("Error response for [%s] - %s - %s",
+			client, err, ctx)
+
+		sendErr := Send(client, frameTypeError, []byte(err.Error()))
+		if sendErr != nil {
+			nsqd.NsqLogger().LogErrorf("Send response error: [%s] - %s%s", client, sendErr, ctx)
+			return err
+		}
+
+		// errors of type FatalClientErr should forceably close the connection
+		if _, ok := err.(*protocol.FatalClientErr); ok {
+			return err
+		}
+		return nil
+	}
+
+	if response != nil {
+		sendErr := Send(client, frameTypeResponse, response)
+		if sendErr != nil {
+			err = fmt.Errorf("failed to send response - %s", sendErr)
+		}
+	}
+
+	return err
+}
+
+func SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer, needFlush bool) error {
 	buf.Reset()
 	if !client.EnableTrace {
 		_, err := msg.WriteTo(buf)
@@ -309,7 +323,7 @@ func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *
 		}
 	}
 
-	err := p.internalSend(client, frameTypeMessage, buf.Bytes(), needFlush)
+	err := internalSend(client, frameTypeMessage, buf.Bytes(), needFlush)
 	if err != nil {
 		return err
 	}
@@ -317,11 +331,11 @@ func (p *protocolV2) SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *
 	return nil
 }
 
-func (p *protocolV2) SendNow(client *nsqd.ClientV2, frameType int32, data []byte) error {
-	return p.internalSend(client, frameType, data, true)
+func SendNow(client *nsqd.ClientV2, frameType int32, data []byte) error {
+	return internalSend(client, frameType, data, true)
 }
 
-func (p *protocolV2) internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush bool) error {
+func internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush bool) error {
 	client.LockWrite()
 
 	var zeroTime time.Time
@@ -346,8 +360,8 @@ func (p *protocolV2) internalSend(client *nsqd.ClientV2, frameType int32, data [
 	return err
 }
 
-func (p *protocolV2) Send(client *nsqd.ClientV2, frameType int32, data []byte) error {
-	return p.internalSend(client, frameType, data, false)
+func Send(client *nsqd.ClientV2, frameType int32, data []byte) error {
+	return internalSend(client, frameType, data, false)
 }
 
 func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -499,7 +513,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.TryWakeupRead()
 			}
 
-			err = p.Send(client, frameTypeResponse, heartbeatBytes)
+			err = Send(client, frameTypeResponse, heartbeatBytes)
 			nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
 				heartbeatFailedCnt++
@@ -532,7 +546,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 
 			subChannel.StartInFlightTimeout(msg, client.ID, client.String(), msgTimeout)
 			client.SendingMessage()
-			err = p.SendMessage(client, msg, &buf, subChannel.IsOrdered())
+			err = SendMessage(client, msg, &buf, subChannel.IsOrdered())
 			if err != nil {
 				goto exit
 			}
@@ -647,7 +661,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 	}
 
-	err = p.Send(client, frameTypeResponse, resp)
+	err = Send(client, frameTypeResponse, resp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 	}
@@ -659,7 +673,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
 
-		err = p.Send(client, frameTypeResponse, okBytes)
+		err = Send(client, frameTypeResponse, okBytes)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
@@ -672,7 +686,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
 
-		err = p.Send(client, frameTypeResponse, okBytes)
+		err = Send(client, frameTypeResponse, okBytes)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
@@ -685,7 +699,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
 
-		err = p.Send(client, frameTypeResponse, okBytes)
+		err = Send(client, frameTypeResponse, okBytes)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
 		}
@@ -758,7 +772,7 @@ func (p *protocolV2) AUTH(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_ERROR", "AUTH error "+err.Error())
 	}
 
-	err = p.Send(client, frameTypeResponse, resp)
+	err = Send(client, frameTypeResponse, resp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_ERROR", "AUTH error "+err.Error())
 	}
@@ -964,9 +978,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		nsqd.NsqLogger().Logf("FIN error: %v, %v", params[1], err)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 	}
+	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
+	if int64(msgID) <= 0 {
+		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "Invalid Message ID")
+	}
 
 	if client.Channel == nil {
-		nsqd.NsqLogger().Logf("FIN error no channel: %v", nsqd.GetMessageIDFromFullMsgID(*id))
+		nsqd.NsqLogger().Logf("FIN error no channel: %v", msgID)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
 
@@ -975,9 +993,9 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 
-	err = p.ctx.FinishMessage(client.Channel, client.ID, client.String(), nsqd.GetMessageIDFromFullMsgID(*id))
+	err = p.ctx.FinishMessage(client.Channel, client.ID, client.String(), msgID)
 	if err != nil {
-		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", nsqd.GetMessageIDFromFullMsgID(*id),
+		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", msgID,
 			err)
 		if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 			if !clusterErr.IsLocalErr() {
@@ -1185,6 +1203,30 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 	return buf, nil
 }
 
+func (p *protocolV2) internalPubAsync(client *nsqd.ClientV2, msgBody *bytes.Buffer, topic *nsqd.Topic) error {
+	if topic.Exiting() {
+		return protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+	}
+	info := nsqd.PubInfo{client, msgBody, time.Now()}
+	client.PubTimeout.Reset(time.Second * 5)
+	select {
+	case topic.GetWaitChan() <- info:
+	default:
+		select {
+		case topic.GetWaitChan() <- info:
+		case <-topic.QuitChan():
+			topic.BufferPoolPut(msgBody)
+			nsqd.NsqLogger().Infof("topic %v put messages failed at exiting from client %v", topic.GetFullName(), client.String())
+			return protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+		case <-client.PubTimeout.C:
+			topic.BufferPoolPut(msgBody)
+			nsqd.NsqLogger().Infof("topic %v put messages timeout from client %v", topic.GetFullName(), client.String())
+			return protocol.NewFatalClientErr(ErrPubToWaitTimeout, "E_PUB_FAILED", ErrPubToWaitTimeout.Error())
+		}
+	}
+	return nil
+}
+
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
 	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
@@ -1198,10 +1240,11 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
-	defer topic.BufferPoolPut(messageBodyBuffer)
+	asyncAction := shouldHandleAsync(client, params)
 
 	_, err = io.ReadFull(client.Reader, messageBody)
 	if err != nil {
+		topic.BufferPoolPut(messageBodyBuffer)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
 	}
 
@@ -1216,6 +1259,10 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		realBody = messageBody
 	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
+		if asyncAction {
+			return nil, p.internalPubAsync(client, messageBodyBuffer, topic)
+		}
+		defer topic.BufferPoolPut(messageBodyBuffer)
 		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, realBody, traceID)
 		//p.ctx.setHealth(err)
 		if err != nil {
@@ -1241,6 +1288,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
 		topic.DisableForSlave()
+		topic.BufferPoolPut(messageBodyBuffer)
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 }

@@ -113,6 +113,8 @@ type ClientV2 struct {
 	AuthState   *auth.State
 	tlsConfig   *tls.Config
 	EnableTrace bool
+
+	PubTimeout *time.Timer
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -151,6 +153,7 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: opts.ClientTimeout / 2,
 		tlsConfig:         tls,
+		PubTimeout:        time.NewTimer(time.Second * 5),
 	}
 	c.LenSlice = c.lenBuf[:]
 	return c

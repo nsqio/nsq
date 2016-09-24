@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"sync/atomic"
@@ -221,4 +222,85 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 		}
 	}
 	return queueOffset, cnt, nil
+}
+
+func (c *context) internalPubLoop(topic *nsqd.Topic) {
+	messages := make([]*nsqd.Message, 0, 100)
+	pubInfoList := make([]nsqd.PubInfo, 0, 100)
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
+	defer func() {
+		done := false
+		for !done {
+			select {
+			case info := <-topic.GetWaitChan():
+				topic.BufferPoolPut(info.MsgBody)
+			default:
+				done = true
+			}
+		}
+		for _, info := range pubInfoList {
+			topic.BufferPoolPut(info.MsgBody)
+		}
+	}()
+	wt := time.NewTimer(time.Second)
+	for {
+		select {
+		case <-topic.QuitChan():
+			return
+		case info := <-topic.GetWaitChan():
+			messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+			pubInfoList = append(pubInfoList, info)
+			if len(pubInfoList) > 50 {
+			}
+		default:
+			if len(pubInfoList) == 0 {
+				wt.Reset(time.Second)
+				select {
+				case <-wt.C:
+				case info := <-topic.GetWaitChan():
+					messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+					pubInfoList = append(pubInfoList, info)
+				}
+				continue
+			}
+			var retErr error
+			if c.checkForMasterWrite(topicName, partition) {
+				_, _, _, err := c.PutMessages(topic, messages)
+				if err != nil {
+					nsqd.NsqLogger().LogErrorf("topic %v put messages %v failed: %v", topic.GetFullName(), len(messages), err)
+					retErr = protocol.NewFatalClientErr(err, "E_PUB_FAILED", err.Error())
+					if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
+						if !clusterErr.IsLocalErr() {
+							retErr = protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
+						}
+					}
+				} else {
+					cost := time.Now().UnixNano() - pubInfoList[0].StartPub.UnixNano()
+					topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(messages)))
+					for _, info := range pubInfoList {
+						topic.GetDetailStats().UpdatePubClientStats(info.Client.RemoteAddr().String(), info.Client.UserAgent, "tcp", int64(len(messages)), false)
+						handleRequestReponseForClient(info.Client, okBytes, nil)
+					}
+				}
+			} else {
+				topic.DisableForSlave()
+				nsqd.NsqLogger().LogDebugf("should put to master: %v",
+					topic.GetFullName())
+				retErr = protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
+			}
+			if retErr != nil {
+				for _, info := range pubInfoList {
+					topic.GetDetailStats().UpdatePubClientStats(info.Client.RemoteAddr().String(), info.Client.UserAgent, "tcp", int64(len(messages)), true)
+					handleRequestReponseForClient(info.Client, nil, retErr)
+					info.Client.Close()
+				}
+			}
+			for _, info := range pubInfoList {
+				topic.BufferPoolPut(info.MsgBody)
+			}
+			pubInfoList = pubInfoList[:0]
+			messages = messages[:0]
+		}
+	}
 }

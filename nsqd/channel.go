@@ -107,6 +107,7 @@ type Channel struct {
 	processResetReaderTime int64
 	waitingProcessMsgTs    int64
 	waitingDeliveryState   int32
+	tmpRemovedConfirmed    []*Message
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -126,13 +127,14 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		confirmedMsgs:      make(map[int64]*Message),
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
-		tryReadBackend:  make(chan bool, 1),
-		readerChanged:   make(chan resetChannelData, 10),
-		endUpdatedChan:  make(chan bool, 1),
-		deleteCallback:  deleteCallback,
-		option:          opt,
-		notifyCall:      notify,
-		consumeDisabled: consumeDisabled,
+		tryReadBackend:      make(chan bool, 1),
+		readerChanged:       make(chan resetChannelData, 10),
+		endUpdatedChan:      make(chan bool, 1),
+		deleteCallback:      deleteCallback,
+		option:              opt,
+		notifyCall:          notify,
+		consumeDisabled:     consumeDisabled,
+		tmpRemovedConfirmed: make([]*Message, 0, 10),
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -514,15 +516,17 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 	reduced := false
 	newConfirmed := curConfirm.Offset()
 	confirmedCnt := int64(0)
-	tmpRemoved := make(map[int64]*Message)
+	defer func() {
+		c.tmpRemovedConfirmed = c.tmpRemovedConfirmed[:0]
+	}()
 	for {
 		if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
-			nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
-				newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
+			//nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
+			//	newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
 			newConfirmed += m.rawMoveSize
 			confirmedCnt = m.queueCntIndex
 			delete(c.confirmedMsgs, int64(m.offset))
-			tmpRemoved[int64(m.offset)] = m
+			c.tmpRemovedConfirmed = append(c.tmpRemovedConfirmed, m)
 			reduced = true
 		} else {
 			break
@@ -533,11 +537,10 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 		err := c.backend.ConfirmRead(newConfirmed, confirmedCnt)
 		if err != nil {
 			if err != ErrExiting {
-				nsqLog.LogErrorf("channel (%v): confirm read failed: %v, msg: %v", c.GetName(), err, msg)
-			} else {
+				nsqLog.LogWarningf("channel (%v): confirm read failed: %v, msg: %v", c.GetName(), err, msg)
 				// rollback removed confirmed messages
-				for id, m := range tmpRemoved {
-					c.confirmedMsgs[id] = m
+				for _, m := range c.tmpRemovedConfirmed {
+					c.confirmedMsgs[int64(msg.offset)] = m
 				}
 				atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 			}
@@ -1274,7 +1277,13 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			client.TimedOutMessage(atomic.LoadInt32(&msg.isDeferred) == 1)
 		}
 		if msgCopy.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
-			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, client.String())
+			clientAddr := ""
+			if client != nil {
+				clientAddr = client.String()
+			} else {
+				clientAddr = strconv.Itoa(int(msg.clientID))
+			}
+			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
 		}
 	}
 

@@ -61,9 +61,10 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci         *clusterinfo.ClusterInfo
-	exiting    bool
-	persisting int32
+	ci          *clusterinfo.ClusterInfo
+	exiting     bool
+	persisting  int32
+	pubLoopFunc func(t *Topic)
 }
 
 func New(opts *Options) *NSQD {
@@ -136,6 +137,12 @@ func New(opts *Options) *NSQD {
 	}
 
 	return n
+}
+
+func (n *NSQD) SetPubLoop(loop func(t *Topic)) {
+	n.Lock()
+	n.pubLoopFunc = loop
+	n.Unlock()
 }
 
 func (n *NSQD) GetOpts() *Options {
@@ -469,7 +476,7 @@ func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Top
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
-	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify)
+	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify, n.pubLoopFunc)
 	if t == nil {
 		nsqLog.Errorf("TOPIC(%s): create failed", topicName)
 	} else {
@@ -535,10 +542,13 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 	localTopic, err := n.GetExistingTopic(name, partition)
 	if err != nil {
 		// not exist, create temp for check
+		n.Lock()
+		loopFunc := n.pubLoopFunc
+		n.Unlock()
 		deleteCallback := func(t *Topic) {
 			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 		}
-		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify)
+		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
 		if localTopic == nil {
 			return "", errors.New("failed to init new topic")
 		}

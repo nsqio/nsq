@@ -93,7 +93,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		msg := NewMessage(topic.nextMsgID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
 	}
 
 	channel.Lock()
@@ -136,11 +136,11 @@ func TestChannelEmpty(t *testing.T) {
 	msgs := make([]*Message, 0, 25)
 	for i := 0; i < 25; i++ {
 		msg := NewMessage(topic.nextMsgID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
 		msgs = append(msgs, msg)
 	}
 
-	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 0, true)
+	channel.RequeueMessage(0, "", msgs[len(msgs)-1].ID, 0, true)
 	equal(t, len(channel.inFlightMessages), 24)
 	equal(t, len(channel.inFlightPQ), 24)
 

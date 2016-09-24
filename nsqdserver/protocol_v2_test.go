@@ -1815,8 +1815,8 @@ func TestBadFin(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
-	opts.LogLevel = 2
 	opts.LogLevel = 3
+	opts.Verbose = true
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -1831,8 +1831,9 @@ func TestBadFin(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Equal(t, err, nil)
 
-	fin := nsq.Finish(nsq.MessageID{})
-	fin.Params[0] = []byte("")
+	var emptyID nsq.MessageID
+	fin := nsq.Finish(emptyID)
+	fin.Params[0] = emptyID[:]
 	_, err = fin.WriteTo(conn)
 	test.Equal(t, err, nil)
 
