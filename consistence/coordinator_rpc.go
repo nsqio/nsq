@@ -426,7 +426,7 @@ func (self *NsqdCoordRpcServer) EnableTopicWrite(rpcTopicReq *RpcAdminTopicInfo)
 			if err != nil {
 				coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), err)
 			} else {
-				self.nsqdCoord.switchStateForMaster(tp, topicData, true, true)
+				self.nsqdCoord.switchStateForMaster(tp, topicData, true)
 			}
 		}
 	}
@@ -474,7 +474,7 @@ func (self *NsqdCoordRpcServer) DisableTopicWrite(rpcTopicReq *RpcAdminTopicInfo
 		if localErr != nil {
 			coordLog.Infof("no topic on local: %v, %v", tcData.topicInfo.GetTopicDesp(), localErr)
 		} else {
-			self.nsqdCoord.switchStateForMaster(tp, localTopic, false, false)
+			self.nsqdCoord.switchStateForMaster(tp, localTopic, false)
 		}
 	}
 	tp.writeHold.Unlock()

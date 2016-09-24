@@ -1449,7 +1449,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 			}
 		}
 	}
-	self.switchStateForMaster(topicCoord, localTopic, newTopicInfo.Leader == self.myNode.GetID(), false)
+	self.switchStateForMaster(topicCoord, localTopic, false)
 	return nil
 }
 
@@ -1462,14 +1462,17 @@ func (self *NsqdCoordinator) notifyAcquireTopicLeader(coord *coordData) *CoordEr
 	return nil
 }
 
-func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, localTopic *nsqd.Topic, master bool, syncCommitAndDisk bool) *CoordErr {
+func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
+	localTopic *nsqd.Topic, syncCommitDisk bool) *CoordErr {
 	// flush topic data and channel comsume data if any cluster topic info changed
 	tcData := topicCoord.GetData()
+	master := tcData.GetLeader() == self.myNode.GetID()
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	localTopic.ForceFlush()
 	tcData.logMgr.FlushCommitLogs()
 	tcData.logMgr.switchForMaster(master)
 	if master {
+		isWriteDisabled := topicCoord.IsWriteDisabled()
 		localTopic.Lock()
 		logIndex, logOffset, logData, err := tcData.logMgr.GetLastCommitLogOffsetV2()
 		if err != nil {
@@ -1481,7 +1484,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 		} else {
 			coordLog.Infof("current topic %v log: %v:%v, %v, pid: %v, %v",
 				tcData.topicInfo.GetTopicDesp(), logIndex, logOffset, logData, tcData.logMgr.pLogID, tcData.logMgr.nLogID)
-			if syncCommitAndDisk {
+			if !isWriteDisabled && syncCommitDisk {
 				localErr := localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
 					logData.MsgCnt+int64(logData.MsgNum)-1)
 				if localErr != nil {
@@ -1491,8 +1494,8 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 		}
 		localTopic.Unlock()
 		coordLog.Infof("current topic %v write state: %v",
-			tcData.topicInfo.GetTopicDesp(), topicCoord.IsWriteDisabled())
-		if !topicCoord.IsWriteDisabled() {
+			tcData.topicInfo.GetTopicDesp(), isWriteDisabled)
+		if !isWriteDisabled && tcData.IsISRReadyForWrite() {
 			// try fix channel consume count here, since the old version has not count info,
 			// we need restore from commit log.
 			localTopic.EnableForMaster()
@@ -1500,7 +1503,10 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 			for _, ch := range chs {
 				confirmed := ch.GetConfirmed()
 				if confirmed.Offset() > 0 && confirmed.TotalMsgCnt() <= 0 {
-					l, offset, cnt, err := self.SearchLogByMsgOffset(tcData.topicInfo.Name, tcData.topicInfo.Partition, int64(confirmed.Offset()))
+					l, offset, cnt, err := self.SearchLogByMsgOffset(
+						tcData.topicInfo.Name,
+						tcData.topicInfo.Partition,
+						int64(confirmed.Offset()))
 					if err != nil {
 						coordLog.Infof("search msg offset failed: %v", err)
 					} else {
@@ -1510,6 +1516,8 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator, 
 					}
 				}
 			}
+		} else {
+			localTopic.DisableForSlave()
 		}
 	} else {
 		localTopic.DisableForSlave()
@@ -1595,7 +1603,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	}
 	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
-	self.switchStateForMaster(topicCoord, localTopic, tcData.IsMineLeaderSessionReady(self.myNode.GetID()), false)
+	self.switchStateForMaster(topicCoord, localTopic, false)
 
 	coordLog.Infof("topic leader session: %v", tcData.topicLeaderSession)
 	if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {

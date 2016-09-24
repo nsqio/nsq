@@ -63,6 +63,9 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	doLocalExit := func(err *CoordErr) {
 		if err != nil {
 			coordLog.Infof("topic %v PutMessageToCluster msg %v error: %v", topic.GetFullName(), msg, err)
+			if coord.IsWriteDisabled() {
+				topic.DisableForSlave()
+			}
 		}
 	}
 	doLocalCommit := func() error {
@@ -158,6 +161,9 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	doLocalExit := func(err *CoordErr) {
 		if err != nil {
 			coordLog.Infof("topic %v PutMessagesToCluster error: %v", topic.GetFullName(), err)
+			if coord.IsWriteDisabled() {
+				topic.DisableForSlave()
+			}
 		}
 	}
 	doLocalCommit := func() error {
@@ -407,16 +413,16 @@ exitsync:
 				coordLog.Warningf("failed to request leave from isr: %v", tmpErr)
 			}
 		}()
+	} else if clusterWriteErr != nil {
+		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
+		coordErrStats.incWriteErr(clusterWriteErr)
+		atomic.StoreInt32(&coord.disableWrite, 1)
+		go self.requestCheckTopicConsistence(topicName, topicPartition)
 	}
 	doLocalExit(clusterWriteErr)
 	if clusterWriteErr == nil {
 		// should return nil since the return type error is different with *CoordErr
 		return nil
-	} else {
-		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
-		coordErrStats.incWriteErr(clusterWriteErr)
-		atomic.StoreInt32(&coord.disableWrite, 1)
-		go self.requestCheckTopicConsistence(topicName, topicPartition)
 	}
 	return clusterWriteErr
 }

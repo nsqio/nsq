@@ -968,8 +968,8 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	for i := 0; i < totalMsgNum-1; i++ {
 		select {
 		case msg := <-ch.GetClientMsgChan():
-			ch.StartInFlightTimeout(msg, 1, time.Second)
-			err := nsqdCoord1.FinishMessageToCluster(ch, 1, msg.ID)
+			ch.StartInFlightTimeout(msg, 1, "", time.Second)
+			err := nsqdCoord1.FinishMessageToCluster(ch, 1, "", msg.ID)
 			test.Nil(t, err)
 		case <-time.After(time.Second):
 			t.Fatalf("failed to consume message")
@@ -1229,8 +1229,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	coordLog.Infof("==== test client consume messages ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel1.GetClientMsgChan()
-		channel1.StartInFlightTimeout(msg, 1, 10)
-		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, msg.ID)
+		channel1.StartInFlightTimeout(msg, 1, "", 10)
+		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, "", msg.ID)
 		test.Nil(t, err)
 
 		test.Equal(t, channel1.DepthSize(), int64(msgCnt-i-1)*msgRawSize)
@@ -1321,8 +1321,8 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	coordLog.Infof("==== test client consume ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel2.GetClientMsgChan()
-		channel2.StartInFlightTimeout(msg, 1, 10)
-		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, msg.ID)
+		channel2.StartInFlightTimeout(msg, 1, "", 10)
+		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, "", msg.ID)
 		test.Nil(t, err)
 		time.Sleep(time.Millisecond)
 		test.Equal(t, channel2.Depth(), int64(msgCnt-i-1))
