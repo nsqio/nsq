@@ -245,12 +245,13 @@ func (p *program) Start() error {
 	if opts.RPCPort != "" {
 		initDisabled = 1
 	}
+	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
+
 	nsqd.LoadMetadata(initDisabled)
 	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
-	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
 	nsqdServer.Main()
 	p.nsqdServer = nsqdServer
 	return nil

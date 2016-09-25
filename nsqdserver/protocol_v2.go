@@ -1224,7 +1224,6 @@ func (p *protocolV2) internalPubAsync(client *nsqd.ClientV2, msgBody *bytes.Buff
 			return protocol.NewFatalClientErr(ErrPubToWaitTimeout, "E_PUB_FAILED", ErrPubToWaitTimeout.Error())
 		}
 	}
-	nsqd.NsqLogger().Debugf("topic %v put message done from client %v", topic.GetFullName(), client.String())
 	return nil
 }
 
