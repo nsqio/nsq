@@ -490,7 +490,15 @@ func (self *NsqdCoordRpcServer) IsTopicWriteDisabled(rpcTopicReq *RpcAdminTopicI
 	if err != nil {
 		return false
 	}
-	return tp.IsWriteDisabled()
+	if tp.IsWriteDisabled() {
+		return true
+	}
+	localTopic, localErr := self.nsqdCoord.localNsqd.GetExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
+	if localErr != nil {
+		coordLog.Infof("no topic on local: %v, %v", rpcTopicReq.Name, localErr)
+		return true
+	}
+	return localTopic.IsWriteDisabled()
 }
 
 func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) *CoordErr {
