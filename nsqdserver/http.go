@@ -128,6 +128,7 @@ func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "BAD_LEVEL_STRING"}
 	}
 	nsqd.NsqLogger().SetLevel(int32(level))
+	consistence.SetCoordLogLevel(int32(level))
 	return nil, nil
 }
 

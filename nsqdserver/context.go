@@ -246,7 +246,6 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			topic.BufferPoolPut(info.MsgBody)
 		}
 	}()
-	wt := time.NewTimer(time.Second)
 	for {
 		select {
 		case <-topic.QuitChan():
@@ -258,9 +257,9 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		default:
 			if len(pubInfoList) == 0 {
 				nsqd.NsqLogger().LogDebugf("topic %v pub loop waiting for message", topic.GetFullName())
-				wt.Reset(time.Second)
 				select {
-				case <-wt.C:
+				case <-topic.QuitChan():
+					return
 				case info := <-topic.GetWaitChan():
 					messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
 					pubInfoList = append(pubInfoList, info)
