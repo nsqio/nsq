@@ -515,6 +515,69 @@ func TestTcpPUBTRACE(t *testing.T) {
 	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 1148 > 1000"))
 }
 
+func TestTcpPub(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 3
+	opts.MaxMsgSize = 100
+	opts.MaxBodySize = 1000
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	topicName := "test_tcp_pub" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopicIgnPart(topicName).GetChannel("ch")
+
+	identify(t, conn, nil, frameTypeResponse)
+
+	// PUB that's valid
+	cmd := nsq.Publish(topicName, make([]byte, 5))
+	cmd.WriteTo(conn)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeResponse)
+	test.Equal(t, len(data), 2)
+	test.Equal(t, data[:], []byte("OK"))
+
+	// PUBTRACE that's invalid (too big)
+	cmd = nsq.Publish(topicName, make([]byte, 105))
+	cmd.WriteTo(conn)
+	resp, _ = nsq.ReadResponse(conn)
+	frameType, data, _ = nsq.UnpackResponse(resp)
+	t.Logf("frameType: %d, data: %s", frameType, data)
+	test.Equal(t, frameType, frameTypeError)
+	// note: the trace body length should include the trace id
+	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 105 > 100"))
+
+	connList := make([]net.Conn, 0)
+	for i := 0; i < 100; i++ {
+		conn, err := mustConnectNSQD(tcpAddr)
+		test.Equal(t, err, nil)
+		defer conn.Close()
+		identify(t, conn, nil, frameTypeResponse)
+		connList = append(connList, conn)
+	}
+	// test several client pub and check pub loop
+	for i := 0; i < len(connList); i++ {
+		cmd := nsq.Publish(topicName, make([]byte, 5))
+		go func(index int) {
+			cmd.WriteTo(connList[index])
+		}(i)
+	}
+	for i := 0; i < len(connList); i++ {
+		resp, _ := nsq.ReadResponse(connList[i])
+		frameType, data, _ := nsq.UnpackResponse(resp)
+		test.Equal(t, frameType, frameTypeResponse)
+		test.Equal(t, len(data), 2)
+		test.Equal(t, data[:], []byte("OK"))
+	}
+}
+
 func TestSizeLimits(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)

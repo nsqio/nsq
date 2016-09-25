@@ -229,17 +229,20 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 	pubInfoList := make([]nsqd.PubInfo, 0, 100)
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
+	nsqd.NsqLogger().Logf("start pub loop for topic: %v ", topic.GetFullName())
 	defer func() {
 		done := false
 		for !done {
 			select {
 			case info := <-topic.GetWaitChan():
-				topic.BufferPoolPut(info.MsgBody)
+				pubInfoList = append(pubInfoList, info)
 			default:
 				done = true
 			}
 		}
+		nsqd.NsqLogger().Logf("quit pub loop for topic: %v, left: %v ", topic.GetFullName(), len(pubInfoList))
 		for _, info := range pubInfoList {
+			info.Client.Close()
 			topic.BufferPoolPut(info.MsgBody)
 		}
 	}()
@@ -255,6 +258,7 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			}
 		default:
 			if len(pubInfoList) == 0 {
+				nsqd.NsqLogger().LogDebugf("topic %v pub loop waiting for message", topic.GetFullName())
 				wt.Reset(time.Second)
 				select {
 				case <-wt.C:
@@ -264,6 +268,7 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 				}
 				continue
 			}
+			nsqd.NsqLogger().LogDebugf("pub loop batch number: %v", len(pubInfoList))
 			var retErr error
 			if c.checkForMasterWrite(topicName, partition) {
 				_, _, _, err := c.PutMessages(topic, messages)
