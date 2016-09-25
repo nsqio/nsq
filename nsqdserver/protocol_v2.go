@@ -337,6 +337,10 @@ func SendNow(client *nsqd.ClientV2, frameType int32, data []byte) error {
 
 func internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush bool) error {
 	client.LockWrite()
+	defer client.UnlockWrite()
+	if client.Writer == nil {
+		return errors.New("client closed")
+	}
 
 	var zeroTime time.Time
 	if client.HeartbeatInterval > 0 {
@@ -347,16 +351,12 @@ func internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush
 
 	_, err := protocol.SendFramedResponse(client.Writer, frameType, data)
 	if err != nil {
-		client.UnlockWrite()
 		return err
 	}
 
 	if needFlush || frameType != frameTypeMessage {
 		err = client.Flush()
 	}
-
-	client.UnlockWrite()
-
 	return err
 }
 
