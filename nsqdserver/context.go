@@ -254,8 +254,7 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		case info := <-topic.GetWaitChan():
 			messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
 			pubInfoList = append(pubInfoList, info)
-			if len(pubInfoList) > 50 {
-			}
+			// TODO: avoid too much in a batch
 		default:
 			if len(pubInfoList) == 0 {
 				nsqd.NsqLogger().LogDebugf("topic %v pub loop waiting for message", topic.GetFullName())
