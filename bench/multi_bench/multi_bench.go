@@ -745,7 +745,11 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string,
 		}
 
 		if *trace {
-			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
+			if batchSize == 1 {
+				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], batch[0])
+			} else {
+				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
+			}
 			if err != nil {
 				log.Println("pub error :" + err.Error())
 				atomic.AddInt64(&totalErrCount, 1)
@@ -771,7 +775,12 @@ func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string,
 			}
 			mutex.Unlock()
 		} else {
-			err := pubMgr.MultiPublish(topicName, batch)
+			var err error
+			if batchSize == 1 {
+				err = pubMgr.Publish(topicName, batch[0])
+			} else {
+				err = pubMgr.MultiPublish(topicName, batch)
+			}
 			if err != nil {
 				log.Println("pub error :" + err.Error())
 				atomic.AddInt64(&totalErrCount, 1)
