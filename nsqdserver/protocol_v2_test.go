@@ -484,6 +484,33 @@ func TestTcpPUBTRACE(t *testing.T) {
 
 	conn, err = mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)
+	identify(t, conn, nil, frameTypeResponse)
+	test.Equal(t, err, nil)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+	for {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, 5, len(msgOut.Body))
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+		break
+	}
+	conn.Close()
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
 	defer conn.Close()
 	//MPUB
 	mpub := make([][]byte, 5)
