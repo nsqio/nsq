@@ -646,6 +646,9 @@ type consumeOffsetHandler struct {
 func (c *consumeOffsetHandler) HandleMessage(message *nsq.Message) error {
 	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
 	pidStr := getPartitionID(nsq.NewMessageID(mid))
+	if len(message.Body) <= 0 {
+		log.Printf("got empty message body: %v", message)
+	}
 	c.received++
 	if !c.firstReceived && pidStr == c.expectedPidStr {
 		if nsq.OffsetVirtualQueueType == c.expectedOffset.OffsetType {
@@ -838,6 +841,9 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 			return nil
 		}
 		topicCheck[mid] = message
+	}
+	if len(message.Body) <= 0 {
+		log.Printf("got empty message %v\n", message)
 	}
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {

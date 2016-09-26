@@ -527,7 +527,6 @@ func TestTcpPub(t *testing.T) {
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)
-	defer conn.Close()
 
 	topicName := "test_tcp_pub" + strconv.Itoa(int(time.Now().Unix()))
 	nsqd.GetTopicIgnPart(topicName).GetChannel("ch")
@@ -544,7 +543,7 @@ func TestTcpPub(t *testing.T) {
 	test.Equal(t, len(data), 2)
 	test.Equal(t, data[:], []byte("OK"))
 
-	// PUBTRACE that's invalid (too big)
+	// PUB that's invalid (too big)
 	cmd = nsq.Publish(topicName, make([]byte, 105))
 	cmd.WriteTo(conn)
 	resp, _ = nsq.ReadResponse(conn)
@@ -553,6 +552,33 @@ func TestTcpPub(t *testing.T) {
 	test.Equal(t, frameType, frameTypeError)
 	// note: the trace body length should include the trace id
 	test.Equal(t, string(data), fmt.Sprintf("E_BAD_BODY body too big 105 > 100"))
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	identify(t, conn, nil, frameTypeResponse)
+	test.Equal(t, err, nil)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	for {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, 5, len(msgOut.Body))
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+		break
+	}
+	conn.Close()
 
 	connList := make([]net.Conn, 0)
 	for i := 0; i < 100; i++ {
@@ -576,6 +602,29 @@ func TestTcpPub(t *testing.T) {
 		test.Equal(t, len(data), 2)
 		test.Equal(t, data[:], []byte("OK"))
 	}
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	identify(t, conn, nil, frameTypeResponse)
+	test.Equal(t, err, nil)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	for i := 0; i < len(connList); i++ {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, 5, len(msgOut.Body))
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+	}
+	conn.Close()
 }
 
 func TestSizeLimits(t *testing.T) {

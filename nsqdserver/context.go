@@ -251,6 +251,9 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		case <-topic.QuitChan():
 			return
 		case info := <-topic.GetWaitChan():
+			if info.MsgBody.Len() <= 0 {
+				nsqd.NsqLogger().Logf("empty msg body")
+			}
 			messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
 			pubInfoList = append(pubInfoList, info)
 			// TODO: avoid too much in a batch
@@ -261,6 +264,9 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 				case <-topic.QuitChan():
 					return
 				case info := <-topic.GetWaitChan():
+					if info.MsgBody.Len() <= 0 {
+						nsqd.NsqLogger().Logf("empty msg body")
+					}
 					messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
 					pubInfoList = append(pubInfoList, info)
 				}

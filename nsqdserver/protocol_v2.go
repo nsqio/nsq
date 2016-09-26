@@ -1239,14 +1239,14 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
-	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 	asyncAction := shouldHandleAsync(client, params)
 
-	_, err = io.ReadFull(client.Reader, messageBody)
+	_, err = io.CopyN(messageBodyBuffer, client.Reader, int64(bodyLen))
 	if err != nil {
 		topic.BufferPoolPut(messageBodyBuffer)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
 	}
+	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
@@ -1408,12 +1408,12 @@ func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64, 
 		}
 
 		b := topic.BufferPoolGet(int(messageSize))
-		msgBody := b.Bytes()[:messageSize]
 		buffers = append(buffers, b)
-		_, err = io.ReadFull(r, msgBody)
+		_, err = io.CopyN(b, r, int64(messageSize))
 		if err != nil {
 			return nil, buffers, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
+		msgBody := b.Bytes()[:messageSize]
 
 		traceID := uint64(0)
 		var realBody []byte
