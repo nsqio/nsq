@@ -2091,6 +2091,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(b)
+	opts.LogLevel = 0
 	_ = &levellogger.GLogger{}
 	_, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -2111,9 +2112,9 @@ func benchmarkProtocolV2PubWithArg(b *testing.B, size int, single bool) {
 	b.StopTimer()
 	opts := nsqdNs.NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	//opts.Logger = newTestLogger(b)
-	opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 2
+	opts.Logger = newTestLogger(b)
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

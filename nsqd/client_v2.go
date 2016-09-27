@@ -115,7 +115,6 @@ type ClientV2 struct {
 	EnableTrace bool
 
 	PubTimeout *time.Timer
-	remoteAddr string
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -157,12 +156,11 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 		PubTimeout:        time.NewTimer(time.Second * 5),
 	}
 	c.LenSlice = c.lenBuf[:]
-	c.remoteAddr = c.RemoteAddr().String()
 	return c
 }
 
 func (c *ClientV2) String() string {
-	return c.remoteAddr
+	return c.ClientID
 }
 
 func (c *ClientV2) Exit() {

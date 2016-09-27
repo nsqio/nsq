@@ -659,6 +659,7 @@ func benchmarkDiskQueueWriterPut(size int64, syncEvery int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	nsqLog.Logger = l
+	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -715,6 +716,7 @@ func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	nsqLog.Logger = l
+	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_get" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {

@@ -571,6 +571,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	channelName := "bench"
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
