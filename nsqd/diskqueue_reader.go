@@ -804,21 +804,22 @@ CheckFileOpen:
 			d.readFile = nil
 		}
 	}()
+
 	currentFileEnd := int64(0)
-	stat, result.Err = d.readFile.Stat()
-	if result.Err == nil {
-		currentFileEnd = stat.Size()
-	} else {
-		nsqLog.LogWarningf("DISKQUEUE(%s): stat error %v", d.readerMetaName, result.Err)
-		return result
-	}
 	if d.readQueueInfo.EndOffset.FileNum == d.queueEndInfo.EndOffset.FileNum {
 		currentFileEnd = d.queueEndInfo.EndOffset.Pos
+	} else {
+		stat, result.Err = d.readFile.Stat()
+		if result.Err == nil {
+			currentFileEnd = stat.Size()
+		} else {
+			return result
+		}
 	}
 
 	result.Err = d.ensureReadBuffer(4, d.readQueueInfo.EndOffset.Pos, currentFileEnd)
 	if result.Err != nil {
-		nsqLog.LogWarningf("DISKQUEUE(%s): ensure buffer error, current stat %v", d.readerMetaName, stat)
+		nsqLog.LogWarningf("DISKQUEUE(%s): ensure buffer error, current end %v", d.readerMetaName, currentFileEnd)
 		return result
 	}
 	result.Err = binary.Read(d.readBuffer, binary.BigEndian, &msgSize)
@@ -845,7 +846,7 @@ CheckFileOpen:
 
 	result.Err = d.ensureReadBuffer(int64(msgSize), d.readQueueInfo.EndOffset.Pos+4, currentFileEnd)
 	if result.Err != nil {
-		nsqLog.LogWarningf("DISKQUEUE(%s): ensure buffer error, current stat %v", d.readerMetaName, stat)
+		nsqLog.LogWarningf("DISKQUEUE(%s): ensure buffer error, current read end %v", d.readerMetaName, currentFileEnd)
 		return result
 	}
 	_, result.Err = io.ReadFull(d.readBuffer, result.Data)
@@ -889,12 +890,7 @@ CheckFileOpen:
 	// the value can change without affecting runtime
 	isEnd := false
 	if d.readQueueInfo.EndOffset.FileNum < d.queueEndInfo.EndOffset.FileNum {
-		stat, result.Err = d.readFile.Stat()
-		if result.Err == nil {
-			isEnd = d.readQueueInfo.EndOffset.Pos >= stat.Size()
-		} else {
-			return result
-		}
+		isEnd = d.readQueueInfo.EndOffset.Pos >= currentFileEnd
 	}
 	if (d.readQueueInfo.EndOffset.Pos > d.maxBytesPerFile) && !isEnd {
 		// this can happen if the maxbytesperfile configure is changed.
