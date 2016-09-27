@@ -3,7 +3,6 @@ package consistence
 import (
 	"errors"
 	"github.com/cenkalti/backoff"
-	"math"
 	"runtime"
 	"strconv"
 	"sync"
@@ -685,7 +684,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	}
 	// choose another leader in ISR list, and add new node to ISR
 	// list.
-	newLeader, newestLogID, coordErr := self.chooseNewLeaderFromISR(topicInfo, currentNodes)
+	newLeader, newestLogID, coordErr := self.dpm.chooseNewLeaderFromISR(topicInfo, currentNodes)
 	if coordErr != nil {
 		return coordErr
 	}
@@ -859,60 +858,6 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartition
 		return err
 	})
 	return err
-}
-
-func (self *NsqLookupCoordinator) chooseNewLeaderFromISR(topicInfo *TopicPartitionMetaInfo, currentNodes map[string]NsqdNodeInfo) (string, int64, *CoordErr) {
-	// choose another leader in ISR list, and add new node to ISR
-	// list.
-	newestReplicas := make([]string, 0)
-	newestLogID := int64(0)
-	for _, replica := range topicInfo.ISR {
-		if _, ok := currentNodes[replica]; !ok {
-			coordLog.Infof("ignore failed node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
-			continue
-		}
-		if replica == topicInfo.Leader {
-			continue
-		}
-		cid, err := self.getNsqdLastCommitLogID(replica, topicInfo)
-		if err != nil {
-			coordLog.Infof("failed to get log id on replica: %v, %v", replica, err)
-			continue
-		}
-		if cid > newestLogID {
-			newestReplicas = newestReplicas[0:0]
-			newestReplicas = append(newestReplicas, replica)
-			newestLogID = cid
-		} else if cid == newestLogID {
-			newestReplicas = append(newestReplicas, replica)
-		}
-	}
-	// select the least load factor node
-	newLeader := ""
-	if len(newestReplicas) == 1 {
-		newLeader = newestReplicas[0]
-	} else {
-		minLF := float64(math.MaxInt64)
-		for _, replica := range newestReplicas {
-			stat, err := self.getNsqdTopicStat(currentNodes[replica])
-			if err != nil {
-				coordLog.Infof("ignore node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
-				continue
-			}
-			lf := stat.GetNodeLeaderLoadFactor()
-
-			coordLog.Infof("node %v load factor is : %v", replica, lf)
-			if newLeader == "" || lf < minLF {
-				newLeader = replica
-			}
-		}
-	}
-	if newLeader == "" {
-		coordLog.Warningf("No leader can be elected. current topic info: %v", topicInfo)
-		return "", 0, ErrNoLeaderCanBeElected
-	}
-	coordLog.Infof("topic %v new leader %v found with commit id: %v", topicInfo.GetTopicDesp(), newLeader, newestLogID)
-	return newLeader, newestLogID, nil
 }
 
 func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *TopicPartitionMetaInfo, newLeader string, newestLogID int64) *CoordErr {

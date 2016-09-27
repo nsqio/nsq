@@ -900,3 +900,57 @@ func (self *DataPlacement) allocTopicLeaderAndISR(currentNodes map[string]NsqdNo
 	coordLog.Infof("topic selected leader: %v, topic selected isr : %v", leaders, isrlist)
 	return leaders, isrlist, nil
 }
+
+func (self *DataPlacement) chooseNewLeaderFromISR(topicInfo *TopicPartitionMetaInfo, currentNodes map[string]NsqdNodeInfo) (string, int64, *CoordErr) {
+	// choose another leader in ISR list, and add new node to ISR
+	// list.
+	newestReplicas := make([]string, 0)
+	newestLogID := int64(0)
+	for _, replica := range topicInfo.ISR {
+		if _, ok := currentNodes[replica]; !ok {
+			coordLog.Infof("ignore failed node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
+			continue
+		}
+		if replica == topicInfo.Leader {
+			continue
+		}
+		cid, err := self.lookupCoord.getNsqdLastCommitLogID(replica, topicInfo)
+		if err != nil {
+			coordLog.Infof("failed to get log id on replica: %v, %v", replica, err)
+			continue
+		}
+		if cid > newestLogID {
+			newestReplicas = newestReplicas[0:0]
+			newestReplicas = append(newestReplicas, replica)
+			newestLogID = cid
+		} else if cid == newestLogID {
+			newestReplicas = append(newestReplicas, replica)
+		}
+	}
+	// select the least load factor node
+	newLeader := ""
+	if len(newestReplicas) == 1 {
+		newLeader = newestReplicas[0]
+	} else {
+		minLF := float64(math.MaxInt64)
+		for _, replica := range newestReplicas {
+			stat, err := self.lookupCoord.getNsqdTopicStat(currentNodes[replica])
+			if err != nil {
+				coordLog.Infof("ignore node %v while choose new leader : %v", replica, topicInfo.GetTopicDesp())
+				continue
+			}
+			lf := stat.GetNodeLeaderLoadFactor()
+
+			coordLog.Infof("node %v load factor is : %v", replica, lf)
+			if newLeader == "" || lf < minLF {
+				newLeader = replica
+			}
+		}
+	}
+	if newLeader == "" {
+		coordLog.Warningf("No leader can be elected. current topic info: %v", topicInfo)
+		return "", 0, ErrNoLeaderCanBeElected
+	}
+	coordLog.Infof("topic %v new leader %v found with commit id: %v", topicInfo.GetTopicDesp(), newLeader, newestLogID)
+	return newLeader, newestLogID, nil
+}
