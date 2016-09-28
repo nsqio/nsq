@@ -503,6 +503,8 @@ func TestTcpPUBTRACE(t *testing.T) {
 		}
 		msgOut, err := nsq.DecodeMessage(data)
 		test.Equal(t, 5, len(msgOut.Body))
+		traceID := binary.BigEndian.Uint64(msgOut.ID[8:])
+		test.Equal(t, uint64(123), traceID)
 		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
 		test.Nil(t, err)
 		break

@@ -25,7 +25,7 @@ func TestRegistrationDB(t *testing.T) {
 	db.addPeerClient(pi2.Id, pi2)
 	db.addPeerClient(pi3.Id, pi3)
 	db.addPeerClient(p4.peerInfo.Id, pi1)
-	peers := db.FindPeerClients()
+	peers := db.GetAllPeerClients()
 	equal(t, len(peers), 3)
 	// add producers
 	db.AddTopicProducer("a", "0", p1)
