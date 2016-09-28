@@ -99,7 +99,7 @@ func New(opts *Options) *NSQD {
 
 	err = n.dl.Lock()
 	if err != nil {
-		nsqLog.LogErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		nsqLog.LogErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd: %v", dataPath, err)
 		os.Exit(1)
 	}
 
