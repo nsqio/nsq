@@ -8,12 +8,17 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
+)
+
+const (
+	OLD_VERSION_PID = -11
 )
 
 type LookupProtocolV1 struct {
@@ -127,7 +132,16 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 	topic, channel, pid, err := getTopicChan("REGISTER", params)
 	if err != nil {
-		return nil, err
+		if !strings.HasPrefix(err.Error(), "E_BAD_PARTITIONID") {
+			return nil, err
+		}
+		// check if old nsqd
+		if client.peerInfo.IsOldPeer() {
+			nsqlookupLog.Logf("client %v is old node trying register", client)
+			pid = strconv.Itoa(OLD_VERSION_PID)
+		} else {
+			return nil, err
+		}
 	}
 
 	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())
@@ -157,7 +171,16 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 	topic, channel, pid, err := getTopicChan("UNREGISTER", params)
 	if err != nil {
-		return nil, err
+		if !strings.HasPrefix(err.Error(), "E_BAD_PARTITIONID") {
+			return nil, err
+		}
+		// check if old nsqd
+		if client.peerInfo.IsOldPeer() {
+			nsqlookupLog.Logf("client %v is old node trying unregister", client)
+			pid = strconv.Itoa(OLD_VERSION_PID)
+		} else {
+			return nil, err
+		}
 	}
 
 	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())

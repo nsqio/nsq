@@ -3,6 +3,7 @@ package nsqlookupd
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,17 @@ type PeerInfo struct {
 	Version          string `json:"version"`
 	// the node id used in the cluster.
 	DistributedID string `json:"distributed_id"`
+}
+
+func (self *PeerInfo) IsOldPeer() bool {
+	if self.DistributedID == "" {
+		// this is old nsqd node not in the HA cluster !!
+		// check the version
+		if !strings.Contains(self.Version, "HA") {
+			return true
+		}
+	}
+	return false
 }
 
 type Producer struct {
@@ -178,7 +190,9 @@ func (r *RegistrationDB) AddTopicProducer(topic string, pidStr string, p *Produc
 	}
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil || pid < 0 {
-		return false
+		if pid != OLD_VERSION_PID {
+			return false
+		}
 	}
 
 	r.Lock()

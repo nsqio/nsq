@@ -42,6 +42,9 @@ func GetValidPartitionID(numStr string) (int, error) {
 	if num >= 0 && num < MAX_PARTITION_NUM {
 		return num, nil
 	}
+	if num == OLD_VERSION_PID {
+		return num, nil
+	}
 	return 0, errors.New("INVALID_PARTITION_ID")
 }
 
