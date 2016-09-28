@@ -466,7 +466,8 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
-	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
+	restore := reqParams.Get("restore")
+	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s), restore param: %v", node, topicName, restore)
 	producerRegs := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, "*")
 	for _, reg := range producerRegs {
 		p := reg.ProducerNode
@@ -475,8 +476,13 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		}
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
 		if thisNode == node {
-			nsqlookupLog.Logf("DB: setting tombstone  producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
-			p.Tombstone()
+			if restore == "true" {
+				nsqlookupLog.Logf("DB: undo tombstone producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
+				p.UndoTombstone()
+			} else {
+				nsqlookupLog.Logf("DB: setting tombstone  producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
+				p.Tombstone()
+			}
 		}
 	}
 
