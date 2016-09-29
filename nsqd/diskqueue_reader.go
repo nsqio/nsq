@@ -38,6 +38,15 @@ type diskQueueOffset struct {
 	Pos     int64
 }
 
+type diskQueueOffsetInfo struct {
+	EndOffset  diskQueueOffset
+	virtualEnd BackendOffset
+}
+
+func (d *diskQueueOffsetInfo) Offset() BackendOffset {
+	return d.virtualEnd
+}
+
 type diskQueueEndInfo struct {
 	EndOffset   diskQueueOffset
 	virtualEnd  BackendOffset
@@ -136,13 +145,17 @@ func newDiskQueueReader(readFrom string, metaname string, dataPath string, maxBy
 	return &d
 }
 
-func (d *diskQueueReader) getCurrentFileEnd(offset diskQueueOffset) (int64, error) {
-	curFileName := d.fileName(offset.FileNum)
+func getQueueSegmentEnd(dataRoot string, readFrom string, offset diskQueueOffset) (int64, error) {
+	curFileName := GetQueueFileName(dataRoot, readFrom, offset.FileNum)
 	f, err := os.Stat(curFileName)
 	if err != nil {
 		return 0, err
 	}
 	return f.Size(), nil
+}
+
+func (d *diskQueueReader) getCurrentFileEnd(offset diskQueueOffset) (int64, error) {
+	return getQueueSegmentEnd(d.dataPath, d.readFrom, offset)
 }
 
 // Depth returns the depth of the queue
@@ -463,77 +476,80 @@ func (d *diskQueueReader) getVirtualOffsetDistance(prev diskQueueOffset, next di
 	return BackendOffset(int64(vdiff) + left), err
 }
 
-func (d *diskQueueReader) stepOffset(virtualCur BackendOffset, cur diskQueueOffset, step BackendOffset, maxVirtual BackendOffset, maxStep diskQueueOffset) (diskQueueOffset, error) {
+func stepOffset(dataRoot string, readFrom string, cur diskQueueEndInfo, step BackendOffset, maxStep diskQueueEndInfo) (diskQueueOffset, error) {
 	newOffset := cur
 	var err error
-	if cur.FileNum > maxStep.FileNum {
-		return newOffset, fmt.Errorf("offset invalid: %v , %v", cur, maxStep)
+	if cur.EndOffset.FileNum > maxStep.EndOffset.FileNum {
+		return newOffset.EndOffset, fmt.Errorf("offset invalid: %v , %v", cur, maxStep)
 	}
 	if step == 0 {
-		return newOffset, nil
+		return newOffset.EndOffset, nil
 	}
+	// TODO: maybe should handle step back to queue cleaned start
+	virtualCur := cur.Offset()
+	maxVirtual := maxStep.Offset()
 	if virtualCur+step < 0 {
 		// backward exceed
-		return newOffset, fmt.Errorf("move offset step %v from %v to exceed begin", step, virtualCur)
+		return newOffset.EndOffset, fmt.Errorf("move offset step %v from %v to exceed begin", step, virtualCur)
 	} else if virtualCur+step > maxVirtual {
 		// forward exceed
-		return newOffset, fmt.Errorf("move offset step %v from %v exceed max: %v", step, virtualCur, maxVirtual)
+		return newOffset.EndOffset, fmt.Errorf("move offset step %v from %v exceed max: %v", step, virtualCur, maxVirtual)
 	}
 	if step < 0 {
 		// handle backward
 		step = 0 - step
-		for step > BackendOffset(newOffset.Pos) {
+		for step > BackendOffset(newOffset.EndOffset.Pos) {
 			nsqLog.Logf("step read back to previous file: %v, %v", step, newOffset)
-			virtualCur -= BackendOffset(newOffset.Pos)
-			step -= BackendOffset(newOffset.Pos)
-			newOffset.FileNum--
-			if newOffset.FileNum < 0 {
+			virtualCur -= BackendOffset(newOffset.EndOffset.Pos)
+			step -= BackendOffset(newOffset.EndOffset.Pos)
+			newOffset.EndOffset.FileNum--
+			if newOffset.EndOffset.FileNum < 0 {
 				nsqLog.Logf("reset read acrossed the begin %v, %v", step, newOffset)
-				return newOffset, ErrMoveOffsetInvalid
+				return newOffset.EndOffset, ErrMoveOffsetInvalid
 			}
 			var f os.FileInfo
-			f, err = os.Stat(d.fileName(newOffset.FileNum))
+			f, err = os.Stat(GetQueueFileName(dataRoot, readFrom, newOffset.EndOffset.FileNum))
 			if err != nil {
 				nsqLog.LogErrorf("stat data file error %v, %v: %v", step, newOffset, err)
 				if os.IsNotExist(err) {
-					return newOffset, ErrReadQueueAlreadyCleaned
+					return newOffset.EndOffset, ErrReadQueueAlreadyCleaned
 				}
-				return newOffset, err
+				return newOffset.EndOffset, err
 			}
-			newOffset.Pos = f.Size()
+			newOffset.EndOffset.Pos = f.Size()
 		}
-		newOffset.Pos -= int64(step)
-		return newOffset, nil
+		newOffset.EndOffset.Pos -= int64(step)
+		return newOffset.EndOffset, nil
 	}
 	for {
 		end := int64(0)
-		if cur.FileNum < maxStep.FileNum {
-			end, err = d.getCurrentFileEnd(newOffset)
+		if cur.EndOffset.FileNum < maxStep.EndOffset.FileNum {
+			end, err = getQueueSegmentEnd(dataRoot, readFrom, newOffset.EndOffset)
 			if err != nil {
-				return newOffset, err
+				return newOffset.EndOffset, err
 			}
 		} else {
-			end = maxStep.Pos
+			end = maxStep.EndOffset.Pos
 		}
-		diff := end - newOffset.Pos
+		diff := end - newOffset.EndOffset.Pos
 		if step > BackendOffset(diff) {
-			newOffset.FileNum++
-			newOffset.Pos = 0
-			if newOffset.GreatThan(&maxStep) {
-				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
+			newOffset.EndOffset.FileNum++
+			newOffset.EndOffset.Pos = 0
+			if newOffset.EndOffset.GreatThan(&maxStep.EndOffset) {
+				return newOffset.EndOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
 					newOffset, maxStep, step)
 			}
 			step -= BackendOffset(diff)
 			if step == 0 {
-				return newOffset, nil
+				return newOffset.EndOffset, nil
 			}
 		} else {
-			newOffset.Pos += int64(step)
-			if newOffset.GreatThan(&maxStep) {
-				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
+			newOffset.EndOffset.Pos += int64(step)
+			if newOffset.EndOffset.GreatThan(&maxStep.EndOffset) {
+				return newOffset.EndOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
 					newOffset, maxStep, step)
 			}
-			return newOffset, nil
+			return newOffset.EndOffset, nil
 		}
 	}
 }
@@ -568,7 +584,8 @@ func (d *diskQueueReader) internalConfirm(offset BackendOffset, cnt int64) error
 	}
 
 	diffVirtual := offset - d.confirmedQueueInfo.Offset()
-	newConfirm, err := d.stepOffset(d.confirmedQueueInfo.Offset(), d.confirmedQueueInfo.EndOffset, diffVirtual, d.readQueueInfo.Offset(), d.readQueueInfo.EndOffset)
+	newConfirm, err := stepOffset(d.dataPath, d.readFrom,
+		d.confirmedQueueInfo, diffVirtual, d.readQueueInfo)
 	if err != nil {
 		nsqLog.LogErrorf("confirmed exceed the read pos: %v, %v", offset, d.readQueueInfo.Offset())
 		return ErrConfirmSizeInvalid
@@ -637,8 +654,8 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 			return ErrMoveOffsetInvalid
 		}
 
-		newPos, err = d.stepOffset(d.readQueueInfo.Offset(), d.readQueueInfo.EndOffset,
-			voffset-d.readQueueInfo.Offset(), d.queueEndInfo.Offset(), d.queueEndInfo.EndOffset)
+		newPos, err = stepOffset(d.dataPath, d.readFrom, d.readQueueInfo,
+			voffset-d.readQueueInfo.Offset(), d.queueEndInfo)
 		if err != nil {
 			nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
 			return err
@@ -1031,11 +1048,15 @@ func (d *diskQueueReader) metaDataFileName(newVer bool) string {
 		d.readerMetaName)
 }
 
-func (d *diskQueueReader) fileName(fileNum int64) string {
+func GetQueueFileName(dataRoot string, base string, fileNum int64) string {
 	if fileNum > int64(999990) {
-		return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%09d.dat"), d.readFrom, fileNum)
+		return fmt.Sprintf(path.Join(dataRoot, "%s.diskqueue.%09d.dat"), base, fileNum)
 	}
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.readFrom, fileNum)
+	return fmt.Sprintf(path.Join(dataRoot, "%s.diskqueue.%06d.dat"), base, fileNum)
+}
+
+func (d *diskQueueReader) fileName(fileNum int64) string {
+	return GetQueueFileName(d.dataPath, d.readFrom, fileNum)
 }
 
 func (d *diskQueueReader) checkTailCorruption() {

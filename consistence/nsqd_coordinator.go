@@ -831,7 +831,7 @@ func (self *MsgTimestampComparator) SearchEndBoundary() int64 {
 }
 
 func (self *MsgTimestampComparator) LessThanLeftBoundary(l *CommitLogData) bool {
-	err := self.localTopicReader.SeekTo(nsqd.BackendOffset(l.MsgOffset))
+	err := self.localTopicReader.ResetSeekTo(nsqd.BackendOffset(l.MsgOffset))
 	if err != nil {
 		coordLog.Errorf("seek disk queue failed: %v, %v", l, err)
 		return true
@@ -854,7 +854,7 @@ func (self *MsgTimestampComparator) LessThanLeftBoundary(l *CommitLogData) bool 
 
 func (self *MsgTimestampComparator) GreatThanRightBoundary(l *CommitLogData) bool {
 	// we may read the eof , in this situation we reach the end, so the search should not be great than right boundary
-	err := self.localTopicReader.SeekTo(nsqd.BackendOffset(l.MsgOffset + int64(l.MsgSize)))
+	err := self.localTopicReader.ResetSeekTo(nsqd.BackendOffset(l.MsgOffset + int64(l.MsgSize)))
 	if err != nil {
 		coordLog.Errorf("seek disk queue failed: %v, %v", l, err)
 		return false
@@ -900,7 +900,7 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 	}
 	realOffset := l.MsgOffset
 	// check if the message timestamp is fit the require
-	localErr = snap.SeekTo(nsqd.BackendOffset(realOffset))
+	localErr = snap.ResetSeekTo(nsqd.BackendOffset(realOffset))
 	if localErr != nil {
 		coordLog.Infof("seek to disk queue error: %v, %v", localErr, realOffset)
 		return l, 0, 0, localErr

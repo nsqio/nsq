@@ -2,6 +2,10 @@ package nsqd
 
 type BackendOffset int64
 
+type BackendQueueOffset interface {
+	Offset() BackendOffset
+}
+
 type BackendQueueEnd interface {
 	Offset() BackendOffset
 	TotalMsgCnt() int64

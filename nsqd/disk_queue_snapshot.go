@@ -7,10 +7,10 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"io"
 	"os"
-	"path"
 	"sync"
 )
 
+// note: the message count info is not kept in snapshot
 type DiskQueueSnapshot struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	queueStart diskQueueEndInfo
@@ -109,56 +109,28 @@ func (d *DiskQueueSnapshot) exit() error {
 	return nil
 }
 
-func (d *DiskQueueSnapshot) GetQueueCurrentReadInfo() BackendQueueEnd {
+func (d *DiskQueueSnapshot) GetCurrentReadQueueOffset() BackendQueueOffset {
 	d.Lock()
 	cur := d.readPos
+	var tmp diskQueueOffsetInfo
+	tmp.EndOffset = cur.EndOffset
+	tmp.virtualEnd = cur.virtualEnd
 	d.Unlock()
-	return &cur
+	return &tmp
 }
 
-func (d *DiskQueueSnapshot) stepOffset(cur diskQueueOffset, step int64, maxStep diskQueueOffset) (diskQueueOffset, error) {
+func (d *DiskQueueSnapshot) stepOffset(allowBackward bool, cur diskQueueEndInfo, step int64, maxStep diskQueueEndInfo) (diskQueueOffset, error) {
 	newOffset := cur
-	var err error
-	if cur.FileNum > maxStep.FileNum {
-		return newOffset, fmt.Errorf("offset invalid: %v , %v", cur, maxStep)
+	if cur.EndOffset.FileNum > maxStep.EndOffset.FileNum {
+		return newOffset.EndOffset, fmt.Errorf("offset invalid: %v , %v", cur, maxStep)
 	}
 	if step == 0 {
-		return newOffset, nil
+		return newOffset.EndOffset, nil
 	}
-	if step < 0 {
-		return newOffset, fmt.Errorf("can not step backward")
+	if !allowBackward && step < 0 {
+		return newOffset.EndOffset, fmt.Errorf("can not step backward")
 	}
-	for {
-		end := int64(0)
-		if cur.FileNum < maxStep.FileNum {
-			end, err = d.getCurrentFileEnd(newOffset)
-			if err != nil {
-				return newOffset, err
-			}
-		} else {
-			end = maxStep.Pos
-		}
-		diff := end - newOffset.Pos
-		if step > diff {
-			newOffset.FileNum++
-			newOffset.Pos = 0
-			if newOffset.GreatThan(&maxStep) {
-				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
-					newOffset, maxStep, step)
-			}
-			step -= diff
-			if step == 0 {
-				return newOffset, nil
-			}
-		} else {
-			newOffset.Pos += step
-			if newOffset.GreatThan(&maxStep) {
-				return newOffset, fmt.Errorf("offset invalid: %v , %v, need step: %v",
-					newOffset, maxStep, step)
-			}
-			return newOffset, nil
-		}
-	}
+	return stepOffset(d.dataPath, d.readFrom, cur, BackendOffset(step), maxStep)
 }
 
 func (d *DiskQueueSnapshot) SkipToNext() error {
@@ -182,7 +154,16 @@ func (d *DiskQueueSnapshot) SkipToNext() error {
 	return nil
 }
 
+// this can allow backward seek
+func (d *DiskQueueSnapshot) ResetSeekTo(voffset BackendOffset) error {
+	return d.seekTo(voffset, true)
+}
+
 func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
+	return d.seekTo(voffset, false)
+}
+
+func (d *DiskQueueSnapshot) seekTo(voffset BackendOffset, allowBackward bool) error {
 	d.Lock()
 	defer d.Unlock()
 	if d.readFile != nil {
@@ -202,7 +183,7 @@ func (d *DiskQueueSnapshot) SeekTo(voffset BackendOffset) error {
 			return ErrReadQueueAlreadyCleaned
 		}
 
-		newPos, err = d.stepOffset(d.readPos.EndOffset, int64(voffset-d.readPos.virtualEnd), d.endPos.EndOffset)
+		newPos, err = d.stepOffset(allowBackward, d.readPos, int64(voffset-d.readPos.virtualEnd), d.endPos)
 		if err != nil {
 			nsqLog.LogErrorf("internal skip error : %v, step from %v to : %v, current start: %v", err, d.readPos, voffset, d.queueStart)
 			return err
@@ -424,8 +405,5 @@ CheckFileOpen:
 }
 
 func (d *DiskQueueSnapshot) fileName(fileNum int64) string {
-	if fileNum > int64(999990) {
-		return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%09d.dat"), d.readFrom, fileNum)
-	}
-	return fmt.Sprintf(path.Join(d.dataPath, "%s.diskqueue.%06d.dat"), d.readFrom, fileNum)
+	return GetQueueFileName(d.dataPath, d.readFrom, fileNum)
 }

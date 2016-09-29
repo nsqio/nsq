@@ -973,12 +973,12 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
 		return nil, err
 	}
-	readInfo := snapReader.GetQueueCurrentReadInfo()
+	readInfo := snapReader.GetCurrentReadQueueOffset()
 	data := snapReader.ReadOne()
 	if data.Err != nil {
 		return nil, data.Err
 	}
-	var cleanEndInfo BackendQueueEnd
+	var cleanEndInfo BackendQueueOffset
 	t.Lock()
 	retentionDay := atomic.LoadInt32(&t.dynamicConf.RetentionDay)
 	if retentionDay == 0 {
@@ -1013,7 +1013,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 			nsqLog.LogWarningf("failed to skip - %s ", err)
 			break
 		}
-		readInfo = snapReader.GetQueueCurrentReadInfo()
+		readInfo = snapReader.GetCurrentReadQueueOffset()
 		data = snapReader.ReadOne()
 		if data.Err != nil {
 			nsqLog.LogErrorf("failed to read - %s ", data.Err)

@@ -208,7 +208,7 @@ func (d *diskQueueWriter) ResetWriteWithQueueStart(queueStart BackendQueueEnd) e
 	return nil
 }
 
-func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
+func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffset,
 	noRealClean bool, maxCleanOffset BackendOffset) (BackendQueueEnd, error) {
 	if cleanEndInfo == nil {
 		return nil, nil
@@ -216,14 +216,20 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 	d.Lock()
 	defer d.Unlock()
 	newStart := d.diskQueueStart
-	cleanDiskEnd, ok := cleanEndInfo.(*diskQueueEndInfo)
+	var endInfo *diskQueueOffset
+	switch e := cleanEndInfo.(type) {
+	case *diskQueueOffsetInfo:
+		endInfo = &e.EndOffset
+	case *diskQueueEndInfo:
+		endInfo = &e.EndOffset
+	}
 	cleanOffset := cleanEndInfo.Offset()
-	if ok {
-		if cleanDiskEnd.EndOffset.FileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
-			cleanDiskEnd.EndOffset.FileNum = d.diskReadEnd.EndOffset.FileNum - 1
+	if endInfo != nil {
+		if endInfo.FileNum >= d.diskReadEnd.EndOffset.FileNum-1 {
+			endInfo.FileNum = d.diskReadEnd.EndOffset.FileNum - 1
 		}
-		if maxCleanOffset != BackendOffset(0) && cleanDiskEnd.Offset() > maxCleanOffset {
-			nsqLog.LogWarningf("disk %v clean position %v exceed the max allowed clean end: %v", d.name, cleanDiskEnd, maxCleanOffset)
+		if maxCleanOffset != BackendOffset(0) && cleanOffset > maxCleanOffset {
+			nsqLog.LogWarningf("disk %v clean position %v exceed the max allowed clean end: %v", d.name, cleanOffset, maxCleanOffset)
 			return nil, nil
 		}
 	} else {
@@ -235,8 +241,8 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueEnd,
 		}
 	}
 	cleanFileNum := int64(0)
-	if ok {
-		cleanFileNum = cleanDiskEnd.EndOffset.FileNum
+	if endInfo != nil {
+		cleanFileNum = endInfo.FileNum
 		if cleanFileNum <= 0 {
 			return &newStart, nil
 		}
