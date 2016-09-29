@@ -163,7 +163,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	tcpPort := 5000
 	httpPort := 5555
-	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
+	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 
@@ -229,7 +229,7 @@ func TestBasicLookupd(t *testing.T) {
 
 		ver, err := producer.Get("version").String()
 		equal(t, err, nil)
-		equal(t, ver, "fake-version")
+		equal(t, ver, "fake-version-HA")
 	}
 
 	conn.Close()
@@ -261,7 +261,7 @@ func TestChannelUnregister(t *testing.T) {
 
 	tcpPort := 5000
 	httpPort := 5555
-	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version")
+	identify(t, conn, "ip.address", tcpPort, httpPort, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "ch1").WriteTo(conn)
 	v, err := nsq.ReadResponse(conn)
@@ -307,7 +307,7 @@ func TestTombstoneRecover(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -362,7 +362,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -406,7 +406,7 @@ func TestInactiveNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 	_, err := nsq.ReadResponse(conn)
@@ -439,7 +439,7 @@ func TestTombstonedNodes(t *testing.T) {
 	conn := mustConnectLookupd(t, tcpAddr)
 	defer conn.Close()
 
-	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version-HA")
 
 	nsq.Register(topicName, "0", "channel1").WriteTo(conn)
 
@@ -625,6 +625,35 @@ func TestTopicPartitions(t *testing.T) {
 }
 
 func TestTopicChannelRegUnReg(t *testing.T) {
+}
+
+func TestTombstonedOldNodes(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
+	defer nsqlookupd.Exit()
+
+	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+
+	topicName := "inactive_nodes"
+
+	conn := mustConnectLookupd(t, tcpAddr)
+	defer conn.Close()
+
+	identify(t, conn, "ip.address", 5000, 5555, "fake-version")
+
+	OldRegister(topicName, "channel1").WriteTo(conn)
+
+	_, err := nsq.ReadResponse(conn)
+	equal(t, err, nil)
+
+	ci := clusterinfo.New(nil, http_api.NewClient(nil))
+
+	producers, _ := ci.GetLookupdProducers(lookupdHTTPAddrs)
+	equal(t, len(producers), 1)
+	equal(t, len(producers[0].Topics), 1)
+	equal(t, producers[0].Topics[0].Topic, topicName)
+	equal(t, producers[0].Topics[0].Tombstoned, true)
 }
 
 func TestOldNsqdTopicRegUnReg(t *testing.T) {

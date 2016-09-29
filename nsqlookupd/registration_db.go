@@ -70,7 +70,7 @@ func (p *Producer) Tombstone() {
 
 func (p *Producer) IsTombstoned() bool {
 	if p.peerInfo != nil && p.peerInfo.IsOldPeer() {
-		return p.tombstoned
+		return true
 	}
 	return p.tombstoned
 }
