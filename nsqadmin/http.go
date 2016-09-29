@@ -303,8 +303,13 @@ func (s *httpServer) coordinatorHandler(w http.ResponseWriter, req *http.Request
 
 	topicCoordStats, err := s.ci.GetNSQDCoordStats(clusterinfo.Producers{producer}, topicName, partition)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd coordinator stats - %s", err)
-		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqd coordinator stats - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
 	}
 
 	return struct {
@@ -345,17 +350,25 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 
 	topicCoordStats, err := s.ci.GetNSQDCoordStats(producers, topicName, "")
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd topic %v coordinator stats - %s", topicName, err)
+		_, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqd topic %v coordinator stats - %s", topicName, err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, err.Error())
 	}
 
 	statsMap := make(map[string]map[string]clusterinfo.TopicCoordStat)
-	for _, stat := range topicCoordStats.TopicCoordStats {
-		t, ok := statsMap[stat.Name]
-		if !ok {
-			t = make(map[string]clusterinfo.TopicCoordStat)
-			statsMap[stat.Name] = t
+	if topicCoordStats != nil {
+		for _, stat := range topicCoordStats.TopicCoordStats {
+			t, ok := statsMap[stat.Name]
+			if !ok {
+				t = make(map[string]clusterinfo.TopicCoordStat)
+				statsMap[stat.Name] = t
+			}
+			t[strconv.Itoa(stat.Partition)] = stat
 		}
-		t[strconv.Itoa(stat.Partition)] = stat
 	}
 
 	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
