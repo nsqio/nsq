@@ -190,6 +190,12 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 		} else {
 			err = errors.New("Not supported while coordinator disabled")
 		}
+	} else if startFrom.OffsetType == offsetMsgCountType {
+		if c.nsqdCoord != nil {
+			l, queueOffset, cnt, err = c.nsqdCoord.SearchLogByMsgCnt(ch.GetTopicName(), ch.GetTopicPart(), startFrom.OffsetValue)
+		} else {
+			err = errors.New("Not supported while coordinator disabled")
+		}
 	} else {
 		nsqd.NsqLogger().Logf("not supported offset type:%v", startFrom)
 		err = errors.New("not supported offset type")

@@ -56,6 +56,7 @@ var offsetSplitBytes = []byte(offsetSplitStr)
 var offsetVirtualQueueType = "virtual_queue"
 var offsetTimestampType = "timestamp"
 var offsetSpecialType = "special"
+var offsetMsgCountType = "msgcount"
 
 var (
 	ErrOrderChannelOnSampleRate = errors.New("order consume is not allowed while sample rate is not 0")
@@ -83,7 +84,8 @@ func (self *ConsumeOffset) FromString(s string) error {
 	self.OffsetType = values[0]
 	if self.OffsetType != offsetTimestampType &&
 		self.OffsetType != offsetSpecialType &&
-		self.OffsetType != offsetVirtualQueueType {
+		self.OffsetType != offsetVirtualQueueType &&
+		self.OffsetType != offsetMsgCountType {
 		return errors.New("invalid consume offset:" + s)
 	}
 	v, err := strconv.ParseInt(values[1], 10, 0)
@@ -102,7 +104,8 @@ func (self *ConsumeOffset) FromBytes(s []byte) error {
 	self.OffsetType = string(values[0])
 	if self.OffsetType != offsetTimestampType &&
 		self.OffsetType != offsetSpecialType &&
-		self.OffsetType != offsetVirtualQueueType {
+		self.OffsetType != offsetVirtualQueueType &&
+		self.OffsetType != offsetMsgCountType {
 		return errors.New("invalid consume offset:" + string(s))
 	}
 	v, err := strconv.ParseInt(string(values[1]), 10, 0)
