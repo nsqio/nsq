@@ -414,7 +414,7 @@ exitsync:
 			}
 		}()
 	}
-	if clusterWriteErr != nil {
+	if clusterWriteErr != nil && isWrite {
 		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
 		coordErrStats.incWriteErr(clusterWriteErr)
 		atomic.StoreInt32(&coord.disableWrite, 1)
@@ -764,6 +764,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
+			changed = false
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		changed = tmpChanged
