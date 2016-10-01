@@ -232,7 +232,7 @@ func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, f
 
 func (c *context) internalPubLoop(topic *nsqd.Topic) {
 	messages := make([]*nsqd.Message, 0, 100)
-	pubInfoList := make([]nsqd.PubInfo, 0, 100)
+	pubInfoList := make([]*nsqd.PubInfo, 0, 100)
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
 	nsqd.NsqLogger().Logf("start pub loop for topic: %v ", topic.GetFullName())
@@ -248,8 +248,9 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		}
 		nsqd.NsqLogger().Logf("quit pub loop for topic: %v, left: %v ", topic.GetFullName(), len(pubInfoList))
 		for _, info := range pubInfoList {
-			info.Client.Close()
-			topic.BufferPoolPut(info.MsgBody)
+			info.Rsp = nil
+			info.Err = nsqd.ErrExiting
+			close(info.Done)
 		}
 	}()
 	for {
@@ -294,8 +295,8 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 					cost := time.Now().UnixNano() - pubInfoList[0].StartPub.UnixNano()
 					topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(messages)))
 					for _, info := range pubInfoList {
-						topic.GetDetailStats().UpdatePubClientStats(info.Client.RemoteAddr().String(), info.Client.UserAgent, "tcp", int64(len(messages)), false)
-						handleRequestReponseForClient(info.Client, okBytes, nil)
+						info.Rsp = okBytes
+						info.Err = nil
 					}
 				}
 			} else {
@@ -306,13 +307,12 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			}
 			if retErr != nil {
 				for _, info := range pubInfoList {
-					topic.GetDetailStats().UpdatePubClientStats(info.Client.RemoteAddr().String(), info.Client.UserAgent, "tcp", int64(len(messages)), true)
-					handleRequestReponseForClient(info.Client, nil, retErr)
-					info.Client.Close()
+					info.Rsp = nil
+					info.Err = retErr
 				}
 			}
 			for _, info := range pubInfoList {
-				topic.BufferPoolPut(info.MsgBody)
+				close(info.Done)
 			}
 			pubInfoList = pubInfoList[:0]
 			messages = messages[:0]

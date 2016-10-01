@@ -243,8 +243,10 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	readMax := req.ContentLength + 1
 	b := topic.BufferPoolGet(int(req.ContentLength))
 	defer topic.BufferPoolPut(b)
+	asyncAction := !enableTrace
+	n, err := io.CopyN(b, io.LimitReader(req.Body, readMax), int64(req.ContentLength))
 	body := b.Bytes()[:req.ContentLength]
-	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
+
 	if err != nil {
 		nsqd.NsqLogger().Logf("read request body error: %v", err)
 		body = body[:n]
@@ -261,6 +263,9 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		if asyncAction {
+			return internalPubAsync(nil, b, topic)
+		}
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
 		if enableTrace && err != nil {

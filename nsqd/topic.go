@@ -48,11 +48,13 @@ type TopicDynamicConf struct {
 }
 
 type PubInfo struct {
-	Client   *ClientV2
+	Done     chan struct{}
 	MsgBody  *bytes.Buffer
 	StartPub time.Time
+	Rsp      []byte
+	Err      error
 }
-type PubInfoChan chan PubInfo
+type PubInfoChan chan *PubInfo
 
 type Topic struct {
 	sync.Mutex

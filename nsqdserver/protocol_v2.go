@@ -245,13 +245,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 		var response []byte
 		response, err = p.Exec(client, params)
-		if err == nil && shouldHandleAsync(client, params) {
-			// PUB handle async
-		} else {
-			err = handleRequestReponseForClient(client, response, err)
-			if err != nil {
-				break
-			}
+		err = handleRequestReponseForClient(client, response, err)
+		if err != nil {
+			break
 		}
 	}
 
@@ -1206,28 +1202,35 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 	return buf, nil
 }
 
-func (p *protocolV2) internalPubAsync(client *nsqd.ClientV2, msgBody *bytes.Buffer, topic *nsqd.Topic) error {
+func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic) ([]byte, error) {
 	if topic.Exiting() {
-		return protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+		return nil, protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
 	}
-	info := nsqd.PubInfo{client, msgBody, time.Now()}
-	client.PubTimeout.Reset(time.Second * 5)
+	info := &nsqd.PubInfo{
+		Done:     make(chan struct{}),
+		MsgBody:  msgBody,
+		StartPub: time.Now(),
+	}
+	if clientTimer == nil {
+		clientTimer = time.NewTimer(time.Second * 5)
+	} else {
+		clientTimer.Reset(time.Second * 5)
+	}
 	select {
 	case topic.GetWaitChan() <- info:
 	default:
 		select {
 		case topic.GetWaitChan() <- info:
 		case <-topic.QuitChan():
-			topic.BufferPoolPut(msgBody)
-			nsqd.NsqLogger().Infof("topic %v put messages failed at exiting from client %v", topic.GetFullName(), client.String())
-			return protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
-		case <-client.PubTimeout.C:
-			topic.BufferPoolPut(msgBody)
-			nsqd.NsqLogger().Infof("topic %v put messages timeout from client %v", topic.GetFullName(), client.String())
-			return protocol.NewFatalClientErr(ErrPubToWaitTimeout, "E_PUB_FAILED", ErrPubToWaitTimeout.Error())
+			nsqd.NsqLogger().Infof("topic %v put messages failed at exiting", topic.GetFullName())
+			return nil, protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+		case <-clientTimer.C:
+			nsqd.NsqLogger().Infof("topic %v put messages timeout ", topic.GetFullName())
+			return nil, protocol.NewFatalClientErr(ErrPubToWaitTimeout, "E_PUB_FAILED", ErrPubToWaitTimeout.Error())
 		}
 	}
-	return nil
+	<-info.Done
+	return info.Rsp, info.Err
 }
 
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
@@ -1242,11 +1245,11 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
+	defer topic.BufferPoolPut(messageBodyBuffer)
 	asyncAction := shouldHandleAsync(client, params)
 
 	_, err = io.CopyN(messageBodyBuffer, client.Reader, int64(bodyLen))
 	if err != nil {
-		topic.BufferPoolPut(messageBodyBuffer)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
 	}
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
@@ -1263,9 +1266,14 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
 		if asyncAction {
-			return nil, p.internalPubAsync(client, messageBodyBuffer, topic)
+			rsp, err := internalPubAsync(client.PubTimeout, messageBodyBuffer, topic)
+			if err != nil {
+				topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
+			} else {
+				topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, false)
+			}
+			return rsp, err
 		}
-		defer topic.BufferPoolPut(messageBodyBuffer)
 		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, realBody, traceID)
 		//p.ctx.setHealth(err)
 		if err != nil {
@@ -1291,7 +1299,6 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
 		topic.DisableForSlave()
-		topic.BufferPoolPut(messageBodyBuffer)
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
 }
