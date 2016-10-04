@@ -40,7 +40,7 @@ var (
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
 	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writing empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
-	topicPattern   = flag.String("topic-pattern", ".*", "Only log topics matching the following pattern")
+	topicPattern   = flag.String("topic-pattern", "", "Only log topics matching the following pattern")
 
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
@@ -399,6 +399,9 @@ func (t *TopicDiscoverer) startTopicRouter(logger *ConsumerFileLogger) {
 }
 
 func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
+	if pattern == "" {
+		return true
+	}
 	match, err := regexp.MatchString(pattern, name)
 	if err != nil {
 		return false
@@ -526,6 +529,9 @@ func main() {
 	signal.Notify(discoverer.termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(topics) < 1 {
+		if len(*topicPattern) < 1 {
+			log.Fatal("use --topic to list at least one topic to subscribe to or specify --topic-pattern to subscribe to matching topics (use \"--topic-pattern .*\" to subscribe to all topics)")
+		}
 		if len(lookupdHTTPAddrs) < 1 {
 			log.Fatal("use --topic to list at least one topic to subscribe to or specify at least one --lookupd-http-address to subscribe to all its topics")
 		}
