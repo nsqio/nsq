@@ -33,6 +33,14 @@ const (
 	HIGHEST_LEFT_DATA_MB_SIZE    = 200 * 1024
 )
 
+type balanceOpLevel int
+
+const (
+	moveAny balanceOpLevel = iota
+	moveTryIdle
+	moveMinLFOnly
+)
+
 // pub qps level : 1~13 low (< 30 KB/sec), 13 ~ 31 medium (<1000 KB/sec), 31 ~ 74 high (<8 MB/sec), >74 very high (>8 MB/sec)
 func convertQPSLevel(hourlyPubSize int64) float64 {
 	qps := hourlyPubSize / 3600 / 1024
@@ -532,18 +540,18 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			}
 			if minLeaderLoad*4 < avgLeaderLoad {
 				// move some topic from the most busy node to the most idle node
-				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, true, minLeaderLoad,
+				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveMinLFOnly, minLeaderLoad,
 					maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 			} else if avgLeaderLoad < 5 && maxLeaderLoad < 10 {
 				// all nodes in the cluster are under low load, no need balance
 				continue
 			} else if avgLeaderLoad*2 < maxLeaderLoad {
-				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, false, minLeaderLoad,
+				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveAny, minLeaderLoad,
 					maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 			} else if avgLeaderLoad >= 20 &&
 				((minLeaderLoad*2 < maxLeaderLoad) || (maxLeaderLoad > avgLeaderLoad*1.5)) {
 				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader,
-					minLeaderLoad*2 < maxLeaderLoad, minLeaderLoad, maxLeaderLoad,
+					moveTryIdle, minLeaderLoad, maxLeaderLoad,
 					topicStatsMinMax, nodeTopicStats)
 			} else {
 				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.5) {
@@ -553,7 +561,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 						topicStatsMinMax[1] = mostLeaderStats
 						leaderLF, _ := mostLeaderStats.GetNodeLoadFactor()
 						maxLeaderLoad = leaderLF
-						self.balanceTopicLeaderBetweenNodes(monitorChan, true, true, minLeaderLoad,
+						self.balanceTopicLeaderBetweenNodes(monitorChan, true, moveTryIdle, minLeaderLoad,
 							maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 						continue
 					}
@@ -565,6 +573,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					needMove := true
 					moveLeader = true
 					followerNum := len(leastLeaderStats.TopicTotalDataSize) - leastLeaderNum
+					moveToMinLF := moveTryIdle
 					if nodeLF > avgNodeLoad || leaderLF > midLeaderLoad {
 						// maybe too much topic followers on this node
 						if leastLeaderStats.NodeID == topicStatsMinMax[1].NodeID {
@@ -581,12 +590,14 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					} else if leaderLF < midLeaderLoad {
 						topicStatsMinMax[0] = leastLeaderStats
 						minLeaderLoad = leaderLF
-						coordLog.Infof("so less topic leader (%v) on idle node: %v, try move some topic leader to this node", leastLeaderNum, leastLeaderStats.NodeID)
+						moveToMinLF = moveMinLFOnly
+						coordLog.Infof("so less topic leader (%v) on idle node: %v, try move some topic leader to this node",
+							leastLeaderNum, leastLeaderStats.NodeID)
 					} else {
 						needMove = false
 					}
 					if needMove {
-						self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, true, minLeaderLoad,
+						self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveToMinLF, minLeaderLoad,
 							maxLeaderLoad, topicStatsMinMax, nodeTopicStats)
 						continue
 					}
@@ -612,7 +623,7 @@ func checkMoveLotsOfTopics(moveLeader bool, moveTopicNum int, moveNodeStats *Nod
 	return true
 }
 
-func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struct{}, moveLeader bool, moveToMinLF bool,
+func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struct{}, moveLeader bool, moveToMinLF balanceOpLevel,
 	minLF float64, maxLF float64, statsMinMax []*NodeTopicStats, sortedNodeTopicStats []NodeTopicStats) {
 
 	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
@@ -683,14 +694,14 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 
 func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicName string, partitionID int,
 	statsMinMax []*NodeTopicStats,
-	sortedNodeTopicStats []NodeTopicStats, moveToMinLF bool, moveLeader bool) bool {
+	sortedNodeTopicStats []NodeTopicStats, moveToMinLF balanceOpLevel, moveLeader bool) bool {
 	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
 	if err != nil {
 		coordLog.Infof("failed to get topic %v info: %v", topicName, err)
 		return false
 	}
 	checkMoveOK := false
-	if moveToMinLF {
+	if moveToMinLF > moveAny {
 		// check first for the specific min load node
 		if moveLeader {
 			if FindSlice(topicInfo.ISR, statsMinMax[0].NodeID) != -1 {
@@ -711,7 +722,10 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 			}
 		}
 	}
-	if moveToMinLF || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
+	if moveToMinLF == moveMinLFOnly {
+		return checkMoveOK
+	}
+	if moveToMinLF > moveAny || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
 		if moveLeader {
 			// check if any of current isr nodes is already idle for move
 			for _, nid := range topicInfo.ISR {
