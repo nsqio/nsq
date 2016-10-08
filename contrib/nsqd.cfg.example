@@ -138,3 +138,6 @@ snappy = true
 log_level = 2
 ## if empty, use the default flag value in glog
 log_dir = "./"
+
+## the time period (in hour) that the auto clean is allowed.
+auto_clean_interval = ["2", "4"]
