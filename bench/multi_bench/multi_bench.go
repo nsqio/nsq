@@ -413,12 +413,18 @@ func startCheckData2() {
 
 	for topicName, counter := range pubIDList {
 		log.Printf("topic %v pub count to : %v \n", topicName, *counter)
+		subCounter := subReceivedMaxTraceIDList[topicName]
+		if *subCounter == *counter {
+			log.Printf("sub max trace id is equal with pub\n")
+		} else {
+			log.Printf("!!! topic: %v sub max trace id is not equal: %v\n", topicName, *subCounter)
+		}
 	}
 
-	for topicName, counter := range subReceivedMaxTraceIDList {
-		log.Printf("topic: %v sub max trace id: %v\n", topicName, *counter)
-	}
 	for topicName, waitingList := range traceIDWaitingList {
+		if len(waitingList) == 0 {
+			continue
+		}
 		log.Printf("topic: %v sub waiting list: %v\n", topicName, len(waitingList))
 		for traceID, _ := range waitingList {
 			log.Printf("%v, ", traceID)
