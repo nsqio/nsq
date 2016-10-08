@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"path"
 	"sort"
 	"strconv"
 	"sync"
@@ -383,21 +382,22 @@ func (self *DetailStatsInfo) UpdateHistory(historyList [24]int64) {
 	copy(self.historyStatsInfo.HourlyPubSize[:], historyList[:])
 }
 
-func (self *DetailStatsInfo) LoadHistory(fileName string) {
+func (self *DetailStatsInfo) LoadHistory(fileName string) error {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			nsqLog.LogErrorf("failed to read history stats from %s - %s", fileName, err)
 		}
-		return
+		return err
 	}
 	var historyStat TopicHistoryStatsInfo
 	err = json.Unmarshal(data, &historyStat)
 	if err != nil {
 		nsqLog.Warningf("load history stats failed: %v", err)
-		return
+		return err
 	}
 	self.historyStatsInfo.HourlyPubSize = historyStat.HourlyPubSize
+	return nil
 }
 
 func (self *DetailStatsInfo) SaveHistory(fileName string) error {
@@ -441,7 +441,7 @@ func (n *NSQD) UpdateTopicHistoryStats() {
 	for _, t := range realTopics {
 		pubSize := t.TotalDataSize()
 		t.detailStats.historyStatsInfo.UpdateHourlySize(pubSize)
-		t.detailStats.SaveHistory(path.Join(t.dataPath, HISTORY_STAT_FILE_NAME))
+		t.SaveHistoryStats()
 	}
 
 }

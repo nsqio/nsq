@@ -18,7 +18,7 @@ import (
 
 const (
 	MAX_TOPIC_PARTITION    = 1023
-	HISTORY_STAT_FILE_NAME = "stat.history.dat"
+	HISTORY_STAT_FILE_NAME = ".stat.history.dat"
 )
 
 var (
@@ -160,7 +160,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		nsqLog.LogErrorf("topic %v failed to load magic code: %v", t.fullName, err)
 		return nil
 	}
-	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), path.Join(t.dataPath, HISTORY_STAT_FILE_NAME))
+	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), t.getHistoryStatsFileName())
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
@@ -252,6 +252,14 @@ func (t *Topic) loadMagicCode() error {
 	return nil
 }
 
+func (t *Topic) removeHistoryStat() {
+	fileName := t.getHistoryStatsFileName()
+	err := os.Remove(fileName)
+	if err != nil {
+		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
+	}
+}
+
 func (t *Topic) MarkAsRemoved() (string, error) {
 	t.Lock()
 	defer t.Unlock()
@@ -276,6 +284,7 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}
 	util.AtomicRename(t.getMagicCodeFileName(), path.Join(renamePath, "magic"+strconv.Itoa(t.partition)))
+	t.removeHistoryStat()
 	t.removeMagicCode()
 	return renamePath, err
 }
@@ -305,8 +314,25 @@ func (t *Topic) SetTrace(enable bool) {
 	}
 }
 
+func (t *Topic) getHistoryStatsFileName() string {
+	return path.Join(t.dataPath, t.fullName+HISTORY_STAT_FILE_NAME)
+}
+
 func (t *Topic) GetDetailStats() *DetailStatsInfo {
 	return t.detailStats
+}
+
+func (t *Topic) SaveHistoryStats() error {
+	if t.Exiting() {
+		return ErrExiting
+	}
+	t.Lock()
+	defer t.Unlock()
+	return t.detailStats.SaveHistory(t.getHistoryStatsFileName())
+}
+
+func (t *Topic) LoadHistoryStats() error {
+	return t.detailStats.LoadHistory(t.getHistoryStatsFileName())
 }
 
 func (t *Topic) GetCommitted() BackendQueueEnd {
@@ -792,6 +818,7 @@ func (t *Topic) exit(deleted bool) error {
 		t.channelLock.Unlock()
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
+		t.removeHistoryStat()
 		t.removeMagicCode()
 		return t.backend.Delete()
 	}
@@ -859,7 +886,6 @@ func (t *Topic) EnableForMaster() {
 
 func (t *Topic) Empty() error {
 	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
-	t.removeMagicCode()
 	return t.backend.Empty()
 }
 
