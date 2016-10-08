@@ -832,6 +832,8 @@ func main() {
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 	orderCheck = make(map[string]pubResp)
 	traceIDWaitingList = make(map[string]map[uint64]*nsq.Message, 5)
+
+	topicMutex = make(map[string]*sync.Mutex)
 	if *topicListFile != "" {
 		f, err := os.Open(*topicListFile)
 		if err != nil {
@@ -1030,7 +1032,11 @@ func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
 	pidStr := getPartitionID(nsq.NewMessageID(mid))
 	topicFullName := c.topic + pidStr
 	mutex.Lock()
-	waitingList := traceIDWaitingList[topicFullName]
+	waitingList, ok := traceIDWaitingList[topicFullName]
+	if !ok {
+		waitingList = make(map[uint64]*nsq.Message)
+		traceIDWaitingList[topicFullName] = waitingList
+	}
 	mutex.Unlock()
 	traceID := binary.BigEndian.Uint64(message.ID[8:16])
 	c.locker.Lock()
