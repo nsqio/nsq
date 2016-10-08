@@ -308,7 +308,6 @@ func startCheckData2() {
 	pubIDList := make(map[string]*int64)
 	// received max continuous trace id
 	subReceivedMaxTraceIDList := make(map[string]*int64)
-	subWaitingList := make(map[string]map[int64]int64)
 	for _, t := range topics {
 		init := time.Now().UnixNano()
 		pubIDList[t] = &init
@@ -361,11 +360,15 @@ func startCheckData2() {
 			go func(id int, topic string, chSuffix string) {
 				mutex.Lock()
 				subCounter := subReceivedMaxTraceIDList[topic]
-				subTopicWaiting := subWaitingList[topic]
 				subLocker := topicMutex[topic]
+				subTraceWaiting, ok := traceIDWaitingList[topic]
+				if !ok {
+					subTraceWaiting = make(map[uint64]*nsq.Message)
+					traceIDWaitingList[topic] = subTraceWaiting
+				}
 				mutex.Unlock()
 				subWorker2(quitChan, *runfor, *lookupAddress, topic, topic+"_ch"+chSuffix,
-					subCounter, subTopicWaiting, subLocker, rdyChan, goChan, id)
+					subCounter, subTraceWaiting, subLocker, rdyChan, goChan, id)
 				wg.Done()
 			}(j, topics[j%len(topics)], strconv.Itoa(chIndex))
 			<-rdyChan
@@ -409,13 +412,13 @@ func startCheckData2() {
 		atomic.LoadInt64(&totalSubMsgCount))
 
 	for topicName, counter := range pubIDList {
-		log.Printf("topic %v pub count to : %v \n", topicName, counter)
+		log.Printf("topic %v pub count to : %v \n", topicName, *counter)
 	}
 
 	for topicName, counter := range subReceivedMaxTraceIDList {
-		log.Printf("topic: %v sub max trace id: %v\n", topicName, counter)
+		log.Printf("topic: %v sub max trace id: %v\n", topicName, *counter)
 	}
-	for topicName, waitingList := range subWaitingList {
+	for topicName, waitingList := range traceIDWaitingList {
 		log.Printf("topic: %v sub waiting list: %v\n", topicName, len(waitingList))
 		for traceID, _ := range waitingList {
 			log.Printf("%v, ", traceID)
@@ -1021,23 +1024,13 @@ func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic str
 }
 
 type consumeTraceIDHandler struct {
-	topic        string
-	locker       *sync.Mutex
-	subIDCounter *int64
+	topic           string
+	locker          *sync.Mutex
+	subIDCounter    *int64
+	subTraceWaiting map[uint64]*nsq.Message
 }
 
 func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
-	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
-	// get partition id from msgid to avoid multi partitions to dump check.
-	pidStr := getPartitionID(nsq.NewMessageID(mid))
-	topicFullName := c.topic + pidStr
-	mutex.Lock()
-	waitingList, ok := traceIDWaitingList[topicFullName]
-	if !ok {
-		waitingList = make(map[uint64]*nsq.Message)
-		traceIDWaitingList[topicFullName] = waitingList
-	}
-	mutex.Unlock()
 	traceID := binary.BigEndian.Uint64(message.ID[8:16])
 	c.locker.Lock()
 	defer c.locker.Unlock()
@@ -1056,20 +1049,20 @@ func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
 			return nil
 		}
 	}
-	waitingList[traceID] = message
+	c.subTraceWaiting[traceID] = message
 	newMaxTraceID := atomic.LoadInt64(c.subIDCounter)
 
 	for {
-		if _, ok := waitingList[uint64(newMaxTraceID+1)]; ok {
+		if _, ok := c.subTraceWaiting[uint64(newMaxTraceID+1)]; ok {
 			newMaxTraceID++
-			delete(waitingList, uint64(newMaxTraceID))
+			delete(c.subTraceWaiting, uint64(newMaxTraceID))
 		} else {
 			break
 		}
 	}
-	for traceID, _ := range waitingList {
+	for traceID, _ := range c.subTraceWaiting {
 		if traceID <= uint64(newMaxTraceID) {
-			delete(waitingList, traceID)
+			delete(c.subTraceWaiting, traceID)
 		}
 	}
 	atomic.AddInt64(&totalSubMsgCount, 1)
@@ -1078,13 +1071,13 @@ func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
 }
 
 func subWorker2(quitChan chan int, td time.Duration, lookupAddr string, topic string, channel string,
-	subIDCounter *int64, subWaitingList map[int64]int64, locker *sync.Mutex, rdyChan chan int, goChan chan int, id int) {
+	subIDCounter *int64, subTraceWaiting map[uint64]*nsq.Message, locker *sync.Mutex, rdyChan chan int, goChan chan int, id int) {
 	consumer, err := nsq.NewConsumer(topic, channel, config)
 	if err != nil {
 		panic(err.Error())
 	}
 	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-	consumer.AddHandler(&consumeTraceIDHandler{topic, locker, subIDCounter})
+	consumer.AddHandler(&consumeTraceIDHandler{topic, locker, subIDCounter, subTraceWaiting})
 	rdyChan <- 1
 	<-goChan
 	done := make(chan struct{})
