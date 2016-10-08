@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"log"
@@ -32,7 +34,7 @@ var (
 	batchSize     = flagSet.Int("batch-size", 10, "batch size of messages")
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
-	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset)")
+	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset/checkdata2)")
 	channelNum    = flagSet.Int("ch_num", 1, "the channel number under each topic")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
@@ -59,6 +61,8 @@ var dumpCheck map[string]map[uint64]*nsq.Message
 var orderCheck map[string]pubResp
 var pubRespCheck map[string]map[uint64]pubResp
 var mutex sync.Mutex
+var topicMutex map[string]*sync.Mutex
+var traceIDWaitingList map[string]map[uint64]*nsq.Message
 
 type ByMsgOffset []*nsq.Message
 
@@ -284,6 +288,140 @@ func startSimpleTest(msg []byte, batch [][]byte) {
 		log.Printf("return: %v, %v\n", producers, partitionProducers)
 	}
 	// nsqd basic tcp operation
+}
+
+func startCheckData2() {
+	var wg sync.WaitGroup
+	config.EnableTrace = *trace
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	if err != nil {
+		log.Printf("init error : %v", err)
+		return
+	}
+	pubMgr.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	err = pubMgr.ConnectToNSQLookupd(*lookupAddress)
+	if err != nil {
+		log.Printf("lookup connect error : %v", err)
+		return
+	}
+
+	pubIDList := make(map[string]*int64)
+	// received max continuous trace id
+	subReceivedMaxTraceIDList := make(map[string]*int64)
+	subWaitingList := make(map[string]map[int64]int64)
+	for _, t := range topics {
+		init := time.Now().UnixNano()
+		pubIDList[t] = &init
+		subInit := init
+		subReceivedMaxTraceIDList[t] = &subInit
+		topicMutex[t] = &sync.Mutex{}
+	}
+
+	for _, t := range topics {
+		v := pubIDList[t]
+		atomic.AddInt64(v, 1)
+		data := make([]byte, 8)
+		binary.BigEndian.PutUint64(data, uint64(*v))
+		if *trace {
+			var id nsq.NewMessageID
+			var offset uint64
+			var rawSize uint32
+			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, uint64(*v), data)
+			log.Printf("topic %v pub trace : %v, %v, %v", t, id, offset, rawSize)
+		} else {
+			err = pubMgr.Publish(t, data)
+		}
+		if err != nil {
+			log.Printf("topic pub error : %v", err)
+			return
+		}
+		atomic.AddInt64(&totalMsgCount, 1)
+		atomic.AddInt64(&currentMsgCount, 1)
+	}
+
+	goChan := make(chan int)
+	rdyChan := make(chan int)
+	for j := 0; j < *concurrency; j++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mutex.Lock()
+			curTopic := topics[j%len(topics)]
+			counter := pubIDList[curTopic]
+			mutex.Unlock()
+			pubWorker2(*runfor, pubMgr, curTopic, counter, rdyChan, goChan)
+		}()
+		<-rdyChan
+	}
+
+	quitChan := make(chan int)
+	for j := 0; j < *concurrency; j++ {
+		for chIndex := 0; chIndex < *channelNum; chIndex++ {
+			wg.Add(1)
+			go func(id int, topic string, chSuffix string) {
+				mutex.Lock()
+				subCounter := subReceivedMaxTraceIDList[topic]
+				subTopicWaiting := subWaitingList[topic]
+				subLocker := topicMutex[topic]
+				mutex.Unlock()
+				subWorker2(quitChan, *runfor, *lookupAddress, topic, topic+"_ch"+chSuffix,
+					subCounter, subTopicWaiting, subLocker, rdyChan, goChan, id)
+				wg.Done()
+			}(j, topics[j%len(topics)], strconv.Itoa(chIndex))
+			<-rdyChan
+		}
+	}
+
+	close(goChan)
+
+	go func() {
+		prev := int64(0)
+		prevSub := int64(0)
+		equalTimes := 0
+		for {
+			time.Sleep(time.Second * 5)
+			currentTmc := atomic.LoadInt64(&currentMsgCount)
+			totalSub := atomic.LoadInt64(&totalSubMsgCount)
+			log.Printf("pub total %v - sub total %v\n",
+				currentTmc,
+				totalSub)
+			if prev == currentTmc && prevSub == totalSub {
+				equalTimes++
+				if totalSub >= currentTmc && equalTimes > 3 {
+					close(quitChan)
+					return
+				} else if equalTimes > 10 {
+					close(quitChan)
+					return
+				}
+			} else {
+				equalTimes = 0
+			}
+			prev = currentTmc
+			prevSub = totalSub
+		}
+	}()
+
+	wg.Wait()
+
+	log.Printf("pub total %v - sub total %v \n",
+		atomic.LoadInt64(&totalMsgCount),
+		atomic.LoadInt64(&totalSubMsgCount))
+
+	for topicName, counter := range pubIDList {
+		log.Printf("topic %v pub count to : %v \n", topicName, counter)
+	}
+
+	for topicName, counter := range subReceivedMaxTraceIDList {
+		log.Printf("topic: %v sub max trace id: %v\n", topicName, counter)
+	}
+	for topicName, waitingList := range subWaitingList {
+		log.Printf("topic: %v sub waiting list: %v\n", topicName, len(waitingList))
+		for traceID, _ := range waitingList {
+			log.Printf("%v, ", traceID)
+		}
+		log.Printf("\n")
+	}
 }
 
 // check the pub data and sub data is the same at any time.
@@ -693,6 +831,7 @@ func main() {
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 	orderCheck = make(map[string]pubResp)
+	traceIDWaitingList = make(map[string]map[uint64]*nsq.Message, 5)
 	if *topicListFile != "" {
 		f, err := os.Open(*topicListFile)
 		if err != nil {
@@ -728,6 +867,8 @@ func main() {
 		startBenchLookupRegUnreg()
 	} else if *benchCase == "consumeoffset" {
 		startCheckSetConsumerOffset()
+	} else if *benchCase == "checkdata2" {
+		startCheckData2()
 	}
 }
 
@@ -875,4 +1016,124 @@ func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic str
 	}()
 	consumer.ConnectToNSQLookupd(lookupAddr)
 	<-done
+}
+
+type consumeTraceIDHandler struct {
+	topic        string
+	locker       *sync.Mutex
+	subIDCounter *int64
+}
+
+func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
+	mid := uint64(nsq.GetNewMessageID(message.ID[:8]))
+	// get partition id from msgid to avoid multi partitions to dump check.
+	pidStr := getPartitionID(nsq.NewMessageID(mid))
+	topicFullName := c.topic + pidStr
+	mutex.Lock()
+	waitingList := traceIDWaitingList[topicFullName]
+	mutex.Unlock()
+	traceID := binary.BigEndian.Uint64(message.ID[8:16])
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	if traceID <= 0 {
+		if len(message.Body) != 8 {
+			return nil
+		}
+		traceID = binary.BigEndian.Uint64(message.Body[:8])
+		if traceID <= 0 {
+			return nil
+		}
+	} else {
+		if !bytes.Equal(message.Body, message.ID[8:16]) {
+			log.Printf("the trace id should be equal to body: %v, %v\n", message)
+			// ignore this message
+			return nil
+		}
+	}
+	waitingList[traceID] = message
+	newMaxTraceID := atomic.LoadInt64(c.subIDCounter)
+
+	for {
+		if _, ok := waitingList[uint64(newMaxTraceID+1)]; ok {
+			newMaxTraceID++
+			delete(waitingList, uint64(newMaxTraceID))
+		} else {
+			break
+		}
+	}
+	for traceID, _ := range waitingList {
+		if traceID <= uint64(newMaxTraceID) {
+			delete(waitingList, traceID)
+		}
+	}
+	atomic.AddInt64(&totalSubMsgCount, 1)
+	atomic.StoreInt64(c.subIDCounter, newMaxTraceID)
+	return nil
+}
+
+func subWorker2(quitChan chan int, td time.Duration, lookupAddr string, topic string, channel string,
+	subIDCounter *int64, subWaitingList map[int64]int64, locker *sync.Mutex, rdyChan chan int, goChan chan int, id int) {
+	consumer, err := nsq.NewConsumer(topic, channel, config)
+	if err != nil {
+		panic(err.Error())
+	}
+	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	consumer.AddHandler(&consumeTraceIDHandler{topic, locker, subIDCounter})
+	rdyChan <- 1
+	<-goChan
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(td)
+		<-quitChan
+		consumer.Stop()
+		<-consumer.StopChan
+		close(done)
+	}()
+	consumer.ConnectToNSQLookupd(lookupAddr)
+	<-done
+}
+
+func pubWorker2(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string, pubIDCounter *int64, rdyChan chan int, goChan chan int) {
+	rdyChan <- 1
+	<-goChan
+	var msgCount int64
+	endTime := time.Now().Add(td)
+	var traceResp pubResp
+	var err error
+	for {
+		if time.Now().After(endTime) {
+			break
+		}
+		if (*sleepfor).Nanoseconds() > int64(10000) {
+			time.Sleep(*sleepfor)
+		}
+
+		traceID := atomic.AddInt64(pubIDCounter, 1)
+		data := make([]byte, 8)
+		binary.BigEndian.PutUint64(data, uint64(traceID))
+		if *trace {
+			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, uint64(traceID), data)
+			if err != nil {
+				log.Printf("pub id : %v error :%v\n", traceID, err)
+				atomic.AddInt64(&totalErrCount, 1)
+				time.Sleep(time.Second)
+				continue
+			}
+		} else {
+			var err error
+			err = pubMgr.Publish(topicName, data)
+			if err != nil {
+				log.Printf("pub id : %v error :%v\n", traceID, err)
+				atomic.AddInt64(&totalErrCount, 1)
+				time.Sleep(time.Second)
+				continue
+			}
+		}
+		msgCount += 1
+		atomic.AddInt64(&currentMsgCount, 1)
+		if time.Now().After(endTime) {
+			break
+		}
+	}
+	atomic.AddInt64(&totalMsgCount, msgCount)
 }

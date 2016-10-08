@@ -564,11 +564,12 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					leaderLF, nodeLF := leastLeaderStats.GetNodeLoadFactor()
 					needMove := true
 					moveLeader = true
-					if nodeLF > avgNodeLoad {
+					followerNum := len(leastLeaderStats.TopicTotalDataSize) - leastLeaderNum
+					if nodeLF > avgNodeLoad || leaderLF > midLeaderLoad {
 						// maybe too much topic followers on this node
 						if leastLeaderStats.NodeID == topicStatsMinMax[1].NodeID {
 							moveLeader = false
-						} else if len(leastLeaderStats.TopicTotalDataSize)-leastLeaderNum > int(float64(avgTopicNum)*2) {
+						} else if followerNum > int(float64(avgTopicNum)*2) {
 							// too much followers
 							coordLog.Infof("move follower topic since less leader and much follower on node: %v", leastLeaderStats.NodeID)
 							moveLeader = false
@@ -580,6 +581,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					} else if leaderLF < midLeaderLoad {
 						topicStatsMinMax[0] = leastLeaderStats
 						minLeaderLoad = leaderLF
+						coordLog.Infof("so less topic leader (%v) on idle node: %v, try move some topic leader to this node", leastLeaderNum, leastLeaderStats.NodeID)
 					} else {
 						needMove = false
 					}
