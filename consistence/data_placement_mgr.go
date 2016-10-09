@@ -729,7 +729,7 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 	if moveToMinLF == moveMinLFOnly {
 		return checkMoveOK
 	}
-	if moveToMinLF > moveAny || (!moveLeader && len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
+	if moveToMinLF > moveAny || (len(topicInfo.ISR)-1 <= topicInfo.Replica/2) {
 		if moveLeader {
 			// check if any of current isr nodes is already idle for move
 			for _, nid := range topicInfo.ISR {

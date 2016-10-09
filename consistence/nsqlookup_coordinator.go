@@ -554,6 +554,8 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 				coordLog.Infof("begin migrate the topic :%v", t.GetTopicDesp())
 				self.handleTopicMigrate(&topicInfo, currentNodes, currentNodesEpoch)
 				delete(partitions, t.Partition)
+			} else {
+				coordLog.Infof("waiting migrate the topic :%v since time: %v", t.GetTopicDesp(), partitions[t.Partition])
 			}
 		} else {
 			delete(partitions, t.Partition)
