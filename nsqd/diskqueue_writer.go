@@ -492,7 +492,7 @@ func (d *diskQueueWriter) deleteAllFiles(deleted bool) error {
 		for i := int64(0); i <= d.diskWriteEnd.EndOffset.FileNum; i++ {
 			fName := d.fileName(i) + ".offsetmeta.dat"
 			innerErr := os.Remove(fName)
-			nsqLog.Logf("DISKQUEUE(%s): removed offset meta file", fName)
+			nsqLog.Logf("DISKQUEUE(%s): removed offset meta file: %v", d.name, fName)
 			if innerErr != nil && !os.IsNotExist(innerErr) {
 				nsqLog.LogErrorf("diskqueue(%s) failed to remove offset meta file %v - %s", d.name, fName, innerErr)
 			}
@@ -510,7 +510,7 @@ func (d *diskQueueWriter) cleanOldData() error {
 	for i := int64(0); i <= d.diskWriteEnd.EndOffset.FileNum; i++ {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
-		nsqLog.Logf("DISKQUEUE(%s): removed data file", fn)
+		nsqLog.Logf("DISKQUEUE(%s): removed data file: %v", d.name, fn)
 		if innerErr != nil && !os.IsNotExist(innerErr) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove data file - %s", d.name, innerErr)
 		}

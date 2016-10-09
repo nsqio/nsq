@@ -238,6 +238,7 @@ func (d *diskQueueReader) exit(deleted bool) error {
 		if err != nil && !os.IsNotExist(err) {
 			nsqLog.LogErrorf("diskqueue(%s) failed to remove new metadata file - %s", d.readerMetaName, err)
 		}
+		nsqLog.Logf("diskqueue(%s) remove new metadata file - %v", d.readerMetaName, d.metaDataFileName(true))
 	}
 	return nil
 }
@@ -1099,7 +1100,7 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 		return false, nil
 	}
 	d.needSync = true
-	if d.readQueueInfo.EndOffset.GreatThan(&endPos.EndOffset) {
+	if d.readQueueInfo.EndOffset.GreatThan(&endPos.EndOffset) || d.readQueueInfo.Offset() > endPos.Offset() {
 		nsqLog.Logf("new end old than the read end: %v, %v", d.readQueueInfo.EndOffset, endPos)
 		d.readQueueInfo = *endPos
 		forceReload = true
