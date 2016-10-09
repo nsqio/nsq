@@ -73,19 +73,21 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 
 func (self *NsqLookupCoordinator) doNotifyToNsqdNodes(nodes []string, notifyRpcFunc func(string) *CoordErr) *CoordErr {
 	currentNodes := self.getCurrentNodes()
+	var coordErr *CoordErr
 	for _, n := range nodes {
 		node, ok := currentNodes[n]
 		if !ok {
 			coordLog.Infof("notify to nsqd node %v failed since node not found", node)
-			return ErrNodeNotFound
+			coordErr = ErrNodeNotFound
+			continue
 		}
 		err := notifyRpcFunc(node.GetID())
 		if err != nil {
 			coordLog.Infof("notify to nsqd node %v failed: %v", node, err)
-			return err
+			coordErr = err
 		}
 	}
-	return nil
+	return coordErr
 }
 
 func (self *NsqLookupCoordinator) doNotifyToSingleNsqdNode(nodeID string, notifyRpcFunc func(string) *CoordErr) *CoordErr {
