@@ -928,6 +928,14 @@ func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*Rp
 	ret.StartInfo = *startInfo
 	if firstLog != nil {
 		ret.FirstLogData = *firstLog
+	} else {
+		// we need to get the disk queue end info
+		localTopic, err := self.nsqdCoord.localNsqd.GetExistingTopic(req.TopicName, req.TopicPartition)
+		if err != nil {
+			return nil, err
+		}
+		ret.FirstLogData.MsgOffset = localTopic.TotalDataSize()
+		ret.FirstLogData.MsgCnt = int64(localTopic.TotalMessageCnt())
 	}
 	return &ret, nil
 }

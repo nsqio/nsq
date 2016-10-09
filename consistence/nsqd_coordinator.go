@@ -413,8 +413,7 @@ func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionM
 		if err != nil {
 			coordLog.Warningf("topic %v failed to init tmp log manager: %v", topicInfo.GetTopicDesp(), err)
 		} else {
-			newBasePath := GetTopicPartitionBasePath(removedPath, topicInfo.Name, topicInfo.Partition)
-			tmpLogMgr.MoveTo(newBasePath)
+			tmpLogMgr.MoveTo(removedPath)
 			tmpLogMgr.Delete()
 		}
 	}
@@ -1181,6 +1180,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			localTopic.Lock()
+			// Is it possible that the first log start is 0 ?? If it is 0 , the leader queue must start with 0,
+			// in that case, we can sync in the compatible way
 			localErr = localTopic.ResetBackendWithQueueStartNoLock(firstLogData.MsgOffset, firstLogData.MsgCnt-1)
 			localTopic.Unlock()
 			if localErr != nil {

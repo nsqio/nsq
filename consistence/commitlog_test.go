@@ -1230,3 +1230,74 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, currentStart, convertedIndex)
 	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
 }
+
+func TestCommitLogMoveToAndDelete(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	LOGROTATE_NUM = 10
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+	}()
+	logName := "test_log_moveto" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	coordLog.SetLevel(4)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+
+	num := 100
+	msgRawSize := 10
+	for i := 0; i < num; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
+		logData.Epoch = 1
+		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i + 1)
+		logData.MsgNum = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+	}
+	currentStart, lastOffset, _, err := logMgr.GetLastCommitLogOffsetV2()
+	test.Nil(t, err)
+	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
+	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+	logMgr.Close()
+	logMgr, _ = InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	_, err = os.Stat(logMgr.path + ".current")
+	test.Nil(t, err)
+	_, err = os.Stat(logMgr.path + ".start")
+	test.Nil(t, err)
+
+	newMoveToPath := GetTopicPartitionBasePath(tmpDir, logName+"-removed", 0)
+	newPath := GetTopicPartitionLogPath(newMoveToPath, logMgr.topic, logMgr.partition)
+
+	os.MkdirAll(newMoveToPath, 755)
+	err = logMgr.MoveTo(newMoveToPath)
+	test.Nil(t, err)
+	defer os.Remove(newMoveToPath)
+
+	t.Log(newMoveToPath)
+	_, err = os.Stat(logMgr.path)
+	test.NotNil(t, err)
+	_, err = os.Stat(logMgr.path + ".current")
+	test.NotNil(t, err)
+	_, err = os.Stat(logMgr.path + ".start")
+	test.NotNil(t, err)
+	_, err = os.Stat(newPath)
+	test.Nil(t, err)
+	_, err = os.Stat(newPath + ".current")
+	test.Nil(t, err)
+	_, err = os.Stat(newPath + ".start")
+	test.Nil(t, err)
+	logMgr.Delete()
+	_, err = os.Stat(newPath)
+	test.Nil(t, err)
+	_, err = os.Stat(newPath + ".current")
+	test.Nil(t, err)
+	_, err = os.Stat(newPath + ".start")
+	test.Nil(t, err)
+
+}

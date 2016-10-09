@@ -376,7 +376,10 @@ func (self *TopicCommitLogMgr) MoveTo(newBase string) error {
 	for i := int64(0); i < self.currentStart; i++ {
 		util.AtomicRename(getSegmentFilename(self.path, int64(i)), getSegmentFilename(newPath, int64(i)))
 	}
-	util.AtomicRename(self.path+".current", newPath+".current")
+	err = util.AtomicRename(self.path+".current", newPath+".current")
+	if err != nil {
+		coordLog.Infof("rename the topic %v commit log current failed:%v", self.topic, err)
+	}
 	util.AtomicRename(self.path+".start", newPath+".start")
 	return nil
 }
@@ -534,6 +537,8 @@ func (self *TopicCommitLogMgr) Close() {
 	self.flushCommitLogsNoLock()
 	self.appender.Sync()
 	self.appender.Close()
+	self.saveCurrentStart()
+	self.saveLogSegStartInfo()
 	self.Unlock()
 }
 
