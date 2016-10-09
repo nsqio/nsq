@@ -77,7 +77,7 @@ func (self *NsqLookupCoordinator) doNotifyToNsqdNodes(nodes []string, notifyRpcF
 	for _, n := range nodes {
 		node, ok := currentNodes[n]
 		if !ok {
-			coordLog.Infof("notify to nsqd node %v failed since node not found", node)
+			coordLog.Infof("notify to nsqd node %v failed since node not found", n)
 			coordErr = ErrNodeNotFound
 			continue
 		}

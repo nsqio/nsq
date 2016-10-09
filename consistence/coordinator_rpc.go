@@ -785,7 +785,11 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, req *RpcCommitLo
 	// return ErrCommitLogEOF or OutOfBound means the leader has less log data than the others.
 	if err2 != nil {
 		if err2 == ErrCommitLogEOF {
-			ret.ErrInfo = *ErrTopicCommitLogEOF
+			if err == ErrCommitLogEOF {
+				ret.ErrInfo = *ErrTopicCommitLogEOF
+			} else if err == ErrCommitLogLessThanSegmentStart {
+				ret.ErrInfo = *ErrTopicCommitLogLessThanSegmentStart
+			}
 		} else {
 			ret.ErrInfo = *NewCoordErr(err.Error(), CoordCommonErr)
 			return
@@ -810,7 +814,7 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, req *RpcCommitLo
 			}
 		}
 	}
-	if err2 == ErrCommitLogEOF {
+	if err2 == ErrCommitLogEOF && err == ErrCommitLogEOF {
 		ret.ErrInfo = *ErrTopicCommitLogEOF
 	} else if err == ErrCommitLogOutofBound {
 		ret.ErrInfo = *ErrTopicCommitLogOutofBound
@@ -868,7 +872,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 	if req.UseCountIndex {
 		newFileNum, newOffset, localErr := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
 		if localErr != nil {
-			coordLog.Warningf("failed to convert to offset index: %v, err:%v", req.LogCountNumIndex, localErr)
+			coordLog.Warningf("topic %v failed to convert to offset index: %v, err:%v", req.TopicName, req.LogCountNumIndex, localErr)
 			if localErr != ErrCommitLogEOF {
 				return nil, localErr
 			}

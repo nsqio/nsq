@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/absolute8511/nsq/internal/util"
 	"github.com/absolute8511/nsq/nsqd"
 	"io"
 	"net"
@@ -410,12 +409,13 @@ func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionM
 	}
 	if removedPath != "" {
 		basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
-		logPath := GetTopicPartitionLogPath(basepath, topicInfo.Name, topicInfo.Partition)
-		newLogPath := GetTopicPartitionLogPath(removedPath, topicInfo.Name, topicInfo.Partition)
-		coordLog.Infof("rename the topic %v commit log to :%v", topicInfo.GetTopicDesp(), newLogPath)
-		err := util.AtomicRename(logPath, newLogPath)
+		tmpLogMgr, err := InitTopicCommitLogMgr(topicInfo.Name, topicInfo.Partition, basepath, 1)
 		if err != nil {
-			coordLog.Infof("rename the topic %v commit log failed :%v", topicInfo.GetTopicDesp(), err)
+			coordLog.Warningf("topic %v failed to init tmp log manager: %v", topicInfo.GetTopicDesp(), err)
+		} else {
+			newBasePath := GetTopicPartitionBasePath(removedPath, topicInfo.Name, topicInfo.Partition)
+			tmpLogMgr.MoveTo(newBasePath)
+			tmpLogMgr.Delete()
 		}
 	}
 	return nil

@@ -361,6 +361,26 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	return mgr, nil
 }
 
+func (self *TopicCommitLogMgr) MoveTo(newBase string) error {
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
+	self.appender.Sync()
+	self.appender.Close()
+	newPath := GetTopicPartitionLogPath(newBase, self.topic, self.partition)
+	coordLog.Infof("rename the topic %v commit log to :%v", self.topic, newPath)
+	err := util.AtomicRename(self.path, newPath)
+	if err != nil {
+		coordLog.Infof("rename the topic %v commit log failed :%v", self.topic, err)
+	}
+	for i := int64(0); i < self.currentStart; i++ {
+		util.AtomicRename(getSegmentFilename(self.path, int64(i)), getSegmentFilename(newPath, int64(i)))
+	}
+	util.AtomicRename(self.path+".current", newPath+".current")
+	util.AtomicRename(self.path+".start", newPath+".start")
+	return nil
+}
+
 func (self *TopicCommitLogMgr) loadLogSegStartInfo() error {
 	file, err := os.OpenFile(self.path+".start", os.O_RDONLY, 0644)
 	if err != nil {
@@ -498,7 +518,7 @@ func (self *TopicCommitLogMgr) Delete() {
 	self.appender.Sync()
 	self.appender.Close()
 	err := os.Remove(self.path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
 	}
 	for i := int64(0); i < self.currentStart; i++ {
