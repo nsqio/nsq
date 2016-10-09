@@ -674,6 +674,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 			}
 			// do not move the topic with very busy load
 			if t.loadFactor > 10 {
+				coordLog.Infof("check topic for moving , all busy : %v, %v", t, sortedTopics)
 				break
 			}
 			topicName, partitionID, err = splitTopicPartitionID(t.topic)
