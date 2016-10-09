@@ -632,7 +632,8 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 		return
 	}
 
-	coordLog.Infof("balance topic: %v, %v(%v) from node: %v ", idleTopic, busyTopic, busyLevel, statsMinMax[1].NodeID)
+	coordLog.Infof("balance topic: %v, %v(%v) from node: %v, move : %v ", idleTopic,
+		busyTopic, busyLevel, statsMinMax[1].NodeID, moveToMinLF)
 	checkMoveOK := false
 	topicName := ""
 	partitionID := 0
@@ -814,6 +815,7 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 				case <-monitorChan:
 					return errors.New("quiting")
 				case <-time.After(time.Second * 5):
+					coordLog.Infof("node: %v is added for topic: %v-%v catchup, still waiting catchup", nid, topicName, partitionID)
 				}
 				continue
 			} else {
