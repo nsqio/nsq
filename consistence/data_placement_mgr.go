@@ -662,6 +662,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 	if !checkMoveOK {
 		// maybe we can move some other topic if both idle/busy is not movable
 		sortedTopics := statsMinMax[1].GetSortedTopicWriteLevel(moveLeader)
+		coordLog.Infof("check topic for moving , all sorted topic: %v", sortedTopics)
 		for index, t := range sortedTopics {
 			if t.topic == idleTopic || t.topic == busyTopic {
 				continue
@@ -703,6 +704,8 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 	}
 	checkMoveOK := false
 	if moveToMinLF > moveAny {
+		leaderNodeLF, _ := statsMinMax[0].GetNodeLoadFactor()
+		coordLog.Infof("check the min load node first: %v, %v", statsMinMax[0].NodeID, leaderNodeLF)
 		// check first for the specific min load node
 		if moveLeader {
 			if FindSlice(topicInfo.ISR, statsMinMax[0].NodeID) != -1 {
@@ -710,7 +713,6 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 			}
 		}
 		if !checkMoveOK {
-			leaderNodeLF, _ := statsMinMax[0].GetNodeLoadFactor()
 			if leaderNodeLF < sortedNodeTopicStats[len(sortedNodeTopicStats)/2].GetNodeLeaderLoadFactor() {
 				err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID,
 					statsMinMax[0].NodeID,
