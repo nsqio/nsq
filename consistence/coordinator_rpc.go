@@ -514,12 +514,10 @@ func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) 
 	if err != nil {
 		ret = *err
 		coordLog.Infof("delete topic %v failed : %v", rpcTopicReq.GetTopicDesp(), err)
-		return &ret
 	}
-	localErr := self.nsqdCoord.localNsqd.DeleteExistingTopic(rpcTopicReq.Name, rpcTopicReq.Partition)
+	localErr := self.nsqdCoord.localNsqd.ForceDeleteTopicData(rpcTopicReq.Name, rpcTopicReq.Partition)
 	if localErr != nil {
 		ret = CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
-		return &ret
 	}
 	return &ret
 }

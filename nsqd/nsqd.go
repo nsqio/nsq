@@ -538,6 +538,26 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	return nil
 }
 
+func (n *NSQD) ForceDeleteTopicData(name string, partition int) error {
+	topic, err := n.GetExistingTopic(name, partition)
+	if err != nil {
+		// not exist, create temp for check
+		n.Lock()
+		loopFunc := n.pubLoopFunc
+		n.Unlock()
+		deleteCallback := func(t *Topic) {
+			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
+		}
+		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
+		if topic == nil {
+			return errors.New("failed to init new topic")
+		}
+	}
+	topic.Delete()
+	n.deleteTopic(name, partition)
+	return nil
+}
+
 func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix bool) (string, error) {
 	localTopic, err := n.GetExistingTopic(name, partition)
 	if err != nil {

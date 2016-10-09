@@ -1685,6 +1685,15 @@ func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int, remov
 	if topicCoord != nil {
 		topicCoord.Delete(removeData)
 		return topicCoord, nil
+	} else if removeData {
+		// check if any data on local and try remove
+		basepath := GetTopicPartitionBasePath(self.dataRootPath, topic, partition)
+		tmpLogMgr, err := InitTopicCommitLogMgr(topic, partition, basepath, 1)
+		if err != nil {
+			coordLog.Warningf("topic %v failed to init tmp log manager: %v", topic, err)
+		} else {
+			tmpLogMgr.Delete()
+		}
 	}
 	return nil, ErrMissingTopicCoord
 }

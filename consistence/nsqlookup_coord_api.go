@@ -164,17 +164,6 @@ func (self *NsqLookupCoordinator) deleteTopicPartitionForce(topic string, pid in
 			coordLog.Infof("failed to call rpc : %v, %v", node.ID, rpcErr)
 		}
 	}
-	for _, node := range currentNodes {
-		c, rpcErr := self.acquireRpcClient(node.ID)
-		if rpcErr != nil {
-			coordLog.Infof("failed to get rpc client: %v, %v", node.ID, rpcErr)
-			continue
-		}
-		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, &topicInfo)
-		if rpcErr != nil {
-			coordLog.Infof("failed to call rpc : %v, %v", node.ID, rpcErr)
-		}
-	}
 	return nil
 }
 
@@ -210,6 +199,15 @@ func (self *NsqLookupCoordinator) deleteTopicPartition(topic string, pid int) er
 		if rpcErr != nil {
 			coordLog.Infof("failed to call rpc : %v, %v", id, rpcErr)
 		}
+	}
+	// try remove on other nodes, maybe some left data
+	allNodes := self.getCurrentNodes()
+	for _, n := range allNodes {
+		c, rpcErr := self.acquireRpcClient(n.GetID())
+		if rpcErr != nil {
+			continue
+		}
+		c.DeleteNsqdTopic(self.leaderNode.Epoch, topicInfo)
 	}
 
 	return nil
