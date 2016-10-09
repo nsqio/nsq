@@ -158,6 +158,6 @@ func NewOptions() *Options {
 		LogDir:   "",
 		Logger:   &levellogger.GLogger{},
 
-		RetentionDays: 1,
+		RetentionDays: int32(DEFAULT_RETENTION_DAYS),
 	}
 }

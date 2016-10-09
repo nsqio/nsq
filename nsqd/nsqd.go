@@ -39,7 +39,7 @@ var (
 	ErrTopicNotExist          = errors.New("topic does not exist")
 )
 
-var DEFAULT_RETENTION_DAYS = 1
+var DEFAULT_RETENTION_DAYS = 7
 
 type NSQD struct {
 	sync.RWMutex
