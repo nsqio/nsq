@@ -150,7 +150,7 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 
 	self.Lock()
 	self.topicLockMap[topicKey] = lock
-	coordLog.Infof("[AcquireTopicLeader] map: %v", self.topicLockMap)
+	coordLog.Debugf("[AcquireTopicLeader] map: %v", self.topicLockMap)
 	self.Unlock()
 
 	return nil
