@@ -657,7 +657,42 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 			voffset-d.readQueueInfo.Offset(), d.queueEndInfo)
 		if err != nil {
 			nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
-			return err
+			if os.IsNotExist(err) {
+				newPos = d.readQueueInfo.EndOffset
+				for {
+					if newPos.FileNum == d.queueEndInfo.EndOffset.FileNum {
+						// we reach to the end segment of queue
+						newPos.Pos = int64(voffset - (d.queueEndInfo.Offset() - BackendOffset(d.queueEndInfo.EndOffset.Pos)))
+						if newPos.Pos < 0 {
+							nsqLog.LogErrorf("skip error, current end: %v, skipto: %v, current: %v", d.queueEndInfo, voffset, newPos)
+						} else {
+							err = nil
+						}
+						break
+					}
+					// check offset meta
+					_, metaStartPos, metaEndPos, innerErr := getQueueFileOffsetMeta(d.fileName(newPos.FileNum))
+					if innerErr != nil {
+						if os.IsNotExist(innerErr) {
+							newPos.FileNum++
+							newPos.Pos = 0
+							continue
+						}
+						break
+					}
+					if voffset >= BackendOffset(metaEndPos) {
+						newPos.FileNum++
+						newPos.Pos = 0
+					} else {
+						newPos.Pos = int64(voffset - BackendOffset(metaStartPos))
+						err = nil
+						break
+					}
+				}
+			}
+			if err != nil {
+				return err
+			}
 		}
 	}
 

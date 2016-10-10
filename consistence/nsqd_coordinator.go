@@ -699,8 +699,8 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 				} else if FindSlice(topicMeta.ISR, self.myNode.GetID()) == -1 {
 					if len(topicMeta.ISR)+len(topicMeta.CatchupList) >= topicMeta.Replica {
 						coordLog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
-						self.localNsqd.CloseExistingTopic(topicMeta.Name, topicMeta.Partition)
-						delete(self.topicCoords[topic], pid)
+						self.removeTopicCoord(topicMeta.Name, topicMeta.Partition, true)
+						self.forceCleanTopicData(topicMeta.Name, topicMeta.Partition)
 					} else {
 						self.requestJoinCatchup(topicMeta.Name, topicMeta.Partition)
 					}
