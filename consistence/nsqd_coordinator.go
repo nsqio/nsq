@@ -7,6 +7,7 @@ import (
 	"github.com/absolute8511/nsq/nsqd"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -420,6 +421,21 @@ func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionM
 	return nil
 }
 
+func (self *NsqdCoordinator) forceCleanTopicData(topicName string, partition int) *CoordErr {
+	_, err := self.removeTopicCoord(topicName, partition, true)
+	if err != nil {
+		coordLog.Infof("delete topic %v-%v coordinator failed : %v", topicName, partition, err)
+	}
+	localErr := self.localNsqd.ForceDeleteTopicData(topicName, partition)
+	if localErr != nil {
+		if !os.IsNotExist(localErr) {
+			coordLog.Infof("delete topic %v-%v local data failed : %v", topicName, partition, localErr)
+			err = &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
+		}
+	}
+	return err
+}
+
 func (self *NsqdCoordinator) loadLocalTopicData() error {
 	if self.localNsqd == nil {
 		return nil
@@ -466,7 +482,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			if commonErr != nil {
 				coordLog.Infof("failed to get topic info:%v-%v, err:%v", topicName, partition, commonErr)
 				if commonErr == ErrKeyNotFound {
-					self.localNsqd.DeleteExistingTopic(topicName, partition)
+					self.forceCleanTopicData(topicName, partition)
 				}
 				continue
 			}
@@ -514,7 +530,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				coordLog.Infof("topic %v starting as not relevant", topicInfo.GetTopicDesp())
 				if len(topicInfo.ISR) >= topicInfo.Replica {
 					coordLog.Infof("no need load the local topic since the replica is enough: %v", topicInfo.GetTopicDesp())
-					self.localNsqd.DeleteExistingTopic(topicName, partition)
+					self.forceCleanTopicData(topicInfo.Name, topicInfo.Partition)
 				} else if len(topicInfo.ISR)+len(topicInfo.CatchupList) < topicInfo.Replica {
 					go self.requestJoinCatchup(topicName, partition)
 				} else {
@@ -1302,7 +1318,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 						localTopic.GetChannel(chName)
 						delete(oldChList, chName)
 					}
-					coordLog.Infof("topic %v local channel not on leader: %v", oldChList)
+					coordLog.Infof("topic %v local channel not on leader: %v", topicInfo.GetTopicDesp(), oldChList)
 					for chName, _ := range oldChList {
 						localTopic.DeleteExistingChannel(chName)
 					}
