@@ -270,6 +270,7 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 		}
 		topic := n.internalGetTopic(topicName, part, disabled)
 
+		// old meta should also be loaded
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
 			nsqLog.LogErrorf("failed to parse metadata - %s", err)
@@ -295,6 +296,8 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 				channel.Pause()
 			}
 		}
+		// we load channels from the new meta file
+		topic.LoadChannelMeta()
 	}
 }
 
@@ -319,19 +322,12 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 			topicData := make(map[string]interface{})
 			topicData["name"] = topic.GetTopicName()
 			topicData["partition"] = topic.GetTopicPart()
+			// we save the channels to topic, but for compatible we need save empty channels to json
 			channels := []interface{}{}
-			topic.channelLock.RLock()
-			for _, channel := range topic.channelMap {
-				channel.RLock()
-				if !channel.ephemeral {
-					channelData := make(map[string]interface{})
-					channelData["name"] = channel.name
-					channelData["paused"] = channel.IsPaused()
-					channels = append(channels, channelData)
-				}
-				channel.RUnlock()
+			err := topic.SaveChannelMeta()
+			if err != nil {
+				nsqLog.Warningf("save topic %v channel meta failed: %v", topic.GetFullName(), err)
 			}
-			topic.channelLock.RUnlock()
 			topicData["channels"] = channels
 			topics = append(topics, topicData)
 		}

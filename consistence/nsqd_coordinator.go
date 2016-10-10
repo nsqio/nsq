@@ -1185,7 +1185,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			localErr = localTopic.ResetBackendWithQueueStartNoLock(firstLogData.MsgOffset, firstLogData.MsgCnt-1)
 			localTopic.Unlock()
 			if localErr != nil {
-				coordLog.Warningf("reset topic queue with start %v failed: %v", firstLogData, localErr)
+				coordLog.Warningf("reset topic %v queue with start %v failed: %v", topicInfo.GetTopicDesp(), firstLogData, localErr)
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
@@ -1242,7 +1242,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			if len(newMsgs) == 1 {
 				queueEnd, localErr = localTopic.PutMessageOnReplica(newMsgs[0], nsqd.BackendOffset(l.MsgOffset))
 				if localErr != nil {
-					coordLog.Warningf("Failed to put message on slave: %v, offset: %v, need to be fixed", localErr, l.MsgOffset)
+					coordLog.Warningf("topic %v Failed to put message on slave: %v, offset: %v, need to be fixed", localTopic.GetFullName(), localErr, l.MsgOffset)
 					localTopic.SetDataFixState(true)
 					hasErr = true
 					break
@@ -1294,6 +1294,20 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				coordLog.Infof("try get stats from leader failed: %v", err)
 			} else {
 				localTopic.GetDetailStats().UpdateHistory(stat.TopicHourlyPubDataList[topicInfo.GetTopicDesp()])
+				chList, ok := stat.ChannelList[topicInfo.GetTopicDesp()]
+				coordLog.Infof("topic %v sync channel list from leader: %v", topicInfo.GetTopicDesp(), chList)
+				if ok {
+					oldChList := localTopic.GetChannelMapCopy()
+					for _, chName := range chList {
+						localTopic.GetChannel(chName)
+						delete(oldChList, chName)
+					}
+					coordLog.Infof("topic %v local channel not on leader: %v", oldChList)
+					for chName, _ := range oldChList {
+						localTopic.DeleteExistingChannel(chName)
+					}
+					localTopic.SaveChannelMeta()
+				}
 			}
 			go func() {
 				err := self.requestJoinTopicISR(&topicInfo)

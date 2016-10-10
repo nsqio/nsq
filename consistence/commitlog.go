@@ -505,6 +505,10 @@ func (self *TopicCommitLogMgr) GetLogStartInfo() (*LogStartInfo, *CommitLogData,
 	defer self.Unlock()
 	logStart := self.logStartInfo
 	l, err := self.getCommitLogFromOffsetV2(logStart.SegmentStartIndex, logStart.SegmentStartOffset)
+	if err != nil {
+		coordLog.Infof("get log start first log info err: %v, current: %v:%v, log start: %v", err,
+			self.currentStart, self.currentCount, logStart)
+	}
 	return &logStart, l, err
 }
 

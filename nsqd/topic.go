@@ -2,8 +2,11 @@ package nsqd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -12,6 +15,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/quantile"
 	"github.com/absolute8511/nsq/internal/util"
 )
@@ -55,6 +59,11 @@ type PubInfo struct {
 	Err      error
 }
 type PubInfoChan chan *PubInfo
+
+type ChannelMetaInfo struct {
+	Name   string `json:"name"`
+	Paused bool   `json:"paused"`
+}
 
 type Topic struct {
 	sync.Mutex
@@ -171,6 +180,7 @@ func NewTopic(topicName string, part int, opt *Options,
 			t.pubLoopFunc(t)
 		}()
 	}
+	t.LoadChannelMeta()
 	return t
 }
 
@@ -285,6 +295,7 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	}
 	util.AtomicRename(t.getMagicCodeFileName(), path.Join(renamePath, "magic"+strconv.Itoa(t.partition)))
 	t.removeHistoryStat()
+	t.RemoveChannelMeta()
 	t.removeMagicCode()
 	return renamePath, err
 }
@@ -311,6 +322,88 @@ func (t *Topic) SetTrace(enable bool) {
 		atomic.StoreInt32(&t.EnableTrace, 1)
 	} else {
 		atomic.StoreInt32(&t.EnableTrace, 0)
+	}
+}
+
+func (t *Topic) getChannelMetaFileName() string {
+	return path.Join(t.dataPath, "channel_meta"+strconv.Itoa(t.partition))
+}
+
+func (t *Topic) LoadChannelMeta() error {
+	fn := t.getChannelMetaFileName()
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			nsqLog.LogErrorf("failed to read channel metadata from %s - %s", fn, err)
+		}
+		return err
+	}
+	channels := make([]*ChannelMetaInfo, 0)
+	err = json.Unmarshal(data, &channels)
+	if err != nil {
+		nsqLog.LogErrorf("failed to parse metadata - %s", err)
+		return err
+	}
+
+	for _, ch := range channels {
+		channelName := ch.Name
+		if !protocol.IsValidChannelName(channelName) {
+			nsqLog.LogWarningf("skipping creation of invalid channel %s", channelName)
+			continue
+		}
+		channel := t.GetChannel(channelName)
+
+		if ch.Paused {
+			channel.Pause()
+		}
+	}
+	return nil
+}
+
+func (t *Topic) SaveChannelMeta() error {
+	fileName := t.getChannelMetaFileName()
+	channels := make([]*ChannelMetaInfo, 0)
+	t.channelLock.RLock()
+	for _, channel := range t.channelMap {
+		channel.RLock()
+		if !channel.ephemeral {
+			meta := &ChannelMetaInfo{
+				Name:   channel.name,
+				Paused: channel.IsPaused(),
+			}
+			channels = append(channels, meta)
+		}
+		channel.RUnlock()
+	}
+	t.channelLock.RUnlock()
+	d, err := json.Marshal(channels)
+	if err != nil {
+		return err
+	}
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
+	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(d)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	f.Sync()
+	f.Close()
+	err = util.AtomicRename(tmpFileName, fileName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Topic) RemoveChannelMeta() {
+	fileName := t.getChannelMetaFileName()
+	err := os.Remove(fileName)
+	if err != nil {
+		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
 	}
 }
 
@@ -819,6 +912,7 @@ func (t *Topic) exit(deleted bool) error {
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
 		t.removeHistoryStat()
+		t.RemoveChannelMeta()
 		t.removeMagicCode()
 		return t.backend.Delete()
 	}
@@ -826,6 +920,7 @@ func (t *Topic) exit(deleted bool) error {
 	// write anything leftover to disk
 	t.flush(true)
 	nsqLog.Logf("[TRACE_DATA] exiting topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
+	t.SaveChannelMeta()
 	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {

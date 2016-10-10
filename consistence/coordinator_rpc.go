@@ -561,9 +561,12 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 		if ts.IsLeader {
 			stat.TopicLeaderDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
 			stat.ChannelNum[ts.TopicFullName] = len(ts.Channels)
+			chList := stat.ChannelList[ts.TopicFullName]
 			for _, chStat := range ts.Channels {
 				stat.ChannelDepthData[ts.TopicFullName] += chStat.DepthSize/1024/1024 + 1
+				chList = append(chList, chStat.ChannelName)
 			}
+			stat.ChannelList[ts.TopicFullName] = chList
 		}
 	}
 	// the status of specific topic
@@ -922,6 +925,7 @@ func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*Rp
 			return nil, localErr
 		}
 	}
+	coordLog.Infof("topic %v get log start info : %v", tcData.topicInfo.GetTopicDesp(), startInfo)
 
 	ret.StartInfo = *startInfo
 	if firstLog != nil {

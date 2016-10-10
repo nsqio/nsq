@@ -105,6 +105,7 @@ type NodeTopicStats struct {
 	// the pub stat for past 24hr
 	TopicHourlyPubDataList map[string][24]int64
 	ChannelNum             map[string]int
+	ChannelList            map[string][]string
 }
 
 func NewNodeTopicStats(nid string, cap int, cpus int) *NodeTopicStats {
@@ -115,6 +116,7 @@ func NewNodeTopicStats(nid string, cap int, cpus int) *NodeTopicStats {
 		TopicTotalDataSize:     make(map[string]int64, cap),
 		TopicHourlyPubDataList: make(map[string][24]int64, cap),
 		ChannelNum:             make(map[string]int, cap),
+		ChannelList:            make(map[string][]string),
 		NodeCPUs:               cpus,
 	}
 }

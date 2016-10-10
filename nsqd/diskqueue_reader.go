@@ -684,17 +684,24 @@ func (d *diskQueueReader) skipToNextFile() error {
 		d.readFile = nil
 	}
 	d.readBuffer.Reset()
-	cnt, _, end, err := getQueueFileOffsetMeta(d.fileName(d.confirmedQueueInfo.EndOffset.FileNum))
-	if err != nil {
-		nsqLog.LogErrorf("diskqueue(%s) failed to skip to next %v : %v",
-			d.readerMetaName, d.confirmedQueueInfo, err)
-		return err
+	for {
+		cnt, _, end, err := getQueueFileOffsetMeta(d.fileName(d.confirmedQueueInfo.EndOffset.FileNum))
+		if err != nil {
+			nsqLog.LogErrorf("diskqueue(%s) failed to skip to next %v : %v",
+				d.readerMetaName, d.confirmedQueueInfo, err)
+			if os.IsNotExist(err) && d.confirmedQueueInfo.EndOffset.FileNum < d.queueEndInfo.EndOffset.FileNum-1 {
+				d.confirmedQueueInfo.EndOffset.FileNum++
+				d.confirmedQueueInfo.EndOffset.Pos = 0
+				continue
+			}
+			return err
+		}
+		d.confirmedQueueInfo.virtualEnd = BackendOffset(end)
+		atomic.StoreInt64(&d.confirmedQueueInfo.totalMsgCnt, cnt)
+		d.confirmedQueueInfo.EndOffset.FileNum++
+		d.confirmedQueueInfo.EndOffset.Pos = 0
+		break
 	}
-	d.confirmedQueueInfo.virtualEnd = BackendOffset(end)
-	atomic.StoreInt64(&d.confirmedQueueInfo.totalMsgCnt, cnt)
-	d.confirmedQueueInfo.EndOffset.FileNum++
-	d.confirmedQueueInfo.EndOffset.Pos = 0
-
 	if d.confirmedQueueInfo.EndOffset != d.readQueueInfo.EndOffset {
 		nsqLog.LogErrorf("skip confirm to %v while read at: %v.", d.confirmedQueueInfo, d.readQueueInfo)
 	}
