@@ -510,7 +510,7 @@ func (self *NsqdCoordRpcServer) DeleteNsqdTopic(rpcTopicReq *RpcAdminTopicInfo) 
 	}
 
 	coordLog.Infof("removing the local topic: %v", rpcTopicReq)
-	err := self.nsqdCoord.forceCleanTopicData(rpcTopicReq.Name, rpcTopicReq.Partition)
+	_, err := self.nsqdCoord.removeTopicCoord(rpcTopicReq.Name, rpcTopicReq.Partition, true)
 	if err != nil {
 		ret = *err
 		coordLog.Infof("delete topic %v failed : %v", rpcTopicReq.GetTopicDesp(), err)
