@@ -542,7 +542,7 @@ func (n *NSQD) ForceDeleteTopicData(name string, partition int) error {
 		loopFunc := n.pubLoopFunc
 		n.Unlock()
 		deleteCallback := func(t *Topic) {
-			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
+			// do nothing
 		}
 		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
 		if topic == nil {
@@ -562,7 +562,6 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 		loopFunc := n.pubLoopFunc
 		n.Unlock()
 		deleteCallback := func(t *Topic) {
-			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 		}
 		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
 		if localTopic == nil {

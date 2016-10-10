@@ -700,7 +700,6 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 					if len(topicMeta.ISR)+len(topicMeta.CatchupList) >= topicMeta.Replica {
 						coordLog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
 						self.removeTopicCoord(topicMeta.Name, topicMeta.Partition, true)
-						self.forceCleanTopicData(topicMeta.Name, topicMeta.Partition)
 					} else {
 						self.requestJoinCatchup(topicMeta.Name, topicMeta.Partition)
 					}
@@ -1163,6 +1162,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			tc.logMgr.Close()
 			self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 			tc.logMgr.Reopen()
+			go self.removeTopicCoord(localTopic.GetTopicName(), localTopic.GetTopicPart(), true)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		_, localErr = logMgr.TruncateToOffsetV2(logIndex, offset)
@@ -1212,6 +1212,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				tc.logMgr.Close()
 				self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 				tc.logMgr.Reopen()
+				go self.removeTopicCoord(localTopic.GetTopicName(), localTopic.GetTopicPart(), true)
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
@@ -1715,27 +1716,29 @@ func (self *NsqdCoordinator) getTopicCoord(topic string, partition int) (*TopicC
 func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int, removeData bool) (*TopicCoordinator, *CoordErr) {
 	var topicCoord *TopicCoordinator
 	self.coordMutex.Lock()
+	defer self.coordMutex.Unlock()
 	if v, ok := self.topicCoords[topic]; ok {
 		if tc, ok := v[partition]; ok {
 			topicCoord = tc
 			delete(v, partition)
 		}
 	}
-	self.coordMutex.Unlock()
-	if topicCoord != nil {
-		topicCoord.Delete(removeData)
-		return topicCoord, nil
-	} else if removeData {
-		// check if any data on local and try remove
-		basepath := GetTopicPartitionBasePath(self.dataRootPath, topic, partition)
-		tmpLogMgr, err := InitTopicCommitLogMgr(topic, partition, basepath, 1)
-		if err != nil {
-			coordLog.Warningf("topic %v failed to init tmp log manager: %v", topic, err)
-		} else {
-			tmpLogMgr.Delete()
-		}
+	var err *CoordErr
+	if topicCoord == nil {
+		err = ErrMissingTopicCoord
+	} else {
+		coordLog.Infof("removing topic coodinator: %v-%v", topic, partition)
+		topicCoord.writeHold.Lock()
+		defer topicCoord.writeHold.Unlock()
+		topicCoord.DeleteNoWriteLock(removeData)
+		err = nil
 	}
-	return nil, ErrMissingTopicCoord
+	if removeData {
+		coordLog.Infof("removing topic data: %v-%v", topic, partition)
+		// check if any data on local and try remove
+		self.forceCleanTopicData(topic, partition)
+	}
+	return topicCoord, err
 }
 
 func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
