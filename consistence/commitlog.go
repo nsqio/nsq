@@ -546,6 +546,83 @@ func (self *TopicCommitLogMgr) Close() {
 	self.Unlock()
 }
 
+func (self *TopicCommitLogMgr) Reopen() error {
+	var err error
+	self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		coordLog.Infof("open topic commit log file error: %v", err)
+		return err
+	}
+
+	atomic.StoreInt64(&self.pLogID, 0)
+	err = self.loadCurrentStart()
+	if err != nil {
+		coordLog.Infof("open topic commit log error: %v", err)
+	}
+	err = self.loadLogSegStartInfo()
+	if err != nil {
+		coordLog.Infof("open topic commit log error: %v", err)
+	}
+	//load meta
+	f, err := self.appender.Stat()
+	if err != nil {
+		coordLog.Infof("stat file error: %v", err)
+		return err
+	}
+	fsize := f.Size()
+	self.currentCount = int32(fsize / int64(GetLogDataSize()))
+	// read latest logid and incr. combine the partition id at high.
+	if fsize > 0 {
+		num := fsize / int64(GetLogDataSize())
+		roundOffset := (num - 1) * int64(GetLogDataSize())
+		l, err := self.GetCommitLogFromOffsetV2(self.currentStart, roundOffset)
+		if err != nil {
+			coordLog.Infof("load file error: %v", err)
+			return err
+		}
+		self.pLogID = l.LogID
+		self.nLogID = l.LastMsgLogID + 1
+		if self.pLogID < int64(uint64(self.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Errorf("log id init less than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		} else if self.pLogID > int64(uint64(self.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Errorf("log id init large than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		}
+		if self.nLogID < int64(uint64(self.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Errorf("log id init less than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		} else if self.nLogID > int64(uint64(self.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Errorf("log id init large than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		}
+	} else {
+		if self.currentStart <= self.logStartInfo.SegmentStartIndex {
+			coordLog.Infof("no last commit data : %v, log start: %v", self.currentStart, self.logStartInfo)
+			self.nLogID = int64(uint64(self.partition)<<MAX_INCR_ID_BIT + 1)
+			if self.logStartInfo.SegmentStartIndex > 0 {
+				l, _, err := getLastCommitLogData(self.path, self.currentStart-1)
+				if err != nil {
+					coordLog.Infof("get last commit data from file %v error: %v", self.currentStart-1, err)
+				} else {
+					self.pLogID = l.LogID
+					self.nLogID = l.LastMsgLogID + 1
+				}
+			}
+		} else {
+			l, _, err := getLastCommitLogData(self.path, self.currentStart-1)
+			if err != nil {
+				coordLog.Infof("get last commit data from file %v error: %v", self.currentStart-1, err)
+				return err
+			}
+			self.pLogID = l.LogID
+			self.nLogID = l.LastMsgLogID + 1
+		}
+	}
+	return nil
+
+}
+
 func (self *TopicCommitLogMgr) NextID() uint64 {
 	id := atomic.AddInt64(&self.nLogID, 1)
 	return uint64(id)

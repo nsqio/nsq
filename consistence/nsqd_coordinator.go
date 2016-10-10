@@ -422,18 +422,22 @@ func (self *NsqdCoordinator) checkLocalTopicMagicCode(topicInfo *TopicPartitionM
 }
 
 func (self *NsqdCoordinator) forceCleanTopicData(topicName string, partition int) *CoordErr {
-	_, err := self.removeTopicCoord(topicName, partition, true)
+	// check if any data on local and try remove
+	basepath := GetTopicPartitionBasePath(self.dataRootPath, topicName, partition)
+	tmpLogMgr, err := InitTopicCommitLogMgr(topicName, partition, basepath, 1)
 	if err != nil {
-		coordLog.Infof("delete topic %v-%v coordinator failed : %v", topicName, partition, err)
+		coordLog.Warningf("topic %v failed to init tmp log manager: %v", topicName, err)
+	} else {
+		tmpLogMgr.Delete()
 	}
 	localErr := self.localNsqd.ForceDeleteTopicData(topicName, partition)
 	if localErr != nil {
 		if !os.IsNotExist(localErr) {
 			coordLog.Infof("delete topic %v-%v local data failed : %v", topicName, partition, localErr)
-			err = &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
+			return &CoordErr{localErr.Error(), RpcCommonErr, CoordLocalErr}
 		}
 	}
-	return err
+	return nil
 }
 
 func (self *NsqdCoordinator) loadLocalTopicData() error {
@@ -1156,7 +1160,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		localTopic.Unlock()
 		if localErr != nil {
 			coordLog.Errorf("failed to reset local topic %v data: %v", localTopic.GetFullName(), localErr)
-			go self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
+			tc.logMgr.Close()
+			self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
+			tc.logMgr.Reopen()
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		_, localErr = logMgr.TruncateToOffsetV2(logIndex, offset)
@@ -1203,7 +1209,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			localTopic.Unlock()
 			if localErr != nil {
 				coordLog.Warningf("reset topic %v queue with start %v failed: %v", topicInfo.GetTopicDesp(), firstLogData, localErr)
-				go self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
+				tc.logMgr.Close()
+				self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
+				tc.logMgr.Reopen()
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)

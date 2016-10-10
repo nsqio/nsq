@@ -1231,6 +1231,173 @@ func TestCommitLogResetWithStart(t *testing.T) {
 	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
 }
 
+func TestCommitLogReopen(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	LOGROTATE_NUM = 10
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+	}()
+	logName := "test_log_rotate" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	coordLog.SetLevel(4)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+
+	test.Nil(t, err)
+	test.Equal(t, logMgr.pLogID, int64(0))
+	test.Equal(t, logMgr.nLogID > logMgr.pLogID, true)
+	test.Equal(t, logMgr.GetLastCommitLogID(), int64(0))
+
+	num := 100
+	msgRawSize := 10
+	for i := 0; i < num; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
+		logData.Epoch = 1
+		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i + 1)
+		logData.MsgNum = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+		test.Equal(t, logMgr.IsCommitted(logData.LogID), true)
+		//t.Logf("index:%v, %v, %v", i, logMgr.GetCurrentStart(), logMgr.currentCount)
+		test.Equal(t, logMgr.GetCurrentStart(), int64(i/LOGROTATE_NUM))
+		test.Equal(t, int64(logMgr.currentCount), int64(i)-int64(i/LOGROTATE_NUM)*int64(LOGROTATE_NUM)+1)
+		logIndex, logOffset, lastLogData, err := logMgr.GetLastCommitLogOffsetV2()
+		test.Equal(t, nil, err)
+		test.Equal(t, int64(i/LOGROTATE_NUM), logIndex)
+		test.Equal(t, int64(logMgr.currentCount-1)*int64(GetLogDataSize()), logOffset)
+		test.Equal(t, int64(i+1), lastLogData.MsgCnt)
+	}
+	logMgr.Close()
+	err = logMgr.Reopen()
+	test.Nil(t, err)
+	currentStart, lastOffset, _, err := logMgr.GetLastCommitLogOffsetV2()
+	test.Nil(t, err)
+	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
+	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+
+	cntIndex, err := logMgr.ConvertToCountIndex(currentStart, lastOffset+int64(GetLogDataSize()))
+	test.Nil(t, err)
+	test.Equal(t, int64(num), cntIndex)
+	convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+	test.Nil(t, err)
+	test.Equal(t, currentStart, convertedIndex)
+	test.Equal(t, lastOffset+int64(GetLogDataSize()), convertedOffset)
+
+	lastLog, err := logMgr.GetCommitLogFromOffsetV2(currentStart, lastOffset)
+	test.Nil(t, err)
+	test.Equal(t, lastLog.LogID, logMgr.GetLastCommitLogID())
+	alllogs, err := logMgr.GetCommitLogsV2(currentStart, 0, LOGROTATE_NUM)
+	test.Nil(t, err)
+	test.Equal(t, len(alllogs), LOGROTATE_NUM)
+	alllogs, err = logMgr.GetCommitLogsV2(currentStart, 0, LOGROTATE_NUM*2)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, len(alllogs), LOGROTATE_NUM)
+	// test reopen
+	oldLogID := logMgr.pLogID
+	oldNLogID := logMgr.nLogID
+	logMgr.Close()
+	logMgr, err = InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Nil(t, err)
+	test.Equal(t, logMgr.pLogID, oldLogID)
+	test.Equal(t, true, logMgr.nLogID >= oldNLogID)
+	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+
+	var prevLog CommitLogData
+	for i := 0; i < LOGROTATE_NUM; i++ {
+		logs, err := logMgr.GetCommitLogsV2(0, int64(i*GetLogDataSize()), 1)
+		test.Nil(t, err)
+		test.Equal(t, len(logs), 1)
+		if prevLog.LogID > 0 {
+			test.Equal(t, prevLog.LogID < logs[0].LogID, true)
+			test.Equal(t, prevLog.MsgOffset+int64(msgRawSize), logs[0].MsgOffset)
+			test.Equal(t, prevLog.MsgCnt+1, logs[0].MsgCnt)
+			test.Equal(t, prevLog.MsgNum, int32(1))
+		}
+		prevLog = logs[0]
+	}
+	for cnt := 0; cnt < LOGROTATE_NUM; cnt++ {
+		l, err := logMgr.GetCommitLogFromOffsetV2(logMgr.currentStart, int64(cnt*GetLogDataSize()))
+		test.Nil(t, err)
+		test.Equal(t, l.LogID, logMgr.currentStart*int64(LOGROTATE_NUM)+int64(cnt)+2)
+		test.Equal(t, l.MsgCnt, logMgr.currentStart*int64(LOGROTATE_NUM)+int64(cnt+1))
+	}
+	for i := int64(0); i < logMgr.currentStart; i++ {
+		for cnt := 0; cnt < LOGROTATE_NUM; cnt++ {
+			l, err := logMgr.GetCommitLogFromOffsetV2(i, int64(cnt*GetLogDataSize()))
+			test.Nil(t, err)
+			test.Equal(t, i*int64(LOGROTATE_NUM)+int64(cnt+1), l.MsgCnt)
+
+			cntIndex, err := logMgr.ConvertToCountIndex(i, int64(cnt*GetLogDataSize()))
+			test.Nil(t, err)
+			test.Equal(t, i*int64(LOGROTATE_NUM)+int64(cnt), cntIndex)
+			convertedIndex, convertedOffset, err := logMgr.ConvertToOffsetIndex(cntIndex)
+			test.Nil(t, err)
+			test.Equal(t, i, convertedIndex)
+			test.Equal(t, int64(cnt*GetLogDataSize()), convertedOffset)
+
+		}
+	}
+
+	logs, err := logMgr.GetCommitLogsV2(logMgr.currentStart, 0, LOGROTATE_NUM+1)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, len(logs), LOGROTATE_NUM)
+
+	logs, err = logMgr.GetCommitLogsV2(0, 0, LOGROTATE_NUM-1)
+	test.Equal(t, len(logs), LOGROTATE_NUM-1)
+	test.Nil(t, err)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, LOGROTATE_NUM)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), LOGROTATE_NUM)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, LOGROTATE_NUM+1)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), LOGROTATE_NUM+1)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, num-1)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), num-1)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, num)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), num)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, num+1)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, len(logs), num)
+	logs, err = logMgr.GetCommitLogsV2(0, 0, num*2)
+	test.Equal(t, ErrCommitLogEOF, err)
+	test.Equal(t, len(logs), num)
+	logs, err = logMgr.GetCommitLogsV2(1, int64(GetLogDataSize()), LOGROTATE_NUM)
+	test.Nil(t, err)
+	test.Equal(t, len(logs), LOGROTATE_NUM)
+
+	logMgr.Close()
+	logMgr.Delete()
+	err = logMgr.Reopen()
+	test.Nil(t, err)
+	test.Equal(t, logMgr.pLogID, int64(0))
+	test.Equal(t, int64(0), logMgr.currentStart)
+	test.Equal(t, int32(0), logMgr.currentCount)
+	test.Equal(t, int64(0), logMgr.logStartInfo.SegmentStartIndex)
+	test.Equal(t, int64(0), logMgr.logStartInfo.SegmentStartOffset)
+	test.Equal(t, int64(0), logMgr.logStartInfo.SegmentStartCount)
+	test.Equal(t, logMgr.nLogID > logMgr.pLogID, true)
+	test.Equal(t, logMgr.GetLastCommitLogID(), int64(0))
+	cntIndex, err = logMgr.ConvertToCountIndex(0, 0)
+	test.Nil(t, err)
+	test.Equal(t, int64(0), cntIndex)
+	logMgr2, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Equal(t, logMgr.nLogID, logMgr2.nLogID)
+	test.Equal(t, logMgr.pLogID, logMgr2.pLogID)
+	test.Equal(t, logMgr.currentStart, logMgr2.currentStart)
+	test.Equal(t, logMgr.currentCount, logMgr2.currentCount)
+	test.Equal(t, logMgr.logStartInfo, logMgr2.logStartInfo)
+	test.Equal(t, logMgr.GetLastCommitLogID(), logMgr2.GetLastCommitLogID())
+}
+
 func TestCommitLogMoveToAndDelete(t *testing.T) {
 	oldRotate := LOGROTATE_NUM
 	LOGROTATE_NUM = 10
