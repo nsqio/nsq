@@ -678,7 +678,7 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 
-	id, offset, writeBytes, dend, err := t.put(m)
+	id, offset, writeBytes, dend, err := t.put(m, true)
 	if err == nil {
 		if t.dynamicConf.SyncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
 			if !t.IsWriteDisabled() {
@@ -721,7 +721,7 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
-	_, _, _, dend, err := t.put(m)
+	_, _, _, dend, err := t.put(m, false)
 	if err != nil {
 		return nil, err
 	}
@@ -744,7 +744,7 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 	var dend diskQueueEndInfo
 	var err error
 	for _, m := range msgs {
-		_, _, _, dend, err = t.put(m)
+		_, _, _, dend, err = t.put(m, false)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return nil, err
@@ -772,7 +772,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return 0, 0, 0, 0, nil, ErrInvalidMessageID
 		}
-		id, offset, bytes, end, err := t.put(m)
+		id, offset, bytes, end, err := t.put(m, true)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, err
@@ -805,7 +805,7 @@ func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, i
 	return firstMsgID, firstOffset, batchBytes, totalCnt, dend, err
 }
 
-func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
 	if m.ID <= 0 {
 		m.ID = t.nextMsgID()
 	}
@@ -822,8 +822,10 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		t.UpdateCommittedOffset(&dend)
 	}
 
-	if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
-		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+	if trace {
+		if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+		}
 	}
 	return m.ID, offset, writeBytes, dend, nil
 }
