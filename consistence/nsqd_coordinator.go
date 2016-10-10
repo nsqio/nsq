@@ -1155,7 +1155,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(lastLog.MsgOffset), lastLog.MsgCnt-1)
 		localTopic.Unlock()
 		if localErr != nil {
-			coordLog.Errorf("failed to reset local topic data: %v", localErr)
+			coordLog.Errorf("failed to reset local topic %v data: %v", localTopic.GetFullName(), localErr)
+			go self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		_, localErr = logMgr.TruncateToOffsetV2(logIndex, offset)
@@ -1202,6 +1203,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			localTopic.Unlock()
 			if localErr != nil {
 				coordLog.Warningf("reset topic %v queue with start %v failed: %v", topicInfo.GetTopicDesp(), firstLogData, localErr)
+				go self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
 			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
