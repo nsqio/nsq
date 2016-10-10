@@ -21,9 +21,14 @@ type RpcReqJoinISR struct {
 	RpcLookupReqBase
 }
 
+type RpcReqCheckTopic struct {
+	RpcLookupReqBase
+}
+
 type RpcReqNewTopicInfo struct {
 	RpcLookupReqBase
 }
+
 type RpcReadyForISR struct {
 	RpcLookupReqBase
 	LeaderSession  TopicLeaderSession
@@ -167,11 +172,17 @@ func (self *NsqLookupCoordRpcServer) RequestLeaveFromISRByLeader(req *RpcReqLeav
 	return &ret
 }
 
-func (self *NsqLookupCoordRpcServer) RequestNotifyNewTopicInfo(req *RpcReqJoinCatchup) *CoordErr {
+func (self *NsqLookupCoordRpcServer) RequestNotifyNewTopicInfo(req *RpcReqNewTopicInfo) *CoordErr {
 	var coordErr CoordErr
 	if time.Since(self.lastNotify) < time.Millisecond*10 {
 		return &coordErr
 	}
 	self.nsqLookupCoord.handleRequestNewTopicInfo(req.TopicName, req.TopicPartition, req.NodeID)
+	return &coordErr
+}
+
+func (self *NsqLookupCoordRpcServer) RequestCheckTopicConsistence(req *RpcReqCheckTopic) *CoordErr {
+	var coordErr CoordErr
+	self.nsqLookupCoord.handleRequestCheckTopicConsistence(req.TopicName, req.TopicPartition)
 	return &coordErr
 }

@@ -14,6 +14,7 @@ type INsqlookupRemoteProxy interface {
 	RequestLeaveFromISR(topic string, partition int, nid string) *CoordErr
 	RequestLeaveFromISRByLeader(topic string, partition int, nid string, leaderSession *TopicLeaderSession) *CoordErr
 	RequestNotifyNewTopicInfo(topic string, partition int, nid string)
+	RequestCheckTopicConsistence(topic string, partition int)
 }
 
 type nsqlookupRemoteProxyCreateFunc func(string, time.Duration) (INsqlookupRemoteProxy, error)
@@ -133,4 +134,11 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISRByLeader(topic string, partit
 	req.LeaderSession = *leaderSession
 	ret, err := self.CallWithRetry("RequestLeaveFromISRByLeader", &req)
 	return convertRpcError(err, ret)
+}
+
+func (self *NsqLookupRpcClient) RequestCheckTopicConsistence(topic string, partition int) {
+	var req RpcReqCheckTopic
+	req.TopicName = topic
+	req.TopicPartition = partition
+	self.CallWithRetry("RequestCheckTopicConsistence", &req)
 }

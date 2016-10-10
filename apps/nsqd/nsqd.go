@@ -151,6 +151,8 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 	flagSet.Int("log-level", int(opts.LogLevel), "log verbose level")
 	flagSet.String("log-dir", opts.LogDir, "directory for logs")
+	flagSet.String("remote-tracer", opts.RemoteTracer, "server for message tracing")
+	flagSet.Int("retention-days", int(opts.RetentionDays), "the default retention days for topic data")
 
 	return flagSet
 }
@@ -243,12 +245,13 @@ func (p *program) Start() error {
 	if opts.RPCPort != "" {
 		initDisabled = 1
 	}
+	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
+
 	nsqd.LoadMetadata(initDisabled)
 	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 	if err != nil {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
-	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
 	nsqdServer.Main()
 	p.nsqdServer = nsqdServer
 	return nil

@@ -84,9 +84,12 @@ type Options struct {
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
 
-	LogLevel int32  `flag:"log-level" cfg:"log_level"`
-	LogDir   string `flag:"log-dir" cfg:"log_dir"`
-	Logger   levellogger.Logger
+	LogLevel     int32  `flag:"log-level" cfg:"log_level"`
+	LogDir       string `flag:"log-dir" cfg:"log_dir"`
+	Logger       levellogger.Logger
+	RemoteTracer string `flag:"remote-tracer"`
+
+	RetentionDays int32 `flag:"retention-days" cfg:"retention_days"`
 }
 
 func NewOptions() *Options {
@@ -154,5 +157,7 @@ func NewOptions() *Options {
 		LogLevel: levellogger.LOG_INFO,
 		LogDir:   "",
 		Logger:   &levellogger.GLogger{},
+
+		RetentionDays: int32(DEFAULT_RETENTION_DAYS),
 	}
 }

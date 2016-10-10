@@ -45,7 +45,7 @@ func TestClientAttributes(t *testing.T) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = 3
 	opts.SnappyEnabled = true
 	tcpAddr, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

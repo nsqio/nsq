@@ -217,9 +217,7 @@ func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 }
 
 func TestNsqdRPCClient(t *testing.T) {
-	coordLog.SetLevel(2)
-	//coordLog.Logger = &levellogger.GLogger{}
-	coordLog.Logger = newTestLogger(t)
+	SetCoordLogger(newTestLogger(t), 2)
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
 		panic(err)

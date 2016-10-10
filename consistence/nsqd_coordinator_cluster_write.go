@@ -63,6 +63,9 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	doLocalExit := func(err *CoordErr) {
 		if err != nil {
 			coordLog.Infof("topic %v PutMessageToCluster msg %v error: %v", topic.GetFullName(), msg, err)
+			if coord.IsWriteDisabled() {
+				topic.DisableForSlave()
+			}
 		}
 	}
 	doLocalCommit := func() error {
@@ -88,6 +91,7 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
 			return ErrEpochMismatch
 		}
+		self.requestNotifyNewTopicInfo(d.topicInfo.Name, d.topicInfo.Partition)
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
@@ -149,6 +153,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 		commitLog.LastMsgLogID = int64(msgs[len(msgs)-1].ID)
 		commitLog.MsgOffset = int64(offset)
 		commitLog.MsgSize = writeBytes
+		// This MsgCnt is the total count until now (include the current written batch message count)
 		commitLog.MsgCnt = totalCnt
 		commitLog.MsgNum = int32(len(msgs))
 		return nil
@@ -156,6 +161,9 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	doLocalExit := func(err *CoordErr) {
 		if err != nil {
 			coordLog.Infof("topic %v PutMessagesToCluster error: %v", topic.GetFullName(), err)
+			if coord.IsWriteDisabled() {
+				topic.DisableForSlave()
+			}
 		}
 	}
 	doLocalCommit := func() error {
@@ -181,6 +189,7 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
 			return ErrEpochMismatch
 		}
+		self.requestNotifyNewTopicInfo(d.topicInfo.Name, d.topicInfo.Partition)
 		return nil
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
@@ -280,6 +289,9 @@ retrysync:
 			coordLog.Warningf("topic(%v) failed refresh data:%v", topicFullName, clusterWriteErr)
 			goto exitsync
 		}
+		if retryCnt > 3 {
+			go self.requestNotifyNewTopicInfo(topicName, topicPartition)
+		}
 	}
 	success = 0
 	failedNodes = make(map[string]struct{})
@@ -360,6 +372,8 @@ retrysync:
 					if tmpErr != nil {
 						coordLog.Warningf("failed to request remove the failed isr node: %v, %v", nid, tmpErr)
 						break
+					} else {
+						coordLog.Infof("request the failed node: %v to leave topic %v isr", nid, topicFullName)
 					}
 				}
 				time.Sleep(time.Second)
@@ -369,7 +383,7 @@ retrysync:
 		}
 
 		if retryCnt > MAX_WRITE_RETRY*2 {
-			coordLog.Warningf("topic %v sync write failed due to max retry: %v, %v")
+			coordLog.Warningf("topic %v sync write failed due to max retry: %v", topicFullName, retryCnt)
 			goto exitsync
 		}
 
@@ -391,7 +405,7 @@ exitsync:
 		coord.coordData = newCoordData
 		coord.dataMutex.Unlock()
 		atomic.StoreInt32(&coord.disableWrite, 1)
-		coordLog.Warningf("topic %v failed to sync to isr, need leader isr", tcData.topicInfo.GetTopicDesp())
+		coordLog.Warningf("topic %v failed to sync to isr, need leave isr", tcData.topicInfo.GetTopicDesp())
 		// leave isr
 		go func() {
 			tmpErr := self.requestLeaveFromISR(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -400,12 +414,16 @@ exitsync:
 			}
 		}()
 	}
+	if clusterWriteErr != nil && isWrite {
+		coordLog.Infof("write should be disabled to check log since write failed: %v", clusterWriteErr)
+		coordErrStats.incWriteErr(clusterWriteErr)
+		atomic.StoreInt32(&coord.disableWrite, 1)
+		go self.requestCheckTopicConsistence(topicName, topicPartition)
+	}
 	doLocalExit(clusterWriteErr)
 	if clusterWriteErr == nil {
 		// should return nil since the return type error is different with *CoordErr
 		return nil
-	} else {
-		coordErrStats.incWriteErr(clusterWriteErr)
 	}
 	return clusterWriteErr
 }
@@ -720,7 +738,7 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 	return nil
 }
 
-func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, msgID nsqd.MessageID) error {
+func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	topicName := channel.GetTopicName()
 	partition := channel.GetTopicPart()
 	coord, checkErr := self.getTopicCoord(topicName, partition)
@@ -743,9 +761,10 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, msgID)
+		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
+			changed = false
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		changed = tmpChanged
@@ -827,7 +846,14 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 		coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
 		return ErrLocalMissingTopic
 	}
-	ch := topic.GetChannel(channelName)
+	var ch *nsqd.Channel
+	ch, localErr = topic.GetExistingChannel(channelName)
+	// if a new channel on slave, we should set the consume offset by force
+	if localErr != nil {
+		offset.AllowBackward = true
+		ch = topic.GetChannel(channelName)
+		coordLog.Infof("slave init the channel : %v, %v, offset: %v", topic.GetTopicName(), channelName, ch.GetConfirmed())
+	}
 	if ch.IsEphemeral() {
 		coordLog.Errorf("ephemeral channel %v should not be synced on slave", channelName)
 	}
@@ -861,6 +887,75 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 			return &CoordErr{err.Error(), RpcNoErr, CoordTmpErr}
 		}
 		return &CoordErr{err.Error(), RpcCommonErr, CoordSlaveErr}
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) DeleteChannel(topic *nsqd.Topic, channelName string) error {
+	topicName := topic.GetTopicName()
+	partition := topic.GetTopicPart()
+	coord, checkErr := self.getTopicCoord(topicName, partition)
+	if checkErr != nil {
+		return checkErr.ToErrorType()
+	}
+
+	doLocalWrite := func(d *coordData) *CoordErr {
+		localErr := topic.DeleteExistingChannel(channelName)
+		if localErr != nil {
+			coordLog.Infof("deleteing local channel %v error: %v", channelName, localErr)
+		}
+		return nil
+	}
+	doLocalExit := func(err *CoordErr) {}
+	doLocalCommit := func() error {
+		return nil
+	}
+	doLocalRollback := func() {
+	}
+	doRefresh := func(d *coordData) *CoordErr {
+		return nil
+	}
+	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		rpcErr := c.DeleteChannel(&tcData.topicLeaderSession, &tcData.topicInfo, channelName)
+		if rpcErr != nil {
+			coordLog.Infof("delete channel(%v) to replica %v failed: %v", channelName,
+				nodeID, rpcErr)
+		}
+		return rpcErr
+	}
+	handleSyncResult := func(successNum int, tcData *coordData) bool {
+		// we can ignore the error if this channel is not ordered. (just sync next time)
+		if successNum == len(tcData.topicInfo.ISR) {
+			return true
+		}
+		return false
+	}
+	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+		doRefresh, doSlaveSync, handleSyncResult)
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) deleteChannelOnSlave(tc *coordData, channelName string) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
+
+	coordLog.Logf("got delete channel(%v) offset on slave ", channelName)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+	if localErr != nil {
+		coordLog.Warningf("slave missing topic : %v", topicName)
+		return nil
+	}
+
+	localErr = topic.DeleteExistingChannel(channelName)
+	if localErr != nil {
+		coordLog.Logf("delete channel %v on slave failed: %v ", channelName, localErr)
 	}
 	return nil
 }

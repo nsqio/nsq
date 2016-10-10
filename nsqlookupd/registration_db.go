@@ -3,6 +3,7 @@ package nsqlookupd
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +35,17 @@ type PeerInfo struct {
 	DistributedID string `json:"distributed_id"`
 }
 
+func (self *PeerInfo) IsOldPeer() bool {
+	if self.DistributedID == "" {
+		// this is old nsqd node not in the HA cluster !!
+		// check the version
+		if !strings.Contains(self.Version, "HA") {
+			return true
+		}
+	}
+	return false
+}
+
 type Producer struct {
 	peerInfo     *PeerInfo
 	tombstoned   bool
@@ -47,12 +59,19 @@ func (p *Producer) String() string {
 	return fmt.Sprintf("%s [%d, %d]", p.peerInfo.BroadcastAddress, p.peerInfo.TCPPort, p.peerInfo.HTTPPort)
 }
 
+func (p *Producer) UndoTombstone() {
+	p.tombstoned = false
+}
+
 func (p *Producer) Tombstone() {
 	p.tombstoned = true
 	p.tombstonedAt = time.Now()
 }
 
 func (p *Producer) IsTombstoned() bool {
+	if p.peerInfo != nil && p.peerInfo.IsOldPeer() {
+		return true
+	}
 	return p.tombstoned
 }
 
@@ -144,12 +163,30 @@ func (r *RegistrationDB) addPeerClient(id string, p *PeerInfo) bool {
 	return true
 }
 
-func (r *RegistrationDB) FindPeerClients() PeerInfoList {
+func (r *RegistrationDB) SearchPeerClientByID(id string) *PeerInfo {
+	r.RLock()
+	defer r.RUnlock()
+	p, _ := r.registrationNodeMap[id]
+	return p
+}
+
+func (r *RegistrationDB) SearchPeerClientByClusterID(id string) *PeerInfo {
+	r.RLock()
+	defer r.RUnlock()
+	for _, n := range r.registrationNodeMap {
+		if n.DistributedID == id {
+			return n
+		}
+	}
+	return nil
+}
+
+func (r *RegistrationDB) GetAllPeerClients() PeerInfoList {
 	r.RLock()
 	defer r.RUnlock()
 	retList := make(PeerInfoList, 0, len(r.registrationNodeMap))
-	for _, r := range r.registrationNodeMap {
-		retList = append(retList, r)
+	for _, n := range r.registrationNodeMap {
+		retList = append(retList, n)
 	}
 	return retList
 }
@@ -160,7 +197,9 @@ func (r *RegistrationDB) AddTopicProducer(topic string, pidStr string, p *Produc
 	}
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil || pid < 0 {
-		return false
+		if pid != OLD_VERSION_PID {
+			return false
+		}
 	}
 
 	r.Lock()

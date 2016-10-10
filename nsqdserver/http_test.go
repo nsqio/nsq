@@ -28,12 +28,16 @@ func TestHTTPpub(t *testing.T) {
 	opts.LogLevel = 2
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
-	_, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
+	tcpAddr, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
 
 	topicName := "test_http_pub" + strconv.Itoa(int(time.Now().Unix()))
 	_ = nsqd.GetTopicIgnPart(topicName)
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -45,6 +49,27 @@ func TestHTTPpub(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	for {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, []byte("test message"), msgOut.Body)
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+		break
+	}
+	conn.Close()
 }
 
 func TestHTTPpubpartition(t *testing.T) {
@@ -232,7 +257,7 @@ func TestHTTPSRequire(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	//opts.LogLevel = 2
 	//opts.Logger = &levellogger.GLogger{}
-	opts.Verbose = true
+	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
@@ -276,7 +301,7 @@ func TestHTTPSRequire(t *testing.T) {
 func TestHTTPSRequireVerify(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -339,7 +364,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -516,6 +541,7 @@ func TestHTTPgetStatusText(t *testing.T) {
 func TestHTTPconfig(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
+	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
 	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)

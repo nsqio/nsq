@@ -814,13 +814,14 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 	return nil
 }
 
-func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int, lookupdHTTPAddrs []string) error {
+func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int,
+	retentionDays string, lookupdHTTPAddrs []string) error {
 	var errs []error
 
 	// TODO: found the master lookup node first
 	// create the topic on all the nsqlookupd
-	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d",
-		url.QueryEscape(topicName), partitionNum, replica, syncDisk)
+	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d&retention=%s",
+		url.QueryEscape(topicName), partitionNum, replica, syncDisk, retentionDays)
 	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
 	if err != nil {
 		c.logf("failed to list lookupd nodes while create topic: %v", err)

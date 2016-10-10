@@ -89,7 +89,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 
 	for i := 0; i < 25; i++ {
 		msg := nsqdNs.NewMessage(nsqdNs.MessageID(i), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
 		client.SendingMessage()
 	}
 
@@ -110,6 +110,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 func TestReconfigure(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
+	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
 	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)
@@ -156,6 +157,7 @@ func TestCluster(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
 	lopts.BroadcastAddress = "127.0.0.1"
+	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd := mustStartNSQLookupd(lopts)
 
 	opts := nsqdNs.NewOptions()

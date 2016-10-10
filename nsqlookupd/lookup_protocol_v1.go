@@ -8,12 +8,17 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
+)
+
+const (
+	OLD_VERSION_PID = -11
 )
 
 type LookupProtocolV1 struct {
@@ -76,6 +81,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 	if client.peerInfo != nil {
 		p.ctx.nsqlookupd.DB.RemoveAllByPeerId(client.peerInfo.Id)
 	}
+	conn.Close()
 	return err
 }
 
@@ -91,6 +97,27 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 		return p.UNREGISTER(client, reader, params[1:])
 	}
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
+}
+
+func getTopicChanFromOld(command string, params []string) (string, string, error) {
+	if len(params) <= 0 {
+		return "", "", protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
+	}
+
+	topicName := params[0]
+	var channelName string
+	if len(params) >= 2 {
+		channelName = params[1]
+	}
+
+	if !protocol.IsValidTopicName(topicName) {
+		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
+	}
+
+	if channelName != "" && !protocol.IsValidChannelName(channelName) {
+		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
+	}
+	return topicName, channelName, nil
 }
 
 func getTopicChan(command string, params []string) (string, string, string, error) {
@@ -126,7 +153,17 @@ func (p *LookupProtocolV1) REGISTER(client *ClientV1, reader *bufio.Reader, para
 
 	topic, channel, pid, err := getTopicChan("REGISTER", params)
 	if err != nil {
-		return nil, err
+		// check if old nsqd
+		if client.peerInfo.IsOldPeer() {
+			nsqlookupLog.Logf("client %v is old node trying register", client)
+			topic, channel, err = getTopicChanFromOld("REGISTER", params)
+			pid = strconv.Itoa(OLD_VERSION_PID)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())
@@ -156,7 +193,17 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 	topic, channel, pid, err := getTopicChan("UNREGISTER", params)
 	if err != nil {
-		return nil, err
+		// check if old nsqd
+		if client.peerInfo.IsOldPeer() {
+			nsqlookupLog.Logf("client %v is old node trying unregister", client)
+			pid = strconv.Itoa(OLD_VERSION_PID)
+			topic, channel, err = getTopicChanFromOld("UNREGISTER", params)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	atomic.StoreInt64(&client.peerInfo.lastUpdate, time.Now().UnixNano())
@@ -185,7 +232,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 
 		removed := p.ctx.nsqlookupd.DB.RemoveChannelReg(topic, key)
 		if removed {
-			nsqlookupLog.LogErrorf(" client(%s) unexpected UNREGISTER all channels under topic:%s pid:%s",
+			nsqlookupLog.LogWarningf(" client(%s) unexpected UNREGISTER all channels under topic:%s pid:%s",
 				client, topic, pid)
 		}
 

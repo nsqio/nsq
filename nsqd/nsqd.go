@@ -39,6 +39,8 @@ var (
 	ErrTopicNotExist          = errors.New("topic does not exist")
 )
 
+var DEFAULT_RETENTION_DAYS = 7
+
 type NSQD struct {
 	sync.RWMutex
 
@@ -59,9 +61,10 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci         *clusterinfo.ClusterInfo
-	exiting    bool
-	persisting int32
+	ci          *clusterinfo.ClusterInfo
+	exiting     bool
+	persisting  int32
+	pubLoopFunc func(t *Topic)
 }
 
 func New(opts *Options) *NSQD {
@@ -76,8 +79,11 @@ func New(opts *Options) *NSQD {
 		nsqLog.LogErrorf("failed to create directory: %v ", err)
 		os.Exit(1)
 	}
+	DEFAULT_RETENTION_DAYS = int(opts.RetentionDays)
 
 	nsqLog.Logger = opts.Logger
+	SetRemoteMsgTracer(opts.RemoteTracer)
+
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]map[int]*Topic),
@@ -93,7 +99,7 @@ func New(opts *Options) *NSQD {
 
 	err = n.dl.Lock()
 	if err != nil {
-		nsqLog.LogErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		nsqLog.LogErrorf("FATAL: --data-path=%s in use (possibly by another instance of nsqd: %v", dataPath, err)
 		os.Exit(1)
 	}
 
@@ -131,6 +137,12 @@ func New(opts *Options) *NSQD {
 	}
 
 	return n
+}
+
+func (n *NSQD) SetPubLoop(loop func(t *Topic)) {
+	n.Lock()
+	n.pubLoopFunc = loop
+	n.Unlock()
 }
 
 func (n *NSQD) GetOpts() *Options {
@@ -258,6 +270,7 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 		}
 		topic := n.internalGetTopic(topicName, part, disabled)
 
+		// old meta should also be loaded
 		channels, err := topicJs.Get("channels").Array()
 		if err != nil {
 			nsqLog.LogErrorf("failed to parse metadata - %s", err)
@@ -283,6 +296,8 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 				channel.Pause()
 			}
 		}
+		// we load channels from the new meta file
+		topic.LoadChannelMeta()
 	}
 }
 
@@ -307,19 +322,12 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 			topicData := make(map[string]interface{})
 			topicData["name"] = topic.GetTopicName()
 			topicData["partition"] = topic.GetTopicPart()
+			// we save the channels to topic, but for compatible we need save empty channels to json
 			channels := []interface{}{}
-			topic.channelLock.RLock()
-			for _, channel := range topic.channelMap {
-				channel.RLock()
-				if !channel.ephemeral {
-					channelData := make(map[string]interface{})
-					channelData["name"] = channel.name
-					channelData["paused"] = channel.IsPaused()
-					channels = append(channels, channelData)
-				}
-				channel.RUnlock()
+			err := topic.SaveChannelMeta()
+			if err != nil {
+				nsqLog.Warningf("save topic %v channel meta failed: %v", topic.GetFullName(), err)
 			}
-			topic.channelLock.RUnlock()
 			topicData["channels"] = channels
 			topics = append(topics, topicData)
 		}
@@ -464,31 +472,19 @@ func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Top
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
-	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify)
-	topics[part] = t
+	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify, n.pubLoopFunc)
+	if t == nil {
+		nsqLog.Errorf("TOPIC(%s): create failed", topicName)
+	} else {
+		topics[part] = t
+		nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
 
-	nsqLog.Logf("TOPIC(%s): created", t.GetFullName())
-
+	}
 	n.Unlock()
-
-	// if using lookupd, make a blocking call to get the topics, and immediately create them.
-	// this makes sure that any message received is buffered to the right channels
-	//lookupdHTTPAddrs := n.lookupdHTTPAddrs()
-	//if len(lookupdHTTPAddrs) > 0 {
-	//	channelNames, _ := n.ci.GetLookupdTopicChannels(t.GetTopicName(),
-	//		t.GetTopicPart(), lookupdHTTPAddrs)
-	//	for _, channelName := range channelNames {
-	//		if strings.HasSuffix(channelName, "#ephemeral") {
-	//			// we don't want to pre-create ephemeral channels
-	//			// because there isn't a client connected
-	//			continue
-	//		}
-	//		t.getOrCreateChannel(channelName)
-	//	}
-	//}
-
-	// update messagePump state
-	t.NotifyReloadChannels()
+	if t != nil {
+		// update messagePump state
+		t.NotifyReloadChannels()
+	}
 	return t
 }
 
@@ -538,14 +534,40 @@ func (n *NSQD) CloseExistingTopic(topicName string, partition int) error {
 	return nil
 }
 
+func (n *NSQD) ForceDeleteTopicData(name string, partition int) error {
+	topic, err := n.GetExistingTopic(name, partition)
+	if err != nil {
+		// not exist, create temp for check
+		n.Lock()
+		loopFunc := n.pubLoopFunc
+		n.Unlock()
+		deleteCallback := func(t *Topic) {
+			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
+		}
+		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
+		if topic == nil {
+			return errors.New("failed to init new topic")
+		}
+	}
+	topic.Delete()
+	n.deleteTopic(name, partition)
+	return nil
+}
+
 func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix bool) (string, error) {
 	localTopic, err := n.GetExistingTopic(name, partition)
 	if err != nil {
 		// not exist, create temp for check
+		n.Lock()
+		loopFunc := n.pubLoopFunc
+		n.Unlock()
 		deleteCallback := func(t *Topic) {
 			n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 		}
-		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify)
+		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
+		if localTopic == nil {
+			return "", errors.New("failed to init new topic")
+		}
 		defer localTopic.Close()
 	}
 	magicCodeWrong := false
@@ -599,7 +621,7 @@ func (n *NSQD) CleanClientPubStats(remote string, protocol string) {
 	tmpMap := n.GetTopicMapCopy()
 	for _, topics := range tmpMap {
 		for _, t := range topics {
-			t.RemovePubStats(remote, protocol)
+			t.detailStats.RemovePubStats(remote, protocol)
 		}
 	}
 }

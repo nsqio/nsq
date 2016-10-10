@@ -23,9 +23,7 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 			}
 			if len(failList) > 0 {
 				coordLog.Infof("failed rpc total: %v, %v", len(self.failedRpcList), len(failList))
-				self.nodesMutex.RLock()
-				currentNodes = self.nsqdNodes
-				self.nodesMutex.RUnlock()
+				currentNodes = self.getCurrentNodes()
 			}
 			self.failedRpcList = self.failedRpcList[0:0]
 			self.failedRpcMutex.Unlock()
@@ -74,22 +72,22 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 }
 
 func (self *NsqLookupCoordinator) doNotifyToNsqdNodes(nodes []string, notifyRpcFunc func(string) *CoordErr) *CoordErr {
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
+	var coordErr *CoordErr
 	for _, n := range nodes {
 		node, ok := currentNodes[n]
 		if !ok {
-			coordLog.Infof("notify to nsqd node %v failed since node not found", node)
-			return ErrNodeNotFound
+			coordLog.Infof("notify to nsqd node %v failed since node not found", n)
+			coordErr = ErrNodeNotFound
+			continue
 		}
 		err := notifyRpcFunc(node.GetID())
 		if err != nil {
 			coordLog.Infof("notify to nsqd node %v failed: %v", node, err)
-			return err
+			coordErr = err
 		}
 	}
-	return nil
+	return coordErr
 }
 
 func (self *NsqLookupCoordinator) doNotifyToSingleNsqdNode(nodeID string, notifyRpcFunc func(string) *CoordErr) *CoordErr {
@@ -127,6 +125,16 @@ func (self *NsqLookupCoordinator) notifyTopicLeaderSession(topicInfo *TopicParti
 func (self *NsqLookupCoordinator) notifyAcquireTopicLeader(topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	rpcErr := self.doNotifyToSingleNsqdNode(topicInfo.Leader, func(nid string) *CoordErr {
 		return self.sendAcquireTopicLeaderToNsqd(self.leaderNode.Epoch, nid, topicInfo)
+	})
+	if rpcErr != nil {
+		coordLog.Infof("notify leader to acquire leader failed: %v", rpcErr)
+	}
+	return rpcErr
+}
+
+func (self *NsqLookupCoordinator) notifyReleaseTopicLeader(topicInfo *TopicPartitionMetaInfo, leaderSessionEpoch EpochType) *CoordErr {
+	rpcErr := self.doNotifyToSingleNsqdNode(topicInfo.Leader, func(nid string) *CoordErr {
+		return self.sendReleaseTopicLeaderToNsqd(self.leaderNode.Epoch, nid, topicInfo, leaderSessionEpoch)
 	})
 	if rpcErr != nil {
 		coordLog.Infof("notify leader to acquire leader failed: %v", rpcErr)
@@ -202,12 +210,23 @@ func (self *NsqLookupCoordinator) sendTopicLeaderSessionToNsqd(epoch EpochType, 
 	return err
 }
 
-func (self *NsqLookupCoordinator) sendAcquireTopicLeaderToNsqd(epoch EpochType, nid string, topicInfo *TopicPartitionMetaInfo) *CoordErr {
+func (self *NsqLookupCoordinator) sendAcquireTopicLeaderToNsqd(epoch EpochType, nid string,
+	topicInfo *TopicPartitionMetaInfo) *CoordErr {
 	c, rpcErr := self.acquireRpcClient(nid)
 	if rpcErr != nil {
 		return rpcErr
 	}
 	rpcErr = c.NotifyAcquireTopicLeader(epoch, topicInfo)
+	return rpcErr
+}
+
+func (self *NsqLookupCoordinator) sendReleaseTopicLeaderToNsqd(epoch EpochType, nid string,
+	topicInfo *TopicPartitionMetaInfo, leaderSessionEpoch EpochType) *CoordErr {
+	c, rpcErr := self.acquireRpcClient(nid)
+	if rpcErr != nil {
+		return rpcErr
+	}
+	rpcErr = c.NotifyReleaseTopicLeader(epoch, topicInfo, leaderSessionEpoch)
 	return rpcErr
 }
 
@@ -312,9 +331,7 @@ func (self *NsqLookupCoordinator) getNsqdLastCommitLogID(nid string, topicInfo *
 }
 
 func (self *NsqLookupCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *CoordErr) {
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
 
 	self.rpcMutex.Lock()
 	defer self.rpcMutex.Unlock()

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	_ "github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/test"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -23,7 +24,8 @@ func TestDiskQueueWriter(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	nequal(t, dqWriter, nil)
 	equal(t, dqWriter.diskWriteEnd.TotalMsgCnt(), int64(0))
@@ -57,7 +59,7 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	msg := bytes.Repeat([]byte{0}, 10)
 	ml := int64(len(msg))
-	dq := newDiskQueueWriter(dqName, tmpDir, 9*(ml+4), int32(ml), 1<<10, 1)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 9*(ml+4), int32(ml), 1<<10, 1)
 	dqObj := dq.(*diskQueueWriter)
 	defer dq.Close()
 	nequal(t, dq, nil)
@@ -88,7 +90,7 @@ func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 	msg := bytes.Repeat([]byte{0}, 226)
 	ml := int64(len(msg))
-	dq := newDiskQueueWriter(dqName, tmpDir, 1024*1024*100, 0, 1024, 1)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 1024*1024*100, 0, 1024, 1)
 	dqObj := dq.(*diskQueueWriter)
 	defer dq.Close()
 	nequal(t, dq, nil)
@@ -148,7 +150,7 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 	msg := bytes.Repeat([]byte{0}, 10)
 	msgRawSize := 4 + len(msg)
 	maxBytesPerFile := 100
-	dq := newDiskQueueWriter(dqName, tmpDir, int64(maxBytesPerFile), 0, 1<<10, 1)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, int64(maxBytesPerFile), 0, 1<<10, 1)
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir,
 		int64(maxBytesPerFile), 0, 1<<10, 1, 2*time.Second, nil, true)
 	dqObj := dq.(*diskQueueWriter)
@@ -287,7 +289,7 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 	// require a non-zero message length for the corrupt (len 0) test below
-	dq := newDiskQueueWriter(dqName, tmpDir, 1000, 10, 1<<10, 1)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 1000, 10, 1<<10, 1)
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1000, 10, 1<<10, 5, 2*time.Second, nil, true)
 	defer dqReader.Close()
 	defer dq.Close()
@@ -338,14 +340,6 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 	equal(t, readResult.Data, msg)
 }
 
-func TestDiskQueueWriterHandleError(t *testing.T) {
-	// TODO: handle error manually.
-}
-
-func TestDiskQueueWriterSkipTo(t *testing.T) {
-	//TODO: skip and msg count check
-}
-
 func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 	//rollback and reset write end across file test
 	l := newTestLogger(t)
@@ -357,7 +351,8 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dqWriter := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1).(*diskQueueWriter)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
 	defer dqWriter.Close()
 	nequal(t, dqWriter, nil)
 	equal(t, dqWriter.diskWriteEnd.TotalMsgCnt(), int64(0))
@@ -428,6 +423,81 @@ func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 
 }
 
+func TestDiskQueueWriterRollbackToQueueStart(t *testing.T) {
+	//TODO:
+}
+
+func TestDiskQueueWriterInitWithQueueStart(t *testing.T) {
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+
+	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	fileMaxSize := 1024
+	queue, err := newDiskQueueWriter(dqName, tmpDir, int64(fileMaxSize), 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter := queue.(*diskQueueWriter)
+	nequal(t, dqWriter, nil)
+	equal(t, dqWriter.diskWriteEnd.TotalMsgCnt(), int64(0))
+	// test init start with empty
+
+	msg := []byte("test")
+	cntInFile := fileMaxSize / (len(msg) + 4)
+	totalCnt := 1000
+	for cnt := 0; cnt < totalCnt; cnt++ {
+		dqWriter.Put(msg)
+	}
+	dqWriter.Flush()
+	oldStart := dqWriter.diskQueueStart
+	test.Equal(t, int64(0), oldStart.EndOffset.FileNum)
+	dqWriter.Close()
+
+	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter = queue.(*diskQueueWriter)
+	test.Equal(t, oldStart, dqWriter.diskQueueStart)
+
+	oldStart.EndOffset.FileNum++
+	newStart, err := dqWriter.CleanOldDataByRetention(&oldStart, false, 0)
+	test.Equal(t, nil, err)
+	test.Equal(t, oldStart.EndOffset, newStart.(*diskQueueEndInfo).EndOffset)
+	test.Equal(t, oldStart.EndOffset.FileNum*int64(fileMaxSize), int64(newStart.Offset()))
+	test.Equal(t, oldStart.EndOffset.FileNum*int64(cntInFile), newStart.TotalMsgCnt())
+	dqWriter.Close()
+
+	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter = queue.(*diskQueueWriter)
+	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
+	dqWriter.cleanOldData()
+	test.Equal(t, dqWriter.GetQueueReadStart(), dqWriter.GetQueueWriteEnd())
+	newStart = dqWriter.GetQueueReadStart()
+	dqWriter.Close()
+	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter = queue.(*diskQueueWriter)
+	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
+
+	newStart.(*diskQueueEndInfo).virtualEnd += BackendOffset(len(msg) + 4)
+	newStart.(*diskQueueEndInfo).totalMsgCnt++
+	dqWriter.ResetWriteWithQueueStart(newStart)
+	test.Equal(t, dqWriter.GetQueueReadStart(), dqWriter.GetQueueWriteEnd())
+	test.Equal(t, newStart.Offset(), dqWriter.GetQueueReadStart().Offset())
+	test.Equal(t, newStart.TotalMsgCnt(), dqWriter.GetQueueReadStart().TotalMsgCnt())
+	newStart = dqWriter.GetQueueReadStart()
+	dqWriter.Close()
+	queue, err = newDiskQueueWriter(dqName, tmpDir, 1024, 4, 1<<10, 1)
+	test.Nil(t, err)
+	dqWriter = queue.(*diskQueueWriter)
+
+	test.Equal(t, newStart, dqWriter.GetQueueReadStart())
+	dqWriter.Close()
+}
+
 func TestDiskQueueWriterTorture(t *testing.T) {
 	var wg sync.WaitGroup
 
@@ -439,7 +509,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueueWriter(dqName, tmpDir, 262144, 0, 1<<10, 1)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 262144, 0, 1<<10, 1)
 	nequal(t, dq, nil)
 
 	msg := []byte("aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffff")
@@ -450,7 +520,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	readExitChan := make(chan int)
 	writeExitChan := make(chan int)
 
-	var depth int64
+	var incDepth int64
 	for i := 0; i < numWriters; i++ {
 		wg.Add(1)
 		go func() {
@@ -463,7 +533,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 				default:
 					_, _, _, err := dq.Put(msg)
 					if err == nil {
-						atomic.AddInt64(&depth, int64(msgRawSize))
+						atomic.AddInt64(&incDepth, int64(msgRawSize))
 					} else {
 						t.Logf("put error %v", err)
 					}
@@ -478,6 +548,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	t.Logf("closing writeExitChan")
 	close(writeExitChan)
 	wg.Wait()
+	depth := atomic.LoadInt64(&incDepth)
 
 	dq.Flush()
 	e = dq.GetQueueReadEnd()
@@ -522,13 +593,13 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 
 	t.Logf("waiting for depth 0")
 	for {
-		if read == depth {
+		if atomic.LoadInt64(&read) == depth {
 			break
 		}
 		time.Sleep(time.Second)
 	}
-	equal(t, read, depth)
-	equal(t, dqReader.(*diskQueueReader).confirmedQueueInfo.Offset(),
+	equal(t, atomic.LoadInt64(&read), depth)
+	equal(t, dqReader.(*diskQueueReader).GetQueueConfirmed().Offset(),
 		BackendOffset(depth))
 	equal(t, dqReader.Depth(), int64(0))
 	equal(t, dqReader.DepthSize(), int64(0))
@@ -537,7 +608,7 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 	close(readExitChan)
 	wg.Wait()
 
-	equal(t, read, depth)
+	equal(t, atomic.LoadInt64(&read), depth)
 }
 
 func BenchmarkDiskQueueWriterPut16(b *testing.B) {
@@ -588,13 +659,14 @@ func benchmarkDiskQueueWriterPut(size int64, syncEvery int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	nsqLog.Logger = l
+	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueueWriter(dqName, tmpDir, 1024768*100, 0, 1<<20, syncEvery)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 1024768*100, 0, 1<<20, syncEvery)
 	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
@@ -644,13 +716,14 @@ func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 	b.StopTimer()
 	l := newTestLogger(b)
 	nsqLog.Logger = l
+	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_get" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueueWriter(dqName, tmpDir, 1024768, 0, 1<<20, 2500)
+	dq, _ := newDiskQueueWriter(dqName, tmpDir, 1024768, 0, 1<<20, 2500)
 	dqReader := newDiskQueueReader(dqName, dqName, tmpDir, 1024768, 0, 1<<20,
 		2500, 2*time.Second, nil, true)
 	defer dqReader.Close()

@@ -22,7 +22,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	clientConn.SetReadDeadline(time.Now().Add(time.Second * 3))
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
-		nsqlookupLog.LogErrorf("failed to read protocol version - %s", err)
+		nsqlookupLog.Logf(" failed to read protocol version - %s from client: %v", err, clientConn.RemoteAddr())
 		clientConn.Close()
 		return
 	}
@@ -45,7 +45,11 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		nsqlookupLog.LogErrorf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		if err == io.EOF {
+			nsqlookupLog.Logf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		} else {
+			nsqlookupLog.LogWarningf(" client(%s) - %s", clientConn.RemoteAddr(), err)
+		}
 		return
 	}
 }

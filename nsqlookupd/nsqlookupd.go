@@ -4,6 +4,7 @@ import (
 	"github.com/absolute8511/nsq/consistence"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/absolute8511/nsq/internal/http_api"
@@ -23,10 +24,6 @@ type NSQLookupd struct {
 }
 
 func New(opts *Options) *NSQLookupd {
-	nsqlookupLog.Logger = opts.Logger
-	nsqlookupLog.SetLevel(opts.LogLevel)
-	consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
-
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
@@ -79,9 +76,11 @@ func (l *NSQLookupd) Main() {
 	l.Lock()
 	l.tcpListener = tcpListener
 	l.Unlock()
+	nsqlookupLog.Logf("TCP: listening on %s", tcpListener.Addr())
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
+		protocol.TCPServer(tcpListener, tcpServer)
+		nsqlookupLog.Logf("TCP: closing %s", tcpListener.Addr())
 	})
 
 	var node consistence.NsqLookupdNodeInfo
@@ -108,8 +107,25 @@ func (l *NSQLookupd) Main() {
 		node.RpcPort = l.opts.RPCPort
 		node.ID = consistence.GenNsqLookupNodeID(&node, "nsqlookup")
 
+		nsqlookupLog.Logf("balance interval is: %v", l.opts.BalanceInterval)
+		coordOpts := &consistence.Options{}
+
+		if len(l.opts.BalanceInterval) == 2 {
+			coordOpts.BalanceStart, err = strconv.Atoi(l.opts.BalanceInterval[0])
+			if err != nil {
+				nsqlookupLog.LogErrorf("invalid balance interval: %v", err)
+				os.Exit(1)
+			}
+			coordOpts.BalanceEnd, err = strconv.Atoi(l.opts.BalanceInterval[1])
+			if err != nil {
+				nsqlookupLog.LogErrorf("invalid balance interval: %v", err)
+				os.Exit(1)
+			}
+		}
+
 		l.Lock()
-		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node)
+		consistence.SetCoordLogger(l.opts.Logger, l.opts.LogLevel)
+		l.coordinator = consistence.NewNsqLookupCoordinator(l.opts.ClusterID, &node, coordOpts)
 		l.Unlock()
 		// set etcd leader manager here
 		leadership := consistence.NewNsqLookupdEtcdMgr(l.opts.ClusterLeadershipAddresses)

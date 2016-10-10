@@ -119,7 +119,7 @@ func TestStartup(t *testing.T) {
 	opts := NewOptions()
 	opts.SyncEvery = 1
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 0
+	opts.LogLevel = 2
 	opts.MemQueueSize = 100
 	opts.MaxBytesPerFile = 10240
 	_, _, nsqd := mustStartNSQD(opts)
@@ -194,13 +194,6 @@ func TestStartup(t *testing.T) {
 	equal(t, channel1.Depth(), int64(iterations/2))
 	equal(t, channel1.DepthSize(), int64(iterations/2)*msgRawSize)
 
-	for {
-		if channel1.Depth() == int64(iterations/2) {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
 	// make sure metadata shows the topic
 	metaData, err = getMetadata(nsqd)
 	equal(t, err, nil)
@@ -248,6 +241,7 @@ func TestStartup(t *testing.T) {
 	equal(t, channel1.Depth(), int64(iterations/2))
 	equal(t, channel1.DepthSize(), int64(iterations/2)*msgRawSize)
 
+	time.Sleep(time.Second)
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
 		msg := <-channel1.clientMsgChan
@@ -258,9 +252,15 @@ func TestStartup(t *testing.T) {
 	<-doneExitChan
 }
 
-func metadataForChannel(n *NSQD, topicIndex int, channelIndex int) *simplejson.Json {
-	metadata, _ := getMetadata(n)
-	mChannels := metadata.Get("topics").GetIndex(topicIndex).Get("channels")
+func metadataForChannel(n *NSQD, topic *Topic, channelIndex int) *simplejson.Json {
+	fn := topic.getChannelMetaFileName()
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		panic(err)
+	}
+	js, _ := simplejson.NewJson(data)
+
+	mChannels := js
 	return mChannels.GetIndex(channelIndex)
 }
 
@@ -279,23 +279,23 @@ func TestPauseMetadata(t *testing.T) {
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
 
-	b, _ := metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	b, _ := metadataForChannel(nsqd, topic, 0).Get("paused").Bool()
 	equal(t, b, false)
 
 	channel.Pause()
-	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	b, _ = metadataForChannel(nsqd, topic, 0).Get("paused").Bool()
 	equal(t, b, false)
 
 	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
-	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	b, _ = metadataForChannel(nsqd, topic, 0).Get("paused").Bool()
 	equal(t, b, true)
 
 	channel.UnPause()
-	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	b, _ = metadataForChannel(nsqd, topic, 0).Get("paused").Bool()
 	equal(t, b, true)
 
 	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
-	b, _ = metadataForChannel(nsqd, 0, 0).Get("paused").Bool()
+	b, _ = metadataForChannel(nsqd, topic, 0).Get("paused").Bool()
 	equal(t, b, false)
 }
 

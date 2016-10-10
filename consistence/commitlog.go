@@ -19,18 +19,22 @@ const (
 )
 
 var (
-	ErrCommitLogWrongID         = errors.New("commit log id is wrong")
-	ErrCommitLogWrongLastID     = errors.New("commit log last id should no less than log id")
-	ErrCommitLogIDNotFound      = errors.New("commit log id is not found")
-	ErrCommitLogSearchNotFound  = errors.New("search commit log data not found")
-	ErrCommitLogOutofBound      = errors.New("commit log offset is out of bound")
-	ErrCommitLogEOF             = errors.New("commit log end of file")
-	ErrCommitLogOffsetInvalid   = errors.New("commit log offset is invalid")
-	ErrCommitLogPartitionExceed = errors.New("commit log partition id is exceeded")
-	ErrCommitLogSearchFailed    = errors.New("commit log data search failed")
+	ErrCommitLogWrongID              = errors.New("commit log id is wrong")
+	ErrCommitLogWrongLastID          = errors.New("commit log last id should no less than log id")
+	ErrCommitLogIDNotFound           = errors.New("commit log id is not found")
+	ErrCommitLogSearchNotFound       = errors.New("search commit log data not found")
+	ErrCommitLogOutofBound           = errors.New("commit log offset is out of bound")
+	ErrCommitLogEOF                  = errors.New("commit log end of file")
+	ErrCommitLogOffsetInvalid        = errors.New("commit log offset is invalid")
+	ErrCommitLogPartitionExceed      = errors.New("commit log partition id is exceeded")
+	ErrCommitLogSearchFailed         = errors.New("commit log data search failed")
+	ErrCommitLogSegmentSizeInvalid   = errors.New("commit log segment size is invalid")
+	ErrCommitLogLessThanSegmentStart = errors.New("commit log read index is less than segment start")
+	ErrCommitLogCleanKeepMin         = errors.New("commit log clean should keep some data")
 )
 
 var LOGROTATE_NUM = 2000000
+var MIN_KEEP_LOG_ITEM = 1000
 
 type CommitLogData struct {
 	LogID int64
@@ -63,7 +67,7 @@ func GetNextLogOffset(cur int64) int64 {
 }
 
 func getCommitLogFile(path string, start int64, for_write bool) (*os.File, error) {
-	name := path + "." + getSuffixString(start)
+	name := getSegmentFilename(path, start)
 	mode := os.O_RDONLY
 	if for_write {
 		mode = os.O_RDWR
@@ -74,6 +78,20 @@ func getCommitLogFile(path string, start int64, for_write bool) (*os.File, error
 	}
 
 	return tmpFile, nil
+}
+
+func getCommitLogCountFromFile(path string, start int64) (int64, error) {
+	name := getSegmentFilename(path, start)
+	f, err := os.Stat(name)
+	if err != nil {
+		return 0, err
+	}
+	fsize := f.Size()
+
+	if (fsize % int64(GetLogDataSize())) != 0 {
+		return 0, ErrCommitLogSegmentSizeInvalid
+	}
+	return fsize / int64(GetLogDataSize()), nil
 }
 
 func getCommitLogFromFile(file *os.File, offset int64) (*CommitLogData, error) {
@@ -188,7 +206,7 @@ func getCommitLogListFromFile(file *os.File, offset int64, num int) ([]CommitLog
 	return logList, err
 }
 
-func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
+func truncateFileToOffset(file *os.File, fileStartOffset int64, offset int64) (*CommitLogData, error) {
 	if offset > 0 && offset < int64(GetLogDataSize()) {
 		return nil, ErrCommitLogOffsetInvalid
 	}
@@ -198,8 +216,8 @@ func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
 		coordLog.Infof("truncate file %v failed: %v, offset:%v, %v, %v, %v", file, err, offset, s.Name(), s.Size(), s.IsDir())
 		return nil, err
 	}
-	if offset == 0 {
-		return nil, nil
+	if offset == fileStartOffset {
+		return nil, ErrCommitLogEOF
 	}
 	b := bytes.NewBuffer(make([]byte, GetLogDataSize()))
 	n, err := file.ReadAt(b.Bytes(), offset-int64(GetLogDataSize()))
@@ -218,8 +236,16 @@ func truncateFileToOffset(file *os.File, offset int64) (*CommitLogData, error) {
 	return &l, nil
 }
 
-func getSuffixString(index int64) string {
-	return fmt.Sprintf("%08d", index)
+func getSegmentFilename(path string, index int64) string {
+	return path + "." + fmt.Sprintf("%08d", index)
+}
+
+type LogStartInfo struct {
+	SegmentStartCount int64
+	SegmentStartIndex int64
+	// the start offset in the file number at start index
+	// This can allow the commit log start at the middle of the segment file
+	SegmentStartOffset int64
 }
 
 type TopicCommitLogMgr struct {
@@ -234,6 +260,7 @@ type TopicCommitLogMgr struct {
 	appender      *os.File
 	currentStart  int64
 	currentCount  int32
+	logStartInfo  LogStartInfo
 	sync.Mutex
 }
 
@@ -271,6 +298,10 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 	if err != nil {
 		return nil, err
 	}
+	err = mgr.loadLogSegStartInfo()
+	if err != nil {
+		return nil, err
+	}
 	//load meta
 	f, err := mgr.appender.Stat()
 	if err != nil {
@@ -278,6 +309,7 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		return nil, err
 	}
 	fsize := f.Size()
+	mgr.currentCount = int32(fsize / int64(GetLogDataSize()))
 	// read latest logid and incr. combine the partition id at high.
 	if fsize > 0 {
 		num := fsize / int64(GetLogDataSize())
@@ -304,8 +336,18 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 			return nil, errors.New("init commit log id failed")
 		}
 	} else {
-		if mgr.currentStart <= 0 {
+		if mgr.currentStart <= mgr.logStartInfo.SegmentStartIndex {
+			coordLog.Infof("no last commit data : %v, log start: %v", mgr.currentStart, mgr.logStartInfo)
 			mgr.nLogID = int64(uint64(mgr.partition)<<MAX_INCR_ID_BIT + 1)
+			if mgr.logStartInfo.SegmentStartIndex > 0 {
+				l, _, err := getLastCommitLogData(mgr.path, mgr.currentStart-1)
+				if err != nil {
+					coordLog.Infof("get last commit data from file %v error: %v", mgr.currentStart-1, err)
+				} else {
+					mgr.pLogID = l.LogID
+					mgr.nLogID = l.LastMsgLogID + 1
+				}
+			}
 		} else {
 			l, _, err := getLastCommitLogData(mgr.path, mgr.currentStart-1)
 			if err != nil {
@@ -317,6 +359,73 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 		}
 	}
 	return mgr, nil
+}
+
+func (self *TopicCommitLogMgr) MoveTo(newBase string) error {
+	self.Lock()
+	defer self.Unlock()
+	self.flushCommitLogsNoLock()
+	self.appender.Sync()
+	self.appender.Close()
+	newPath := GetTopicPartitionLogPath(newBase, self.topic, self.partition)
+	coordLog.Infof("rename the topic %v commit log to :%v", self.topic, newPath)
+	err := util.AtomicRename(self.path, newPath)
+	if err != nil {
+		coordLog.Infof("rename the topic %v commit log failed :%v", self.topic, err)
+	}
+	for i := int64(0); i < self.currentStart; i++ {
+		util.AtomicRename(getSegmentFilename(self.path, int64(i)), getSegmentFilename(newPath, int64(i)))
+	}
+	err = util.AtomicRename(self.path+".current", newPath+".current")
+	if err != nil {
+		coordLog.Infof("rename the topic %v commit log current failed:%v", self.topic, err)
+	}
+	util.AtomicRename(self.path+".start", newPath+".start")
+	return nil
+}
+
+func (self *TopicCommitLogMgr) loadLogSegStartInfo() error {
+	file, err := os.OpenFile(self.path+".start", os.O_RDONLY, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			self.logStartInfo.SegmentStartCount = 0
+			self.logStartInfo.SegmentStartIndex = 0
+			self.logStartInfo.SegmentStartOffset = 0
+			return nil
+		}
+		coordLog.Errorf("open commit log file error: %v", err)
+		return err
+	}
+	defer file.Close()
+	var data int64
+	var data2 int64
+	var data3 int64
+	_, err = fmt.Fscanf(file, "%d\n%d\n%d\n", &data, &data2, &data3)
+	if err != nil {
+		return err
+	}
+	atomic.StoreInt64(&self.logStartInfo.SegmentStartCount, data)
+	atomic.StoreInt64(&self.logStartInfo.SegmentStartIndex, data2)
+	atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, data3)
+	return nil
+}
+
+func (self *TopicCommitLogMgr) saveLogSegStartInfo() error {
+	tmpFileName := self.path + ".start.tmp"
+	file, err := os.OpenFile(tmpFileName, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		coordLog.Errorf("open commit log file for write error: %v", err)
+		return err
+	}
+	defer file.Close()
+	_, err = fmt.Fprintf(file, "%d\n%d\n%d\n", atomic.LoadInt64(&self.logStartInfo.SegmentStartCount),
+		atomic.LoadInt64(&self.logStartInfo.SegmentStartIndex),
+		atomic.LoadInt64(&self.logStartInfo.SegmentStartOffset))
+	if err != nil {
+		return err
+	}
+	file.Sync()
+	return util.AtomicRename(tmpFileName, self.path+".start")
 }
 
 func (self *TopicCommitLogMgr) loadCurrentStart() error {
@@ -356,6 +465,53 @@ func (self *TopicCommitLogMgr) saveCurrentStart() error {
 	return util.AtomicRename(tmpFileName, self.path+".current")
 }
 
+func (self *TopicCommitLogMgr) ResetLogWithStart(newStart LogStartInfo) error {
+	self.Lock()
+	defer self.Unlock()
+
+	self.flushCommitLogsNoLock()
+	self.appender.Sync()
+	self.appender.Close()
+	err := os.Remove(self.path)
+	if err != nil {
+		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
+	}
+	for i := int64(0); i < self.currentStart; i++ {
+		fn := getSegmentFilename(self.path, int64(i))
+		os.Remove(fn)
+		coordLog.Infof("commit log removed: %v", fn)
+	}
+	os.Remove(self.path + ".current")
+	os.Remove(self.path + ".start")
+	self.logStartInfo = newStart
+	self.logStartInfo.SegmentStartOffset = 0
+	atomic.StoreInt64(&self.pLogID, 0)
+	self.currentStart = newStart.SegmentStartIndex
+	self.currentCount = 0
+	self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		coordLog.Infof("open topic commit log file error: %v", err)
+		return err
+	}
+	err = self.saveCurrentStart()
+	if err != nil {
+		return err
+	}
+	return self.saveLogSegStartInfo()
+}
+
+func (self *TopicCommitLogMgr) GetLogStartInfo() (*LogStartInfo, *CommitLogData, error) {
+	self.Lock()
+	defer self.Unlock()
+	logStart := self.logStartInfo
+	l, err := self.getCommitLogFromOffsetV2(logStart.SegmentStartIndex, logStart.SegmentStartOffset)
+	if err != nil {
+		coordLog.Infof("get log start first log info err: %v, current: %v:%v, log start: %v", err,
+			self.currentStart, self.currentCount, logStart)
+	}
+	return &logStart, l, err
+}
+
 func (self *TopicCommitLogMgr) GetCurrentStart() int64 {
 	self.Lock()
 	tmp := atomic.LoadInt64(&self.currentStart)
@@ -369,13 +525,14 @@ func (self *TopicCommitLogMgr) Delete() {
 	self.appender.Sync()
 	self.appender.Close()
 	err := os.Remove(self.path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		coordLog.Warningf("failed to remove the commit log for topic: %v", self.path)
 	}
 	for i := int64(0); i < self.currentStart; i++ {
-		os.Remove(self.path + "." + getSuffixString(int64(i)))
+		os.Remove(getSegmentFilename(self.path, int64(i)))
 	}
 	os.Remove(self.path + ".current")
+	os.Remove(self.path + ".start")
 	self.Unlock()
 }
 
@@ -384,7 +541,86 @@ func (self *TopicCommitLogMgr) Close() {
 	self.flushCommitLogsNoLock()
 	self.appender.Sync()
 	self.appender.Close()
+	self.saveCurrentStart()
+	self.saveLogSegStartInfo()
 	self.Unlock()
+}
+
+func (self *TopicCommitLogMgr) Reopen() error {
+	var err error
+	self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		coordLog.Infof("open topic commit log file error: %v", err)
+		return err
+	}
+
+	atomic.StoreInt64(&self.pLogID, 0)
+	err = self.loadCurrentStart()
+	if err != nil {
+		coordLog.Infof("open topic commit log error: %v", err)
+	}
+	err = self.loadLogSegStartInfo()
+	if err != nil {
+		coordLog.Infof("open topic commit log error: %v", err)
+	}
+	//load meta
+	f, err := self.appender.Stat()
+	if err != nil {
+		coordLog.Infof("stat file error: %v", err)
+		return err
+	}
+	fsize := f.Size()
+	self.currentCount = int32(fsize / int64(GetLogDataSize()))
+	// read latest logid and incr. combine the partition id at high.
+	if fsize > 0 {
+		num := fsize / int64(GetLogDataSize())
+		roundOffset := (num - 1) * int64(GetLogDataSize())
+		l, err := self.GetCommitLogFromOffsetV2(self.currentStart, roundOffset)
+		if err != nil {
+			coordLog.Infof("load file error: %v", err)
+			return err
+		}
+		self.pLogID = l.LogID
+		self.nLogID = l.LastMsgLogID + 1
+		if self.pLogID < int64(uint64(self.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Errorf("log id init less than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		} else if self.pLogID > int64(uint64(self.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Errorf("log id init large than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		}
+		if self.nLogID < int64(uint64(self.partition)<<MAX_INCR_ID_BIT) {
+			coordLog.Errorf("log id init less than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		} else if self.nLogID > int64(uint64(self.partition+1)<<MAX_INCR_ID_BIT+1) {
+			coordLog.Errorf("log id init large than expected: %v", self.pLogID)
+			return errors.New("init commit log id failed")
+		}
+	} else {
+		if self.currentStart <= self.logStartInfo.SegmentStartIndex {
+			coordLog.Infof("no last commit data : %v, log start: %v", self.currentStart, self.logStartInfo)
+			self.nLogID = int64(uint64(self.partition)<<MAX_INCR_ID_BIT + 1)
+			if self.logStartInfo.SegmentStartIndex > 0 {
+				l, _, err := getLastCommitLogData(self.path, self.currentStart-1)
+				if err != nil {
+					coordLog.Infof("get last commit data from file %v error: %v", self.currentStart-1, err)
+				} else {
+					self.pLogID = l.LogID
+					self.nLogID = l.LastMsgLogID + 1
+				}
+			}
+		} else {
+			l, _, err := getLastCommitLogData(self.path, self.currentStart-1)
+			if err != nil {
+				coordLog.Infof("get last commit data from file %v error: %v", self.currentStart-1, err)
+				return err
+			}
+			self.pLogID = l.LogID
+			self.nLogID = l.LastMsgLogID + 1
+		}
+	}
+	return nil
+
 }
 
 func (self *TopicCommitLogMgr) NextID() uint64 {
@@ -402,6 +638,114 @@ func (self *TopicCommitLogMgr) GetCurrentEnd() (int64, int64) {
 	return self.currentStart, int64(self.currentCount) * int64(GetLogDataSize())
 }
 
+func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) error {
+	self.Lock()
+	defer self.Unlock()
+	if fileIndex > self.currentStart {
+		return ErrCommitLogCleanKeepMin
+	}
+	// keep some log items
+	if fileIndex == self.currentStart {
+		if fileOffset/int64(GetLogDataSize())+int64(MIN_KEEP_LOG_ITEM) >= int64(self.currentCount) {
+			return ErrCommitLogCleanKeepMin
+		}
+	} else if fileIndex == self.currentStart-1 {
+		fName := getSegmentFilename(self.path, fileIndex)
+		stat, err := os.Stat(fName)
+		if err != nil {
+			return err
+		}
+
+		leftSize := stat.Size() - fileOffset
+		if leftSize < 0 {
+			return ErrCommitLogOffsetInvalid
+		}
+		if leftSize/int64(GetLogDataSize())+int64(self.currentCount) <= int64(MIN_KEEP_LOG_ITEM) {
+			return ErrCommitLogCleanKeepMin
+		}
+	}
+	oldStartInfo := self.logStartInfo
+	cleanStart := self.logStartInfo.SegmentStartIndex
+	cleanStartOffset := self.logStartInfo.SegmentStartOffset
+	for i := int64(0); i < cleanStart; i++ {
+		if i < fileIndex-1 {
+			fName := getSegmentFilename(self.path, int64(i))
+			err := os.Remove(fName)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+				}
+			} else {
+				coordLog.Infof("clean commit segment %v ", fName)
+			}
+		}
+	}
+	// clean the commit segment before the specific file index
+	for i := cleanStart; i < fileIndex; i++ {
+		fName := getSegmentFilename(self.path, int64(i))
+		stat, err := os.Stat(fName)
+		if err != nil {
+			coordLog.Warningf("commit segment %v stat failed: %v", fName, stat)
+			self.saveLogSegStartInfo()
+			return err
+		}
+		if cleanStartOffset > stat.Size() {
+			coordLog.Warningf("commit clean offset %v more than segment size : %v", cleanStartOffset, stat)
+			self.saveLogSegStartInfo()
+			return ErrCommitLogOffsetInvalid
+		}
+		if (stat.Size()-cleanStartOffset)%int64(GetLogDataSize()) != 0 {
+			coordLog.Warningf("commit segment size invalid: %v", stat)
+			self.saveLogSegStartInfo()
+			return ErrCommitLogOffsetInvalid
+		}
+
+		atomic.AddInt64(&self.logStartInfo.SegmentStartCount, (stat.Size()-cleanStartOffset)/int64(GetLogDataSize()))
+		cleanStartOffset = 0
+		atomic.AddInt64(&self.logStartInfo.SegmentStartIndex, 1)
+		atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, cleanStartOffset)
+		// keep the previous file to read the last commit log
+		if int64(i) < fileIndex-1 {
+			err = os.Remove(fName)
+			if err != nil {
+				coordLog.Warningf("clean commit segment %v failed: %v", fName, err)
+			} else {
+				coordLog.Infof("clean commit segment %v ", fName)
+			}
+		}
+	}
+	if fileOffset < cleanStartOffset {
+		coordLog.Warningf("commit clean offset %v less than segment start: %v", fileOffset, cleanStartOffset)
+		return ErrCommitLogOffsetInvalid
+	}
+	diffCnt := (fileOffset - cleanStartOffset) / int64(GetLogDataSize())
+	self.logStartInfo.SegmentStartCount += diffCnt
+	atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, fileOffset)
+
+	if self.logStartInfo.SegmentStartIndex < self.currentStart {
+		fName := getSegmentFilename(self.path, self.logStartInfo.SegmentStartIndex)
+		stat, err := os.Stat(fName)
+		if err != nil {
+			return err
+		}
+		if fileOffset > stat.Size() {
+			coordLog.Warningf("commit clean offset %v more than segment size : %v", fileOffset, stat)
+			return ErrCommitLogOffsetInvalid
+		}
+		if fileOffset == stat.Size() {
+			atomic.AddInt64(&self.logStartInfo.SegmentStartIndex, 1)
+			atomic.StoreInt64(&self.logStartInfo.SegmentStartOffset, 0)
+			// keep the previous file to read the last commit log
+			// os.Remove(fName)
+		}
+	}
+
+	self.saveLogSegStartInfo()
+	coordLog.Warningf("commit segment start clean from %v to : %v (%v:%v)",
+		oldStartInfo, self.logStartInfo, fileIndex, fileOffset)
+	return nil
+}
+
 func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64) (*CommitLogData, error) {
 	self.Lock()
 	defer self.Unlock()
@@ -409,6 +753,17 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 	if startIndex > self.currentStart {
 		return nil, ErrCommitLogOffsetInvalid
 	}
+	if startIndex < self.logStartInfo.SegmentStartIndex ||
+		(startIndex == self.logStartInfo.SegmentStartIndex && offset < self.logStartInfo.SegmentStartOffset) {
+		coordLog.Errorf("truncate file exceed the begin of the segment start: %v, %v", startIndex, self.logStartInfo)
+		return nil, ErrCommitLogLessThanSegmentStart
+	}
+
+	startOffset := int64(0)
+	if startIndex == self.logStartInfo.SegmentStartIndex {
+		startOffset = self.logStartInfo.SegmentStartOffset
+	}
+	coordLog.Infof("truncate commit log from: %v, %v", self.currentStart, self.currentCount)
 	if startIndex < self.currentStart {
 		oldStart := self.currentStart
 		self.currentStart = startIndex
@@ -419,7 +774,7 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 		self.appender.Close()
 		os.Remove(self.path)
 
-		err := util.AtomicRename(self.path+"."+getSuffixString(startIndex), self.path)
+		err := util.AtomicRename(getSegmentFilename(self.path, startIndex), self.path)
 		if err != nil {
 			coordLog.Infof("rename file failed: %v, %v", startIndex, err)
 			return nil, err
@@ -431,27 +786,29 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 		}
 
 		for i := startIndex + 1; i < oldStart; i++ {
-			os.Remove(self.path + "." + getSuffixString(int64(i)))
+			os.Remove(getSegmentFilename(self.path, int64(i)))
 		}
 	}
-	return self.truncateToOffset(offset)
+	coordLog.Infof("truncate commit log to: %v, %v", self.currentStart, self.currentCount)
+	return self.truncateToOffset(startOffset, offset)
 }
 
-func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, error) {
-	l, err := truncateFileToOffset(self.appender, offset)
-	if err != nil {
-		return nil, err
-	}
+func (self *TopicCommitLogMgr) truncateToOffset(startOffset int64, offset int64) (*CommitLogData, error) {
+	l, err := truncateFileToOffset(self.appender, startOffset, offset)
 	self.currentCount = int32(offset / int64(GetLogDataSize()))
-	if offset == 0 {
-		if self.currentStart == 0 {
-			atomic.StoreInt64(&self.pLogID, 0)
-			return nil, nil
-		} else {
-			l, _, err = getLastCommitLogData(self.path, self.currentStart-1)
-			if err != nil {
+	if err != nil {
+		if err == ErrCommitLogEOF {
+			if self.currentStart <= self.logStartInfo.SegmentStartIndex {
+				atomic.StoreInt64(&self.pLogID, 0)
 				return nil, err
+			} else {
+				l, _, err = getLastCommitLogData(self.path, self.currentStart-1)
+				if err != nil {
+					return nil, err
+				}
 			}
+		} else {
+			return nil, err
 		}
 	}
 	atomic.StoreInt64(&self.pLogID, l.LogID)
@@ -461,22 +818,100 @@ func (self *TopicCommitLogMgr) truncateToOffset(offset int64) (*CommitLogData, e
 	return l, nil
 }
 
-func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
+func (self *TopicCommitLogMgr) ConvertToCountIndex(start int64, offset int64) (int64, error) {
 	self.Lock()
 	defer self.Unlock()
-	if start == self.currentStart {
+	if start > self.currentStart {
+		return 0, ErrCommitLogOutofBound
+	}
+	if offset%int64(GetLogDataSize()) != 0 {
+		return 0, ErrCommitLogOffsetInvalid
+	}
+	countIndex := self.logStartInfo.SegmentStartCount
+	startOffset := self.logStartInfo.SegmentStartOffset
+	if start < self.logStartInfo.SegmentStartIndex ||
+		(start == self.logStartInfo.SegmentStartIndex && offset < startOffset) {
+		return 0, ErrCommitLogLessThanSegmentStart
+	}
+	for i := self.logStartInfo.SegmentStartIndex; i < start; i++ {
+		cnt, err := getCommitLogCountFromFile(self.path, i)
+		if err != nil {
+			coordLog.Warningf("get count from segment %v failed: %v", i, err)
+			return 0, err
+		}
+		countIndex += cnt - startOffset/int64(GetLogDataSize())
+		startOffset = 0
+	}
+	if offset < startOffset {
+		return 0, ErrCommitLogOffsetInvalid
+	}
+	countIndex += (offset - startOffset) / int64(GetLogDataSize())
+	return countIndex, nil
+}
+
+func (self *TopicCommitLogMgr) ConvertToOffsetIndex(countIndex int64) (int64, int64, error) {
+	self.Lock()
+	defer self.Unlock()
+	if countIndex < self.logStartInfo.SegmentStartCount {
+		return 0, 0, ErrCommitLogLessThanSegmentStart
+	}
+	segIndex := self.logStartInfo.SegmentStartIndex
+	offset := self.logStartInfo.SegmentStartOffset
+	countIndex -= self.logStartInfo.SegmentStartCount
+	for countIndex > 0 && segIndex < self.currentStart {
+		cnt, err := getCommitLogCountFromFile(self.path, segIndex)
+		if err != nil {
+			coordLog.Warningf("get count from segment %v failed: %v", segIndex, err)
+			return 0, 0, err
+		}
+		cnt -= offset / int64(GetLogDataSize())
+		if countIndex < cnt {
+			offset += countIndex * int64(GetLogDataSize())
+			return segIndex, offset, nil
+		}
+		countIndex -= cnt
+		segIndex++
+		offset = int64(0)
+	}
+	if segIndex == self.currentStart && countIndex > 0 {
+		if countIndex > int64(self.currentCount)-offset/int64(GetLogDataSize()) {
+			coordLog.Warningf("count out of bound: %v, %v:%v", countIndex, self.currentStart, self.currentCount)
+			return 0, 0, ErrCommitLogOutofBound
+		}
 		self.flushCommitLogsNoLock()
-		return getCommitLogFromFile(self.appender, offset)
-	} else if start > self.currentStart || start < 0 {
+		offset += countIndex * int64(GetLogDataSize())
+	}
+	return segIndex, offset, nil
+}
+
+func (self *TopicCommitLogMgr) getCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
+	if start > self.currentStart {
 		return nil, ErrCommitLogOutofBound
+	} else if start < self.logStartInfo.SegmentStartIndex {
+		return nil, ErrCommitLogLessThanSegmentStart
+	} else if start == self.logStartInfo.SegmentStartIndex && offset < self.logStartInfo.SegmentStartOffset {
+		return nil, ErrCommitLogLessThanSegmentStart
 	} else {
-		tmpFile, err := getCommitLogFile(self.path, start, false)
+		if start == self.currentStart {
+			self.flushCommitLogsNoLock()
+			return getCommitLogFromFile(self.appender, offset)
+		}
+		logs, err := self.getCommitLogsV2(start, offset, 1)
 		if err != nil {
 			return nil, err
 		}
-		defer tmpFile.Close()
-		return getCommitLogFromFile(tmpFile, offset)
+		if len(logs) == 0 {
+			return nil, ErrCommitLogEOF
+		}
+		l := logs[0]
+		return &l, nil
 	}
+}
+
+func (self *TopicCommitLogMgr) GetCommitLogFromOffsetV2(start int64, offset int64) (*CommitLogData, error) {
+	self.Lock()
+	defer self.Unlock()
+	return self.getCommitLogFromOffsetV2(start, offset)
 }
 
 func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64, *CommitLogData, error) {
@@ -486,6 +921,10 @@ func (self *TopicCommitLogMgr) GetLastCommitLogDataOnSegment(index int64) (int64
 		self.flushCommitLogsNoLock()
 		l, readOffset, err := getLastCommitLogDataFromFile(self.appender)
 		return readOffset, l, err
+	} else if index > self.currentStart {
+		return 0, nil, ErrCommitLogOutofBound
+	} else if index < self.logStartInfo.SegmentStartIndex {
+		return 0, nil, ErrCommitLogLessThanSegmentStart
 	} else {
 		l, readOffset, err := getLastCommitLogData(self.path, index)
 		return readOffset, l, err
@@ -503,7 +942,7 @@ func (self *TopicCommitLogMgr) GetLastCommitLogOffsetV2() (int64, int64, *Commit
 	}
 	fsize := f.Size()
 	if fsize == 0 {
-		if self.currentStart == 0 {
+		if self.currentStart == self.logStartInfo.SegmentStartIndex {
 			return self.currentStart, 0, nil, ErrCommitLogEOF
 		} else {
 			// it may happen : a new commit segment without any commit log,
@@ -566,15 +1005,15 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	}
 	if self.currentCount >= int32(LOGROTATE_NUM) {
 		self.flushCommitLogsNoLock()
-		newName := self.path + "." + getSuffixString(self.currentStart)
+		self.appender.Sync()
+		self.appender.Close()
+		newName := getSegmentFilename(self.path, self.currentStart)
 		err := util.AtomicRename(self.path, newName)
 		if err != nil {
 			coordLog.Errorf("rotate file %v to %v failed: %v", self.path, newName, err)
 			return err
 		}
 		coordLog.Infof("rotate file %v to %v", self.path, newName)
-		self.appender.Sync()
-		self.appender.Close()
 		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			coordLog.Infof("open topic commit log file error: %v", err)
@@ -612,14 +1051,17 @@ func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 			self.committedLogs = make([]CommitLogData, 0, self.bufSize)
 		}
 	} else {
-		if cap(self.committedLogs) != self.bufSize*100 {
-			self.committedLogs = make([]CommitLogData, 0, self.bufSize*100)
+		if cap(self.committedLogs) != self.bufSize*10 {
+			self.committedLogs = make([]CommitLogData, 0, self.bufSize*10)
 		}
 	}
 	self.Unlock()
 }
 
 func (self *TopicCommitLogMgr) flushCommitLogsNoLock() {
+	if len(self.committedLogs) == 0 {
+		return
+	}
 	// write buffered commit logs to file.
 	tmpBuf := bytes.NewBuffer(self.buffer[:0])
 	for _, v := range self.committedLogs {
@@ -641,13 +1083,19 @@ func (self *TopicCommitLogMgr) FlushCommitLogs() {
 	self.Unlock()
 }
 
-func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int64, num int) ([]CommitLogData, error) {
-	self.Lock()
-	defer self.Unlock()
+func (self *TopicCommitLogMgr) getCommitLogsV2(startIndex int64, startOffset int64, num int) ([]CommitLogData, error) {
+	if startIndex < self.logStartInfo.SegmentStartIndex {
+		return nil, ErrCommitLogLessThanSegmentStart
+	} else if startIndex == self.logStartInfo.SegmentStartIndex && startOffset < self.logStartInfo.SegmentStartOffset {
+		return nil, ErrCommitLogLessThanSegmentStart
+	} else if startIndex > self.currentStart {
+		return nil, ErrCommitLogOutofBound
+	}
 	self.flushCommitLogsNoLock()
 	if startIndex == self.currentStart {
 		return getCommitLogListFromFile(self.appender, startOffset, num)
 	}
+
 	var totalLogs []CommitLogData
 	readIndex := startIndex
 	readOffset := startOffset
@@ -666,7 +1114,7 @@ func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int
 			loglist, err = getCommitLogListFromFile(self.appender, readOffset, num-len(totalLogs))
 		}
 		if err == ErrCommitLogEOF {
-			coordLog.Debugf("read %v to end: %v logs", readIndex, len(loglist))
+			//coordLog.Debugf("read %v to end: %v logs", readIndex, len(loglist))
 			readIndex++
 			readOffset = 0
 		} else {
@@ -689,6 +1137,12 @@ func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int
 	return totalLogs, nil
 }
 
+func (self *TopicCommitLogMgr) GetCommitLogsV2(startIndex int64, startOffset int64, num int) ([]CommitLogData, error) {
+	self.Lock()
+	defer self.Unlock()
+	return self.getCommitLogsV2(startIndex, startOffset, num)
+}
+
 type ICommitLogComparator interface {
 	SearchEndBoundary() int64
 	LessThanLeftBoundary(l *CommitLogData) bool
@@ -696,8 +1150,9 @@ type ICommitLogComparator interface {
 }
 
 func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparator) (int64, int64, *CommitLogData, error) {
-	searchOffset := int64(0)
-	searchLogIndexStart := int64(0)
+	logStart, _, _ := self.GetLogStartInfo()
+	searchOffset := logStart.SegmentStartOffset
+	searchLogIndexStart := logStart.SegmentStartIndex
 	searchLogIndexEnd := comp.SearchEndBoundary()
 	if searchLogIndexEnd > self.currentStart {
 		searchLogIndexEnd = self.currentStart
@@ -714,11 +1169,18 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 			}
 			return 0, 0, nil, err
 		}
-		segStartLog, err := self.GetCommitLogFromOffsetV2(searchIndex, 0)
+		searchBeginOffset := int64(0)
+		if searchIndex == logStart.SegmentStartIndex {
+			searchBeginOffset = logStart.SegmentStartOffset
+		}
+		segStartLog, err := self.GetCommitLogFromOffsetV2(searchIndex, searchBeginOffset)
 		if err != nil {
+			coordLog.Infof("log file searching start failed: %v:%v, %v", searchIndex, searchBeginOffset, logStart)
 			return 0, 0, nil, err
 		}
-		coordLog.Debugf("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		if coordLog.Level() >= 4 {
+			coordLog.Debugf("log file index searching: %v:%v, %v", searchLogIndexStart, searchLogIndexEnd, searchIndex)
+		}
 		if comp.GreatThanRightBoundary(segEndLog) {
 			searchLogIndexStart = searchIndex + 1
 		} else if comp.LessThanLeftBoundary(segStartLog) {
@@ -732,6 +1194,9 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		return searchLogIndexEnd, 0, nil, ErrCommitLogSearchNotFound
 	}
 	searchCntStart := int64(0)
+	if searchLogIndexStart == self.logStartInfo.SegmentStartIndex {
+		searchCntStart = self.logStartInfo.SegmentStartOffset / int64(GetLogDataSize())
+	}
 	roffset, _, err := self.GetLastCommitLogDataOnSegment(searchLogIndexStart)
 	if err != nil {
 		coordLog.Infof("get last log data on segment:%v, failed:%v\n", searchLogIndexStart, err)
@@ -745,10 +1210,16 @@ func (self *TopicCommitLogMgr) SearchLogDataByComparator(comp ICommitLogComparat
 		}
 		searchCntPos := searchCntStart + (searchCntEnd-searchCntStart)/2
 		searchOffset = searchCntPos * int64(GetLogDataSize())
-		coordLog.Debugf("log searching: %v:%v", searchLogIndexStart, searchOffset)
+		if coordLog.Level() >= 4 {
+			coordLog.Debugf("log searching: %v:%v", searchLogIndexStart, searchOffset)
+		}
 		cur, err = self.GetCommitLogFromOffsetV2(searchLogIndexStart, searchOffset)
 		if err != nil {
 			coordLog.Infof("get log data from:%v:%v, failed:%v\n", searchLogIndexStart, searchOffset, err)
+			if err == ErrCommitLogLessThanSegmentStart {
+				searchCntStart = searchCntPos + 1
+				continue
+			}
 			return 0, 0, nil, err
 		}
 		if comp.LessThanLeftBoundary(cur) {

@@ -2,7 +2,9 @@ package consistence
 
 import (
 	"errors"
+	"github.com/absolute8511/nsq/internal/protocol"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +22,27 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 
 func (self *NsqLookupCoordinator) IsMineLeader() bool {
 	return self.leaderNode.GetID() == self.myNode.GetID()
+}
+
+func (self *NsqLookupCoordinator) IsClusterStable() bool {
+	return atomic.LoadInt32(&self.isClusterUnstable) == 0
+}
+
+func (self *NsqLookupCoordinator) GetClusterNodeLoadFactor() (map[string]float64, map[string]float64) {
+	currentNodes := self.getCurrentNodes()
+	leaderFactors := make(map[string]float64, len(currentNodes))
+	nodeFactors := make(map[string]float64, len(currentNodes))
+	for nodeID, nodeInfo := range currentNodes {
+		topicStat, err := self.getNsqdTopicStat(nodeInfo)
+		if err != nil {
+			coordLog.Infof("failed to get node topic status : %v", nodeID)
+			continue
+		}
+		leaderLF, nodeLF := topicStat.GetNodeLoadFactor()
+		leaderFactors[nodeID] = leaderLF
+		nodeFactors[nodeID] = nodeLF
+	}
+	return leaderFactors, nodeFactors
 }
 
 func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid string) bool {
@@ -87,7 +110,7 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 		meta, err := self.leadership.GetTopicMetaInfo(topic)
 		if err != nil {
 			coordLog.Infof("failed to get meta for topic: %v", err)
-			return err
+			meta.PartitionNum = MAX_PARTITION_NUM
 		}
 		self.joinStateMutex.Lock()
 		state, ok := self.joinISRState[topic]
@@ -126,23 +149,10 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 
 func (self *NsqLookupCoordinator) deleteTopicPartitionForce(topic string, pid int) error {
 	self.leadership.DeleteTopic(topic, pid)
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
 	var topicInfo TopicPartitionMetaInfo
 	topicInfo.Name = topic
 	topicInfo.Partition = pid
-	for _, node := range currentNodes {
-		c, rpcErr := self.acquireRpcClient(node.ID)
-		if rpcErr != nil {
-			coordLog.Infof("failed to get rpc client: %v, %v", node.ID, rpcErr)
-			continue
-		}
-		rpcErr = c.DeleteNsqdTopic(self.leaderNode.Epoch, &topicInfo)
-		if rpcErr != nil {
-			coordLog.Infof("failed to call rpc : %v, %v", node.ID, rpcErr)
-		}
-	}
 	for _, node := range currentNodes {
 		c, rpcErr := self.acquireRpcClient(node.ID)
 		if rpcErr != nil {
@@ -190,6 +200,15 @@ func (self *NsqLookupCoordinator) deleteTopicPartition(topic string, pid int) er
 			coordLog.Infof("failed to call rpc : %v, %v", id, rpcErr)
 		}
 	}
+	// try remove on other nodes, maybe some left data
+	allNodes := self.getCurrentNodes()
+	for _, n := range allNodes {
+		c, rpcErr := self.acquireRpcClient(n.GetID())
+		if rpcErr != nil {
+			continue
+		}
+		c.DeleteNsqdTopic(self.leaderNode.Epoch, topicInfo)
+	}
 
 	return nil
 }
@@ -200,14 +219,16 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		return ErrNotNsqLookupLeader
 	}
 
+	if !protocol.IsValidTopicName(topic) {
+		return errors.New("invalid topic name")
+	}
+
 	// TODO: handle default load factor
 	if meta.PartitionNum >= MAX_PARTITION_NUM {
 		return errors.New("max partition allowed exceed")
 	}
 
-	self.nodesMutex.RLock()
-	currentNodes := self.nsqdNodes
-	self.nodesMutex.RUnlock()
+	currentNodes := self.getCurrentNodes()
 	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
 		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
 		return ErrNodeUnavailable.ToErrorType()
@@ -227,7 +248,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	state.Lock()
 	defer state.Unlock()
 	if state.waitingJoin {
-		coordLog.Infof("topic state is not ready:%v, %v ", topic, state)
+		coordLog.Warningf("topic state is not ready:%v, %v ", topic, state)
 		return ErrWaitingJoinISR.ToErrorType()
 	}
 
@@ -247,6 +268,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	} else {
+		coordLog.Warningf("topic already exist :%v ", topic)
 		return ErrAlreadyExist
 	}
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
@@ -269,7 +291,7 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			}
 		}
 	}
-	leaders, isrList, err := self.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
+	leaders, isrList, err := self.dpm.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
 		return err.ToErrorType()
@@ -303,5 +325,6 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 			coordLog.Infof("topic %v init successful.", tmpTopicInfo)
 		}
 	}
+	self.triggerCheckTopics("", 0, 0)
 	return nil
 }

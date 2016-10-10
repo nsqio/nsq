@@ -57,7 +57,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
-	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.V1))
+	router.Handle("GET", "/message/historystats", http_api.Decorate(s.doMessageHistoryStats, log, http_api.V1))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
@@ -127,6 +128,7 @@ func (s *httpServer) doSetLogLevel(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "BAD_LEVEL_STRING"}
 	}
 	nsqd.NsqLogger().SetLevel(int32(level))
+	consistence.SetCoordLogLevel(int32(level))
 	return nil, nil
 }
 
@@ -222,6 +224,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool) (interface{}, error) {
+	startPub := time.Now().UnixNano()
 	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -240,8 +243,10 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	readMax := req.ContentLength + 1
 	b := topic.BufferPoolGet(int(req.ContentLength))
 	defer topic.BufferPoolPut(b)
+	asyncAction := !enableTrace
+	n, err := io.CopyN(b, io.LimitReader(req.Body, readMax), int64(req.ContentLength))
 	body := b.Bytes()[:req.ContentLength]
-	n, err := io.ReadFull(io.LimitReader(req.Body, readMax), body)
+
 	if err != nil {
 		nsqd.NsqLogger().Logf("read request body error: %v", err)
 		body = body[:n]
@@ -257,8 +262,10 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{406, "MSG_EMPTY"}
 	}
 
-	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		if asyncAction {
+			return internalPubAsync(nil, b, topic)
+		}
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
 		if enableTrace && err != nil {
@@ -269,7 +276,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body, traceID)
 		//s.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -279,7 +285,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, false)
+		cost := time.Now().UnixNano() - startPub
+		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
 		if enableTrace {
 			return struct {
 				Status      string `json:"status"`
@@ -292,7 +299,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return "OK", nil
 		}
 	} else {
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", 1, true)
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
 		topic.DisableForSlave()
@@ -301,6 +307,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	startPub := time.Now().UnixNano()
 	if req.ContentLength > s.ctx.getOpts().MaxBodySize {
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
 	}
@@ -365,15 +372,14 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 
 			msg := nsqd.NewMessage(0, block)
 			msgs = append(msgs, msg)
+			topic.GetDetailStats().UpdateTopicMsgStats(int64(len(block)), 0)
 		}
 	}
 
-	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		_, _, _, err := s.ctx.PutMessages(topic, msgs)
 		//s.ctx.setHealth(err)
 		if err != nil {
-			topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -383,7 +389,6 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			return nil, http_api.Err{503, err.Error()}
 		}
 	} else {
-		topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), true)
 		//should we forward to master of topic?
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)
@@ -391,7 +396,8 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
-	topic.UpdatePubStats(remoteHost, req.UserAgent(), "http", int64(len(msgs)), false)
+	cost := time.Now().UnixNano() - startPub
+	topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(msgs)))
 	return "OK", nil
 }
 
@@ -533,10 +539,17 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 
-	// TODO: sync to replica to delete this channel.
-	err = topic.DeleteExistingChannel(channelName)
-	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		clusterErr := s.ctx.DeleteExistingChannel(topic, channelName)
+		if clusterErr != nil {
+			return nil, http_api.Err{500, clusterErr.Error()}
+		}
+		nsqd.NsqLogger().Logf("deleted the channel : %v, by client:%v",
+			channelName, req.RemoteAddr)
+	} else {
+		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
+			topic.GetFullName(), req.RemoteAddr)
+		return nil, http_api.Err{400, FailedOnNotLeader}
 	}
 
 	return nil, nil
@@ -617,6 +630,37 @@ func (s *httpServer) disableMessageTrace(w http.ResponseWriter, req *http.Reques
 		}
 	}
 	return nil, nil
+}
+
+func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	topicPartStr := reqParams.Get("partition")
+	topicPart, err := strconv.Atoi(topicPartStr)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
+	if err != nil {
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+	}
+	pubhs := t.GetDetailStats().GetHourlyStats()
+	// since the newest 2 hours data maybe update during get, we ignore the newest 2 points
+	cur := time.Now().Hour() + 2
+	pubhsNew := make([]int64, 0, 22)
+	for len(pubhsNew) < 22 {
+		pubhsNew = append(pubhsNew, pubhs[cur%len(pubhs)])
+		cur++
+	}
+	return struct {
+		HourlyPubSize []int64 `json:"hourly_pub_size"`
+	}{pubhsNew}, nil
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

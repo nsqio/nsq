@@ -113,6 +113,9 @@ type ClientV2 struct {
 	AuthState   *auth.State
 	tlsConfig   *tls.Config
 	EnableTrace bool
+
+	PubTimeout *time.Timer
+	remoteAddr string
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -151,13 +154,15 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: opts.ClientTimeout / 2,
 		tlsConfig:         tls,
+		PubTimeout:        time.NewTimer(time.Second * 5),
 	}
 	c.LenSlice = c.lenBuf[:]
+	c.remoteAddr = identifier
 	return c
 }
 
 func (c *ClientV2) String() string {
-	return c.RemoteAddr().String()
+	return c.remoteAddr
 }
 
 func (c *ClientV2) Exit() {
@@ -371,16 +376,17 @@ func (c *ClientV2) IsReadyForMessages() bool {
 
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
 	if nsqLog.Level() > 1 {
 		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d",
 			c, readyCount, inFlightCount)
 	}
 
-	if inFlightCount >= readyCount || readyCount <= 0 {
+	// deferCnt should consider as not in flight
+	if inFlightCount >= readyCount+deferCnt || readyCount <= 0 {
 		return false
 	}
-	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 	if deferCnt > readyCount*100 || deferCnt > 1000 {
 		nsqLog.Infof("[%s] too much deferred message : %v rdy: %4d inflt: %4d",
 			c, deferCnt, readyCount, inFlightCount)

@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/test"
-	"golang.org/x/net/context"
 	etcdlock "github.com/reechou/xlock2"
+	"golang.org/x/net/context"
 )
 
 const (
-	EtcdHost = "http://etcd-dev.s.qima-inc.com:2379"
+	EtcdHost = "http://etcd.server.whatever:2379"
 )
 
 func TestNodeRe(t *testing.T) {

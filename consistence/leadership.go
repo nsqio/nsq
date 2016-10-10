@@ -51,6 +51,8 @@ type TopicMetaInfo struct {
 	SyncEvery int
 	// to verify the data of the create -> delete -> create with same topic
 	MagicCode int64
+	// the retention days for the data
+	RetentionDay int32
 }
 
 type TopicPartitionReplicaInfo struct {

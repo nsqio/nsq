@@ -122,10 +122,10 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 		}
 		nsqd.NsqLogger().Logf("Start with broadcast: %s", ip)
 
+		consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
 		coord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)
 		l := consistence.NewNsqdEtcdMgr(opts.ClusterLeadershipAddresses)
 		coord.SetLeadershipMgr(l)
-		consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
 		ctx.nsqdCoord = coord
 	} else {
 		nsqd.NsqLogger().LogWarningf("Start without nsqd coordinator enabled")
@@ -146,6 +146,7 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 		os.Exit(1)
 	}
 	s.ctx.tlsConfig = tlsConfig
+	s.ctx.nsqd.SetPubLoop(s.ctx.internalPubLoop)
 
 	nsqd.NsqLogger().Logf(version.String("nsqd"))
 	nsqd.NsqLogger().Logf("ID: %d", opts.ID)
@@ -202,10 +203,12 @@ func (s *NsqdServer) Main() {
 	}
 	s.tcpListener = tcpListener
 	s.ctx.tcpAddr = tcpListener.Addr().(*net.TCPAddr)
+	nsqd.NsqLogger().Logf("TCP: listening on %s", tcpListener.Addr())
 
 	tcpServer := &tcpServer{ctx: s.ctx}
 	s.waitGroup.Wrap(func() {
-		protocol.TCPServer(s.tcpListener, tcpServer, opts.Logger)
+		protocol.TCPServer(s.tcpListener, tcpServer)
+		nsqd.NsqLogger().Logf("TCP: closing %s", s.tcpListener.Addr())
 	})
 
 	if s.ctx.GetTlsConfig() != nil && opts.HTTPSAddress != "" {

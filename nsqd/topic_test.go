@@ -4,6 +4,9 @@ import (
 	"errors"
 	"os"
 	//"runtime"
+	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/test"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -19,22 +22,22 @@ func TestGetTopic(t *testing.T) {
 	defer nsqd.Exit()
 
 	topic1 := nsqd.GetTopic("test", 0)
-	nequal(t, nil, topic1)
-	equal(t, "test", topic1.GetTopicName())
+	test.NotNil(t, topic1)
+	test.Equal(t, "test", topic1.GetTopicName())
 
 	topic2 := nsqd.GetTopic("test", 0)
-	equal(t, topic1, topic2)
+	test.Equal(t, topic1, topic2)
 
 	topic3 := nsqd.GetTopic("test2", 1)
-	equal(t, "test2", topic3.GetTopicName())
-	nequal(t, topic2, topic3)
+	test.Equal(t, "test2", topic3.GetTopicName())
+	test.NotEqual(t, topic2, topic3)
 
 	topic1_1 := nsqd.GetTopicIgnPart("test")
-	equal(t, "test", topic1_1.GetTopicName())
-	equal(t, 0, topic1_1.GetTopicPart())
+	test.Equal(t, "test", topic1_1.GetTopicName())
+	test.Equal(t, 0, topic1_1.GetTopicPart())
 	topic3_1 := nsqd.GetTopicIgnPart("test2")
-	equal(t, "test2", topic3_1.GetTopicName())
-	equal(t, 1, topic3_1.GetTopicPart())
+	test.Equal(t, "test2", topic3_1.GetTopicName())
+	test.Equal(t, 1, topic3_1.GetTopicPart())
 
 }
 
@@ -48,13 +51,13 @@ func TestGetChannel(t *testing.T) {
 	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
-	equal(t, "ch1", channel1.name)
+	test.NotNil(t, channel1)
+	test.Equal(t, "ch1", channel1.name)
 
 	channel2 := topic.GetChannel("ch2")
 
-	equal(t, channel1, topic.channelMap["ch1"])
-	equal(t, channel2, topic.channelMap["ch2"])
+	test.Equal(t, channel1, topic.channelMap["ch1"])
+	test.Equal(t, channel2, topic.channelMap["ch2"])
 }
 
 type errorBackendQueue struct{}
@@ -90,7 +93,7 @@ func TestTopicMarkRemoved(t *testing.T) {
 	origPath := topic.dataPath
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	for i := 0; i <= 1000; i++ {
 		msg.ID = 0
@@ -99,59 +102,71 @@ func TestTopicMarkRemoved(t *testing.T) {
 	topic1 := nsqd.GetTopic("test", 1)
 	err := topic.SetMagicCode(time.Now().UnixNano())
 	err = topic1.SetMagicCode(time.Now().UnixNano())
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	channel1 = topic1.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 	for i := 0; i <= 1000; i++ {
 		msg.ID = 0
 		topic1.PutMessage(msg)
 	}
 	topic.ForceFlush()
+	topic.SaveHistoryStats()
 	topic1.ForceFlush()
+	topic1.SaveHistoryStats()
 	oldName := topic.backend.fileName(0)
 	oldMetaName := topic.backend.metaDataFileName()
 	oldName1 := topic1.backend.fileName(0)
 	oldMetaName1 := topic1.backend.metaDataFileName()
-	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
-	oldMagicFile1 := path.Join(topic1.dataPath, "magic"+strconv.Itoa(topic1.partition))
+	oldMagicFile := topic.getMagicCodeFileName()
+	oldMagicFile1 := topic1.getMagicCodeFileName()
+	oldHistoryFile := topic.getHistoryStatsFileName()
+	oldHistoryFile1 := topic1.getHistoryStatsFileName()
 	_, err = os.Stat(oldMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMagicFile1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
+	_, err = os.Stat(oldHistoryFile)
+	test.Equal(t, nil, err)
+	_, err = os.Stat(oldHistoryFile1)
+	test.Equal(t, nil, err)
 
 	removedPath, err := topic.MarkAsRemoved()
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
 	// mark as removed should keep the topic base directory
 	_, err = os.Stat(origPath)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	// partition data should be removed
 	newPath := removedPath
 	_, err = os.Stat(newPath)
 	defer os.RemoveAll(newPath)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	newName := path.Join(newPath, filepath.Base(oldName))
 	newMetaName := path.Join(newPath, filepath.Base(oldMetaName))
 	newMagicFile := path.Join(newPath, filepath.Base(oldMagicFile))
 	// should keep other topic partition
 	_, err = os.Stat(oldName1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMetaName1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldMagicFile1)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
+	_, err = os.Stat(oldHistoryFile1)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(oldName)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 	_, err = os.Stat(oldMetaName)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 	_, err = os.Stat(oldMagicFile)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
+	_, err = os.Stat(oldHistoryFile)
+	test.NotNil(t, err)
 	_, err = os.Stat(newName)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(newMetaName)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	_, err = os.Stat(newMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 }
 
 func TestDeletes(t *testing.T) {
@@ -165,24 +180,24 @@ func TestDeletes(t *testing.T) {
 	oldMagicFile := path.Join(topic.dataPath, "magic"+strconv.Itoa(topic.partition))
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.SetMagicCode(time.Now().UnixNano())
 	_, err = os.Stat(oldMagicFile)
-	equal(t, nil, err)
+	test.Equal(t, nil, err)
 	err = topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	channel2 := topic.GetChannel("ch2")
-	nequal(t, nil, channel2)
+	test.NotNil(t, channel2)
 
 	err = nsqd.DeleteExistingTopic("test", topic.GetTopicPart())
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
-	equal(t, 0, len(nsqd.topicMap))
+	test.Equal(t, nil, err)
+	test.Equal(t, 0, len(topic.channelMap))
+	test.Equal(t, 0, len(nsqd.topicMap))
 	_, err = os.Stat(oldMagicFile)
-	nequal(t, nil, err)
+	test.NotNil(t, err)
 }
 
 func TestDeleteLast(t *testing.T) {
@@ -195,16 +210,16 @@ func TestDeleteLast(t *testing.T) {
 	topic := nsqd.GetTopic("test", 0)
 
 	channel1 := topic.GetChannel("ch1")
-	nequal(t, nil, channel1)
+	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
-	equal(t, nil, err)
-	equal(t, 0, len(topic.channelMap))
+	test.Nil(t, err)
+	test.Equal(t, 0, len(topic.channelMap))
 
 	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	_, _, _, _, err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
-	equal(t, nil, err)
+	test.Nil(t, err)
 }
 
 func TestTopicBackendMaxMsgSize(t *testing.T) {
@@ -217,11 +232,322 @@ func TestTopicBackendMaxMsgSize(t *testing.T) {
 	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName, 0)
 
-	equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
+	test.Equal(t, topic.backend.maxMsgSize, int32(opts.MaxMsgSize+minValidMsgLength))
 }
 
-func TestTopicResetWriteEnd(t *testing.T) {
-	// TODO
+func TestTopicPutChannelWait(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.dynamicConf.AutoCommit = 1
+	topic.dynamicConf.SyncEvery = 10
+
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	for i := 0; i <= 10; i++ {
+		msg.ID = 0
+		topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	for i := 0; i <= 10; i++ {
+		select {
+		case outMsg := <-channel.clientMsgChan:
+			test.Equal(t, msg.Body, outMsg.Body)
+			channel.ConfirmBackendQueue(outMsg)
+		case <-time.After(time.Second):
+			t.Fatalf("should read message in channel")
+		}
+	}
+	test.Equal(t, true, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.Equal(t, false, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	select {
+	case outMsg := <-channel.clientMsgChan:
+		test.Equal(t, msg.Body, outMsg.Body)
+		channel.ConfirmBackendQueue(outMsg)
+	case <-time.After(time.Second):
+		t.Fatalf("should read the message in channel")
+	}
+	test.Equal(t, true, channel.IsWaitingMoreData())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.Equal(t, false, channel.IsWaitingMoreData())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+	msg.ID = 0
+	topic.PutMessage(msg)
+	test.NotEqual(t, topic.backend.GetQueueReadEnd(), topic.backend.GetQueueWriteEnd())
+	test.Equal(t, topic.backend.GetQueueReadEnd(), channel.GetChannelEnd())
+}
+
+func TestTopicCleanOldDataByRetentionSize(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MaxBytesPerFile = 1024 * 1024
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.dynamicConf.AutoCommit = 1
+	topic.dynamicConf.SyncEvery = 10
+	topic.dynamicConf.RetentionDay = 1
+
+	msgNum := 5000
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, make([]byte, 1000))
+	msgSize := int32(0)
+	for i := 0; i <= msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, _, _ = topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+
+	fileNum := topic.backend.diskWriteEnd.EndOffset.FileNum
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+
+	test.Equal(t, true, fileNum >= 4)
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+
+	topic.TryCleanOldData(1, false, 0)
+	// should not clean not consumed data
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	startFileName := topic.backend.fileName(0)
+	fStat, err := os.Stat(startFileName)
+	test.Nil(t, err)
+	fileSize := fStat.Size()
+	fileCnt := fileSize / int64(msgSize)
+
+	for i := 0; i < msgNum-100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+	topic.TryCleanOldData(1024*1024*2, false, 0)
+	test.Equal(t, int64(2), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	startFileName = topic.backend.fileName(0)
+	_, err = os.Stat(startFileName)
+	test.NotNil(t, err)
+	test.Equal(t, true, os.IsNotExist(err))
+	startFileName = topic.backend.fileName(1)
+	_, err = os.Stat(startFileName)
+	test.NotNil(t, err)
+	test.Equal(t, true, os.IsNotExist(err))
+	test.Equal(t, BackendOffset(2*fileSize), topic.backend.GetQueueReadStart().Offset())
+	test.Equal(t, 2*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
+
+	topic.TryCleanOldData(1, false, 0)
+
+	// should keep at least 2 files
+	test.Equal(t, fileNum-1, topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	test.Equal(t, BackendOffset((fileNum-1)*fileSize), topic.backend.GetQueueReadStart().Offset())
+	test.Equal(t, (fileNum-1)*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
+	for i := 0; i < int(fileNum)-1; i++ {
+		startFileName = topic.backend.fileName(int64(i))
+		_, err = os.Stat(startFileName)
+		test.NotNil(t, err)
+		test.Equal(t, true, os.IsNotExist(err))
+	}
+}
+
+func TestTopicCleanOldDataByRetentionDay(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.MaxBytesPerFile = 1024 * 1024
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.dynamicConf.AutoCommit = 1
+	topic.dynamicConf.SyncEvery = 10
+
+	msgNum := 5000
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, make([]byte, 1000))
+	msg.Timestamp = time.Now().Add(-1 * time.Hour * time.Duration(24*4)).UnixNano()
+	msgSize := int32(0)
+	var dend BackendQueueEnd
+	for i := 0; i <= msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
+	}
+	topic.ForceFlush()
+
+	fileNum := topic.backend.diskWriteEnd.EndOffset.FileNum
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+
+	test.Equal(t, true, fileNum >= 4)
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+
+	topic.dynamicConf.RetentionDay = 1
+	topic.TryCleanOldData(0, false, 0)
+	// should not clean not consumed data
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	startFileName := topic.backend.fileName(0)
+	fStat, err := os.Stat(startFileName)
+	test.Nil(t, err)
+	fileSize := fStat.Size()
+	fileCnt := fileSize / int64(msgSize)
+
+	for i := 0; i < msgNum-100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+	topic.dynamicConf.RetentionDay = 2
+	topic.TryCleanOldData(0, false, 0)
+	test.Equal(t, int64(2), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	startFileName = topic.backend.fileName(0)
+	_, err = os.Stat(startFileName)
+	test.NotNil(t, err)
+	test.Equal(t, true, os.IsNotExist(err))
+	startFileName = topic.backend.fileName(1)
+	_, err = os.Stat(startFileName)
+	test.NotNil(t, err)
+	test.Equal(t, true, os.IsNotExist(err))
+	test.Equal(t, BackendOffset(2*fileSize), topic.backend.GetQueueReadStart().Offset())
+	test.Equal(t, 2*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
+
+	topic.dynamicConf.RetentionDay = 1
+	topic.TryCleanOldData(0, false, 0)
+
+	// should keep at least 2 files
+	test.Equal(t, fileNum-1, topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+	test.Equal(t, BackendOffset((fileNum-1)*fileSize), topic.backend.GetQueueReadStart().Offset())
+	test.Equal(t, (fileNum-1)*fileCnt, topic.backend.GetQueueReadStart().TotalMsgCnt())
+	for i := 0; i < int(fileNum)-1; i++ {
+		startFileName = topic.backend.fileName(int64(i))
+		_, err = os.Stat(startFileName)
+		test.NotNil(t, err)
+		test.Equal(t, true, os.IsNotExist(err))
+	}
+}
+
+func TestTopicResetWithQueueStart(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	if testing.Verbose() {
+		opts.Logger = &levellogger.GLogger{}
+		opts.LogLevel = 3
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
+	}
+	opts.MaxBytesPerFile = 1024 * 1024
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test", 0)
+	topic.dynamicConf.AutoCommit = 1
+	topic.dynamicConf.SyncEvery = 10
+
+	msgNum := 5000
+	channel := topic.GetChannel("ch")
+	test.NotNil(t, channel)
+	msg := NewMessage(0, make([]byte, 1000))
+	msg.Timestamp = time.Now().Add(-1 * time.Hour * time.Duration(24*4)).UnixNano()
+	msgSize := int32(0)
+	var dend BackendQueueEnd
+	for i := 0; i <= msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
+	}
+	topic.ForceFlush()
+
+	fileNum := topic.backend.diskWriteEnd.EndOffset.FileNum
+	test.Equal(t, int64(0), topic.backend.GetQueueReadStart().(*diskQueueEndInfo).EndOffset.FileNum)
+
+	test.Equal(t, true, fileNum >= 4)
+	nsqLog.Warningf("reading the topic %v backend ", topic.GetFullName())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+	}
+
+	topic.dynamicConf.RetentionDay = 2
+
+	oldEnd := topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	// reset with new start
+	resetStart := &diskQueueEndInfo{}
+	resetStart.virtualEnd = topic.backend.GetQueueWriteEnd().Offset() + BackendOffset(msgSize*10)
+	resetStart.totalMsgCnt = topic.backend.GetQueueWriteEnd().TotalMsgCnt() + 10
+	err := topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
+	test.NotNil(t, err)
+	topic.DisableForSlave()
+	err = topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
+	test.Nil(t, err)
+	topic.EnableForMaster()
+
+	nsqLog.Warningf("reset the topic %v backend with queue start: %v", topic.GetFullName(), resetStart)
+	test.Equal(t, resetStart.Offset(), BackendOffset(topic.GetQueueReadStart()))
+	newEnd := topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.Offset(), newEnd.Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), newEnd.TotalMsgCnt())
+	test.Equal(t, true, newEnd.EndOffset.GreatThan(&oldEnd.EndOffset))
+	test.Equal(t, int64(0), newEnd.EndOffset.Pos)
+	test.Equal(t, resetStart.Offset(), channel.GetConfirmed().Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), channel.GetChannelEnd().TotalMsgCnt())
+
+	for i := 0; i < msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, _, _ = topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.TotalMsgCnt()+int64(msgNum), newEnd.TotalMsgCnt())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
+	}
+
+	// reset with old start
+	topic.DisableForSlave()
+	err = topic.ResetBackendWithQueueStartNoLock(int64(resetStart.Offset()), resetStart.TotalMsgCnt())
+	test.Nil(t, err)
+
+	topic.EnableForMaster()
+	test.Equal(t, resetStart.Offset(), BackendOffset(topic.GetQueueReadStart()))
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.Offset(), newEnd.Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), newEnd.TotalMsgCnt())
+	test.Equal(t, true, newEnd.EndOffset.GreatThan(&oldEnd.EndOffset))
+	test.Equal(t, int64(0), newEnd.EndOffset.Pos)
+	test.Equal(t, resetStart.Offset(), channel.GetConfirmed().Offset())
+	test.Equal(t, resetStart.TotalMsgCnt(), channel.GetChannelEnd().TotalMsgCnt())
+	for i := 0; i < msgNum; i++ {
+		msg.ID = 0
+		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
+	}
+	topic.ForceFlush()
+	newEnd = topic.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	test.Equal(t, resetStart.TotalMsgCnt()+int64(msgNum), newEnd.TotalMsgCnt())
+	for i := 0; i < 100; i++ {
+		msg := <-channel.clientMsgChan
+		channel.ConfirmBackendQueue(msg)
+		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
+	}
 }
 
 func benchmarkTopicPut(b *testing.B, size int) {
@@ -257,6 +583,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	channelName := "bench"
 	opts := NewOptions()
 	opts.Logger = newTestLogger(b)
+	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

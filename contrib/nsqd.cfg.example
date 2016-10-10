@@ -30,6 +30,11 @@ lookup_ping_interval = "5s"
 ## path to store disk-backed messages
 # data_path = "/var/lib/nsq"
 
+## the remote message trace server
+remote_tracer = "127.0.0.1:1234"
+
+## default retention days to keep the consumed topic data
+retention_days = 7
 ## number of messages to keep in memory (per topic/channel)
 mem_queue_size = 10000
 
@@ -133,3 +138,6 @@ snappy = true
 log_level = 2
 ## if empty, use the default flag value in glog
 log_dir = "./"
+
+## the time period (in hour) that the auto clean is allowed.
+auto_clean_interval = ["2", "4"]

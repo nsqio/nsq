@@ -354,7 +354,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 			}
 			continue
 		}
-		coordLog.Infof("[watchTopics] topic changed.")
+		coordLog.Debugf("[watchTopics] topic changed.")
 		self.itcMutex.Lock()
 		self.ifTopicChanged = true
 		self.itcMutex.Unlock()
@@ -482,7 +482,7 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	} else {
 		topicInfo.TopicMetaInfo = *metaInfo
 	}
-	
+
 	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
@@ -523,7 +523,7 @@ func (self *NsqLookupdEtcdMgr) CreateTopicPartition(topic string, partition int)
 		}
 	}
 	self.tmiMutex.Unlock()
-	
+
 	// start to watch topic leader session
 	watchTopicLeaderInfo := &WatchTopicLeaderInfo{
 		event:       EVENT_WATCH_TOPIC_L_CREATE,
@@ -552,7 +552,7 @@ func (self *NsqLookupdEtcdMgr) CreateTopic(topic string, meta *TopicMetaInfo) er
 		}
 		return err
 	}
-	
+
 	self.tmiMutex.Lock()
 	self.topicMetaMap[topic] = meta
 	self.tmiMutex.Unlock()
@@ -612,7 +612,7 @@ func (self *NsqLookupdEtcdMgr) DeleteTopic(topic string, partition int) error {
 	}
 	// stop watch topic leader and delete
 	topicLeaderSession := self.createTopicLeaderSessionPath(topic, partition)
-	
+
 	self.wtliMutex.Lock()
 	defer self.wtliMutex.Unlock()
 	v, ok := self.watchTopicLeaderChanMap[topicLeaderSession]
@@ -748,7 +748,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 		if rsp.PrevNode == nil {
 			coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.Node.ModifiedIndex)
 		} else {
-			coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] pre_modified[%d] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.PrevNode.ModifiedIndex, rsp.Node.ModifiedIndex)
+			coordLog.Debugf("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] pre_modified[%d] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.PrevNode.ModifiedIndex, rsp.Node.ModifiedIndex)
 		}
 		if rsp.Action == "compareAndDelete" || rsp.Action == "delete" || rsp.Action == "expire" {
 			keys := strings.Split(rsp.Node.Key, "/")

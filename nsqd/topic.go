@@ -2,8 +2,11 @@ package nsqd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -12,17 +15,20 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/quantile"
 	"github.com/absolute8511/nsq/internal/util"
 )
 
 const (
-	MAX_TOPIC_PARTITION = 1023
+	MAX_TOPIC_PARTITION    = 1023
+	HISTORY_STAT_FILE_NAME = ".stat.history.dat"
 )
 
 var (
-	ErrInvalidMessageID    = errors.New("message id is invalid")
-	ErrWriteOffsetMismatch = errors.New("write offset mismatch")
+	ErrInvalidMessageID      = errors.New("message id is invalid")
+	ErrWriteOffsetMismatch   = errors.New("write offset mismatch")
+	ErrOperationInvalidState = errors.New("the operation is not allowed under current state")
 )
 
 func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
@@ -37,6 +43,26 @@ func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter)
 type MsgIDGenerator interface {
 	NextID() uint64
 	Reset(uint64)
+}
+
+type TopicDynamicConf struct {
+	AutoCommit   int32
+	RetentionDay int32
+	SyncEvery    int64
+}
+
+type PubInfo struct {
+	Done     chan struct{}
+	MsgBody  *bytes.Buffer
+	StartPub time.Time
+	Rsp      []byte
+	Err      error
+}
+type PubInfoChan chan *PubInfo
+
+type ChannelMetaInfo struct {
+	Name   string `json:"name"`
+	Paused bool   `json:"paused"`
 }
 
 type Topic struct {
@@ -62,21 +88,19 @@ type Topic struct {
 	defaultIDSeq    uint64
 	needFlush       int32
 	EnableTrace     int32
-	syncEvery       int64
 	lastSyncCnt     int64
 	putBuffer       bytes.Buffer
 	bp              sync.Pool
 	writeDisabled   int32
-	committedOffset atomic.Value
-	autoCommit      int32
+	dynamicConf     *TopicDynamicConf
 	magicCode       int64
-	// 100bytes, 1KB, 4KB, 16KB, 64KB, 512KB, 1MB, 2MB, 4MB, 8MB
-	msgSizeStats [10]int64
-	// 1ms, 8ms, 16ms, 32ms, 64ms, 128ms, 512ms, 1s, 2s, 4s
-	msgWriteLatencyStats [10]int64
-	writeErrCnt          int64
-	statsMutex           sync.Mutex
-	clientPubStats       map[string]*ClientPubStats
+	committedOffset atomic.Value
+	detailStats     *DetailStatsInfo
+	needFixData     int32
+	pubWaitingChan  PubInfoChan
+	quitChan        chan struct{}
+	pubLoopFunc     func(v *Topic)
+	wg              sync.WaitGroup
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -86,7 +110,7 @@ func GetTopicFullName(topic string, part int) string {
 // Topic constructor
 func NewTopic(topicName string, part int, opt *Options,
 	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{})) *Topic {
+	notify func(v interface{}), loopFunc func(v *Topic)) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -97,15 +121,16 @@ func NewTopic(topicName string, part int, opt *Options,
 		flushChan:      make(chan int, 10),
 		option:         opt,
 		deleteCallback: deleteCallback,
-		syncEvery:      opt.SyncEvery,
+		dynamicConf:    &TopicDynamicConf{SyncEvery: opt.SyncEvery, AutoCommit: 1},
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		autoCommit:     1,
-		clientPubStats: make(map[string]*ClientPubStats),
+		pubWaitingChan: make(PubInfoChan, 100),
+		quitChan:       make(chan struct{}),
+		pubLoopFunc:    loopFunc,
 	}
-	if t.syncEvery < 1 {
-		t.syncEvery = 1
+	if t.dynamicConf.SyncEvery < 1 {
+		t.dynamicConf.SyncEvery = 1
 	}
 	t.bp.New = func() interface{} {
 		return &bytes.Buffer{}
@@ -120,23 +145,63 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 
 	backendName := getBackendName(t.tname, t.partition)
-	t.backend = newDiskQueueWriter(backendName,
+	queue, err := newDiskQueueWriter(backendName,
 		t.dataPath,
 		opt.MaxBytesPerFile,
 		int32(minValidMsgLength),
 		int32(opt.MaxMsgSize)+minValidMsgLength,
-		opt.SyncEvery).(*diskQueueWriter)
+		opt.SyncEvery)
+
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init disk queue: %v ", t.fullName, err)
+		if err == ErrNeedFixQueueStart {
+			t.SetDataFixState(true)
+		} else {
+			t.MarkAsRemoved()
+			return nil
+		}
+	}
+	t.backend = queue.(*diskQueueWriter)
+
 	t.UpdateCommittedOffset(t.backend.GetQueueWriteEnd())
 	err = t.loadMagicCode()
 	if err != nil {
 		nsqLog.LogErrorf("topic %v failed to load magic code: %v", t.fullName, err)
 		return nil
 	}
-
+	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), t.getHistoryStatsFileName())
 	t.notifyCall(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
+	if t.pubLoopFunc != nil {
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
+			t.pubLoopFunc(t)
+		}()
+	}
+	t.LoadChannelMeta()
 	return t
+}
+
+func (t *Topic) GetWaitChan() PubInfoChan {
+	return t.pubWaitingChan
+}
+
+func (t *Topic) QuitChan() <-chan struct{} {
+	return t.quitChan
+}
+
+func (t *Topic) IsDataNeedFix() bool {
+	return atomic.LoadInt32(&t.needFixData) == 1
+}
+
+func (t *Topic) SetDataFixState(needFix bool) {
+	if needFix {
+		atomic.StoreInt32(&t.needFixData, 1)
+	} else {
+		atomic.StoreInt32(&t.needFixData, 0)
+	}
 }
 
 func (t *Topic) getMagicCodeFileName() string {
@@ -197,6 +262,14 @@ func (t *Topic) loadMagicCode() error {
 	return nil
 }
 
+func (t *Topic) removeHistoryStat() {
+	fileName := t.getHistoryStatsFileName()
+	err := os.Remove(fileName)
+	if err != nil {
+		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
+	}
+}
+
 func (t *Topic) MarkAsRemoved() (string, error) {
 	t.Lock()
 	defer t.Unlock()
@@ -221,6 +294,8 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 		nsqLog.Errorf("failed to mark the topic %v as removed %v failed: %v", t.GetFullName(), renamePath, err)
 	}
 	util.AtomicRename(t.getMagicCodeFileName(), path.Join(renamePath, "magic"+strconv.Itoa(t.partition)))
+	t.removeHistoryStat()
+	t.RemoveChannelMeta()
 	t.removeMagicCode()
 	return renamePath, err
 }
@@ -250,6 +325,109 @@ func (t *Topic) SetTrace(enable bool) {
 	}
 }
 
+func (t *Topic) getChannelMetaFileName() string {
+	return path.Join(t.dataPath, "channel_meta"+strconv.Itoa(t.partition))
+}
+
+func (t *Topic) LoadChannelMeta() error {
+	fn := t.getChannelMetaFileName()
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			nsqLog.LogErrorf("failed to read channel metadata from %s - %s", fn, err)
+		}
+		return err
+	}
+	channels := make([]*ChannelMetaInfo, 0)
+	err = json.Unmarshal(data, &channels)
+	if err != nil {
+		nsqLog.LogErrorf("failed to parse metadata - %s", err)
+		return err
+	}
+
+	for _, ch := range channels {
+		channelName := ch.Name
+		if !protocol.IsValidChannelName(channelName) {
+			nsqLog.LogWarningf("skipping creation of invalid channel %s", channelName)
+			continue
+		}
+		channel := t.GetChannel(channelName)
+
+		if ch.Paused {
+			channel.Pause()
+		}
+	}
+	return nil
+}
+
+func (t *Topic) SaveChannelMeta() error {
+	fileName := t.getChannelMetaFileName()
+	channels := make([]*ChannelMetaInfo, 0)
+	t.channelLock.RLock()
+	for _, channel := range t.channelMap {
+		channel.RLock()
+		if !channel.ephemeral {
+			meta := &ChannelMetaInfo{
+				Name:   channel.name,
+				Paused: channel.IsPaused(),
+			}
+			channels = append(channels, meta)
+		}
+		channel.RUnlock()
+	}
+	t.channelLock.RUnlock()
+	d, err := json.Marshal(channels)
+	if err != nil {
+		return err
+	}
+	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
+	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(d)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	f.Sync()
+	f.Close()
+	err = util.AtomicRename(tmpFileName, fileName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Topic) RemoveChannelMeta() {
+	fileName := t.getChannelMetaFileName()
+	err := os.Remove(fileName)
+	if err != nil {
+		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
+	}
+}
+
+func (t *Topic) getHistoryStatsFileName() string {
+	return path.Join(t.dataPath, t.fullName+HISTORY_STAT_FILE_NAME)
+}
+
+func (t *Topic) GetDetailStats() *DetailStatsInfo {
+	return t.detailStats
+}
+
+func (t *Topic) SaveHistoryStats() error {
+	if t.Exiting() {
+		return ErrExiting
+	}
+	t.Lock()
+	defer t.Unlock()
+	return t.detailStats.SaveHistory(t.getHistoryStatsFileName())
+}
+
+func (t *Topic) LoadHistoryStats() error {
+	return t.detailStats.LoadHistory(t.getHistoryStatsFileName())
+}
+
 func (t *Topic) GetCommitted() BackendQueueEnd {
 	l := t.committedOffset.Load()
 	if l == nil {
@@ -276,7 +454,10 @@ func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
 	if commit != nil && e.Offset() > commit.Offset() {
 		e = commit
 	}
-	return NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
+	start := t.backend.GetQueueReadStart()
+	d := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, e)
+	d.SetQueueStart(start)
+	return d
 }
 
 func (t *Topic) BufferPoolGet(capacity int) *bytes.Buffer {
@@ -319,12 +500,15 @@ func (t *Topic) GetMsgGenerator() MsgIDGenerator {
 	return cursor
 }
 
-func (t *Topic) SetAutoCommit(enable bool) {
-	if enable {
-		atomic.StoreInt32(&t.autoCommit, 1)
-	} else {
-		atomic.StoreInt32(&t.autoCommit, 0)
+func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
+	t.Lock()
+	if idGen != nil {
+		t.msgIDCursor = idGen
 	}
+	atomic.StoreInt64(&t.dynamicConf.SyncEvery, dynamicConf.SyncEvery)
+	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
+	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
+	t.Unlock()
 }
 
 func (t *Topic) nextMsgID() MessageID {
@@ -405,7 +589,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		t.channelMap[channelName] = channel
 		nsqLog.Logf("TOPIC(%s): new channel(%s), end: %v", t.GetFullName(),
-			channel.name, channel.backend.Depth())
+			channel.name, channel.GetChannelEnd())
 		return channel, true
 	}
 	return channel, false
@@ -477,6 +661,7 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, Backend
 	t.Lock()
 	if m.ID > 0 {
 		nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
+		t.Unlock()
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 	id, offset, writeBytes, dend, err := t.PutMessageNoLock(m)
@@ -486,7 +671,6 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, Backend
 
 func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
-		t.Unlock()
 		return 0, 0, 0, nil, errors.New("exiting")
 	}
 	if m.ID > 0 {
@@ -494,9 +678,9 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 
-	id, offset, writeBytes, dend, err := t.put(m)
+	id, offset, writeBytes, dend, err := t.put(m, true)
 	if err == nil {
-		if t.syncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
+		if t.dynamicConf.SyncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
 			if !t.IsWriteDisabled() {
 				t.flush(true)
 			}
@@ -521,7 +705,10 @@ func (t *Topic) flushForChannels() {
 	}
 	t.channelLock.RUnlock()
 	if needFlush {
-		t.flush(true)
+		// flush buffer only to allow the channel read recent write
+		// no need sync to disk, since sync is heavy IO.
+		t.backend.FlushBuffer()
+		t.updateChannelsEnd(false)
 	}
 }
 
@@ -534,7 +721,7 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
-	_, _, _, dend, err := t.put(m)
+	_, _, _, dend, err := t.put(m, false)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +744,7 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 	var dend diskQueueEndInfo
 	var err error
 	for _, m := range msgs {
-		_, _, _, dend, err = t.put(m)
+		_, _, _, dend, err = t.put(m, false)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return nil, err
@@ -585,7 +772,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return 0, 0, 0, 0, nil, ErrInvalidMessageID
 		}
-		id, offset, bytes, end, err := t.put(m)
+		id, offset, bytes, end, err := t.put(m, true)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, err
@@ -600,7 +787,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		}
 	}
 
-	if int64(len(msgs)) >= t.syncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.syncEvery {
+	if int64(len(msgs)) >= t.dynamicConf.SyncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
 		if !t.IsWriteDisabled() {
 			t.flush(true)
 		}
@@ -618,7 +805,7 @@ func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, i
 	return firstMsgID, firstOffset, batchBytes, totalCnt, dend, err
 }
 
-func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
 	if m.ID <= 0 {
 		m.ID = t.nextMsgID()
 	}
@@ -631,12 +818,14 @@ func (t *Topic) put(m *Message) (MessageID, BackendOffset, int32, diskQueueEndIn
 		return m.ID, offset, writeBytes, dend, err
 	}
 
-	if atomic.LoadInt32(&t.autoCommit) == 1 {
+	if atomic.LoadInt32(&t.dynamicConf.AutoCommit) == 1 {
 		t.UpdateCommittedOffset(&dend)
 	}
 
-	if atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
-		nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+	if trace {
+		if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+		}
 	}
 	return m.ID, offset, writeBytes, dend, nil
 }
@@ -674,6 +863,10 @@ func (t *Topic) TotalMessageCnt() uint64 {
 	return uint64(t.backend.GetQueueWriteEnd().TotalMsgCnt())
 }
 
+func (t *Topic) GetQueueReadStart() int64 {
+	return int64(t.backend.GetQueueReadStart().Offset())
+}
+
 func (t *Topic) TotalDataSize() int64 {
 	e := t.backend.GetQueueWriteEnd()
 	if e == nil {
@@ -708,6 +901,8 @@ func (t *Topic) exit(deleted bool) error {
 	} else {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
+	close(t.quitChan)
+	t.wg.Wait()
 
 	if deleted {
 		t.channelLock.Lock()
@@ -718,6 +913,8 @@ func (t *Topic) exit(deleted bool) error {
 		t.channelLock.Unlock()
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
+		t.removeHistoryStat()
+		t.RemoveChannelMeta()
 		t.removeMagicCode()
 		return t.backend.Delete()
 	}
@@ -725,6 +922,7 @@ func (t *Topic) exit(deleted bool) error {
 	// write anything leftover to disk
 	t.flush(true)
 	nsqLog.Logf("[TRACE_DATA] exiting topic end: %v, cnt: %v", t.TotalDataSize(), t.TotalMessageCnt())
+	t.SaveChannelMeta()
 	t.channelLock.RLock()
 	// close all the channels
 	for _, channel := range t.channelMap {
@@ -745,9 +943,9 @@ func (t *Topic) IsWriteDisabled() bool {
 }
 
 func (t *Topic) DisableForSlave() {
-	// TODO : log the last logid and message offset
 	atomic.StoreInt32(&t.writeDisabled, 1)
-	nsqLog.Logf("[TRACE_DATA] while disable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
+	nsqLog.Logf("[TRACE_DATA] while disable topic %v end: %v, cnt: %v, queue start: %v", t.GetFullName(),
+		t.TotalDataSize(), t.TotalMessageCnt(), t.backend.GetQueueReadStart())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
 		c.DisableConsume(true)
@@ -766,8 +964,6 @@ func (t *Topic) DisableForSlave() {
 }
 
 func (t *Topic) EnableForMaster() {
-	// TODO : log the last logid and message offset
-	// TODO : log the first logid and message offset after enable master
 	nsqLog.Logf("[TRACE_DATA] while enable topic %v end: %v, cnt: %v", t.GetFullName(), t.TotalDataSize(), t.TotalMessageCnt())
 	t.channelLock.RLock()
 	for _, c := range t.channelMap {
@@ -788,7 +984,6 @@ func (t *Topic) EnableForMaster() {
 
 func (t *Topic) Empty() error {
 	nsqLog.Logf("TOPIC(%s): empty", t.GetFullName())
-	t.removeMagicCode()
 	return t.backend.Empty()
 }
 
@@ -869,71 +1064,124 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	return latencyStream
 }
 
-func (t *Topic) UpdatePubStats(remote string, agent string, protocol string, count int64, hasErr bool) {
-	t.statsMutex.Lock()
-	s, ok := t.clientPubStats[remote]
-	if !ok {
-		// too much clients pub to this topic
-		// we just ignore stats
-		if len(t.clientPubStats) > 1000 {
-			scanStart := time.Now()
-			scanCnt := 0
-			cleanCnt := 0
-			for _, s := range t.clientPubStats {
-				scanCnt++
-				if time.Since(scanStart) > time.Millisecond*200 {
+// maybe should return the cleaned offset to allow commit log clean
+func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset BackendOffset) (BackendQueueEnd, error) {
+	// clean the data that has been consumed and keep the retention policy
+	var oldestPos BackendQueueEnd
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		pos := ch.GetConfirmed()
+		if oldestPos == nil {
+			oldestPos = pos
+		} else if oldestPos.Offset() > pos.Offset() {
+			oldestPos = pos
+		}
+	}
+	t.channelLock.RUnlock()
+	if oldestPos == nil {
+		nsqLog.Logf("no consume position found")
+		return nil, nil
+	}
+	cleanStart := t.backend.GetQueueReadStart()
+	nsqLog.Logf("clean topic %v data current start: %v, oldest confirmed %v, max clean end: %v",
+		t.GetFullName(), cleanStart, oldestPos, maxCleanOffset)
+	if cleanStart.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
+		return nil, nil
+	}
+
+	if oldestPos.Offset() < maxCleanOffset || maxCleanOffset == BackendOffset(0) {
+		maxCleanOffset = oldestPos.Offset()
+	}
+	snapReader := NewDiskQueueSnapshot(getBackendName(t.tname, t.partition), t.dataPath, oldestPos)
+	snapReader.SetQueueStart(cleanStart)
+	err := snapReader.SeekTo(cleanStart.Offset())
+	if err != nil {
+		nsqLog.Errorf("topic: %v failed to seek to %v: %v", t.GetFullName(), cleanStart, err)
+		return nil, err
+	}
+	readInfo := snapReader.GetCurrentReadQueueOffset()
+	data := snapReader.ReadOne()
+	if data.Err != nil {
+		return nil, data.Err
+	}
+	var cleanEndInfo BackendQueueOffset
+	t.Lock()
+	retentionDay := atomic.LoadInt32(&t.dynamicConf.RetentionDay)
+	if retentionDay == 0 {
+		retentionDay = int32(DEFAULT_RETENTION_DAYS)
+	}
+	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(retentionDay))
+	t.Unlock()
+	for {
+		if retentionSize > 0 {
+			// clean data ignore the retention day
+			// only keep the retention size (start from the last consumed)
+			if data.Offset > maxCleanOffset-BackendOffset(retentionSize) {
+				break
+			}
+			cleanEndInfo = readInfo
+		} else {
+			msg, err := decodeMessage(data.Data)
+			if err != nil {
+				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
+			} else {
+				if msg.Timestamp >= cleanTime.UnixNano() {
 					break
 				}
-				if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60*60 {
-					delete(t.clientPubStats, s.RemoteAddress)
-					cleanCnt++
+				if data.Offset >= maxCleanOffset {
+					break
 				}
+				cleanEndInfo = readInfo
 			}
-			nsqLog.Logf("clean pub stats cost %v, scan: %v, clean:%v, left: %v", time.Since(scanStart),
-				scanCnt, cleanCnt, len(t.clientPubStats))
-			t.statsMutex.Unlock()
-			return
 		}
-		s = &ClientPubStats{
-			RemoteAddress: remote,
-			UserAgent:     agent,
-			Protocol:      protocol,
+		err = snapReader.SkipToNext()
+		if err != nil {
+			nsqLog.LogWarningf("failed to skip - %s ", err)
+			break
 		}
-		t.clientPubStats[remote] = s
+		readInfo = snapReader.GetCurrentReadQueueOffset()
+		data = snapReader.ReadOne()
+		if data.Err != nil {
+			nsqLog.LogErrorf("failed to read - %s ", data.Err)
+			break
+		}
 	}
 
-	if hasErr {
-		s.ErrCount++
-	} else {
-		s.PubCount += count
-		s.LastPubTs = time.Now().Unix()
+	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
+		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
+	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
+		nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
+			t.GetFullName(), cleanEndInfo, oldestPos, maxCleanOffset)
+		return nil, nil
 	}
-	t.statsMutex.Unlock()
+	return t.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanOffset)
 }
 
-func (t *Topic) RemovePubStats(remote string, protocol string) {
-	t.statsMutex.Lock()
-	if protocol == "tcp" {
-		delete(t.clientPubStats, remote)
-	} else {
-		s, ok := t.clientPubStats[remote]
-		if ok && time.Now().Unix()-s.LastPubTs > 60*60 {
-			delete(t.clientPubStats, remote)
-		}
+func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueStartCnt int64) error {
+	if !t.IsWriteDisabled() {
+		nsqLog.Warningf("reset the topic %v backend only allow while write disabled", t.GetFullName())
+		return ErrOperationInvalidState
 	}
-	t.statsMutex.Unlock()
-}
+	if queueStartOffset < 0 || queueStartCnt < 0 {
+		return errors.New("queue start should not less than 0")
+	}
+	queueStart := t.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	queueStart.virtualEnd = BackendOffset(queueStartOffset)
+	queueStart.totalMsgCnt = queueStartCnt
+	nsqLog.Warningf("reset the topic %v backend with queue start: %v", t.GetFullName(), queueStart)
+	err := t.backend.ResetWriteWithQueueStart(queueStart)
+	if err != nil {
+		return err
+	}
+	newEnd := t.backend.GetQueueReadEnd()
+	t.UpdateCommittedOffset(newEnd)
 
-func (t *Topic) GetPubStats() []ClientPubStats {
-	t.statsMutex.Lock()
-	stats := make([]ClientPubStats, 0, len(t.clientPubStats))
-	for _, s := range t.clientPubStats {
-		if s.Protocol == "http" && time.Now().Unix()-s.LastPubTs > 60*60 {
-			delete(t.clientPubStats, s.RemoteAddress)
-		} else {
-			stats = append(stats, *s)
-		}
+	t.channelLock.Lock()
+	for _, ch := range t.channelMap {
+		nsqLog.Infof("channel stats: %v", ch.GetChannelDebugStats())
+		ch.UpdateQueueEnd(newEnd, true)
+		ch.ConfirmBackendQueueOnSlave(newEnd.Offset(), newEnd.TotalMsgCnt(), true)
 	}
-	t.statsMutex.Unlock()
-	return stats
+	t.channelLock.Unlock()
+	return nil
 }

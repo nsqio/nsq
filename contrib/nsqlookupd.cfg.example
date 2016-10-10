@@ -32,3 +32,6 @@ log_level = 2
 
 ## if empty, use the default flag value in glog
 log_dir = "./"
+
+## the time period (in hour) that the balance is allowed.
+balance_interval = ["4", "5"]

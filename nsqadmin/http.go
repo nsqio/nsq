@@ -304,7 +304,7 @@ func (s *httpServer) coordinatorHandler(w http.ResponseWriter, req *http.Request
 	topicCoordStats, err := s.ci.GetNSQDCoordStats(clusterinfo.Producers{producer}, topicName, partition)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd coordinator stats - %s", err)
-		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		messages = append(messages, err.Error())
 	}
 
 	return struct {
@@ -346,16 +346,19 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 	topicCoordStats, err := s.ci.GetNSQDCoordStats(producers, topicName, "")
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd topic %v coordinator stats - %s", topicName, err)
+		messages = append(messages, err.Error())
 	}
 
 	statsMap := make(map[string]map[string]clusterinfo.TopicCoordStat)
-	for _, stat := range topicCoordStats.TopicCoordStats {
-		t, ok := statsMap[stat.Name]
-		if !ok {
-			t = make(map[string]clusterinfo.TopicCoordStat)
-			statsMap[stat.Name] = t
+	if topicCoordStats != nil {
+		for _, stat := range topicCoordStats.TopicCoordStats {
+			t, ok := statsMap[stat.Name]
+			if !ok {
+				t = make(map[string]clusterinfo.TopicCoordStat)
+				statsMap[stat.Name] = t
+			}
+			t[strconv.Itoa(stat.Partition)] = stat
 		}
-		t[strconv.Itoa(stat.Partition)] = stat
 	}
 
 	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
@@ -525,10 +528,11 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	var messages []string
 
 	var body struct {
-		Topic        string `json:"topic"`
-		PartitionNum string `json:"partition_num"`
-		Replicator   string `json:"replicator"`
-		SyncDisk     string `json:"syncdisk"`
+		Topic         string `json:"topic"`
+		PartitionNum  string `json:"partition_num"`
+		Replicator    string `json:"replicator"`
+		RetentionDays string `json:"retention_days"`
+		SyncDisk      string `json:"syncdisk"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -560,7 +564,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 	syncDisk, _ := strconv.Atoi(body.SyncDisk)
 	err = s.ci.CreateTopic(body.Topic, pnum, replica,
-		syncDisk,
+		syncDisk, body.RetentionDays,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)

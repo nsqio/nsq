@@ -42,6 +42,9 @@ func GetValidPartitionID(numStr string) (int, error) {
 	if num >= 0 && num < MAX_PARTITION_NUM {
 		return num, nil
 	}
+	if num == OLD_VERSION_PID {
+		return num, nil
+	}
 	return 0, errors.New("INVALID_PARTITION_ID")
 }
 
@@ -96,6 +99,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, debugLog, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -146,6 +150,65 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	}{
 		Version:   version.Binary,
 		HASupport: s.ctx.nsqlookupd.coordinator != nil,
+	}, nil
+}
+
+func (s *httpServer) doClusterStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	stable := false
+	nodeStatMap := make(map[string]*NodeStat)
+	if s.ctx.nsqlookupd.coordinator != nil {
+		if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
+			nsqlookupLog.Logf("request from remote %v should request to leader", req.RemoteAddr)
+			return nil, http_api.Err{400, consistence.ErrFailedOnNotLeader}
+		}
+
+		stable = s.ctx.nsqlookupd.coordinator.IsClusterStable()
+		leaderLFs, nodeLFs := s.ctx.nsqlookupd.coordinator.GetClusterNodeLoadFactor()
+		for nid, lf := range leaderLFs {
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nid)
+			if p == nil {
+				nsqlookupLog.Logf("node not found in peer: %v", nid)
+				continue
+			}
+			stat := &NodeStat{}
+			nodeStatMap[nid] = stat
+			stat.TCPPort = p.TCPPort
+			stat.HTTPPort = p.HTTPPort
+			stat.Hostname = p.Hostname
+			stat.BroadcastAddress = p.BroadcastAddress
+			stat.LeaderLoadFactor = lf
+		}
+		for nid, lf := range nodeLFs {
+			p := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nid)
+			if p == nil {
+				nsqlookupLog.Logf("node not found in peer: %v", nid)
+				continue
+			}
+
+			stat, ok := nodeStatMap[nid]
+			if !ok {
+				stat = &NodeStat{}
+				nodeStatMap[nid] = stat
+			}
+
+			stat.TCPPort = p.TCPPort
+			stat.HTTPPort = p.HTTPPort
+			stat.Hostname = p.Hostname
+			stat.BroadcastAddress = p.BroadcastAddress
+			stat.NodeLoadFactor = lf
+		}
+		nsqlookupLog.Logf("node stats map: %v", nodeStatMap)
+	}
+	nodeStatList := make([]*NodeStat, 0, len(nodeStatMap))
+	for _, v := range nodeStatMap {
+		nodeStatList = append(nodeStatList, v)
+	}
+	return struct {
+		Stable       bool        `json:"stable"`
+		NodeStatList []*NodeStat `json:"node_stat_list"`
+	}{
+		Stable:       stable,
+		NodeStatList: nodeStatList,
 	}, nil
 }
 
@@ -323,6 +386,15 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		nsqlookupLog.Logf("error sync disk param: %v, %v", syncEvery, err)
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_SYNC_DISK"}
 	}
+	retentionDaysStr := reqParams.Get("retention")
+	if retentionDaysStr == "" {
+		retentionDaysStr = "0"
+	}
+	retentionDays, err := strconv.Atoi(retentionDaysStr)
+	if err != nil {
+		nsqlookupLog.Logf("error retention param: %v, %v", retentionDaysStr, err)
+		return nil, http_api.Err{400, err.Error()}
+	}
 
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
@@ -335,6 +407,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	meta.Replica = replicator
 	meta.SuggestLF = suggestLF
 	meta.SyncEvery = syncEvery
+	meta.RetentionDay = int32(retentionDays)
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, meta)
 	if err != nil {
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)
@@ -393,7 +466,8 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
-	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
+	restore := reqParams.Get("restore")
+	nsqlookupLog.Logf("DB: setting tombstone for producer@%s of topic(%s), restore param: %v", node, topicName, restore)
 	producerRegs := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, "*")
 	for _, reg := range producerRegs {
 		p := reg.ProducerNode
@@ -402,12 +476,26 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		}
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
 		if thisNode == node {
-			nsqlookupLog.Logf("DB: setting tombstone  producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
-			p.Tombstone()
+			if restore == "true" {
+				nsqlookupLog.Logf("DB: undo tombstone producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
+				p.UndoTombstone()
+			} else {
+				nsqlookupLog.Logf("DB: setting tombstone  producer %v, topic: %v:%v", p, topicName, reg.PartitionID)
+				p.Tombstone()
+			}
 		}
 	}
 
 	return nil, nil
+}
+
+type NodeStat struct {
+	Hostname         string  `json:"hostname"`
+	BroadcastAddress string  `json:"broadcast_address"`
+	TCPPort          int     `json:"tcp_port"`
+	HTTPPort         int     `json:"http_port"`
+	LeaderLoadFactor float64 `json:"leader_load_factor"`
+	NodeLoadFactor   float64 `json:"node_load_factor"`
 }
 
 type node struct {
@@ -441,7 +529,7 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// dont filter out tombstoned nodes
-	producers := s.ctx.nsqlookupd.DB.FindPeerClients().FilterByActive(
+	producers := s.ctx.nsqlookupd.DB.GetAllPeerClients().FilterByActive(
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout)
 	nodes := make([]*node, len(producers))
 	for i, p := range producers {
