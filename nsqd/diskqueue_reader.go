@@ -658,6 +658,7 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 		if err != nil {
 			nsqLog.LogErrorf("internal skip error : %v, skipping to : %v", err, voffset)
 			if os.IsNotExist(err) {
+				nsqLog.Logf("internal skip because of not exist segment, try skip using the offset meta file")
 				newPos = d.readQueueInfo.EndOffset
 				for {
 					if newPos.FileNum == d.queueEndInfo.EndOffset.FileNum {
@@ -674,12 +675,14 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 					_, metaStartPos, metaEndPos, innerErr := getQueueFileOffsetMeta(d.fileName(newPos.FileNum))
 					if innerErr != nil {
 						if os.IsNotExist(innerErr) {
+							nsqLog.Logf("check segment offset meta not exist, try next: %v ", newPos)
 							newPos.FileNum++
 							newPos.Pos = 0
 							continue
 						}
 						break
 					}
+					nsqLog.Logf("check segment: %v offset, %v, %v ", newPos, metaStartPos, metaEndPos)
 					if voffset >= BackendOffset(metaEndPos) {
 						newPos.FileNum++
 						newPos.Pos = 0
