@@ -63,6 +63,7 @@ var pubRespCheck map[string]map[uint64]pubResp
 var mutex sync.Mutex
 var topicMutex map[string]*sync.Mutex
 var traceIDWaitingList map[string]map[uint64]*nsq.Message
+var pubTraceFailedList map[string]map[uint64]int64
 
 type ByMsgOffset []*nsq.Message
 
@@ -407,9 +408,10 @@ func startCheckData2() {
 
 	wg.Wait()
 
-	log.Printf("pub total %v - sub total %v \n",
+	log.Printf("pub total %v - sub total %v , pub err: %v\n",
 		atomic.LoadInt64(&totalMsgCount),
-		atomic.LoadInt64(&totalSubMsgCount))
+		atomic.LoadInt64(&totalSubMsgCount),
+		atomic.LoadInt64(&totalErrCount))
 
 	for topicName, counter := range pubIDList {
 		log.Printf("topic %v pub count to : %v \n", topicName, *counter)
@@ -522,10 +524,11 @@ func startCheckData(msg []byte, batch [][]byte) {
 
 	wg.Wait()
 
-	log.Printf("pub total %v - sub total %v, dump: %v \n",
+	log.Printf("pub total %v - sub total %v, dump: %v, err: %v \n",
 		atomic.LoadInt64(&totalMsgCount),
 		atomic.LoadInt64(&totalSubMsgCount),
-		atomic.LoadInt64(&totalDumpCount))
+		atomic.LoadInt64(&totalDumpCount),
+		atomic.LoadInt64(&totalErrCount))
 
 	for topicName, tdump := range dumpCheck {
 		log.Printf("topic %v count: %v \n", topicName, len(tdump))
@@ -841,6 +844,7 @@ func main() {
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 	orderCheck = make(map[string]pubResp)
 	traceIDWaitingList = make(map[string]map[uint64]*nsq.Message, 5)
+	pubTraceFailedList = make(map[string]map[uint64]int64)
 
 	topicMutex = make(map[string]*sync.Mutex)
 	if *topicListFile != "" {
@@ -1034,6 +1038,7 @@ type consumeTraceIDHandler struct {
 	locker          *sync.Mutex
 	subIDCounter    *int64
 	subTraceWaiting map[uint64]*nsq.Message
+	failedList      map[uint64]int64
 }
 
 func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
@@ -1057,12 +1062,22 @@ func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
 	}
 	c.subTraceWaiting[traceID] = message
 	newMaxTraceID := atomic.LoadInt64(c.subIDCounter)
+	for fid, _ := range c.failedList {
+		// we treat as pub failed id already
+		if fid > uint64(newMaxTraceID) {
+			c.subTraceWaiting[fid] = nil
+		}
+	}
 
 	for {
 		if _, ok := c.subTraceWaiting[uint64(newMaxTraceID+1)]; ok {
 			newMaxTraceID++
 			delete(c.subTraceWaiting, uint64(newMaxTraceID))
 		} else {
+			if _, ok := c.failedList[uint64(newMaxTraceID+1)]; ok {
+				newMaxTraceID++
+				continue
+			}
 			break
 		}
 	}
@@ -1082,8 +1097,16 @@ func subWorker2(quitChan chan int, td time.Duration, lookupAddr string, topic st
 	if err != nil {
 		panic(err.Error())
 	}
+	mutex.Lock()
+	failedList, ok := pubTraceFailedList[topic]
+	if !ok {
+		failedList = make(map[uint64]int64)
+		pubTraceFailedList[topic] = failedList
+	}
+	mutex.Unlock()
+
 	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
-	consumer.AddHandler(&consumeTraceIDHandler{topic, locker, subIDCounter, subTraceWaiting})
+	consumer.AddHandler(&consumeTraceIDHandler{topic, locker, subIDCounter, subTraceWaiting, failedList})
 	rdyChan <- 1
 	<-goChan
 	done := make(chan struct{})
@@ -1105,6 +1128,15 @@ func pubWorker2(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string
 	endTime := time.Now().Add(td)
 	var traceResp pubResp
 	var err error
+	mutex.Lock()
+	failedList, ok := pubTraceFailedList[topicName]
+	if !ok {
+		failedList = make(map[uint64]int64)
+		pubTraceFailedList[topicName] = failedList
+	}
+	failedLocker := topicMutex[topicName]
+	mutex.Unlock()
+
 	for {
 		if time.Now().After(endTime) {
 			break
@@ -1120,6 +1152,9 @@ func pubWorker2(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string
 			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, uint64(traceID), data)
 			if err != nil {
 				log.Printf("pub id : %v error :%v\n", traceID, err)
+				failedLocker.Lock()
+				failedList[uint64(traceID)] = 1
+				failedLocker.Unlock()
 				atomic.AddInt64(&totalErrCount, 1)
 				time.Sleep(time.Second)
 				continue
@@ -1129,6 +1164,10 @@ func pubWorker2(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string
 			err = pubMgr.Publish(topicName, data)
 			if err != nil {
 				log.Printf("pub id : %v error :%v\n", traceID, err)
+				failedLocker.Lock()
+				failedList[uint64(traceID)] = 1
+				failedLocker.Unlock()
+
 				atomic.AddInt64(&totalErrCount, 1)
 				time.Sleep(time.Second)
 				continue
