@@ -606,7 +606,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					moveToMinLF := moveTryIdle
 					if nodeLF > avgNodeLoad || leaderLF > midLeaderLoad {
 						// maybe too much topic followers on this node
-						if leastLeaderStats.NodeID == topicStatsMinMax[1].NodeID {
+						if leastLeaderStats.NodeID == topicStatsMinMax[1].NodeID && followerNum > avgTopicNum {
 							moveLeader = false
 						} else if followerNum > int(float64(avgTopicNum)*2) {
 							// too much followers

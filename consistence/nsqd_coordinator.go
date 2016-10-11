@@ -325,6 +325,10 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 		self.coordMutex.RUnlock()
 		for _, tc := range tmpCoords {
 			for pid, tpc := range tc {
+				if tpc.IsExiting() {
+					delete(tc, pid)
+					continue
+				}
 				tcData := tpc.GetData()
 				if tcData.GetLeader() == self.myNode.GetID() || (syncCounter%10 == 0) {
 					localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -1786,7 +1790,7 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 				}
 				rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 				if rpcErr != nil {
-					coordLog.Infof("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
+					coordLog.Infof("node %v update channel %v offset %v failed %v.", nodeID, ch.GetName(), syncOffset, rpcErr)
 				}
 			}
 			// only the first channel of topic should flush.
