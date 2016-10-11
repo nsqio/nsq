@@ -633,20 +633,22 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					}
 				}
 				mostTopicNum := len(nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1].TopicTotalDataSize)
-				leastTopicNum := mostTopicNum
-				for index, s := range nodeTopicStatsSortedSlave {
-					if len(s.TopicTotalDataSize) < leastTopicNum {
-						leastTopicNum = len(s.TopicTotalDataSize)
-						topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[index]
-						_, minNodeLoad = s.GetNodeLoadFactor()
+				if mostTopicNum > 10 {
+					leastTopicNum := mostTopicNum
+					for index, s := range nodeTopicStatsSortedSlave {
+						if len(s.TopicTotalDataSize) < leastTopicNum {
+							leastTopicNum = len(s.TopicTotalDataSize)
+							topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[index]
+							_, minNodeLoad = s.GetNodeLoadFactor()
+						}
 					}
-				}
-				if float64(mostTopicNum) > float64(leastTopicNum)*1.5 && minNodeLoad < midNodeLoad {
-					topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
-					coordLog.Infof("node %v has too much topics: %v, the least has only %v", topicStatsMinMax[1].NodeID, mostTopicNum, leastTopicNum)
-					moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
-					self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveMinLFOnly, minNodeLoad,
-						maxNodeLoad, topicStatsMinMax, nodeTopicStatsSortedSlave)
+					if float64(mostTopicNum) > float64(leastTopicNum)*1.5 && minNodeLoad < midNodeLoad {
+						topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
+						coordLog.Infof("node %v has too much topics: %v, the least has only %v", topicStatsMinMax[1].NodeID, mostTopicNum, leastTopicNum)
+						moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
+						self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveMinLFOnly, minNodeLoad,
+							maxNodeLoad, topicStatsMinMax, nodeTopicStatsSortedSlave)
+					}
 				}
 			}
 		}
