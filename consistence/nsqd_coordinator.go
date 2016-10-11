@@ -325,10 +325,6 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 		self.coordMutex.RUnlock()
 		for _, tc := range tmpCoords {
 			for pid, tpc := range tc {
-				if tpc.IsExiting() {
-					delete(tc, pid)
-					continue
-				}
 				tcData := tpc.GetData()
 				if tcData.GetLeader() == self.myNode.GetID() || (syncCounter%10 == 0) {
 					localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
@@ -339,9 +335,10 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 						tcData.logMgr.FlushCommitLogs()
 					}
 				}
-
-				if syncCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
-					self.trySyncTopicChannels(tcData)
+				if !tpc.IsExiting() {
+					if syncCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
+						self.trySyncTopicChannels(tcData)
+					}
 				}
 				delete(tc, pid)
 			}
