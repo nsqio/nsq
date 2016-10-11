@@ -502,7 +502,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 					leastLeaderStats = topicStat
 				}
 			}
-			if validNum == 0 || topicStatsMinMax[0] == nil || topicStatsMinMax[1] == nil {
+			if validNum < 2 || topicStatsMinMax[0] == nil || topicStatsMinMax[1] == nil {
 				continue
 			}
 
@@ -512,10 +512,18 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			By(leaderSort).Sort(nodeTopicStats)
 
 			midLeaderLoad, _ := nodeTopicStats[len(nodeTopicStats)/2].GetNodeLoadFactor()
+			nodeTopicStatsSortedSlave := make([]NodeTopicStats, len(nodeTopicStats))
+			copy(nodeTopicStatsSortedSlave, nodeTopicStats)
+			nodeSort := func(l, r *NodeTopicStats) bool {
+				return l.SlaveLessLoader(r)
+			}
+			By(nodeSort).Sort(nodeTopicStatsSortedSlave)
+			_, midNodeLoad := nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)/2].GetNodeLoadFactor()
+
 			avgLeaderLoad = avgLeaderLoad / float64(validNum)
 			avgNodeLoad = avgNodeLoad / float64(validNum)
-			coordLog.Infof("min/avg/max leader load %v, %v, %v", minLeaderLoad, avgLeaderLoad, maxLeaderLoad)
-			coordLog.Infof("min/avg/max node load %v, %v, %v", minNodeLoad, avgNodeLoad, maxNodeLoad)
+			coordLog.Infof("min/avg/mid/max leader load %v, %v, %v, %v", minLeaderLoad, avgLeaderLoad, midLeaderLoad, maxLeaderLoad)
+			coordLog.Infof("min/avg/mid/max node load %v, %v, %v, %v", minNodeLoad, avgNodeLoad, midNodeLoad, maxNodeLoad)
 			if len(topicStatsMinMax[1].TopicHourlyPubDataList) <= 2 {
 				coordLog.Infof("the topic number is so less on both nodes, no need balance: %v", topicStatsMinMax[1])
 				continue
@@ -555,6 +563,26 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader,
 					moveTryIdle, minLeaderLoad, maxLeaderLoad,
 					topicStatsMinMax, nodeTopicStats)
+			} else if minNodeLoad*4 < avgNodeLoad {
+				topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[0]
+				topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
+				moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
+				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveMinLFOnly, minNodeLoad,
+					maxNodeLoad, topicStatsMinMax, nodeTopicStatsSortedSlave)
+			} else if avgNodeLoad*2 < maxNodeLoad {
+				topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[0]
+				topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
+				moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
+				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveAny, minNodeLoad,
+					maxNodeLoad, topicStatsMinMax, nodeTopicStatsSortedSlave)
+			} else if avgNodeLoad >= 20 &&
+				(minNodeLoad*2 < maxNodeLoad || maxNodeLoad > avgNodeLoad*1.5) {
+				topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[0]
+				topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
+				moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
+				self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader,
+					moveTryIdle, minNodeLoad, maxNodeLoad,
+					topicStatsMinMax, nodeTopicStatsSortedSlave)
 			} else {
 				if mostLeaderStats != nil && avgTopicNum > 10 && mostLeaderNum > int(float64(avgTopicNum)*1.5) {
 					needMove := checkMoveLotsOfTopics(true, mostLeaderNum, mostLeaderStats,
@@ -604,6 +632,22 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 						continue
 					}
 				}
+				mostTopicNum := len(nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1].TopicTotalDataSize)
+				leastTopicNum := mostTopicNum
+				for index, s := range nodeTopicStatsSortedSlave {
+					if len(s.TopicTotalDataSize) < leastTopicNum {
+						leastTopicNum = len(s.TopicTotalDataSize)
+						topicStatsMinMax[0] = &nodeTopicStatsSortedSlave[index]
+						_, minNodeLoad = s.GetNodeLoadFactor()
+					}
+				}
+				if float64(mostTopicNum) > float64(leastTopicNum)*1.5 && minNodeLoad < midNodeLoad {
+					topicStatsMinMax[1] = &nodeTopicStatsSortedSlave[len(nodeTopicStatsSortedSlave)-1]
+					coordLog.Infof("node %v has too much topics: %v, the least has only %v", topicStatsMinMax[1].NodeID, mostTopicNum, leastTopicNum)
+					moveLeader = len(topicStatsMinMax[1].TopicLeaderDataSize) > len(topicStatsMinMax[1].TopicTotalDataSize)/2
+					self.balanceTopicLeaderBetweenNodes(monitorChan, moveLeader, moveMinLFOnly, minNodeLoad,
+						maxNodeLoad, topicStatsMinMax, nodeTopicStatsSortedSlave)
+				}
 			}
 		}
 	}
@@ -636,6 +680,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 
 	coordLog.Infof("balance topic: %v, %v(%v) from node: %v, move : %v ", idleTopic,
 		busyTopic, busyLevel, statsMinMax[1].NodeID, moveToMinLF)
+	coordLog.Infof("balance topic current max: %v, min: %v ", maxLF, minLF)
 	checkMoveOK := false
 	topicName := ""
 	partitionID := 0
@@ -677,7 +722,7 @@ func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struc
 				break
 			}
 			// do not move the topic with very busy load
-			if t.loadFactor > 10 {
+			if t.loadFactor > 10 || t.loadFactor > maxLF-minLF {
 				coordLog.Infof("check topic for moving , all busy : %v, %v", t, sortedTopics)
 				break
 			}
