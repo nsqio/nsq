@@ -1009,10 +1009,19 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 
 	tc.writeHold.Lock()
 	defer tc.writeHold.Unlock()
+	if tc.IsExiting() {
+		coordLog.Warningf("catchup exit since the topic is exited")
+		return ErrTopicExitingOnSlave
+	}
 	logMgr := tc.GetData().logMgr
 	logIndex, offset, _, logErr := logMgr.GetLastCommitLogOffsetV2()
 	if logErr != nil && logErr != ErrCommitLogEOF {
 		coordLog.Warningf("catching failed since log offset read error: %v", logErr)
+		logMgr.Close()
+		self.forceCleanTopicData(topicInfo.Name, topicInfo.Partition)
+		logMgr.Reopen()
+		tc.Exiting()
+		go self.removeTopicCoord(topicInfo.Name, topicInfo.Partition, true)
 		return ErrLocalTopicDataCorrupt
 	}
 	// pull logdata from leader at the offset.
@@ -1159,9 +1168,11 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		localTopic.Unlock()
 		if localErr != nil {
 			coordLog.Errorf("failed to reset local topic %v data: %v", localTopic.GetFullName(), localErr)
+			localTopic.SetDataFixState(true)
 			tc.logMgr.Close()
 			self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 			tc.logMgr.Reopen()
+			tc.Exiting()
 			go self.removeTopicCoord(localTopic.GetTopicName(), localTopic.GetTopicPart(), true)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
@@ -1212,6 +1223,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				tc.logMgr.Close()
 				self.forceCleanTopicData(localTopic.GetTopicName(), localTopic.GetTopicPart())
 				tc.logMgr.Reopen()
+				tc.Exiting()
 				go self.removeTopicCoord(localTopic.GetTopicName(), localTopic.GetTopicPart(), true)
 				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
