@@ -1123,6 +1123,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinCatchup(topic string, partiti
 		coordLog.Infof("topic(%v) current isr and catchup list: %v", topicInfo.GetTopicDesp(), topicInfo.ISR, topicInfo.CatchupList)
 		return ErrTopicISRCatchupEnough
 	}
+	coordLog.Infof("node %v try join catchup for topic: %v", nid, topicInfo.GetTopicDesp())
 	if FindSlice(topicInfo.CatchupList, nid) == -1 {
 		topicInfo.CatchupList = append(topicInfo.CatchupList, nid)
 		err = self.leadership.UpdateTopicNodeInfo(topic, partition, &topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
@@ -1531,7 +1532,7 @@ func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, p
 			coordLog.Infof("topic %v remove node %v failed: %v", topicInfo.GetTopicDesp(),
 				nodeID, coordErr)
 		} else {
-			coordLog.Infof("topic %v remove node %v to %v by plan", topicInfo.GetTopicDesp(),
+			coordLog.Infof("topic %v remove node %v by plan", topicInfo.GetTopicDesp(),
 				nodeID)
 		}
 	}

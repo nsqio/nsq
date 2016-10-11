@@ -700,8 +700,6 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 					if len(topicMeta.ISR)+len(topicMeta.CatchupList) >= topicMeta.Replica {
 						coordLog.Infof("the topic should be clean since not relevance to me: %v", topicMeta)
 						self.removeTopicCoord(topicMeta.Name, topicMeta.Partition, true)
-					} else {
-						self.requestJoinCatchup(topicMeta.Name, topicMeta.Partition)
 					}
 				}
 			}
