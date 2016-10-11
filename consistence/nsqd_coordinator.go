@@ -1784,7 +1784,7 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData) {
 				if rpcErr != nil {
 					continue
 				}
-				rpcErr = c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+				rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 				if rpcErr != nil {
 					coordLog.Infof("node %v update offset %v failed %v.", nodeID, syncOffset, rpcErr)
 				}
