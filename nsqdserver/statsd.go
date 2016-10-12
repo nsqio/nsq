@@ -43,7 +43,7 @@ func (n *NsqdServer) statsdLoop() {
 				continue
 			}
 
-			nsqd.NsqLogger().LogDebugf("STATSD: pushing stats to %s", client)
+			nsqd.NsqLogger().LogDebugf("STATSD: pushing stats to %s, using prefix: %v", client, opts.StatsdPrefix)
 
 			stats := n.ctx.nsqd.GetStats()
 			for _, topic := range stats {

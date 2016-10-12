@@ -112,6 +112,7 @@ func New(opts *Options) *NSQD {
 		nsqLog.LogErrorf("FATAL: --worker-id must be [0,%d)", MAX_NODE_ID)
 		os.Exit(1)
 	}
+	nsqLog.Logf("broadcast option: %s, %s", opts.BroadcastAddress, opts.BroadcastInterface)
 
 	if opts.StatsdPrefix != "" {
 		var port string
@@ -130,6 +131,7 @@ func New(opts *Options) *NSQD {
 			prefixWithHost += "."
 		}
 		opts.StatsdPrefix = prefixWithHost
+		nsqLog.Infof("using the stats prefix: %v", opts.StatsdPrefix)
 	}
 
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {

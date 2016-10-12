@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"io"
 	"log"
+	"net"
 	"os"
 	"time"
 )
@@ -102,7 +103,7 @@ func NewOptions() *Options {
 	io.WriteString(h, hostname)
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % MAX_NODE_ID)
 
-	return &Options{
+	opts := &Options{
 		ID: defaultID,
 
 		ClusterID:                  "nsq-clusterid-test-only",
@@ -160,4 +161,43 @@ func NewOptions() *Options {
 
 		RetentionDays: int32(DEFAULT_RETENTION_DAYS),
 	}
+
+	return opts
+}
+
+func getIPv4ForInterfaceName(ifname string) string {
+	interfaces, _ := net.Interfaces()
+	for _, inter := range interfaces {
+		nsqLog.Logf("found interface: %s", inter.Name)
+		if inter.Name == ifname {
+			if addrs, err := inter.Addrs(); err == nil {
+				for _, addr := range addrs {
+					switch ip := addr.(type) {
+					case *net.IPNet:
+						if ip.IP.DefaultMask() != nil {
+							return ip.IP.String()
+						}
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (opts *Options) DecideBroadcast() string {
+	ip := ""
+	if opts.BroadcastInterface != "" {
+		ip = getIPv4ForInterfaceName(opts.BroadcastInterface)
+	}
+	if ip == "" {
+		ip = opts.BroadcastAddress
+	} else {
+		opts.BroadcastAddress = ip
+	}
+	if ip == "0.0.0.0" || ip == "" {
+		log.Fatalf("can not decide the broadcast ip: %v", ip)
+		os.Exit(1)
+	}
+	return ip
 }

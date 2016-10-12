@@ -234,18 +234,17 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
-	nsqd := nsqd.New(opts)
 	if opts.LogDir != "" {
 		glog.SetGLogDir(opts.LogDir)
 	}
-
 	glog.StartWorker(time.Second * 2)
+
 	// if we are using the coordinator, we should disable the topic at startup
 	initDisabled := int32(0)
 	if opts.RPCPort != "" {
 		initDisabled = 1
 	}
-	nsqdServer := nsqdserver.NewNsqdServer(nsqd, opts)
+	nsqd, nsqdServer := nsqdserver.NewNsqdServer(opts)
 
 	nsqd.LoadMetadata(initDisabled)
 	err := nsqd.PersistMetadata(nsqd.GetTopicMapCopy())

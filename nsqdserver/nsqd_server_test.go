@@ -47,8 +47,7 @@ func mustStartNSQD(opts *nsqdNs.Options) (*net.TCPAddr, *net.TCPAddr, *nsqdNs.NS
 	}
 	glog.SetGLogDir(opts.LogDir)
 	glog.StartWorker(time.Second)
-	nsqd := nsqdNs.New(opts)
-	nsqdServer := NewNsqdServer(nsqd, opts)
+	_, nsqdServer := NewNsqdServer(opts)
 	nsqdServer.Main()
 	return nsqdServer.ctx.realTCPAddr(), nsqdServer.ctx.realHTTPAddr(), nsqdServer.ctx.nsqd, nsqdServer
 }

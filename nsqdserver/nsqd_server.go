@@ -80,48 +80,18 @@ func buildTLSConfig(opts *nsqd.Options) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func getIPv4ForInterfaceName(ifname string) string {
-	interfaces, _ := net.Interfaces()
-	for _, inter := range interfaces {
-		nsqd.NsqLogger().Logf("found interface: %s", inter.Name)
-		if inter.Name == ifname {
-			if addrs, err := inter.Addrs(); err == nil {
-				for _, addr := range addrs {
-					switch ip := addr.(type) {
-					case *net.IPNet:
-						if ip.IP.DefaultMask() != nil {
-							return ip.IP.String()
-						}
-					}
-				}
-			}
-		}
-	}
-	return ""
-}
+func NewNsqdServer(opts *nsqd.Options) (*nsqd.NSQD, *NsqdServer) {
+	ip := opts.DecideBroadcast()
 
-func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
+	nsqdInstance := nsqd.New(opts)
+
 	s := &NsqdServer{}
 	ctx := &context{}
 	ctx.nsqd = nsqdInstance
-	ip, port, _ := net.SplitHostPort(opts.TCPAddress)
+	_, port, _ := net.SplitHostPort(opts.TCPAddress)
 	rpcport := opts.RPCPort
 	if rpcport != "" {
-		nsqd.NsqLogger().Logf("broadcast option: %s, %s", opts.BroadcastAddress, opts.BroadcastInterface)
-		if opts.BroadcastInterface != "" {
-			ip = getIPv4ForInterfaceName(opts.BroadcastInterface)
-		}
-		if ip == "" {
-			ip = opts.BroadcastAddress
-		} else {
-			opts.BroadcastAddress = ip
-		}
-		if ip == "0.0.0.0" || ip == "" {
-			nsqd.NsqLogger().LogErrorf("can not decide the broadcast ip: %v", ip)
-			os.Exit(1)
-		}
-		nsqd.NsqLogger().Logf("Start with broadcast: %s", ip)
-
+		ip = opts.BroadcastAddress
 		consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
 		coord := consistence.NewNsqdCoordinator(opts.ClusterID, ip, port, rpcport, strconv.FormatInt(opts.ID, 10), opts.DataPath, nsqdInstance)
 		l := consistence.NewNsqdEtcdMgr(opts.ClusterLeadershipAddresses)
@@ -151,7 +121,7 @@ func NewNsqdServer(nsqdInstance *nsqd.NSQD, opts *nsqd.Options) *NsqdServer {
 	nsqd.NsqLogger().Logf(version.String("nsqd"))
 	nsqd.NsqLogger().Logf("ID: %d", opts.ID)
 
-	return s
+	return nsqdInstance, s
 }
 
 func (s *NsqdServer) GetNsqdInstance() *nsqd.NSQD {
