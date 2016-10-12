@@ -1573,6 +1573,17 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
 			localTopic.DisableForSlave()
 		}
 	} else {
+		logIndex, logOffset, logData, err := tcData.logMgr.GetLastCommitLogOffsetV2()
+		if err != nil {
+			if err != ErrCommitLogEOF {
+				coordLog.Errorf("commit log is corrupted: %v", err)
+			} else {
+				coordLog.Infof("no commit last log data : %v", err)
+			}
+		} else {
+			coordLog.Infof("current topic %v log: %v:%v, %v, pid: %v, %v",
+				tcData.topicInfo.GetTopicDesp(), logIndex, logOffset, logData, tcData.logMgr.pLogID, tcData.logMgr.nLogID)
+		}
 		localTopic.DisableForSlave()
 	}
 	offsetMap := make(map[string]ChannelConsumerOffset)

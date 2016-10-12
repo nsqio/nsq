@@ -466,6 +466,64 @@ func TestCommitLogRotate(t *testing.T) {
 	test.Equal(t, len(logs), LOGROTATE_NUM)
 }
 
+func TestCommitLogRotateForReopen(t *testing.T) {
+	oldRotate := LOGROTATE_NUM
+	LOGROTATE_NUM = 10
+	defer func() {
+		LOGROTATE_NUM = oldRotate
+	}()
+	logName := "test_log_rotate" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	coordLog.Logger = newTestLogger(t)
+	coordLog.SetLevel(4)
+	logMgr, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+
+	test.Nil(t, err)
+	test.Equal(t, logMgr.pLogID, int64(0))
+	test.Equal(t, logMgr.nLogID > logMgr.pLogID, true)
+	test.Equal(t, logMgr.GetLastCommitLogID(), int64(0))
+
+	_, _, _, err = logMgr.GetLastCommitLogOffsetV2()
+	test.Equal(t, ErrCommitLogEOF, err)
+
+	num := 100
+	msgRawSize := 10
+	for i := 0; i < num; i++ {
+		var logData CommitLogData
+		logData.LogID = int64(logMgr.NextID())
+		logData.LastMsgLogID = logData.LogID
+		logData.Epoch = 1
+		logData.MsgOffset = int64(i * msgRawSize)
+		logData.MsgCnt = int64(i + 1)
+		logData.MsgNum = 1
+		err = logMgr.AppendCommitLog(&logData, false)
+		test.Nil(t, err)
+		// test reopen during append
+		if logMgr.currentCount == int32(LOGROTATE_NUM/2) {
+			logMgr.Close()
+			logMgr, err = InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+			test.Nil(t, err)
+		}
+	}
+	logMgr.FlushCommitLogs()
+	for i := int64(0); i < logMgr.currentStart; i++ {
+		s, err := os.Stat(getSegmentFilename(logMgr.path, i))
+		test.Nil(t, err)
+		test.Equal(t, int64(GetLogDataSize()*LOGROTATE_NUM), s.Size())
+	}
+	stat, err := os.Stat(logMgr.path)
+	test.Nil(t, err)
+	test.Equal(t, true, stat.Size() <= int64(GetLogDataSize()*LOGROTATE_NUM))
+	currentStart, lastOffset, _, err := logMgr.GetLastCommitLogOffsetV2()
+	test.Nil(t, err)
+	test.Equal(t, int64((LOGROTATE_NUM-1)*GetLogDataSize()), lastOffset)
+	test.Equal(t, currentStart, logMgr.GetCurrentStart())
+}
+
 func TestCommitLogSearch(t *testing.T) {
 	oldRotate := LOGROTATE_NUM
 	LOGROTATE_NUM = 10

@@ -358,6 +358,8 @@ func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) 
 			mgr.nLogID = l.LastMsgLogID + 1
 		}
 	}
+	coordLog.Infof("%v commit log init with log start: %v, current: %v:%v, pid: %v", mgr.path,
+		mgr.logStartInfo, mgr.currentStart, mgr.currentCount, mgr.pLogID)
 	return mgr, nil
 }
 
@@ -773,6 +775,9 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 		self.appender.Sync()
 		self.appender.Close()
 		os.Remove(self.path)
+		for i := startIndex + 1; i < oldStart; i++ {
+			os.Remove(getSegmentFilename(self.path, int64(i)))
+		}
 
 		err := util.AtomicRename(getSegmentFilename(self.path, startIndex), self.path)
 		if err != nil {
@@ -781,21 +786,17 @@ func (self *TopicCommitLogMgr) TruncateToOffsetV2(startIndex int64, offset int64
 		}
 		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
-			coordLog.Infof("open topic commit log file error: %v", err)
+			coordLog.Errorf("open topic %v commit log file error: %v", self.path, err)
 			return nil, err
 		}
-
-		for i := startIndex + 1; i < oldStart; i++ {
-			os.Remove(getSegmentFilename(self.path, int64(i)))
-		}
 	}
-	coordLog.Infof("truncate commit log to: %v, %v", self.currentStart, self.currentCount)
 	return self.truncateToOffset(startOffset, offset)
 }
 
 func (self *TopicCommitLogMgr) truncateToOffset(startOffset int64, offset int64) (*CommitLogData, error) {
 	l, err := truncateFileToOffset(self.appender, startOffset, offset)
 	self.currentCount = int32(offset / int64(GetLogDataSize()))
+	coordLog.Infof("truncate commit log to: %v, %v", self.currentStart, self.currentCount)
 	if err != nil {
 		if err == ErrCommitLogEOF {
 			if self.currentStart <= self.logStartInfo.SegmentStartIndex {
@@ -808,6 +809,7 @@ func (self *TopicCommitLogMgr) truncateToOffset(startOffset int64, offset int64)
 				}
 			}
 		} else {
+			coordLog.Errorf("truncate topic %v commit log error: %v", self.topic, err)
 			return nil, err
 		}
 	}
@@ -1016,7 +1018,7 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 		coordLog.Infof("rotate file %v to %v", self.path, newName)
 		self.appender, err = os.OpenFile(self.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
-			coordLog.Infof("open topic commit log file error: %v", err)
+			coordLog.Errorf("open topic %v commit log file error: %v", self.path, err)
 			return err
 		}
 		atomic.AddInt64(&self.currentStart, 1)
