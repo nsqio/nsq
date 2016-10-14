@@ -263,9 +263,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	}
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
-		if asyncAction {
-			return internalPubAsync(nil, b, topic)
-		}
+		var err error
 		traceIDStr := params.Get("trace_id")
 		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
 		if enableTrace && err != nil {
@@ -273,8 +271,15 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				traceIDStr, err)
 			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
 		}
-		id, offset, rawSize, _, err := s.ctx.PutMessage(topic, body, traceID)
-		//s.ctx.setHealth(err)
+
+		id := nsqd.MessageID(0)
+		offset := nsqd.BackendOffset(0)
+		rawSize := int32(0)
+		if asyncAction {
+			err = internalPubAsync(nil, b, topic)
+		} else {
+			id, offset, rawSize, _, err = s.ctx.PutMessage(topic, body, traceID)
+		}
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {

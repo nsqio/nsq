@@ -55,9 +55,9 @@ type PubInfo struct {
 	Done     chan struct{}
 	MsgBody  *bytes.Buffer
 	StartPub time.Time
-	Rsp      []byte
 	Err      error
 }
+
 type PubInfoChan chan *PubInfo
 
 type ChannelMetaInfo struct {

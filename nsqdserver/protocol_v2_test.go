@@ -610,20 +610,23 @@ func TestTcpPub(t *testing.T) {
 	conn.Close()
 
 	connList := make([]net.Conn, 0)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 200; i++ {
 		conn, err := mustConnectNSQD(tcpAddr)
 		test.Equal(t, err, nil)
 		defer conn.Close()
 		identify(t, conn, nil, frameTypeResponse)
 		connList = append(connList, conn)
 	}
+	goStart := make(chan bool)
 	// test several client pub and check pub loop
 	for i := 0; i < len(connList); i++ {
 		cmd := nsq.Publish(topicName, make([]byte, 5))
 		go func(index int) {
+			<-goStart
 			cmd.WriteTo(connList[index])
 		}(i)
 	}
+	close(goStart)
 	for i := 0; i < len(connList); i++ {
 		resp, _ := nsq.ReadResponse(connList[i])
 		frameType, data, _ := nsq.UnpackResponse(resp)

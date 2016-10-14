@@ -38,6 +38,7 @@ var (
 	channelNum    = flagSet.Int("ch_num", 1, "the channel number under each topic")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
+	checkMsgSize  = flagSet.Bool("check-size", false, "enable check the body size of sub")
 	topicListFile = flagSet.String("topic-list-file", "", "the file that contains one topic each line")
 )
 
@@ -1000,6 +1001,9 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 	}
 	if len(message.Body) <= 0 {
 		log.Printf("got empty message %v\n", message)
+	}
+	if *checkMsgSize && len(message.Body) != *size {
+		log.Printf("got message body size mismatch : %v \n", len(message.Body))
 	}
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
 	if newCount < 2 {

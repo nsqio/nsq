@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/absolute8511/nsq/consistence"
-	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"sync/atomic"
@@ -248,16 +247,17 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		}
 		nsqd.NsqLogger().Logf("quit pub loop for topic: %v, left: %v ", topic.GetFullName(), len(pubInfoList))
 		for _, info := range pubInfoList {
-			info.Rsp = nil
 			info.Err = nsqd.ErrExiting
 			close(info.Done)
 		}
 	}()
+	quitChan := topic.QuitChan()
+	infoChan := topic.GetWaitChan()
 	for {
 		select {
-		case <-topic.QuitChan():
+		case <-quitChan:
 			return
-		case info := <-topic.GetWaitChan():
+		case info := <-infoChan:
 			if info.MsgBody.Len() <= 0 {
 				nsqd.NsqLogger().Logf("empty msg body")
 			}
@@ -268,9 +268,9 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			if len(pubInfoList) == 0 {
 				nsqd.NsqLogger().LogDebugf("topic %v pub loop waiting for message", topic.GetFullName())
 				select {
-				case <-topic.QuitChan():
+				case <-quitChan:
 					return
-				case info := <-topic.GetWaitChan():
+				case info := <-infoChan:
 					if info.MsgBody.Len() <= 0 {
 						nsqd.NsqLogger().Logf("empty msg body")
 					}
@@ -279,39 +279,24 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 				}
 				continue
 			}
-			nsqd.NsqLogger().LogDebugf("pub loop batch number: %v", len(pubInfoList))
+			if len(pubInfoList) > 1 {
+				nsqd.NsqLogger().LogDebugf("pub loop batch number: %v", len(pubInfoList))
+			}
 			var retErr error
 			if c.checkForMasterWrite(topicName, partition) {
 				_, _, _, err := c.PutMessages(topic, messages)
 				if err != nil {
 					nsqd.NsqLogger().LogErrorf("topic %v put messages %v failed: %v", topic.GetFullName(), len(messages), err)
-					retErr = protocol.NewFatalClientErr(err, "E_PUB_FAILED", err.Error())
-					if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
-						if !clusterErr.IsLocalErr() {
-							retErr = protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
-						}
-					}
-				} else {
-					cost := time.Now().UnixNano() - pubInfoList[0].StartPub.UnixNano()
-					topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(messages)))
-					for _, info := range pubInfoList {
-						info.Rsp = okBytes
-						info.Err = nil
-					}
+					retErr = err
 				}
 			} else {
 				topic.DisableForSlave()
 				nsqd.NsqLogger().LogDebugf("should put to master: %v",
 					topic.GetFullName())
-				retErr = protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
-			}
-			if retErr != nil {
-				for _, info := range pubInfoList {
-					info.Rsp = nil
-					info.Err = retErr
-				}
+				retErr = consistence.ErrNotTopicLeader.ToErrorType()
 			}
 			for _, info := range pubInfoList {
+				info.Err = retErr
 				close(info.Done)
 			}
 			pubInfoList = pubInfoList[:0]

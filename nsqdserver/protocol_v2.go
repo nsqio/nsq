@@ -1202,9 +1202,9 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 	return buf, nil
 }
 
-func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic) ([]byte, error) {
+func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic) error {
 	if topic.Exiting() {
-		return nil, protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+		return nsqd.ErrExiting
 	}
 	info := &nsqd.PubInfo{
 		Done:     make(chan struct{}),
@@ -1223,14 +1223,14 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 		case topic.GetWaitChan() <- info:
 		case <-topic.QuitChan():
 			nsqd.NsqLogger().Infof("topic %v put messages failed at exiting", topic.GetFullName())
-			return nil, protocol.NewFatalClientErr(nsqd.ErrExiting, "E_PUB_FAILED", nsqd.ErrExiting.Error())
+			return nsqd.ErrExiting
 		case <-clientTimer.C:
 			nsqd.NsqLogger().Infof("topic %v put messages timeout ", topic.GetFullName())
-			return nil, protocol.NewFatalClientErr(ErrPubToWaitTimeout, "E_PUB_FAILED", ErrPubToWaitTimeout.Error())
+			return ErrPubToWaitTimeout
 		}
 	}
 	<-info.Done
-	return info.Rsp, info.Err
+	return info.Err
 }
 
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
@@ -1265,16 +1265,15 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		realBody = messageBody
 	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
+		var err error
+		id := nsqd.MessageID(0)
+		offset := nsqd.BackendOffset(0)
+		rawSize := int32(0)
 		if asyncAction {
-			rsp, err := internalPubAsync(client.PubTimeout, messageBodyBuffer, topic)
-			if err != nil {
-				topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
-			} else {
-				topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, false)
-			}
-			return rsp, err
+			err = internalPubAsync(client.PubTimeout, messageBodyBuffer, topic)
+		} else {
+			id, offset, rawSize, _, err = p.ctx.PutMessage(topic, realBody, traceID)
 		}
-		id, offset, rawSize, _, err := p.ctx.PutMessage(topic, realBody, traceID)
 		//p.ctx.setHealth(err)
 		if err != nil {
 			topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
