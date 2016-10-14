@@ -888,14 +888,27 @@ func main() {
 	}
 }
 
-func pubWorker(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string, batchSize int, batch [][]byte, rdyChan chan int, goChan chan int) {
+func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, batchSize int, batch [][]byte, rdyChan chan int, goChan chan int) {
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	if err != nil {
+		log.Printf("init error : %v", err)
+		close(rdyChan)
+		return
+	}
+	pubMgr.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	err = pubMgr.ConnectToNSQLookupd(*lookupAddress)
+	if err != nil {
+		log.Printf("lookup connect error : %v", err)
+		close(rdyChan)
+		return
+	}
+
 	rdyChan <- 1
 	<-goChan
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	traceIDs := make([]uint64, len(batch))
 	var traceResp pubResp
-	var err error
 	for {
 		if time.Now().After(endTime) {
 			break
@@ -1125,13 +1138,26 @@ func subWorker2(quitChan chan int, td time.Duration, lookupAddr string, topic st
 	<-done
 }
 
-func pubWorker2(td time.Duration, pubMgr *nsq.TopicProducerMgr, topicName string, pubIDCounter *int64, rdyChan chan int, goChan chan int) {
+func pubWorker2(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, pubIDCounter *int64, rdyChan chan int, goChan chan int) {
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	if err != nil {
+		log.Printf("init pub mgr error : %v", err)
+		close(rdyChan)
+		return
+	}
+	pubMgr.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
+	err = pubMgr.ConnectToNSQLookupd(*lookupAddress)
+	if err != nil {
+		log.Printf("lookup connect error : %v", err)
+		close(rdyChan)
+		return
+	}
+
 	rdyChan <- 1
 	<-goChan
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	var traceResp pubResp
-	var err error
 	mutex.Lock()
 	failedList, ok := pubTraceFailedList[topicName]
 	if !ok {
