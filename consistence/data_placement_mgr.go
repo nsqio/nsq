@@ -235,13 +235,22 @@ func (self *NodeTopicStats) GetNodeAvgReadLevel() float64 {
 
 func (self *NodeTopicStats) GetTopicLoadFactor(topicFullName string) float64 {
 	data := self.TopicTotalDataSize[topicFullName]
+	if data > HIGHEST_LEFT_DATA_MB_SIZE {
+		data = HIGHEST_LEFT_DATA_MB_SIZE
+	}
 	return self.GetTopicLeaderLoadFactor(topicFullName) + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*5.0
 }
 
 func (self *NodeTopicStats) GetTopicLeaderLoadFactor(topicFullName string) float64 {
 	writeLevel := self.GetTopicAvgWriteLevel(topicFullName)
 	depth := self.ChannelDepthData[topicFullName]
+	if depth > HIGHEST_LEFT_CONSUME_MB_SIZE {
+		depth = HIGHEST_LEFT_CONSUME_MB_SIZE
+	}
 	data := self.TopicLeaderDataSize[topicFullName]
+	if data > HIGHEST_LEFT_DATA_MB_SIZE {
+		data = HIGHEST_LEFT_DATA_MB_SIZE
+	}
 	return writeLevel/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(depth)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
 }
 

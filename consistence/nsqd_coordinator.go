@@ -1331,6 +1331,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			if err != nil {
 				coordLog.Infof("try get stats from leader failed: %v", err)
 			} else {
+				localTopic.GetDetailStats().ResetHistoryInitPub(localTopic.TotalDataSize())
 				localTopic.GetDetailStats().UpdateHistory(stat.TopicHourlyPubDataList[topicInfo.GetTopicDesp()])
 				chList, ok := stat.ChannelList[topicInfo.GetTopicDesp()]
 				coordLog.Infof("topic %v sync channel list from leader: %v", topicInfo.GetTopicDesp(), chList)

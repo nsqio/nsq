@@ -293,6 +293,12 @@ func (self *TopicHistoryStatsInfo) UpdateHourlySize(curPubSize int64) {
 	atomic.StoreInt64(&self.lastPubSize, curPubSize)
 }
 
+func (self *DetailStatsInfo) ResetHistoryInitPub(msgSize int64) {
+	now := int32(time.Now().Hour())
+	atomic.StoreInt32(&self.historyStatsInfo.lastHour, now)
+	atomic.StoreInt64(&self.historyStatsInfo.lastPubSize, msgSize)
+}
+
 func (self *DetailStatsInfo) UpdateTopicMsgStats(msgSize int64, latency int64) {
 	if msgSize <= 0 {
 		self.msgStats.UpdateMsgLatencyStats(latency)
