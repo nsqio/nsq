@@ -417,7 +417,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				continue
 			}
 			coordLog.Debugf("scan found topics: %v", topics)
-			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions, true)
+			self.doCheckTopics(monitorChan, topics, waitingMigrateTopic, lostLeaderSessions, true)
 		case failedInfo := <-self.checkTopicFailChan:
 			if self.leadership == nil {
 				continue
@@ -440,12 +440,12 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 				}
 				topics = append(topics, *t)
 			}
-			self.doCheckTopics(topics, waitingMigrateTopic, lostLeaderSessions, failedInfo.TopicName == "")
+			self.doCheckTopics(monitorChan, topics, waitingMigrateTopic, lostLeaderSessions, failedInfo.TopicName == "")
 		}
 	}
 }
 
-func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
+func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topics []TopicPartitionMetaInfo,
 	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool, fullCheck bool) {
 	coordLog.Infof("do check topics...")
 	// TODO: check partition number for topic, maybe failed to create
@@ -460,6 +460,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(topics []TopicPartitionMetaInfo,
 			coordLog.Infof("nodes changed while checking topics: %v, %v", currentNodesEpoch, atomic.LoadInt64(&self.nodesEpoch))
 			return
 		}
+		select {
+		case <-monitorChan:
+			// exiting
+			return
+		default:
+		}
+
 		needMigrate := false
 		if len(t.ISR) < t.Replica {
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
