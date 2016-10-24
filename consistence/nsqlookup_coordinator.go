@@ -278,7 +278,7 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 // for the nsqd node that temporally lost, we need send the related topics to
 // it .
 func (self *NsqLookupCoordinator) notifyTopicsToSingleNsqdForReload(topics []TopicPartitionMetaInfo, nodeID string) {
-	coordLog.Infof("reload topics %v for node: %v", topics, nodeID)
+	coordLog.Infof("reload topics for node: %v", nodeID)
 	for _, v := range topics {
 		if FindSlice(v.ISR, nodeID) != -1 || FindSlice(v.CatchupList, nodeID) != -1 {
 			self.notifySingleNsqdForTopicReload(v, nodeID)

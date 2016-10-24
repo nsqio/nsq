@@ -274,15 +274,12 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 						continue
 					}
 					watcher = self.client.Watch(key, rsp.Index+1, true)
-					continue
+					// should get the nodes to notify watcher since last watch is expired
 				} else {
 					time.Sleep(5 * time.Second)
+					continue
 				}
 			}
-			continue
-		}
-		if rsp == nil {
-			continue
 		}
 		nsqdNodes, err := self.getNsqdNodes()
 		if err != nil {
@@ -354,12 +351,12 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 						continue
 					}
 					watcher = self.client.Watch(self.topicRoot, rsp.Index+1, true)
-					continue
+					// watch expired should be treated as changed of node
 				} else {
 					time.Sleep(5 * time.Second)
+					continue
 				}
 			}
-			continue
 		}
 		coordLog.Debugf("topic changed.")
 		self.itcMutex.Lock()
@@ -742,12 +739,12 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 						continue
 					}
 					watcher = self.client.Watch(topicLeaderSessionPath, rsp.Index+1, true)
-					continue
+					// watch changed since the expired event happened
 				} else {
 					time.Sleep(5 * time.Second)
+					continue
 				}
 			}
-			continue
 		}
 		if rsp == nil || rsp.Node == nil {
 			continue

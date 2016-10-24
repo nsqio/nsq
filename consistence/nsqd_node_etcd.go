@@ -281,12 +281,11 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 						continue
 					}
 					watcher = self.client.Watch(key, rsp.Index+1, true)
-					continue
 				} else {
 					time.Sleep(5 * time.Second)
+					continue
 				}
 			}
-			continue
 		}
 		if rsp == nil {
 			continue
