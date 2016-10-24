@@ -10,6 +10,7 @@ import (
 
 const (
 	MAX_PARTITION_NUM = 255
+	MAX_SYNC_EVERY    = 5000
 )
 
 func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
@@ -287,6 +288,10 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	} else {
 		coordLog.Warningf("topic already exist :%v ", topic)
 		return ErrAlreadyExist
+	}
+	if meta.SyncEvery > MAX_SYNC_EVERY {
+		coordLog.Infof("topic %v sync every with too large %v, set to max", topic, meta)
+		meta.SyncEvery = MAX_SYNC_EVERY
 	}
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 

@@ -560,7 +560,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 
 	if body.SyncDisk == "" {
-		body.SyncDisk = "5000"
+		body.SyncDisk = "2000"
 	}
 	syncDisk, _ := strconv.Atoi(body.SyncDisk)
 	err = s.ci.CreateTopic(body.Topic, pnum, replica,
