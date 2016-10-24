@@ -280,6 +280,11 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 func (self *NsqLookupCoordinator) notifyTopicsToSingleNsqdForReload(topics []TopicPartitionMetaInfo, nodeID string) {
 	coordLog.Infof("reload topics for node: %v", nodeID)
 	for _, v := range topics {
+		select {
+		case <-self.stopChan:
+			return
+		default:
+		}
 		if FindSlice(v.ISR, nodeID) != -1 || FindSlice(v.CatchupList, nodeID) != -1 {
 			self.notifySingleNsqdForTopicReload(v, nodeID)
 		}
@@ -288,6 +293,12 @@ func (self *NsqLookupCoordinator) notifyTopicsToSingleNsqdForReload(topics []Top
 
 func (self *NsqLookupCoordinator) notifyTopicsToAllNsqdForReload(topics []TopicPartitionMetaInfo) {
 	for _, v := range topics {
+		select {
+		case <-self.stopChan:
+			return
+		default:
+		}
+
 		self.notifyAllNsqdsForTopicReload(v)
 	}
 }

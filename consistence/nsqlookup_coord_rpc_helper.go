@@ -29,6 +29,12 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 			self.failedRpcMutex.Unlock()
 			epoch := self.leaderNode.Epoch
 			for _, info := range failList {
+				// check if exiting
+				select {
+				case <-monitorChan:
+					return
+				default:
+				}
 				coordLog.Infof("retry failed rpc call for topic: %v", info)
 				topicInfo, err := self.leadership.GetTopicInfo(info.topic, info.partition)
 				if err != nil {
