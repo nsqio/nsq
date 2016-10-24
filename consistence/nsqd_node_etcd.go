@@ -90,9 +90,12 @@ func (self *NsqdEtcdMgr) refresh(stopChan chan bool) {
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
-			//_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
-				coordLog.Errorf("[NsqdEtcdMgr][refresh] update error: %s", err.Error())
+				coordLog.Errorf("update error: %s", err.Error())
+				_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
+				if err != nil {
+					coordLog.Errorf("set key error: %s", err.Error())
+				}
 			}
 		}
 	}
@@ -118,7 +121,7 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 		self.refreshStopCh = nil
 	}
 
-	coordLog.Infof("[UnregisterNsqd] cluser[%s] node[%s]", self.clusterID, nodeData.ID)
+	coordLog.Infof("cluser[%s] node[%s]", self.clusterID, nodeData.ID)
 
 	return nil
 }
@@ -140,17 +143,17 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 	lock := etcdlock.NewSeizeLock(self.client, topicKey, string(valueB), ETCD_TTL)
 	err = lock.Lock()
 	if err != nil {
-		coordLog.Errorf("[AcquireTopicLeader] topic_key[%s] lock error: %s", topicKey, err.Error())
+		coordLog.Errorf("topic_key[%s] lock error: %s", topicKey, err.Error())
 		if err == etcdlock.ErrSeizeLockAg {
 			return nil
 		}
 		return err
 	}
-	coordLog.Infof("[AcquireTopicLeader] topic_key[%s] lock success.", topicKey)
+	coordLog.Infof("topic_key[%s] lock success.", topicKey)
 
 	self.Lock()
 	self.topicLockMap[topicKey] = lock
-	coordLog.Debugf("[AcquireTopicLeader] map: %v", self.topicLockMap)
+	coordLog.Debugf("map: %v", self.topicLockMap)
 	self.Unlock()
 
 	return nil
@@ -190,24 +193,24 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 	self.Lock()
 	defer self.Unlock()
 
-	coordLog.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] leader", topic, partition)
-	coordLog.Infof("[ReleaseTopicLeader] map: %v", self.topicLockMap)
+	coordLog.Infof(" topic[%s] partition[%d] leader", topic, partition)
+	coordLog.Infof(" map: %v", self.topicLockMap)
 	topicKey := self.createTopicLeaderPath(topic, partition)
 	v, ok := self.topicLockMap[topicKey]
 	if ok {
 		err := v.Unlock()
 		if err != nil {
-			coordLog.Errorf("[ReleaseTopicLeader] unlock error: %s", err.Error())
+			coordLog.Errorf("unlock error: %s", err.Error())
 			if err == etcdlock.ErrEtcdBad {
 				return err
 			}
 		}
 		delete(self.topicLockMap, topicKey)
-		coordLog.Infof("[ReleaseTopicLeader] topic[%s] partition[%d] success.", topic, partition)
+		coordLog.Infof("topic[%s] partition[%d] success.", topic, partition)
 
 		return err
 	} else {
-		coordLog.Errorf("[ReleaseTopicLeader] topicLockMap key[%s] not found.", topicKey)
+		coordLog.Errorf("topicLockMap key[%s] not found.", topicKey)
 		return fmt.Errorf("topicLockMap key[%s] not found.", topicKey)
 	}
 
@@ -238,7 +241,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 
 	rsp, err := self.client.Get(key, false, false)
 	if err == nil {
-		coordLog.Infof("[WatchLookupdLeader] key: %s value: %s", rsp.Node.Key, rsp.Node.Value)
+		coordLog.Infof("key: %s value: %s", rsp.Node.Key, rsp.Node.Value)
 		var lookupdInfo NsqLookupdNodeInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 		if err == nil {
@@ -250,7 +253,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			}
 		}
 	} else {
-		coordLog.Errorf("[WatchLookupdLeader] get error: %s", err.Error())
+		coordLog.Errorf("get error: %s", err.Error())
 	}
 
 	watcher := self.client.Watch(key, 0, true)

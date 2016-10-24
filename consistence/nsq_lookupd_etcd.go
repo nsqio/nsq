@@ -112,9 +112,12 @@ func (self *NsqLookupdEtcdMgr) refresh() {
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
-			//_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 			if err != nil {
-				coordLog.Errorf("[NsqLookupdEtcdMgr][refresh] update error: %s", err.Error())
+				coordLog.Errorf("update error: %s", err.Error())
+				_, err := self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
+				if err != nil {
+					coordLog.Errorf("set key error: %s", err.Error())
+				}
 			}
 		}
 	}
@@ -195,10 +198,10 @@ func (self *NsqLookupdEtcdMgr) processMasterEvents(master etcdlock.Master, leade
 					leader <- &lookupdNode
 					continue
 				}
-				coordLog.Infof("[processMasterEvents] master event type[%d] lookupdNode[%v].", e.Type, lookupdNode)
+				coordLog.Infof("master event type[%d] lookupdNode[%v].", e.Type, lookupdNode)
 				leader <- &lookupdNode
 			} else if e.Type == etcdlock.MASTER_DELETE {
-				coordLog.Infof("[processMasterEvents] master event delete.")
+				coordLog.Infof("master event delete.")
 				// Lost the lock.
 				var lookupdNode NsqLookupdNodeInfo
 				leader <- &lookupdNode
@@ -254,16 +257,16 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 		rsp, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				coordLog.Infof("[WatchNsqdNodes] watch key[%s] canceled.", key)
+				coordLog.Infof("watch key[%s] canceled.", key)
 				close(nsqds)
 				return
 			} else {
-				coordLog.Errorf("[WatchNsqdNodes] watcher key[%s] error: %s", key, err.Error())
+				coordLog.Errorf("watcher key[%s] error: %s", key, err.Error())
 				//rewatch
 				if etcdlock.IsEtcdWatchExpired(err) {
 					rsp, err = self.client.Get(key, false, true)
 					if err != nil {
-						coordLog.Errorf("[WatchNsqdNodes] rewatch and get key[%s] error: %s", key, err.Error())
+						coordLog.Errorf("rewatch and get key[%s] error: %s", key, err.Error())
 						continue
 					}
 					watcher = self.client.Watch(key, rsp.Index+1, true)
@@ -279,7 +282,7 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 		}
 		nsqdNodes, err := self.getNsqdNodes()
 		if err != nil {
-			coordLog.Errorf("[WatchNsqdNodes] key[%s] getNsqdNodes error: %s", key, err.Error())
+			coordLog.Errorf("key[%s] getNsqdNodes error: %s", key, err.Error())
 			continue
 		}
 		select {
@@ -335,15 +338,15 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 		_, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				coordLog.Infof("[watchTopics] watch key[%s] canceled.", self.topicRoot)
+				coordLog.Infof("watch key[%s] canceled.", self.topicRoot)
 				return
 			} else {
-				coordLog.Errorf("[watchTopics] watcher key[%s] error: %s", self.topicRoot, err.Error())
+				coordLog.Errorf("watcher key[%s] error: %s", self.topicRoot, err.Error())
 				//rewatch
 				if etcdlock.IsEtcdWatchExpired(err) {
 					rsp, err := self.client.Get(self.topicRoot, false, true)
 					if err != nil {
-						coordLog.Errorf("[watchTopics] rewatch and get key[%s] error: %s", self.topicRoot, err.Error())
+						coordLog.Errorf("rewatch and get key[%s] error: %s", self.topicRoot, err.Error())
 						continue
 					}
 					watcher = self.client.Watch(self.topicRoot, rsp.Index+1, true)
@@ -354,7 +357,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 			}
 			continue
 		}
-		coordLog.Debugf("[watchTopics] topic changed.")
+		coordLog.Debugf("topic changed.")
 		self.itcMutex.Lock()
 		self.ifTopicChanged = true
 		self.itcMutex.Unlock()
@@ -681,7 +684,7 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 				self.wtliMutex.Lock()
 				self.watchTopicLeaderChanMap[topicLeaderSession] = event
 				self.wtliMutex.Unlock()
-				coordLog.Infof("[WatchTopicLeader]create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
+				coordLog.Infof("create topic[%s] partition[%d] and start watch.", event.topic, event.partition)
 				go self.watchTopicLeaderSession(event, leader)
 			}
 		case <-stop:
@@ -722,16 +725,16 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 		rsp, err := watcher.Next(ctx)
 		if err != nil {
 			if err == context.Canceled {
-				coordLog.Infof("[watchTopicLeaderSession] watch key[%s] canceled.", topicLeaderSessionPath)
+				coordLog.Infof("watch key[%s] canceled.", topicLeaderSessionPath)
 				watchTopicLeaderInfo.stoppedCh <- true
 				return
 			} else {
-				coordLog.Errorf("[watchTopicLeaderSession] watcher key[%s] error: %s", topicLeaderSessionPath, err.Error())
+				coordLog.Errorf("watcher key[%s] error: %s", topicLeaderSessionPath, err.Error())
 				//rewatch
 				if etcdlock.IsEtcdWatchExpired(err) {
 					rsp, err = self.client.Get(topicLeaderSessionPath, false, true)
 					if err != nil {
-						coordLog.Errorf("[watchTopics] rewatch and get key[%s] error: %s", topicLeaderSessionPath, err.Error())
+						coordLog.Errorf("rewatch and get key[%s] error: %s", topicLeaderSessionPath, err.Error())
 						continue
 					}
 					watcher = self.client.Watch(topicLeaderSessionPath, rsp.Index+1, true)
@@ -746,9 +749,9 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			continue
 		}
 		if rsp.PrevNode == nil {
-			coordLog.Infof("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.Node.ModifiedIndex)
+			coordLog.Infof("watch key[%s] action[%s] value[%s] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.Node.ModifiedIndex)
 		} else {
-			coordLog.Debugf("[watchTopicLeaderSession] watch key[%s] action[%s] value[%s] pre_modified[%d] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.PrevNode.ModifiedIndex, rsp.Node.ModifiedIndex)
+			coordLog.Debugf("watch key[%s] action[%s] value[%s] pre_modified[%d] modified[%d]", rsp.Node.Key, rsp.Action, rsp.Node.Value, rsp.PrevNode.ModifiedIndex, rsp.Node.ModifiedIndex)
 		}
 		if rsp.Action == "compareAndDelete" || rsp.Action == "delete" || rsp.Action == "expire" {
 			keys := strings.Split(rsp.Node.Key, "/")
@@ -760,7 +763,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			if err != nil {
 				continue
 			}
-			coordLog.Infof("[watchTopicLeaderSession] topic[%s] partition[%d] action[%s] leader deleted.", keys[keyLen-3], partition, rsp.Action)
+			coordLog.Infof("topic[%s] partition[%d] action[%s] leader deleted.", keys[keyLen-3], partition, rsp.Action)
 			topicLeaderSession := &TopicLeaderSession{
 				Topic:     keys[keyLen-3],
 				Partition: partition,
@@ -771,7 +774,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 			if err := json.Unmarshal([]byte(rsp.Node.Value), &topicLeaderSession); err != nil {
 				continue
 			}
-			coordLog.Infof("[watchTopicLeaderSession] topicLeaderSession[%v] create.", topicLeaderSession)
+			coordLog.Infof("topicLeaderSession[%v] create.", topicLeaderSession)
 			leader <- &topicLeaderSession
 		}
 	}

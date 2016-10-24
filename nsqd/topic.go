@@ -125,7 +125,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		putBuffer:      bytes.Buffer{},
 		notifyCall:     notify,
 		writeDisabled:  writeDisabled,
-		pubWaitingChan: make(PubInfoChan, 100),
+		pubWaitingChan: make(PubInfoChan, 200),
 		quitChan:       make(chan struct{}),
 		pubLoopFunc:    loopFunc,
 	}
