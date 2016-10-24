@@ -3,6 +3,7 @@ package consistence
 import (
 	"errors"
 	"github.com/cenkalti/backoff"
+	"net"
 	"runtime"
 	"strconv"
 	"sync"
@@ -165,12 +166,15 @@ func (self *NsqLookupCoordinator) notifyNodesLookup() {
 	if err != nil {
 		return
 	}
+
 	for _, node := range nodes {
-		client, rpcErr := self.acquireRpcClient(node.GetID())
-		if rpcErr != nil {
+		client, err := NewNsqdRpcClient(net.JoinHostPort(node.NodeIP, node.RpcPort), RPC_TIMEOUT_FOR_LOOKUP)
+		if err != nil {
+			coordLog.Infof("rpc node %v client init failed : %v", node, err)
 			continue
 		}
 		client.TriggerLookupChanged()
+		client.Close()
 	}
 }
 
