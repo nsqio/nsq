@@ -91,7 +91,7 @@ func (n *NsqdServer) discoverLookupdNodes(discoveryAddrs []string) ([]string, bo
 func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan interface{}, optsNotifyChan chan struct{}, exitChan chan int) {
 	var lookupPeers []*clusterinfo.LookupPeer
 	var lookupAddrs []string
-	syncTopicChan := make(chan *clusterinfo.LookupPeer)
+	syncTopicChan := make(chan *clusterinfo.LookupPeer, 2)
 	changed := true
 
 	hostname, err := os.Hostname()
@@ -207,6 +207,8 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 						case syncTopicChan <- l:
 						case <-exitChan:
 							return
+						default:
+							continue
 						}
 					}
 				}()
@@ -252,6 +254,7 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 							case syncTopicChan <- lp:
 							case <-exitChan:
 								return
+							default:
 							}
 						}()
 					}
@@ -259,7 +262,7 @@ func (n *NsqdServer) lookupLoop(pingInterval time.Duration, metaNotifyChan chan 
 				}
 				// avoid too much command once, we need sleep here
 				if index%10 == 0 {
-					time.Sleep(time.Millisecond * 10)
+					time.Sleep(time.Millisecond)
 				}
 			}
 		case <-optsNotifyChan:
