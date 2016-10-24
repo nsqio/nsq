@@ -258,6 +258,11 @@ func (self *NsqdRpcClient) GetTopicStats(topic string) (*NodeTopicStats, error) 
 	return stat.(*NodeTopicStats), err
 }
 
+func (self *NsqdRpcClient) TriggerLookupChanged() error {
+	_, err := self.CallFast("TriggerLookupChanged", "")
+	return err
+}
+
 func (self *NsqdRpcClient) NotifyUpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	var updateInfo RpcChannelOffsetArg
 	updateInfo.TopicName = info.Name

@@ -231,6 +231,10 @@ func (self *NsqLookupdEtcdMgr) UpdateLookupEpoch(oldGen EpochType) (EpochType, e
 	return 0, nil
 }
 
+func (self *NsqLookupdEtcdMgr) GetNsqdNodes() ([]NsqdNodeInfo, error) {
+	return self.getNsqdNodes()
+}
+
 func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
 	nsqdNodes, err := self.getNsqdNodes()
 	if err == nil {

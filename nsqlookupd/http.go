@@ -276,6 +276,35 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	registrations := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, topicPartition)
 	if len(registrations) == 0 {
 		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
+		// try to find in cluster info
+		if accessMode == "w" {
+			clusterNodes := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)
+			if topicPartition == "*" {
+				for pid, nodeID := range clusterNodes {
+					peerInfo := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nodeID)
+					if peerInfo != nil {
+						var reg TopicProducerReg
+						reg.PartitionID = pid
+						reg.ProducerNode = &Producer{peerInfo: peerInfo}
+						registrations = append(registrations, reg)
+					}
+				}
+			} else {
+				nodeID, ok := clusterNodes[topicPartition]
+				if ok {
+					peerInfo := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nodeID)
+					if peerInfo != nil {
+						var reg TopicProducerReg
+						reg.PartitionID = topicPartition
+						reg.ProducerNode = &Producer{peerInfo: peerInfo}
+						registrations = append(registrations, reg)
+					}
+				}
+			}
+			if len(registrations) > 0 {
+				nsqlookupLog.Logf("no topic producers found in memory, found in cluster: %v, %v", len(clusterNodes), len(registrations))
+			}
+		}
 	}
 	partitionProducers := make(map[string]*PeerInfo)
 	allProducers := make(map[string]*Producer, len(registrations))
@@ -301,6 +330,14 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 			leaderProducer = r.ProducerNode
 		}
 		if leaderProducer != nil {
+			if accessMode == "w" {
+				// check if any channel on the specific topic producer node
+				channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, r.PartitionID)
+				if len(channels) == 0 {
+					nsqlookupLog.Logf("no channels under this partition node: %v, %v", topicName, r)
+					continue
+				}
+			}
 			partitionProducers[r.PartitionID] = leaderProducer.peerInfo
 			allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 		}

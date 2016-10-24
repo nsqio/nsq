@@ -143,6 +143,7 @@ func (self *NsqLookupCoordinator) Start() error {
 	self.wg.Add(1)
 	go self.handleLeadership()
 	go self.nsqlookupRpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
+	go self.notifyNodesLookup()
 	return nil
 }
 
@@ -157,6 +158,20 @@ func (self *NsqLookupCoordinator) Stop() {
 	}
 	self.wg.Wait()
 	coordLog.Infof("nsqlookup coordinator stopped.")
+}
+
+func (self *NsqLookupCoordinator) notifyNodesLookup() {
+	nodes, err := self.leadership.GetNsqdNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		client, rpcErr := self.acquireRpcClient(node.GetID())
+		if rpcErr != nil {
+			continue
+		}
+		client.TriggerLookupChanged()
+	}
 }
 
 func (self *NsqLookupCoordinator) handleLeadership() {

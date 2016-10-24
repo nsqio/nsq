@@ -938,6 +938,12 @@ func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*Rp
 	return &ret, nil
 }
 
+func (self *NsqdCoordRpcServer) TriggerLookupChanged() error {
+	self.nsqdCoord.localNsqd.TriggerOptsNotification()
+	coordLog.Infof("got lookup changed trigger")
+	return nil
+}
+
 func (self *NsqdCoordRpcServer) TestRpcCoordErr(req *RpcTestReq) *CoordErr {
 	var ret CoordErr
 	ret.ErrMsg = req.Data

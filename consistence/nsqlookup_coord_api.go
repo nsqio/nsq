@@ -20,6 +20,23 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 	return self.leaderNode
 }
 
+func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) map[string]string {
+	meta, err := self.leadership.GetTopicMetaInfo(topicName)
+	if err != nil {
+		coordLog.Infof("failed to get topic %v meta: %v", topicName, err)
+		return nil
+	}
+	ret := make(map[string]string)
+	for i := 0; i < meta.PartitionNum; i++ {
+		info, err := self.leadership.GetTopicInfo(topicName, i)
+		if err != nil {
+			continue
+		}
+		ret[strconv.Itoa(info.Partition)] = info.Leader
+	}
+	return ret
+}
+
 func (self *NsqLookupCoordinator) IsMineLeader() bool {
 	return self.leaderNode.GetID() == self.myNode.GetID()
 }

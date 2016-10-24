@@ -131,6 +131,16 @@ func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 	self.clusterEpoch++
 }
 
+func (self *FakeNsqlookupLeadership) GetNsqdNodes() ([]NsqdNodeInfo, error) {
+	nodes := make([]NsqdNodeInfo, 0)
+	for _, v := range self.fakeNsqdNodes {
+		n := v
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
 func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{}) {
 	defer close(nsqds)
 	for {

@@ -124,6 +124,8 @@ type NSQLookupdLeadership interface {
 	AcquireAndWatchLeader(leader chan *NsqLookupdNodeInfo, stop chan struct{})
 	CheckIfLeader(session string) bool
 	UpdateLookupEpoch(oldGen EpochType) (EpochType, error)
+
+	GetNsqdNodes() ([]NsqdNodeInfo, error)
 	// watching the cluster nsqd node, should return the newest for the first time.
 	WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop chan struct{})
 	// get all topics info, should cache the newest to improve performance.
