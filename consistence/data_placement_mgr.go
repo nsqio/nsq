@@ -184,10 +184,11 @@ func (self *NodeTopicStats) GetNodePeakLevelList() []int64 {
 
 func (self *NodeTopicStats) GetNodeAvgWriteLevel() float64 {
 	level := int64(0)
+	tmp := make(IntHeap, 0, 24)
 	for _, dataList := range self.TopicHourlyPubDataList {
 		sum := int64(10)
 		cnt := 0
-		tmp := make(IntHeap, 0, len(dataList))
+		tmp = tmp[:0]
 		heap.Init(&tmp)
 		for _, data := range dataList {
 			sum += data
@@ -208,10 +209,11 @@ func (self *NodeTopicStats) GetNodeAvgWriteLevel() float64 {
 
 func (self *NodeTopicStats) GetNodeAvgReadLevel() float64 {
 	level := float64(0)
+	tmp := make(IntHeap, 0, 24)
 	for topicName, dataList := range self.TopicHourlyPubDataList {
 		sum := int64(10)
 		cnt := 0
-		tmp := make(IntHeap, 0, len(dataList))
+		tmp = tmp[:0]
 		heap.Init(&tmp)
 		for _, data := range dataList {
 			sum += data
@@ -442,6 +444,8 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 		ticker.Stop()
 		coordLog.Infof("balance check exit.")
 	}()
+	topicStatsMinMax := make([]*NodeTopicStats, 2)
+	nodeTopicStats := make([]NodeTopicStats, 0, 10)
 	for {
 		select {
 		case <-monitorChan:
@@ -471,9 +475,8 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 			// leader to this min load node.
 			coordLog.Infof("begin checking balance of topic data...")
 			currentNodes := self.lookupCoord.getCurrentNodes()
+			nodeTopicStats = nodeTopicStats[:0]
 			validNum := 0
-			topicStatsMinMax := make([]*NodeTopicStats, 2)
-			nodeTopicStats := make([]NodeTopicStats, 0, len(currentNodes))
 			var mostLeaderStats *NodeTopicStats
 			mostLeaderNum := 0
 			var leastLeaderStats *NodeTopicStats

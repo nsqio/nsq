@@ -322,7 +322,11 @@ func (self *NsqLookupdEtcdMgr) ScanTopics() ([]TopicPartitionMetaInfo, error) {
 	if self.ifTopicChanged {
 		return self.scanTopics()
 	}
-	return self.topicMetaInfos, nil
+
+	self.tmisMutex.Lock()
+	topicMetaInfos := self.topicMetaInfos
+	self.tmisMutex.Unlock()
+	return topicMetaInfos, nil
 }
 
 // watch topics if changed
@@ -409,7 +413,7 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
 	self.topicMetaInfos = topicMetaInfos
 	self.tmisMutex.Unlock()
 
-	return self.topicMetaInfos, nil
+	return topicMetaInfos, nil
 }
 
 func (self *NsqLookupdEtcdMgr) processTopicNode(nodes client.Nodes, topicMetaMap map[string]TopicMetaInfo, topicReplicasMap map[string]map[string]TopicPartitionReplicaInfo) {
