@@ -378,6 +378,7 @@ func startCheckData2() {
 	}
 
 	close(goChan)
+	startTime := time.Now()
 
 	go func() {
 		prev := int64(0)
@@ -390,7 +391,7 @@ func startCheckData2() {
 			log.Printf("pub total %v - sub total %v\n",
 				currentTmc,
 				totalSub)
-			if prev == currentTmc && prevSub == totalSub {
+			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
 				equalTimes++
 				if totalSub >= currentTmc && equalTimes > 3 {
 					close(quitChan)
@@ -494,6 +495,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 	}
 
 	close(goChan)
+	startTime := time.Now()
 
 	go func() {
 		prev := int64(0)
@@ -506,7 +508,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 			log.Printf("pub total %v - sub total %v, dump: %v \n",
 				currentTmc,
 				totalSub, atomic.LoadInt64(&totalDumpCount))
-			if prev == currentTmc && prevSub == totalSub {
+			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
 				equalTimes++
 				if totalSub >= currentTmc && equalTimes > 3 {
 					close(quitChan)
