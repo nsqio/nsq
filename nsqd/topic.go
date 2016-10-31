@@ -1121,9 +1121,9 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 			}
 			cleanEndInfo = readInfo
 		} else {
-			msg, err := decodeMessage(data.Data)
-			if err != nil {
-				nsqLog.LogErrorf("failed to decode message - %s - %v", err, data)
+			msg, decodeErr := decodeMessage(data.Data)
+			if decodeErr != nil {
+				nsqLog.LogErrorf("failed to decode message - %s - %v", decodeErr, data)
 			} else {
 				if msg.Timestamp >= cleanTime.UnixNano() {
 					break

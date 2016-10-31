@@ -42,8 +42,7 @@ func getAllCounters() map[string]uint64 {
 	return ret
 }
 
-type CoordErrStats struct {
-	sync.Mutex
+type CoordErrStatsData struct {
 	WriteEpochError        int64
 	WriteNotLeaderError    int64
 	WriteQuorumError       int64
@@ -55,16 +54,21 @@ type CoordErrStats struct {
 	OtherCoordErrs         map[string]int64
 }
 
-func newCoordErrStats() *CoordErrStats {
-	return &CoordErrStats{
-		OtherCoordErrs: make(map[string]int64, 100),
-	}
+type CoordErrStats struct {
+	sync.Mutex
+	CoordErrStatsData
 }
 
-func (self *CoordErrStats) GetCopy() *CoordErrStats {
-	var ret CoordErrStats
+func newCoordErrStats() *CoordErrStats {
+	s := &CoordErrStats{}
+	s.OtherCoordErrs = make(map[string]int64, 100)
+	return s
+}
+
+func (self *CoordErrStats) GetCopy() *CoordErrStatsData {
+	var ret CoordErrStatsData
 	self.Lock()
-	ret = *coordErrStats
+	ret = coordErrStats.CoordErrStatsData
 	ret.OtherCoordErrs = make(map[string]int64, len(self.OtherCoordErrs))
 	for k, v := range self.OtherCoordErrs {
 		ret.OtherCoordErrs[k] = v
@@ -138,7 +142,7 @@ type TopicCoordStat struct {
 }
 
 type CoordStats struct {
-	RpcStats        gorpc.ConnStats `json:"rpc_stats"`
-	ErrStats        CoordErrStats
+	RpcStats        *gorpc.ConnStats `json:"rpc_stats"`
+	ErrStats        CoordErrStatsData
 	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
 }

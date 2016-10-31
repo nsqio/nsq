@@ -1950,7 +1950,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 func (self *NsqdCoordinator) Stats(topic string, part int) *CoordStats {
 	s := &CoordStats{}
 	if self.rpcServer != nil && self.rpcServer.rpcServer != nil {
-		s.RpcStats = self.rpcServer.rpcServer.Stats
+		s.RpcStats = self.rpcServer.rpcServer.Stats.Snapshot()
 	}
 	s.ErrStats = *coordErrStats.GetCopy()
 	s.TopicCoordStats = make([]TopicCoordStat, 0)

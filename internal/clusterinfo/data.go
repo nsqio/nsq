@@ -66,7 +66,7 @@ func (c *ClusterInfo) logf(f string, args ...interface{}) {
 func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	endpoint := fmt.Sprintf("http://%s/info", addr)
 	var resp struct {
-		Version string `json:'version'`
+		Version string `json:"version"`
 	}
 	err := c.client.NegotiateV1(endpoint, &resp)
 	if err != nil {
@@ -630,7 +630,7 @@ func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic strin
 			lock.Lock()
 			defer lock.Unlock()
 			c.logf("CI: querying nsqd %s resp: %v", endpoint, resp)
-			topicCoordStats.RpcStats = resp.RpcStats
+			topicCoordStats.RpcStats = resp.RpcStats.Snapshot()
 			for _, topicStat := range resp.TopicCoordStats {
 				topicStat.Node = addr
 				if selectedTopic != "" && topicStat.Name != selectedTopic {

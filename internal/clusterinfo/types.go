@@ -379,7 +379,7 @@ type TopicCoordStat struct {
 }
 
 type CoordStats struct {
-	RpcStats        gorpc.ConnStats  `json:"rpc_stats"`
+	RpcStats        *gorpc.ConnStats `json:"rpc_stats"`
 	TopicCoordStats []TopicCoordStat `json:"topic_coord_stats"`
 }
 

@@ -1265,7 +1265,6 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		realBody = messageBody
 	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
-		var err error
 		id := nsqd.MessageID(0)
 		offset := nsqd.BackendOffset(0)
 		rawSize := int32(0)
@@ -1304,12 +1303,12 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 
 func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
-	_, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
-	if err != nil {
-		return nil, err
+	_, topic, preErr := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
+	if preErr != nil {
+		return nil, preErr
 	}
 
-	messages, buffers, err := readMPUB(client.Reader, client.LenSlice, topic,
+	messages, buffers, preErr := readMPUB(client.Reader, client.LenSlice, topic,
 		p.ctx.getOpts().MaxMsgSize, traceEnable)
 
 	defer func() {
@@ -1317,8 +1316,8 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 			topic.BufferPoolPut(b)
 		}
 	}()
-	if err != nil {
-		return nil, err
+	if preErr != nil {
+		return nil, preErr
 	}
 
 	topicName := topic.GetTopicName()
@@ -1350,7 +1349,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
 			topic.GetFullName(), client.RemoteAddr)
 		topic.DisableForSlave()
-		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
+		return nil, protocol.NewClientErr(preErr, FailedOnNotLeader, "")
 	}
 }
 

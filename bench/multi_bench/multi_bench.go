@@ -1074,7 +1074,7 @@ func (c *consumeTraceIDHandler) HandleMessage(message *nsq.Message) error {
 		}
 	} else {
 		if !bytes.Equal(message.Body, message.ID[8:16]) {
-			log.Printf("the trace id should be equal to body: %v, %v\n", message)
+			log.Printf("the trace id should be equal to body: %v\n", message)
 			// ignore this message
 			return nil
 		}
