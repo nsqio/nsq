@@ -15,7 +15,7 @@ type IMsgTracer interface {
 	Start()
 	TracePub(topic string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64)
 	// state will be READ_QUEUE, Start, Req, Fin, Timeout
-	TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string)
+	TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string)
 }
 
 var nsqMsgTracer IMsgTracer
@@ -24,6 +24,7 @@ type TraceLogItemInfo struct {
 	MsgID     uint64 `json:"msgid"`
 	TraceID   uint64 `json:"traceid"`
 	Topic     string `json:"topic"`
+	Channel   string `json:"channel"`
 	Timestamp int64  `json:"timestamp"`
 	Action    string `json:"action"`
 }
@@ -47,8 +48,9 @@ func (self *LogMsgTracer) TracePub(topic string, traceID uint64, msg *Message, d
 		msg.ID, diskOffset, currentCnt, time.Now().UnixNano())
 }
 
-func (self *LogMsgTracer) TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string) {
-	nsqLog.Logf("[TRACE] topic %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v", topic, msg.TraceID,
+func (self *LogMsgTracer) TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string) {
+	nsqLog.Logf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v",
+		topic, channel, msg.TraceID,
 		msg.ID, msg.offset, state, clientID, time.Now().UnixNano(), msg.Attempts)
 }
 
@@ -97,25 +99,26 @@ func (self *RemoteMsgTracer) TracePub(topic string, traceID uint64, msg *Message
 	}
 }
 
-func (self *RemoteMsgTracer) TraceSub(topic string, state string, traceID uint64, msg *Message, clientID string) {
+func (self *RemoteMsgTracer) TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string) {
 	now := time.Now().UnixNano()
 	var traceItem [1]TraceLogItemInfo
 	traceItem[0].MsgID = uint64(msg.ID)
 	traceItem[0].TraceID = msg.TraceID
 	traceItem[0].Topic = topic
+	traceItem[0].Channel = channel
 	traceItem[0].Timestamp = now
 	traceItem[0].Action = state
 	detail := flume_log.NewDetailInfo(traceModule)
 	detail.SetExtraInfo(traceItem[:])
 
-	l := fmt.Sprintf("[TRACE] topic %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v",
-		topic, msg.TraceID, msg.ID, msg.offset, state, clientID, time.Now().UnixNano(), msg.Attempts)
+	l := fmt.Sprintf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v at time: %v, attempt: %v",
+		topic, channel, msg.TraceID, msg.ID, msg.offset, state, clientID, time.Now().UnixNano(), msg.Attempts)
 	err := self.remoteLogger.Info(l, detail)
 	if err != nil || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		if err != nil {
 			nsqLog.Warningf("send log to remote error: %v", err)
 		}
-		self.localTracer.TraceSub(topic, state, traceID, msg, clientID)
+		self.localTracer.TraceSub(topic, channel, state, traceID, msg, clientID)
 	}
 }
 

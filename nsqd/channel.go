@@ -600,7 +600,7 @@ func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID)
 		return 0, 0, false, err
 	}
 	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "FIN", msg.TraceID, msg, clientAddr)
+		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN", msg.TraceID, msg, clientAddr)
 	}
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
@@ -751,7 +751,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, clientAddr 
 		return err
 	}
 	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "START", msg.TraceID, msg, clientAddr)
+		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "START", msg.TraceID, msg, clientAddr)
 	}
 	return nil
 }
@@ -778,7 +778,7 @@ func (c *Channel) doRequeue(m *Message, clientAddr string) error {
 	}
 	atomic.AddUint64(&c.requeueCount, 1)
 	if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqMsgTracer.TraceSub(c.GetTopicName(), "REQ", m.TraceID, m, clientAddr)
+		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "REQ", m.TraceID, m, clientAddr)
 	}
 	select {
 	case <-c.exitChan:
@@ -1074,7 +1074,7 @@ LOOP:
 		case msg = <-c.requeuedMsgChan:
 			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("read message %v from requeue", msg.ID)
-				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_REQ", msg.TraceID, msg, "0")
+				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "READ_REQ", msg.TraceID, msg, "0")
 			}
 		case data = <-readChan:
 			lastDataNeedRead = false
@@ -1114,7 +1114,7 @@ LOOP:
 			msg.rawMoveSize = data.MovedSize
 			msg.queueCntIndex = data.CurCnt
 			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
-				nsqMsgTracer.TraceSub(c.GetTopicName(), "READ_QUEUE", msg.TraceID, msg, "0")
+				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "READ_QUEUE", msg.TraceID, msg, "0")
 			}
 
 			if lastMsg.ID > 0 && msg.ID < lastMsg.ID {
@@ -1283,7 +1283,11 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			} else {
 				clientAddr = strconv.Itoa(int(msg.clientID))
 			}
-			nsqMsgTracer.TraceSub(c.GetTopicName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
+			if atomic.LoadInt32(&msg.isDeferred) == 1 {
+				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
+			} else {
+				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
+			}
 		}
 	}
 
