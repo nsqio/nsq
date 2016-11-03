@@ -275,6 +275,7 @@ func (t *Topic) messagePump() {
 				chanMsg.deferred = msg.deferred
 			}
 			if chanMsg.deferred != 0 {
+				atomic.AddUint64(&channel.messageCount, 1)
 				channel.StartDeferredTimeout(chanMsg, chanMsg.deferred)
 				continue
 			}

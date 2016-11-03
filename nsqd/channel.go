@@ -355,6 +355,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
+	atomic.AddUint64(&c.requeueCount, 1)
 
 	if timeout == 0 {
 		c.exitMutex.RLock()
@@ -427,7 +428,6 @@ func (c *Channel) doRequeue(m *Message) error {
 	if err != nil {
 		return err
 	}
-	atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
 
