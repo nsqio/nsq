@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	MAX_PARTITION_NUM = 255
-	MAX_SYNC_EVERY    = 5000
+	MAX_PARTITION_NUM  = 255
+	MAX_SYNC_EVERY     = 5000
+	MAX_RETENTION_DAYS = 60
 )
 
 func (self *NsqLookupCoordinator) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
@@ -22,7 +23,7 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 }
 
 func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) map[string]string {
-	meta, err := self.leadership.GetTopicMetaInfo(topicName)
+	meta, _, err := self.leadership.GetTopicMetaInfo(topicName)
 	if err != nil {
 		coordLog.Infof("failed to get topic %v meta: %v", topicName, err)
 		return nil
@@ -125,7 +126,7 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 
 	if partition == "**" {
 		// delete all
-		meta, err := self.leadership.GetTopicMetaInfo(topic)
+		meta, _, err := self.leadership.GetTopicMetaInfo(topic)
 		if err != nil {
 			coordLog.Infof("failed to get meta for topic: %v", err)
 			meta.PartitionNum = MAX_PARTITION_NUM
@@ -231,6 +232,159 @@ func (self *NsqLookupCoordinator) deleteTopicPartition(topic string, pid int) er
 	return nil
 }
 
+func (self *NsqLookupCoordinator) ChangeTopicMetaParam(topic string,
+	newSyncEvery int, newRetentionDay int, newReplicator int) error {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
+		coordLog.Infof("not leader while create topic")
+		return ErrNotNsqLookupLeader
+	}
+
+	if !protocol.IsValidTopicName(topic) {
+		return errors.New("invalid topic name")
+	}
+
+	if newRetentionDay > MAX_RETENTION_DAYS {
+		return errors.New("max retention days allowed exceed")
+	}
+	if newSyncEvery > MAX_SYNC_EVERY {
+		return errors.New("max sync every allowed exceed")
+	}
+	if newReplicator > 5 {
+		return errors.New("max replicator allowed exceed")
+	}
+
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topic]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topic] = state
+	}
+	self.joinStateMutex.Unlock()
+	state.Lock()
+	defer state.Unlock()
+	if state.waitingJoin {
+		coordLog.Warningf("topic state is not ready:%v, %v ", topic, state)
+		return ErrWaitingJoinISR.ToErrorType()
+	}
+	var meta TopicMetaInfo
+	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
+		coordLog.Infof("topic not exist %v :%v", topic)
+		return ErrTopicNotCreated
+	} else {
+		oldMeta, oldGen, err := self.leadership.GetTopicMetaInfo(topic)
+		if err != nil {
+			coordLog.Infof("get topic key %v failed :%v", topic, err)
+			return err
+		}
+		currentNodes := self.getCurrentNodes()
+		meta = oldMeta
+		if newSyncEvery >= 0 {
+			meta.SyncEvery = newSyncEvery
+		}
+		if newRetentionDay >= 0 {
+			meta.RetentionDay = int32(newRetentionDay)
+		}
+		if newReplicator > 0 {
+			meta.Replica = newReplicator
+		}
+		err = self.updateTopicMeta(currentNodes, topic, meta, oldGen)
+		if err != nil {
+			return err
+		}
+		for i := 0; i < meta.PartitionNum; i++ {
+			topicInfo, err := self.leadership.GetTopicInfo(topic, i)
+			if err != nil {
+				coordLog.Infof("failed get info for topic : %v-%v, %v", topic, i, err)
+				continue
+			}
+			topicReplicaInfo := &topicInfo.TopicPartitionReplicaInfo
+			err = self.leadership.UpdateTopicNodeInfo(topic, i, topicReplicaInfo, topicReplicaInfo.Epoch)
+			if err != nil {
+				coordLog.Infof("failed update info for topic : %v-%v, %v", topic, i, err)
+				continue
+			}
+			rpcErr := self.notifyTopicMetaInfo(topicInfo)
+			if rpcErr != nil {
+				coordLog.Warningf("failed notify topic info : %v", rpcErr)
+			} else {
+				coordLog.Infof("topic %v update successful.", topicInfo)
+			}
+		}
+
+		self.triggerCheckTopics("", 0, 0)
+	}
+	return nil
+}
+
+func (self *NsqLookupCoordinator) updateTopicMeta(currentNodes map[string]NsqdNodeInfo, topic string, meta TopicMetaInfo, oldGen EpochType) error {
+	if meta.SyncEvery > MAX_SYNC_EVERY {
+		coordLog.Infof("topic %v sync every with too large %v, set to max", topic, meta)
+		meta.SyncEvery = MAX_SYNC_EVERY
+	}
+	coordLog.Infof("update topic: %v, with meta: %v", topic, meta)
+
+	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
+		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
+		return ErrNodeUnavailable.ToErrorType()
+	}
+	if len(currentNodes) < meta.Replica*meta.PartitionNum {
+		coordLog.Infof("nodes is less than replica*partition")
+		return ErrNodeUnavailable.ToErrorType()
+	}
+	return self.leadership.UpdateTopicMetaInfo(topic, &meta, oldGen)
+}
+
+func (self *NsqLookupCoordinator) ExpandTopicPartition(topic string, newPartitionNum int) error {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
+		coordLog.Infof("not leader while create topic")
+		return ErrNotNsqLookupLeader
+	}
+
+	if !protocol.IsValidTopicName(topic) {
+		return errors.New("invalid topic name")
+	}
+
+	if newPartitionNum >= MAX_PARTITION_NUM {
+		return errors.New("max partition allowed exceed")
+	}
+	self.joinStateMutex.Lock()
+	state, ok := self.joinISRState[topic]
+	if !ok {
+		state = &JoinISRState{}
+		self.joinISRState[topic] = state
+	}
+	self.joinStateMutex.Unlock()
+	state.Lock()
+	defer state.Unlock()
+	if state.waitingJoin {
+		coordLog.Warningf("topic state is not ready:%v, %v ", topic, state)
+		return ErrWaitingJoinISR.ToErrorType()
+	}
+	var meta TopicMetaInfo
+	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
+		coordLog.Infof("topic not exist %v :%v", topic)
+		return ErrTopicNotCreated
+	} else {
+		oldMeta, oldGen, err := self.leadership.GetTopicMetaInfo(topic)
+		if err != nil {
+			coordLog.Infof("get topic key %v failed :%v", topic, err)
+			return err
+		}
+		meta = oldMeta
+		if newPartitionNum < meta.PartitionNum {
+			return errors.New("the partition number can not be reduced")
+		}
+		currentNodes := self.getCurrentNodes()
+		meta.PartitionNum = newPartitionNum
+		err = self.updateTopicMeta(currentNodes, topic, meta, oldGen)
+		if err != nil {
+			coordLog.Infof("update topic %v meta failed :%v", topic, err)
+			return err
+		}
+		return self.checkAndUpdateTopicPartitions(currentNodes, topic, meta)
+	}
+}
+
 func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("not leader while create topic")
@@ -269,32 +423,29 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 		coordLog.Warningf("topic state is not ready:%v, %v ", topic, state)
 		return ErrWaitingJoinISR.ToErrorType()
 	}
+	if meta.SyncEvery > MAX_SYNC_EVERY {
+		coordLog.Infof("topic %v sync every with too large %v, set to max", topic, meta)
+		meta.SyncEvery = MAX_SYNC_EVERY
+	}
 
 	if ok, _ := self.leadership.IsExistTopic(topic); !ok {
 		meta.MagicCode = time.Now().UnixNano()
 		err := self.leadership.CreateTopic(topic, &meta)
 		if err != nil {
 			coordLog.Infof("create topic key %v failed :%v", topic, err)
-			oldMeta, getErr := self.leadership.GetTopicMetaInfo(topic)
-			if getErr != nil {
-				coordLog.Infof("get topic key %v failed :%v", topic, getErr)
-				return err
-			}
-			if oldMeta != meta {
-				coordLog.Infof("topic meta not the same with exist :%v, old: %v", topic, oldMeta)
-				return err
-			}
+			return err
 		}
 	} else {
 		coordLog.Warningf("topic already exist :%v ", topic)
 		return ErrAlreadyExist
 	}
-	if meta.SyncEvery > MAX_SYNC_EVERY {
-		coordLog.Infof("topic %v sync every with too large %v, set to max", topic, meta)
-		meta.SyncEvery = MAX_SYNC_EVERY
-	}
 	coordLog.Infof("create topic: %v, with meta: %v", topic, meta)
 
+	return self.checkAndUpdateTopicPartitions(currentNodes, topic, meta)
+}
+
+func (self *NsqLookupCoordinator) checkAndUpdateTopicPartitions(currentNodes map[string]NsqdNodeInfo,
+	topic string, meta TopicMetaInfo) error {
 	existPart := make(map[int]*TopicPartitionMetaInfo)
 	for i := 0; i < meta.PartitionNum; i++ {
 		err := self.leadership.CreateTopicPartition(topic, i)

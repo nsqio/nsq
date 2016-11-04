@@ -140,7 +140,8 @@ type NSQLookupdLeadership interface {
 	IsExistTopic(topic string) (bool, error)
 	IsExistTopicPartition(topic string, partition int) (bool, error)
 	// get topic meta info only
-	GetTopicMetaInfo(topic string) (TopicMetaInfo, error)
+	GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error)
+	UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error
 	DeleteTopic(topic string, partition int) error
 	DeleteWholeTopic(topic string) error
 	//

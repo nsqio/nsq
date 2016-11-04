@@ -508,6 +508,7 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	atomic.StoreInt64(&t.dynamicConf.SyncEvery, dynamicConf.SyncEvery)
 	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
 	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
+	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()
 }
 

@@ -592,20 +592,34 @@ func (self *NsqLookupdEtcdMgr) IsExistTopicPartition(topic string, partitionNum 
 	return true, nil
 }
 
-func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, error) {
+func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error) {
 	var metaInfo TopicMetaInfo
 	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
-			return metaInfo, ErrKeyNotFound
+			return metaInfo, 0, ErrKeyNotFound
 		}
-		return metaInfo, err
+		return metaInfo, 0, err
 	}
 	err = json.Unmarshal([]byte(rsp.Node.Value), &metaInfo)
 	if err != nil {
-		return metaInfo, err
+		return metaInfo, 0, err
 	}
-	return metaInfo, nil
+	epoch := EpochType(rsp.Node.ModifiedIndex)
+	return metaInfo, epoch, nil
+}
+
+func (self *NsqLookupdEtcdMgr) UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error {
+	value, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	coordLog.Infof("Update_topic meta info: %s %s %d", topic, string(value), oldGen)
+	_, err = self.client.CompareAndSwap(self.createTopicMetaPath(topic), string(value), 0, "", uint64(oldGen))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (self *NsqLookupdEtcdMgr) DeleteWholeTopic(topic string) error {

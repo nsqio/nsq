@@ -235,12 +235,23 @@ func (self *FakeNsqlookupLeadership) IsExistTopicPartition(topic string, partiti
 	return ok, nil
 }
 
-func (self *FakeNsqlookupLeadership) GetTopicMetaInfo(topic string) (TopicMetaInfo, error) {
+func (self *FakeNsqlookupLeadership) GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error) {
 	t, ok := self.fakeTopics[topic]
 	if !ok || len(t) == 0 {
-		return TopicMetaInfo{}, nil
+		return TopicMetaInfo{}, 0, nil
 	}
-	return t[0].metaInfo.TopicMetaInfo, nil
+	return t[0].metaInfo.TopicMetaInfo, 0, nil
+}
+
+func (self *FakeNsqlookupLeadership) UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error {
+	_, ok := self.fakeTopics[topic]
+	if !ok {
+		return errors.New("topic not exist")
+	} else {
+		self.fakeTopicMetaInfo[topic] = *meta
+	}
+	self.clusterEpoch++
+	return nil
 }
 
 func (self *FakeNsqlookupLeadership) DeleteWholeTopic(topic string) error {
@@ -569,7 +580,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
 
-	pmeta, err := lookupLeadership.GetTopicMetaInfo(topic)
+	pmeta, _, err := lookupLeadership.GetTopicMetaInfo(topic)
 	pn := pmeta.PartitionNum
 	test.Nil(t, err)
 	test.Equal(t, pn, 2)
@@ -887,7 +898,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	err := lookupCoord1.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
-	pmeta, err := lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
+	pmeta, _, err := lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	pn := pmeta.PartitionNum
 	test.Nil(t, err)
 	test.Equal(t, pn, 1)
@@ -905,7 +916,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	err = lookupCoord1.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
-	pmeta, err = lookupLeadership.GetTopicMetaInfo(topic_p1_r3)
+	pmeta, _, err = lookupLeadership.GetTopicMetaInfo(topic_p1_r3)
 	pn = pmeta.PartitionNum
 	test.Nil(t, err)
 	test.Equal(t, pn, 1)
@@ -924,7 +935,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	err = lookupCoord1.CreateTopic(topic_p3_r1, TopicMetaInfo{3, 1, 0, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
-	pmeta, err = lookupLeadership.GetTopicMetaInfo(topic_p3_r1)
+	pmeta, _, err = lookupLeadership.GetTopicMetaInfo(topic_p3_r1)
 	pn = pmeta.PartitionNum
 	test.Nil(t, err)
 	test.Equal(t, pn, 3)
@@ -950,7 +961,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0})
 	test.Nil(t, err)
 	time.Sleep(time.Second * 5)
-	pmeta, err = lookupLeadership.GetTopicMetaInfo(topic_p2_r2)
+	pmeta, _, err = lookupLeadership.GetTopicMetaInfo(topic_p2_r2)
 	pn = pmeta.PartitionNum
 	test.Nil(t, err)
 	test.Equal(t, pn, 2)
@@ -974,12 +985,12 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Equal(t, len(tc1.topicInfo.ISR), 2)
 
 	// test create on exist topic, create on partial partition
-	oldMeta, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p2_r2)
+	oldMeta, _, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p2_r2)
 	test.Nil(t, err)
 	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 1, 1})
 	test.NotNil(t, err)
 	time.Sleep(time.Second * 5)
-	newMeta, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p2_r2)
+	newMeta, _, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p2_r2)
 	test.Nil(t, err)
 	test.Equal(t, oldMeta, newMeta)
 

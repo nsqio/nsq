@@ -914,7 +914,7 @@ func (self *DataPlacement) getExcludeNodesForTopic(topicInfo *TopicPartitionMeta
 		excludeNodes[v] = struct{}{}
 	}
 	// exclude other partition node with the same topic
-	meta, err := self.lookupCoord.leadership.GetTopicMetaInfo(topicInfo.Name)
+	meta, _, err := self.lookupCoord.leadership.GetTopicMetaInfo(topicInfo.Name)
 	if err != nil {
 		coordLog.Infof("failed get the meta info: %v", err)
 		return excludeNodes
