@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	ErrAlreadyExist             = errors.New("already exist")
-	ErrTopicNotCreated          = errors.New("topic is not created")
-	ErrWaitingLeaderRelease     = errors.New("leader session is still alive")
-	ErrNotNsqLookupLeader       = errors.New("Not nsqlookup leader")
+	ErrAlreadyExist         = errors.New("already exist")
+	ErrTopicNotCreated      = errors.New("topic is not created")
+	ErrWaitingLeaderRelease = errors.New("leader session is still alive")
+	ErrNotNsqLookupLeader   = errors.New("Not nsqlookup leader")
+	ErrClusterUnstable      = errors.New("the cluster is unstable")
+
 	ErrLeaderNodeLost           = NewCoordErr("leader node is lost", CoordTmpErr)
 	ErrNodeNotFound             = NewCoordErr("node not found", CoordCommonErr)
 	ErrLeaderElectionFail       = NewCoordErr("Leader election failed.", CoordElectionTmpErr)
@@ -92,6 +94,7 @@ type NsqLookupCoordinator struct {
 	nsqdMonitorChan    chan struct{}
 	isClusterUnstable  int32
 	dpm                *DataPlacement
+	balanceWaiting     int32
 }
 
 func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo, opts *Options) *NsqLookupCoordinator {
@@ -629,7 +632,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topic
 					delete(lostLeaderSessions, t.GetTopicDesp())
 				}
 			}
-			if aliveCount > t.Replica {
+			if aliveCount > t.Replica && atomic.LoadInt32(&self.balanceWaiting) == 0 {
 				//remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
 				failedNodes := make([]string, 0, 1)

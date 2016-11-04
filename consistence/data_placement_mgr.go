@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -686,6 +687,12 @@ func checkMoveLotsOfTopics(moveLeader bool, moveTopicNum int, moveNodeStats *Nod
 func (self *DataPlacement) balanceTopicLeaderBetweenNodes(monitorChan chan struct{}, moveLeader bool, moveToMinLF balanceOpLevel,
 	minLF float64, maxLF float64, statsMinMax []*NodeTopicStats, sortedNodeTopicStats []NodeTopicStats) {
 
+	if !atomic.CompareAndSwapInt32(&self.lookupCoord.balanceWaiting, 0, 1) {
+		coordLog.Infof("another balance is running, should wait")
+		return
+	}
+	defer atomic.StoreInt32(&self.lookupCoord.balanceWaiting, 0)
+
 	idleTopic, busyTopic, _, busyLevel := statsMinMax[1].GetMostBusyAndIdleTopicWriteLevel(moveLeader)
 	if busyTopic == "" && idleTopic == "" {
 		coordLog.Infof("no idle or busy topic found")
@@ -824,6 +831,91 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 	}
 
 	return checkMoveOK
+}
+
+func (self *DataPlacement) moveTopicPartitionByManual(topicName string, partitionID int,
+	moveLeader bool, fromNode string, toNode string) error {
+	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
+	if err != nil {
+		coordLog.Infof("failed to get topic info: %v-%v: %v", topicName, partitionID, err)
+		return err
+	}
+	coordLog.Infof("try move topic: %v-%v data from %v to %v", topicName, partitionID, fromNode, toNode)
+
+	if fromNode == toNode {
+		return errors.New("move to and from node can not be the same")
+	}
+	if moveLeader && fromNode != topicInfo.Leader {
+		return errors.New("move from not the topic leader")
+	}
+	if !moveLeader {
+		if fromNode == topicInfo.Leader {
+			return errors.New("can not move leader without moveleader param")
+		}
+		if FindSlice(topicInfo.ISR, fromNode) == -1 {
+			return errors.New("the move source node has no replica for the topic")
+		}
+		if FindSlice(topicInfo.ISR, toNode) != -1 {
+			return errors.New("the move destination has the topic data already")
+		}
+	}
+
+	if !self.lookupCoord.IsClusterStable() {
+		return errors.New("move is not allowed since the current cluster is unstable")
+	}
+	if !atomic.CompareAndSwapInt32(&self.lookupCoord.balanceWaiting, 0, 1) {
+		return errors.New("another balance is running, should wait")
+	}
+	defer atomic.StoreInt32(&self.lookupCoord.balanceWaiting, 0)
+	currentNodes := self.lookupCoord.getCurrentNodes()
+	if _, ok := currentNodes[toNode]; !ok {
+		return errors.New("the move destination is not found in cluster")
+	}
+	if _, ok := currentNodes[fromNode]; !ok {
+		return errors.New("the move source data is lost in cluster")
+	}
+	if FindSlice(topicInfo.ISR, toNode) == -1 {
+		// add destination to catchup and wait
+		if FindSlice(topicInfo.CatchupList, toNode) != -1 {
+			// wait ready
+		} else {
+			excludeNodes := self.getExcludeNodesForTopic(topicInfo)
+			if _, ok := excludeNodes[toNode]; ok {
+				coordLog.Infof("current node: %v is excluded for topic: %v-%v", toNode, topicName, partitionID)
+				return errors.New("destination node is excluded for topic")
+			}
+			self.lookupCoord.addCatchupNode(topicInfo, toNode)
+		}
+		waitStart := time.Now()
+		for {
+			if !self.lookupCoord.IsMineLeader() {
+				coordLog.Infof("not leader while checking balance")
+				return errors.New("lost leader while waiting move done")
+			}
+			topicInfo, err = self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
+			if err != nil {
+				coordLog.Infof("failed to get topic info: %v-%v: %v", topicName, partitionID, err)
+			} else {
+				if FindSlice(topicInfo.ISR, toNode) != -1 {
+					break
+				}
+			}
+			if time.Since(waitStart).Minutes() > 1 {
+				return errors.New("timeout waiting move data")
+			}
+
+			select {
+			case <-self.lookupCoord.stopChan:
+				return errors.New("quiting")
+			case <-time.After(time.Second * 5):
+				coordLog.Infof("waiting move data")
+			}
+		}
+	}
+	if FindSlice(topicInfo.ISR, toNode) != -1 {
+		self.lookupCoord.handleMoveTopic(moveLeader, topicName, partitionID, fromNode)
+	}
+	return nil
 }
 
 func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}, topicName string,

@@ -47,6 +47,15 @@ func (self *NsqLookupCoordinator) IsClusterStable() bool {
 	return atomic.LoadInt32(&self.isClusterUnstable) == 0
 }
 
+func (self *NsqLookupCoordinator) MoveTopicPartitionDataByManual(topicName string,
+	partitionID int, moveLeader bool, fromNode string, toNode string) error {
+	err := self.dpm.moveTopicPartitionByManual(topicName, partitionID, moveLeader, fromNode, toNode)
+	if err != nil {
+		coordLog.Infof("failed to move the topic partition: %v", err)
+	}
+	return err
+}
+
 func (self *NsqLookupCoordinator) GetClusterNodeLoadFactor() (map[string]float64, map[string]float64) {
 	currentNodes := self.getCurrentNodes()
 	leaderFactors := make(map[string]float64, len(currentNodes))
@@ -346,6 +355,10 @@ func (self *NsqLookupCoordinator) ExpandTopicPartition(topic string, newPartitio
 
 	if newPartitionNum >= MAX_PARTITION_NUM {
 		return errors.New("max partition allowed exceed")
+	}
+
+	if !self.IsClusterStable() {
+		return ErrClusterUnstable
 	}
 	self.joinStateMutex.Lock()
 	state, ok := self.joinISRState[topic]
