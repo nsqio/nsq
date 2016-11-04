@@ -553,7 +553,7 @@ func benchmarkDiskQueueGet(size int64, b *testing.B) {
 		panic(err)
 	}
 	defer os.RemoveAll(tmpDir)
-	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<10, 2500, 2*time.Second, l)
+	dq := newDiskQueue(dqName, tmpDir, 1024768, 0, 1<<30, 2500, 2*time.Second, l)
 	defer dq.Close()
 	b.SetBytes(size)
 	data := make([]byte, size)
