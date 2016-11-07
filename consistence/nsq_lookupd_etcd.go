@@ -685,6 +685,22 @@ func (self *NsqLookupdEtcdMgr) GetTopicLeaderSession(topic string, partition int
 	return &topicLeaderSession, nil
 }
 
+func (self *NsqLookupdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
+	topicKey := self.createTopicLeaderSessionPath(topic, partition)
+	valueB, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+
+	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
+	if err != nil {
+		coordLog.Errorf("try release topic leader session [%s] error: %v", topicKey, err)
+	} else {
+		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
+	}
+	return err
+}
+
 // maybe use: go WatchTopicLeader()...
 func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error {
 	// start watch goroutine

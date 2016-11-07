@@ -154,15 +154,19 @@ type NSQLookupdLeadership interface {
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.
 	WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error
+	// only leader lookup can do the release, normally notify the nsqd node do the release by itself.
+	// lookup node should release only when the nsqd is lost
+	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 }
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
-	// get the topic leadership lock and no need to retry if the lock already exist
+	// try create the topic leadership key and no need to retry if the key already exist
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error
-	// stop the lock keep-alive and release the lock using the acquired session.
+	// release the session key using the acquired session. should check current session epoch
+	// to avoid release the changed session
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	// all registered lookup nodes.
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)

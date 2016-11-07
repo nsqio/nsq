@@ -255,11 +255,14 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 		}
 	}
 
-	self.wg.Add(1)
-	go func() {
-		defer self.wg.Done()
-		self.watchTopicLeaderSession(monitorChan)
-	}()
+	// we do not need to watch each topic leader,
+	// we can make sure the leader on the alive node is alive.
+	// so we bind all the topic leader session on the alive node session
+	//self.wg.Add(1)
+	//go func() {
+	//	defer self.wg.Done()
+	//	self.watchTopicLeaderSession(monitorChan)
+	//}()
 
 	self.wg.Add(1)
 	go func() {
@@ -1011,6 +1014,13 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartition
 				return nil
 			}
 			time.Sleep(time.Millisecond * 100)
+			aliveNodes := self.getCurrentNodes()
+			if _, ok := aliveNodes[topicInfo.Leader]; !ok {
+				coordLog.Warningf("the leader node %v is lost while wait release for topic: %v", topicInfo.Leader, topicInfo.GetTopicDesp())
+				if self.IsMineLeader() {
+					self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, s)
+				}
+			}
 			return ErrWaitingLeaderRelease
 		}
 		if err != nil {
