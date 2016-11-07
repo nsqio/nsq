@@ -719,6 +719,12 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 }
 
 func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartitionMetaInfo, session *TopicLeaderSession) *CoordErr {
+	if session != nil && session.LeaderNode != nil {
+		if self.GetMyID() != session.LeaderNode.GetID() {
+			coordLog.Warningf("the leader session should not be released by other node: %v, %v", session.LeaderNode, self.GetMyID())
+			return ErrLeaderSessionMismatch
+		}
+	}
 	err := self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, session)
 	if err != nil {
 		coordLog.Infof("failed to release leader for topic(%v): %v", topicInfo.Name, err)

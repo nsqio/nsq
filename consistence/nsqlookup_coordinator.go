@@ -702,6 +702,17 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topic
 				self.notifyAcquireTopicLeader(&topicInfo)
 				continue
 			}
+			if leaderSession.LeaderNode.ID != t.Leader {
+				checkOK = false
+				lostLeaderSessions[t.GetTopicDesp()] = true
+				coordLog.Warningf("topic %v leader session mismatch: %v, %v", t.GetTopicDesp(), leaderSession, t.Leader)
+				tmpTopicInfo := t
+				tmpTopicInfo.Leader = leaderSession.LeaderNode.ID
+				self.notifyReleaseTopicLeader(&tmpTopicInfo, leaderSession.LeaderEpoch)
+				self.notifyISRTopicMetaInfo(&topicInfo)
+				self.notifyAcquireTopicLeader(&topicInfo)
+				continue
+			}
 		}
 
 		partitions, ok := waitingMigrateTopic[t.Name]

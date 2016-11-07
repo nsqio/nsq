@@ -160,6 +160,14 @@ func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcRelease
 		return &ret
 	}
 	coordData := topicCoord.GetData()
+	if coordData.GetLeaderSessionID() != "" && coordData.GetLeader() != coordData.GetLeaderSessionID() {
+		// check if any old leader session acquired by mine is not released
+		if self.nsqdCoord.GetMyID() == coordData.GetLeaderSessionID() {
+			coordLog.Warningf("old leader session acquired by me is not released, my leader should release: %v", coordData)
+			self.nsqdCoord.releaseTopicLeader(&coordData.topicInfo, &coordData.topicLeaderSession)
+			return &ret
+		}
+	}
 	if !topicCoord.IsWriteDisabled() {
 		coordLog.Errorf("topic %v release leader should disable write first", coordData.topicInfo.GetTopicDesp())
 		ret = *ErrTopicCoordStateInvalid
