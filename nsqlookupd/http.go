@@ -100,12 +100,16 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, debugLog, http_api.V1))
+	router.Handle("POST", "/cluster/node/remove", http_api.Decorate(s.doRemoveClusterDataNode, log, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
 	router.Handle("PUT", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
 	router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/partition/expand", http_api.Decorate(s.doChangeTopicPartitionNum, log, http_api.V1))
+	router.Handle("POST", "/topic/partition/move", http_api.Decorate(s.doMoveTopicParition, log, http_api.V1))
+	router.Handle("POST", "/topic/meta/update", http_api.Decorate(s.doChangeTopicDynamicParam, log, http_api.V1))
 	//router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
 	//router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/topic/tombstone", http_api.Decorate(s.doTombstoneTopicProducer, log, http_api.V1))
@@ -439,6 +443,10 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	nsqlookupLog.Logf("creating topic(%s) with partition %v replicator: %v load: %v", topicName, pnum, replicator, suggestLF)
+
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
 	meta := consistence.TopicMetaInfo{}
 	meta.PartitionNum = pnum
 	meta.Replica = replicator
@@ -473,6 +481,9 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	force := reqParams.Get("force")
 
 	nsqlookupLog.Logf("deleting topic(%s) with partition %v ", topicName, partStr)
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
 	err = s.ctx.nsqlookupd.coordinator.DeleteTopic(topicName, partStr)
 	if err != nil {
 		nsqlookupLog.Logf("deleting topic(%s) with partition %v failed : %v", topicName, partStr, err)
@@ -483,6 +494,139 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 			}
 		}
 		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doChangeTopicPartitionNum(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+	pnumStr := reqParams.Get("partition_num")
+	if pnumStr == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION_NUM"}
+	}
+	pnum, err := GetValidPartitionNum(pnumStr)
+	if err != nil {
+		nsqlookupLog.Logf("invalid partition num: %v, %v", pnumStr, err)
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION_NUM"}
+	}
+
+	err = s.ctx.nsqlookupd.coordinator.ExpandTopicPartition(topicName, pnum)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doChangeTopicDynamicParam(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+
+	replicatorStr := reqParams.Get("replicator")
+	replicator := -1
+	if replicatorStr != "" {
+		replicator, err = GetValidReplicator(replicatorStr)
+		if err != nil {
+			return nil, http_api.Err{400, "INVALID_ARG_TOPIC_REPLICATOR"}
+		}
+	}
+
+	syncEveryStr := reqParams.Get("syncdisk")
+	syncEvery := -1
+	if syncEveryStr != "" {
+		syncEvery, err = strconv.Atoi(syncEveryStr)
+		if err != nil {
+			nsqlookupLog.Logf("error sync disk param: %v, %v", syncEvery, err)
+			return nil, http_api.Err{400, "INVALID_ARG_TOPIC_SYNC_DISK"}
+		}
+	}
+	retentionDaysStr := reqParams.Get("retention")
+	retentionDays := -1
+	if retentionDaysStr != "" {
+		retentionDays, err = strconv.Atoi(retentionDaysStr)
+		if err != nil {
+			nsqlookupLog.Logf("error retention param: %v, %v", retentionDaysStr, err)
+			return nil, http_api.Err{400, err.Error()}
+		}
+	}
+
+	err = s.ctx.nsqlookupd.coordinator.ChangeTopicMetaParam(topicName, syncEvery, retentionDays, replicator)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	return nil, nil
+}
+
+func (s *httpServer) doMoveTopicParition(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName := reqParams.Get("topic")
+	if topicName == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+
+	pnumStr := reqParams.Get("partition")
+	if pnumStr == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION"}
+	}
+	pnum, err := GetValidPartitionNum(pnumStr)
+	if err != nil {
+		nsqlookupLog.Logf("invalid partition num: %v, %v", pnumStr, err)
+		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION_NUM"}
+	}
+
+	moveLeader := reqParams.Get("move_leader") == "true"
+	fromNode := reqParams.Get("move_from")
+	toNode := reqParams.Get("move_to")
+
+	err = s.ctx.nsqlookupd.coordinator.MoveTopicPartitionDataByManual(topicName, pnum, moveLeader, fromNode, toNode)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doRemoveClusterDataNode(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	nid := reqParams.Get("remove_node")
+
+	err = s.ctx.nsqlookupd.coordinator.MarkNodeAsRemoving(nid)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
 	}
 	return nil, nil
 }

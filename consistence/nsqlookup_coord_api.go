@@ -49,6 +49,7 @@ func (self *NsqLookupCoordinator) IsClusterStable() bool {
 
 func (self *NsqLookupCoordinator) MoveTopicPartitionDataByManual(topicName string,
 	partitionID int, moveLeader bool, fromNode string, toNode string) error {
+	coordLog.Infof("try move topic %v-%v from node %v to %v", topicName, partitionID, fromNode, toNode)
 	err := self.dpm.moveTopicPartitionByManual(topicName, partitionID, moveLeader, fromNode, toNode)
 	if err != nil {
 		coordLog.Infof("failed to move the topic partition: %v", err)
@@ -87,6 +88,7 @@ func (self *NsqLookupCoordinator) MarkNodeAsRemoving(nid string) error {
 		return ErrNotNsqLookupLeader
 	}
 
+	coordLog.Infof("try mark node %v as removed", nid)
 	self.nodesMutex.Lock()
 	newRemovingNodes := make(map[string]string)
 	if _, ok := self.removingNodes[nid]; ok {
@@ -378,6 +380,7 @@ func (self *NsqLookupCoordinator) ExpandTopicPartition(topic string, newPartitio
 		return errors.New("max partition allowed exceed")
 	}
 
+	coordLog.Infof("expand topic %v partition number to %v", topic, newPartitionNum)
 	if !self.IsClusterStable() {
 		return ErrClusterUnstable
 	}
