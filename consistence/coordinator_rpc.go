@@ -576,6 +576,7 @@ type RpcTopicData struct {
 	TopicWriteEpoch         EpochType
 	TopicLeaderSessionEpoch EpochType
 	TopicLeaderSession      string
+	TopicLeader             string
 }
 
 type RpcChannelOffsetArg struct {
@@ -659,16 +660,12 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordErrStats.incRpcCheckFailed()
 		return nil, ErrEpochMismatch
 	}
-	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
-		coordLog.Infof("rpc call with wrong session:%v, local: %v", rpcData, tcData.GetLeaderSession())
+	if rpcData.TopicLeader != "" && tcData.GetLeader() != rpcData.TopicLeader {
+		coordLog.Warningf("rpc call with wrong leader:%v, local: %v", rpcData, tcData.GetLeader())
 		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
 		coordErrStats.incRpcCheckFailed()
-		return nil, ErrLeaderSessionMismatch
+		return nil, ErrNotTopicLeader
 	}
-	//if !tcData.localDataLoaded {
-	//	coordLog.Infof("local data is still loading. %v", tcData.topicInfo.GetTopicDesp())
-	//	return nil, ErrTopicLoading
-	//}
 	return topicCoord, nil
 }
 
