@@ -81,6 +81,27 @@ func (self *NsqLookupCoordinator) IsTopicLeader(topic string, part int, nid stri
 	return t.Leader == nid
 }
 
+func (self *NsqLookupCoordinator) MarkNodeAsRemoving(nid string) error {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
+		coordLog.Infof("not leader while delete topic")
+		return ErrNotNsqLookupLeader
+	}
+
+	self.nodesMutex.Lock()
+	newRemovingNodes := make(map[string]string)
+	if _, ok := self.removingNodes[nid]; ok {
+		coordLog.Infof("already mark as removing")
+	} else {
+		newRemovingNodes[nid] = "marked"
+		for id, removeState := range self.removingNodes {
+			newRemovingNodes[id] = removeState
+		}
+		self.removingNodes = newRemovingNodes
+	}
+	self.nodesMutex.Unlock()
+	return nil
+}
+
 func (self *NsqLookupCoordinator) DeleteTopicForce(topic string, partition string) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("not leader while delete topic")

@@ -80,6 +80,7 @@ type NsqLookupCoordinator struct {
 	leadership         NSQLookupdLeadership
 	nodesMutex         sync.RWMutex
 	nsqdNodes          map[string]NsqdNodeInfo
+	removingNodes      map[string]string
 	nodesEpoch         int64
 	rpcMutex           sync.RWMutex
 	nsqdRpcClients     map[string]*NsqdRpcClient
@@ -103,6 +104,7 @@ func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo, opts *Option
 		myNode:             *n,
 		leadership:         nil,
 		nsqdNodes:          make(map[string]NsqdNodeInfo),
+		removingNodes:      make(map[string]string),
 		nsqdRpcClients:     make(map[string]*NsqdRpcClient),
 		checkTopicFailChan: make(chan TopicNameInfo, 3),
 		stopChan:           make(chan struct{}),
@@ -236,6 +238,9 @@ func (self *NsqLookupCoordinator) handleLeadership() {
 func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{}) {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("I am slave (%v). Leader is: %v", self.myNode, self.leaderNode)
+		self.nodesMutex.Lock()
+		self.removingNodes = make(map[string]string)
+		self.nodesMutex.Unlock()
 		return
 	}
 	coordLog.Infof("I am master now.")
@@ -276,6 +281,11 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 		defer self.wg.Done()
 		self.dpm.DoBalance(monitorChan)
 	}()
+	self.wg.Add(1)
+	go func() {
+		defer self.wg.Done()
+		self.handleRemovingNodes(monitorChan)
+	}()
 }
 
 // for the nsqd node that temporally lost, we need send the related topics to
@@ -309,6 +319,15 @@ func (self *NsqLookupCoordinator) notifyTopicsToAllNsqdForReload(topics []TopicP
 func (self *NsqLookupCoordinator) getCurrentNodes() map[string]NsqdNodeInfo {
 	self.nodesMutex.RLock()
 	currentNodes := self.nsqdNodes
+	if len(self.removingNodes) > 0 {
+		currentNodes = make(map[string]NsqdNodeInfo)
+		for nid, n := range self.nsqdNodes {
+			if _, ok := self.removingNodes[nid]; ok {
+				continue
+			}
+			currentNodes[nid] = n
+		}
+	}
 	self.nodesMutex.RUnlock()
 	return currentNodes
 }
@@ -374,6 +393,109 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 				atomic.AddInt64(&self.nodesEpoch, 1)
 				atomic.StoreInt32(&self.isClusterUnstable, 1)
 				self.triggerCheckTopics("", 0, time.Millisecond*10)
+			}
+		}
+	}
+}
+
+func (self *NsqLookupCoordinator) handleRemovingNodes(monitorChan chan struct{}) {
+	coordLog.Debugf("start handle the removing nsqd nodes.")
+	defer func() {
+		coordLog.Infof("stop handle the removing nsqd nodes.")
+	}()
+	ticker := time.NewTicker(time.Minute)
+	nodeTopicStats := make([]NodeTopicStats, 0, 10)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-monitorChan:
+			return
+		case <-ticker.C:
+			//
+			anyStateChanged := false
+			self.nodesMutex.RLock()
+			removingNodes := make(map[string]string)
+			for nid, removeState := range self.removingNodes {
+				removingNodes[nid] = removeState
+			}
+			self.nodesMutex.RUnlock()
+			// remove state: marked -> pending -> data_transfered -> done
+			if len(removingNodes) == 0 {
+				continue
+			}
+			currentNodes := self.getCurrentNodes()
+			allTopics, err := self.leadership.ScanTopics()
+			if err != nil {
+				continue
+			}
+			nodeTopicStats = nodeTopicStats[:0]
+			for nodeID, nodeInfo := range currentNodes {
+				topicStat, err := self.getNsqdTopicStat(nodeInfo)
+				if err != nil {
+					coordLog.Infof("failed to get node topic status : %v", nodeID)
+					continue
+				}
+				nodeTopicStats = append(nodeTopicStats, *topicStat)
+			}
+			leaderSort := func(l, r *NodeTopicStats) bool {
+				return l.LeaderLessLoader(r)
+			}
+			By(leaderSort).Sort(nodeTopicStats)
+
+			for nid, _ := range removingNodes {
+				anyPending := false
+				// only check the topic with one replica left
+				// because the doCheckTopics will check the others
+				// we add a new replica for the removing node
+				for _, topicInfo := range allTopics {
+					if FindSlice(topicInfo.ISR, nid) == -1 {
+						continue
+					}
+					if len(topicInfo.ISR) <= topicInfo.Replica {
+						anyPending = true
+						// find new catchup and wait isr ready
+						removingNodes[nid] = "pending"
+						err := self.dpm.addToCatchupAndWaitISRReady(monitorChan, topicInfo.Name, topicInfo.Partition,
+							"", nodeTopicStats)
+						if err != nil {
+							coordLog.Infof("topic %v data on node %v transfered failed, waiting next time", topicInfo.GetTopicDesp(), nid)
+							continue
+						}
+						coordLog.Infof("topic %v data on node %v transfered success", topicInfo.GetTopicDesp(), nid)
+						anyStateChanged = true
+					} else {
+						if topicInfo.Leader == nid {
+							self.handleMoveTopic(true, topicInfo.Name, topicInfo.Partition, nid)
+						} else {
+							self.handleMoveTopic(false, topicInfo.Name, topicInfo.Partition, nid)
+						}
+					}
+				}
+				if !anyPending {
+					anyStateChanged = true
+					coordLog.Infof("node %v data has been transfered, it can be removed from cluster", nid)
+					if removingNodes[nid] != "data_transfered" && removingNodes[nid] != "done" {
+						removingNodes[nid] = "data_transfered"
+					} else {
+						if removingNodes[nid] == "data_transfered" {
+							removingNodes[nid] = "done"
+						} else if removingNodes[nid] == "done" {
+							self.nodesMutex.Lock()
+							_, ok := self.nsqdNodes[nid]
+							if !ok {
+								delete(removingNodes, nid)
+								coordLog.Infof("the node %v is removed finally since not alive in cluster", nid)
+							}
+							self.nodesMutex.Unlock()
+						}
+					}
+				}
+			}
+
+			if anyStateChanged {
+				self.nodesMutex.Lock()
+				self.removingNodes = removingNodes
+				self.nodesMutex.Unlock()
 			}
 		}
 	}

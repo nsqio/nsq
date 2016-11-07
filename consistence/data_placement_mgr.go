@@ -1157,16 +1157,16 @@ func (self *DataPlacement) allocTopicLeaderAndISR(currentNodes map[string]NsqdNo
 				nodeInfo := nodeTopicStats[currentSelect]
 				currentSelect++
 				if nodeInfo.NodeID == leaders[p] {
-					coordLog.Infof("ignore for leader node: %v", nodeInfo)
+					coordLog.Infof("ignore for leader node: %v", nodeInfo.NodeID)
 					continue
 				}
 				if _, ok := existSlaves[nodeInfo.NodeID]; ok {
-					coordLog.Infof("ignore for exist slave node: %v", nodeInfo)
+					coordLog.Infof("ignore for exist slave node: %v", nodeInfo.NodeID)
 					continue
 				}
 				// TODO: should slave can be used for other leader?
 				if _, ok := existLeaders[nodeInfo.NodeID]; ok {
-					coordLog.Infof("ignore for exist other leader(different partition) node: %v", nodeInfo)
+					coordLog.Infof("ignore for exist other leader(different partition) node: %v", nodeInfo.NodeID)
 					continue
 				}
 				existSlaves[nodeInfo.NodeID] = struct{}{}
