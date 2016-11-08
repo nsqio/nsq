@@ -1045,6 +1045,19 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 	return nil
 }
 
+func (self *TopicCommitLogMgr) updateBufferSize(bs int) {
+	if bs != 0 {
+		if bs > MAX_SYNC_EVERY {
+			bs = MAX_SYNC_EVERY
+		} else if bs < 0 {
+			bs = DEFAULT_COMMIT_BUF_SIZE
+		}
+	}
+	self.Lock()
+	self.bufSize = bs
+	self.Unlock()
+}
+
 func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 	self.Lock()
 	self.flushCommitLogsNoLock()

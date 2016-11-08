@@ -553,6 +553,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				AutoCommit:   0,
 				RetentionDay: topicInfo.RetentionDay,
 			}
+			tc.GetData().logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
 			// TODO: check the last commit log data logid is equal with the disk queue message
 			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
@@ -1140,6 +1141,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 	}
+	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, logMgr)
 	compatibleMethod := false
 	if offset == localLogSegStart.SegmentStartOffset && logIndex == localLogSegStart.SegmentStartIndex {
@@ -1459,7 +1461,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
-	if topicCoord.coordData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
+	if topicCoord.coordData.GetLeader() == self.GetMyID() && newTopicInfo.Leader != self.GetMyID() {
 		coordLog.Infof("my leader should release: %v", topicCoord.coordData)
 		self.releaseTopicLeader(&topicCoord.coordData.topicInfo, &topicCoord.coordData.topicLeaderSession)
 	}
@@ -1672,6 +1674,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		AutoCommit:   0,
 		RetentionDay: tcData.topicInfo.RetentionDay,
 	}
+	tcData.logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, false)
@@ -1868,6 +1871,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 	}
+	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	t.SetDynamicInfo(*dyConf, logMgr)
 
 	return t, nil
@@ -1934,7 +1938,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 				}
 			}
 
-			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
+			if tcData.IsMineLeaderSessionReady(self.GetMyID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
