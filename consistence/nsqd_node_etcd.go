@@ -204,7 +204,9 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 
 	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
 	if err != nil {
-		coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+		if !client.IsKeyNotFound(err) {
+			coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+		}
 	} else {
 		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
 	}

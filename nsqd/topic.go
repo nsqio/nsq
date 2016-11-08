@@ -847,9 +847,11 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 		for _, channel := range t.channelMap {
 			err := channel.UpdateQueueEnd(e, forceReload)
 			if err != nil {
-				nsqLog.LogErrorf(
-					"failed to update topic end to channel(%s) - %s",
-					channel.name, err)
+				if err != ErrExiting {
+					nsqLog.LogErrorf(
+						"failed to update topic end to channel(%s) - %s",
+						channel.name, err)
+				}
 			}
 		}
 	}

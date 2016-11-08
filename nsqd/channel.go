@@ -1006,7 +1006,7 @@ LOOP:
 		}
 
 		if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
-			nsqLog.Warningf("reset the reader : %v", c.GetConfirmed())
+			nsqLog.Infof("reset the reader : %v", c.GetConfirmed())
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {
