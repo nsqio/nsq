@@ -500,6 +500,13 @@ func (t *Topic) GetMsgGenerator() MsgIDGenerator {
 	return cursor
 }
 
+func (t *Topic) GetDynamicInfo() TopicDynamicConf {
+	t.Lock()
+	info := *t.dynamicConf
+	t.Unlock()
+	return info
+}
+
 func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
 	t.Lock()
 	if idGen != nil {

@@ -490,6 +490,8 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION"}
 	} else if partStr == "**" {
 		nsqlookupLog.LogWarningf("removing all the partitions of topic: %v", topicName)
+	} else {
+		return nil, http_api.Err{400, "REMOVE_SINGLE_PARTITION_NOT_ALLOWED"}
 	}
 	force := reqParams.Get("force")
 
@@ -605,13 +607,13 @@ func (s *httpServer) doMoveTopicParition(w http.ResponseWriter, req *http.Reques
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
-	pnumStr := reqParams.Get("partition")
-	if pnumStr == "" {
+	pStr := reqParams.Get("partition")
+	if pStr == "" {
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC_PARTITION"}
 	}
-	pnum, err := GetValidPartitionNum(pnumStr)
+	pid, err := GetValidPartitionID(pStr)
 	if err != nil {
-		nsqlookupLog.Logf("invalid partition num: %v, %v", pnumStr, err)
+		nsqlookupLog.Logf("invalid partition num: %v, %v", pStr, err)
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC_PARTITION_NUM"}
 	}
 
@@ -619,7 +621,7 @@ func (s *httpServer) doMoveTopicParition(w http.ResponseWriter, req *http.Reques
 	fromNode := reqParams.Get("move_from")
 	toNode := reqParams.Get("move_to")
 
-	err = s.ctx.nsqlookupd.coordinator.MoveTopicPartitionDataByManual(topicName, pnum, moveLeader, fromNode, toNode)
+	err = s.ctx.nsqlookupd.coordinator.MoveTopicPartitionDataByManual(topicName, pid, moveLeader, fromNode, toNode)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}

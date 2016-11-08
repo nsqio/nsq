@@ -676,6 +676,9 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordErrStats.incRpcCheckFailed()
 		return nil, ErrNotTopicLeader
 	}
+	if rpcData.TopicLeaderSession != tcData.GetLeaderSession() {
+		coordLog.Warningf("call write with mismatch session: %v, loca %v", rpcData, tcData.GetLeaderSession())
+	}
 	return topicCoord, nil
 }
 
