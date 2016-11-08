@@ -353,6 +353,19 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 
 	// maybe channels should be under topic partitions?
 	channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, topicPartition).Channels()
+	needMeta := reqParams.Get("metainfo")
+	if needMeta != "" {
+		meta, err := s.ctx.nsqlookupd.coordinator.GetTopicMetaInfo(topicName)
+		if err != nil {
+			return nil, http_api.Err{500, err.Error()}
+		}
+		return map[string]interface{}{
+			"channels":   channels,
+			"meta":       meta,
+			"producers":  producers.PeerInfo(),
+			"partitions": partitionProducers,
+		}, nil
+	}
 	return map[string]interface{}{
 		"channels":   channels,
 		"producers":  producers.PeerInfo(),
