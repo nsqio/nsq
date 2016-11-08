@@ -230,6 +230,8 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		}
 	}
 	newSession := &TopicLeaderSession{
+		Topic:       rpcTopicReq.TopicName,
+		Partition:   rpcTopicReq.TopicPartition,
 		LeaderNode:  &rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,

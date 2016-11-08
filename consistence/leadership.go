@@ -78,7 +78,6 @@ func (self *TopicPartitionMetaInfo) GetTopicDesp() string {
 }
 
 type TopicLeaderSession struct {
-	ClusterID   string
 	Topic       string
 	Partition   int
 	LeaderNode  *NsqdNodeInfo
