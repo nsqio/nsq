@@ -540,6 +540,6 @@ func (self *NsqLookupCoordinator) checkAndUpdateTopicPartitions(currentNodes map
 			coordLog.Infof("topic %v init successful.", tmpTopicInfo)
 		}
 	}
-	self.triggerCheckTopics("", 0, 0)
+	self.triggerCheckTopics("", 0, time.Millisecond*500)
 	return nil
 }

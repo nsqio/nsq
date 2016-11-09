@@ -15,6 +15,15 @@ import (
 	"time"
 )
 
+type testClusterNodeInfo struct {
+	id        string
+	localNsqd *nsqdNs.NSQD
+	randPort  int
+	nodeInfo  *NsqdNodeInfo
+	dataPath  string
+	nsqdCoord *NsqdCoordinator
+}
+
 type fakeLookupRemoteProxy struct {
 	leaderSessions map[string]map[int]*TopicLeaderSession
 	fakeNsqdCoords map[string]*NsqdCoordinator
@@ -1256,8 +1265,9 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		close(waitDone)
 	}()
 
-	_, _, _, _, err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
-	test.NotNil(t, err)
+	// session mismatch is not the test case
+	//_, _, _, _, err = nsqdCoord1.PutMessageToCluster(topicData1, []byte("123"), 0)
+	//test.NotNil(t, err)
 	<-waitDone
 
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, leaderSession)

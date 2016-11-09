@@ -382,8 +382,6 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("PUB_TRACE")):
 		return p.PUBTRACE(client, params)
-	case bytes.Equal(params[0], []byte("PUB_ORDERED")):
-		return p.PUBORDERED(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB_TRACE")):
@@ -1162,10 +1160,6 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 // PUB TRACE data format
 // 4 bytes length + 8bytes trace id + binary data
 func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	return p.internalPubAndTrace(client, params, true)
-}
-
-func (p *protocolV2) PUBORDERED(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	return p.internalPubAndTrace(client, params, true)
 }
 

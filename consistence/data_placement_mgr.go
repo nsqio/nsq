@@ -24,7 +24,9 @@ import (
 // left data size level: <5GB low, <50GB medium , <200GB high, >=200GB very high
 
 var (
-	ErrBalanceNodeUnavailable = errors.New("can not find a node to be balanced")
+	ErrBalanceNodeUnavailable     = errors.New("can not find a node to be balanced")
+	ErrNodeIsExcludedForTopicData = errors.New("destination node is excluded for topic")
+	ErrClusterBalanceRunning      = errors.New("another balance is running, should wait")
 )
 
 const (
@@ -785,7 +787,7 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 			if leaderNodeLF < sortedNodeTopicStats[len(sortedNodeTopicStats)/2].GetNodeLeaderLoadFactor() {
 				err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID,
 					statsMinMax[0].NodeID,
-					sortedNodeTopicStats)
+					sortedNodeTopicStats, false)
 				if err != nil {
 					checkMoveOK = false
 				} else {
@@ -818,7 +820,7 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 		if !checkMoveOK {
 			// the isr not so idle , we try add a new idle node to the isr.
 			// and make sure that node can accept the topic (no other leader/follower for this topic)
-			err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, "", sortedNodeTopicStats)
+			err := self.addToCatchupAndWaitISRReady(monitorChan, topicName, partitionID, "", sortedNodeTopicStats, false)
 			if err != nil {
 				checkMoveOK = false
 			} else {
@@ -835,6 +837,13 @@ func (self *DataPlacement) checkAndPrepareMove(monitorChan chan struct{}, topicN
 
 func (self *DataPlacement) moveTopicPartitionByManual(topicName string, partitionID int,
 	moveLeader bool, fromNode string, toNode string) error {
+
+	if !atomic.CompareAndSwapInt32(&self.lookupCoord.balanceWaiting, 0, 1) {
+		coordLog.Infof("another balance is running, should wait")
+		return ErrClusterBalanceRunning
+	}
+	defer atomic.StoreInt32(&self.lookupCoord.balanceWaiting, 0)
+
 	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
 	if err != nil {
 		coordLog.Infof("failed to get topic info: %v-%v: %v", topicName, partitionID, err)
@@ -861,12 +870,8 @@ func (self *DataPlacement) moveTopicPartitionByManual(topicName string, partitio
 	}
 
 	if !self.lookupCoord.IsClusterStable() {
-		return errors.New("move is not allowed since the current cluster is unstable")
+		return ErrClusterUnstable
 	}
-	if !atomic.CompareAndSwapInt32(&self.lookupCoord.balanceWaiting, 0, 1) {
-		return errors.New("another balance is running, should wait")
-	}
-	defer atomic.StoreInt32(&self.lookupCoord.balanceWaiting, 0)
 	currentNodes := self.lookupCoord.getCurrentNodes()
 	if _, ok := currentNodes[toNode]; !ok {
 		return errors.New("the move destination is not found in cluster")
@@ -882,7 +887,7 @@ func (self *DataPlacement) moveTopicPartitionByManual(topicName string, partitio
 			excludeNodes := self.getExcludeNodesForTopic(topicInfo)
 			if _, ok := excludeNodes[toNode]; ok {
 				coordLog.Infof("current node: %v is excluded for topic: %v-%v", toNode, topicName, partitionID)
-				return errors.New("destination node is excluded for topic")
+				return ErrNodeIsExcludedForTopicData
 			}
 			self.lookupCoord.addCatchupNode(topicInfo, toNode)
 		}
@@ -919,7 +924,7 @@ func (self *DataPlacement) moveTopicPartitionByManual(topicName string, partitio
 }
 
 func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}, topicName string,
-	partitionID int, addNode string, sortedNodeTopicStats []NodeTopicStats) error {
+	partitionID int, addNode string, sortedNodeTopicStats []NodeTopicStats, tryAllNodes bool) error {
 	if len(sortedNodeTopicStats) == 0 {
 		return errors.New("no stats data")
 	}
@@ -937,10 +942,12 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 		}
 	} else {
 		for index, s := range sortedNodeTopicStats {
-			if index >= len(sortedNodeTopicStats)-2 ||
-				index > len(sortedNodeTopicStats)/2 {
-				// never move to the busy nodes
-				break
+			if !tryAllNodes {
+				if index >= len(sortedNodeTopicStats)-2 ||
+					index > len(sortedNodeTopicStats)/2 {
+					// never move to the busy nodes
+					break
+				}
 			}
 			if FindSlice(topicInfo.ISR, s.NodeID) != -1 {
 				// filter
@@ -950,7 +957,6 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 		}
 	}
 	for {
-		// the most load node should not be chosen
 		if currentSelect >= len(filteredNodes) {
 			coordLog.Infof("currently no any node can be balanced for topic: %v", topicName)
 			return ErrBalanceNodeUnavailable
