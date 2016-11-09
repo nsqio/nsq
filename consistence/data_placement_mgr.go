@@ -1068,6 +1068,40 @@ func (self *DataPlacement) allocNodeForTopic(topicInfo *TopicPartitionMetaInfo, 
 	return &chosenNode, nil
 }
 
+func (self *DataPlacement) checkTopicNodeConflict(topicInfo *TopicPartitionMetaInfo) bool {
+	existLeaders := make(map[string]struct{})
+	existSlaves := make(map[string]struct{})
+
+	for i := 0; i < topicInfo.PartitionNum; i++ {
+		if i == topicInfo.Partition {
+			continue
+		}
+		tmpInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicInfo.Name, i)
+		if err != nil {
+			coordLog.Infof("failed to get topic %v info: %v", topicInfo.GetTopicDesp(), err)
+			return false
+		}
+		for _, id := range tmpInfo.ISR {
+			if id == tmpInfo.Leader {
+				existLeaders[tmpInfo.Leader] = struct{}{}
+			} else {
+				existSlaves[id] = struct{}{}
+			}
+		}
+	}
+	// isr should be different
+	for _, id := range topicInfo.ISR {
+		if _, ok := existLeaders[id]; ok {
+			return false
+		}
+		if _, ok := existSlaves[id]; ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 // init leader node and isr list for the empty topic
 func (self *DataPlacement) allocTopicLeaderAndISR(currentNodes map[string]NsqdNodeInfo,
 	replica int, partitionNum int, existPart map[int]*TopicPartitionMetaInfo) ([]string, [][]string, *CoordErr) {

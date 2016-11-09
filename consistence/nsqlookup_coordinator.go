@@ -29,6 +29,7 @@ var (
 	ErrLeaderSessionNotReleased = NewCoordErr("The topic leader session is not released", CoordElectionTmpErr)
 	ErrTopicISRCatchupEnough    = NewCoordErr("the topic isr and catchup nodes are enough", CoordTmpErr)
 	ErrClusterNodeRemoving      = NewCoordErr("the node is mark as removed", CoordTmpErr)
+	ErrTopicNodeConflict        = NewCoordErr("the topic node info is conflicted", CoordElectionErr)
 )
 
 const (
@@ -1117,6 +1118,11 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		coordLog.Infof("disable write failed while make new leader: %v", rpcErr)
 		return rpcErr
 	}
+	// check the node for topic again to avoid conflict of the topic node
+	if !self.dpm.checkTopicNodeConflict(topicInfo) {
+		coordLog.Warningf("this topic info update is conflict : %v", topicInfo)
+		return ErrTopicNodeConflict
+	}
 	newTopicInfo.EpochForWrite++
 
 	err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
@@ -1466,6 +1472,11 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 			go self.triggerCheckTopics(topicInfo.Name, topicInfo.Partition, time.Second*3)
 			return
 		}
+		if !self.dpm.checkTopicNodeConflict(topicInfo) {
+			coordLog.Warningf("this topic info update is conflict : %v", topicInfo)
+			return
+		}
+
 		topicInfo.EpochForWrite++
 
 		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
@@ -1550,6 +1561,7 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 			coordErr := self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
 			if coordErr != nil {
 				coordLog.Infof("notify removing catchup failed : %v", coordErr)
+				topicInfo.CatchupList = oldCatchupList
 			}
 			coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
 			err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
@@ -1611,6 +1623,12 @@ func (self *NsqLookupCoordinator) resetJoinISRState(topicInfo TopicPartitionMeta
 			for n, _ := range newCatchupList {
 				topicInfo.CatchupList = append(topicInfo.CatchupList, n)
 			}
+
+			if !self.dpm.checkTopicNodeConflict(&topicInfo) {
+				coordLog.Warningf("this topic info update is conflict : %v", topicInfo)
+				return ErrTopicNodeConflict
+			}
+
 			topicInfo.EpochForWrite++
 			err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
 				&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
