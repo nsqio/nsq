@@ -7,6 +7,7 @@ import (
 )
 
 type INsqlookupRemoteProxy interface {
+	RemoteAddr() string
 	Reconnect() error
 	Close()
 	RequestJoinCatchup(topic string, partition int, nid string) *CoordErr
@@ -53,6 +54,10 @@ func (self *NsqLookupRpcClient) Close() {
 		self.c = nil
 	}
 	self.Unlock()
+}
+
+func (self *NsqLookupRpcClient) RemoteAddr() string {
+	return self.remote
 }
 
 func (self *NsqLookupRpcClient) Reconnect() error {

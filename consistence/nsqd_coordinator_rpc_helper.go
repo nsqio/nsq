@@ -7,7 +7,7 @@ func (self *NsqdCoordinator) requestJoinCatchup(topic string, partition int) *Co
 		coordLog.Infof("get lookup failed: %v", err)
 		return err
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	err = c.RequestJoinCatchup(topic, partition, self.myNode.GetID())
 	if err != nil {
 		coordLog.Infof("request join catchup failed: %v", err)
@@ -21,7 +21,7 @@ func (self *NsqdCoordinator) requestCheckTopicConsistence(topic string, partitio
 		coordLog.Infof("get lookup failed: %v", err)
 		return
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	c.RequestCheckTopicConsistence(topic, partition)
 }
 
@@ -31,7 +31,7 @@ func (self *NsqdCoordinator) requestNotifyNewTopicInfo(topic string, partition i
 		coordLog.Infof("get lookup failed: %v", err)
 		return
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	c.RequestNotifyNewTopicInfo(topic, partition, self.myNode.GetID())
 }
 
@@ -41,7 +41,7 @@ func (self *NsqdCoordinator) requestJoinTopicISR(topicInfo *TopicPartitionMetaIn
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	err = c.RequestJoinTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID())
 	return err
 }
@@ -54,7 +54,7 @@ func (self *NsqdCoordinator) notifyReadyForTopicISR(topicInfo *TopicPartitionMet
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	return c.ReadyForTopicISR(topicInfo.Name, topicInfo.Partition, self.myNode.GetID(), leaderSession, joinSession)
 }
 
@@ -64,7 +64,7 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
 }
 
@@ -87,6 +87,6 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer self.putLookupRemoteProxy(c)
 	return c.RequestLeaveFromISRByLeader(topic, partition, self.myNode.GetID(), &topicCoord.topicLeaderSession)
 }

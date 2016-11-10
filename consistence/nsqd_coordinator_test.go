@@ -29,13 +29,19 @@ type fakeLookupRemoteProxy struct {
 	fakeNsqdCoords map[string]*NsqdCoordinator
 	lookupEpoch    EpochType
 	t              *testing.T
+	addr           string
 }
 
 func NewFakeLookupRemoteProxy(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
 	return &fakeLookupRemoteProxy{
 		leaderSessions: make(map[string]map[int]*TopicLeaderSession),
 		fakeNsqdCoords: make(map[string]*NsqdCoordinator),
+		addr:           addr,
 	}, nil
+}
+
+func (self *fakeLookupRemoteProxy) RemoteAddr() string {
+	return self.addr
 }
 
 func (self *fakeLookupRemoteProxy) Reconnect() error {

@@ -79,7 +79,7 @@ type NsqdCoordinator struct {
 	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
-	lookupRemoteClient     map[string]INsqlookupRemoteProxy
+	lookupRemoteClient     map[string]chan INsqlookupRemoteProxy
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
@@ -116,7 +116,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
-		lookupRemoteClient:     make(map[string]INsqlookupRemoteProxy),
+		lookupRemoteClient:     make(map[string]chan INsqlookupRemoteProxy),
 	}
 
 	if nsqdCoord.leadership != nil {
@@ -358,20 +358,39 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 	}
 }
 
+func (self *NsqdCoordinator) putLookupRemoteProxy(c INsqlookupRemoteProxy) {
+	self.lookupMutex.Lock()
+	ch, ok := self.lookupRemoteClient[c.RemoteAddr()]
+	self.lookupMutex.Unlock()
+	if ok {
+		select {
+		case ch <- c:
+		default:
+		}
+	}
+}
+
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
 	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
-	c, ok := self.lookupRemoteClient[addr]
+	clientChan, ok := self.lookupRemoteClient[addr]
 	self.lookupMutex.Unlock()
-	if ok && c != nil {
-		return c, nil
+	if ok && clientChan != nil {
+		select {
+		case c := <-clientChan:
+			return c, nil
+		default:
+		}
 	}
 	c, err := self.lookupRemoteCreateFunc(addr, RPC_TIMEOUT_FOR_LOOKUP)
 	if err == nil {
 		self.lookupMutex.Lock()
-		self.lookupRemoteClient[addr] = c
-		if len(self.lookupRemoteClient) > 1 {
+		if clientChan == nil {
+			clientChan = make(chan INsqlookupRemoteProxy, 32)
+			self.lookupRemoteClient[addr] = clientChan
+		}
+		if len(self.lookupRemoteClient) > 3 {
 			for k, _ := range self.lookupRemoteClient {
 				if k == addr {
 					continue
