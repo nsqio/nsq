@@ -162,35 +162,24 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 	return ErrKeyAlreadyExist
 }
 
-//func (self *NsqdEtcdMgr) processTopicLeaderEvents(master etcdlock.Master, topicLeader chan *TopicLeaderSession, masterChanInfo *MasterChanInfo) {
-//	for {
-//		select {
-//		case e := <-master.GetEventsChan():
-//			if e.Type == etcdlock.MASTER_ADD || e.Type == etcdlock.MASTER_MODIFY {
-//				// Acquired the lock || lock change.
-//				var topicLeaderSession TopicLeaderSession
-//				if err := json.Unmarshal([]byte(e.Master), &topicLeaderSession); err != nil {
-//					topicLeaderSession.LeaderNode = nil
-//					topicLeader <- &topicLeaderSession
-//					continue
-//				}
-//				topicLeader <- &topicLeaderSession
-//			} else if e.Type == etcdlock.MASTER_DELETE {
-//				// Lost the lock.
-//				topicLeaderSession := &TopicLeaderSession{
-//					LeaderNode: nil,
-//				}
-//				topicLeader <- topicLeaderSession
-//			} else {
-//				// lock error.
-//			}
-//		case <-masterChanInfo.processStopCh:
-//			master.Stop()
-//			masterChanInfo.stoppedCh <- true
-//			return
-//		}
-//	}
-//}
+type TopicLeaderSessionOld struct {
+	ClusterID   string
+	Topic       string
+	Partition   int
+	LeaderNode  *NsqdNodeInfo
+	Session     string
+	LeaderEpoch EpochType
+}
+
+func (s *TopicLeaderSessionOld) IsEqual(newSession *TopicLeaderSession) bool {
+	if s.Topic == newSession.Topic &&
+		s.Partition == newSession.Partition &&
+		s.LeaderNode == newSession.LeaderNode &&
+		s.LeaderEpoch == newSession.LeaderEpoch {
+		return true
+	}
+	return false
+}
 
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
 	self.Lock()
@@ -206,8 +195,19 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 	if err != nil {
 		if !client.IsKeyNotFound(err) {
 			coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+			// since the topic leader session type is changed, we need do the compatible check
+			rsp, innErr := self.client.Get(topicKey, false, false)
+			if innErr != nil {
+			} else {
+				var old TopicLeaderSessionOld
+				json.Unmarshal([]byte(rsp.Node.Value), &old)
+				if old.IsEqual(session) {
+					_, err = self.client.CompareAndDelete(topicKey, rsp.Node.Value, 0)
+				}
+			}
 		}
-	} else {
+	}
+	if err == nil {
 		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
 	}
 	return err
