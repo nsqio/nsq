@@ -79,7 +79,7 @@ type NsqdCoordinator struct {
 	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
-	lookupRemoteClient     map[string]chan INsqlookupRemoteProxy
+	lookupRemoteClients    map[string]chan INsqlookupRemoteProxy
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
@@ -116,7 +116,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
-		lookupRemoteClient:     make(map[string]chan INsqlookupRemoteProxy),
+		lookupRemoteClients:    make(map[string]chan INsqlookupRemoteProxy),
 	}
 
 	if nsqdCoord.leadership != nil {
@@ -212,10 +212,24 @@ func (self *NsqdCoordinator) Stop() {
 	close(self.stopChan)
 	self.rpcServer.stop()
 	self.rpcServer = nil
+	self.rpcClientMutex.Lock()
 	for _, c := range self.nsqdRpcClients {
 		c.Close()
 	}
+	self.rpcClientMutex.Unlock()
 	self.wg.Wait()
+
+	self.lookupMutex.Lock()
+	for _, ch := range self.lookupRemoteClients {
+		for {
+			select {
+			case c := <-ch:
+				c.Close()
+			default:
+			}
+		}
+	}
+	self.lookupMutex.Unlock()
 }
 
 func (self *NsqdCoordinator) checkAndCleanOldData() {
@@ -360,7 +374,7 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 
 func (self *NsqdCoordinator) putLookupRemoteProxy(c INsqlookupRemoteProxy) {
 	self.lookupMutex.Lock()
-	ch, ok := self.lookupRemoteClient[c.RemoteAddr()]
+	ch, ok := self.lookupRemoteClients[c.RemoteAddr()]
 	self.lookupMutex.Unlock()
 	if ok {
 		select {
@@ -374,7 +388,7 @@ func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *Coo
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
 	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
-	clientChan, ok := self.lookupRemoteClient[addr]
+	clientChan, ok := self.lookupRemoteClients[addr]
 	self.lookupMutex.Unlock()
 	if ok && clientChan != nil {
 		select {
@@ -387,15 +401,15 @@ func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *Coo
 	if err == nil {
 		self.lookupMutex.Lock()
 		if clientChan == nil {
-			clientChan = make(chan INsqlookupRemoteProxy, 32)
-			self.lookupRemoteClient[addr] = clientChan
+			clientChan = make(chan INsqlookupRemoteProxy, 64)
+			self.lookupRemoteClients[addr] = clientChan
 		}
-		if len(self.lookupRemoteClient) > 3 {
-			for k, _ := range self.lookupRemoteClient {
+		if len(self.lookupRemoteClients) > 3 {
+			for k, _ := range self.lookupRemoteClients {
 				if k == addr {
 					continue
 				}
-				delete(self.lookupRemoteClient, k)
+				delete(self.lookupRemoteClients, k)
 			}
 		}
 		self.lookupMutex.Unlock()
