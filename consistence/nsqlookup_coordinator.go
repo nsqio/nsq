@@ -866,7 +866,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 	state.Lock()
 	defer state.Unlock()
 	if state.waitingJoin {
-		coordLog.Warningf("failed because another is waiting join.")
+		coordLog.Warningf("failed because another is waiting join: %v", state)
 		return ErrLeavingISRWait
 	}
 	defer func() {
@@ -1428,7 +1428,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 		state.Lock()
 		defer state.Unlock()
 		if state.waitingJoin {
-			coordLog.Warningf("failed request join isr because another is joining.")
+			coordLog.Warningf("failed request join isr because another is joining. :%v", state)
 			return
 		}
 		if time.Since(start) > time.Second*10 {
