@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"github.com/absolute8511/gorpc"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,7 @@ type INsqlookupRemoteProxy interface {
 type nsqlookupRemoteProxyCreateFunc func(string, time.Duration) (INsqlookupRemoteProxy, error)
 
 type NsqLookupRpcClient struct {
+	sync.Mutex
 	remote  string
 	timeout time.Duration
 	d       *gorpc.Dispatcher
@@ -45,16 +47,25 @@ func NewNsqLookupRpcClient(addr string, timeout time.Duration) (INsqlookupRemote
 }
 
 func (self *NsqLookupRpcClient) Close() {
-	self.c.Stop()
+	self.Lock()
+	if self.c != nil {
+		self.c.Stop()
+		self.c = nil
+	}
+	self.Unlock()
 }
 
 func (self *NsqLookupRpcClient) Reconnect() error {
-	self.c.Stop()
+	self.Lock()
+	if self.c != nil {
+		self.c.Stop()
+	}
 	self.c = gorpc.NewTCPClient(self.remote)
 	self.c.RequestTimeout = self.timeout
 	self.c.DisableCompression = true
 	self.c.Start()
 	self.dc = self.d.NewServiceClient("NsqLookupCoordRpcServer", self.c)
+	self.Unlock()
 	return nil
 }
 

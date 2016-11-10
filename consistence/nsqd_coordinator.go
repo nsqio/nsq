@@ -1948,12 +1948,11 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					break
 				}
 				if err != nil && err.IsEqual(ErrLeavingISRWait) {
-					coordLog.Infof("======= should wait leaving from isr")
-					time.Sleep(time.Second)
+					coordLog.Infof("======= should wait leaving from isr: %v", topicName)
 				} else {
 					coordLog.Infof("======= request leave isr failed: %v", err)
-					time.Sleep(time.Millisecond * 100)
 				}
+				time.Sleep(time.Millisecond * 100)
 			}
 
 			if tcData.IsMineLeaderSessionReady(self.GetMyID()) {
