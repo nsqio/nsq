@@ -15,7 +15,8 @@ var TopicView = BaseView.extend({
     template: require('./spinner.hbs'),
 
     events: {
-        'click .topic-actions button': 'topicAction'
+        'click .topic-actions button': 'topicAction',
+        'click .channel-action .hierarchy button': 'onCreateTopicChannel'
     },
 
     initialize: function() {
@@ -49,6 +50,21 @@ var TopicView = BaseView.extend({
                     .fail(this.handleAJAXError.bind(this));
             }
         }.bind(this));
+    },
+
+    onCreateTopicChannel: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var topic = $(e.target.form.elements['topic']).val();
+        var channel = $(e.target.form.elements['channel']).val();
+        if (topic === '' || channel === '') {
+            return;
+        }
+        $.post(AppState.url('/topics/' + topic + '/' + channel), JSON.stringify({
+                'action': 'create'
+            }))
+            .done(function() { window.location.reload(true); })
+            .fail(this.handleAJAXError.bind(this));
     }
 });
 
