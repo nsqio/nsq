@@ -79,6 +79,7 @@ type NsqdCoordinator struct {
 	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
+	lookupRemoteClient     map[string]INsqlookupRemoteProxy
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
@@ -115,6 +116,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
+		lookupRemoteClient:     make(map[string]INsqlookupRemoteProxy),
 	}
 
 	if nsqdCoord.leadership != nil {
@@ -359,9 +361,25 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
+	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
+	c, ok := self.lookupRemoteClient[addr]
 	self.lookupMutex.Unlock()
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(l.NodeIP, l.RpcPort), RPC_TIMEOUT_FOR_LOOKUP)
+	if ok && c != nil {
+		return c, nil
+	}
+	c, err := self.lookupRemoteCreateFunc(addr, RPC_TIMEOUT_FOR_LOOKUP)
 	if err == nil {
+		self.lookupMutex.Lock()
+		self.lookupRemoteClient[addr] = c
+		if len(self.lookupRemoteClient) > 1 {
+			for k, _ := range self.lookupRemoteClient {
+				if k == addr {
+					continue
+				}
+				delete(self.lookupRemoteClient, k)
+			}
+		}
+		self.lookupMutex.Unlock()
 		return c, nil
 	}
 	coordLog.Infof("get lookup remote %v failed: %v", l, err)

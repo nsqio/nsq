@@ -30,6 +30,7 @@ type NsqLookupRpcClient struct {
 func NewNsqLookupRpcClient(addr string, timeout time.Duration) (INsqlookupRemoteProxy, error) {
 	c := gorpc.NewTCPClient(addr)
 	c.RequestTimeout = timeout
+	c.DisableCompression = true
 	c.Start()
 	d := gorpc.NewDispatcher()
 	d.AddService("NsqLookupCoordRpcServer", &NsqLookupCoordRpcServer{})
@@ -51,6 +52,7 @@ func (self *NsqLookupRpcClient) Reconnect() error {
 	self.c.Stop()
 	self.c = gorpc.NewTCPClient(self.remote)
 	self.c.RequestTimeout = self.timeout
+	self.c.DisableCompression = true
 	self.c.Start()
 	self.dc = self.d.NewServiceClient("NsqLookupCoordRpcServer", self.c)
 	return nil
