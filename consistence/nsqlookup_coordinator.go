@@ -705,7 +705,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topic
 			if aliveEpoch != currentNodesEpoch {
 				continue
 			}
-			coordErr := self.handleTopicLeaderElection(&topicInfo, aliveNodes, aliveEpoch)
+			coordErr := self.handleTopicLeaderElection(&topicInfo, aliveNodes, aliveEpoch, false)
 			if coordErr != nil {
 				coordLog.Warningf("topic leader election failed: %v", coordErr)
 			}
@@ -857,7 +857,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topic
 }
 
 func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPartitionMetaInfo, currentNodes map[string]NsqdNodeInfo,
-	currentNodesEpoch int64) *CoordErr {
+	currentNodesEpoch int64, isOldLeaderAlive bool) *CoordErr {
 	_, leaderSession, state, coordErr := self.prepareJoinState(topicInfo.Name, topicInfo.Partition, false)
 	if coordErr != nil {
 		coordLog.Infof("prepare join state failed: %v", coordErr)
@@ -923,7 +923,7 @@ func (self *NsqLookupCoordinator) handleTopicLeaderElection(topicInfo *TopicPart
 		return ErrLeaderSessionNotReleased
 	}
 	coordLog.Infof("topic %v leader election result: %v", topicInfo, newLeader)
-	coordErr = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID)
+	coordErr = self.makeNewTopicLeaderAcknowledged(topicInfo, newLeader, newestLogID, isOldLeaderAlive)
 	if coordErr != nil {
 		return coordErr
 	}
@@ -1090,7 +1090,8 @@ func (self *NsqLookupCoordinator) waitOldLeaderRelease(topicInfo *TopicPartition
 	return err
 }
 
-func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *TopicPartitionMetaInfo, newLeader string, newestLogID int64) *CoordErr {
+func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *TopicPartitionMetaInfo,
+	newLeader string, newestLogID int64, isOldLeaderAlive bool) *CoordErr {
 	if topicInfo.Leader == newLeader {
 		coordLog.Infof("topic new leader is the same with old: %v", topicInfo)
 		return ErrLeaderElectionFail
@@ -1110,7 +1111,11 @@ func (self *NsqLookupCoordinator) makeNewTopicLeaderAcknowledged(topicInfo *Topi
 		}
 		newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, nid)
 	}
-	newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, topicInfo.Leader)
+	if isOldLeaderAlive {
+		newTopicInfo.ISR = append(newTopicInfo.ISR, topicInfo.Leader)
+	} else {
+		newTopicInfo.CatchupList = append(newTopicInfo.CatchupList, topicInfo.Leader)
+	}
 	newTopicInfo.Leader = newLeader
 
 	rpcErr := self.notifyLeaderDisableTopicWrite(&newTopicInfo)
@@ -1694,7 +1699,9 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	if topicInfo.Leader == nodeID {
 		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader for topic: %v", nodeID, topicInfo.GetTopicDesp())
 		currentNodes, currentNodesEpoch := self.getCurrentNodesWithEpoch()
-		go self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch)
+		_, ok := currentNodes[nodeID]
+
+		go self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch, ok)
 		return nil
 	}
 
@@ -1763,7 +1770,19 @@ func (self *NsqLookupCoordinator) handleMoveTopic(isLeader bool, topic string, p
 		}
 		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader for topic: %v", nodeID, topicInfo.GetTopicDesp())
 		currentNodes, currentNodesEpoch := self.getCurrentNodesWithEpoch()
-		self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch)
+		coordErr := self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch, true)
+		if coordErr != nil {
+			return coordErr
+		}
+
+		// the old leader removed to catchup, so remove it from catchup
+		topicInfo.CatchupList = FilterList(topicInfo.CatchupList, []string{nodeID})
+		err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition, &topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
+		if err != nil {
+			coordLog.Infof("update topic node isr failed: %v", err)
+			return &CoordErr{err.Error(), RpcNoErr, CoordNetErr}
+		}
+		go self.notifyTopicMetaInfo(topicInfo)
 		return nil
 	} else {
 		coordLog.Infof("the topic %v isr node %v leaving ", topicInfo.GetTopicDesp(), nodeID)

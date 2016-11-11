@@ -15,7 +15,7 @@ import (
 const (
 	RPC_TIMEOUT            = time.Duration(time.Second * 5)
 	RPC_TIMEOUT_SHORT      = time.Duration(time.Second * 3)
-	RPC_TIMEOUT_FOR_LOOKUP = time.Duration(time.Second * 1)
+	RPC_TIMEOUT_FOR_LOOKUP = time.Duration(time.Second * 3)
 )
 
 type NsqdRpcClient struct {

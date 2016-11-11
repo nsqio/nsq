@@ -79,7 +79,7 @@ type NsqdCoordinator struct {
 	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
-	lookupRemoteClients    map[string]chan INsqlookupRemoteProxy
+	lookupRemoteClients    map[string]INsqlookupRemoteProxy
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
@@ -116,7 +116,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
-		lookupRemoteClients:    make(map[string]chan INsqlookupRemoteProxy),
+		lookupRemoteClients:    make(map[string]INsqlookupRemoteProxy),
 	}
 
 	if nsqdCoord.leadership != nil {
@@ -220,13 +220,9 @@ func (self *NsqdCoordinator) Stop() {
 	self.wg.Wait()
 
 	self.lookupMutex.Lock()
-	for _, ch := range self.lookupRemoteClients {
-		for {
-			select {
-			case c := <-ch:
-				c.Close()
-			default:
-			}
+	for _, c := range self.lookupRemoteClients {
+		if c != nil {
+			c.Close()
 		}
 	}
 	self.lookupMutex.Unlock()
@@ -372,38 +368,31 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 	}
 }
 
-func (self *NsqdCoordinator) putLookupRemoteProxy(c INsqlookupRemoteProxy) {
-	self.lookupMutex.Lock()
-	ch, ok := self.lookupRemoteClients[c.RemoteAddr()]
-	self.lookupMutex.Unlock()
-	if ok {
-		select {
-		case ch <- c:
-		default:
-		}
-	}
-}
+//func (self *NsqdCoordinator) putLookupRemoteProxy(c INsqlookupRemoteProxy) {
+//	self.lookupMutex.Lock()
+//	ch, ok := self.lookupRemoteClients[c.RemoteAddr()]
+//	self.lookupMutex.Unlock()
+//	if ok {
+//		select {
+//		case ch <- c:
+//		default:
+//		}
+//	}
+//}
 
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
 	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
-	clientChan, ok := self.lookupRemoteClients[addr]
+	c, ok := self.lookupRemoteClients[addr]
 	self.lookupMutex.Unlock()
-	if ok && clientChan != nil {
-		select {
-		case c := <-clientChan:
-			return c, nil
-		default:
-		}
+	if ok && c != nil {
+		return c, nil
 	}
 	c, err := self.lookupRemoteCreateFunc(addr, RPC_TIMEOUT_FOR_LOOKUP)
 	if err == nil {
 		self.lookupMutex.Lock()
-		if clientChan == nil {
-			clientChan = make(chan INsqlookupRemoteProxy, 64)
-			self.lookupRemoteClients[addr] = clientChan
-		}
+		self.lookupRemoteClients[addr] = c
 		if len(self.lookupRemoteClients) > 3 {
 			for k, _ := range self.lookupRemoteClients {
 				if k == addr {

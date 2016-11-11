@@ -226,31 +226,23 @@ func FindSlice(in []string, e string) int {
 }
 
 func MergeList(l []string, r []string) []string {
-	tmp := make(map[string]struct{})
-	for _, v := range l {
-		tmp[v] = struct{}{}
+	for _, e := range r {
+		if FindSlice(l, e) == -1 {
+			l = append(l, e)
+		}
 	}
-	for _, v := range r {
-		tmp[v] = struct{}{}
-	}
-	ret := make([]string, 0, len(tmp))
-	for k, _ := range tmp {
-		ret = append(ret, k)
-	}
-	return ret
+	return l
 }
 
 func FilterList(l []string, filter []string) []string {
-	tmp := make(map[string]struct{})
-	for _, v := range l {
-		tmp[v] = struct{}{}
+	for _, e := range filter {
+		for i, v := range l {
+			if e == v {
+				copy(l[i:], l[i+1:])
+				l = l[:len(l)-1]
+				break
+			}
+		}
 	}
-	for _, v := range filter {
-		delete(tmp, v)
-	}
-	ret := make([]string, 0, len(tmp))
-	for k, _ := range tmp {
-		ret = append(ret, k)
-	}
-	return ret
+	return l
 }

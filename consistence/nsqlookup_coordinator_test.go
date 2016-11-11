@@ -1370,7 +1370,8 @@ func TestNsqLookupMovePartition(t *testing.T) {
 
 	t0, err = lookupLeadership.GetTopicInfo(topic_p1_r1, 0)
 	test.Nil(t, err)
-	test.Equal(t, len(t0.ISR), 1)
+	// it may be two nodes in isr if the moved leader rejoin as isr
+	test.Equal(t, len(t0.ISR) >= 1, true)
 	test.Equal(t, t0.Leader, toNode)
 
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
@@ -1386,15 +1387,17 @@ func TestNsqLookupMovePartition(t *testing.T) {
 		break
 	}
 	lookupCoord.triggerCheckTopics("", 0, 0)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 	// move leader to other isr node
+	oldLeader := t0.Leader
 	err = lookupCoord.MoveTopicPartitionDataByManual(topic_p2_r2, 0, true, t0.Leader, toNode)
 	test.Nil(t, err)
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	time.Sleep(time.Second * 3)
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
 	test.Nil(t, err)
-	test.Equal(t, len(t0.ISR), 2)
+	test.Equal(t, len(t0.ISR) >= 2, true)
+	test.NotEqual(t, t0.Leader, oldLeader)
 	test.Equal(t, t0.Leader, toNode)
 
 	// move leader to other non-isr node
