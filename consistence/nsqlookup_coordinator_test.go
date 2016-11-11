@@ -63,6 +63,7 @@ func (self *FakeNsqlookupLeadership) Register(value *NsqLookupdNodeInfo) error {
 
 func (self *FakeNsqlookupLeadership) Unregister(v *NsqLookupdNodeInfo) error {
 	self.fakeLeader = nil
+	coordLog.Infof("unregistered nsqlookup: %v", v)
 	return nil
 }
 
@@ -530,6 +531,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	for _, n := range nodeInfoList {
 		defer os.RemoveAll(n.dataPath)
 		defer n.localNsqd.Exit()
+		defer n.nsqdCoord.Stop()
 	}
 
 	topic := "test-nsqlookup-topic-unit-test"
@@ -767,6 +769,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	for _, nsqdCoord := range quitList {
 		failedID := nsqdCoord.myNode.GetID()
+		delete(nodeInfoList, failedID)
 		nsqdCoord.Stop()
 		if t0IsrNum > 1 {
 			if FindSlice(t0.ISR, failedID) != -1 {

@@ -41,6 +41,7 @@ func (self *fakeNsqdLeadership) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 
 func (self *fakeNsqdLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	delete(self.regData, nodeData.GetID())
+	coordLog.Infof("fake nsqd unregistered: %v", nodeData)
 	return nil
 }
 

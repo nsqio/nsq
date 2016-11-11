@@ -1699,9 +1699,8 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 	if topicInfo.Leader == nodeID {
 		coordLog.Infof("the leader node %v will leave the isr, prepare transfer leader for topic: %v", nodeID, topicInfo.GetTopicDesp())
 		currentNodes, currentNodesEpoch := self.getCurrentNodesWithEpoch()
-		_, ok := currentNodes[nodeID]
 
-		go self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch, ok)
+		go self.handleTopicLeaderElection(topicInfo, currentNodes, currentNodesEpoch, false)
 		return nil
 	}
 

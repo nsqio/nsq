@@ -206,6 +206,9 @@ func (self *NsqdCoordinator) Start() error {
 }
 
 func (self *NsqdCoordinator) Stop() {
+	if atomic.LoadInt32(&self.stopping) == 1 {
+		return
+	}
 	// give up the leadership on the topic to
 	// allow other isr take over to avoid electing.
 	self.prepareLeavingCluster()
@@ -722,7 +725,10 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 		tmpChecks := make(map[string]map[int]bool, len(self.topicCoords))
 		self.coordMutex.Lock()
 		for topic, info := range self.topicCoords {
-			for pid, _ := range info {
+			for pid, tc := range info {
+				if tc.IsExiting() {
+					continue
+				}
 				if _, ok := tmpChecks[topic]; !ok {
 					tmpChecks[topic] = make(map[int]bool)
 				}
@@ -1396,12 +1402,14 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 					localTopic.SaveChannelMeta()
 				}
 			}
-			go func() {
-				err := self.requestJoinTopicISR(&topicInfo)
-				if err != nil {
-					coordLog.Infof("request join isr failed: %v", err)
-				}
-			}()
+			if !tc.IsExiting() {
+				go func() {
+					err := self.requestJoinTopicISR(&topicInfo)
+					if err != nil {
+						coordLog.Infof("request join isr failed: %v", err)
+					}
+				}()
+			}
 			break
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader

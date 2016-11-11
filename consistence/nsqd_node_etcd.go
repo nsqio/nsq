@@ -75,6 +75,7 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	if self.refreshStopCh != nil {
 		close(self.refreshStopCh)
 	}
+	coordLog.Infof("registered new node: %v", nodeData)
 	self.refreshStopCh = make(chan bool, 1)
 	// start refresh node
 	go self.refresh(self.refreshStopCh)
@@ -120,7 +121,7 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 		self.refreshStopCh = nil
 	}
 
-	coordLog.Infof("cluser[%s] node[%s]", self.clusterID, nodeData.ID)
+	coordLog.Infof("cluser[%s] node[%s] unregistered", self.clusterID, nodeData)
 
 	return nil
 }

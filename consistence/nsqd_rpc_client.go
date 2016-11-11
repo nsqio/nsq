@@ -6,8 +6,6 @@ import (
 	"github.com/absolute8511/nsq/nsqd"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"net"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -62,19 +60,19 @@ func NewNsqdRpcClient(addr string, timeout time.Duration) (*NsqdRpcClient, error
 	c.Start()
 	d := gorpc.NewDispatcher()
 	d.AddService("NsqdCoordRpcServer", &NsqdCoordRpcServer{})
-	ip, port, _ := net.SplitHostPort(addr)
-	portNum, _ := strconv.Atoi(port)
-	grpcAddr := ip + ":" + strconv.Itoa(portNum+1)
-	grpcConn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(timeout))
+	//ip, port, _ := net.SplitHostPort(addr)
+	//portNum, _ := strconv.Atoi(port)
+	//grpcAddr := ip + ":" + strconv.Itoa(portNum+1)
+	//grpcConn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(timeout))
 	var grpcClient pb.NsqdCoordRpcV2Client
-	if err != nil {
-		coordLog.Warningf("failed to connect to grpc server %v: %v", grpcAddr, err)
-		grpcClient = nil
-		grpcConn = nil
-	} else {
-		grpcClient = pb.NewNsqdCoordRpcV2Client(grpcConn)
-	}
-	coordLog.Infof("connected to rpc server %v: %v", grpcAddr, addr)
+	//if err != nil {
+	//	coordLog.Warningf("failed to connect to grpc server %v: %v", grpcAddr, err)
+	//	grpcClient = nil
+	//	grpcConn = nil
+	//} else {
+	//	grpcClient = pb.NewNsqdCoordRpcV2Client(grpcConn)
+	//}
+	coordLog.Infof("connected to rpc server %v", addr)
 
 	return &NsqdRpcClient{
 		remote:     addr,
@@ -83,7 +81,7 @@ func NewNsqdRpcClient(addr string, timeout time.Duration) (*NsqdRpcClient, error
 		c:          c,
 		dc:         d.NewServiceClient("NsqdCoordRpcServer", c),
 		grpcClient: grpcClient,
-		grpcConn:   grpcConn,
+		grpcConn:   nil,
 	}, nil
 }
 
@@ -114,19 +112,19 @@ func (self *NsqdRpcClient) Reconnect() error {
 	self.dc = self.d.NewServiceClient("NsqdCoordRpcServer", self.c)
 	self.c.Start()
 
-	ip, port, _ := net.SplitHostPort(self.remote)
-	portNum, _ := strconv.Atoi(port)
-	grpcAddr := ip + ":" + strconv.Itoa(portNum+1)
-	grpcConn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(self.timeout))
-	if err != nil {
-		coordLog.Warningf("failed to connect to grpc server %v: %v", grpcAddr, err)
-		self.grpcConn = nil
-		self.grpcClient = nil
-	} else {
-		self.grpcConn = grpcConn
-		self.grpcClient = pb.NewNsqdCoordRpcV2Client(grpcConn)
-	}
-	coordLog.Infof("connected to rpc server %v: %v", grpcAddr, self.remote)
+	//ip, port, _ := net.SplitHostPort(self.remote)
+	//portNum, _ := strconv.Atoi(port)
+	//grpcAddr := ip + ":" + strconv.Itoa(portNum+1)
+	//grpcConn, err := grpc.Dial(grpcAddr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(self.timeout))
+	//if err != nil {
+	//	coordLog.Warningf("failed to connect to grpc server %v: %v", grpcAddr, err)
+	//	self.grpcConn = nil
+	//	self.grpcClient = nil
+	//} else {
+	//	self.grpcConn = grpcConn
+	//	self.grpcClient = pb.NewNsqdCoordRpcV2Client(grpcConn)
+	//}
+	coordLog.Infof("reconnected to rpc server %v", self.remote)
 
 	self.Unlock()
 	return nil
