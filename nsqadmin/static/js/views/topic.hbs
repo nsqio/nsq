@@ -251,3 +251,18 @@
         {{/unless}}
     </div>
 </div>
+
+<div class="channel-action">
+    <form class="hierarchy">
+        <legend>Create Channel</legend>
+        <div class="alert alert-info">
+            <p>This provides a way to setup a stream hierarchy
+            before services are deployed to production.</p>
+        </div>
+        <div class="form-group">
+            <input type="hidden" name="topic" value={{name}}>
+            <input type="text" name="channel" placeholder="Channel Name">
+        </div>
+        <button class="btn btn-default" type="submit">Create</button>
+    </form>
+</div>

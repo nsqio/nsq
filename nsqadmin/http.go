@@ -699,6 +699,13 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 
 			s.notifyAdminAction("empty_topic", topicName, "", "", req)
 		}
+	case "create":
+		if channelName != "" {
+			err = s.ci.CreateTopicChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+
+			s.notifyAdminAction("create_channel", topicName, channelName, "", req)
+		}
 	default:
 		return nil, http_api.Err{400, "INVALID_ACTION"}
 	}
