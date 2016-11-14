@@ -282,7 +282,10 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
 		// try to find in cluster info
 		if accessMode == "w" {
-			clusterNodes := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)
+			clusterNodes, clusterErr := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)
+			if clusterErr != nil {
+				return nil, http_api.Err{500, err.Error()}
+			}
 			if topicPartition == "*" {
 				for pid, nodeID := range clusterNodes {
 					peerInfo := s.ctx.nsqlookupd.DB.SearchPeerClientByClusterID(nodeID)
@@ -360,8 +363,11 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 			return nil, http_api.Err{500, err.Error()}
 		}
 		return map[string]interface{}{
-			"channels":   channels,
-			"meta":       meta,
+			"channels": channels,
+			"meta": map[string]interface{}{
+				"partition_num": meta.PartitionNum,
+				"replica":       meta.Replica,
+			},
 			"producers":  producers.PeerInfo(),
 			"partitions": partitionProducers,
 		}, nil

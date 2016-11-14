@@ -27,21 +27,28 @@ func (self *NsqLookupCoordinator) GetTopicMetaInfo(topicName string) (*TopicMeta
 	return &meta, err
 }
 
-func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) map[string]string {
+func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) (map[string]string, error) {
 	meta, _, err := self.leadership.GetTopicMetaInfo(topicName)
 	if err != nil {
 		coordLog.Infof("failed to get topic %v meta: %v", topicName, err)
-		return nil
+		return nil, err
 	}
 	ret := make(map[string]string)
+	var anyErr error
 	for i := 0; i < meta.PartitionNum; i++ {
 		info, err := self.leadership.GetTopicInfo(topicName, i)
 		if err != nil {
+			anyErr = err
 			continue
 		}
-		ret[strconv.Itoa(info.Partition)] = info.Leader
+		if len(info.ISR) > info.Replica/2 && !self.isTopicWriteDisabled(info) {
+			ret[strconv.Itoa(info.Partition)] = info.Leader
+		}
 	}
-	return ret
+	if len(ret) == 0 {
+		return ret, anyErr
+	}
+	return ret, nil
 }
 
 func (self *NsqLookupCoordinator) IsMineLeader() bool {

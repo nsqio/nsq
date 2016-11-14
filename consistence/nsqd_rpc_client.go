@@ -241,7 +241,7 @@ func (self *NsqdRpcClient) DeleteNsqdTopic(epoch EpochType, topicInfo *TopicPart
 func (self *NsqdRpcClient) IsTopicWriteDisabled(topicInfo *TopicPartitionMetaInfo) bool {
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.TopicPartitionMetaInfo = *topicInfo
-	ret, err := self.CallWithRetry("IsTopicWriteDisabled", &rpcInfo)
+	ret, err := self.CallFast("IsTopicWriteDisabled", &rpcInfo)
 	if err != nil {
 		return false
 	}
