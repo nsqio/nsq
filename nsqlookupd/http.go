@@ -327,9 +327,9 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		filterTomb)
 	for _, r := range registrations {
 		var leaderProducer *Producer
+		pid, _ := strconv.Atoi(r.PartitionID)
 		if checkConsistent != "" {
 			// check leader only the client need consistent
-			pid, _ := strconv.Atoi(r.PartitionID)
 			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.DistributedID) {
 				leaderProducer = r.ProducerNode
 			}
@@ -345,7 +345,10 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 					continue
 				}
 			}
-			partitionProducers[r.PartitionID] = leaderProducer.peerInfo
+			if pid >= 0 {
+				// old node should be filtered since no any partition info
+				partitionProducers[r.PartitionID] = leaderProducer.peerInfo
+			}
 			allProducers[leaderProducer.peerInfo.Id] = leaderProducer
 		}
 	}
