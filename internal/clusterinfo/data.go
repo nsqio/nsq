@@ -722,7 +722,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 						c.Node = addr
 					}
 					channelStats.Add(channel)
-					topic.totalChannelDepth += channel.Depth
+					topic.TotalChannelDepth += channel.Depth
 				}
 			}
 		}(p)
@@ -737,6 +737,8 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 	} else if sortBy == "channel-depth" {
 		sort.Sort(TopicStatsByChannelDepth{topicStatsList})
+	} else if sortBy == "message-count" {
+		sort.Sort(TopicStatsByMessageCount{topicStatsList})
 	} else {
 		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 	}

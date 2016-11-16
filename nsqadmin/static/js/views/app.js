@@ -17,6 +17,7 @@ var LookupView = require('./lookup');
 var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
+var StatisticsView = require('./statistics')
 
 var Node = require('../models/node'); //eslint-disable-line no-undef
 var Topic = require('../models/topic');
@@ -42,6 +43,7 @@ var AppView = BaseView.extend({
         this.listenTo(Pubsub, 'nodes:show', this.showNodes);
         this.listenTo(Pubsub, 'node:show', this.showNode);
         this.listenTo(Pubsub, 'counter:show', this.showCounter);
+        this.listenTo(Pubsub, 'statistics:show', this.showStatistics);
 
         this.listenTo(Pubsub, 'view:ready', function() {
             $('.rate').each(function(i, el) {
@@ -132,6 +134,12 @@ var AppView = BaseView.extend({
     showCounter: function() {
         this.showView(function() {
             return new CounterView();
+        });
+    },
+
+    showStatistics: function() {
+        this.showView(function() {
+            return new StatisticsView();
         });
     },
 

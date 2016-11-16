@@ -78,6 +78,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/statistics", http_api.Decorate(s.indexHandler, log))
 
 	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
@@ -102,6 +103,8 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
 	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
 	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
+	router.Handle("GET", "/api/statistics", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
+	router.Handle("GET", "/api/statistics/:filter", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
 
 	return s
 }
@@ -730,6 +733,77 @@ type counterStats struct {
 	TopicName    string `json:"topic_name"`
 	ChannelName  string `json:"channel_name"`
 	MessageCount int64  `json:"message_count"`
+}
+
+type rankStats struct {
+	TopicName    string `json:"topic_name"`
+	TotalChannelDepth int64  `json:"total_channel_depth"`
+	MessageCount int64   `json:"message_count"`
+	HourlyPubSize int64  `json:"hourly_pubsize"`
+}
+
+func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
+	filter := ps.ByName("filter");
+	s.ctx.nsqadmin.logf("filter passed in statisticsHandler: " + filter)
+	if "" == filter {
+		filter_str := []string{"channel-depth", "message-count"}
+		return struct {
+			Filter []string    `json:"filters"`
+		}{filter_str}, nil
+	}
+
+	var rankName string
+	switch filter {
+		case "channel-depth":
+			rankName = "Top10 topics in Total Channel Depth"
+		default:
+			rankName = "Top10 topics in Total Message Count"
+	}
+
+	producers, err := s.ci.GetProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get statistics producer list - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+	//get topic channel sortted by partition depth
+	topicStatsList, _, err := s.ci.GetNSQDStats(producers, "", filter)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
+	var maxLen int
+	if len(topicStatsList) < 10 {
+		maxLen = len(topicStatsList)
+	}else {
+		maxLen = 10;
+	}
+	ranks := make([]*rankStats, maxLen)
+	for idx, topicStat := range topicStatsList[:maxLen] {
+		aTopic := &rankStats{
+			TopicName:	topicStat.TopicName,
+			TotalChannelDepth:	topicStat.TotalChannelDepth,
+			MessageCount:	topicStat.MessageCount,
+		}
+		ranks[idx] = aTopic
+	}
+
+	return struct {
+		RankName string      `json:"rank_name"`
+		Top10   []*rankStats `json:"top10"`
+	}{rankName, ranks}, nil
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

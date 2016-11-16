@@ -110,19 +110,19 @@ type TopicStats struct {
 	IsLeader       bool          `json:"is_leader"`
 	SyncingNum     int           `json:"syncing_num"`
 	ISRStats       []ISRStat     `json:"isr_stats"`
-	CatchupStats   []CatchupStat `json:"catchup_stats"`
-	Depth          int64         `json:"depth"`
-	MemoryDepth    int64         `json:"memory_depth"`
+	CatchupStats         []CatchupStat `json:"catchup_stats"`
+	Depth                int64         `json:"depth"`
+	MemoryDepth          int64         `json:"memory_depth"`
 	// the queue maybe auto cleaned, so the start means the queue oldest offset.
-	BackendStart      int64           `json:"backend_start"`
-	BackendDepth      int64           `json:"backend_depth"`
-	MessageCount      int64           `json:"message_count"`
-	NodeStats         []*TopicStats   `json:"nodes"`
-	Channels          []*ChannelStats `json:"channels"`
-	totalChannelDepth int64
-	Paused            bool             `json:"paused"`
-	HourlyPubSize     int64            `json:"hourly_pubsize"`
-	Clients           []ClientPubStats `json:"client_pub_stats"`
+	BackendStart         int64           `json:"backend_start"`
+	BackendDepth         int64           `json:"backend_depth"`
+	MessageCount         int64           `json:"message_count"`
+	NodeStats            []*TopicStats   `json:"nodes"`
+	Channels             []*ChannelStats `json:"channels"`
+	TotalChannelDepth    int64	     `json:"total_channel_depth"`
+	Paused               bool             `json:"paused"`
+	HourlyPubSize        int64            `json:"hourly_pubsize"`
+	Clients              []ClientPubStats `json:"client_pub_stats"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -321,11 +321,24 @@ type TopicStatsByChannelDepth struct {
 }
 
 func (c TopicStatsByChannelDepth) Less(i, j int) bool {
-	if c.TopicStatsList[i].totalChannelDepth == c.TopicStatsList[j].totalChannelDepth {
+	if c.TopicStatsList[i].TotalChannelDepth == c.TopicStatsList[j].TotalChannelDepth {
 		return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
 	}
-	l := c.TopicStatsList[i].totalChannelDepth
-	r := c.TopicStatsList[j].totalChannelDepth
+	l := c.TopicStatsList[i].TotalChannelDepth
+	r := c.TopicStatsList[j].TotalChannelDepth
+	return l > r
+}
+
+type TopicStatsByMessageCount struct {
+	TopicStatsList
+}
+
+func (c TopicStatsByMessageCount) Less(i, j int) bool {
+	if c.TopicStatsList[i].MessageCount == c.TopicStatsList[j].MessageCount {
+		return c.TopicStatsList[i].Hostname < c.TopicStatsList[j].Hostname
+	}
+	l := c.TopicStatsList[i].MessageCount
+	r := c.TopicStatsList[j].MessageCount
 	return l > r
 }
 
