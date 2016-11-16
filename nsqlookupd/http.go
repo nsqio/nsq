@@ -284,7 +284,10 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		if accessMode == "w" {
 			clusterNodes, clusterErr := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)
 			if clusterErr != nil {
-				return nil, http_api.Err{500, err.Error()}
+				if clusterErr == consistence.ErrKeyNotFound {
+					return nil, http_api.Err{404, clusterErr.Error()}
+				}
+				return nil, http_api.Err{500, clusterErr.Error()}
 			}
 			if topicPartition == "*" {
 				for pid, nodeID := range clusterNodes {

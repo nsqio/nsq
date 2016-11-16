@@ -151,7 +151,7 @@ func (self *NsqLookupCoordinator) Start() error {
 	self.wg.Add(1)
 	go self.handleLeadership()
 	go self.nsqlookupRpcServer.start(self.myNode.NodeIP, self.myNode.RpcPort)
-	go self.notifyNodesLookup()
+	self.notifyNodesLookup()
 	return nil
 }
 

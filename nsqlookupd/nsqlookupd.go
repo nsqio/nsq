@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
@@ -129,6 +130,8 @@ func (l *NSQLookupd) Main() {
 		l.Unlock()
 	}
 
+	// wait coordinator ready
+	time.Sleep(time.Millisecond * 500)
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
 		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
