@@ -966,13 +966,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if len(params) < 2 {
-		nsqd.NsqLogger().Logf("FIN error params: %v", params)
+		nsqd.NsqLogger().LogDebugf("FIN error params: %v", params)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "FIN insufficient number of params")
 	}
 
 	id, err := getFullMessageID(params[1])
 	if err != nil {
-		nsqd.NsqLogger().Logf("FIN error: %v, %v", params[1], err)
+		nsqd.NsqLogger().LogDebugf("FIN error: %v, %v", params[1], err)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, err.Error())
 	}
 	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
@@ -981,19 +981,19 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 
 	if client.Channel == nil {
-		nsqd.NsqLogger().Logf("FIN error no channel: %v", msgID)
+		nsqd.NsqLogger().LogDebugf("FIN error no channel: %v", msgID)
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
 
 	if !p.ctx.checkForMasterWrite(client.Channel.GetTopicName(), client.Channel.GetTopicPart()) {
-		nsqd.NsqLogger().LogErrorf("topic %v fin message failed for not leader", client.Channel.GetTopicName())
+		nsqd.NsqLogger().Logf("topic %v fin message failed for not leader", client.Channel.GetTopicName())
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 
 	err = p.ctx.FinishMessage(client.Channel, client.ID, client.String(), msgID)
 	if err != nil {
-		nsqd.NsqLogger().Logf("FIN error : %v, err: %v", msgID,
-			err)
+		nsqd.NsqLogger().LogDebugf("FIN error : %v, err: %v, channel: %v, topic: %v", msgID,
+			err, client.Channel.GetName(), client.Channel.GetTopicName())
 		if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 			if !clusterErr.IsLocalErr() {
 				return nil, protocol.NewFatalClientErr(err, FailedOnNotWritable, "")
