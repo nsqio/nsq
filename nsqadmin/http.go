@@ -748,7 +748,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	filter := ps.ByName("filter");
 	s.ctx.nsqadmin.logf("filter passed in statisticsHandler: " + filter)
 	if "" == filter {
-		filter_str := []string{"channel-depth", "message-count"}
+		filter_str := []string{"channel-depth", "hourly-pubsize"}
 		return struct {
 			Filter []string    `json:"filters"`
 		}{filter_str}, nil
@@ -758,6 +758,8 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	switch filter {
 		case "channel-depth":
 			rankName = "Top10 topics in Total Channel Depth"
+		case "hourly-pubsize":
+			rankName = "Top10 topics in Recent Hourly Pub Size"
 		default:
 			rankName = "Top10 topics in Total Message Count"
 	}
@@ -796,6 +798,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 			TopicName:	topicStat.TopicName,
 			TotalChannelDepth:	topicStat.TotalChannelDepth,
 			MessageCount:	topicStat.MessageCount,
+			HourlyPubSize:  topicStat.HourlyPubSize,
 		}
 		ranks[idx] = aTopic
 	}

@@ -724,6 +724,22 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 					channelStats.Add(channel)
 					topic.TotalChannelDepth += channel.Depth
 				}
+
+				//aggregate partition dist data from producers
+				endpoint = fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", addr, topic.TopicName, topic.TopicPartition)
+				type respType struct {
+					HourlyPubSize []int64 `json:"hourly_pub_size"`
+				}
+				var historyStatsResp respType
+				err := c.client.NegotiateV1(endpoint, &historyStatsResp)
+				if err != nil {
+					lock.Lock()
+					errs = append(errs, err)
+					lock.Unlock()
+				}else{
+					topic.HourlyPubSize = historyStatsResp.HourlyPubSize[0];
+					topic.PartitionHourlyPubSize = historyStatsResp.HourlyPubSize
+				}
 			}
 		}(p)
 	}
@@ -739,7 +755,9 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 		sort.Sort(TopicStatsByChannelDepth{topicStatsList})
 	} else if sortBy == "message-count" {
 		sort.Sort(TopicStatsByMessageCount{topicStatsList})
-	} else {
+	} else if sortBy == "hourly-pubsize" {
+		sort.Sort(TopicStatsByHourlyPubsize{topicStatsList})
+	} else{
 		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 	}
 
