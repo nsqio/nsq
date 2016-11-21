@@ -500,6 +500,13 @@ func (t *Topic) GetMsgGenerator() MsgIDGenerator {
 	return cursor
 }
 
+func (t *Topic) GetDynamicInfo() TopicDynamicConf {
+	t.Lock()
+	info := *t.dynamicConf
+	t.Unlock()
+	return info
+}
+
 func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
 	t.Lock()
 	if idGen != nil {
@@ -508,6 +515,7 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	atomic.StoreInt64(&t.dynamicConf.SyncEvery, dynamicConf.SyncEvery)
 	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
 	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
+	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()
 }
 
@@ -846,9 +854,11 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 		for _, channel := range t.channelMap {
 			err := channel.UpdateQueueEnd(e, forceReload)
 			if err != nil {
-				nsqLog.LogErrorf(
-					"failed to update topic end to channel(%s) - %s",
-					channel.name, err)
+				if err != ErrExiting {
+					nsqLog.LogErrorf(
+						"failed to update topic end to channel(%s) - %s",
+						channel.name, err)
+				}
 			}
 		}
 	}

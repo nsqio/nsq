@@ -281,7 +281,7 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY", "IDENTIFY missing fields")
 	}
 
-	if p.ctx.nsqlookupd.RealTCPAddr() == nil || p.ctx.nsqlookupd.RealHTTPAddr() == nil {
+	if p.ctx.nsqlookupd.RealTCPAddr() == nil {
 		nsqlookupLog.Logf("client(%s) register before the server is ready", client)
 		return nil, protocol.NewFatalClientErr(nil, "E_NOT_READY", "The server is not ready for use")
 	}
@@ -299,7 +299,12 @@ func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, para
 	// build a response
 	data := make(map[string]interface{})
 	data["tcp_port"] = p.ctx.nsqlookupd.RealTCPAddr().Port
-	data["http_port"] = p.ctx.nsqlookupd.RealHTTPAddr().Port
+	_, httpPortStr, _ := net.SplitHostPort(p.ctx.nsqlookupd.opts.HTTPAddress)
+	httpPort, _ := strconv.Atoi(httpPortStr)
+	if p.ctx.nsqlookupd.RealHTTPAddr() != nil {
+		httpPort = p.ctx.nsqlookupd.RealHTTPAddr().Port
+	}
+	data["http_port"] = httpPort
 	data["version"] = version.Binary
 	hostname, err := os.Hostname()
 	if err != nil {

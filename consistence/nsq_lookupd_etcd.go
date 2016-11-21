@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coreos/etcd/client"
@@ -37,7 +38,6 @@ type NsqLookupdEtcdMgr struct {
 	tmisMutex sync.Mutex
 	tmiMutex  sync.Mutex
 	wtliMutex sync.Mutex
-	itcMutex  sync.Mutex
 
 	client            *etcdlock.EtcdClient
 	clusterID         string
@@ -48,7 +48,7 @@ type NsqLookupdEtcdMgr struct {
 	lookupdRootPath   string
 	topicMetaInfos    []TopicPartitionMetaInfo
 	topicMetaMap      map[string]*TopicMetaInfo
-	ifTopicChanged    bool
+	ifTopicChanged    int32
 	nodeInfo          *NsqLookupdNodeInfo
 	nodeKey           string
 	nodeValue         string
@@ -66,7 +66,7 @@ func NewNsqLookupdEtcdMgr(host string) *NsqLookupdEtcdMgr {
 	client := etcdlock.NewEClient(host)
 	return &NsqLookupdEtcdMgr{
 		client:                    client,
-		ifTopicChanged:            true,
+		ifTopicChanged:            1,
 		watchTopicLeaderStopCh:    make(chan bool, 1),
 		watchTopicsStopCh:         make(chan bool, 1),
 		watchNsqdNodesStopCh:      make(chan bool, 1),
@@ -319,7 +319,7 @@ func (self *NsqLookupdEtcdMgr) getNsqdNodes() ([]NsqdNodeInfo, error) {
 }
 
 func (self *NsqLookupdEtcdMgr) ScanTopics() ([]TopicPartitionMetaInfo, error) {
-	if self.ifTopicChanged {
+	if atomic.LoadInt32(&self.ifTopicChanged) == 1 {
 		return self.scanTopics()
 	}
 
@@ -363,27 +363,20 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 			}
 		}
 		coordLog.Debugf("topic changed.")
-		self.itcMutex.Lock()
-		self.ifTopicChanged = true
-		self.itcMutex.Unlock()
+		atomic.StoreInt32(&self.ifTopicChanged, 1)
 	}
 }
 
 func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
-	self.itcMutex.Lock()
-	self.ifTopicChanged = false
-	self.itcMutex.Unlock()
-
 	rsp, err := self.client.Get(self.topicRoot, true, true)
 	if err != nil {
-		self.itcMutex.Lock()
-		self.ifTopicChanged = true
-		self.itcMutex.Unlock()
+		atomic.StoreInt32(&self.ifTopicChanged, 1)
 		if client.IsKeyNotFound(err) {
 			return nil, ErrKeyNotFound
 		}
 		return nil, err
 	}
+	atomic.StoreInt32(&self.ifTopicChanged, 0)
 
 	topicMetaMap := make(map[string]TopicMetaInfo)
 	topicReplicasMap := make(map[string]map[string]TopicPartitionReplicaInfo)
@@ -466,14 +459,14 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 	var topicInfo TopicPartitionMetaInfo
 	self.tmiMutex.Lock()
 	metaInfo, ok := self.topicMetaMap[topic]
-	self.tmiMutex.Unlock()
 	if !ok {
 		rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 		if err != nil {
+
+			self.tmiMutex.Unlock()
+
 			if client.IsKeyNotFound(err) {
-				self.itcMutex.Lock()
-				self.ifTopicChanged = true
-				self.itcMutex.Unlock()
+				atomic.StoreInt32(&self.ifTopicChanged, 1)
 				return nil, ErrKeyNotFound
 			}
 			return nil, err
@@ -481,22 +474,20 @@ func (self *NsqLookupdEtcdMgr) GetTopicInfo(topic string, partition int) (*Topic
 		var mInfo TopicMetaInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &mInfo)
 		if err != nil {
+			self.tmiMutex.Unlock()
+
 			return nil, err
 		}
-		topicInfo.TopicMetaInfo = mInfo
-		self.tmiMutex.Lock()
 		self.topicMetaMap[topic] = &mInfo
-		self.tmiMutex.Unlock()
-	} else {
-		topicInfo.TopicMetaInfo = *metaInfo
+		metaInfo = &mInfo
 	}
+	self.tmiMutex.Unlock()
 
+	topicInfo.TopicMetaInfo = *metaInfo
 	rsp, err := self.client.Get(self.createTopicReplicaInfoPath(topic, partition), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
-			self.itcMutex.Lock()
-			self.ifTopicChanged = true
-			self.itcMutex.Unlock()
+			atomic.StoreInt32(&self.ifTopicChanged, 1)
 			return nil, ErrKeyNotFound
 		}
 		return nil, err
@@ -592,31 +583,62 @@ func (self *NsqLookupdEtcdMgr) IsExistTopicPartition(topic string, partitionNum 
 	return true, nil
 }
 
-func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, error) {
+func (self *NsqLookupdEtcdMgr) GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error) {
 	var metaInfo TopicMetaInfo
 	rsp, err := self.client.Get(self.createTopicMetaPath(topic), false, false)
 	if err != nil {
 		if client.IsKeyNotFound(err) {
-			return metaInfo, ErrKeyNotFound
+			return metaInfo, 0, ErrKeyNotFound
 		}
-		return metaInfo, err
+		return metaInfo, 0, err
 	}
 	err = json.Unmarshal([]byte(rsp.Node.Value), &metaInfo)
 	if err != nil {
-		return metaInfo, err
+		return metaInfo, 0, err
 	}
-	return metaInfo, nil
+	epoch := EpochType(rsp.Node.ModifiedIndex)
+	return metaInfo, epoch, nil
+}
+
+func (self *NsqLookupdEtcdMgr) UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error {
+	value, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	coordLog.Infof("Update_topic meta info: %s %s %d", topic, string(value), oldGen)
+
+	self.tmiMutex.Lock()
+	defer self.tmiMutex.Unlock()
+	delete(self.topicMetaMap, topic)
+	atomic.StoreInt32(&self.ifTopicChanged, 1)
+	rsp, err := self.client.CompareAndSwap(self.createTopicMetaPath(topic), string(value), 0, "", uint64(oldGen))
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal([]byte(rsp.Node.Value), &meta)
+	if err != nil {
+		coordLog.Errorf("unmarshal meta info failed: %v, %v", err, rsp.Node.Value)
+		return err
+	}
+	self.topicMetaMap[topic] = meta
+
+	return nil
 }
 
 func (self *NsqLookupdEtcdMgr) DeleteWholeTopic(topic string) error {
+	self.tmiMutex.Lock()
+	delete(self.topicMetaMap, topic)
 	_, err := self.client.Delete(self.createTopicPath(topic), true)
+	self.tmiMutex.Unlock()
 	return err
 }
 
 func (self *NsqLookupdEtcdMgr) DeleteTopic(topic string, partition int) error {
 	_, err := self.client.Delete(self.createTopicPartitionPath(topic, partition), true)
 	if err != nil {
-		return err
+		if !client.IsKeyNotFound(err) {
+			return err
+		}
 	}
 	// stop watch topic leader and delete
 	topicLeaderSession := self.createTopicLeaderSessionPath(topic, partition)
@@ -669,6 +691,22 @@ func (self *NsqLookupdEtcdMgr) GetTopicLeaderSession(topic string, partition int
 	}
 
 	return &topicLeaderSession, nil
+}
+
+func (self *NsqLookupdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
+	topicKey := self.createTopicLeaderSessionPath(topic, partition)
+	valueB, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+
+	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
+	if err != nil {
+		coordLog.Errorf("try release topic leader session [%s] error: %v", topicKey, err)
+	} else {
+		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
+	}
+	return err
 }
 
 // maybe use: go WatchTopicLeader()...

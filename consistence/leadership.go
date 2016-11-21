@@ -78,7 +78,6 @@ func (self *TopicPartitionMetaInfo) GetTopicDesp() string {
 }
 
 type TopicLeaderSession struct {
-	ClusterID   string
 	Topic       string
 	Partition   int
 	LeaderNode  *NsqdNodeInfo
@@ -140,7 +139,8 @@ type NSQLookupdLeadership interface {
 	IsExistTopic(topic string) (bool, error)
 	IsExistTopicPartition(topic string, partition int) (bool, error)
 	// get topic meta info only
-	GetTopicMetaInfo(topic string) (TopicMetaInfo, error)
+	GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error)
+	UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error
 	DeleteTopic(topic string, partition int) error
 	DeleteWholeTopic(topic string) error
 	//
@@ -153,15 +153,19 @@ type NSQLookupdLeadership interface {
 	GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error)
 	// watch any leadership lock change for all topic partitions, should return the token used later by release.
 	WatchTopicLeader(leader chan *TopicLeaderSession, stop chan struct{}) error
+	// only leader lookup can do the release, normally notify the nsqd node do the release by itself.
+	// lookup node should release only when the nsqd is lost
+	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 }
 
 type NSQDLeadership interface {
 	InitClusterID(id string)
 	RegisterNsqd(nodeData *NsqdNodeInfo) error // update
 	UnregisterNsqd(nodeData *NsqdNodeInfo) error
-	// get the topic leadership lock and no need to retry if the lock already exist
+	// try create the topic leadership key and no need to retry if the key already exist
 	AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error
-	// stop the lock keep-alive and release the lock using the acquired session.
+	// release the session key using the acquired session. should check current session epoch
+	// to avoid release the changed session
 	ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error
 	// all registered lookup nodes.
 	GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error)

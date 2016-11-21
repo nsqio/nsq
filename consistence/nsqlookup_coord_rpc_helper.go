@@ -23,7 +23,7 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 			}
 			if len(failList) > 0 {
 				coordLog.Infof("failed rpc total: %v, %v", len(self.failedRpcList), len(failList))
-				currentNodes = self.getCurrentNodes()
+				currentNodes, _ = self.getCurrentNodesWithRemoving()
 			}
 			self.failedRpcList = self.failedRpcList[0:0]
 			self.failedRpcMutex.Unlock()
@@ -78,7 +78,7 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 }
 
 func (self *NsqLookupCoordinator) doNotifyToNsqdNodes(nodes []string, notifyRpcFunc func(string) *CoordErr) *CoordErr {
-	currentNodes := self.getCurrentNodes()
+	currentNodes, _ := self.getCurrentNodesWithRemoving()
 	var coordErr *CoordErr
 	for _, n := range nodes {
 		node, ok := currentNodes[n]
@@ -337,7 +337,7 @@ func (self *NsqLookupCoordinator) getNsqdLastCommitLogID(nid string, topicInfo *
 }
 
 func (self *NsqLookupCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *CoordErr) {
-	currentNodes := self.getCurrentNodes()
+	currentNodes, _ := self.getCurrentNodesWithRemoving()
 
 	self.rpcMutex.Lock()
 	defer self.rpcMutex.Unlock()

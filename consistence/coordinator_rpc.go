@@ -160,6 +160,14 @@ func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcRelease
 		return &ret
 	}
 	coordData := topicCoord.GetData()
+	if coordData.GetLeaderSessionID() != "" && coordData.GetLeader() != coordData.GetLeaderSessionID() {
+		// check if any old leader session acquired by mine is not released
+		if self.nsqdCoord.GetMyID() == coordData.GetLeaderSessionID() {
+			coordLog.Warningf("old leader session acquired by me is not released, my leader should release: %v", coordData)
+			self.nsqdCoord.releaseTopicLeader(&coordData.topicInfo, &coordData.topicLeaderSession)
+			return &ret
+		}
+	}
 	if !topicCoord.IsWriteDisabled() {
 		coordLog.Errorf("topic %v release leader should disable write first", coordData.topicInfo.GetTopicDesp())
 		ret = *ErrTopicCoordStateInvalid
@@ -222,6 +230,8 @@ func (self *NsqdCoordRpcServer) NotifyTopicLeaderSession(rpcTopicReq *RpcTopicLe
 		}
 	}
 	newSession := &TopicLeaderSession{
+		Topic:       rpcTopicReq.TopicName,
+		Partition:   rpcTopicReq.TopicPartition,
 		LeaderNode:  &rpcTopicReq.LeaderNode,
 		Session:     rpcTopicReq.TopicLeaderSession,
 		LeaderEpoch: rpcTopicReq.TopicLeaderSessionEpoch,
@@ -576,6 +586,7 @@ type RpcTopicData struct {
 	TopicWriteEpoch         EpochType
 	TopicLeaderSessionEpoch EpochType
 	TopicLeaderSession      string
+	TopicLeader             string
 }
 
 type RpcChannelOffsetArg struct {
@@ -659,16 +670,15 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordErrStats.incRpcCheckFailed()
 		return nil, ErrEpochMismatch
 	}
-	if tcData.GetLeaderSession() != rpcData.TopicLeaderSession {
-		coordLog.Infof("rpc call with wrong session:%v, local: %v", rpcData, tcData.GetLeaderSession())
+	if rpcData.TopicLeader != "" && tcData.GetLeader() != rpcData.TopicLeader {
+		coordLog.Warningf("rpc call with wrong leader:%v, local: %v", rpcData, tcData.GetLeader())
 		self.requestNotifyNewTopicInfo(rpcData.TopicName, rpcData.TopicPartition)
 		coordErrStats.incRpcCheckFailed()
-		return nil, ErrLeaderSessionMismatch
+		return nil, ErrNotTopicLeader
 	}
-	//if !tcData.localDataLoaded {
-	//	coordLog.Infof("local data is still loading. %v", tcData.topicInfo.GetTopicDesp())
-	//	return nil, ErrTopicLoading
-	//}
+	if rpcData.TopicLeaderSession != tcData.GetLeaderSession() {
+		coordLog.Warningf("call write with mismatch session: %v, loca %v", rpcData, tcData.GetLeaderSession())
+	}
 	return topicCoord, nil
 }
 

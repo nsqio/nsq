@@ -595,7 +595,7 @@ func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID)
 	defer c.inFlightMutex.Unlock()
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
-		nsqLog.Logf("channel (%v): message %v fin error: %v from client %v", c.GetName(), id, err,
+		nsqLog.LogDebugf("channel (%v): message %v fin error: %v from client %v", c.GetName(), id, err,
 			clientID)
 		return 0, 0, false, err
 	}
@@ -631,7 +631,7 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		// remove from inflight first
 		msg, err := c.popInFlightMessage(clientID, id)
 		if err != nil {
-			nsqLog.Logf("channel (%v): message %v requeue error: %v from client %v", c.GetName(), id, err,
+			nsqLog.LogDebugf("channel (%v): message %v requeue error: %v from client %v", c.GetName(), id, err,
 				clientID)
 			return err
 		}
@@ -644,11 +644,11 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 	// change the timeout for inflight
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
-		nsqLog.Logf("failed requeue for delay: %v, msg not exist", id)
+		nsqLog.LogDebugf("failed requeue for delay: %v, msg not exist", id)
 		return ErrMsgNotInFlight
 	}
 	if msg.clientID != clientID {
-		nsqLog.Logf("failed requeue for client not own message: %v: %v vs %v", id, msg.clientID, clientID)
+		nsqLog.LogDebugf("failed requeue for client not own message: %v: %v vs %v", id, msg.clientID, clientID)
 		return fmt.Errorf("client does not own message %v: %v vs %v", id,
 			msg.clientID, clientID)
 	}
@@ -1006,7 +1006,7 @@ LOOP:
 		}
 
 		if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
-			nsqLog.Warningf("reset the reader : %v", c.GetConfirmed())
+			nsqLog.Infof("reset the reader : %v", c.GetConfirmed())
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
@@ -54,19 +55,6 @@ func getIPv4ForInterfaceName(ifname string) string {
 
 func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
-
-	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
-	if err != nil {
-		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
-		os.Exit(1)
-	}
-	l.Lock()
-	l.httpListener = httpListener
-	l.Unlock()
-	httpServer := newHTTPServer(ctx)
-	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
-	})
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
@@ -141,6 +129,21 @@ func (l *NSQLookupd) Main() {
 		l.coordinator = nil
 		l.Unlock()
 	}
+
+	// wait coordinator ready
+	time.Sleep(time.Millisecond * 500)
+	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
+	if err != nil {
+		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
+		os.Exit(1)
+	}
+	l.Lock()
+	l.httpListener = httpListener
+	l.Unlock()
+	httpServer := newHTTPServer(ctx)
+	l.waitGroup.Wrap(func() {
+		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
+	})
 }
 
 func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {

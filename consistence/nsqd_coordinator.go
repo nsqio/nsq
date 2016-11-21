@@ -79,6 +79,7 @@ type NsqdCoordinator struct {
 	lookupMutex            sync.Mutex
 	lookupLeader           NsqLookupdNodeInfo
 	lookupRemoteCreateFunc nsqlookupRemoteProxyCreateFunc
+	lookupRemoteClients    map[string]INsqlookupRemoteProxy
 	topicCoords            map[string]map[int]*TopicCoordinator
 	coordMutex             sync.RWMutex
 	myNode                 NsqdNodeInfo
@@ -115,6 +116,7 @@ func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath 
 		localNsqd:              nsqd,
 		tryCheckUnsynced:       make(chan bool, 1),
 		lookupRemoteCreateFunc: NewNsqLookupRpcClient,
+		lookupRemoteClients:    make(map[string]INsqlookupRemoteProxy),
 	}
 
 	if nsqdCoord.leadership != nil {
@@ -204,16 +206,29 @@ func (self *NsqdCoordinator) Start() error {
 }
 
 func (self *NsqdCoordinator) Stop() {
+	if atomic.LoadInt32(&self.stopping) == 1 {
+		return
+	}
 	// give up the leadership on the topic to
 	// allow other isr take over to avoid electing.
 	self.prepareLeavingCluster()
 	close(self.stopChan)
 	self.rpcServer.stop()
 	self.rpcServer = nil
+	self.rpcClientMutex.Lock()
 	for _, c := range self.nsqdRpcClients {
 		c.Close()
 	}
+	self.rpcClientMutex.Unlock()
 	self.wg.Wait()
+
+	self.lookupMutex.Lock()
+	for _, c := range self.lookupRemoteClients {
+		if c != nil {
+			c.Close()
+		}
+	}
+	self.lookupMutex.Unlock()
 }
 
 func (self *NsqdCoordinator) checkAndCleanOldData() {
@@ -356,12 +371,40 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 	}
 }
 
+//func (self *NsqdCoordinator) putLookupRemoteProxy(c INsqlookupRemoteProxy) {
+//	self.lookupMutex.Lock()
+//	ch, ok := self.lookupRemoteClients[c.RemoteAddr()]
+//	self.lookupMutex.Unlock()
+//	if ok {
+//		select {
+//		case ch <- c:
+//		default:
+//		}
+//	}
+//}
+
 func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *CoordErr) {
 	self.lookupMutex.Lock()
 	l := self.lookupLeader
+	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
+	c, ok := self.lookupRemoteClients[addr]
 	self.lookupMutex.Unlock()
-	c, err := self.lookupRemoteCreateFunc(net.JoinHostPort(l.NodeIP, l.RpcPort), RPC_TIMEOUT_FOR_LOOKUP)
+	if ok && c != nil {
+		return c, nil
+	}
+	c, err := self.lookupRemoteCreateFunc(addr, RPC_TIMEOUT_FOR_LOOKUP)
 	if err == nil {
+		self.lookupMutex.Lock()
+		self.lookupRemoteClients[addr] = c
+		if len(self.lookupRemoteClients) > 3 {
+			for k, _ := range self.lookupRemoteClients {
+				if k == addr {
+					continue
+				}
+				delete(self.lookupRemoteClients, k)
+			}
+		}
+		self.lookupMutex.Unlock()
 		return c, nil
 	}
 	coordLog.Infof("get lookup remote %v failed: %v", l, err)
@@ -553,6 +596,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				AutoCommit:   0,
 				RetentionDay: topicInfo.RetentionDay,
 			}
+			tc.GetData().logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
 			// TODO: check the last commit log data logid is equal with the disk queue message
 			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
@@ -681,7 +725,10 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 		tmpChecks := make(map[string]map[int]bool, len(self.topicCoords))
 		self.coordMutex.Lock()
 		for topic, info := range self.topicCoords {
-			for pid, _ := range info {
+			for pid, tc := range info {
+				if tc.IsExiting() {
+					continue
+				}
 				if _, ok := tmpChecks[topic]; !ok {
 					tmpChecks[topic] = make(map[int]bool)
 				}
@@ -719,6 +766,12 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 }
 
 func (self *NsqdCoordinator) releaseTopicLeader(topicInfo *TopicPartitionMetaInfo, session *TopicLeaderSession) *CoordErr {
+	if session != nil && session.LeaderNode != nil {
+		if self.GetMyID() != session.LeaderNode.GetID() {
+			coordLog.Warningf("the leader session should not be released by other node: %v, %v", session.LeaderNode, self.GetMyID())
+			return ErrLeaderSessionMismatch
+		}
+	}
 	err := self.leadership.ReleaseTopicLeader(topicInfo.Name, topicInfo.Partition, session)
 	if err != nil {
 		coordLog.Infof("failed to release leader for topic(%v): %v", topicInfo.Name, err)
@@ -1134,6 +1187,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 	}
+	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, logMgr)
 	compatibleMethod := false
 	if offset == localLogSegStart.SegmentStartOffset && logIndex == localLogSegStart.SegmentStartIndex {
@@ -1348,12 +1402,14 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 					localTopic.SaveChannelMeta()
 				}
 			}
-			go func() {
-				err := self.requestJoinTopicISR(&topicInfo)
-				if err != nil {
-					coordLog.Infof("request join isr failed: %v", err)
-				}
-			}()
+			if !tc.IsExiting() {
+				go func() {
+					err := self.requestJoinTopicISR(&topicInfo)
+					if err != nil {
+						coordLog.Infof("request join isr failed: %v", err)
+					}
+				}()
+			}
 			break
 		} else if synced && joinISRSession != "" {
 			// TODO: maybe need sync channels from leader
@@ -1453,7 +1509,7 @@ func (self *NsqdCoordinator) updateTopicInfo(topicCoord *TopicCoordinator, shoul
 	}
 
 	coordLog.Infof("update the topic info: %v", topicCoord.topicInfo.GetTopicDesp())
-	if topicCoord.coordData.GetLeader() == self.myNode.GetID() && newTopicInfo.Leader != self.myNode.GetID() {
+	if topicCoord.coordData.GetLeader() == self.GetMyID() && newTopicInfo.Leader != self.GetMyID() {
 		coordLog.Infof("my leader should release: %v", topicCoord.coordData)
 		self.releaseTopicLeader(&topicCoord.coordData.topicInfo, &topicCoord.coordData.topicLeaderSession)
 	}
@@ -1666,6 +1722,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		AutoCommit:   0,
 		RetentionDay: tcData.topicInfo.RetentionDay,
 	}
+	tcData.logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, false)
@@ -1862,6 +1919,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 	}
+	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	t.SetDynamicInfo(*dyConf, logMgr)
 
 	return t, nil
@@ -1920,15 +1978,14 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 					break
 				}
 				if err != nil && err.IsEqual(ErrLeavingISRWait) {
-					coordLog.Infof("======= should wait leaving from isr")
-					time.Sleep(time.Second)
+					coordLog.Infof("======= should wait leaving from isr: %v", topicName)
 				} else {
 					coordLog.Infof("======= request leave isr failed: %v", err)
-					time.Sleep(time.Millisecond * 100)
 				}
+				time.Sleep(time.Millisecond * 100)
 			}
 
-			if tcData.IsMineLeaderSessionReady(self.myNode.GetID()) {
+			if tcData.IsMineLeaderSessionReady(self.GetMyID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
 				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())

@@ -9,7 +9,6 @@ package consistence
 
 import (
 	"encoding/json"
-	"fmt"
 	"path"
 	"strconv"
 	"sync"
@@ -37,7 +36,7 @@ type NsqdEtcdMgr struct {
 	topicRoot   string
 	lookupdRoot string
 
-	topicLockMap map[string]*etcdlock.SeizeLock
+	////topicLockMap map[string]*etcdlock.SeizeLock
 
 	nodeKey       string
 	nodeValue     string
@@ -51,8 +50,8 @@ func SetEtcdLogger(log etcdlock.Logger, level int32) {
 func NewNsqdEtcdMgr(host string) *NsqdEtcdMgr {
 	client := etcdlock.NewEClient(host)
 	return &NsqdEtcdMgr{
-		client:       client,
-		topicLockMap: make(map[string]*etcdlock.SeizeLock),
+		client: client,
+		//topicLockMap: make(map[string]*etcdlock.SeizeLock),
 	}
 }
 
@@ -76,6 +75,7 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	if self.refreshStopCh != nil {
 		close(self.refreshStopCh)
 	}
+	coordLog.Infof("registered new node: %v", nodeData)
 	self.refreshStopCh = make(chan bool, 1)
 	// start refresh node
 	go self.refresh(self.refreshStopCh)
@@ -106,10 +106,10 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	defer self.Unlock()
 
 	// clear
-	for k, v := range self.topicLockMap {
-		v.Unlock()
-		delete(self.topicLockMap, k)
-	}
+	//for k, v := range self.topicLockMap {
+	//	v.Unlock()
+	//	delete(self.topicLockMap, k)
+	//}
 
 	_, err := self.client.Delete(self.createNsqdNodePath(nodeData), false)
 	if err != nil {
@@ -121,14 +121,13 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 		self.refreshStopCh = nil
 	}
 
-	coordLog.Infof("cluser[%s] node[%s]", self.clusterID, nodeData.ID)
+	coordLog.Infof("cluser[%s] node[%s] unregistered", self.clusterID, nodeData)
 
 	return nil
 }
 
 func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeData *NsqdNodeInfo, epoch EpochType) error {
 	topicLeaderSession := &TopicLeaderSession{
-		ClusterID:   self.clusterID,
 		Topic:       topic,
 		Partition:   partition,
 		LeaderNode:  nodeData,
@@ -140,81 +139,79 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 		return err
 	}
 	topicKey := self.createTopicLeaderPath(topic, partition)
-	lock := etcdlock.NewSeizeLock(self.client, topicKey, string(valueB), ETCD_TTL)
-	err = lock.Lock()
+	rsp, err := self.client.Get(topicKey, false, false)
 	if err != nil {
-		coordLog.Errorf("topic_key[%s] lock error: %s", topicKey, err.Error())
-		if err == etcdlock.ErrSeizeLockAg {
+		if client.IsKeyNotFound(err) {
+			coordLog.Infof("try to acquire topic leader session [%s]", topicKey)
+			rsp, err = self.client.Create(topicKey, string(valueB), 0)
+			if err != nil {
+				coordLog.Warningf("acquire topic leader session [%s] failed: %v", topicKey, err)
+				return err
+			}
+			coordLog.Infof("acquire topic leader [%s] success: %v", topicKey, string(valueB))
 			return nil
+		} else {
+			coordLog.Warningf("try to acquire topic %v leader session failed: %v", topicKey, err)
+			return err
 		}
-		return err
 	}
-	coordLog.Infof("topic_key[%s] lock success.", topicKey)
-
-	self.Lock()
-	self.topicLockMap[topicKey] = lock
-	coordLog.Debugf("map: %v", self.topicLockMap)
-	self.Unlock()
-
-	return nil
+	if rsp.Node.Value == string(valueB) {
+		coordLog.Infof("get topic leader with the same [%s] ", topicKey)
+		return nil
+	}
+	coordLog.Infof("get topic leader [%s] failed, lock exist value[%s]", topicKey, rsp.Node.Value)
+	return ErrKeyAlreadyExist
 }
 
-//func (self *NsqdEtcdMgr) processTopicLeaderEvents(master etcdlock.Master, topicLeader chan *TopicLeaderSession, masterChanInfo *MasterChanInfo) {
-//	for {
-//		select {
-//		case e := <-master.GetEventsChan():
-//			if e.Type == etcdlock.MASTER_ADD || e.Type == etcdlock.MASTER_MODIFY {
-//				// Acquired the lock || lock change.
-//				var topicLeaderSession TopicLeaderSession
-//				if err := json.Unmarshal([]byte(e.Master), &topicLeaderSession); err != nil {
-//					topicLeaderSession.LeaderNode = nil
-//					topicLeader <- &topicLeaderSession
-//					continue
-//				}
-//				topicLeader <- &topicLeaderSession
-//			} else if e.Type == etcdlock.MASTER_DELETE {
-//				// Lost the lock.
-//				topicLeaderSession := &TopicLeaderSession{
-//					LeaderNode: nil,
-//				}
-//				topicLeader <- topicLeaderSession
-//			} else {
-//				// lock error.
-//			}
-//		case <-masterChanInfo.processStopCh:
-//			master.Stop()
-//			masterChanInfo.stoppedCh <- true
-//			return
-//		}
-//	}
-//}
+type TopicLeaderSessionOld struct {
+	ClusterID   string
+	Topic       string
+	Partition   int
+	LeaderNode  *NsqdNodeInfo
+	Session     string
+	LeaderEpoch EpochType
+}
+
+func (s *TopicLeaderSessionOld) IsEqual(newSession *TopicLeaderSession) bool {
+	if s.Topic == newSession.Topic &&
+		s.Partition == newSession.Partition &&
+		s.LeaderNode == newSession.LeaderNode &&
+		s.LeaderEpoch == newSession.LeaderEpoch {
+		return true
+	}
+	return false
+}
 
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
 	self.Lock()
 	defer self.Unlock()
 
-	coordLog.Infof(" topic[%s] partition[%d] leader", topic, partition)
-	coordLog.Infof(" map: %v", self.topicLockMap)
 	topicKey := self.createTopicLeaderPath(topic, partition)
-	v, ok := self.topicLockMap[topicKey]
-	if ok {
-		err := v.Unlock()
-		if err != nil {
-			coordLog.Errorf("unlock error: %s", err.Error())
-			if err == etcdlock.ErrEtcdBad {
-				return err
-			}
-		}
-		delete(self.topicLockMap, topicKey)
-		coordLog.Infof("topic[%s] partition[%d] success.", topic, partition)
-
+	valueB, err := json.Marshal(session)
+	if err != nil {
 		return err
-	} else {
-		coordLog.Errorf("topicLockMap key[%s] not found.", topicKey)
-		return fmt.Errorf("topicLockMap key[%s] not found.", topicKey)
 	}
 
-	return nil
+	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
+	if err != nil {
+		if !client.IsKeyNotFound(err) {
+			coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+			// since the topic leader session type is changed, we need do the compatible check
+			rsp, innErr := self.client.Get(topicKey, false, false)
+			if innErr != nil {
+			} else {
+				var old TopicLeaderSessionOld
+				json.Unmarshal([]byte(rsp.Node.Value), &old)
+				if old.IsEqual(session) {
+					_, err = self.client.CompareAndDelete(topicKey, rsp.Node.Value, 0)
+				}
+			}
+		}
+	}
+	if err == nil {
+		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
+	}
+	return err
 }
 
 func (self *NsqdEtcdMgr) GetAllLookupdNodes() ([]NsqLookupdNodeInfo, error) {
