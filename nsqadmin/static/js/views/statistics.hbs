@@ -1,0 +1,35 @@
+{{> warning}}
+{{> error}}
+
+<div class="row">
+    <div class="col-md-6">
+    {{#if collection.length}}
+            {{#each collection}}
+                <div class="row">
+                    <div class="col-md-12">
+                        <h2>{{rank_name}}</h2>
+                    </div>
+                </div>
+
+                {{#if top10.length}}
+                    <table class="table table-condensed table-bordered">
+                        <tr>
+                            <th>Topic Name</th>
+                            <th>#</th>
+                        </tr>
+                        {{#each top10}}
+                            <tr>
+                                <td><a class="link" href="/topics/{{urlencode topic_name}}">{{topic_name}}</a></td>
+                                <td>{{rank_value}}</td>
+                            </tr>
+                        {{/each}}
+                    </table>
+                {{else}}
+                    <div class="alert alert-warning"><h4>Notice</h4>No Topics Found</div>
+                {{/if}}
+            {{/each}}
+    {{else}}
+        <div class="alert alert-warning">Loading ranks...</div>
+    {{/if}}
+    </div>
+</div>

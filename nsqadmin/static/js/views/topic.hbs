@@ -91,6 +91,7 @@
             {{#each e2e_processing_latency.percentiles}}
                 <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
             {{/each}}
+            <th>Hourly Pub Size(distribution in last 2~22 hours)</th>
         </tr>
         {{#each nodes}}
         <tr>
@@ -117,6 +118,7 @@
                 </td>
                 {{/each}}
             {{/if}}
+            <td>{{partition_hourly_pubsize}}</td>
         </tr>
         {{#if ../graph_active}}
             <tr class="graph-row">
@@ -169,6 +171,105 @@
 </div>
 {{/unless}}
 
+<div class="row">
+    <div class="col-md-12">
+        <h4>Message Size Distribution</h4>
+        {{#unless msg_size_stats.length}}
+            <div class="alert alert-warning"><h4>Notice</h4>No message sent to current topic</div>
+        {{else}}
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>< 100byte</th>
+                    <th>< 1KB</th>
+                    <th>< 2KB</th>
+                    <th>< 4KB </th>
+                    <th>< 8KB</th>
+                    <th>< 16KB</th>
+                    <th>< 32KB</th>
+                    <th>< 64KB</th>
+                    <th>< 128KB</th>
+                    <th>< 256KB</th>
+                    <th>< 512KB</th>
+                    <th>< 1MB</th>
+                    <th>< 2MB</th>
+                    <th>< 4MB</th>
+                    <th>Not Used</th>
+                    <th>Not Used</th>
+                </tr>
+                <tr>
+                   {{#each msg_size_stats}}
+                   <td>{{this}}</td>
+                   {{/each}}
+                </tr>
+            </table>
+        {{/unless}}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <h4>Message Latency Distribution</h4>
+        {{#unless msg_write_latency_stats.length}}
+            <div class="alert alert-warning"><h4>Notice</h4>No message sent to current topic</div>
+        {{else}}
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>< 1024us</th>
+                    <th>< 2ms</th>
+                    <th>< 4ms</th>
+                    <th>< 8ms</th>
+                    <th>< 16ms</th>
+                    <th>< 32ms</th>
+                    <th>< 64ms</th>
+                    <th>< 128ms</th>
+                    <th>< 256ms</th>
+                    <th>< 512ms</th>
+                    <th>< 1024ms</th>
+                    <th>< 2048ms</th>
+                    <th>< 4s</th>
+                    <th>< 8s</th>
+                    <th>Not Used</th>
+                    <th>Not Used</th>
+                </tr>
+                <tr>
+                {{#each msg_write_latency_stats}}
+                    <td>{{this}}</td>
+                {{/each}}
+                </tr>
+            </table>
+        {{/unless}}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <h4>Topic Producer Connections</h4>
+        {{#unless client_pub_stats.length}}
+            <div class="alert alert-warning"><h4>Notice</h4>No producer connected to this channel</div>
+        {{else}}
+            <table class="table table-bordered table-condensed">
+                <tr>
+                    <th>Producer Host</th>
+                    <th>User-Agent</th>
+                    <th>Protocol</th>
+                    <th>Pub Count</th>
+                    <th>Error Count</th>
+                    <th>Last Pub Timestamp</th>
+                </tr>
+                {{#each client_pub_stats}}
+                    <tr>
+                        <td title="{{remote_address}}">{{remote_address}}</td>
+                        <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+                        <td>{{protocol}}</td>
+                        <td>{{commafy pub_count}}</td>
+                        <td>{{commafy err_count}}</td>
+                        <td>{{last_pub_ts}}</td>
+                    </tr>
+                {{/each}}
+            </table>
+        {{/unless}}
+    </div>
+</div>
 
 <div class="row">
     {{#unless channels.length}}

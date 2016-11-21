@@ -9,7 +9,8 @@ var Router = Backbone.Router.extend({
         'topics/(:topic)(/:channel)': 'topic',
         'lookup': 'lookup',
         'nodes(/:node)': 'nodes',
-        'counter': 'counter'
+        'counter': 'counter',
+        'statistics(/:filter)': 'statistics'
     },
 
     defaultRoute: 'topics',
@@ -54,6 +55,10 @@ var Router = Backbone.Router.extend({
 
     counter: function() {
         Pubsub.trigger('counter:show');
+    },
+
+    statistics: function() {
+        Pubsub.trigger('statistics:show');
     }
 });
 
