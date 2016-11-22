@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+const (
+	MAX_QUEUE_OFFSET_META_DATA_KEEP = 100
+)
+
 var (
 	ErrInvalidOffset     = errors.New("invalid offset")
 	ErrNeedFixQueueStart = errors.New("init queue start should be fixed")
@@ -290,15 +294,30 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 
 	d.diskQueueStart = newStart
 	d.saveExtraMeta()
+	cleanMetaFileNum := cleanFileNum - MAX_QUEUE_OFFSET_META_DATA_KEEP
 	for i := int64(0); i < cleanFileNum; i++ {
 		fn := d.fileName(i)
 		innerErr := os.Remove(fn)
 		if innerErr != nil {
 			if !os.IsNotExist(innerErr) {
 				nsqLog.LogErrorf("diskqueue(%s) failed to remove data file %v - %s", d.name, fn, innerErr)
+				continue
 			}
 		} else {
 			nsqLog.Logf("DISKQUEUE(%s): removed data file: %v", d.name, fn)
+		}
+
+		//remove queue meta file
+		if i <= cleanMetaFileNum {
+			fn =  d.fileName(i) + ".offsetmeta.dat"
+			innerErr = os.Remove(fn)
+			if innerErr != nil {
+				if !os.IsNotExist(innerErr) {
+					nsqLog.LogErrorf("diskqueue(%s) failed to remove offset meta data file %v - %s", d.name, fn, innerErr)
+				}
+			} else {
+				nsqLog.Logf("DISKQUEUE(%s): removed offset meta data file: %v", d.name, fn)
+			}
 		}
 	}
 
