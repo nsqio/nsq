@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"strings"
 )
 
 func TestDiskQueueWriter(t *testing.T) {
@@ -46,6 +47,49 @@ func TestDiskQueueWriter(t *testing.T) {
 	msgOut, _ := dqReader.TryReadOne()
 	equal(t, msgOut.Data, msg)
 	dqReader.Close()
+}
+
+func TestDiskQueueWriterCleanOffsetmeta(t *testing.T) {
+	l := newTestLogger(t)
+	nsqLog.Logger = l
+
+	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	queue, _ := newDiskQueueWriter(dqName, tmpDir, 3, 4, 1<<10, 1)
+	dqWriter := queue.(*diskQueueWriter)
+	defer dqWriter.Close()
+	nequal(t, dqWriter, nil)
+	equal(t, dqWriter.diskWriteEnd.TotalMsgCnt(), int64(0))
+
+	msg := []byte("test")
+	for i :=0; i<200; i++{
+		dqWriter.Put(msg)
+	}
+	dqWriter.Flush()
+	end := dqWriter.GetQueueWriteEnd()
+	fmt.Printf("queueWriteEnd: %d\n", end.Offset())
+	fmt.Printf("queueStart: %d\n", dqWriter.diskQueueStart.virtualEnd)
+	equal(t, err, nil)
+	equal(t, dqWriter.diskWriteEnd.TotalMsgCnt(), int64(200))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, int64(200))
+	equal(t, end.(*diskQueueEndInfo).EndOffset.FileNum, dqWriter.diskWriteEnd.EndOffset.FileNum)
+	dqWriter.CleanOldDataByRetention(end, false, 0)
+	files,err := ioutil.ReadDir(tmpDir)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, file := range files {
+		fileName := file.Name()
+		if strings.Contains(fileName, ".offsetmate.dat") {
+			num, _ := strconv.Atoi(strings.Split(fileName, ".")[2])
+			assert(t, num >= 100, "Offset metadata which not larger than 100 is not clean.")
+		}
+	}
 }
 
 func TestDiskQueueWriterRoll(t *testing.T) {
