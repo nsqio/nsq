@@ -78,6 +78,7 @@
         {{#if e2e_processing_latency.percentiles.length}}
         <tr>
             <th colspan="{{#if graph_active}}6{{else}}5{{/if}}"></th>
+            <th></th>
             <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
         </tr>
         {{/if}}
@@ -88,10 +89,10 @@
             <th>Messages</th>
             {{#if graph_active}}<th>Rate</th>{{/if}}
             <th>Channels</th>
+            <th>Hourly Pub Size(distribution in last 2~22 hours)</th>
             {{#each e2e_processing_latency.percentiles}}
                 <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
             {{/each}}
-            <th>Hourly Pub Size(distribution in last 2~22 hours)</th>
         </tr>
         {{#each nodes}}
         <tr>
@@ -111,14 +112,12 @@
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
             {{/if}}
             <td>{{commafy ../channels.length}}</td>
+            <td>{{partition_hourly_pubsize}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
-                <td>
-                    <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
-                </td>
+                    <td><span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span></td>
                 {{/each}}
             {{/if}}
-            <td>{{partition_hourly_pubsize}}</td>
         </tr>
         {{#if ../graph_active}}
             <tr class="graph-row">
@@ -143,6 +142,7 @@
             <td>{{commafy message_count}}</td>
             {{#if graph_active}}<td class="bold rate" target="{{rate "topic" "*" topic_name ""}}"></td>{{/if}}
             <td>{{commafy channels.length}}</td>
+            <td>{{total_partition_hourly_pubsize}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
                 <td>
@@ -174,46 +174,52 @@
 <div class="row">
     <div class="col-md-12">
         <h4>Message Size Distribution</h4>
-        {{#unless msg_size_stats.length}}
-            <div class="alert alert-warning"><h4>Notice</h4>No message sent to current topic</div>
-        {{else}}
-            <table class="table table-bordered table-condensed">
-                <tr>
-                    <th>< 100byte</th>
-                    <th>< 1KB</th>
-                    <th>< 2KB</th>
-                    <th>< 4KB </th>
-                    <th>< 8KB</th>
-                    <th>< 16KB</th>
-                    <th>< 32KB</th>
-                    <th>< 64KB</th>
-                    <th>< 128KB</th>
-                    <th>< 256KB</th>
-                    <th>< 512KB</th>
-                    <th>< 1MB</th>
-                    <th>< 2MB</th>
-                    <th>< 4MB</th>
-                    <th>Not Used</th>
-                    <th>Not Used</th>
-                </tr>
-                <tr>
-                   {{#each msg_size_stats}}
-                   <td>{{this}}</td>
-                   {{/each}}
-                </tr>
-            </table>
-        {{/unless}}
+        <table class="table table-bordered table-condensed">
+            <tr>
+                <th>NSQd Host</th>
+                <th>< 100byte</th>
+                <th>< 1KB</th>
+                <th>< 2KB</th>
+                <th>< 4KB </th>
+                <th>< 8KB</th>
+                <th>< 16KB</th>
+                <th>< 32KB</th>
+                <th>< 64KB</th>
+                <th>< 128KB</th>
+                <th>< 256KB</th>
+                <th>< 512KB</th>
+                <th>< 1MB</th>
+                <th>< 2MB</th>
+                <th>< 4MB</th>
+                <th>Not Used</th>
+                <th>Not Used</th>
+            </tr>
+            {{#each nodes}}
+            <tr>
+                <td>
+                    <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                    {{#if show_broadcast_address}}
+                        {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                    {{else}}
+                        <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                    {{/if}}
+                    {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
+                </td>
+                {{#each msg_size_stats}}
+                    <td>{{this}}</td>
+                {{/each}}
+            </tr>
+            {{/each}}
+        </table>
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
         <h4>Message Latency Distribution</h4>
-        {{#unless msg_write_latency_stats.length}}
-            <div class="alert alert-warning"><h4>Notice</h4>No message sent to current topic</div>
-        {{else}}
             <table class="table table-bordered table-condensed">
                 <tr>
+                    <th>NSQd Host</th>
                     <th>< 1024us</th>
                     <th>< 2ms</th>
                     <th>< 4ms</th>
@@ -231,13 +237,23 @@
                     <th>Not Used</th>
                     <th>Not Used</th>
                 </tr>
+                {{#each nodes}}
                 <tr>
-                {{#each msg_write_latency_stats}}
+                    <td>
+                        <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                        {{#if show_broadcast_address}}
+                            {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                        {{else}}
+                            <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                        {{/if}}
+                        {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
+                    </td>
+                    {{#each msg_write_latency_stats}}
                     <td>{{this}}</td>
-                {{/each}}
+                    {{/each}}
                 </tr>
+                {{/each}}
             </table>
-        {{/unless}}
     </div>
 </div>
 

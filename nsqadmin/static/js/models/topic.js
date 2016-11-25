@@ -15,7 +15,6 @@ var Topic = Backbone.Model.extend({
 
     parse: function(response) {
         response['nodes'] = _.map(response['nodes'] || [], function(node) {
-            var hourly_pub_size;
             var nodeAddr = node['node'];
             var nodeParts = node['node'].split(':');
             var port = nodeParts.pop();
@@ -30,11 +29,18 @@ var Topic = Backbone.Model.extend({
             });
             return node;
         });
-        if(response['nodes'][0]){
-            response['client_pub_stats'] = response['nodes'][0]['client_pub_stats'];
-            response['msg_size_stats'] = response['nodes'][0]['msg_size_stats'];
-            response['msg_write_latency_stats'] = response['nodes'][0]['msg_write_latency_stats'];
-        }
+
+        var total_hourly_pubsize = new Array();
+        _.each(response['nodes'], function(node, outIdx){
+           _.each(node['partition_hourly_pubsize'], function(value, idx){
+                if(total_hourly_pubsize[idx]) {
+                    total_hourly_pubsize[idx] += value;
+                }else{
+                    total_hourly_pubsize[idx] = value;
+                }
+           });
+        });
+        response['total_partition_hourly_pubsize'] = total_hourly_pubsize;
         return response;
     }
 });

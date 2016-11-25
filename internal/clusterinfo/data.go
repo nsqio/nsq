@@ -596,6 +596,22 @@ func (c *ClusterInfo) ListAllLookupdNodes(lookupdHTTPAddrs []string) (*LookupdNo
 	return &resp, nil
 }
 
+func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTopic string, par string) (*MessageHistoryStat, error) {
+	//aggregate partition dist data from producers
+	endpoint := fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", nsqdHTTPAddr, selectedTopic, par)
+	var historyStatsResp struct {
+		HistoryStat MessageHistoryStat	`json:"hourly_pub_size"`
+	}
+	err := c.client.NegotiateV1(endpoint, &historyStatsResp)
+	if err != nil {
+		return nil, err
+	}
+
+	c.logf("CI: querying nsqd %s resp: %v", endpoint, historyStatsResp)
+
+	return &historyStatsResp.HistoryStat, nil
+}
+
 func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic string, part string) (*CoordStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -723,22 +739,6 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 					}
 					channelStats.Add(channel)
 					topic.TotalChannelDepth += channel.Depth
-				}
-
-				//aggregate partition dist data from producers
-				endpoint = fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", addr, topic.TopicName, topic.TopicPartition)
-				type respType struct {
-					HourlyPubSize []int64 `json:"hourly_pub_size"`
-				}
-				var historyStatsResp respType
-				err := c.client.NegotiateV1(endpoint, &historyStatsResp)
-				if err != nil {
-					lock.Lock()
-					errs = append(errs, err)
-					lock.Unlock()
-				}else{
-					topic.HourlyPubSize = historyStatsResp.HourlyPubSize[0];
-					topic.PartitionHourlyPubSize = historyStatsResp.HourlyPubSize
 				}
 			}
 		}(p)

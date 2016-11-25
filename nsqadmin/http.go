@@ -375,7 +375,13 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 			}
 		}
 		t.SyncingNum = len(t.ISRStats) + len(t.CatchupStats)
-
+		historyStat, err := s.ci.GetNSQDMessageHistoryStats(t.Node, t.TopicName, t.TopicPartition)
+		if err != nil {
+			s.ctx.nsqadmin.logf("WARNING: %s", err)
+			messages = append(messages, err.Error())
+		}else {
+			t.PartitionHourlyPubSize = historyStat
+		}
 		allNodesTopicStats.Add(t)
 	}
 
