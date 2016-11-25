@@ -122,7 +122,7 @@ type TopicStats struct {
 	TotalChannelDepth int64	`json:"total_channel_depth"`
 	Paused            bool             `json:"paused"`
 	HourlyPubSize     int64            `json:"hourly_pubsize"`
-	PartitionHourlyPubSize     *MessageHistoryStat          `json:"partition_hourly_pubsize"`
+	PartitionHourlyPubSize     []int64          `json:"partition_hourly_pubsize"`
 	Clients           []ClientPubStats `json:"client_pub_stats"`
 	MessageSizeStats  [16]int64 `json:"msg_size_stats"`
 	MessageLatencyStats [16]int64 `json:"msg_write_latency_stats"`
