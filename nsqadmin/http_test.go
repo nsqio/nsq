@@ -85,8 +85,12 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqdserver.Nsqd
 	nsqlookupd.SetLogger(nsqlookupdOpts)
 	nsqlookupd1 := nsqlookupd.New(nsqlookupdOpts)
 	go nsqlookupd1.Main()
+	if nsqlookupd1.RealHTTPAddr().String() == "" {
+		t.Fatal("lookupd should not empty")
+	}
 
-	time.Sleep(100 * time.Millisecond)
+	// wait http server
+	time.Sleep(time.Second)
 
 	nsqdOpts := nsqd.NewOptions()
 	nsqdOpts.TCPAddress = "127.0.0.1:0"
@@ -99,9 +103,9 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqdserver.Nsqd
 		panic(err)
 	}
 	nsqdOpts.DataPath = tmpDir
-	nsqd1 := nsqd.New(nsqdOpts)
-	nsqd1Server := nsqdserver.NewNsqdServer(nsqd1, nsqdOpts)
+	nsqd1, nsqd1Server := nsqdserver.NewNsqdServer(nsqdOpts)
 	go nsqd1Server.Main()
+	t.Log("nsqd started")
 
 	nsqadminOpts := NewOptions()
 	nsqadminOpts.HTTPAddress = "127.0.0.1:0"

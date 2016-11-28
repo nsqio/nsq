@@ -30,6 +30,7 @@ type NSQAdmin struct {
 }
 
 func New(opts *Options) *NSQAdmin {
+	adminLog.Logger = opts.Logger
 	n := &NSQAdmin{
 		opts:          opts,
 		notifications: make(chan *AdminAction),

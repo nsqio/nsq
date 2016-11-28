@@ -168,7 +168,7 @@ func NewOptions() *Options {
 func getIPv4ForInterfaceName(ifname string) string {
 	interfaces, _ := net.Interfaces()
 	for _, inter := range interfaces {
-		nsqLog.Logf("found interface: %s", inter.Name)
+		log.Printf("found interface: %s\n", inter.Name)
 		if inter.Name == ifname {
 			if addrs, err := inter.Addrs(); err == nil {
 				for _, addr := range addrs {
