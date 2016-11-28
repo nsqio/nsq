@@ -258,7 +258,9 @@ func TestHTTPCreateTopicPOST(t *testing.T) {
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	body, _ := json.Marshal(map[string]interface{}{
-		"topic": topicName,
+		"topic":         topicName,
+		"partition_num": "0",
+		"replicator":    "1",
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
@@ -281,12 +283,16 @@ func TestHTTPCreateTopicChannelPOST(t *testing.T) {
 	client := http.Client{}
 	url := fmt.Sprintf("http://%s/api/topics", nsqadmin1.RealHTTPAddr())
 	body, _ := json.Marshal(map[string]interface{}{
-		"topic":   topicName,
-		"channel": "ch",
+		"topic":         topicName,
+		"partition_num": "0",
+		"replicator":    "1",
+		"channel":       "ch",
 	})
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	equal(t, err, nil)
+	body, _ = ioutil.ReadAll(resp.Body)
+	t.Log(string(body))
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
@@ -307,6 +313,8 @@ func TestHTTPDeleteTopicPOST(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
+	body, _ := ioutil.ReadAll(resp.Body)
+	t.Log(string(body))
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
