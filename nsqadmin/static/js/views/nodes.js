@@ -22,8 +22,20 @@ var NodesView = BaseView.extend({
         this.collection = new Nodes();
         this.collection.fetch()
             .done(function(data) {
+                var clusterInfo;
                 this.template = require('./nodes.hbs');
-                this.render({'message': data['message']});
+                $.ajax({
+                    url: AppState.url('/cluster/stats'),
+                    success: function(data){
+                        clusterInfo = data;
+                    },
+                    async: false
+                });
+                console.log("Stable: " + clusterInfo['stable']);
+                this.render({
+                    'message': data['message'],
+                    'stable': clusterInfo['stable']
+                });
             }.bind(this))
             .fail(this.handleViewError.bind(this))
             .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));

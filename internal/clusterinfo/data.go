@@ -12,6 +12,8 @@ import (
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/stringy"
 	"github.com/blang/semver"
+	"sync/atomic"
+	"math"
 )
 
 var v1EndpointVersion semver.Version
@@ -666,6 +668,24 @@ func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic strin
 		return &topicCoordStats, ErrList(errs)
 	}
 	return &topicCoordStats, nil
+}
+
+var INDEX = int32(0)
+
+func (c *ClusterInfo) GetClusterInfo(lookupdAdresses []string) (*ClusterNodeInfo, error) {
+	INDEX = atomic.AddInt32(&INDEX, 1) & math.MaxInt32;
+	c.logf("INDEX for picking lookup http address: %d", INDEX)
+	lookupdAdress := lookupdAdresses[int(INDEX) % (len(lookupdAdresses))]
+	c.logf("lookupd http address %s picked.", lookupdAdress)
+	endpoint := fmt.Sprintf("http://%s/cluster/stats", lookupdAdress)
+
+	var resp ClusterNodeInfo
+	err := c.client.NegotiateV1(endpoint, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
 }
 
 // GetNSQDStats returns aggregate topic and channel stats from the given Producers

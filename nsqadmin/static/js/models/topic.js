@@ -24,7 +24,7 @@ var Topic = Backbone.Model.extend({
             node['show_broadcast_address'] = hostname.toLowerCase() !== address.toLowerCase();
             node['hostname_port'] = hostname + ':' + port;
             node['client_pub_stats'] =  _.map(node['client_pub_stats'] || [], function(pub_stats){
-               var date = new Date(pub_stats['last_pub_ts']);
+               var date = new Date(pub_stats['last_pub_ts']*1000);
                 pub_stats['last_pub_ts'] = date.toString();
                 return pub_stats;
             });

@@ -106,6 +106,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 	router.Handle("GET", "/api/statistics", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
 	router.Handle("GET", "/api/statistics/:filter", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
+	router.Handle("GET", "/api/cluster/stats", http_api.Decorate(s.clusterStatsHandler, log, http_api.V1))
 
 	return s
 }
@@ -778,6 +779,23 @@ func (c TopicsByMessageCount)  Less(i, j int) bool {
 	l := c.RankList[i].MessageCount
 	r := c.RankList[j].MessageCount
 	return l > r
+}
+
+func (s *httpServer) clusterStatsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var messages []string
+
+	clusterNodeInfo, err:= s.ci.GetClusterInfo(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	if err != nil {
+		pe, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get cluster nodes stats - %s", err)
+			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		messages = append(messages, pe.Error())
+	}
+
+	return clusterNodeInfo, nil
 }
 
 func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

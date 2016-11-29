@@ -102,6 +102,20 @@ type ClientPubStats struct {
 	LastPubTs     int64  `json:"last_pub_ts"`
 }
 
+type NodeStat struct {
+	HostName		string	`json:"hostname"`
+	BroadcastAddress	string	`json:"broadcast_address"`
+	TCPPort			int 	`json:"tcp_port"`
+	HTTPPort		int 	`json:"http_port"`
+	LeaderLoadFactor	float64	`json:"leader_load_factor"`
+	NodeLoadFactor		float64	`json:"node_load_factor"`
+}
+
+type ClusterNodeInfo struct {
+	Stable		bool		`json:"stable"`
+	NodeStatList	[]*NodeStat	`json:"node_stat_list"`
+}
+
 type TopicStats struct {
 	Node           string        `json:"node"`
 	Hostname       string        `json:"hostname"`
