@@ -14,6 +14,7 @@ var Topic = Backbone.Model.extend({
     },
 
     parse: function(response) {
+        response['has_client_pub'] = false;
         response['nodes'] = _.map(response['nodes'] || [], function(node) {
             var nodeAddr = node['node'];
             var nodeParts = node['node'].split(':');
@@ -27,6 +28,13 @@ var Topic = Backbone.Model.extend({
                 pub_stats['last_pub_ts'] = date.toString();
                 return pub_stats;
             });
+            if(node['client_pub_stats'].length > 0) {
+                response['has_client_pub'] = true;
+            }
+            if(node['partition_hourly_pubsize']){
+                node['partition_hourly_pubsize'].reverse();
+                node['hourly_pubsize'] = node['partition_hourly_pubsize'][0];
+            }
             return node;
         });
 
@@ -41,6 +49,7 @@ var Topic = Backbone.Model.extend({
            });
         });
         response['total_partition_hourly_pubsize'] = total_hourly_pubsize;
+        response['total_hourly_pubsize'] = response['total_partition_hourly_pubsize'][0];
         return response;
     }
 });

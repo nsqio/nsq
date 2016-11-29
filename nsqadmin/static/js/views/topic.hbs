@@ -42,7 +42,11 @@
         </tr>
         {{#each nodes}}
         <tr>
+            {{#if topic_partition}}
             <th style="text-align:center;vertical-align:middle" rowspan="{{syncing_num}}">{{topic_partition}}</th>
+            {{else}}
+            <th>N/A</th>
+            {{/if}}
             {{#if isr_stats.length}}
                 <td>{{isr_stats.[0].hostname}}(ID:{{isr_stats.[0].node_id}})</td>
                 <td>Synced</td>
@@ -89,7 +93,9 @@
             <th>Messages</th>
             {{#if graph_active}}<th>Rate</th>{{/if}}
             <th>Channels</th>
-            <th>Hourly Pub Size(distribution in last 2~22 hours)</th>
+            <th>
+                <p>Hourly Pub Size</p>
+            </th>
             {{#each e2e_processing_latency.percentiles}}
                 <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
             {{/each}}
@@ -112,7 +118,11 @@
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
             {{/if}}
             <td>{{commafy ../channels.length}}</td>
-            <td>{{partition_hourly_pubsize}}</td>
+            <td>
+                <a href="#" data-toggle="tooltip" title={{partition_hourly_pubsize}}>
+                    {{commafy hourly_pubsize}}
+                </a>
+            </td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
                     <td><span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span></td>
@@ -142,7 +152,11 @@
             <td>{{commafy message_count}}</td>
             {{#if graph_active}}<td class="bold rate" target="{{rate "topic" "*" topic_name ""}}"></td>{{/if}}
             <td>{{commafy channels.length}}</td>
-            <td>{{total_partition_hourly_pubsize}}</td>
+            <td>
+                <a href="#" data-toggle="tooltip" title={{total_partition_hourly_pubsize}}>
+                    {{total_hourly_pubsize}}
+                </a>
+            </td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
                 <td>
@@ -164,6 +178,7 @@
                     <a href="{{large_graph "e2e" "*" e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
                 </td>
                 {{/if}}
+                fmt.Println("len of topic Map: ", len(topicMap))
             </tr>
         {{/if}}
     </table>
@@ -260,27 +275,31 @@
 <div class="row">
     <div class="col-md-12">
         <h4>Topic Producer Connections</h4>
-        {{#unless client_pub_stats.length}}
+        {{#unless has_client_pub}}
             <div class="alert alert-warning"><h4>Notice</h4>No producer connected to this channel</div>
         {{else}}
             <table class="table table-bordered table-condensed">
                 <tr>
                     <th>Producer Host</th>
                     <th>User-Agent</th>
+                    <th>NSQd host</th>
                     <th>Protocol</th>
                     <th>Pub Count</th>
                     <th>Error Count</th>
                     <th>Last Pub Timestamp</th>
                 </tr>
-                {{#each client_pub_stats}}
+                {{#each nodes}}
+                    {{#each client_pub_stats}}
                     <tr>
                         <td title="{{remote_address}}">{{remote_address}}</td>
                         <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+                        <td>{{../node}}</td>
                         <td>{{protocol}}</td>
                         <td>{{commafy pub_count}}</td>
                         <td>{{commafy err_count}}</td>
                         <td>{{last_pub_ts}}</td>
                     </tr>
+                    {{/each}}
                 {{/each}}
             </table>
         {{/unless}}

@@ -408,3 +408,63 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
 }
+
+func TestHTTPGetStatisticsRanks(t *testing.T) {
+	dataPath, _, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/api/statistics", nsqadmin1.RealHTTPAddr())
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+
+	type Filters struct {
+		Filters	[]string	`json:"filters"`
+	}
+
+	var filters Filters
+	data, err := ioutil.ReadAll(resp.Body)
+	if err == nil && data != nil {
+		err = json.Unmarshal(data, &filters)
+	}
+	equal(t, len(filters.Filters), 2)
+	for _, val := range filters.Filters {
+		t.Logf("filter: %s", val)
+		url = fmt.Sprintf("http://%s/api/statistics/%s", nsqadmin1.RealHTTPAddr(), val)
+		req, _ := http.NewRequest("GET", url, nil)
+		resp, err := client.Do(req)
+
+		equal(t, err, nil)
+		equal(t, resp.StatusCode, 200)
+
+		type RankItem struct {
+			TopicName 	string	`json:"topic_name"`
+			TotalChannelDepth	int64	`json:"total_channel_depth"`
+			MessageCount	int64	`json:"message_count"`
+			HourlyPubsize	int64	`json:"hourly_pubsize"`
+		}
+
+		type Rank struct {
+			RankName	string 	`json:"rank_name"`
+			Top10		[]RankItem	`top10`
+		}
+
+		var aRank Rank
+		data, err := ioutil.ReadAll(resp.Body)
+		if err == nil && data != nil {
+			err = json.Unmarshal(data, &aRank)
+		}
+
+		t.Logf("rankName: %s", aRank.RankName);
+		for _, item := range aRank.Top10 {
+			t.Logf("topicName: %s, totalChannelDepth: %d, messageCount: %d, hourlyPubsize: %d;", item.TopicName, item.TotalChannelDepth, item.MessageCount, item.HourlyPubsize)
+		}
+	}
+}

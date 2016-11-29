@@ -19,6 +19,7 @@ import (
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
+	"sort"
 )
 
 func maybeWarnMsg(msgs []string) string {
@@ -748,13 +749,44 @@ type rankStats struct {
 	HourlyPubSize int64  `json:"hourly_pubsize"`
 }
 
+type RankList []*rankStats
+
+func (t RankList) Len() int      { return len(t) }
+func (t RankList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+type TopicsByChannelDepth struct {
+	RankList
+}
+
+func (c TopicsByChannelDepth)  Less(i, j int) bool {
+	if c.RankList[i].TotalChannelDepth == c.RankList[j].TotalChannelDepth {
+		return c.RankList[i].TopicName < c.RankList[j].TopicName
+	}
+	l := c.RankList[i].TotalChannelDepth
+	r := c.RankList[j].TotalChannelDepth
+	return l > r
+}
+
+type TopicsByMessageCount struct {
+	RankList
+}
+
+func (c TopicsByMessageCount)  Less(i, j int) bool {
+	if c.RankList[i].MessageCount == c.RankList[j].MessageCount {
+		return c.RankList[i].TopicName < c.RankList[j].TopicName
+	}
+	l := c.RankList[i].MessageCount
+	r := c.RankList[j].MessageCount
+	return l > r
+}
+
 func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
 	filter := ps.ByName("filter");
 	s.ctx.nsqadmin.logf("filter passed in statisticsHandler: " + filter)
 	if "" == filter {
-		filter_str := []string{"channel-depth", "hourly-pubsize"}
+		filter_str := []string{"channel-depth", "message-count"}
 		return struct {
 			Filter []string    `json:"filters"`
 		}{filter_str}, nil
@@ -764,8 +796,6 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	switch filter {
 		case "channel-depth":
 			rankName = "Top10 topics in Total Channel Depth"
-		case "hourly-pubsize":
-			rankName = "Top10 topics in Recent Hourly Pub Size"
 		default:
 			rankName = "Top10 topics in Total Message Count"
 	}
@@ -792,27 +822,47 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		messages = append(messages, pe.Error())
 	}
 
-	var maxLen int
-	if len(topicStatsList) < 10 {
-		maxLen = len(topicStatsList)
+	//merge nodes under topic
+	topicMap := make(map[string]*rankStats)
+	for _, topicStat := range topicStatsList {
+		item, ok := topicMap[topicStat.TopicName]
+		if !ok {
+			item = &rankStats{
+				TopicName:   		topicStat.TopicName,
+				TotalChannelDepth: 	0,
+				MessageCount:		0,
+			}
+			topicMap[topicStat.TopicName] = item
+		}
+
+		item.TotalChannelDepth += topicStat.TotalChannelDepth
+		item.MessageCount += topicStat.MessageCount
+	}
+
+	rank := make([]*rankStats, 0, len(topicMap))
+
+	for _, item := range topicMap {
+		rank = append(rank, item);
+	}
+
+	//sort by filter
+	if filter == "message-count" {
+		sort.Sort(TopicsByMessageCount{rank})
+	}else{
+		sort.Sort(TopicsByChannelDepth{rank})
+	}
+
+	maxLen := 0
+	if len(rank) < 10 {
+		maxLen = len(rank)
 	}else {
 		maxLen = 10;
-	}
-	ranks := make([]*rankStats, maxLen)
-	for idx, topicStat := range topicStatsList[:maxLen] {
-		aTopic := &rankStats{
-			TopicName:	topicStat.TopicName,
-			TotalChannelDepth:	topicStat.TotalChannelDepth,
-			MessageCount:	topicStat.MessageCount,
-			HourlyPubSize:  topicStat.HourlyPubSize,
-		}
-		ranks[idx] = aTopic
 	}
 
 	return struct {
 		RankName string      `json:"rank_name"`
 		Top10   []*rankStats `json:"top10"`
-	}{rankName, ranks}, nil
+	}{rankName, rank[:maxLen]}, nil
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

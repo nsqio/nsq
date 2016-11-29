@@ -16,7 +16,7 @@ var TopicView = BaseView.extend({
 
     events: {
         'click .topic-actions button': 'topicAction',
-        'click .channel-action .hierarchy button': 'onCreateTopicChannel'
+        'click .channel-action .hierarchy button': 'onCreateTopicChannel',
     },
 
     initialize: function() {
@@ -29,6 +29,9 @@ var TopicView = BaseView.extend({
             }.bind(this))
             .fail(this.handleViewError.bind(this))
             .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));
+        $('[data-toggle="tooltip"]').tooltip({
+                placement : 'top'
+            });
     },
 
     topicAction: function(e) {

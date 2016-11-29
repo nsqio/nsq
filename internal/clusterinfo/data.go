@@ -596,11 +596,11 @@ func (c *ClusterInfo) ListAllLookupdNodes(lookupdHTTPAddrs []string) (*LookupdNo
 	return &resp, nil
 }
 
-func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTopic string, par string) (*MessageHistoryStat, error) {
+func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTopic string, par string) ([]int64, error) {
 	//aggregate partition dist data from producers
 	endpoint := fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", nsqdHTTPAddr, selectedTopic, par)
 	var historyStatsResp struct {
-		HistoryStat MessageHistoryStat	`json:"hourly_pub_size"`
+		HistoryStat []int64	`json:"hourly_pub_size"`
 	}
 	err := c.client.NegotiateV1(endpoint, &historyStatsResp)
 	if err != nil {
@@ -609,7 +609,7 @@ func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTo
 
 	c.logf("CI: querying nsqd %s resp: %v", endpoint, historyStatsResp)
 
-	return &historyStatsResp.HistoryStat, nil
+	return historyStatsResp.HistoryStat, nil
 }
 
 func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic string, part string) (*CoordStats, error) {
@@ -755,8 +755,6 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 		sort.Sort(TopicStatsByChannelDepth{topicStatsList})
 	} else if sortBy == "message-count" {
 		sort.Sort(TopicStatsByMessageCount{topicStatsList})
-	} else if sortBy == "hourly-pubsize" {
-		sort.Sort(TopicStatsByHourlyPubsize{topicStatsList})
 	} else{
 		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 	}
