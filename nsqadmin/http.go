@@ -337,7 +337,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		s.ctx.nsqadmin.logf("WARNING: %s", err)
 		messages = append(messages, pe.Error())
 	}
-	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName, "partition")
+	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName, "partition", false)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -411,7 +411,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf("WARNING: %s", err)
 		messages = append(messages, pe.Error())
 	}
-	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName, "partition")
+	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName, "partition", false)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -469,7 +469,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
 	}
 
-	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "", "channel-depth")
+	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "", "channel-depth", false)
 	if err != nil {
 		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
 		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
@@ -768,16 +768,16 @@ func (c TopicsByChannelDepth)  Less(i, j int) bool {
 	return l > r
 }
 
-type TopicsByMessageCount struct {
+type TopicsByHourlyPubsize struct {
 	RankList
 }
 
-func (c TopicsByMessageCount)  Less(i, j int) bool {
-	if c.RankList[i].MessageCount == c.RankList[j].MessageCount {
+func (c TopicsByHourlyPubsize)  Less(i, j int) bool {
+	if c.RankList[i].HourlyPubSize == c.RankList[j].HourlyPubSize {
 		return c.RankList[i].TopicName < c.RankList[j].TopicName
 	}
-	l := c.RankList[i].MessageCount
-	r := c.RankList[j].MessageCount
+	l := c.RankList[i].HourlyPubSize
+	r := c.RankList[j].HourlyPubSize
 	return l > r
 }
 
@@ -804,7 +804,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	filter := ps.ByName("filter");
 	s.ctx.nsqadmin.logf("filter passed in statisticsHandler: " + filter)
 	if "" == filter {
-		filter_str := []string{"channel-depth", "message-count"}
+		filter_str := []string{"channel-depth", "hourly-pubsize"}
 		return struct {
 			Filter []string    `json:"filters"`
 		}{filter_str}, nil
@@ -815,7 +815,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		case "channel-depth":
 			rankName = "Top10 topics in Total Channel Depth"
 		default:
-			rankName = "Top10 topics in Total Message Count"
+			rankName = "Top10 topics in Hourly Pub Size(in bytes)"
 	}
 
 	producers, err := s.ci.GetProducers(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
@@ -829,7 +829,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		messages = append(messages, pe.Error())
 	}
 	//get topic channel sortted by partition depth
-	topicStatsList, _, err := s.ci.GetNSQDStats(producers, "", filter)
+	topicStatsList, _, err := s.ci.GetNSQDStats(producers, "", filter, true)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -840,21 +840,38 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		messages = append(messages, pe.Error())
 	}
 
+	nodeMsgHistoryMap, err := s.ci.GetNSQDAllMessageHistoryStats(producers)
+	if err != nil {
+		_, ok := err.(clusterinfo.PartialErr)
+		if !ok {
+			s.ctx.nsqadmin.logf("ERROR: failed to get producer topic message history - %s", err)
+		}
+		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		//Do not append errors to messages for compatibility with old nsqd
+	}
+
 	//merge nodes under topic
 	topicMap := make(map[string]*rankStats)
+
 	for _, topicStat := range topicStatsList {
 		item, ok := topicMap[topicStat.TopicName]
 		if !ok {
 			item = &rankStats{
-				TopicName:   		topicStat.TopicName,
-				TotalChannelDepth: 	0,
-				MessageCount:		0,
+				TopicName:                topicStat.TopicName,
+				TotalChannelDepth:        	0,
+				MessageCount:			0,
 			}
 			topicMap[topicStat.TopicName] = item
 		}
 
 		item.TotalChannelDepth += topicStat.TotalChannelDepth
 		item.MessageCount += topicStat.MessageCount
+		if nodeMsgHistoryMap != nil {
+			hpSize, ok := nodeMsgHistoryMap[item.TopicName]
+			if ok {
+				item.HourlyPubSize += hpSize
+			}
+		}
 	}
 
 	rank := make([]*rankStats, 0, len(topicMap))
@@ -864,10 +881,10 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	}
 
 	//sort by filter
-	if filter == "message-count" {
-		sort.Sort(TopicsByMessageCount{rank})
-	}else{
+	if filter == "channel-depth" {
 		sort.Sort(TopicsByChannelDepth{rank})
+	}else{
+		sort.Sort(TopicsByHourlyPubsize{rank})
 	}
 
 	maxLen := 0
@@ -897,7 +914,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf("WARNING: %s", err)
 		messages = append(messages, pe.Error())
 	}
-	_, channelStats, err := s.ci.GetNSQDStats(producers, "", "")
+	_, channelStats, err := s.ci.GetNSQDStats(producers, "", "", false)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
