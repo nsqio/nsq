@@ -1574,7 +1574,8 @@ func (self *NsqLookupCoordinator) handleReadyForISR(topic string, partition int,
 			coordErr := self.notifyOldNsqdsForTopicMetaInfo(topicInfo, oldCatchupList)
 			if coordErr != nil {
 				coordLog.Infof("notify removing catchup failed : %v", coordErr)
-				topicInfo.CatchupList = oldCatchupList
+				// we can ignore the error since the catchup node maybe down, since
+				// we have enough isr it is safe to remove catchup without notify to the node
 			}
 			coordLog.Infof("removing catchup since the isr is enough: %v", oldCatchupList)
 			err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,

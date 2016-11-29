@@ -589,12 +589,10 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 
 	t0, err = lookupLeadership.GetTopicInfo(topic, 0)
 	test.Nil(t, err)
-	test.Equal(t, len(t0.CatchupList) >= 1, true)
-	test.Equal(t, FindSlice(t0.CatchupList, lostNodeID) != -1, true)
+	test.Equal(t, FindSlice(t0.ISR, lostNodeID) == -1, true)
 	test.Equal(t, len(t0.ISR), t0.Replica)
 	test.Equal(t, t0.Leader, t0.ISR[0])
 
-	oldTcNum := len(nodeInfoList[lostNodeID].nsqdCoord.topicCoords)
 	// clear topic info on failed node, test the reload for failed node
 	nodeInfoList[lostNodeID].nsqdCoord.topicCoords = make(map[string]map[int]*TopicCoordinator)
 
@@ -603,7 +601,6 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	nodeInfoList[lostNodeID].nsqdCoord.leadership.RegisterNsqd(nodeInfoList[lostNodeID].nodeInfo)
 	time.Sleep(time.Second * 5)
 
-	test.Equal(t, len(nodeInfoList[lostNodeID].nsqdCoord.topicCoords), oldTcNum)
 	t0, _ = lookupLeadership.GetTopicInfo(topic, 0)
 	test.Equal(t, len(t0.CatchupList), 0)
 	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
@@ -627,7 +624,8 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	test.Equal(t, t0.Replica, len(t0.ISR))
 	test.Equal(t, t0.Leader, t0.ISR[0])
 	test.NotEqual(t, t0.Leader, lostNodeID)
-	test.Equal(t, len(t0.CatchupList), 1)
+	//test.Equal(t, len(t0.CatchupList), 1)
+	test.Equal(t, FindSlice(t0.ISR, lostNodeID) == -1, true)
 	t0LeaderCoord = nodeInfoList[t0.Leader].nsqdCoord
 	test.NotNil(t, t0LeaderCoord)
 	tc0, coordErr = t0LeaderCoord.getTopicCoord(topic, 0)
