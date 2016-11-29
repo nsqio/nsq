@@ -96,6 +96,7 @@ type NsqLookupCoordinator struct {
 	wg                 sync.WaitGroup
 	nsqdMonitorChan    chan struct{}
 	isClusterUnstable  int32
+	isUpgrading        int32
 	dpm                *DataPlacement
 	balanceWaiting     int32
 }
@@ -632,6 +633,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 
 func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topics []TopicPartitionMetaInfo,
 	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool, fullCheck bool) {
+
 	coordLog.Infof("do check topics...")
 	// TODO: check partition number for topic, maybe failed to create
 	// some partition when creating topic.
@@ -765,6 +767,12 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topic
 			if _, ok := partitions[t.Partition]; !ok {
 				partitions[t.Partition] = time.Now()
 			}
+
+			if atomic.LoadInt32(&self.isUpgrading) == 1 {
+				coordLog.Infof("wait checking topics since the cluster is upgrading")
+				continue
+			}
+
 			if (aliveCount <= t.Replica/2) ||
 				partitions[t.Partition].Before(time.Now().Add(-1*waitMigrateInterval)) {
 				coordLog.Infof("begin migrate the topic :%v", t.GetTopicDesp())

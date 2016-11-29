@@ -56,7 +56,51 @@ func (self *NsqLookupCoordinator) IsMineLeader() bool {
 }
 
 func (self *NsqLookupCoordinator) IsClusterStable() bool {
-	return atomic.LoadInt32(&self.isClusterUnstable) == 0
+	return atomic.LoadInt32(&self.isClusterUnstable) == 0 &&
+		atomic.LoadInt32(&self.isUpgrading) == 0
+}
+
+func (self *NsqLookupCoordinator) SetClusterUpgradeState(upgrading bool) error {
+	if self.leaderNode.GetID() != self.myNode.GetID() {
+		coordLog.Infof("not leader while delete topic")
+		return ErrNotNsqLookupLeader
+	}
+
+	if upgrading {
+		if !atomic.CompareAndSwapInt32(&self.isUpgrading, 0, 1) {
+			coordLog.Infof("the cluster state is already upgrading")
+			return nil
+		}
+		coordLog.Infof("the cluster state has been changed to upgrading")
+	} else {
+		if !atomic.CompareAndSwapInt32(&self.isUpgrading, 1, 0) {
+			return nil
+		}
+		coordLog.Infof("the cluster state has been changed to normal")
+		topics, err := self.leadership.ScanTopics()
+		if err != nil {
+			coordLog.Infof("failed to scan topics: %v", err)
+			return err
+		}
+		for _, topicInfo := range topics {
+			retry := 0
+			for retry < 3 {
+				retry++
+				leaderSession, err := self.leadership.GetTopicLeaderSession(topicInfo.Name, topicInfo.Partition)
+				if err != nil {
+					coordLog.Infof("failed to get topic %v leader session: %v", topicInfo.GetTopicDesp(), err)
+					self.notifyISRTopicMetaInfo(&topicInfo)
+					self.notifyAcquireTopicLeader(&topicInfo)
+					time.Sleep(time.Millisecond * 100)
+				} else {
+					self.notifyTopicLeaderSession(&topicInfo, leaderSession, "")
+					break
+				}
+			}
+		}
+		self.triggerCheckTopics("", 0, time.Second)
+	}
+	return nil
 }
 
 func (self *NsqLookupCoordinator) MoveTopicPartitionDataByManual(topicName string,

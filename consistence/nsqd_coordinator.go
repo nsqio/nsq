@@ -21,6 +21,7 @@ const (
 	MAX_LOG_PULL                     = 10000
 	MAX_LOG_PULL_BYTES               = 1024 * 1024 * 32
 	MAX_TOPIC_RETENTION_SIZE_PER_DAY = 1024 * 1024 * 1024
+	MAX_CATCHUP_RUNNING              = 3
 )
 
 var (
@@ -95,6 +96,7 @@ type NsqdCoordinator struct {
 	wg                     sync.WaitGroup
 	enableBenchCost        bool
 	stopping               int32
+	catchupRunning         int32
 }
 
 func NewNsqdCoordinator(cluster, ip, tcpport, rpcport, extraID string, rootPath string, nsqd *nsqd.NSQD) *NsqdCoordinator {
@@ -1057,6 +1059,12 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		return ErrTopicCatchupAlreadyRunning
 	}
 	defer atomic.StoreInt32(&tc.catchupRunning, 0)
+	myRunning := atomic.AddInt32(&self.catchupRunning, 1)
+	defer atomic.AddInt32(&self.catchupRunning, -1)
+	if myRunning > MAX_CATCHUP_RUNNING {
+		coordLog.Infof("catching too much running: %v", myRunning)
+		return ErrCatchupRunningBusy
+	}
 	coordLog.Infof("local topic begin catchup : %v, join session: %v", topicInfo.GetTopicDesp(), joinISRSession)
 
 	tc.writeHold.Lock()

@@ -173,6 +173,7 @@ var (
 	ErrTopicCatchupAlreadyRunning = NewCoordErr("topic is already running catchup", CoordCommonErr)
 	ErrTopicArgError              = NewCoordErr("topic argument error", CoordCommonErr)
 	ErrOperationExpired           = NewCoordErr("operation has expired since wait too long", CoordCommonErr)
+	ErrCatchupRunningBusy         = NewCoordErr("too much running catchup", CoordCommonErr)
 
 	ErrMissingTopicLog                     = NewCoordErr("missing topic log ", CoordLocalErr)
 	ErrLocalTopicPartitionMismatch         = NewCoordErr("local topic partition not match", CoordLocalErr)

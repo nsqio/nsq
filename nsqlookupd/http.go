@@ -101,6 +101,8 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, debugLog, http_api.V1))
 	router.Handle("POST", "/cluster/node/remove", http_api.Decorate(s.doRemoveClusterDataNode, log, http_api.V1))
+	router.Handle("POST", "/cluster/upgrade/begin", http_api.Decorate(s.doClusterBeginUpgrade, log, http_api.V1))
+	router.Handle("POST", "/cluster/upgrade/done", http_api.Decorate(s.doClusterFinishUpgrade, log, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -634,6 +636,28 @@ func (s *httpServer) doMoveTopicParition(w http.ResponseWriter, req *http.Reques
 	toNode := reqParams.Get("move_to")
 
 	err = s.ctx.nsqlookupd.coordinator.MoveTopicPartitionDataByManual(topicName, pid, moveLeader, fromNode, toNode)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doClusterBeginUpgrade(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	err := s.ctx.nsqlookupd.coordinator.SetClusterUpgradeState(true)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doClusterFinishUpgrade(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+	err := s.ctx.nsqlookupd.coordinator.SetClusterUpgradeState(false)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
