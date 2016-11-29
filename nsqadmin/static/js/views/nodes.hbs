@@ -3,6 +3,12 @@
 
 <div class="row">
     <div class="col-md-12">
+        <h2>Cluster Status {{#if stable}}<a class="label label-primary">Stable</a> {{else}}<a class="label label-warning">Not Stable</a> {{/if}}</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
         <h2>NSQd Nodes ({{collection.length}})</h2>
     </div>
 </div>
