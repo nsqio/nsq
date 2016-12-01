@@ -210,6 +210,9 @@ func truncateFileToOffset(file *os.File, fileStartOffset int64, offset int64) (*
 	if offset > 0 && offset < int64(GetLogDataSize()) {
 		return nil, ErrCommitLogOffsetInvalid
 	}
+	if offset < fileStartOffset {
+		return nil, ErrCommitLogLessThanSegmentStart
+	}
 	err := file.Truncate(offset)
 	if err != nil {
 		s, _ := file.Stat()

@@ -1257,8 +1257,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			}
 			_, localErr = logMgr.TruncateToOffsetV2(0, 0)
 			if localErr != nil {
-				coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", 0, 0, localErr)
 				if localErr != ErrCommitLogEOF {
+					coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", 0, 0, localErr)
 					return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 				}
 			}
