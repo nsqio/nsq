@@ -213,7 +213,7 @@ func truncateFileToOffset(file *os.File, fileStartOffset int64, offset int64) (*
 	err := file.Truncate(offset)
 	if err != nil {
 		s, _ := file.Stat()
-		coordLog.Infof("truncate file %v failed: %v, offset:%v, %v, %v, %v", file, err, offset, s.Name(), s.Size(), s.IsDir())
+		coordLog.Infof("truncate file %v failed: %v, offset:%v, %v ", file, err, offset, s)
 		return nil, err
 	}
 	if offset == fileStartOffset {
