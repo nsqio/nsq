@@ -1225,7 +1225,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		// reset the data file to (lastLog.LogID, lastLog.MsgOffset),
 		// and the next message write position should be updated.
 		localTopic.Lock()
-		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(lastLog.MsgOffset), lastLog.MsgCnt-1)
+		localErr = localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(lastLog.MsgOffset+int64(lastLog.MsgSize)),
+			lastLog.MsgCnt+int64(lastLog.MsgNum)-1)
 		localTopic.Unlock()
 		if localErr != nil {
 			coordLog.Errorf("failed to reset local topic %v data: %v", localTopic.GetFullName(), localErr)
@@ -1237,11 +1238,15 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			go self.removeTopicCoord(localTopic.GetTopicName(), localTopic.GetTopicPart(), true)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
-		_, localErr = logMgr.TruncateToOffsetV2(logIndex, offset)
+		_, localErr = logMgr.TruncateToOffsetV2(logIndex, offset+int64(GetLogDataSize()))
 		if localErr != nil {
 			coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", logIndex, offset, localErr)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
+		// we can avoid pull log for the first match position
+		offset += int64(GetLogDataSize())
+		countNumIndex++
+		coordLog.Infof("local topic %v only sync log from: %v:%v:%v", localTopic.GetFullName(), logIndex, offset, countNumIndex)
 	} else {
 		// need sync the commit log segment start info and the topic diskqueue start info
 		// we should clean local data, since the local start info maybe different with leader start info
@@ -1306,13 +1311,15 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		}
 		countNumIndex, localErr := logMgr.ConvertToCountIndex(logIndex, offset)
 		if localErr != nil {
+			coordLog.Warningf("topic %v error while convert count index:%v, offset: %v:%v", topicInfo.GetTopicDesp(),
+				localErr, logIndex, offset)
 			return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 		}
 		logs, dataList, rpcErr := c.PullCommitLogsAndData(topicInfo.Name, topicInfo.Partition,
 			countNumIndex, logIndex, offset, MAX_LOG_PULL)
 		if rpcErr != nil {
 			// if not network error, something wrong with commit log file, we need return to abort.
-			coordLog.Infof("topic %v error while get logs :%v, offset: %v:%v:%v", topicInfo.GetTopicDesp(),
+			coordLog.Warningf("topic %v error while get logs :%v, offset: %v:%v:%v", topicInfo.GetTopicDesp(),
 				rpcErr, logIndex, offset, countNumIndex)
 			if retryCnt > MAX_CATCHUP_RETRY {
 				return &CoordErr{rpcErr.Error(), RpcCommonErr, CoordNetErr}
@@ -1393,6 +1400,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			if err != nil {
 				coordLog.Infof("try get stats from leader failed: %v", err)
 			} else {
+				// sync the history stats to make sure balance stats data is ok
+				// sync channels from leader
 				localTopic.GetDetailStats().ResetHistoryInitPub(localTopic.TotalDataSize())
 				localTopic.GetDetailStats().UpdateHistory(stat.TopicHourlyPubDataList[topicInfo.GetTopicDesp()])
 				chList, ok := stat.ChannelList[topicInfo.GetTopicDesp()]
@@ -1420,8 +1429,6 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			}
 			break
 		} else if synced && joinISRSession != "" {
-			// TODO: maybe need sync channels from leader
-			// should sync the history stats to make sure balance stats data is ok
 			localTopic.ForceFlush()
 			logMgr.FlushCommitLogs()
 			logMgr.switchForMaster(false)
