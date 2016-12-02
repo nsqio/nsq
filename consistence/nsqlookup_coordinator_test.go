@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ type fakeTopicData struct {
 }
 
 type FakeNsqlookupLeadership struct {
+	dataMutex            sync.Mutex
 	fakeTopics           map[string]map[int]*fakeTopicData
 	fakeTopicMetaInfo    map[string]TopicMetaInfo
 	fakeNsqdNodes        map[string]NsqdNodeInfo
@@ -112,7 +114,9 @@ func (self *FakeNsqlookupLeadership) UpdateLookupEpoch(oldGen EpochType) (EpochT
 }
 
 func (self *FakeNsqlookupLeadership) addFakedNsqdNode(n NsqdNodeInfo) {
+	self.dataMutex.Lock()
 	self.fakeNsqdNodes[n.GetID()] = n
+	self.dataMutex.Unlock()
 	coordLog.Infof("add fake node: %v", n)
 	select {
 	case self.nodeChanged <- struct{}{}:
@@ -123,7 +127,9 @@ func (self *FakeNsqlookupLeadership) addFakedNsqdNode(n NsqdNodeInfo) {
 }
 
 func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
+	self.dataMutex.Lock()
 	delete(self.fakeNsqdNodes, nid)
+	self.dataMutex.Unlock()
 	coordLog.Infof("remove fake node: %v", nid)
 	select {
 	case self.nodeChanged <- struct{}{}:
@@ -134,10 +140,12 @@ func (self *FakeNsqlookupLeadership) removeFakedNsqdNode(nid string) {
 
 func (self *FakeNsqlookupLeadership) GetNsqdNodes() ([]NsqdNodeInfo, error) {
 	nodes := make([]NsqdNodeInfo, 0)
+	self.dataMutex.Lock()
 	for _, v := range self.fakeNsqdNodes {
 		n := v
 		nodes = append(nodes, n)
 	}
+	self.dataMutex.Unlock()
 
 	return nodes, nil
 }
@@ -150,10 +158,12 @@ func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, s
 			return
 		case <-self.nodeChanged:
 			nodes := make([]NsqdNodeInfo, 0)
+			self.dataMutex.Lock()
 			for _, v := range self.fakeNsqdNodes {
 				n := v
 				nodes = append(nodes, n)
 			}
+			self.dataMutex.Unlock()
 			select {
 			case nsqds <- nodes:
 			case <-self.exitChan:
@@ -165,15 +175,19 @@ func (self *FakeNsqlookupLeadership) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, s
 
 func (self *FakeNsqlookupLeadership) ScanTopics() ([]TopicPartitionMetaInfo, error) {
 	alltopics := make([]TopicPartitionMetaInfo, 0)
+	self.dataMutex.Lock()
 	for _, v := range self.fakeTopics {
 		for _, topicInfo := range v {
 			alltopics = append(alltopics, *topicInfo.metaInfo)
 		}
 	}
+	self.dataMutex.Unlock()
 	return alltopics, nil
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (*TopicPartitionMetaInfo, error) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return nil, ErrTopicNotCreated
@@ -187,6 +201,8 @@ func (self *FakeNsqlookupLeadership) GetTopicInfo(topic string, partition int) (
 }
 
 func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partition int) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return ErrTopicNotCreated
@@ -210,6 +226,8 @@ func (self *FakeNsqlookupLeadership) CreateTopicPartition(topic string, partitio
 }
 
 func (self *FakeNsqlookupLeadership) CreateTopic(topic string, meta *TopicMetaInfo) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		t = make(map[int]*fakeTopicData)
@@ -223,11 +241,15 @@ func (self *FakeNsqlookupLeadership) CreateTopic(topic string, meta *TopicMetaIn
 }
 
 func (self *FakeNsqlookupLeadership) IsExistTopic(topic string) (bool, error) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	_, ok := self.fakeTopics[topic]
 	return ok, nil
 }
 
 func (self *FakeNsqlookupLeadership) IsExistTopicPartition(topic string, partition int) (bool, error) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return false, nil
@@ -237,6 +259,8 @@ func (self *FakeNsqlookupLeadership) IsExistTopicPartition(topic string, partiti
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicMetaInfo(topic string) (TopicMetaInfo, EpochType, error) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok || len(t) == 0 {
 		return TopicMetaInfo{}, 0, nil
@@ -245,6 +269,8 @@ func (self *FakeNsqlookupLeadership) GetTopicMetaInfo(topic string) (TopicMetaIn
 }
 
 func (self *FakeNsqlookupLeadership) UpdateTopicMetaInfo(topic string, meta *TopicMetaInfo, oldGen EpochType) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	_, ok := self.fakeTopics[topic]
 	if !ok {
 		return errors.New("topic not exist")
@@ -256,11 +282,15 @@ func (self *FakeNsqlookupLeadership) UpdateTopicMetaInfo(topic string, meta *Top
 }
 
 func (self *FakeNsqlookupLeadership) DeleteWholeTopic(topic string) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	delete(self.fakeTopics, topic)
 	return nil
 }
 
 func (self *FakeNsqlookupLeadership) DeleteTopic(topic string, partition int) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	delete(self.fakeTopics[topic], partition)
 	self.clusterEpoch++
 	return nil
@@ -268,6 +298,8 @@ func (self *FakeNsqlookupLeadership) DeleteTopic(topic string, partition int) er
 
 // update leader, isr, epoch
 func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition int, topicInfo *TopicPartitionReplicaInfo, oldGen EpochType) error {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return ErrTopicNotCreated
@@ -289,6 +321,8 @@ func (self *FakeNsqlookupLeadership) UpdateTopicNodeInfo(topic string, partition
 }
 
 func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, partition int, leader *TopicLeaderSession) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return
@@ -315,6 +349,8 @@ func (self *FakeNsqlookupLeadership) updateTopicLeaderSession(topic string, part
 }
 
 func (self *FakeNsqlookupLeadership) GetTopicLeaderSession(topic string, partition int) (*TopicLeaderSession, error) {
+	self.dataMutex.Lock()
+	defer self.dataMutex.Unlock()
 	t, ok := self.fakeTopics[topic]
 	if !ok {
 		return nil, ErrLeaderSessionNotExist
@@ -357,7 +393,13 @@ func (self *FakeNsqlookupLeadership) RegisterNsqd(nodeData *NsqdNodeInfo) error 
 }
 
 func (self *FakeNsqlookupLeadership) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
-	for name, tps := range self.fakeTopics {
+	self.dataMutex.Lock()
+	allTopics := make(map[string]map[int]*fakeTopicData)
+	for k, v := range self.fakeTopics {
+		allTopics[k] = v
+	}
+	self.dataMutex.Unlock()
+	for name, tps := range allTopics {
 		for pid, t := range tps {
 			if t.leaderSession != nil && t.leaderSession.LeaderNode != nil {
 				if t.leaderSession.LeaderNode.GetID() == nodeData.GetID() {

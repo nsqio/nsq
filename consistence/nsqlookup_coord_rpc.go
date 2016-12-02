@@ -3,7 +3,6 @@ package consistence
 import (
 	"github.com/absolute8511/gorpc"
 	"net"
-	"os"
 	"time"
 )
 
@@ -70,7 +69,7 @@ func (self *NsqLookupCoordRpcServer) start(ip, port string) error {
 	e := self.rpcServer.Start()
 	if e != nil {
 		coordLog.Errorf("listen rpc error : %v", e)
-		os.Exit(1)
+		panic(e)
 	}
 
 	coordLog.Infof("nsqlookup coordinator rpc listen at : %v", self.rpcServer.Listener.ListenAddr())
