@@ -447,3 +447,9 @@ type LookupdNodes struct {
 	LeaderNode NsqLookupdNodeInfo   `json:"lookupdleader"`
 	AllNodes   []NsqLookupdNodeInfo `json:"lookupdnodes"`
 }
+
+type NodeHourlyPubsize struct {
+	TopicName	string	`json:"topic_name"`
+	TopicPartition	string	`json:"topic_partition"`
+	HourlyPubSize	int64	`json:"hourly_pub_size"`
+}

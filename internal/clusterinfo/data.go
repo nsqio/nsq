@@ -598,6 +598,53 @@ func (c *ClusterInfo) ListAllLookupdNodes(lookupdHTTPAddrs []string) (*LookupdNo
 	return &resp, nil
 }
 
+func (c *ClusterInfo) GetNSQDAllMessageHistoryStats(producers Producers) (map[string]int64, error) {
+	var errs []error
+
+	nodeHistoryStatsMap := make(map[string]int64)
+	type respType struct {
+		Topics []*TopicStats `json:"topics"`
+	}
+
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, p := range producers {
+		wg.Add(1)
+		go func(p *Producer) {
+			defer wg.Done()
+			addr := p.HTTPAddress()
+			endpoint := fmt.Sprintf("http://%s/message/historystats", addr)
+			var nodeHistoryStatsResp struct {
+				HistoryStats []*NodeHourlyPubsize        `json:"node_hourly_pub_size_stats"`
+			}
+			err := c.client.NegotiateV1(endpoint, &nodeHistoryStatsResp)
+			c.logf("CI: querying nsqd %s resp: %v", endpoint, nodeHistoryStatsResp)
+			if err != nil {
+				lock.Lock()
+				errs = append(errs, err)
+				lock.Unlock()
+			}
+			for _, topicMsgStat := range nodeHistoryStatsResp.HistoryStats {
+				lock.Lock()
+				_, ok := nodeHistoryStatsMap[topicMsgStat.TopicName]
+				if !ok {
+					nodeHistoryStatsMap[topicMsgStat.TopicName] = topicMsgStat.HourlyPubSize
+				} else {
+					nodeHistoryStatsMap[topicMsgStat.TopicName] += topicMsgStat.HourlyPubSize
+				}
+				lock.Unlock()
+			}
+		}(p)
+	}
+	wg.Wait()
+	if len(errs) == len(producers) {
+		return nil, fmt.Errorf("Failed to query any nsqd for node topic message history: %s", ErrList(errs))
+	}
+
+	return nodeHistoryStatsMap, nil
+}
+
 func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTopic string, par string) ([]int64, error) {
 	//aggregate partition dist data from producers
 	endpoint := fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", nsqdHTTPAddr, selectedTopic, par)
@@ -692,7 +739,7 @@ func (c *ClusterInfo) GetClusterInfo(lookupdAdresses []string) (*ClusterNodeInfo
 //
 // if selectedTopic is empty, this will return stats for *all* topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
-func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, sortBy string) ([]*TopicStats, map[string]*ChannelStats, error) {
+func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, sortBy string, leaderOnly bool) ([]*TopicStats, map[string]*ChannelStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var topicStatsList TopicStatsList
@@ -710,9 +757,9 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 			defer wg.Done()
 
 			addr := p.HTTPAddress()
-			endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+			endpoint := fmt.Sprintf("http://%s/stats?format=json&leaderOnly=%t", addr, leaderOnly)
 			if selectedTopic != "" {
-				endpoint = fmt.Sprintf("http://%s/stats?format=json&topic=%s", addr, selectedTopic)
+				endpoint = fmt.Sprintf("http://%s/stats?format=json&topic=%s&leaderOnly=%t", addr, selectedTopic, leaderOnly)
 			}
 			c.logf("CI: querying nsqd %s", endpoint)
 

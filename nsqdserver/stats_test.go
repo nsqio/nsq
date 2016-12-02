@@ -32,7 +32,7 @@ func TestStats(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	stats := nsqd.GetStats()
+	stats := nsqd.GetStats(false)
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, len(stats), 1)

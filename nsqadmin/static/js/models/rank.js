@@ -21,11 +21,11 @@ var Rank = Backbone.Model.extend({
                 case 'channel-depth':
                     data['rank_value'] = data['total_channel_depth'];
                     break;
-                case 'message-count':
-                    data['rank_value'] = data['message_count'];
+                case 'hourly-pubsize':
+                    data['rank_value'] = data['hourly_pubsize'];
                     break;
                 default:
-                    data['rank_value'] = data['hourly_pubsize'];
+                    data['rank_value'] = data['message_count'];
             }
             return data;
         });

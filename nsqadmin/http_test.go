@@ -458,13 +458,47 @@ func TestHTTPGetStatisticsRanks(t *testing.T) {
 
 		var aRank Rank
 		data, err := ioutil.ReadAll(resp.Body)
+		assert(t, err == nil, "Fail to read response.", nil)
 		if err == nil && data != nil {
 			err = json.Unmarshal(data, &aRank)
 		}
+	}
+}
 
-		t.Logf("rankName: %s", aRank.RankName);
-		for _, item := range aRank.Top10 {
-			t.Logf("topicName: %s, totalChannelDepth: %d, messageCount: %d, hourlyPubsize: %d;", item.TopicName, item.TotalChannelDepth, item.MessageCount, item.HourlyPubsize)
-		}
+func TestHTTPGetClusterStableInfo(t *testing.T){
+	dataPath, _, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/api/cluster/stats", nsqadmin1.RealHTTPAddr())
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+
+	type NodeStat struct {
+		Hostname		string		`json:"hostname"`
+		BroadcastAddress	string		`json:"broadcast_address"`
+		TCPPort			int		`json:"tcp_port"`
+		HTTPPort		int		`json:"http_port"`
+		LeaderLoadFactor	float64		`json:"leader_load_factor"`
+		NodeLoadFactor		float64		`json:"node_load_factor"`
+	}
+
+	type ClusterInfo struct {
+		Stable		bool		`json:"stable"`
+		NodeStatList	[]*NodeStat	`json:"node_stat_list"`
+	}
+
+	var aClusterStats ClusterInfo
+	data, err := ioutil.ReadAll(resp.Body)
+	assert(t, err==nil, "Fail to read form response.", nil)
+	if err == nil && data != nil {
+		err = json.Unmarshal(data, &aClusterStats)
 	}
 }

@@ -162,11 +162,14 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQD) GetStats() []TopicStats {
+func (n *NSQD) GetStats(leaderOnly bool) []TopicStats {
 	n.RLock()
 	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for _, topicParts := range n.topicMap {
 		for _, t := range topicParts {
+			if leaderOnly && t.IsWriteDisabled() {
+				continue
+			}
 			realTopics = append(realTopics, t)
 		}
 	}

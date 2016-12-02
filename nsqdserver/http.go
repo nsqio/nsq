@@ -23,6 +23,7 @@ import (
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
 )
 
 type httpServer struct {
@@ -646,26 +647,65 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 	topicName := reqParams.Get("topic")
 	topicPartStr := reqParams.Get("partition")
 	topicPart, err := strconv.Atoi(topicPartStr)
-	if err != nil {
+	if err != nil && topicName != "" && topicPartStr != "" {
 		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
-	t, err := s.ctx.getExistingTopic(topicName, topicPart)
-	if err != nil {
-		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+	if topicName == "" && topicPartStr == "" {
+
+		topicStats := s.ctx.getStats(true)
+		var topicHourlyPubStatsList []*clusterinfo.NodeHourlyPubsize
+		for _, topicStat := range topicStats {
+			partitionNum, err := strconv.Atoi(topicStat.TopicPartition)
+			if err != nil {
+				nsqd.NsqLogger().LogErrorf("failed to parse partition string %s - %s", topicStat.TopicPartition, err)
+				continue
+			}
+			topic, err := s.ctx.getExistingTopic(topicStat.TopicName, partitionNum)
+
+			if err != nil {
+				nsqd.NsqLogger().LogErrorf("failure to get topic  %s:%s - %s", topicStat.TopicName, topicStat.TopicPartition, err)
+				continue
+			}
+			pubhs := topic.GetDetailStats().GetHourlyStats()
+
+			for _, hps := range pubhs {
+				nsqd.NsqLogger().Logf("%s:%s hourly pubsize: %d", topicStat.TopicName, topicStat.TopicPartition, hps)
+			}
+
+			cur := time.Now().Hour() + 2 + 21
+			latestHourlyPubsize := pubhs[cur % len(pubhs)]
+			nsqd.NsqLogger().Logf("%s:%s hourly pubsize: %d", topicStat.TopicName, topicStat.TopicPartition, latestHourlyPubsize)
+			aTopicHourlyPubStat := &clusterinfo.NodeHourlyPubsize{
+				TopicName:	topicStat.TopicName,
+				TopicPartition:	topicStat.TopicPartition,
+				HourlyPubSize:	latestHourlyPubsize,
+			}
+			topicHourlyPubStatsList = append(topicHourlyPubStatsList, aTopicHourlyPubStat)
+		}
+
+		return struct {
+			NodehourlyPubsizeStats	[]*clusterinfo.NodeHourlyPubsize	`json:"node_hourly_pub_size_stats"`
+		}{topicHourlyPubStatsList}, nil
+	}else {
+
+		t, err := s.ctx.getExistingTopic(topicName, topicPart)
+		if err != nil {
+			return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+		}
+		pubhs := t.GetDetailStats().GetHourlyStats()
+		// since the newest 2 hours data maybe update during get, we ignore the newest 2 points
+		cur := time.Now().Hour() + 2
+		pubhsNew := make([]int64, 0, 22)
+		for len(pubhsNew) < 22 {
+			pubhsNew = append(pubhsNew, pubhs[cur % len(pubhs)])
+			cur++
+		}
+		return struct {
+			HourlyPubSize []int64 `json:"hourly_pub_size"`
+		}{pubhsNew}, nil
 	}
-	pubhs := t.GetDetailStats().GetHourlyStats()
-	// since the newest 2 hours data maybe update during get, we ignore the newest 2 points
-	cur := time.Now().Hour() + 2
-	pubhsNew := make([]int64, 0, 22)
-	for len(pubhsNew) < 22 {
-		pubhsNew = append(pubhsNew, pubhs[cur%len(pubhs)])
-		cur++
-	}
-	return struct {
-		HourlyPubSize []int64 `json:"hourly_pub_size"`
-	}{pubhsNew}, nil
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -725,9 +765,13 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	topicName := reqParams.Get("topic")
 	topicPart := reqParams.Get("partition")
 	channelName := reqParams.Get("channel")
+	leaderOnlyStr := reqParams.Get("leaderOnly")
+	var leaderOnly bool
+	leaderOnly, _ = strconv.ParseBool(leaderOnlyStr)
+
 	jsonFormat := formatString == "json"
 
-	stats := s.ctx.getStats()
+	stats := s.ctx.getStats(leaderOnly)
 	health := s.ctx.getHealth()
 	startTime := s.ctx.getStartTime()
 	uptime := time.Since(startTime)
