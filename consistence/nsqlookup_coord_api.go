@@ -168,8 +168,8 @@ func (self *NsqLookupCoordinator) DeleteTopicForce(topic string, partition strin
 	begin := time.Now()
 	for !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
 		coordLog.Infof("waiting check topic finish")
-		time.Sleep(time.Millisecond * 100)
-		if time.Since(begin) > time.Second*2 {
+		time.Sleep(time.Millisecond * 200)
+		if time.Since(begin) > time.Second*5 {
 			return ErrClusterUnstable
 		}
 	}
@@ -217,9 +217,9 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 
 	begin := time.Now()
 	for !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
-		coordLog.Infof("waiting check topic finish")
-		time.Sleep(time.Millisecond * 100)
-		if time.Since(begin) > time.Second*2 {
+		coordLog.Infof("delete topic %v waiting check topic finish", topic)
+		time.Sleep(time.Millisecond * 200)
+		if time.Since(begin) > time.Second*5 {
 			return ErrClusterUnstable
 		}
 	}
@@ -228,7 +228,7 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 	coordLog.Infof("delete topic: %v, with partition: %v", topic, partition)
 	if ok, err := self.leadership.IsExistTopic(topic); !ok {
 		coordLog.Infof("no topic : %v", err)
-		return errors.New("Topic not exist")
+		return ErrKeyNotFound
 	}
 
 	if partition == "**" {

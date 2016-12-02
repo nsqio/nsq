@@ -579,7 +579,7 @@ func (self *NsqLookupCoordinator) triggerCheckTopics(topic string, part int, del
 	case self.checkTopicFailChan <- TopicNameInfo{topic, part}:
 	case <-self.stopChan:
 		return
-	case <-time.After(time.Second * 3):
+	case <-time.After(time.Second):
 		return
 	}
 }
@@ -617,6 +617,7 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, failedInfo *TopicNameInfo,
 	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool, fullCheck bool) {
 
+	time.Sleep(time.Millisecond * 10)
 	coordLog.Infof("do check topics...")
 	if !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
 		return
