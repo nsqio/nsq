@@ -244,6 +244,12 @@ func (self *NsqLookupCoordinator) notifyLeaderChanged(monitorChan chan struct{})
 		self.nodesMutex.Lock()
 		self.removingNodes = make(map[string]string)
 		self.nodesMutex.Unlock()
+		self.rpcMutex.Lock()
+		for nid, c := range self.nsqdRpcClients {
+			c.Close()
+			delete(self.nsqdRpcClients, nid)
+		}
+		self.rpcMutex.Unlock()
 		return
 	}
 	coordLog.Infof("I am master now.")

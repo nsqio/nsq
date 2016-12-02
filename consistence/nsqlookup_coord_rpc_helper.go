@@ -9,6 +9,7 @@ import (
 // some failed rpc means lost, we should always try to notify to the node when they are available
 func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 	ticker := time.NewTicker(time.Second)
+	checkConn := 0
 	defer ticker.Stop()
 	for {
 		select {
@@ -27,6 +28,20 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 			}
 			self.failedRpcList = self.failedRpcList[0:0]
 			self.failedRpcMutex.Unlock()
+
+			checkConn++
+			if checkConn%30 == 0 {
+				self.rpcMutex.Lock()
+				for nid, c := range self.nsqdRpcClients {
+					_, nodeOK := currentNodes[nid]
+					if !nodeOK || (c.c != nil && c.c.ShouldRemoved()) {
+						c.Close()
+						delete(self.nsqdRpcClients, nid)
+					}
+				}
+				self.rpcMutex.Unlock()
+			}
+
 			epoch := self.leaderNode.Epoch
 			for _, info := range failList {
 				// check if exiting
