@@ -92,6 +92,10 @@ func (self *NsqLookupdEtcdMgr) Register(value *NsqLookupdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	if self.refreshStopCh != nil {
+		close(self.refreshStopCh)
+	}
+
 	self.leaderStr = string(valueB)
 	self.nodeKey = self.createLookupdPath(value)
 	self.nodeValue = string(valueB)
@@ -99,16 +103,17 @@ func (self *NsqLookupdEtcdMgr) Register(value *NsqLookupdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	self.refreshStopCh = make(chan bool, 1)
 	// start to refresh
-	go self.refresh()
+	go self.refresh(self.refreshStopCh)
 
 	return nil
 }
 
-func (self *NsqLookupdEtcdMgr) refresh() {
+func (self *NsqLookupdEtcdMgr) refresh(stopC <-chan bool) {
 	for {
 		select {
-		case <-self.refreshStopCh:
+		case <-stopC:
 			return
 		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
 			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
@@ -124,14 +129,16 @@ func (self *NsqLookupdEtcdMgr) refresh() {
 }
 
 func (self *NsqLookupdEtcdMgr) Unregister(value *NsqLookupdNodeInfo) error {
-	_, err := self.client.Delete(self.createLookupdPath(value), false)
-	if err != nil {
-		return err
-	}
 	// stop to refresh
 	if self.refreshStopCh != nil {
 		close(self.refreshStopCh)
 		self.refreshStopCh = nil
+	}
+
+	_, err := self.client.Delete(self.createLookupdPath(value), false)
+	if err != nil {
+		coordLog.Warningf("cluser[%s] node[%s] unregister failed: %v", self.clusterID, value, err)
+		return err
 	}
 
 	return nil

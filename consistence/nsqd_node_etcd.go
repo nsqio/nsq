@@ -66,14 +66,15 @@ func (self *NsqdEtcdMgr) RegisterNsqd(nodeData *NsqdNodeInfo) error {
 	if err != nil {
 		return err
 	}
+	if self.refreshStopCh != nil {
+		close(self.refreshStopCh)
+	}
+
 	self.nodeKey = self.createNsqdNodePath(nodeData)
 	self.nodeValue = string(value)
 	_, err = self.client.Set(self.nodeKey, self.nodeValue, ETCD_TTL)
 	if err != nil {
 		return err
-	}
-	if self.refreshStopCh != nil {
-		close(self.refreshStopCh)
 	}
 	coordLog.Infof("registered new node: %v", nodeData)
 	self.refreshStopCh = make(chan bool, 1)
@@ -105,20 +106,16 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 	self.Lock()
 	defer self.Unlock()
 
-	// clear
-	//for k, v := range self.topicLockMap {
-	//	v.Unlock()
-	//	delete(self.topicLockMap, k)
-	//}
-
-	_, err := self.client.Delete(self.createNsqdNodePath(nodeData), false)
-	if err != nil {
-		return err
-	}
 	// stop refresh
 	if self.refreshStopCh != nil {
 		close(self.refreshStopCh)
 		self.refreshStopCh = nil
+	}
+
+	_, err := self.client.Delete(self.createNsqdNodePath(nodeData), false)
+	if err != nil {
+		coordLog.Warningf("cluser[%s] node[%s] unregister failed: %v", self.clusterID, nodeData, err)
+		return err
 	}
 
 	coordLog.Infof("cluser[%s] node[%s] unregistered", self.clusterID, nodeData)
