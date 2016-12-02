@@ -121,7 +121,7 @@ func (self *NsqdCoordRpcServer) start(ip, port string) (string, error) {
 	e := self.rpcServer.Start()
 	if e != nil {
 		coordLog.Errorf("start rpc server error : %v", e)
-		os.Exit(1)
+		panic(e)
 	}
 
 	coordLog.Infof("nsqd coordinator rpc listen at : %v", self.rpcServer.Listener.ListenAddr())
