@@ -70,8 +70,8 @@ func (c *context) setHealth(err error) {
 	c.nsqd.SetHealth(err)
 }
 
-func (c *context) getStats() []nsqd.TopicStats {
-	return c.nsqd.GetStats()
+func (c *context) getStats(leaderOnly bool) []nsqd.TopicStats {
+	return c.nsqd.GetStats(leaderOnly)
 }
 
 func (c *context) GetTlsConfig() *tls.Config {

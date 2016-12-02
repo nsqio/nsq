@@ -597,3 +597,134 @@ func TestHTTPerrors(t *testing.T) {
 	test.Equal(t, resp.StatusCode, 404)
 	test.Equal(t, string(body), `{"message":"NOT_FOUND"}`)
 }
+
+func TestNSQDStatsFilter(t *testing.T) {
+
+	t.Logf("Starts nsqd...")
+	nsqdOpts := nsqd.NewOptions()
+
+	nsqdOpts.Logger = newTestLogger(t)
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	nsqdOpts.DataPath = tmpDir
+
+	_, nsqdHTTPAddr, nsqd, _ := mustStartNSQD(nsqdOpts)
+	t.Logf("nsqd started")
+
+	//delete existing topics if there is any
+	topicCnt := 0
+	for _, topic := range nsqd.GetStats(false) {
+		parNum, _ := strconv.Atoi(topic.TopicPartition)
+		nsqd.DeleteExistingTopic(topic.TopicName, parNum)
+		topicCnt ++
+	}
+	t.Logf("%d topic(s) deleted.", topicCnt)
+	topicName := fmt.Sprintf("test_nsqd_stats_filter%d", time.Now().UnixNano());
+	nsqd.GetTopic(topicName, 0)
+	defer nsqd.DeleteExistingTopic(topicName, 0)
+
+	topicNameAnother := fmt.Sprintf("test_nsqd_stats_filter_another%d", time.Now().UnixNano());
+	nsqd.GetTopic(topicNameAnother, 0)
+	topic_another, err := nsqd.GetExistingTopic(topicNameAnother, 0)
+	topic_another.DisableForSlave()
+	defer nsqd.DeleteExistingTopic(topicNameAnother, 0)
+
+	time.Sleep(500 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/stats?format=json", nsqdHTTPAddr)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+	resp, err := client.Do(req)
+	test.Assert(t, err == nil, "error in first response.")
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	type NSQDStats struct {
+		TopicStats	[]map[string]interface{}	`json:"topics"`
+		Version		string				`json:"version"`
+		Health		string				`json:"health"`
+		StartTime	int64				`json:"start_time"`
+	}
+
+	var stats NSQDStats
+	json.Unmarshal(body, &stats)
+	t.Logf("topic len in first response: %d", len(stats.TopicStats))
+	test.Assert(t, len(stats.TopicStats) == 2, "topic number does not match.")
+
+	url = fmt.Sprintf("http://%s/stats?format=json&leaderOnly=true", nsqdHTTPAddr)
+	req, _ = http.NewRequest("GET", url, nil)
+	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	test.Assert(t, err == nil, "error in second response.")
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var statFiltered NSQDStats
+	json.Unmarshal(body, &statFiltered)
+	t.Logf("topic len: %d", len(statFiltered.TopicStats))
+	test.Assert(t, len(statFiltered.TopicStats) == 1, "topic number is not empty.")
+}
+
+func BenchmarkFetchNodeHourlyPubsize(b *testing.B) {
+	b.StopTimer()
+	lgr := newTestLogger(b)
+
+	nsqdOpts := nsqd.NewOptions()
+	nsqdOpts.TCPAddress = "127.0.0.1:0"
+	nsqdOpts.HTTPAddress = "127.0.0.1:0"
+	nsqdOpts.BroadcastAddress = "127.0.0.1"
+	nsqdOpts.Logger = lgr
+
+	_, _, nsqd1, nsqd1Srv := mustStartNSQD(nsqdOpts)
+	b.Logf("nsqd started")
+
+	time.Sleep(100 * time.Millisecond)
+
+	var topicNames []string
+	for i := 0; i < 1000; i++ {
+		//create sample topics
+		topicName := fmt.Sprintf("Topic-Benchmark%04d", i)
+		nsqd1.GetTopic(topicName, 0)
+		topicNames = append(topicNames, topicName)
+		b.Logf("Topic %s created.", topicName)
+	}
+
+	type TopicHourlyPubsizeStat struct {
+		TopicName	string	`json:"topic_name"`
+		TopicPartition	string	`json:"topic_partition"`
+		HourlyPubsize	int64	`json:"hourly_pub_size"`
+	}
+
+	type NodeHourlyPubsizeStats struct {
+		TopicHourlyPubsizeList	[]*TopicHourlyPubsizeStat	`json:"node_hourly_pub_size_stats"`
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		endpoint := fmt.Sprintf("http://%s/message/historystats", nsqd1Srv.ctx.httpAddr.String())
+		req, err := http.NewRequest("GET", endpoint, nil)
+		if err != nil {
+			b.Errorf("Fail to get message history from %s - %s", endpoint, err)
+			b.Fail()
+		}
+		client := http.Client{}
+		resp, err := client.Do(req)
+		var nodeHourlyPubsizeStats	NodeHourlyPubsizeStats
+		body, _ := ioutil.ReadAll(resp.Body)
+		json.Unmarshal(body, &nodeHourlyPubsizeStats)
+		resp.Body.Close()
+		b.Logf("Node topics hourly pub size list: %d", len(nodeHourlyPubsizeStats.TopicHourlyPubsizeList))
+	}
+	b.StopTimer()
+
+	//cleanup
+	for _, topicName := range topicNames {
+		err := nsqd1.DeleteExistingTopic(topicName, 0)
+		if err != nil {
+			b.Logf("Fail to delete topic: %s", topicName)
+		}
+	}
+}

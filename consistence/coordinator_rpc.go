@@ -539,7 +539,7 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 	var topicStats []nsqd.TopicStats
 	if topic == "" {
 		// all topic status
-		topicStats = self.nsqdCoord.localNsqd.GetStats()
+		topicStats = self.nsqdCoord.localNsqd.GetStats(false)
 	} else {
 		topicStats = self.nsqdCoord.localNsqd.GetTopicStats(topic)
 	}
