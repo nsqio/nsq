@@ -99,6 +99,7 @@ type NsqLookupCoordinator struct {
 	isUpgrading        int32
 	dpm                *DataPlacement
 	balanceWaiting     int32
+	doChecking         int32
 }
 
 func NewNsqLookupCoordinator(cluster string, n *NsqLookupdNodeInfo, opts *Options) *NsqLookupCoordinator {
@@ -603,44 +604,46 @@ func (self *NsqLookupCoordinator) checkTopics(monitorChan chan struct{}) {
 			if self.leadership == nil {
 				continue
 			}
-			topics, commonErr := self.leadership.ScanTopics()
-			if commonErr != nil {
-				coordLog.Infof("scan topics failed. %v", commonErr)
-				continue
-			}
-			coordLog.Debugf("scan found topics: %v", topics)
-			self.doCheckTopics(monitorChan, topics, waitingMigrateTopic, lostLeaderSessions, true)
+			self.doCheckTopics(monitorChan, nil, waitingMigrateTopic, lostLeaderSessions, true)
 		case failedInfo := <-self.checkTopicFailChan:
 			if self.leadership == nil {
 				continue
 			}
-			topics := []TopicPartitionMetaInfo{}
-			var err error
-			if failedInfo.TopicName == "" {
-				topics, err = self.leadership.ScanTopics()
-				if err != nil {
-					coordLog.Infof("scan topics failed. %v", err)
-					continue
-				}
-			} else {
-				coordLog.Infof("check single topic : %v ", failedInfo)
-				var t *TopicPartitionMetaInfo
-				t, err = self.leadership.GetTopicInfo(failedInfo.TopicName, failedInfo.TopicPartition)
-				if err != nil {
-					coordLog.Infof("get topic info failed: %v, %v", failedInfo, err)
-					continue
-				}
-				topics = append(topics, *t)
-			}
-			self.doCheckTopics(monitorChan, topics, waitingMigrateTopic, lostLeaderSessions, failedInfo.TopicName == "")
+			self.doCheckTopics(monitorChan, &failedInfo, waitingMigrateTopic, lostLeaderSessions, failedInfo.TopicName == "")
 		}
 	}
 }
 
-func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, topics []TopicPartitionMetaInfo,
+func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, failedInfo *TopicNameInfo,
 	waitingMigrateTopic map[string]map[int]time.Time, lostLeaderSessions map[string]bool, fullCheck bool) {
 
 	coordLog.Infof("do check topics...")
+	if !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&self.doChecking, 0)
+
+	topics := []TopicPartitionMetaInfo{}
+	if failedInfo == nil || failedInfo.TopicName == "" {
+		var commonErr error
+		topics, commonErr = self.leadership.ScanTopics()
+		if commonErr != nil {
+			coordLog.Infof("scan topics failed. %v", commonErr)
+			return
+		}
+		coordLog.Debugf("scan found topics: %v", topics)
+	} else {
+		var err error
+		coordLog.Infof("check single topic : %v ", failedInfo)
+		var t *TopicPartitionMetaInfo
+		t, err = self.leadership.GetTopicInfo(failedInfo.TopicName, failedInfo.TopicPartition)
+		if err != nil {
+			coordLog.Infof("get topic info failed: %v, %v", failedInfo, err)
+			return
+		}
+		topics = append(topics, *t)
+	}
+
 	// TODO: check partition number for topic, maybe failed to create
 	// some partition when creating topic.
 	currentNodes, currentNodesEpoch := self.getCurrentNodesWithRemoving()

@@ -628,7 +628,8 @@ func (self *NsqLookupdEtcdMgr) UpdateTopicMetaInfo(topic string, meta *TopicMeta
 func (self *NsqLookupdEtcdMgr) DeleteWholeTopic(topic string) error {
 	self.tmiMutex.Lock()
 	delete(self.topicMetaMap, topic)
-	_, err := self.client.Delete(self.createTopicPath(topic), true)
+	rsp, err := self.client.Delete(self.createTopicPath(topic), true)
+	coordLog.Infof("delete whole topic: %v, %v, %v", topic, err, rsp)
 	self.tmiMutex.Unlock()
 	return err
 }

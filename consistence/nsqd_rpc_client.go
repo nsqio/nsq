@@ -234,7 +234,7 @@ func (self *NsqdRpcClient) DeleteNsqdTopic(epoch EpochType, topicInfo *TopicPart
 	var rpcInfo RpcAdminTopicInfo
 	rpcInfo.LookupdEpoch = epoch
 	rpcInfo.TopicPartitionMetaInfo = *topicInfo
-	retErr, err := self.CallWithRetry("DeleteNsqdTopic", &rpcInfo)
+	retErr, err := self.CallFast("DeleteNsqdTopic", &rpcInfo)
 	return convertRpcError(err, retErr)
 }
 

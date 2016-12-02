@@ -165,6 +165,15 @@ func (self *NsqLookupCoordinator) DeleteTopicForce(topic string, partition strin
 		coordLog.Infof("not leader while delete topic")
 		return ErrNotNsqLookupLeader
 	}
+	begin := time.Now()
+	for !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
+		coordLog.Infof("waiting check topic finish")
+		time.Sleep(time.Millisecond * 100)
+		if time.Since(begin) > time.Second*2 {
+			return ErrClusterUnstable
+		}
+	}
+	defer atomic.StoreInt32(&self.doChecking, 0)
 
 	coordLog.Infof("delete topic: %v, with partition: %v", topic, partition)
 
@@ -206,6 +215,16 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 		return ErrNotNsqLookupLeader
 	}
 
+	begin := time.Now()
+	for !atomic.CompareAndSwapInt32(&self.doChecking, 0, 1) {
+		coordLog.Infof("waiting check topic finish")
+		time.Sleep(time.Millisecond * 100)
+		if time.Since(begin) > time.Second*2 {
+			return ErrClusterUnstable
+		}
+	}
+	defer atomic.StoreInt32(&self.doChecking, 0)
+	// TODO: check partition number for topic, maybe failed to create
 	coordLog.Infof("delete topic: %v, with partition: %v", topic, partition)
 	if ok, err := self.leadership.IsExistTopic(topic); !ok {
 		coordLog.Infof("no topic : %v", err)
@@ -238,10 +257,13 @@ func (self *NsqLookupCoordinator) DeleteTopic(topic string, partition string) er
 		for pid := 0; pid < meta.PartitionNum; pid++ {
 			err := self.deleteTopicPartition(topic, pid)
 			if err != nil {
-				coordLog.Infof("failed to delete partition %v for topic: %v, err:%v", pid, topic, err)
+				coordLog.Infof("failed to delete topic partition %v for topic: %v, err:%v", pid, topic, err)
 			}
 		}
-		self.leadership.DeleteWholeTopic(topic)
+		err = self.leadership.DeleteWholeTopic(topic)
+		if err != nil {
+			coordLog.Infof("failed to delete whole topic: %v : %v", topic, err)
+		}
 	} else {
 		pid, err := strconv.Atoi(partition)
 		if err != nil {

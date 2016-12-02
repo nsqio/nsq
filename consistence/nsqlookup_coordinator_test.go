@@ -908,16 +908,16 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	lookupLeadership := lookupCoord1.leadership
 
 	time.Sleep(time.Second)
-	lookupCoord1.DeleteTopicForce(topic_p1_r1, "**")
-	lookupCoord1.DeleteTopicForce(topic_p1_r3, "**")
-	lookupCoord1.DeleteTopicForce(topic_p3_r1, "**")
-	lookupCoord1.DeleteTopicForce(topic_p2_r2, "**")
-	time.Sleep(time.Second)
+	lookupCoord1.DeleteTopic(topic_p1_r1, "**")
+	lookupCoord1.DeleteTopic(topic_p1_r3, "**")
+	lookupCoord1.DeleteTopic(topic_p3_r1, "**")
+	lookupCoord1.DeleteTopic(topic_p2_r2, "**")
+	time.Sleep(time.Second * 3)
 	defer func() {
-		lookupCoord1.DeleteTopicForce(topic_p1_r1, "**")
-		lookupCoord1.DeleteTopicForce(topic_p1_r3, "**")
-		lookupCoord1.DeleteTopicForce(topic_p3_r1, "**")
-		lookupCoord1.DeleteTopicForce(topic_p2_r2, "**")
+		lookupCoord1.DeleteTopic(topic_p1_r1, "**")
+		lookupCoord1.DeleteTopic(topic_p1_r3, "**")
+		lookupCoord1.DeleteTopic(topic_p3_r1, "**")
+		lookupCoord1.DeleteTopic(topic_p2_r2, "**")
 		time.Sleep(time.Second * 3)
 
 		lookupCoord1.Stop()
@@ -1073,12 +1073,12 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	topic_p2_r1 := "test-nsqlookup-topic-unit-test-updatemeta-p2-r1"
 	lookupLeadership := lookupCoord.leadership
 
-	lookupCoord.DeleteTopicForce(topic_p1_r1, "**")
-	lookupCoord.DeleteTopicForce(topic_p2_r1, "**")
+	lookupCoord.DeleteTopic(topic_p1_r1, "**")
+	lookupCoord.DeleteTopic(topic_p2_r1, "**")
 	time.Sleep(time.Second * 3)
 	defer func() {
-		lookupCoord.DeleteTopicForce(topic_p1_r1, "**")
-		lookupCoord.DeleteTopicForce(topic_p2_r1, "**")
+		lookupCoord.DeleteTopic(topic_p1_r1, "**")
+		lookupCoord.DeleteTopic(topic_p2_r1, "**")
 		time.Sleep(time.Second * 3)
 		lookupCoord.Stop()
 	}()
@@ -1094,7 +1094,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	// test increase replicator and decrease the replicator
 	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 3)
 	lookupCoord.triggerCheckTopics("", 0, 0)
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 5)
 	tmeta, _, _ := lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	test.Equal(t, 3, tmeta.Replica)
 	for i := 0; i < tmeta.PartitionNum; i++ {
@@ -1116,7 +1116,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 
 	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 2)
 	lookupCoord.triggerCheckTopics("", 0, 0)
-	waitClusterStable(lookupCoord, time.Second*5)
+	time.Sleep(time.Second * 3)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p2_r1)
 	test.Equal(t, 2, tmeta.Replica)
 	for i := 0; i < tmeta.PartitionNum; i++ {
@@ -1296,14 +1296,14 @@ func TestNsqLookupExpandPartition(t *testing.T) {
 	topic_p1_r3 := "test-nsqlookup-topic-unit-test-expand-p1-r3"
 	lookupLeadership := lookupCoord.leadership
 
-	lookupCoord.DeleteTopicForce(topic_p1_r1, "**")
-	lookupCoord.DeleteTopicForce(topic_p1_r2, "**")
-	lookupCoord.DeleteTopicForce(topic_p1_r3, "**")
-	time.Sleep(time.Second)
+	lookupCoord.DeleteTopic(topic_p1_r1, "**")
+	lookupCoord.DeleteTopic(topic_p1_r2, "**")
+	lookupCoord.DeleteTopic(topic_p1_r3, "**")
+	time.Sleep(time.Second * 3)
 	defer func() {
-		lookupCoord.DeleteTopicForce(topic_p1_r1, "**")
-		lookupCoord.DeleteTopicForce(topic_p1_r2, "**")
-		lookupCoord.DeleteTopicForce(topic_p1_r3, "**")
+		lookupCoord.DeleteTopic(topic_p1_r1, "**")
+		lookupCoord.DeleteTopic(topic_p1_r2, "**")
+		lookupCoord.DeleteTopic(topic_p1_r3, "**")
 		time.Sleep(time.Second * 3)
 		lookupCoord.Stop()
 	}()
