@@ -218,7 +218,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 		opts.Logger = nil
 	}
 	nsqd := mustStartNSQD(opts)
-	randPort := rand.Int31n(30000) + 20000
+	randPort := rand.Int31n(10000) + 20000
 	nodeInfo := NsqdNodeInfo{
 		NodeIP:  "127.0.0.1",
 		TcpPort: "0",
@@ -289,6 +289,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 
 	// wait the node start and acquire leadership
 	time.Sleep(time.Second)
@@ -307,6 +308,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 
 	ensureTopicLeaderSession(nsqdCoord2, topic, partition, fakeSession)
@@ -322,6 +324,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	tc, err = nsqdCoord3.getTopicCoord(topic, partition)
 	test.Nil(t, err)
 	// wait catchup
@@ -339,6 +342,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	nsqdCoord4 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort4)), data4, "id4", nsqd4, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data4)
 	defer nsqd4.Exit()
+	defer nsqdCoord4.Stop()
 	tc, err = nsqdCoord4.getTopicCoord(topic, partition)
 	test.NotNil(t, err)
 	// start as no remote topic
@@ -395,16 +399,19 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	time.Sleep(time.Second)
 
 	// create topic on nsqdcoord
@@ -475,11 +482,13 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 
 	// create topic on nsqdcoord
@@ -528,6 +537,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	// wait catchup
@@ -704,11 +714,13 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 
 	// create topic on nsqdcoord
@@ -758,6 +770,7 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	// wait catchup
@@ -931,11 +944,13 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	nsqdCoord1 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort1)), data1, "id1", nsqd1, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data1)
 	defer nsqd1.Exit()
+	defer nsqdCoord1.Stop()
 	time.Sleep(time.Second)
 
 	nsqdCoord2 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort2)), data2, "id2", nsqd2, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data2)
 	defer nsqd2.Exit()
+	defer nsqdCoord2.Stop()
 	time.Sleep(time.Second)
 
 	// create topic on nsqdcoord
@@ -1000,6 +1015,7 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	nsqdCoord3 := startNsqdCoordWithFakeData(t, strconv.Itoa(int(randPort3)), data3, "id3", nsqd3, fakeLeadership, fakeLookupProxy.(*fakeLookupRemoteProxy))
 	defer os.RemoveAll(data3)
 	defer nsqd3.Exit()
+	defer nsqdCoord3.Stop()
 	ensureTopicOnNsqdCoord(nsqdCoord3, topicInitInfo)
 	ensureTopicLeaderSession(nsqdCoord3, topic, partition, fakeSession)
 	// wait catchup

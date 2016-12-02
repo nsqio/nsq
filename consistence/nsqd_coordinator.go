@@ -194,9 +194,9 @@ func (self *NsqdCoordinator) Start() error {
 	}
 	_, realRpcPort, _ := net.SplitHostPort(realAddr)
 	self.myNode.RpcPort = realRpcPort
-	port, _ := strconv.Atoi(realRpcPort)
-	grpcPort := strconv.Itoa(port + 1)
-	go self.grpcServer.start(self.myNode.NodeIP, grpcPort)
+	//port, _ := strconv.Atoi(realRpcPort)
+	//grpcPort := strconv.Itoa(port + 1)
+	//go self.grpcServer.start(self.myNode.NodeIP, grpcPort)
 	if self.leadership != nil {
 		err := self.leadership.RegisterNsqd(&self.myNode)
 		if err != nil {

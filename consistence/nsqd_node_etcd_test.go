@@ -10,14 +10,11 @@ import (
 	"golang.org/x/net/context"
 )
 
-const (
-	EtcdHost = "http://etcd.server.whatever:2379"
-)
-
 func TestNodeRe(t *testing.T) {
-	nodeMgr := NewNsqdEtcdMgr(EtcdHost)
-	nodeMgr.InitClusterID("cluster-1")
-	ID := "ree-test-1"
+	ClusterID := "test-nsq-cluster-unit-test-etcd-leadership"
+	nodeMgr := NewNsqdEtcdMgr(testEtcdServers)
+	nodeMgr.InitClusterID(ClusterID)
+	ID := "unit-test-etcd-node1"
 	nodeInfo := &NsqdNodeInfo{
 		ID:      ID,
 		NodeIP:  "127.0.0.1",
@@ -32,7 +29,7 @@ func TestNodeRe(t *testing.T) {
 }
 
 func TestETCDWatch(t *testing.T) {
-	client := etcdlock.NewEClient(EtcdHost)
+	client := etcdlock.NewEClient(testEtcdServers)
 	watcher := client.Watch("q11", 0, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
