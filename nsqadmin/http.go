@@ -866,10 +866,10 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 
 		item.TotalChannelDepth += topicStat.TotalChannelDepth
 		item.MessageCount += topicStat.MessageCount
-		if nodeMsgHistoryMap != nil {
+		if nodeMsgHistoryMap != nil && !ok{
 			hpSize, ok := nodeMsgHistoryMap[item.TopicName]
 			if ok {
-				item.HourlyPubSize += hpSize
+				item.HourlyPubSize = hpSize
 			}
 		}
 	}
