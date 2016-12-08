@@ -507,7 +507,7 @@ func prepareCluster(t *testing.T, nodeList []string, useFakeLeadership bool) (*N
 	rand.Seed(time.Now().Unix())
 	nsqdNodeInfoList := make(map[string]*testClusterNodeInfo)
 	req, _ := http.NewRequest("DELETE",
-		"http://"+testEtcdServers+"/v2/keys/NSQMetaData/test-nsq-cluster-unit-test/Topics?recursive=true",
+		"http://"+testEtcdServers+"/v2/keys/NSQMetaData/"+TEST_NSQ_CLUSTER_NAME+"/Topics?recursive=true",
 		nil,
 	)
 	rsp, err := http.DefaultClient.Do(req)

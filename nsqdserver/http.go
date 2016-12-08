@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
-	"github.com/absolute8511/nsq/internal/clusterinfo"
 )
 
 type httpServer struct {
@@ -669,26 +669,20 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 				continue
 			}
 			pubhs := topic.GetDetailStats().GetHourlyStats()
-
-			for _, hps := range pubhs {
-				nsqd.NsqLogger().Logf("%s:%s hourly pubsize: %d", topicStat.TopicName, topicStat.TopicPartition, hps)
-			}
-
 			cur := time.Now().Hour() + 2 + 21
-			latestHourlyPubsize := pubhs[cur % len(pubhs)]
-			nsqd.NsqLogger().Logf("%s:%s hourly pubsize: %d", topicStat.TopicName, topicStat.TopicPartition, latestHourlyPubsize)
+			latestHourlyPubsize := pubhs[cur%len(pubhs)]
 			aTopicHourlyPubStat := &clusterinfo.NodeHourlyPubsize{
-				TopicName:	topicStat.TopicName,
-				TopicPartition:	topicStat.TopicPartition,
-				HourlyPubSize:	latestHourlyPubsize,
+				TopicName:      topicStat.TopicName,
+				TopicPartition: topicStat.TopicPartition,
+				HourlyPubSize:  latestHourlyPubsize,
 			}
 			topicHourlyPubStatsList = append(topicHourlyPubStatsList, aTopicHourlyPubStat)
 		}
 
 		return struct {
-			NodehourlyPubsizeStats	[]*clusterinfo.NodeHourlyPubsize	`json:"node_hourly_pub_size_stats"`
+			NodehourlyPubsizeStats []*clusterinfo.NodeHourlyPubsize `json:"node_hourly_pub_size_stats"`
 		}{topicHourlyPubStatsList}, nil
-	}else {
+	} else {
 
 		t, err := s.ctx.getExistingTopic(topicName, topicPart)
 		if err != nil {
@@ -699,7 +693,7 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 		cur := time.Now().Hour() + 2
 		pubhsNew := make([]int64, 0, 22)
 		for len(pubhsNew) < 22 {
-			pubhsNew = append(pubhsNew, pubhs[cur % len(pubhs)])
+			pubhsNew = append(pubhsNew, pubhs[cur%len(pubhs)])
 			cur++
 		}
 		return struct {
