@@ -145,7 +145,7 @@ func (self *NsqdCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, *Coor
 	defer self.rpcClientMutex.Unlock()
 	c, ok := self.nsqdRpcClients[nid]
 	if ok {
-		if c.c.ShouldRemoved() {
+		if c.ShouldRemoved() {
 			c.Close()
 			delete(self.nsqdRpcClients, nid)
 			ok = false
@@ -764,7 +764,7 @@ func (self *NsqdCoordinator) checkForUnsyncedTopics() {
 		// clean unused client connections
 		self.rpcClientMutex.Lock()
 		for nid, c := range self.nsqdRpcClients {
-			if c.c != nil && c.c.ShouldRemoved() {
+			if c.c != nil && c.ShouldRemoved() {
 				c.Close()
 				delete(self.nsqdRpcClients, nid)
 			}

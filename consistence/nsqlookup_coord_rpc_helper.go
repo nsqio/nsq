@@ -34,7 +34,7 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 				self.rpcMutex.Lock()
 				for nid, c := range self.nsqdRpcClients {
 					_, nodeOK := currentNodes[nid]
-					if !nodeOK || (c.c != nil && c.c.ShouldRemoved()) {
+					if !nodeOK || (c.c != nil && c.ShouldRemoved()) {
 						c.Close()
 						delete(self.nsqdRpcClients, nid)
 					}
@@ -357,6 +357,12 @@ func (self *NsqLookupCoordinator) acquireRpcClient(nid string) (*NsqdRpcClient, 
 	self.rpcMutex.Lock()
 	defer self.rpcMutex.Unlock()
 	c, _ := self.nsqdRpcClients[nid]
+	if c != nil {
+		if c.ShouldRemoved() {
+			c.Close()
+			c = nil
+		}
+	}
 	if c == nil {
 		n, ok := currentNodes[nid]
 		if !ok {

@@ -98,6 +98,16 @@ func (self *NsqdRpcClient) Close() {
 	self.Unlock()
 }
 
+func (self *NsqdRpcClient) ShouldRemoved() bool {
+	r := false
+	self.Lock()
+	if self.c != nil {
+		r = self.c.ShouldRemoved()
+	}
+	self.Unlock()
+	return r
+}
+
 func (self *NsqdRpcClient) Reconnect() error {
 	self.Lock()
 	if self.c != nil {
@@ -142,10 +152,15 @@ func (self *NsqdRpcClient) CallWithRetry(method string, arg interface{}) (interf
 	for retry < 5 {
 		retry++
 		reply, err = self.dc.Call(method, arg)
-		if err != nil && err.(*gorpc.ClientError).Connection {
-			coordLog.Infof("rpc connection closed, error: %v", err)
-			connErr := self.Reconnect()
-			if connErr != nil {
+		if err != nil {
+			cerr, ok := err.(*gorpc.ClientError)
+			if (ok && cerr.Connection) || self.ShouldRemoved() {
+				coordLog.Infof("rpc connection closed, error: %v", err)
+				connErr := self.Reconnect()
+				if connErr != nil {
+					return reply, err
+				}
+			} else {
 				return reply, err
 			}
 		} else {
