@@ -282,7 +282,7 @@ func handleRequestReponseForClient(client *nsqd.ClientV2, response []byte, err e
 			}
 		}
 
-		nsqd.NsqLogger().LogWarningf("Error response for [%s] - %s - %s",
+		nsqd.NsqLogger().LogDebugf("Error response for [%s] - %s - %s",
 			client, err, ctx)
 
 		sendErr := Send(client, frameTypeError, []byte(err.Error()))
@@ -992,6 +992,7 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	err = p.ctx.FinishMessage(client.Channel, client.ID, client.String(), msgID)
 	if err != nil {
+		client.IncrSubError(int64(1))
 		nsqd.NsqLogger().LogDebugf("FIN error : %v, err: %v, channel: %v, topic: %v", msgID,
 			err, client.Channel.GetName(), client.Channel.GetTopicName())
 		if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
@@ -1040,6 +1041,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 	err = client.Channel.RequeueMessage(client.ID, client.String(), nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration, true)
 	if err != nil {
+		client.IncrSubError(int64(1))
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}

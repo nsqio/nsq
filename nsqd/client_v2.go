@@ -116,6 +116,7 @@ type ClientV2 struct {
 
 	PubTimeout *time.Timer
 	remoteAddr string
+	subErrCnt  int64
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -375,12 +376,17 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	}
 
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
+	errCnt := atomic.LoadInt64(&c.subErrCnt)
+	if errCnt > 3 {
+		// slow down this client if has some error
+		readyCount = 1
+	}
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
 	if nsqLog.Level() > 1 {
-		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d",
-			c, readyCount, inFlightCount)
+		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, errCnt: %d",
+			c, readyCount, inFlightCount, errCnt)
 	}
 
 	// deferCnt should consider as not in flight
@@ -411,18 +417,29 @@ func (c *ClientV2) tryUpdateReadyState() {
 	}
 }
 
+func (c *ClientV2) IncrSubError(delta int64) {
+	if delta < 0 {
+		if atomic.LoadInt64(&c.subErrCnt) <= 0 {
+			return
+		}
+	}
+	atomic.AddInt64(&c.subErrCnt, delta)
+}
+
 func (c *ClientV2) FinishedMessage() {
 	// since deferred message should be only requeued while timeout
 	// Before deliver message, the delay state will be cleared.
 	// So we no need handle the DeferredCount here.
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
+	c.IncrSubError(int64(-1))
 	c.tryUpdateReadyState()
 }
 
 func (c *ClientV2) Empty() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
 	atomic.StoreInt64(&c.DeferredCount, 0)
+	atomic.StoreInt64(&c.subErrCnt, 0)
 	c.tryUpdateReadyState()
 }
 
@@ -437,6 +454,7 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 		atomic.AddInt64(&c.DeferredCount, -1)
 	} else {
 		atomic.AddInt64(&c.TimeoutCount, 1)
+		c.IncrSubError(int64(1))
 	}
 	c.tryUpdateReadyState()
 }
