@@ -49,6 +49,7 @@ type TopicDynamicConf struct {
 	AutoCommit   int32
 	RetentionDay int32
 	SyncEvery    int64
+	OrderedMulti bool
 }
 
 type PubInfo struct {

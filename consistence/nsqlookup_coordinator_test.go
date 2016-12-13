@@ -626,7 +626,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	}()
 
 	// test new topic create
-	err := lookupCoord1.CreateTopic(topic, TopicMetaInfo{2, 2, 0, 0, 0, 0})
+	err := lookupCoord1.CreateTopic(topic, TopicMetaInfo{2, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 
 	waitClusterStable(lookupCoord1, time.Second*3)
@@ -801,7 +801,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	waitClusterStable(lookupCoord1, time.Second*5)
 	// test new topic create
 	coordLog.Warningf("============= begin test 3 replicas ====")
-	err = lookupCoord1.CreateTopic(topic3, TopicMetaInfo{1, 3, 0, 0, 0, 0})
+	err = lookupCoord1.CreateTopic(topic3, TopicMetaInfo{1, 3, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord1, time.Second*5)
 	// with 3 replica, the isr join timeout will change the isr list if the isr has the quorum nodes
@@ -930,7 +930,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	}()
 
 	// test new topic create
-	err := lookupCoord1.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
+	err := lookupCoord1.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord1, time.Second*3)
 	pmeta, _, err := lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
@@ -952,7 +952,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 	test.Equal(t, len(tc0.topicInfo.ISR), 1)
 
-	err = lookupCoord1.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0})
+	err = lookupCoord1.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord1, time.Second*5)
 	lookupCoord1.triggerCheckTopics("", 0, 0)
@@ -977,7 +977,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
 	test.Equal(t, len(tc0.topicInfo.ISR), 3)
 
-	err = lookupCoord1.CreateTopic(topic_p3_r1, TopicMetaInfo{3, 1, 0, 0, 0, 0})
+	err = lookupCoord1.CreateTopic(topic_p3_r1, TopicMetaInfo{3, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord1, time.Second*2)
 	waitClusterStable(lookupCoord1, time.Second*5)
@@ -1009,7 +1009,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	test.Equal(t, tc1.topicInfo.Leader, t1.Leader)
 	test.Equal(t, len(tc1.topicInfo.ISR), 1)
 
-	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0})
+	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord1, time.Second*3)
 	waitClusterStable(lookupCoord1, time.Second*5)
@@ -1044,7 +1044,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	// test create on exist topic, create on partial partition
 	oldMeta, _, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p2_r2)
 	test.Nil(t, err)
-	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 1, 1})
+	err = lookupCoord1.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 1, 1, false})
 	test.NotNil(t, err)
 	waitClusterStable(lookupCoord1, time.Second)
 	waitClusterStable(lookupCoord1, time.Second*5)
@@ -1084,11 +1084,11 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 		lookupCoord.Stop()
 	}()
 
-	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
+	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	time.Sleep(time.Second)
 
-	err = lookupCoord.CreateTopic(topic_p2_r1, TopicMetaInfo{2, 1, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p2_r1, TopicMetaInfo{2, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second*5)
 
@@ -1195,15 +1195,15 @@ func TestNsqLookupMarkNodeRemove(t *testing.T) {
 		lookupCoord.Stop()
 	}()
 
-	err := lookupCoord.CreateTopic(topic_p4_r1, TopicMetaInfo{4, 1, 0, 0, 0, 0})
+	err := lookupCoord.CreateTopic(topic_p4_r1, TopicMetaInfo{4, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 
-	err = lookupCoord.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 
-	err = lookupCoord.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 
@@ -1308,15 +1308,15 @@ func TestNsqLookupExpandPartition(t *testing.T) {
 		lookupCoord.Stop()
 	}()
 
-	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
+	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 
-	err = lookupCoord.CreateTopic(topic_p1_r2, TopicMetaInfo{1, 2, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p1_r2, TopicMetaInfo{1, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 
-	err = lookupCoord.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p1_r3, TopicMetaInfo{1, 3, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second)
 	waitClusterStable(lookupCoord, time.Second)
@@ -1415,11 +1415,11 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	}()
 
 	// test new topic create
-	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0})
+	err := lookupCoord.CreateTopic(topic_p1_r1, TopicMetaInfo{1, 1, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second*3)
 
-	err = lookupCoord.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0})
+	err = lookupCoord.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second*3)
 	lookupCoord.triggerCheckTopics("", 0, 0)
@@ -1542,4 +1542,171 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	test.Equal(t, FindSlice(t0.ISR, toNode) != -1, true)
 	test.Equal(t, -1, FindSlice(t0.ISR, fromNode))
 
+}
+
+func TestNsqLookupNsqdCreateOrderedTopic(t *testing.T) {
+	if testing.Verbose() {
+		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		glog.SetFlags(0, "", "", true, true, 1)
+		glog.StartWorker(time.Second)
+	} else {
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+	}
+	idList := []string{"id1", "id2", "id3", "id4"}
+	lookupCoord1, nodeInfoList := prepareCluster(t, idList, false)
+	for _, n := range nodeInfoList {
+		defer os.RemoveAll(n.dataPath)
+		defer n.localNsqd.Exit()
+		defer n.nsqdCoord.Stop()
+	}
+	test.Equal(t, 4, len(nodeInfoList))
+
+	topic_p8_r3 := "test-nsqlookup-topic-unit-testcreate-p8-r3"
+	topic_p13_r1 := "test-nsqlookup-topic-unit-testcreate-p13-r1"
+	topic_p25_r3 := "test-nsqlookup-topic-unit-testcreate-p25-r3"
+
+	lookupLeadership := lookupCoord1.leadership
+	time.Sleep(time.Second)
+	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p8_r3, "**"))
+	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p13_r1, "**"))
+	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p25_r3, "**"))
+	time.Sleep(time.Second * 3)
+	defer func() {
+		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p8_r3, "**"))
+		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p13_r1, "**"))
+		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p25_r3, "**"))
+		time.Sleep(time.Second * 3)
+
+		lookupCoord1.Stop()
+	}()
+
+	// test new topic create
+	err := lookupCoord1.CreateTopic(topic_p8_r3, TopicMetaInfo{8, 3, 0, 0, 0, 0, true})
+	test.Nil(t, err)
+	waitClusterStable(lookupCoord1, time.Second*3)
+	pmeta, _, err := lookupLeadership.GetTopicMetaInfo(topic_p8_r3)
+	pn := pmeta.PartitionNum
+	test.Nil(t, err)
+	test.Equal(t, pn, 8)
+	// each node should have the almost the same partition number
+	nodePartitionNum := make(map[string]int)
+	avgNum := pn * pmeta.Replica / len(nodeInfoList)
+	for i := 0; i < pn; i++ {
+		t0, err := lookupLeadership.GetTopicInfo(topic_p8_r3, i)
+		test.Nil(t, err)
+		test.Equal(t, len(t0.ISR), 3)
+
+		if nodeInfoList[t0.Leader] == nil {
+			t.Fatalf("no leader: %v, %v", t0, nodeInfoList)
+		}
+		t0LeaderCoord := nodeInfoList[t0.Leader].nsqdCoord
+		test.NotNil(t, t0LeaderCoord)
+		tc0, coordErr := t0LeaderCoord.getTopicCoord(topic_p8_r3, i)
+		test.Nil(t, coordErr)
+		test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
+		test.Equal(t, len(tc0.topicInfo.ISR), 3)
+		for _, nid := range t0.ISR {
+			nodePartitionNum[nid]++
+		}
+	}
+	for _, pnum := range nodePartitionNum {
+		if pnum > avgNum+1 {
+			t.Errorf("partition number on node should not larger than avgerage + 1: %v", pnum)
+		}
+		if pnum < avgNum-1 {
+			t.Errorf("partition number on node should not less than avgerage - 1: %v", pnum)
+		}
+	}
+
+	err = lookupCoord1.CreateTopic(topic_p13_r1, TopicMetaInfo{13, 1, 0, 0, 0, 0, true})
+	test.Nil(t, err)
+	waitClusterStable(lookupCoord1, time.Second*5)
+	lookupCoord1.triggerCheckTopics("", 0, 0)
+	waitClusterStable(lookupCoord1, time.Second*5)
+	pmeta, _, err = lookupLeadership.GetTopicMetaInfo(topic_p13_r1)
+	pn = pmeta.PartitionNum
+	test.Nil(t, err)
+	test.Equal(t, pn, 13)
+	nodePartitionNum = make(map[string]int)
+	avgNum = pn * pmeta.Replica / len(nodeInfoList)
+	for i := 0; i < pn; i++ {
+		t0, err := lookupLeadership.GetTopicInfo(topic_p13_r1, i)
+		test.Nil(t, err)
+		test.Equal(t, len(t0.ISR), 1)
+
+		if nodeInfoList[t0.Leader] == nil {
+			t.Fatalf("no leader: %v, %v", t0, nodeInfoList)
+		}
+
+		t0LeaderCoord := nodeInfoList[t0.Leader].nsqdCoord
+		test.NotNil(t, t0LeaderCoord)
+		tc0, coordErr := t0LeaderCoord.getTopicCoord(topic_p13_r1, i)
+		test.Nil(t, coordErr)
+		test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
+		test.Equal(t, len(tc0.topicInfo.ISR), 1)
+		for _, nid := range t0.ISR {
+			nodePartitionNum[nid]++
+		}
+	}
+	for _, pnum := range nodePartitionNum {
+		if pnum > avgNum+1 {
+			t.Errorf("partition number on node should not larger than avgerage + 1: %v", pnum)
+		}
+		if pnum < avgNum-1 {
+			t.Errorf("partition number on node should not less than avgerage - 1: %v", pnum)
+		}
+	}
+
+	err = lookupCoord1.CreateTopic(topic_p25_r3, TopicMetaInfo{25, 3, 0, 0, 0, 0, true})
+	test.Nil(t, err)
+	waitClusterStable(lookupCoord1, time.Second*2)
+	waitClusterStable(lookupCoord1, time.Second*5)
+	pmeta, _, err = lookupLeadership.GetTopicMetaInfo(topic_p25_r3)
+	pn = pmeta.PartitionNum
+	test.Nil(t, err)
+	test.Equal(t, pn, 25)
+	nodePartitionNum = make(map[string]int)
+	avgNum = pn * pmeta.Replica / len(nodeInfoList)
+	for i := 0; i < pn; i++ {
+		t0, err := lookupLeadership.GetTopicInfo(topic_p25_r3, i)
+		test.Nil(t, err)
+		test.Equal(t, len(t0.ISR), 3)
+
+		if nodeInfoList[t0.Leader] == nil {
+			t.Fatalf("no leader: %v, %v", t0, nodeInfoList)
+		}
+
+		t0LeaderCoord := nodeInfoList[t0.Leader].nsqdCoord
+		test.NotNil(t, t0LeaderCoord)
+		tc0, coordErr := t0LeaderCoord.getTopicCoord(topic_p25_r3, i)
+		test.Nil(t, coordErr)
+		test.Equal(t, tc0.topicInfo.Leader, t0.Leader)
+		test.Equal(t, len(tc0.topicInfo.ISR), 3)
+		for _, nid := range t0.ISR {
+			nodePartitionNum[nid]++
+		}
+	}
+	for _, pnum := range nodePartitionNum {
+		if pnum > avgNum+1 {
+			t.Errorf("partition number on node should not larger than avgerage + 1: %v", pnum)
+		}
+		if pnum < avgNum-1 {
+			t.Errorf("partition number on node should not less than avgerage - 1: %v", pnum)
+		}
+	}
+
+	// test create on exist topic, create on partial partition
+	oldMeta, _, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p25_r3)
+	test.Nil(t, err)
+	err = lookupCoord1.CreateTopic(topic_p25_r3, TopicMetaInfo{25, 3, 0, 0, 1, 1, true})
+	test.NotNil(t, err)
+	waitClusterStable(lookupCoord1, time.Second)
+	waitClusterStable(lookupCoord1, time.Second*5)
+	newMeta, _, err := lookupCoord1.leadership.GetTopicMetaInfo(topic_p25_r3)
+	test.Nil(t, err)
+	test.Equal(t, oldMeta, newMeta)
+}
+
+func TestNsqLookupBalanceOrderedTopic(t *testing.T) {
+	// test add node and remove node for balance the ordered multi partitions
 }

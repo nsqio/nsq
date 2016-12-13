@@ -875,6 +875,9 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v, err:%v", topicName, err.Error())
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
+	if topic.GetDynamicInfo().OrderedMulti {
+		return nil, protocol.NewFatalClientErr(nil, "E_SUB_ORDER_IS_MUST", "this topic is configured only allow ordered sub")
+	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
 		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.RemoteAddr())
 		// we need disable topic here to trigger a notify, maybe we failed to notify lookup last time.

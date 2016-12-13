@@ -160,25 +160,6 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 	return ErrKeyAlreadyExist
 }
 
-type TopicLeaderSessionOld struct {
-	ClusterID   string
-	Topic       string
-	Partition   int
-	LeaderNode  *NsqdNodeInfo
-	Session     string
-	LeaderEpoch EpochType
-}
-
-func (s *TopicLeaderSessionOld) IsEqual(newSession *TopicLeaderSession) bool {
-	if s.Topic == newSession.Topic &&
-		s.Partition == newSession.Partition &&
-		s.LeaderNode == newSession.LeaderNode &&
-		s.LeaderEpoch == newSession.LeaderEpoch {
-		return true
-	}
-	return false
-}
-
 func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session *TopicLeaderSession) error {
 	self.Lock()
 	defer self.Unlock()
@@ -197,10 +178,17 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 			rsp, innErr := self.client.Get(topicKey, false, false)
 			if innErr != nil {
 			} else {
-				var old TopicLeaderSessionOld
+				var old TopicLeaderSession
 				json.Unmarshal([]byte(rsp.Node.Value), &old)
-				if old.IsEqual(session) {
+				if old == *session {
 					_, err = self.client.CompareAndDelete(topicKey, rsp.Node.Value, 0)
+					if err != nil {
+						coordLog.Errorf("release topic leader session [%s] error: %v, orig: %v",
+							topicKey, err, old)
+					}
+				} else {
+					coordLog.Errorf("topic leader session [%s] mismatch: %v, orig: %v",
+						topicKey, session, old)
 				}
 			}
 		}
