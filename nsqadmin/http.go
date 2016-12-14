@@ -411,7 +411,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf("WARNING: %s", err)
 		messages = append(messages, pe.Error())
 	}
-	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName, "partition", false)
+	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName, "partition", true)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
