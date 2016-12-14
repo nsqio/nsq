@@ -31,6 +31,7 @@ type TopicStats struct {
 	Clients              []ClientPubStats `json:"client_pub_stats"`
 	MsgSizeStats         []int64          `json:"msg_size_stats"`
 	MsgWriteLatencyStats []int64          `json:"msg_write_latency_stats"`
+	IsMultiOrdered       bool             `json:"is_multi_ordered"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
@@ -49,6 +50,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Clients:              t.detailStats.GetPubClientStats(),
 		MsgSizeStats:         t.detailStats.GetMsgSizeStats(),
 		MsgWriteLatencyStats: t.detailStats.GetMsgWriteLatencyStats(),
+		IsMultiOrdered:       t.GetDynamicInfo().OrderedMulti,
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}
@@ -204,7 +206,7 @@ func (n *NSQD) getTopicStats(realTopics []*Topic) []TopicStats {
 	return topics
 }
 
-func (n *NSQD) GetTopicStats(topic string) []TopicStats {
+func (n *NSQD) GetTopicStats(leaderOnly bool, topic string) []TopicStats {
 	n.RLock()
 	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for name, topicParts := range n.topicMap {
@@ -212,6 +214,9 @@ func (n *NSQD) GetTopicStats(topic string) []TopicStats {
 			continue
 		}
 		for _, t := range topicParts {
+			if leaderOnly && t.IsWriteDisabled() {
+				continue
+			}
 			realTopics = append(realTopics, t)
 		}
 	}
