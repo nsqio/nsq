@@ -550,7 +550,7 @@ func (self *DataPlacement) DoBalance(monitorChan chan struct{}) {
 				continue
 			}
 
-			moved := self.rebalanceOrderedTopic(monitorChan)
+			moved, _ := self.rebalanceOrderedTopic(monitorChan)
 			if moved {
 				continue
 			}
@@ -1078,7 +1078,8 @@ func (self *DataPlacement) addToCatchupAndWaitISRReadyForOrderedTopic(monitorCha
 	}
 	for {
 		if currentSelect >= len(selectedCatchup) {
-			coordLog.Infof("currently no any node can be balanced for topic: %v", topicName)
+			coordLog.Infof("currently no any node %v can be balanced for topic: %v, expect isr: %v, nodes:%v",
+				selectedCatchup, topicName, partitionNodes[topicInfo.Partition], nodeNameList)
 			return ErrBalanceNodeUnavailable
 		}
 		nid := selectedCatchup[currentSelect]
@@ -1539,36 +1540,44 @@ func (self *DataPlacement) chooseNewLeaderFromISRForOrderedTopic(topicInfo *Topi
 	return newLeader, newestLogID, nil
 }
 
-func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) bool {
+func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) (bool, bool) {
 	moved := false
-	topicList, err := self.lookupCoord.leadership.ScanTopics()
-	if err != nil {
-		coordLog.Infof("scan topics error: %v", err)
-		return moved
-	}
+	isAllBalanced := false
 	if !atomic.CompareAndSwapInt32(&self.lookupCoord.balanceWaiting, 0, 1) {
 		coordLog.Infof("another balance is running, should wait")
-		return moved
+		return moved, isAllBalanced
 	}
 	defer atomic.StoreInt32(&self.lookupCoord.balanceWaiting, 0)
 
+	topicList, err := self.lookupCoord.leadership.ScanTopics()
+	if err != nil {
+		coordLog.Infof("scan topics error: %v", err)
+		return moved, isAllBalanced
+	}
 	nodeNameList := make([]string, 0)
+	movedTopic := ""
+	isAllBalanced = true
 	for _, topicInfo := range topicList {
 		if !topicInfo.OrderedMulti {
 			continue
 		}
 		select {
 		case <-monitorChan:
-			return moved
+			return moved, false
 		default:
 		}
 		if !self.lookupCoord.IsClusterStable() {
-			return moved
+			return moved, false
 		}
 		if !self.lookupCoord.IsMineLeader() {
-			return moved
+			return moved, true
+		}
+		// balance only one topic once
+		if movedTopic != "" && movedTopic != topicInfo.Name {
+			continue
 		}
 		currentNodes := self.lookupCoord.getCurrentNodes()
+		nodeNameList = nodeNameList[0:0]
 		for _, n := range currentNodes {
 			nodeNameList = append(nodeNameList, n.ID)
 		}
@@ -1576,6 +1585,7 @@ func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) bool
 		partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
 			topicInfo.Replica, currentNodes, "")
 		if err != nil {
+			isAllBalanced = false
 			continue
 		}
 		moveNodes := make([]string, 0)
@@ -1592,10 +1602,14 @@ func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) bool
 			}
 		}
 		for _, nid := range moveNodes {
-			coordLog.Infof("node %v need move for topic %v since not in expected isr list: %v",
-				topicInfo.GetTopicDesp(), partitionNodes[topicInfo.Partition])
-			err := self.addToCatchupAndWaitISRReadyForOrderedTopic(monitorChan, &topicInfo,
-				nodeNameList)
+			movedTopic = topicInfo.Name
+			coordLog.Infof("node %v need move for topic %v since %v not in expected isr list: %v", nid,
+				topicInfo.GetTopicDesp(), topicInfo.ISR, partitionNodes[topicInfo.Partition])
+			var err error
+			if len(topicInfo.ISR) <= topicInfo.Replica {
+				err = self.addToCatchupAndWaitISRReadyForOrderedTopic(monitorChan, &topicInfo,
+					nodeNameList)
+			}
 			if err != nil {
 				continue
 			} else {
@@ -1604,9 +1618,23 @@ func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) bool
 				moved = true
 			}
 		}
+		if (topicInfo.Leader != partitionNodes[topicInfo.Partition][0]) &&
+			(len(topicInfo.ISR) >= topicInfo.Replica) {
+			moved = true
+			self.lookupCoord.handleMoveTopic(true,
+				topicInfo.Name, topicInfo.Partition, topicInfo.Leader)
+			select {
+			case <-monitorChan:
+			case <-time.After(time.Second):
+			}
+		}
+		if len(moveNodes) > 0 ||
+			(topicInfo.Leader != partitionNodes[topicInfo.Partition][0]) {
+			isAllBalanced = false
+		}
 	}
 
-	return moved
+	return moved, isAllBalanced
 }
 
 type SortableStrings []string
@@ -1689,4 +1717,56 @@ func (self *DataPlacement) getRebalancedOrderedTopicPartitionsFromNameList(
 	}
 
 	return partitionNodes, nil
+}
+
+func (self *DataPlacement) decideUnwantedISRNode(topicInfo *TopicPartitionMetaInfo, currentNodes map[string]NsqdNodeInfo) string {
+	unwantedNode := ""
+	//remove the unwanted node in isr
+	if !topicInfo.OrderedMulti {
+		maxLF := 0.0
+		for _, nodeID := range topicInfo.ISR {
+			if nodeID == topicInfo.Leader {
+				continue
+			}
+			n, ok := currentNodes[nodeID]
+			if !ok {
+				// the isr maybe lost, we should exit without any remove
+				return unwantedNode
+			}
+			stat, err := self.lookupCoord.getNsqdTopicStat(n)
+			if err != nil {
+				continue
+			}
+			_, nlf := stat.GetNodeLoadFactor()
+			if nlf > maxLF {
+				maxLF = nlf
+				unwantedNode = nodeID
+			}
+		}
+	} else {
+		partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
+			topicInfo.Replica, currentNodes, "")
+		if err != nil {
+			return unwantedNode
+		}
+		for _, nid := range topicInfo.ISR {
+			if nid == topicInfo.Leader {
+				continue
+			}
+			found := false
+			for _, validNode := range partitionNodes[topicInfo.Partition] {
+				if nid == validNode {
+					found = true
+					break
+				}
+			}
+			if !found {
+				unwantedNode = nid
+				if nid != topicInfo.Leader {
+					break
+				}
+			}
+		}
+	}
+	return unwantedNode
 }

@@ -835,34 +835,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			if aliveCount > t.Replica && atomic.LoadInt32(&self.balanceWaiting) == 0 {
 				//remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
-				if !topicInfo.OrderedMulti {
+				removeNode := self.dpm.decideUnwantedISRNode(&topicInfo, currentNodes)
+				if removeNode != "" {
 					failedNodes := make([]string, 0, 1)
-					maxLF := 0.0
-					removeNode := ""
-					for _, nodeID := range t.ISR {
-						if nodeID == t.Leader {
-							continue
-						}
-						n, ok := currentNodes[nodeID]
-						if !ok {
-							continue
-						}
-						stat, err := self.getNsqdTopicStat(n)
-						if err != nil {
-							continue
-						}
-						_, nlf := stat.GetNodeLoadFactor()
-						if nlf > maxLF {
-							maxLF = nlf
-							removeNode = nodeID
-						}
-					}
-					if removeNode != "" {
-						failedNodes = append(failedNodes, removeNode)
-						coordErr := self.handleRemoveISRNodes(failedNodes, &topicInfo, false)
-						if coordErr == nil {
-							coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
-						}
+					failedNodes = append(failedNodes, removeNode)
+					coordErr := self.handleRemoveISRNodes(failedNodes, &topicInfo, false)
+					if coordErr == nil {
+						coordLog.Infof("node %v removed by plan from topic : %v", failedNodes, t)
 					}
 				}
 			}
