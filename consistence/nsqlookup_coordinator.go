@@ -626,7 +626,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 	defer atomic.StoreInt32(&self.doChecking, 0)
 
 	topics := []TopicPartitionMetaInfo{}
-	if failedInfo == nil || failedInfo.TopicName == "" {
+	if failedInfo == nil || failedInfo.TopicName == "" || failedInfo.TopicPartition < 0 {
 		var commonErr error
 		topics, commonErr = self.leadership.ScanTopics()
 		if commonErr != nil {
@@ -662,6 +662,11 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 		default:
 		}
 
+		if failedInfo != nil && failedInfo.TopicName != "" {
+			if t.Name != failedInfo.TopicName {
+				continue
+			}
+		}
 		needMigrate := false
 		if len(t.ISR) < t.Replica {
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
@@ -678,6 +683,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			state.Unlock()
 			if wj {
 				checkOK = false
+				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		}
@@ -808,6 +814,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			state.Unlock()
 			if wj {
 				checkOK = false
+				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		}
