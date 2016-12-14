@@ -967,6 +967,54 @@ func TestTouch(t *testing.T) {
 	test.Equal(t, stats.TimeoutCount, uint64(0))
 }
 
+func TestSubOrderedMulti(t *testing.T) {
+	topicName := "test_sub_ordered_multi" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 3
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ordered_ch")
+	conf := nsqdNs.TopicDynamicConf{
+		SyncEvery:    1,
+		AutoCommit:   1,
+		OrderedMulti: true,
+	}
+	topic.SetDynamicInfo(conf, nil)
+
+	identify(t, conn, nil, frameTypeResponse)
+	_, err = nsq.Subscribe(topicName, "ordered_ch").WriteTo(conn)
+	test.Nil(t, err)
+	resp, err := nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	frameType, _, err := nsq.UnpackResponse(resp)
+	test.Nil(t, err)
+	// should failed if not ordered sub
+	test.Equal(t, frameTypeError, frameType)
+	conn.Close()
+	time.Sleep(time.Second)
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, nil, frameTypeResponse)
+	subOrdered(t, conn, topicName, "ordered_ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	resp, err = nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	frameType, _, err = nsq.UnpackResponse(resp)
+	test.Nil(t, err)
+	test.NotEqual(t, frameTypeError, frameType)
+
+	conn.Close()
+}
+
 func TestSubOrdered(t *testing.T) {
 	topicName := "test_sub_ordered" + strconv.Itoa(int(time.Now().Unix()))
 

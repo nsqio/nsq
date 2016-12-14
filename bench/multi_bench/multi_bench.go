@@ -864,6 +864,7 @@ func main() {
 		config.PubStrategy = nsq.PubIDHash
 		config.Hasher = murmur3.New32()
 	}
+	log.Printf("check test flag: order: %v, pub strategy: %v, config: %v", *ordered, config.PubStrategy, config)
 
 	log.SetPrefix("[bench_writer] ")
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
