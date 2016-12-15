@@ -103,6 +103,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("POST", "/cluster/node/remove", http_api.Decorate(s.doRemoveClusterDataNode, log, http_api.V1))
 	router.Handle("POST", "/cluster/upgrade/begin", http_api.Decorate(s.doClusterBeginUpgrade, log, http_api.V1))
 	router.Handle("POST", "/cluster/upgrade/done", http_api.Decorate(s.doClusterFinishUpgrade, log, http_api.V1))
+	router.Handle("POST", "/cluster/lookupd/tombstone", http_api.Decorate(s.doClusterTombstoneLookupd, log, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/loglevel/set", http_api.Decorate(s.doSetLogLevel, log, http_api.V1))
@@ -123,6 +124,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
 	router.HandlerFunc("POST", "/debug/pprof/symbol", pprof.Symbol)
 	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
+	router.HandlerFunc("GET", "/debug/pprof/trace", pprof.Trace)
 	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
 	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
 	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
@@ -368,7 +370,10 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if needMeta != "" {
 		meta, err := s.ctx.nsqlookupd.coordinator.GetTopicMetaInfo(topicName)
 		if err != nil {
-			return nil, http_api.Err{500, err.Error()}
+			// maybe topic on old nsqd
+			if err != consistence.ErrKeyNotFound {
+				return nil, http_api.Err{500, err.Error()}
+			}
 		}
 		return map[string]interface{}{
 			"channels": channels,
@@ -750,11 +755,60 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 			nsqlookupLog.Infof("list lookup error: %v", err)
 			return nil, http_api.Err{500, err.Error()}
 		}
+		filteredNodes := nodes[:0]
+		for _, n := range nodes {
+			if !s.ctx.nsqlookupd.DB.IsTombstoneLookupdNode(n.GetID()) {
+				filteredNodes = append(filteredNodes, n)
+			}
+		}
 		leader := s.ctx.nsqlookupd.coordinator.GetLookupLeader()
 		return map[string]interface{}{
 			"lookupdnodes":  nodes,
 			"lookupdleader": leader,
 		}, nil
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doClusterTombstoneLookupd(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	node := reqParams.Get("node")
+	if node == "" {
+		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
+	}
+	restore := reqParams.Get("restore")
+	if restore != "" {
+		deleted := s.ctx.nsqlookupd.DB.DelTombstoneLookupdNode(node)
+		if deleted {
+			return nil, nil
+		} else {
+			return nil, http_api.Err{404, "lookup node id not found"}
+		}
+	}
+	if s.ctx.nsqlookupd.coordinator != nil {
+		nodes, err := s.ctx.nsqlookupd.coordinator.GetAllLookupdNodes()
+		if err != nil {
+			return nil, http_api.Err{500, err.Error()}
+		}
+		var peer PeerInfo
+		for _, n := range nodes {
+			if n.GetID() == node {
+				peer.DistributedID = n.GetID()
+				peer.BroadcastAddress = n.NodeIP
+				break
+			}
+		}
+		if peer.DistributedID == "" {
+			return nil, http_api.Err{404, "lookup node id not found"}
+		} else {
+			s.ctx.nsqlookupd.DB.TombstoneLookupdNode(peer.DistributedID, peer)
+		}
+	} else {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
 	}
 	return nil, nil
 }

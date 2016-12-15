@@ -14,6 +14,7 @@ type RegistrationDB struct {
 	registrationChannelMap map[string]ChannelRegistrations
 	registrationTopicMap   map[string]TopicRegistrations
 	registrationNodeMap    map[string]*PeerInfo
+	tombstoneLookupdNodes  map[string]PeerInfo
 }
 
 type ChannelReg struct {
@@ -89,6 +90,29 @@ func NewRegistrationDB() *RegistrationDB {
 		registrationTopicMap:   make(map[string]TopicRegistrations),
 		registrationNodeMap:    make(map[string]*PeerInfo),
 	}
+}
+
+func (r *RegistrationDB) TombstoneLookupdNode(nid string, pinfo PeerInfo) {
+	r.Lock()
+	r.tombstoneLookupdNodes[nid] = pinfo
+	r.Unlock()
+}
+
+func (r *RegistrationDB) IsTombstoneLookupdNode(nid string) bool {
+	r.Lock()
+	_, ok := r.tombstoneLookupdNodes[nid]
+	r.Unlock()
+	return ok
+}
+
+func (r *RegistrationDB) DelTombstoneLookupdNode(nid string) bool {
+	r.Lock()
+	_, ok := r.tombstoneLookupdNodes[nid]
+	if ok {
+		delete(r.tombstoneLookupdNodes, nid)
+	}
+	r.Unlock()
+	return ok
 }
 
 // add a registration key
