@@ -767,7 +767,7 @@ func (s *httpServer) doListLookup(w http.ResponseWriter, req *http.Request, ps h
 		}
 		leader := s.ctx.nsqlookupd.coordinator.GetLookupLeader()
 		return map[string]interface{}{
-			"lookupdnodes":  nodes,
+			"lookupdnodes":  filteredNodes,
 			"lookupdleader": leader,
 		}, nil
 	}
