@@ -3,7 +3,9 @@ package clusterinfo
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,11 +79,11 @@ func (p *Producer) Address() string {
 }
 
 func (p *Producer) HTTPAddress() string {
-	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.HTTPPort)
+	return net.JoinHostPort(p.BroadcastAddress, strconv.Itoa(p.HTTPPort))
 }
 
 func (p *Producer) TCPAddress() string {
-	return fmt.Sprintf("%s:%d", p.BroadcastAddress, p.TCPPort)
+	return net.JoinHostPort(p.BroadcastAddress, strconv.Itoa(p.TCPPort))
 }
 
 // IsInconsistent checks for cases where an unexpected number of nsqd connections are
