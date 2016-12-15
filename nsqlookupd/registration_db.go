@@ -89,6 +89,7 @@ func NewRegistrationDB() *RegistrationDB {
 		registrationChannelMap: make(map[string]ChannelRegistrations),
 		registrationTopicMap:   make(map[string]TopicRegistrations),
 		registrationNodeMap:    make(map[string]*PeerInfo),
+		tombstoneLookupdNodes:  make(map[string]PeerInfo),
 	}
 }
 
