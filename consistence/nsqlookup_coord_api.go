@@ -22,9 +22,9 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 	return self.leaderNode
 }
 
-func (self *NsqLookupCoordinator) GetTopicMetaInfo(topicName string) (*TopicMetaInfo, error) {
+func (self *NsqLookupCoordinator) GetTopicMetaInfo(topicName string) (TopicMetaInfo, error) {
 	meta, _, err := self.leadership.GetTopicMetaInfo(topicName)
-	return &meta, err
+	return meta, err
 }
 
 func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) (map[string]string, error) {

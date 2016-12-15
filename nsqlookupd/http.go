@@ -368,7 +368,10 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if needMeta != "" {
 		meta, err := s.ctx.nsqlookupd.coordinator.GetTopicMetaInfo(topicName)
 		if err != nil {
-			return nil, http_api.Err{500, err.Error()}
+			// maybe topic on old nsqd
+			if err != consistence.ErrKeyNotFound {
+				return nil, http_api.Err{500, err.Error()}
+			}
 		}
 		return map[string]interface{}{
 			"channels": channels,
