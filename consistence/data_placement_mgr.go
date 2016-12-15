@@ -1215,7 +1215,7 @@ func (self *DataPlacement) allocNodeForOrderedTopic(topicInfo *TopicPartitionMet
 	}
 
 	partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
-		topicInfo.Replica, currentNodes, "")
+		topicInfo.Replica, currentNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -1403,7 +1403,7 @@ func (self *DataPlacement) allocOrderedTopicLeaderAndISR(currentNodes map[string
 	leaders := make([]string, partitionNum)
 	isrlist := make([][]string, partitionNum)
 	partitionNodes, err := self.getRebalancedOrderedTopicPartitions(partitionNum,
-		replica, currentNodes, "")
+		replica, currentNodes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1510,11 +1510,14 @@ func (self *DataPlacement) chooseNewLeaderFromISRForOrderedTopic(topicInfo *Topi
 		newLeader = newestReplicas[0]
 	} else if len(newestReplicas) > 0 {
 		partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
-			topicInfo.Replica, currentNodes, topicInfo.Leader)
+			topicInfo.Replica, currentNodes)
 		if err != nil {
 			coordLog.Infof("failed to get balanced partitions for ordered topic: %v, %v", topicInfo.GetTopicDesp(), err)
 		} else {
 			for _, nid := range partitionNodes[topicInfo.Partition] {
+				if nid == topicInfo.Leader {
+					continue
+				}
 				for _, validNode := range newestReplicas {
 					if nid == validNode {
 						newLeader = nid
@@ -1583,7 +1586,7 @@ func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) (boo
 		}
 
 		partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
-			topicInfo.Replica, currentNodes, "")
+			topicInfo.Replica, currentNodes)
 		if err != nil {
 			isAllBalanced = false
 			continue
@@ -1651,7 +1654,7 @@ func (s SortableStrings) Swap(l, r int) {
 
 func (self *DataPlacement) getRebalancedOrderedTopicPartitions(
 	partitionNum int, replica int,
-	currentNodes map[string]NsqdNodeInfo, excludeNode string) ([][]string, *CoordErr) {
+	currentNodes map[string]NsqdNodeInfo) ([][]string, *CoordErr) {
 	if len(currentNodes) < replica {
 		return nil, ErrNodeUnavailable
 	}
@@ -1691,9 +1694,6 @@ func (self *DataPlacement) getRebalancedOrderedTopicPartitions(
 	// p10     x-f      x       f-l     f
 	nodeNameList := make(SortableStrings, 0, len(currentNodes))
 	for nid, _ := range currentNodes {
-		if excludeNode != "" && excludeNode == nid {
-			continue
-		}
 		nodeNameList = append(nodeNameList, nid)
 	}
 	return self.getRebalancedOrderedTopicPartitionsFromNameList(partitionNum, replica, nodeNameList)
@@ -1745,7 +1745,7 @@ func (self *DataPlacement) decideUnwantedISRNode(topicInfo *TopicPartitionMetaIn
 		}
 	} else {
 		partitionNodes, err := self.getRebalancedOrderedTopicPartitions(topicInfo.PartitionNum,
-			topicInfo.Replica, currentNodes, "")
+			topicInfo.Replica, currentNodes)
 		if err != nil {
 			return unwantedNode
 		}
