@@ -1,9 +1,9 @@
 github.com/cenkalti/backoff
 github.com/absolute8511/gorpc  
+github.com/absolute8511/go-nsq          
 github.com/coreos/etcd/client           128344c45541a477053f9df2ac39328027badc02
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/absolute8511/go-nsq          575cebe8c18c194a511159f00dd3aac5445c4019 # v1.0.5
 github.com/absolute8511/glog            53123a9d31b5d1784186f716fce9322f95cc9edb
 github.com/bitly/go-simplejson          18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
