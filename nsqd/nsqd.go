@@ -41,6 +41,10 @@ var (
 
 var DEFAULT_RETENTION_DAYS = 7
 
+const (
+	FLUSH_DISTANCE = 4
+)
+
 type NSQD struct {
 	sync.RWMutex
 
@@ -627,11 +631,15 @@ func (n *NSQD) CleanClientPubStats(remote string, protocol string) {
 	}
 }
 
-func (n *NSQD) flushAll(all bool) {
+func (n *NSQD) flushAll(all bool, flushCnt int) {
+	match := flushCnt % FLUSH_DISTANCE
 	tmpMap := n.GetTopicMapCopy()
 	for _, topics := range tmpMap {
 		for _, t := range topics {
 			if !all && t.IsWriteDisabled() {
+				continue
+			}
+			if !all && (((t.GetTopicPart() + 1) % FLUSH_DISTANCE) != match) {
 				continue
 			}
 			t.ForceFlush()
@@ -761,7 +769,8 @@ func (n *NSQD) queueScanLoop() {
 			n.resizePool(len(channels), workCh, responseCh, closeCh)
 			continue
 		case <-flushTicker.C:
-			n.flushAll(flushCnt%100 == 0)
+			n.flushAll(flushCnt%100 == 0, flushCnt)
+			flushCnt++
 			continue
 		case <-n.exitChan:
 			goto exit
