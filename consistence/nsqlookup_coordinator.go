@@ -30,6 +30,7 @@ var (
 	ErrTopicISRCatchupEnough    = NewCoordErr("the topic isr and catchup nodes are enough", CoordTmpErr)
 	ErrClusterNodeRemoving      = NewCoordErr("the node is mark as removed", CoordTmpErr)
 	ErrTopicNodeConflict        = NewCoordErr("the topic node info is conflicted", CoordElectionErr)
+	ErrLeadershipServerUnstable = NewCoordErr("the leadership server is unstable", CoordTmpErr)
 )
 
 const (
@@ -625,7 +626,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 	defer atomic.StoreInt32(&self.doChecking, 0)
 
 	topics := []TopicPartitionMetaInfo{}
-	if failedInfo == nil || failedInfo.TopicName == "" {
+	if failedInfo == nil || failedInfo.TopicName == "" || failedInfo.TopicPartition < 0 {
 		var commonErr error
 		topics, commonErr = self.leadership.ScanTopics()
 		if commonErr != nil {
@@ -661,6 +662,11 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 		default:
 		}
 
+		if failedInfo != nil && failedInfo.TopicName != "" {
+			if t.Name != failedInfo.TopicName {
+				continue
+			}
+		}
 		needMigrate := false
 		if len(t.ISR) < t.Replica {
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
@@ -677,6 +683,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			state.Unlock()
 			if wj {
 				checkOK = false
+				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		}
@@ -807,6 +814,7 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			state.Unlock()
 			if wj {
 				checkOK = false
+				go self.triggerCheckTopics(t.Name, t.Partition, time.Second)
 				continue
 			}
 		}
@@ -834,28 +842,9 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			if aliveCount > t.Replica && atomic.LoadInt32(&self.balanceWaiting) == 0 {
 				//remove the unwanted node in isr
 				coordLog.Infof("isr is more than replicator: %v, %v", aliveCount, t.Replica)
-				failedNodes := make([]string, 0, 1)
-				maxLF := 0.0
-				removeNode := ""
-				for _, nodeID := range t.ISR {
-					if nodeID == t.Leader {
-						continue
-					}
-					n, ok := currentNodes[nodeID]
-					if !ok {
-						continue
-					}
-					stat, err := self.getNsqdTopicStat(n)
-					if err != nil {
-						continue
-					}
-					_, nlf := stat.GetNodeLoadFactor()
-					if nlf > maxLF {
-						maxLF = nlf
-						removeNode = nodeID
-					}
-				}
+				removeNode := self.dpm.decideUnwantedISRNode(&topicInfo, currentNodes)
 				if removeNode != "" {
+					failedNodes := make([]string, 0, 1)
 					failedNodes = append(failedNodes, removeNode)
 					coordErr := self.handleRemoveISRNodes(failedNodes, &topicInfo, false)
 					if coordErr == nil {

@@ -329,6 +329,7 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 }
 
 func (self *NsqdCoordinator) periodFlushCommitLogs() {
+	const FLUSH_DISTANCE = 4
 	tmpCoords := make(map[string]map[int]*TopicCoordinator)
 	syncCounter := 0
 	defer self.wg.Done()
@@ -347,21 +348,27 @@ func (self *NsqdCoordinator) periodFlushCommitLogs() {
 			}
 		}
 		self.coordMutex.RUnlock()
+		flushAll := syncCounter%30 == 0
+		matchCnt := syncCounter % FLUSH_DISTANCE
 		for _, tc := range tmpCoords {
 			for pid, tpc := range tc {
 				tcData := tpc.GetData()
-				if tcData.GetLeader() == self.myNode.GetID() || (syncCounter%10 == 0) {
+				if tcData.GetLeader() == self.myNode.GetID() || flushAll {
 					localTopic, err := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 					if err != nil {
 						coordLog.Infof("no local topic: %v", tcData.topicInfo.GetTopicDesp())
 					} else {
-						localTopic.ForceFlush()
-						tcData.logMgr.FlushCommitLogs()
+						if flushAll || ((pid+1)%FLUSH_DISTANCE == matchCnt) {
+							localTopic.ForceFlush()
+							tcData.logMgr.FlushCommitLogs()
+						}
 					}
 				}
 				if !tpc.IsExiting() {
-					if syncCounter%2 == 0 && tcData.GetLeader() == self.myNode.GetID() {
-						self.trySyncTopicChannels(tcData)
+					if tcData.GetLeader() == self.myNode.GetID() {
+						if ((pid + 1) % FLUSH_DISTANCE) == matchCnt {
+							self.trySyncTopicChannels(tcData)
+						}
 					}
 				}
 				delete(tc, pid)
@@ -604,6 +611,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
 				AutoCommit:   0,
 				RetentionDay: topicInfo.RetentionDay,
+				OrderedMulti: topicInfo.OrderedMulti,
 			}
 			tc.GetData().logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
@@ -1222,6 +1230,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
+		OrderedMulti: topicInfo.OrderedMulti,
 	}
 	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, logMgr)
@@ -1764,6 +1773,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(tcData.topicInfo.SyncEvery),
 		AutoCommit:   0,
 		RetentionDay: tcData.topicInfo.RetentionDay,
+		OrderedMulti: tcData.topicInfo.OrderedMulti,
 	}
 	tcData.logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
@@ -1961,6 +1971,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 	dyConf := &nsqd.TopicDynamicConf{SyncEvery: int64(topicInfo.SyncEvery),
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
+		OrderedMulti: topicInfo.OrderedMulti,
 	}
 	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	t.SetDynamicInfo(*dyConf, logMgr)

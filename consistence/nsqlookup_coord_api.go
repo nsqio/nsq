@@ -22,9 +22,9 @@ func (self *NsqLookupCoordinator) GetLookupLeader() NsqLookupdNodeInfo {
 	return self.leaderNode
 }
 
-func (self *NsqLookupCoordinator) GetTopicMetaInfo(topicName string) (*TopicMetaInfo, error) {
+func (self *NsqLookupCoordinator) GetTopicMetaInfo(topicName string) (TopicMetaInfo, error) {
 	meta, _, err := self.leadership.GetTopicMetaInfo(topicName)
-	return &meta, err
+	return meta, err
 }
 
 func (self *NsqLookupCoordinator) GetTopicLeaderNodes(topicName string) (map[string]string, error) {
@@ -516,11 +516,15 @@ func (self *NsqLookupCoordinator) CreateTopic(topic string, meta TopicMetaInfo) 
 	}
 
 	currentNodes := self.getCurrentNodes()
-	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
-		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
+	if len(currentNodes) < meta.Replica {
+		coordLog.Infof("nodes %v is less than replica %v", len(currentNodes), meta)
 		return ErrNodeUnavailable.ToErrorType()
 	}
-	if len(currentNodes) < meta.Replica*meta.PartitionNum {
+	if !meta.OrderedMulti && len(currentNodes) < meta.PartitionNum {
+		coordLog.Infof("nodes %v is less than partition %v", len(currentNodes), meta)
+		return ErrNodeUnavailable.ToErrorType()
+	}
+	if !meta.OrderedMulti && len(currentNodes) < meta.Replica*meta.PartitionNum {
 		coordLog.Infof("nodes is less than replica*partition")
 		return ErrNodeUnavailable.ToErrorType()
 	}
@@ -579,7 +583,7 @@ func (self *NsqLookupCoordinator) checkAndUpdateTopicPartitions(currentNodes map
 			}
 		}
 	}
-	leaders, isrList, err := self.dpm.allocTopicLeaderAndISR(currentNodes, meta.Replica, meta.PartitionNum, existPart)
+	leaders, isrList, err := self.dpm.allocTopicLeaderAndISR(meta.OrderedMulti, currentNodes, meta.Replica, meta.PartitionNum, existPart)
 	if err != nil {
 		coordLog.Infof("failed to alloc nodes for topic: %v", err)
 		return err.ToErrorType()

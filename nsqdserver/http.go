@@ -654,8 +654,7 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 	}
 
 	if topicName == "" && topicPartStr == "" {
-
-		topicStats := s.ctx.getStats(true)
+		topicStats := s.ctx.getStats(true, "")
 		var topicHourlyPubStatsList []*clusterinfo.NodeHourlyPubsize
 		for _, topicStat := range topicStats {
 			partitionNum, err := strconv.Atoi(topicStat.TopicPartition)
@@ -766,37 +765,37 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 
 	jsonFormat := formatString == "json"
 
-	stats := s.ctx.getStats(leaderOnly)
+	stats := s.ctx.getStats(leaderOnly, topicName)
 	health := s.ctx.getHealth()
 	startTime := s.ctx.getStartTime()
 	uptime := time.Since(startTime)
 
-	// If we WERE given a topic-name, remove stats for all the other topics:
-	if len(topicName) > 0 {
+	// If we WERE given a channel-name, remove stats for all the other channels:
+	// If we need the partition for topic, remove other partitions
+	if len(channelName) > 0 || len(topicPart) > 0 {
+		filteredStats := make([]nsqd.TopicStats, 0, len(stats))
 		// Find the desired-topic-index:
 		for _, topicStats := range stats {
-			if topicStats.TopicName == topicName {
-				if len(topicPart) > 0 && topicStats.TopicPartition != topicPart {
-					nsqd.NsqLogger().Logf("ignored stats topic partition mismatch - %v, %v", topicPart, topicStats.TopicPartition)
-					continue
-				}
-				// If we WERE given a channel-name, remove stats for all the other channels:
-				if len(channelName) > 0 {
-					// Find the desired-channel:
-					for _, channelStats := range topicStats.Channels {
-						if channelStats.ChannelName == channelName {
-							topicStats.Channels = []nsqd.ChannelStats{channelStats}
-							// We've got the channel we were looking for:
-							break
-						}
+			if len(topicPart) > 0 && topicStats.TopicPartition != topicPart {
+				nsqd.NsqLogger().Logf("ignored stats topic partition mismatch - %v, %v", topicPart, topicStats.TopicPartition)
+				continue
+			}
+			if len(channelName) > 0 {
+				// Find the desired-channel:
+				for _, channelStats := range topicStats.Channels {
+					if channelStats.ChannelName == channelName {
+						topicStats.Channels = []nsqd.ChannelStats{channelStats}
+						// We've got the channel we were looking for:
+						break
 					}
 				}
-
-				// We've got the topic we were looking for:
-				stats = []nsqd.TopicStats{topicStats}
-				break
 			}
+
+			// We've got the topic we were looking for:
+			// now only the mulit ordered topic can have several partitions on the same node
+			filteredStats = append(filteredStats, topicStats)
 		}
+		stats = filteredStats
 	}
 
 	if !jsonFormat {

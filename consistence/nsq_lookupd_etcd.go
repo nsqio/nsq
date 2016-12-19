@@ -711,6 +711,19 @@ func (self *NsqLookupdEtcdMgr) ReleaseTopicLeader(topic string, partition int, s
 	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
 	if err != nil {
 		coordLog.Errorf("try release topic leader session [%s] error: %v", topicKey, err)
+		if !client.IsKeyNotFound(err) {
+			coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+			// since the topic leader session type is changed, we need do the compatible check
+			rsp, innErr := self.client.Get(topicKey, false, false)
+			if innErr != nil {
+			} else {
+				var old TopicLeaderSession
+				json.Unmarshal([]byte(rsp.Node.Value), &old)
+				if old == *session {
+					_, err = self.client.CompareAndDelete(topicKey, rsp.Node.Value, 0)
+				}
+			}
+		}
 	} else {
 		coordLog.Infof("try release topic leader session [%s] success: %v", topicKey, session)
 	}

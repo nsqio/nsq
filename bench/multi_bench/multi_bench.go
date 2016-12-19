@@ -21,6 +21,7 @@ import (
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/spaolacci/murmur3"
 )
 
 var (
@@ -101,7 +102,7 @@ func init() {
 func startBenchPub(msg []byte, batch [][]byte) {
 	var wg sync.WaitGroup
 	config.EnableTrace = *trace
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
 		return
@@ -118,7 +119,11 @@ func startBenchPub(msg []byte, batch [][]byte) {
 			var id nsq.NewMessageID
 			var offset uint64
 			var rawSize uint32
-			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			if *ordered {
+				id, offset, rawSize, err = pubMgr.PublishOrdered(t, msg, msg)
+			} else {
+				id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			}
 			log.Printf("topic %v pub trace : %v, %v, %v", t, id, offset, rawSize)
 		} else {
 			err = pubMgr.Publish(t, msg)
@@ -295,7 +300,7 @@ func startSimpleTest(msg []byte, batch [][]byte) {
 func startCheckData2() {
 	var wg sync.WaitGroup
 	config.EnableTrace = *trace
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
 		return
@@ -327,7 +332,11 @@ func startCheckData2() {
 			var id nsq.NewMessageID
 			var offset uint64
 			var rawSize uint32
-			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, uint64(*v), data)
+			if *ordered {
+				id, offset, rawSize, err = pubMgr.PublishOrdered(t, data, data)
+			} else {
+				id, offset, rawSize, err = pubMgr.PublishAndTrace(t, uint64(*v), data)
+			}
 			log.Printf("topic %v pub trace : %v, %v, %v", t, id, offset, rawSize)
 		} else {
 			err = pubMgr.Publish(t, data)
@@ -441,7 +450,7 @@ func startCheckData2() {
 func startCheckData(msg []byte, batch [][]byte) {
 	var wg sync.WaitGroup
 	config.EnableTrace = *trace
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
 		return
@@ -458,7 +467,11 @@ func startCheckData(msg []byte, batch [][]byte) {
 			var id nsq.NewMessageID
 			var offset uint64
 			var rawSize uint32
-			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			if *ordered {
+				id, offset, rawSize, err = pubMgr.PublishOrdered(t, msg, msg)
+			} else {
+				id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			}
 			log.Printf("topic %v pub trace : %v, %v, %v", t, id, offset, rawSize)
 		} else {
 			err = pubMgr.Publish(t, msg)
@@ -702,7 +715,7 @@ func startBenchLookupRegUnreg() {
 func startCheckSetConsumerOffset() {
 	config.EnableTrace = true
 	// offset count, timestamp
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
 		return
@@ -726,7 +739,11 @@ func startCheckSetConsumerOffset() {
 			var id nsq.NewMessageID
 			var offset uint64
 			var rawSize uint32
-			id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			if *ordered {
+				id, offset, rawSize, err = pubMgr.PublishOrdered(t, msg, msg)
+			} else {
+				id, offset, rawSize, err = pubMgr.PublishAndTrace(t, 0, msg)
+			}
 			if err != nil {
 				log.Printf("topic pub error : %v", err)
 				return
@@ -830,6 +847,7 @@ func main() {
 	glog.StartWorker(time.Second)
 	if *ordered {
 		*trace = true
+		*batchSize = 1
 	}
 	config = nsq.NewConfig()
 	config.MsgTimeout = time.Second * time.Duration(10*(*channelNum))
@@ -841,6 +859,12 @@ func main() {
 	config.MaxInFlight = 20
 	config.EnableTrace = *trace
 	config.EnableOrdered = *ordered
+	config.PubStrategy = nsq.PubRR
+	if config.EnableOrdered {
+		config.PubStrategy = nsq.PubIDHash
+		config.Hasher = murmur3.New32()
+	}
+	log.Printf("check test flag: order: %v, pub strategy: %v, config: %v", *ordered, config.PubStrategy, config)
 
 	log.SetPrefix("[bench_writer] ")
 	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
@@ -891,7 +915,7 @@ func main() {
 }
 
 func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, batchSize int, batch [][]byte, rdyChan chan int, goChan chan int) {
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
 		close(rdyChan)
@@ -921,7 +945,11 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 
 		if *trace {
 			if batchSize == 1 {
-				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], batch[0])
+				if *ordered {
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, batch[0], batch[0])
+				} else {
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], batch[0])
+				}
 			} else {
 				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
 			}
@@ -1141,7 +1169,7 @@ func subWorker2(quitChan chan int, td time.Duration, lookupAddr string, topic st
 }
 
 func pubWorker2(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, pubIDCounter *int64, rdyChan chan int, goChan chan int) {
-	pubMgr, err := nsq.NewTopicProducerMgr(topics, nsq.PubRR, config)
+	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init pub mgr error : %v", err)
 		close(rdyChan)
@@ -1181,7 +1209,11 @@ func pubWorker2(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName 
 		data := make([]byte, 8)
 		binary.BigEndian.PutUint64(data, uint64(traceID))
 		if *trace {
-			traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, uint64(traceID), data)
+			if *ordered {
+				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, data, data)
+			} else {
+				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, uint64(traceID), data)
+			}
 			if err != nil {
 				log.Printf("pub id : %v error :%v\n", traceID, err)
 				failedLocker.Lock()

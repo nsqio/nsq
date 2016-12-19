@@ -209,10 +209,10 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	opts.Logger = newTestLogger(t)
 	if testing.Verbose() {
 		opts.Logger = &levellogger.GLogger{}
-		opts.LogLevel = levellogger.LOG_DETAIL
+		opts.LogLevel = levellogger.LOG_INFO
 		glog.StartWorker(time.Second)
 	} else {
-		opts.LogLevel = levellogger.LOG_ERR
+		opts.LogLevel = levellogger.LOG_INFO
 	}
 	if t == nil {
 		opts.Logger = nil

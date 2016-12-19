@@ -53,6 +53,9 @@ type TopicMetaInfo struct {
 	MagicCode int64
 	// the retention days for the data
 	RetentionDay int32
+	// used for ordered multi partition topic
+	// allow multi partitions on the same node
+	OrderedMulti bool
 }
 
 type TopicPartitionReplicaInfo struct {

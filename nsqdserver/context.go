@@ -70,7 +70,10 @@ func (c *context) setHealth(err error) {
 	c.nsqd.SetHealth(err)
 }
 
-func (c *context) getStats(leaderOnly bool) []nsqd.TopicStats {
+func (c *context) getStats(leaderOnly bool, selectedTopic string) []nsqd.TopicStats {
+	if selectedTopic != "" {
+		return c.nsqd.GetTopicStats(leaderOnly, selectedTopic)
+	}
 	return c.nsqd.GetStats(leaderOnly)
 }
 

@@ -468,6 +468,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		nsqlookupLog.Logf("error retention param: %v, %v", retentionDaysStr, err)
 		return nil, http_api.Err{400, err.Error()}
 	}
+	allowMultiOrdered := reqParams.Get("orderedmulti")
 
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
@@ -485,6 +486,9 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	meta.SuggestLF = suggestLF
 	meta.SyncEvery = syncEvery
 	meta.RetentionDay = int32(retentionDays)
+	if allowMultiOrdered == "true" {
+		meta.OrderedMulti = true
+	}
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, meta)
 	if err != nil {
 		nsqlookupLog.LogErrorf("DB: adding topic(%s) failed: %v", topicName, err)

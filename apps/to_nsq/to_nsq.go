@@ -49,6 +49,7 @@ func main() {
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	cfg.PubStrategy = nsq.PubRR
 
 	// make the producers
 	producers := make(map[string]*nsq.Producer)
@@ -64,7 +65,7 @@ func main() {
 	if *lookupAddress != "" {
 		topics := make([]string, 0)
 		topics = append(topics, *topic)
-		lookupProducer, _ = nsq.NewTopicProducerMgr(topics, nsq.PubRR, cfg)
+		lookupProducer, _ = nsq.NewTopicProducerMgr(topics, cfg)
 		lookupProducer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelDebug)
 		err := lookupProducer.ConnectToNSQLookupd(*lookupAddress)
 		if err != nil {
