@@ -59,10 +59,11 @@ var (
 )
 
 const (
-	defaultTopicLoadFactor       = 3
-	HIGHEST_PUB_QPS_LEVEL        = 100
-	HIGHEST_LEFT_CONSUME_MB_SIZE = 50 * 1024
-	HIGHEST_LEFT_DATA_MB_SIZE    = 200 * 1024
+	RATIO_BETWEEN_LEADER_FOLLOWER = 0.7
+	defaultTopicLoadFactor        = 3
+	HIGHEST_PUB_QPS_LEVEL         = 100
+	HIGHEST_LEFT_CONSUME_MB_SIZE  = 50 * 1024
+	HIGHEST_LEFT_DATA_MB_SIZE     = 200 * 1024
 )
 
 type balanceOpLevel int
@@ -408,6 +409,11 @@ func (self *NodeTopicStats) GetTopicPeakLevel(topic TopicPartitionID) float64 {
 func (self *NodeTopicStats) LeaderLessLoader(other *NodeTopicStats) bool {
 	left := self.GetNodeLeaderLoadFactor()
 	right := other.GetNodeLeaderLoadFactor()
+	if math.Abs(left-right) < 0.5 {
+		left := float64(len(self.TopicLeaderDataSize)) + float64(len(self.TopicTotalDataSize)-len(self.TopicLeaderDataSize))*RATIO_BETWEEN_LEADER_FOLLOWER
+		right := float64(len(other.TopicLeaderDataSize)) + float64(len(other.TopicTotalDataSize)-len(other.TopicLeaderDataSize))*RATIO_BETWEEN_LEADER_FOLLOWER
+		return left < right
+	}
 	if left < right {
 		return true
 	}
@@ -418,6 +424,11 @@ func (self *NodeTopicStats) LeaderLessLoader(other *NodeTopicStats) bool {
 func (self *NodeTopicStats) SlaveLessLoader(other *NodeTopicStats) bool {
 	_, left := self.GetNodeLoadFactor()
 	_, right := other.GetNodeLoadFactor()
+	if math.Abs(left-right) < 0.5 {
+		left := float64(len(self.TopicLeaderDataSize)) + float64(len(self.TopicTotalDataSize)-len(self.TopicLeaderDataSize))*RATIO_BETWEEN_LEADER_FOLLOWER
+		right := float64(len(other.TopicLeaderDataSize)) + float64(len(other.TopicTotalDataSize)-len(other.TopicLeaderDataSize))*RATIO_BETWEEN_LEADER_FOLLOWER
+		return left < right
+	}
 	if left < right {
 		return true
 	}
