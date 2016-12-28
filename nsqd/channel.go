@@ -305,6 +305,11 @@ func (c *Channel) put(m *Message) error {
 	return nil
 }
 
+func (c *Channel) PutMessageDeferred(msg *Message, timeout time.Duration) {
+	atomic.AddUint64(&c.messageCount, 1)
+	c.StartDeferredTimeout(msg, timeout)
+}
+
 // TouchMessage resets the timeout for an in-flight message
 func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout time.Duration) error {
 	msg, err := c.popInFlightMessage(clientID, id)
@@ -355,6 +360,7 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 		return err
 	}
 	c.removeFromInFlightPQ(msg)
+	atomic.AddUint64(&c.requeueCount, 1)
 
 	if timeout == 0 {
 		c.exitMutex.RLock()
@@ -427,7 +433,6 @@ func (c *Channel) doRequeue(m *Message) error {
 	if err != nil {
 		return err
 	}
-	atomic.AddUint64(&c.requeueCount, 1)
 	return nil
 }
 
