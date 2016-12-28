@@ -266,7 +266,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	if ok {
 		tmp := make([]byte, 4)
 		msgs, err = readMPUB(req.Body, tmp, s.ctx.nsqd.idChan,
-			s.ctx.nsqd.getOpts().MaxMsgSize)
+			s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
 		if err != nil {
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
 		}

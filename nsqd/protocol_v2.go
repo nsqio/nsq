@@ -819,7 +819,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	messages, err := readMPUB(client.Reader, client.lenSlice, p.ctx.nsqd.idChan,
-		p.ctx.nsqd.getOpts().MaxMsgSize)
+		p.ctx.nsqd.getOpts().MaxMsgSize, p.ctx.nsqd.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
 	}
@@ -930,13 +930,15 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int64) ([]*Message, error) {
+func readMPUB(r io.Reader, tmp []byte, idChan chan MessageID, maxMessageSize int64, maxBodySize int64) ([]*Message, error) {
 	numMessages, err := readLen(r, tmp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
 	}
 
-	if numMessages <= 0 {
+	// 4 == total num, 5 == length + min 1
+	maxMessages := (maxBodySize - 4) / 5
+	if numMessages <= 0 || int64(numMessages) > maxMessages {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY",
 			fmt.Sprintf("MPUB invalid message count %d", numMessages))
 	}
