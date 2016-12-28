@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -587,6 +588,7 @@ func TestDPUB(t *testing.T) {
 	numDef := len(ch.deferredMessages)
 	ch.deferredMutex.Unlock()
 	test.Equal(t, 1, numDef)
+	test.Equal(t, 1, int(atomic.LoadUint64(&ch.messageCount)))
 
 	// duration out of range
 	nsq.DeferredPublish(topicName, opts.MaxReqTimeout+100*time.Millisecond, make([]byte, 100)).WriteTo(conn)
@@ -1328,6 +1330,7 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
+	ch := topic.GetChannel("ch")
 	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
 	topic.PutMessage(msg)
 
@@ -1345,6 +1348,9 @@ func TestClientMsgTimeout(t *testing.T) {
 	}, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
+	test.Equal(t, 0, int(atomic.LoadUint64(&ch.timeoutCount)))
+	test.Equal(t, 0, int(atomic.LoadUint64(&ch.requeueCount)))
+
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
@@ -1358,6 +1364,9 @@ func TestClientMsgTimeout(t *testing.T) {
 	test.Nil(t, err)
 
 	time.Sleep(1100 * time.Millisecond)
+
+	test.Equal(t, 1, int(atomic.LoadUint64(&ch.timeoutCount)))
+	test.Equal(t, 0, int(atomic.LoadUint64(&ch.requeueCount)))
 
 	_, err = nsq.Finish(nsq.MessageID(msgOut.ID)).WriteTo(conn)
 	test.Nil(t, err)
