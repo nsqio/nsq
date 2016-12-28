@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mreiferson/go-snappystream"
+	"github.com/golang/snappy"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -1114,7 +1114,7 @@ func TestSnappy(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, true, r.Snappy)
 
-	compressConn := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
+	compressConn := snappy.NewReader(conn)
 	resp, _ := nsq.ReadResponse(compressConn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
@@ -1122,7 +1122,7 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 
 	msgBody := make([]byte, 128000)
-	w := snappystream.NewWriter(conn)
+	w := snappy.NewWriter(conn)
 
 	rw := readWriter{compressConn, w}
 
@@ -1310,7 +1310,7 @@ func TestTLSSnappy(t *testing.T) {
 	test.Equal(t, frameTypeResponse, frameType)
 	test.Equal(t, []byte("OK"), data)
 
-	compressConn := snappystream.NewReader(tlsConn, snappystream.SkipVerifyChecksum)
+	compressConn := snappy.NewReader(tlsConn)
 
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)

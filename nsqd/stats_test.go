@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mreiferson/go-snappystream"
+	"github.com/golang/snappy"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 )
@@ -67,8 +67,8 @@ func TestClientAttributes(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, true, resp.Snappy)
 
-	r := snappystream.NewReader(conn, snappystream.SkipVerifyChecksum)
-	w := snappystream.NewWriter(conn)
+	r := snappy.NewReader(conn)
+	w := snappy.NewWriter(conn)
 	readValidate(t, r, frameTypeResponse, "OK")
 
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))

@@ -4,7 +4,7 @@ github.com/nsqio/go-nsq                 642a3f9935f12cb3b747294318d730f56f4c34b4
 github.com/bitly/go-simplejson          18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
 github.com/mreiferson/go-options        7ae3226d3e1fa6a0548f73089c72c96c141f3b95
-github.com/mreiferson/go-snappystream   028eae7ab5c4c9e2d1cb4c4ca1e53259bbe7e504 # v0.2.3
+github.com/golang/snappy                d9eb7a3d35ec988b8585d4a0068e462c27d28380
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
 github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
