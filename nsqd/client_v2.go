@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mreiferson/go-snappystream"
+	"github.com/golang/snappy"
 	"github.com/nsqio/nsq/internal/auth"
 )
 
@@ -533,8 +533,8 @@ func (c *clientV2) UpgradeSnappy() error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), defaultBufferSize)
-	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
+	c.Reader = bufio.NewReaderSize(snappy.NewReader(conn), defaultBufferSize)
+	c.Writer = bufio.NewWriterSize(snappy.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)
 
