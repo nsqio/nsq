@@ -206,29 +206,12 @@ func readMetaDataFile(fileName string, retried int) md {
 	defer f.Close()
 
 	var ret md
-	total := 0
-	total, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
+	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
 		&ret.depth,
 		&ret.readFileNum, &ret.readPos,
 		&ret.writeFileNum, &ret.writePos)
 	if err != nil {
-		// provide a simple retry that results in up to
-		// another 500ms for the file to be written.
-		if retried < 9 {
-			retried++
-			time.Sleep(50 * time.Millisecond)
-			return readMetaDataFile(fileName, retried)
-		}
 		panic(err)
-	}
-	if total == 0 {
-		// provide a simple retry that results in up to
-		// another 500ms for the file to be written.
-		if retried < 9 {
-			retried++
-			time.Sleep(50 * time.Millisecond)
-			return readMetaDataFile(fileName, retried)
-		}
 	}
 	return ret
 }
@@ -247,34 +230,39 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 	msg := make([]byte, 1000)
 	dq.Put(msg)
 
-	// sync loop is every 50ms so wait 3x to make sure the file has time
-	// to actually get written prior to attempting to read it.
-	time.Sleep(150 * time.Millisecond)
+	for i := 0; i < 10; i++ {
+		d := readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
+		if d.depth == 1 &&
+			d.readFileNum == 0 &&
+			d.writeFileNum == 0 &&
+			d.readPos == 0 &&
+			d.writePos == 1004 {
+			// success
+			goto next
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	panic("fail")
 
-	// attempt to read and load metadata of the file; initialize the number
-	// of retry attempts to 0; the max retries is 9 with a delay of 50ms each
-	// meaning that a total of 650ms between message put and message metadata
-	// read should be sufficient for heavy write disks on the travis servers.
-	d := readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
-	t.Logf("%s", d)
-	test.Equal(t, int64(1), d.depth)
-	test.Equal(t, int64(0), d.readFileNum)
-	test.Equal(t, int64(0), d.writeFileNum)
-	test.Equal(t, int64(0), d.readPos)
-	test.Equal(t, int64(1004), d.writePos)
-
+next:
 	dq.Put(msg)
 	<-dq.ReadChan()
 
-	time.Sleep(150 * time.Millisecond)
+	for i := 0; i < 10; i++ {
+		d := readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
+		if d.depth == 1 &&
+			d.readFileNum == 0 &&
+			d.writeFileNum == 0 &&
+			d.readPos == 1004 &&
+			d.writePos == 2008 {
+			// success
+			goto done
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	panic("fail")
 
-	d = readMetaDataFile(dq.(*diskQueue).metaDataFileName(), 0)
-	t.Logf("%s", d)
-	test.Equal(t, int64(1), d.depth)
-	test.Equal(t, int64(0), d.readFileNum)
-	test.Equal(t, int64(0), d.writeFileNum)
-	test.Equal(t, int64(1004), d.readPos)
-	test.Equal(t, int64(2008), d.writePos)
+done:
 }
 
 func TestDiskQueueTorture(t *testing.T) {
