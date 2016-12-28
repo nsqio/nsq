@@ -444,7 +444,10 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	// this makes sure that any message received is buffered to the right channels
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
-		channelNames, _ := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		if err != nil {
+			n.logf("WARNING: failed to query nsqlookupd for channels to pre-create for topic %s - %s", t.name, err)
+		}
 		for _, channelName := range channelNames {
 			if strings.HasSuffix(channelName, "#ephemeral") {
 				// we don't want to pre-create ephemeral channels
