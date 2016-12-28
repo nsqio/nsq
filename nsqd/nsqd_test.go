@@ -264,7 +264,7 @@ func TestReconfigure(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	newOpts := *opts
 	newOpts.NSQLookupdTCPAddresses = []string{lookupd1.RealTCPAddr().String()}
@@ -272,7 +272,7 @@ func TestReconfigure(t *testing.T) {
 	nsqd.triggerOptsNotification()
 	test.Equal(t, 1, len(nsqd.getOpts().NSQLookupdTCPAddresses))
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	numLookupPeers := len(nsqd.lookupPeers.Load().([]*lookupPeer))
 	test.Equal(t, 1, numLookupPeers)
@@ -283,7 +283,7 @@ func TestReconfigure(t *testing.T) {
 	nsqd.triggerOptsNotification()
 	test.Equal(t, 2, len(nsqd.getOpts().NSQLookupdTCPAddresses))
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	var lookupPeers []string
 	for _, lp := range nsqd.lookupPeers.Load().([]*lookupPeer) {
