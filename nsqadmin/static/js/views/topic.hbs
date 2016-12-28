@@ -278,7 +278,8 @@
         {{#unless has_client_pub}}
             <div class="alert alert-warning"><h4>Notice</h4>No producer connected to this channel</div>
         {{else}}
-            <table class="table table-bordered table-condensed">
+            <table id="producerConnect" class="table tablesorter table-bordered table-condensed">
+                <thead>
                 <tr>
                     <th>Producer Host</th>
                     <th>User-Agent</th>
@@ -288,6 +289,8 @@
                     <th>Error Count</th>
                     <th>Last Pub Timestamp</th>
                 </tr>
+                </thead>
+                <tbody>
                 {{#each nodes}}
                     {{#each client_pub_stats}}
                     <tr>
@@ -295,16 +298,27 @@
                         <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
                         <td>{{../node}}</td>
                         <td>{{protocol}}</td>
-                        <td>{{commafy pub_count}}</td>
-                        <td>{{commafy err_count}}</td>
+                        <td>{{pub_count}}</td>
+                        <td>{{err_count}}</td>
                         <td>{{last_pub_ts}}</td>
                     </tr>
                     {{/each}}
                 {{/each}}
+                </tbody>
             </table>
         {{/unless}}
     </div>
 </div>
+
+<script type="text/javascript">
+    (function(){
+        $(document).ready(
+            function(){
+                $("#producerConnect").tablesorter();
+            }
+        );
+    }());
+</script>
 
 <div class="row">
     {{#unless channels.length}}
