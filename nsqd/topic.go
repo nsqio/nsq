@@ -275,7 +275,7 @@ func (t *Topic) messagePump() {
 				chanMsg.deferred = msg.deferred
 			}
 			if chanMsg.deferred != 0 {
-				channel.StartDeferredTimeout(chanMsg, chanMsg.deferred)
+				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue
 			}
 			err := channel.PutMessage(chanMsg)
