@@ -2,7 +2,7 @@ github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
 github.com/nsqio/go-nsq                 642a3f9935f12cb3b747294318d730f56f4c34b4 # v1.0.6-alpha
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
-github.com/mreiferson/go-options        2e28e74c79f31a5a0e807baad7f4429ea2703dcb
+github.com/mreiferson/go-options        77551d20752b54535462404ad9d877ebdb26e53d
 github.com/golang/snappy                d9eb7a3d35ec988b8585d4a0068e462c27d28380
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
 github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
