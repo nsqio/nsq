@@ -41,17 +41,3 @@ func (r *ReqParams) GetAll(key string) ([]string, error) {
 	}
 	return v, nil
 }
-
-type PostParams struct {
-	*http.Request
-}
-
-func (p *PostParams) Get(key string) (string, error) {
-	if p.Request.Form == nil {
-		p.Request.ParseMultipartForm(1 << 20)
-	}
-	if vs, ok := p.Request.Form[key]; ok {
-		return vs[0], nil
-	}
-	return "", errors.New("key not in post params")
-}

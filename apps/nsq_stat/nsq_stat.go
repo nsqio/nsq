@@ -25,7 +25,6 @@ var (
 	showVersion        = flag.Bool("version", false, "print version")
 	topic              = flag.String("topic", "", "NSQ topic")
 	channel            = flag.String("channel", "", "NSQ channel")
-	statusEvery        = flag.Duration("status-every", -1, "(deprecated) duration of time between polling/printing output")
 	interval           = flag.Duration("interval", 2*time.Second, "duration of time between polling/printing output")
 	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
 	httpRequestTimeout = flag.Duration("http-client-request-timeout", 5*time.Second, "timeout for HTTP request")
@@ -143,10 +142,6 @@ func main() {
 	}
 
 	intvl := *interval
-	if *statusEvery != -1 {
-		log.Printf("--status-every is deprecated, use --interval")
-		intvl = *statusEvery
-	}
 	if int64(intvl) <= 0 {
 		log.Fatal("--interval should be positive")
 	}

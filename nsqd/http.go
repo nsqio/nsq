@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -47,11 +46,12 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.V1))
 
 	// v1 negotiate
-	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
-	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
-	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
+	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.V1))
+	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.V1))
+	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.V1))
 
 	// only v1
 	router.Handle("POST", "/topic/create", http_api.Decorate(s.doCreateTopic, log, http_api.V1))
@@ -66,31 +66,6 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
-
-	// deprecated, v1 negotiate
-	router.Handle("POST", "/put", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
-	router.Handle("POST", "/mput", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
-	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/empty_topic", http_api.Decorate(s.doEmptyTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/pause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/unpause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/empty_channel", http_api.Decorate(s.doEmptyChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/pause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
-	router.Handle("POST", "/unpause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/create_topic", http_api.Decorate(s.doCreateTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/delete_topic", http_api.Decorate(s.doDeleteTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/empty_topic", http_api.Decorate(s.doEmptyTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/pause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/unpause_topic", http_api.Decorate(s.doPauseTopic, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/create_channel", http_api.Decorate(s.doCreateChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/delete_channel", http_api.Decorate(s.doDeleteChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/empty_channel", http_api.Decorate(s.doEmptyChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/pause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/unpause_channel", http_api.Decorate(s.doPauseChannel, log, http_api.NegotiateVersion))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
@@ -120,7 +95,10 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !s.tlsEnabled && s.tlsRequired {
 		resp := fmt.Sprintf(`{"message": "TLS_REQUIRED", "https_port": %d}`,
 			s.ctx.nsqd.RealHTTPSAddr().Port)
-		http_api.Respond(w, 403, "", resp)
+		w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(403)
+		io.WriteString(w, resp)
 		return
 	}
 	s.router.ServeHTTP(w, req)
@@ -577,10 +555,9 @@ func (s *httpServer) printStats(stats []TopicStats, health string, startTime tim
 				connectTime := time.Unix(client.ConnectTime, 0)
 				// truncate to the second
 				duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
-				_, port, _ := net.SplitHostPort(client.RemoteAddress)
 				io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 					client.Version,
-					fmt.Sprintf("%s:%s", client.Name, port),
+					client.ClientID,
 					client.State,
 					client.InFlightCount,
 					client.ReadyCount,

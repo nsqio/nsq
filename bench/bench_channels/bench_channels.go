@@ -46,8 +46,7 @@ func subWorker(n int, tcpAddr string,
 	conn.Write(nsq.MagicV2)
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
+	ci["client_id"] = "test"
 	cmd, _ := nsq.Identify(ci)
 	cmd.WriteTo(rw)
 	nsq.Subscribe(topic, channel).WriteTo(rw)

@@ -57,8 +57,7 @@ func mustConnectNSQD(tcpAddr *net.TCPAddr) (net.Conn, error) {
 
 func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f int32) []byte {
 	ci := make(map[string]interface{})
-	ci["short_id"] = "test"
-	ci["long_id"] = "test"
+	ci["client_id"] = "test"
 	ci["feature_negotiation"] = true
 	if extra != nil {
 		for k, v := range extra {

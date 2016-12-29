@@ -12,7 +12,6 @@ type Options struct {
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`
 
-	UseStatsdPrefixes   bool   `flag:"use-statsd-prefixes"`
 	StatsdPrefix        string `flag:"statsd-prefix"`
 	StatsdCounterFormat string `flag:"statsd-counter-format"`
 	StatsdGaugeFormat   string `flag:"statsd-gauge-format"`
@@ -38,7 +37,6 @@ type Options struct {
 func NewOptions() *Options {
 	return &Options{
 		HTTPAddress:              "0.0.0.0:4171",
-		UseStatsdPrefixes:        true,
 		StatsdPrefix:             "nsq.%s",
 		StatsdCounterFormat:      "stats.counters.%s.count",
 		StatsdGaugeFormat:        "stats.gauges.%s",

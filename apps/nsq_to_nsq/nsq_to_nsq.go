@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/bitly/go-hostpool"
-	"github.com/bitly/go-simplejson"
 	"github.com/bitly/timer_metrics"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/app"
@@ -48,9 +47,6 @@ var (
 
 	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
 	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
-
-	// TODO: remove, deprecated
-	maxBackoffDuration = flag.Duration("max-backoff-duration", 120*time.Second, "(deprecated) use --consumer-opt=max_backoff_duration,X")
 )
 
 func init() {
@@ -120,7 +116,7 @@ func (ph *PublishHandler) responder() {
 	}
 }
 
-func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, bool) {
+func (ph *PublishHandler) shouldPassMessage(js map[string]interface{}) (bool, bool) {
 	pass := true
 	backoff := false
 
@@ -136,7 +132,7 @@ func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, boo
 		ph.requireJSONValueParsed = true
 	}
 
-	jsonVal, ok := jsonMsg.CheckGet(*requireJSONField)
+	v, ok := js[*requireJSONField]
 	if !ok {
 		pass = false
 		if *requireJSONValue != "" {
@@ -146,13 +142,13 @@ func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, boo
 	} else if *requireJSONValue != "" {
 		// if command-line argument can't convert to float, then it can't match a number
 		// if it can, also integers (up to 2^53 or so) can be compared as float64
-		if strVal, err := jsonVal.String(); err == nil {
-			if strVal != *requireJSONValue {
+		if s, ok := v.(string); ok {
+			if s != *requireJSONValue {
 				pass = false
 			}
 		} else if ph.requireJSONValueIsNumber {
-			floatVal, err := jsonVal.Float64()
-			if err != nil || ph.requireJSONNumber != floatVal {
+			f, ok := v.(float64)
+			if !ok || f != ph.requireJSONNumber {
 				pass = false
 			}
 		} else {
@@ -165,21 +161,16 @@ func (ph *PublishHandler) shouldPassMessage(jsonMsg *simplejson.Json) (bool, boo
 	return pass, backoff
 }
 
-func filterMessage(jsonMsg *simplejson.Json, rawMsg []byte) ([]byte, error) {
+func filterMessage(js map[string]interface{}, rawMsg []byte) ([]byte, error) {
 	if len(whitelistJSONFields) == 0 {
 		// no change
 		return rawMsg, nil
 	}
 
-	msg, err := jsonMsg.Map()
-	if err != nil {
-		return nil, errors.New("json is not an object")
-	}
-
 	newMsg := make(map[string]interface{}, len(whitelistJSONFields))
 
 	for _, key := range whitelistJSONFields {
-		value, ok := msg[key]
+		value, ok := js[key]
 		if ok {
 			// avoid printing int as float (go 1.0)
 			switch tvalue := value.(type) {
@@ -208,21 +199,21 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 	msgBody := m.Body
 
 	if *requireJSONField != "" || len(whitelistJSONFields) > 0 {
-		var jsonMsg *simplejson.Json
-		jsonMsg, err = simplejson.NewJson(m.Body)
+		var js map[string]interface{}
+		err = json.Unmarshal(msgBody, &js)
 		if err != nil {
-			log.Printf("ERROR: Unable to decode json: %s", m.Body)
+			log.Printf("ERROR: Unable to decode json: %s", msgBody)
 			return nil
 		}
 
-		if pass, backoff := ph.shouldPassMessage(jsonMsg); !pass {
+		if pass, backoff := ph.shouldPassMessage(js); !pass {
 			if backoff {
 				return errors.New("backoff")
 			}
 			return nil
 		}
 
-		msgBody, err = filterMessage(jsonMsg, m.Body)
+		msgBody, err = filterMessage(js, msgBody)
 		if err != nil {
 			log.Printf("ERROR: filterMessage() failed: %s", err)
 			return err
@@ -270,8 +261,6 @@ func main() {
 	cCfg := nsq.NewConfig()
 	pCfg := nsq.NewConfig()
 
-	// TODO: remove, deprecated
-	flag.Var(&nsq.ConfigFlag{cCfg}, "reader-opt", "(deprecated) use --consumer-opt")
 	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 
@@ -327,12 +316,6 @@ func main() {
 
 	cCfg.UserAgent = defaultUA
 	cCfg.MaxInFlight = *maxInFlight
-
-	// TODO: remove, deprecated
-	if hasArg("max-backoff-duration") {
-		log.Printf("WARNING: --max-backoff-duration is deprecated in favor of --consumer-opt=max_backoff_duration,X")
-		cCfg.MaxBackoffDuration = *maxBackoffDuration
-	}
 
 	consumer, err := nsq.NewConsumer(*topic, *channel, cCfg)
 	if err != nil {
