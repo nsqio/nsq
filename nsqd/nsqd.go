@@ -456,6 +456,8 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 			}
 			t.getOrCreateChannel(channelName)
 		}
+	} else if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
+		n.logf("ERROR: no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
 	}
 
 	t.Unlock()
