@@ -37,6 +37,9 @@ func connectCallback(n *NSQD, hostname string, syncTopicChan chan *lookupPeer) f
 				n.logf("LOOKUPD(%s): ERROR parsing response - %s", lp, resp)
 			} else {
 				n.logf("LOOKUPD(%s): peer info %+v", lp, lp.Info)
+				if lp.Info.BroadcastAddress == "" {
+					n.logf("LOOKUPD(%s): ERROR - no broadcast address", lp)
+				}
 			}
 		}
 
