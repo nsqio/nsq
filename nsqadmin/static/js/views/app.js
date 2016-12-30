@@ -136,6 +136,10 @@ var AppView = BaseView.extend({
     },
 
     onLinkClick: function(e) {
+        if (e.ctrlKey || e.metaKey) {
+          // allow ctrl+click to open in a new tab
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         Router.navigate($(e.currentTarget).attr('href'), {'trigger': true});
