@@ -25,10 +25,7 @@ func BenchmarkGUIDUnsafe(b *testing.B) {
 func BenchmarkGUID(b *testing.B) {
 	factory := &guidFactory{}
 	for i := 0; i < b.N; i++ {
-		guid, err := factory.NewGUID(0)
-		if err != nil {
-			continue
-		}
-		guid.Hex()
+		id, _ := factory.NewGUID()
+		id.Hex()
 	}
 }
