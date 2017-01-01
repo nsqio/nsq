@@ -277,7 +277,7 @@ func (c *Channel) IsPaused() bool {
 func (c *Channel) PutMessage(m *Message) error {
 	c.RLock()
 	defer c.RUnlock()
-	if atomic.LoadInt32(&c.exitFlag) == 1 {
+	if c.Exiting() {
 		return errors.New("exiting")
 	}
 	err := c.put(m)
@@ -364,7 +364,11 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 
 	if timeout == 0 {
 		c.exitMutex.RLock()
-		err := c.doRequeue(msg)
+		if c.Exiting() {
+			c.exitMutex.RUnlock()
+			return errors.New("exiting")
+		}
+		err := c.put(msg)
 		c.exitMutex.RUnlock()
 		return err
 	}
@@ -422,17 +426,6 @@ func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) erro
 		return err
 	}
 	c.addToDeferredPQ(item)
-	return nil
-}
-
-// doRequeue performs the low level operations to requeue a message
-//
-// Callers of this method need to ensure that a simultaneous exit will not occur
-func (c *Channel) doRequeue(m *Message) error {
-	err := c.put(m)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -540,7 +533,7 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 		if err != nil {
 			goto exit
 		}
-		c.doRequeue(msg)
+		c.put(msg)
 	}
 
 exit:
@@ -577,7 +570,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if ok {
 			client.TimedOutMessage()
 		}
-		c.doRequeue(msg)
+		c.put(msg)
 	}
 
 exit:
