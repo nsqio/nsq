@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,7 +59,6 @@ type NSQD struct {
 
 	poolSize int
 
-	idChan               chan MessageID
 	notifyChan           chan interface{}
 	optsNotificationChan chan struct{}
 	exitChan             chan int
@@ -79,7 +77,6 @@ func New(opts *Options) *NSQD {
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
-		idChan:               make(chan MessageID, 4096),
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
@@ -253,7 +250,6 @@ func (n *NSQD) Main() {
 	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })
-	n.waitGroup.Wrap(func() { n.idPump() })
 	n.waitGroup.Wrap(func() { n.lookupLoop() })
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
@@ -401,8 +397,6 @@ func (n *NSQD) Exit() {
 	}
 	n.Unlock()
 
-	// we want to do this last as it closes the idPump (if closed first it
-	// could potentially starve items in process and deadlock)
 	close(n.exitChan)
 	n.waitGroup.Wait()
 
@@ -509,33 +503,6 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	n.Unlock()
 
 	return nil
-}
-
-func (n *NSQD) idPump() {
-	factory := &guidFactory{}
-	lastError := time.Unix(0, 0)
-	workerID := n.getOpts().ID
-	for {
-		id, err := factory.NewGUID(workerID)
-		if err != nil {
-			now := time.Now()
-			if now.Sub(lastError) > time.Second {
-				// only print the error once/second
-				n.logf("ERROR: %s", err)
-				lastError = now
-			}
-			runtime.Gosched()
-			continue
-		}
-		select {
-		case n.idChan <- id.Hex():
-		case <-n.exitChan:
-			goto exit
-		}
-	}
-
-exit:
-	n.logf("ID: closing")
 }
 
 func (n *NSQD) Notify(v interface{}) {
