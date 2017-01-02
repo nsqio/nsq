@@ -1547,25 +1547,35 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / numTopics / batchSize
-			for i := 0; i < num; i++ {
-				cmd, _ := nsq.MultiPublish(topicName, batch)
-				_, err := cmd.WriteTo(rw)
-				if err != nil {
-					panic(err.Error())
+			wg.Add(1)
+			go func() {
+				for i := 0; i < num; i++ {
+					cmd, _ := nsq.MultiPublish(topicName, batch)
+					_, err := cmd.WriteTo(rw)
+					if err != nil {
+						panic(err.Error())
+					}
+					err = rw.Flush()
+					if err != nil {
+						panic(err.Error())
+					}
 				}
-				err = rw.Flush()
-				if err != nil {
-					panic(err.Error())
+				wg.Done()
+			}()
+			wg.Add(1)
+			go func() {
+				for i := 0; i < num; i++ {
+					resp, err := nsq.ReadResponse(rw)
+					if err != nil {
+						panic(err.Error())
+					}
+					_, data, _ := nsq.UnpackResponse(resp)
+					if !bytes.Equal(data, []byte("OK")) {
+						panic("invalid response")
+					}
 				}
-				resp, err := nsq.ReadResponse(rw)
-				if err != nil {
-					panic(err.Error())
-				}
-				_, data, _ := nsq.UnpackResponse(resp)
-				if !bytes.Equal(data, []byte("OK")) {
-					panic("invalid response")
-				}
-			}
+				wg.Done()
+			}()
 			wg.Done()
 		}()
 	}
@@ -1611,25 +1621,35 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			for i := 0; i < num; i++ {
-				cmd, _ := nsq.MultiPublish(topicName, batch)
-				_, err := cmd.WriteTo(rw)
-				if err != nil {
-					panic(err.Error())
+			wg.Add(1)
+			go func() {
+				for i := 0; i < num; i++ {
+					cmd, _ := nsq.MultiPublish(topicName, batch)
+					_, err := cmd.WriteTo(rw)
+					if err != nil {
+						panic(err.Error())
+					}
+					err = rw.Flush()
+					if err != nil {
+						panic(err.Error())
+					}
 				}
-				err = rw.Flush()
-				if err != nil {
-					panic(err.Error())
+				wg.Done()
+			}()
+			wg.Add(1)
+			go func() {
+				for i := 0; i < num; i++ {
+					resp, err := nsq.ReadResponse(rw)
+					if err != nil {
+						panic(err.Error())
+					}
+					_, data, _ := nsq.UnpackResponse(resp)
+					if !bytes.Equal(data, []byte("OK")) {
+						panic("invalid response")
+					}
 				}
-				resp, err := nsq.ReadResponse(rw)
-				if err != nil {
-					panic(err.Error())
-				}
-				_, data, _ := nsq.UnpackResponse(resp)
-				if !bytes.Equal(data, []byte("OK")) {
-					panic("invalid response")
-				}
-			}
+				wg.Done()
+			}()
 			wg.Done()
 		}()
 	}
