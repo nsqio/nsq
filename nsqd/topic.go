@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nsqio/nsq/internal/quantile"
 	"github.com/nsqio/nsq/internal/util"
@@ -25,6 +26,7 @@ type Topic struct {
 	channelUpdateChan chan int
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
+	idFactory         *guidFactory
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
@@ -47,6 +49,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		ctx:               ctx,
 		pauseChan:         make(chan bool),
 		deleteCallback:    deleteCallback,
+		idFactory:         NewGUIDFactory(ctx.nsqd.getOpts().ID),
 	}
 
 	if strings.HasSuffix(topicName, "#ephemeral") {
@@ -434,4 +437,14 @@ func (t *Topic) doPause(pause bool) error {
 
 func (t *Topic) IsPaused() bool {
 	return atomic.LoadInt32(&t.paused) == 1
+}
+
+func (t *Topic) GenerateID() MessageID {
+retry:
+	id, err := t.idFactory.NewGUID()
+	if err != nil {
+		time.Sleep(time.Millisecond)
+		goto retry
+	}
+	return id.Hex()
 }

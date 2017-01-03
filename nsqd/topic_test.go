@@ -76,19 +76,19 @@ func TestHealth(t *testing.T) {
 	topic := nsqd.GetTopic("test")
 	topic.backend = &errorBackendQueue{}
 
-	msg := NewMessage(<-nsqd.idChan, make([]byte, 100))
+	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
 	err := topic.PutMessage(msg)
 	test.Nil(t, err)
 
-	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
 	test.Nil(t, err)
 
-	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
 	err = topic.PutMessage(msg)
 	test.NotNil(t, err)
 
-	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
 	test.NotNil(t, err)
 
@@ -102,7 +102,7 @@ func TestHealth(t *testing.T) {
 
 	topic.backend = &errorRecoveredBackendQueue{}
 
-	msg = NewMessage(<-nsqd.idChan, make([]byte, 100))
+	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
 	err = topic.PutMessages([]*Message{msg})
 	test.Nil(t, err)
 
@@ -155,7 +155,7 @@ func TestDeleteLast(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 0, len(topic.channelMap))
 
-	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	time.Sleep(100 * time.Millisecond)
 	test.Nil(t, err)
@@ -177,7 +177,7 @@ func TestPause(t *testing.T) {
 	channel := topic.GetChannel("ch1")
 	test.NotNil(t, channel)
 
-	msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	err = topic.PutMessage(msg)
 	test.Nil(t, err)
 
@@ -221,7 +221,7 @@ func BenchmarkTopicPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
-		msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }
@@ -241,7 +241,7 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetTopic(topicName)
-		msg := NewMessage(<-nsqd.idChan, []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 

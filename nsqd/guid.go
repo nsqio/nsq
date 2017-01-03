@@ -12,6 +12,7 @@ package nsqd
 import (
 	"encoding/hex"
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -33,22 +34,35 @@ var ErrIDBackwards = errors.New("ID went backward")
 type guid int64
 
 type guidFactory struct {
+	sync.Mutex
+
+	workerID      int64
 	sequence      int64
 	lastTimestamp int64
 	lastID        guid
 }
 
-func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
+func NewGUIDFactory(workerID int64) *guidFactory {
+	return &guidFactory{
+		workerID: workerID,
+	}
+}
+
+func (f *guidFactory) NewGUID() (guid, error) {
+	f.Lock()
+
 	// divide by 1048576, giving pseudo-milliseconds
 	ts := time.Now().UnixNano() >> 20
 
 	if ts < f.lastTimestamp {
+		f.Unlock()
 		return 0, ErrTimeBackwards
 	}
 
 	if f.lastTimestamp == ts {
 		f.sequence = (f.sequence + 1) & sequenceMask
 		if f.sequence == 0 {
+			f.Unlock()
 			return 0, ErrSequenceExpired
 		}
 	} else {
@@ -58,14 +72,17 @@ func (f *guidFactory) NewGUID(workerID int64) (guid, error) {
 	f.lastTimestamp = ts
 
 	id := guid(((ts - twepoch) << timestampShift) |
-		(workerID << workerIDShift) |
+		(f.workerID << workerIDShift) |
 		f.sequence)
 
 	if id <= f.lastID {
+		f.Unlock()
 		return 0, ErrIDBackwards
 	}
 
 	f.lastID = id
+
+	f.Unlock()
 
 	return id, nil
 }
