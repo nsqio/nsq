@@ -64,12 +64,13 @@ func NewChannelStats(c *Channel, clients []ClientStats, clientCount int) Channel
 		BackendDepth:  c.Depth(),
 		InFlightCount: inflight,
 		DeferredCount: deferred,
-		MessageCount:  atomic.LoadUint64(&c.messageCount),
-		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
-		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
-		ClientCount:   clientCount,
-		Clients:       clients,
-		Paused:        c.IsPaused(),
+		// TODO: (WAL) fixme
+		// MessageCount:  atomic.LoadUint64(&c.messageCount),
+		RequeueCount: atomic.LoadUint64(&c.requeueCount),
+		TimeoutCount: atomic.LoadUint64(&c.timeoutCount),
+		ClientCount:  clientCount,
+		Clients:      clients,
+		Paused:       c.IsPaused(),
 
 		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}

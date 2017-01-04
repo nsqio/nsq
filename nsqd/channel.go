@@ -348,7 +348,8 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 			c.exitMutex.RUnlock()
 			return errors.New("exiting")
 		}
-		err := c.put(msg)
+		// TODO: (WAL) fixme
+		// err := c.put(msg)
 		c.exitMutex.RUnlock()
 		return err
 	}
@@ -519,7 +520,8 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 		if err != nil {
 			goto exit
 		}
-		c.put(msg)
+		// TODO: (WAL) fixme
+		// c.put(msg)
 	}
 
 exit:
@@ -556,7 +558,8 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		if ok {
 			client.TimedOutMessage()
 		}
-		c.put(msg)
+		// TODO: (WAL) fixme
+		// c.put(msg)
 	}
 
 exit:

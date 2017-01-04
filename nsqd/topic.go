@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/lg"
@@ -283,14 +282,4 @@ func (t *Topic) doPause(pause bool) error {
 
 func (t *Topic) IsPaused() bool {
 	return atomic.LoadInt32(&t.paused) == 1
-}
-
-func (t *Topic) GenerateID() MessageID {
-retry:
-	id, err := t.idFactory.NewGUID()
-	if err != nil {
-		time.Sleep(time.Millisecond)
-		goto retry
-	}
-	return id.Hex()
 }
