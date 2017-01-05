@@ -172,12 +172,140 @@ func TestChannelHealth(t *testing.T) {
 }
 
 func TestChannelSkip(t *testing.T) {
-	// TODO: backward and forward
+	opts := NewOptions()
+	opts.SyncEvery = 1
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_skip" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	channel := topic.GetChannel("channel")
+
+	msgs := make([]*Message, 0, 10)
+	for i := 0; i < 10; i++ {
+		var msgId MessageID
+		msgBytes := []byte(strconv.Itoa(i))
+		msg := NewMessage(msgId, msgBytes)
+		msgs = append(msgs, msg)
+	}
+	topic.PutMessages(msgs)
+
+	var msgId MessageID
+	msgBytes := []byte(strconv.Itoa(10))
+	msg := NewMessage(msgId, msgBytes)
+	_, backendOffsetMid, _, _, _ := topic.PutMessage(msg)
+	topic.flush(true)
+	equal(t, channel.Depth(), int64(11))
+
+	msgs = make([]*Message, 0, 9)
+	//put another 10 messages
+	for i := 0; i < 9; i++ {
+		var msgId MessageID
+		msgBytes := []byte(strconv.Itoa(i + 11))
+		msg := NewMessage(msgId, msgBytes)
+		msgs = append(msgs, msg)
+	}
+	topic.PutMessages(msgs)
+	topic.flush(true)
+	equal(t, channel.Depth(), int64(20))
+
+	//skip forward to message 10
+	t.Logf("backendOffsetMid: %d", backendOffsetMid)
+	channel.SetConsumeOffset(backendOffsetMid, 10, true)
+	for i := 0; i < 10; i++ {
+		outputMsg := <-channel.clientMsgChan
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10));
+	}
 }
 
 func TestChannelResetReadEnd(t *testing.T) {
+	opts := NewOptions()
+	opts.SyncEvery = 1
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_skip" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	channel := topic.GetChannel("channel")
+
+	msgs := make([]*Message, 0, 10)
+	for i := 0; i < 10; i++ {
+		var msgId MessageID
+		msgBytes := []byte(strconv.Itoa(i))
+		msg := NewMessage(msgId, msgBytes)
+		msgs = append(msgs, msg)
+	}
+	topic.PutMessages(msgs)
+
+	var msgId MessageID
+	msgBytes := []byte(strconv.Itoa(10))
+	msg := NewMessage(msgId, msgBytes)
+	_, backendOffsetMid, _, _, _ := topic.PutMessage(msg)
+	topic.flush(true)
+	equal(t, channel.Depth(), int64(11))
+
+	msgs = make([]*Message, 0, 9)
+	//put another 10 messages
+	for i := 0; i < 9; i++ {
+		var msgId MessageID
+		msgBytes := []byte(strconv.Itoa(i + 11))
+		msg := NewMessage(msgId, msgBytes)
+		msgs = append(msgs, msg)
+	}
+	topic.PutMessages(msgs)
+	topic.flush(true)
+	equal(t, channel.Depth(), int64(20))
+
+	//skip forward to message 10
+	t.Logf("backendOffsetMid: %d", backendOffsetMid)
+	channel.SetConsumeOffset(backendOffsetMid, 10, true)
+	for i := 0; i < 10; i++ {
+		outputMsg := <-channel.clientMsgChan
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10));
+	}
+	equal(t, channel.Depth(), int64(10))
+
+	channel.SetConsumeOffset(0, 0, true)
+	//equal(t, channel.Depth(), int64(20))
+	for i := 0; i < 20; i++ {
+		outputMsg := <-channel.clientMsgChan
+		t.Logf("Msg: %s", outputMsg.Body)
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i));
+	}
 }
 
 func TestChannelDepthTimestamp(t *testing.T) {
 	// handle read no data, reset, etc
+	opts := NewOptions()
+	opts.SyncEvery = 1
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_depthts" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	channel := topic.GetChannel("channel")
+
+	msgs := make([]*Message, 0, 9)
+	//put another 10 messages
+	for i := 0; i < 10; i++ {
+		var msgId MessageID
+		msgBytes := []byte(strconv.Itoa(i + 11))
+		msg := NewMessage(msgId, msgBytes)
+		msgs = append(msgs, msg)
+	}
+	topic.PutMessages(msgs)
+	topic.flush(true)
+
+	for i := 0; i < 10; i++ {
+		msgOutput := <- channel.clientMsgChan
+		equal(t, msgOutput.Timestamp, channel.DepthTimestamp());
+	}
+	channel.resetReaderToConfirmed()
+	equal(t, channel.DepthTimestamp(), int64(0))
 }
