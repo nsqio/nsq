@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	workerIDBits   = uint64(10)
+	nodeIDBits     = uint64(10)
 	sequenceBits   = uint64(12)
-	workerIDShift  = sequenceBits
-	timestampShift = sequenceBits + workerIDBits
+	nodeIDShift    = sequenceBits
+	timestampShift = sequenceBits + nodeIDBits
 	sequenceMask   = int64(-1) ^ (int64(-1) << sequenceBits)
 
 	// ( 2012-10-28 16:23:42 UTC ).UnixNano() >> 20
@@ -36,15 +36,15 @@ type guid int64
 type guidFactory struct {
 	sync.Mutex
 
-	workerID      int64
+	nodeID        int64
 	sequence      int64
 	lastTimestamp int64
 	lastID        guid
 }
 
-func NewGUIDFactory(workerID int64) *guidFactory {
+func NewGUIDFactory(nodeID int64) *guidFactory {
 	return &guidFactory{
-		workerID: workerID,
+		nodeID: nodeID,
 	}
 }
 
@@ -72,7 +72,7 @@ func (f *guidFactory) NewGUID() (guid, error) {
 	f.lastTimestamp = ts
 
 	id := guid(((ts - twepoch) << timestampShift) |
-		(f.workerID << workerIDShift) |
+		(f.nodeID << nodeIDShift) |
 		f.sequence)
 
 	if id <= f.lastID {

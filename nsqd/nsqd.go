@@ -102,7 +102,7 @@ func New(opts *Options) *NSQD {
 	}
 
 	if opts.ID < 0 || opts.ID >= 1024 {
-		n.logf("FATAL: --worker-id must be [0,1024)")
+		n.logf("FATAL: --node-id must be [0,1024)")
 		os.Exit(1)
 	}
 

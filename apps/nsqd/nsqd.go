@@ -81,7 +81,8 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("verbose", false, "enable verbose logging")
 	flagSet.String("config", "", "path to config file")
 	flagSet.String("log-prefix", "[nsqd] ", "log message prefix")
-	flagSet.Int64("worker-id", opts.ID, "unique seed for message ID generation (int) in range [0,4096) (will default to a hash of hostname)")
+	flagSet.Int64("node-id", opts.ID, "unique part for message IDs, (int) in range [0,1024) (default is hash of hostname)")
+	flagSet.Bool("worker-id", false, "do NOT use this, use --node-id")
 
 	flagSet.String("https-address", opts.HTTPSAddress, "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")

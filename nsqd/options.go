@@ -12,7 +12,7 @@ import (
 
 type Options struct {
 	// basic options
-	ID                       int64         `flag:"worker-id" cfg:"id"`
+	ID                       int64         `flag:"node-id" cfg:"id"`
 	Verbose                  bool          `flag:"verbose"`
 	LogPrefix                string        `flag:"log-prefix"`
 	TCPAddress               string        `flag:"tcp-address"`
