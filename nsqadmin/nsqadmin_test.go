@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqd"
@@ -103,7 +102,7 @@ func mustStartNSQD(opts *nsqd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqd.NSQD) 
 	opts.HTTPAddress = "127.0.0.1:0"
 	opts.HTTPSAddress = "127.0.0.1:0"
 	if opts.DataPath == "" {
-		tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+		tmpDir, err := ioutil.TempDir("", "nsq-test-")
 		if err != nil {
 			panic(err)
 		}
