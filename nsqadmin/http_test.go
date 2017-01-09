@@ -73,7 +73,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQL
 	nsqdOpts.BroadcastAddress = "127.0.0.1"
 	nsqdOpts.NSQLookupdTCPAddresses = []string{nsqlookupd1.RealTCPAddr().String()}
 	nsqdOpts.Logger = lgr
-	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	tmpDir, err := ioutil.TempDir("", "nsq-test-")
 	if err != nil {
 		panic(err)
 	}
