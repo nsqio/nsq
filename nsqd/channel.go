@@ -563,7 +563,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 		reqLen += len(c.requeuedMsgChan)
 		c.waitingRequeueMutex.Unlock()
 		if flightCnt == 0 && reqLen <= 0 {
-			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v",
 				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 			//atomic.StoreInt32(&c.needResetReader, 1)
 		}
@@ -1010,7 +1010,25 @@ LOOP:
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
 			if err == nil {
-				c.drainChannelWaiting(c.IsOrdered(), &lastDataNeedRead, origReadChan)
+				needClearConfirm := false
+				if atomic.LoadInt32(&c.waitingConfirm) > maxWin {
+					c.inFlightMutex.Lock()
+					inflightCnt := len(c.inFlightMessages)
+					c.inFlightMutex.Unlock()
+					c.waitingRequeueMutex.Lock()
+					inflightCnt += len(c.waitingRequeueMsgs)
+					c.waitingRequeueMutex.Unlock()
+					inflightCnt += len(c.requeuedMsgChan)
+					if inflightCnt <= 0 {
+						nsqLog.Warningf("reset need clear confirmed since no inflight: %v, %v",
+							c.GetTopicName(), c.GetName())
+						needClearConfirm = true
+					}
+				}
+				if c.IsOrdered() {
+					needClearConfirm = true
+				}
+				c.drainChannelWaiting(needClearConfirm, &lastDataNeedRead, origReadChan)
 				lastMsg = Message{}
 			}
 			readChan = origReadChan

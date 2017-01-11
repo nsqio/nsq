@@ -854,12 +854,19 @@ func (t *Topic) updateChannelsEnd(forceReload bool) {
 	t.channelLock.RLock()
 	if e != nil {
 		for _, channel := range t.channelMap {
+			oldEnd := channel.GetChannelEnd()
 			err := channel.UpdateQueueEnd(e, forceReload)
 			if err != nil {
 				if err != ErrExiting {
 					nsqLog.LogErrorf(
 						"failed to update topic end to channel(%s) - %s",
 						channel.name, err)
+				}
+			} else {
+				if e.Offset() < oldEnd.Offset() {
+					nsqLog.LogWarningf(
+						"update topic new end is less than old channel(%s) - %v, %v",
+						channel.name, oldEnd, e)
 				}
 			}
 		}

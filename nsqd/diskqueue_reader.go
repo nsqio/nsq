@@ -407,8 +407,7 @@ func (d *diskQueueReader) TryReadOne() (ReadResult, bool) {
 	d.Lock()
 	defer d.Unlock()
 	for {
-		if (d.readQueueInfo.EndOffset.FileNum < d.queueEndInfo.EndOffset.FileNum) ||
-			(d.readQueueInfo.EndOffset.Pos < d.queueEndInfo.EndOffset.Pos) {
+		if d.queueEndInfo.EndOffset.GreatThan(&d.readQueueInfo.EndOffset) {
 			dataRead := d.readOne()
 			rerr := dataRead.Err
 			if rerr != nil {
@@ -705,6 +704,11 @@ func (d *diskQueueReader) internalSkipTo(voffset BackendOffset, cnt int64, backT
 	d.readQueueInfo.EndOffset = newPos
 	d.readQueueInfo.virtualEnd = voffset
 	atomic.StoreInt64(&d.readQueueInfo.totalMsgCnt, cnt)
+	if d.readQueueInfo.EndOffset.GreatThan(&d.queueEndInfo.EndOffset) {
+		nsqLog.LogWarningf("==== read skip from %v to : %v, %v exceed end: %v", d.readQueueInfo,
+			voffset, newPos, d.queueEndInfo)
+		d.readQueueInfo = d.queueEndInfo
+	}
 
 	d.confirmedQueueInfo = d.readQueueInfo
 	d.updateDepth()
@@ -869,13 +873,18 @@ CheckFileOpen:
 	currentFileEnd := int64(0)
 	if d.readQueueInfo.EndOffset.FileNum == d.queueEndInfo.EndOffset.FileNum {
 		currentFileEnd = d.queueEndInfo.EndOffset.Pos
-	} else {
+	} else if d.readQueueInfo.EndOffset.FileNum < d.queueEndInfo.EndOffset.FileNum {
 		stat, result.Err = d.readFile.Stat()
 		if result.Err == nil {
 			currentFileEnd = stat.Size()
 		} else {
 			return result
 		}
+	} else {
+		nsqLog.LogWarningf("DISKQUEUE(%s): read %v exceed current end %v", d.readerMetaName,
+			d.readQueueInfo, d.queueEndInfo)
+		result.Err = errors.New("exceed end of queue")
+		return result
 	}
 
 	result.Err = d.ensureReadBuffer(4, d.readQueueInfo.EndOffset.Pos, currentFileEnd)
@@ -977,6 +986,9 @@ CheckFileOpen:
 				}
 			}
 		}
+	}
+	if d.readQueueInfo.EndOffset.GreatThan(&d.queueEndInfo.EndOffset) {
+		nsqLog.LogWarningf("read exceed end: %v, %v", d.readQueueInfo, d.queueEndInfo)
 	}
 	return result
 }
@@ -1146,7 +1158,8 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 	}
 	d.needSync = true
 	if d.readQueueInfo.EndOffset.GreatThan(&endPos.EndOffset) || d.readQueueInfo.Offset() > endPos.Offset() {
-		nsqLog.Logf("new end old than the read end: %v, %v", d.readQueueInfo.EndOffset, endPos)
+		nsqLog.LogWarningf("new end old than the read end: %v, %v, %v", d.readQueueInfo.EndOffset,
+			endPos, d.queueEndInfo)
 		d.readQueueInfo = *endPos
 		forceReload = true
 	}
