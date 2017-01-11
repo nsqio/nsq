@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nsqio/go-diskqueue"
 	"github.com/nsqio/nsq/internal/quantile"
 	"github.com/nsqio/nsq/internal/util"
 )
@@ -56,7 +57,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		t.ephemeral = true
 		t.backend = newDummyBackendQueue()
 	} else {
-		t.backend = newDiskQueue(topicName,
+		t.backend = diskqueue.New(topicName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
