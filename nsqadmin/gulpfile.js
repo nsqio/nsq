@@ -147,7 +147,9 @@ gulp.task('sync-static-assets', function() {
     return gulp.src([
         path.join(ROOT, 'html/**'),
         path.join(ROOT, 'fonts/**'),
-        path.join(ROOT, 'img/**')
+        path.join(ROOT, 'img/**'),
+        path.join(ROOT, 'js/jquery.tablesorter.js'),
+        path.join(ROOT, 'js/jquery-latest.js')
     ]).pipe(gulp.dest(path.join(ROOT, 'build')));
 });
 
