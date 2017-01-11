@@ -309,7 +309,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 
 		//remove queue meta file
 		if i <= cleanMetaFileNum {
-			fn =  d.fileName(i) + ".offsetmeta.dat"
+			fn = d.fileName(i) + ".offsetmeta.dat"
 			innerErr = os.Remove(fn)
 			if innerErr != nil {
 				if !os.IsNotExist(innerErr) {
@@ -327,6 +327,10 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 func (d *diskQueueWriter) closeCurrentFile() {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
+	}
+	if d.diskReadEnd.EndOffset.GreatThan(&d.diskWriteEnd.EndOffset) {
+		nsqLog.LogWarningf("DISKQUEUE(%s): old read is greater: %v, %v", d.name,
+			d.diskReadEnd, d.diskWriteEnd)
 	}
 	d.diskReadEnd = d.diskWriteEnd
 	if d.writeFile != nil {
@@ -700,6 +704,10 @@ func (d *diskQueueWriter) FlushBuffer() {
 	if d.bufferWriter != nil {
 		d.bufferWriter.Flush()
 	}
+	if d.diskReadEnd.EndOffset.GreatThan(&d.diskWriteEnd.EndOffset) {
+		nsqLog.LogWarningf("DISKQUEUE(%s): old read is greater: %v, %v", d.name,
+			d.diskReadEnd, d.diskWriteEnd)
+	}
 	d.diskReadEnd = d.diskWriteEnd
 	d.Unlock()
 }
@@ -717,6 +725,12 @@ func (d *diskQueueWriter) sync() error {
 			return err
 		}
 	}
+
+	if d.diskReadEnd.EndOffset.GreatThan(&d.diskWriteEnd.EndOffset) {
+		nsqLog.LogWarningf("DISKQUEUE(%s): old read is greater: %v, %v", d.name,
+			d.diskReadEnd, d.diskWriteEnd)
+	}
+
 	d.diskReadEnd = d.diskWriteEnd
 
 	err := d.persistMetaData()

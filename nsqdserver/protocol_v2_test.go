@@ -2103,6 +2103,13 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 
 }
 
+func TestResetChannelToOld(t *testing.T) {
+	// test many confirmed messages and waiting inflight is empty,
+	// and while confirming message offset, the channel end is changed
+	// to old offset.
+	//TODO:
+}
+
 func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
 	fakeConn := test.NewFakeNetConn()
 	fakeConn.WriteFunc = func(b []byte) (int, error) {
