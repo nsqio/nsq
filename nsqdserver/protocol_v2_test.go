@@ -2107,7 +2107,131 @@ func TestResetChannelToOld(t *testing.T) {
 	// test many confirmed messages and waiting inflight is empty,
 	// and while confirming message offset, the channel end is changed
 	// to old offset.
-	//TODO:
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 3
+	opts.MsgTimeout = time.Second * 2
+	opts.MaxMsgSize = 100
+	opts.MaxBodySize = 1000
+	opts.MaxConfirmWin = 10
+	opts.ClientTimeout = time.Second * 4
+	opts.QueueScanRefreshInterval = time.Second * 2
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+
+	topicName := "test_reset_channel" + strconv.Itoa(int(time.Now().Unix()))
+	localTopic := nsqd.GetTopicIgnPart(topicName)
+	channel := localTopic.GetChannel("ch")
+
+	identify(t, conn, nil, frameTypeResponse)
+
+	var resetOldEnd nsqdNs.BackendQueueEnd
+	var realEnd nsqdNs.BackendQueueEnd
+	// PUB that's valid
+	for i := 0; i < int(opts.MaxConfirmWin)*6; i++ {
+		cmd := nsq.Publish(topicName, make([]byte, 5))
+		cmd.WriteTo(conn)
+		for {
+			resp, _ := nsq.ReadResponse(conn)
+			frameType, data, _ := nsq.UnpackResponse(resp)
+			test.Equal(t, frameType, frameTypeResponse)
+			if bytes.Equal(data, heartbeatBytes) {
+				continue
+			}
+			test.Equal(t, len(data), 2)
+			test.Equal(t, data[:], []byte("OK"))
+			break
+		}
+		if i == int(opts.MaxConfirmWin) {
+			localTopic.ForceFlush()
+			resetOldEnd = channel.GetChannelEnd()
+		}
+	}
+	localTopic.ForceFlush()
+	realEnd = channel.GetChannelEnd()
+
+	conn, err = mustConnectNSQD(tcpAddr)
+	identify(t, conn, nil, frameTypeResponse)
+	test.Equal(t, err, nil)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(15).WriteTo(conn)
+	test.Equal(t, err, nil)
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	recvCnt := 0
+	startTime := time.Now()
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			if time.Since(startTime) > time.Second*20 {
+				if channel.GetConfirmed().Offset() == realEnd.Offset() {
+					conn.Close()
+					return
+				}
+				t.Errorf("should stop on : %v", recvCnt)
+				conn.Close()
+			}
+		}
+	}()
+	for {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+
+		test.Nil(t, err)
+		if frameType == frameTypeError {
+			if channel.GetConfirmed().Offset() == realEnd.Offset() {
+				break
+			}
+			if bytes.Contains(data, []byte("E_FIN_FAILED")) {
+				continue
+			}
+			t.Errorf("got error response: %v", string(data))
+		}
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			if bytes.Equal(data, heartbeatBytes) {
+				cmd := nsq.Nop()
+				cmd.WriteTo(conn)
+				if channel.GetConfirmed().Offset() == realEnd.Offset() {
+					break
+				}
+			}
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, 5, len(msgOut.Body))
+		recvCnt++
+		if recvCnt == int(opts.MaxConfirmWin)*2 {
+			continue
+		}
+		if recvCnt == int(opts.MaxConfirmWin)*2+1 {
+			channel.UpdateQueueEnd(resetOldEnd, false)
+		}
+		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
+		test.Nil(t, err)
+		if channel.GetConfirmed().Offset() == realEnd.Offset() {
+			break
+		}
+		if recvCnt > int(opts.MaxConfirmWin)*2+1 {
+			localTopic.ForceFlush()
+		}
+		if recvCnt > int(opts.MaxConfirmWin)*10 {
+			t.Errorf("should stop on : %v", recvCnt)
+		}
+		if time.Since(startTime) > time.Second*20 {
+			t.Errorf("should stop on : %v", recvCnt)
+		}
+	}
+
+	conn.Close()
+
 }
 
 func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {

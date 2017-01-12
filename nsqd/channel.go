@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	resetReaderTimeoutSec = 100
+	resetReaderTimeoutSec = 10
 )
 
 var (
@@ -568,7 +568,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 			//atomic.StoreInt32(&c.needResetReader, 1)
 		}
 		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v, %v",
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v",
 				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 		}
 	}
@@ -1045,8 +1045,21 @@ LOOP:
 					c.name)
 			}
 			atomic.StoreInt32(&c.needNotifyRead, 1)
+
 			readChan = nil
 			needReadBackend = false
+
+			c.inFlightMutex.Lock()
+			inflightCnt := len(c.inFlightMessages)
+			c.inFlightMutex.Unlock()
+			c.waitingRequeueMutex.Lock()
+			inflightCnt += len(c.waitingRequeueMsgs)
+			c.waitingRequeueMutex.Unlock()
+			inflightCnt += len(c.requeuedMsgChan)
+			if inflightCnt <= 0 {
+				nsqLog.Warningf("many confirmed but no inflight: %v, %v, %v",
+					c.GetTopicName(), c.GetName(), atomic.LoadInt32(&c.waitingConfirm))
+			}
 		} else {
 			readChan = origReadChan
 			needReadBackend = true
