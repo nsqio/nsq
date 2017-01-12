@@ -472,7 +472,6 @@ func (t *Topic) BufferPoolPut(b *bytes.Buffer) {
 	t.bp.Put(b)
 }
 
-// should be protected by read lock outside
 func (t *Topic) GetChannelMapCopy() map[string]*Channel {
 	tmpMap := make(map[string]*Channel)
 	t.channelLock.RLock()

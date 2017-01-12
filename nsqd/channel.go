@@ -1347,7 +1347,7 @@ exit:
 		atomic.LoadInt32(&c.waitingDeliveryState) == 0 {
 		diff := time.Now().Unix() - atomic.LoadInt64(&c.processResetReaderTime)
 		if diff > resetReaderTimeoutSec && atomic.LoadInt64(&c.processResetReaderTime) > 0 {
-			nsqLog.Logf("try reset reader since no inflight and requeued for too long (%v): %v, %v, %v",
+			nsqLog.LogWarningf("try reset reader since no inflight and requeued for too long (%v): %v, %v, %v",
 				diff,
 				atomic.LoadInt32(&c.waitingConfirm), c.GetConfirmed(), c.GetChannelDebugStats())
 
