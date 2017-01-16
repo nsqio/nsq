@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1931,6 +1932,114 @@ func TestTimeoutFin(t *testing.T) {
 		msgOut, err = nsqdNs.DecodeMessage(data)
 		t.Log(msgOut)
 		test.NotEqual(t, msgOut.ID, msg.ID)
+	}
+}
+
+// too much fail to finish some messages and this client should be slow down.
+// the slow time should be adjust according to the msg timeout by the client
+// and should wait until the enough messages timeout
+func TestTimeoutTooMuch(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	//opts.Logger = &levellogger.GLogger{}
+	opts.LogLevel = 3
+	opts.ClientTimeout = time.Second * 2
+	opts.QueueScanRefreshInterval = 100 * time.Millisecond
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_cmsg_timeout_requeue" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	tmpCh := topic.GetChannel("ch")
+	tmpCh.EnableTrace = 1
+	msg := nsqdNs.NewMessage(0, make([]byte, 100))
+	topic.PutMessage(msg)
+
+	for i := 0; i < 20; i++ {
+		topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+	}
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	attemp := 1
+	_, err = nsq.Ready(3).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	_, data, _ := nsq.UnpackResponse(resp)
+	msgOut, err := nsqdNs.DecodeMessage(data)
+	test.Equal(t, msgOut.ID, msg.ID)
+	test.Equal(t, msgOut.Attempts, uint16(attemp))
+	test.Equal(t, msgOut.Body, msg.Body)
+
+	startTime := time.Now()
+	done := int32(0)
+	go func() {
+		for {
+			time.Sleep(time.Millisecond * 300)
+			if atomic.LoadInt32(&done) == 1 {
+				break
+			}
+			if time.Since(startTime) >= time.Second*10 {
+				t.Fatalf("should stop test ")
+				conn.Close()
+			}
+		}
+	}()
+	// wait until slow down threshold
+	cnt := 0
+	for cnt < 2+5 {
+		//time.Sleep(1100*time.Millisecond + opts.QueueScanInterval)
+		// wait timeout and requeue
+		resp, _ = nsq.ReadResponse(conn)
+		frameType, data, _ := nsq.UnpackResponse(resp)
+		test.NotEqual(t, frameType, frameTypeError)
+		if frameType == frameTypeMessage {
+			msgOut, err = nsqdNs.DecodeMessage(data)
+			t.Log(msgOut)
+			cnt++
+		} else if frameType == frameTypeResponse {
+			if string(data) == string(heartbeatBytes) {
+				cmd := nsq.Nop()
+				cmd.WriteTo(conn)
+			}
+		}
+	}
+	if time.Since(startTime) >= time.Second*10 {
+		t.Fatalf("test should expect shorter")
+	}
+
+	cnt = 0
+	for cnt < 21 {
+		resp, _ = nsq.ReadResponse(conn)
+		frameType, data, _ := nsq.UnpackResponse(resp)
+		test.NotEqual(t, frameType, frameTypeError)
+		if frameType == frameTypeMessage {
+			msgOut, err = nsqdNs.DecodeMessage(data)
+			t.Log(msgOut)
+			test.Nil(t, err)
+			_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
+			test.Nil(t, err)
+			cnt++
+		} else if frameType == frameTypeResponse {
+			if string(data) == string(heartbeatBytes) {
+				cmd := nsq.Nop()
+				cmd.WriteTo(conn)
+			}
+		}
+	}
+	conn.Close()
+	atomic.StoreInt32(&done, 1)
+	if time.Since(startTime) < time.Second*7 {
+		t.Errorf("should not stop early")
 	}
 }
 

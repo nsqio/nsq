@@ -15,6 +15,7 @@ import (
 )
 
 const defaultBufferSize = 8 * 1024
+const slowDownThreshold = 5
 
 const (
 	stateInit = iota
@@ -114,9 +115,10 @@ type ClientV2 struct {
 	tlsConfig   *tls.Config
 	EnableTrace bool
 
-	PubTimeout *time.Timer
-	remoteAddr string
-	subErrCnt  int64
+	PubTimeout         *time.Timer
+	remoteAddr         string
+	subErrCnt          int64
+	lastConsumeTimeout int64
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -376,12 +378,28 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	}
 
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
-	errCnt := atomic.LoadInt64(&c.subErrCnt)
-	if errCnt > 3 {
-		// slow down this client if has some error
-		readyCount = 1
-	}
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
+	errCnt := atomic.LoadInt64(&c.subErrCnt)
+	if errCnt >= slowDownThreshold {
+		// slow down this client if has some error
+		adjustReadyCount := readyCount - errCnt + slowDownThreshold
+		if adjustReadyCount <= 0 {
+			lct := atomic.LoadInt64(&c.lastConsumeTimeout)
+			c.LockRead()
+			msgTimeout := c.MsgTimeout
+			c.UnlockRead()
+			if time.Now().Add(-2*msgTimeout).Unix() < lct {
+				// the wait time maybe large than the msgtimeout (maybe need wait heartbeat )
+				readyCount = 0
+				nsqLog.Logf("[%s] state inflt: %4d, errCnt: %d temporarily disabled since last timeout %v",
+					c, inFlightCount, errCnt, lct)
+			} else {
+				readyCount = 1
+			}
+		} else if adjustReadyCount < readyCount {
+			readyCount = adjustReadyCount
+		}
+	}
 	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
 	if nsqLog.Level() > 1 {
@@ -455,6 +473,7 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 	} else {
 		atomic.AddInt64(&c.TimeoutCount, 1)
 		c.IncrSubError(int64(1))
+		atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
 	}
 	c.tryUpdateReadyState()
 }
