@@ -1926,12 +1926,21 @@ func TestTimeoutFin(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	for i := 0; i < 3; i++ {
+	for {
 		resp, _ = nsq.ReadResponse(conn)
-		_, data, _ = nsq.UnpackResponse(resp)
-		msgOut, err = nsqdNs.DecodeMessage(data)
-		t.Log(msgOut)
-		test.NotEqual(t, msgOut.ID, msg.ID)
+		frameType, data, _ := nsq.UnpackResponse(resp)
+		test.NotEqual(t, frameType, frameTypeError)
+		if frameType == frameTypeMessage {
+			msgOut, err = nsqdNs.DecodeMessage(data)
+			t.Log(msgOut)
+			test.NotEqual(t, msgOut.ID, msg.ID)
+			break
+		} else if frameType == frameTypeResponse {
+			if string(data) == string(heartbeatBytes) {
+				cmd := nsq.Nop()
+				cmd.WriteTo(conn)
+			}
+		}
 	}
 }
 
