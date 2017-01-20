@@ -282,6 +282,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	checkConsistent := reqParams.Get("consistent")
 
 	registrations := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, topicPartition)
+	isFoundInRegister := len(registrations) > 0
 	if len(registrations) == 0 {
 		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
 		// try to find in cluster info
@@ -332,6 +333,8 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	}
 	registrations = registrations.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
 		filterTomb)
+
+	emptyChanFiltered := false
 	for _, r := range registrations {
 		var leaderProducer *Producer
 		pid, _ := strconv.Atoi(r.PartitionID)
@@ -349,6 +352,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 				channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, r.PartitionID)
 				if len(channels) == 0 {
 					nsqlookupLog.Logf("no channels under this partition node: %v, %v", topicName, r)
+					emptyChanFiltered = true
 					continue
 				}
 			}
@@ -364,6 +368,11 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		producers = append(producers, p)
 	}
 
+	peers := producers.PeerInfo()
+	if isFoundInRegister && emptyChanFiltered &&
+		len(partitionProducers) == 0 && len(peers) == 0 {
+		return nil, http_api.Err{404, "Topic has no channel, should init at least one for the new topic"}
+	}
 	// maybe channels should be under topic partitions?
 	channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, topicPartition).Channels()
 	needMeta := reqParams.Get("metainfo")
@@ -381,13 +390,13 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 				"partition_num": meta.PartitionNum,
 				"replica":       meta.Replica,
 			},
-			"producers":  producers.PeerInfo(),
+			"producers":  peers,
 			"partitions": partitionProducers,
 		}, nil
 	}
 	return map[string]interface{}{
 		"channels":   channels,
-		"producers":  producers.PeerInfo(),
+		"producers":  peers,
 		"partitions": partitionProducers,
 	}, nil
 }
