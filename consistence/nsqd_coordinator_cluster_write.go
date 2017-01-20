@@ -277,7 +277,7 @@ retrysync:
 			clusterWriteErr = ErrTopicExiting
 			goto exitsync
 		}
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second)
 	}
 	if needRefreshISR {
 		tcData = coord.GetData()

@@ -20,12 +20,12 @@ const (
 	MAX_CATCHUP_RETRY                = 5
 	MAX_LOG_PULL                     = 10000
 	MAX_LOG_PULL_BYTES               = 1024 * 1024 * 32
-	MAX_TOPIC_RETENTION_SIZE_PER_DAY = 1024 * 1024 * 1024
+	MAX_TOPIC_RETENTION_SIZE_PER_DAY = 1024 * 1024 * 1024 * 4
 	MAX_CATCHUP_RUNNING              = 3
 )
 
 var (
-	MaxRetryWait = time.Second * 10
+	MaxRetryWait = time.Second * 3
 )
 
 func GetTopicPartitionFileName(topic string, partition int, suffix string) string {

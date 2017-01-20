@@ -1109,7 +1109,7 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 	return okBytes, nil
 }
 
-func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody int64) (int32, *nsqd.Topic, error) {
+func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody int64, isMpub bool) (int32, *nsqd.Topic, error) {
 	var err error
 
 	if len(params) < 2 {
@@ -1145,8 +1145,14 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	}
 
 	if int64(bodyLen) > maxBody {
-		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("body too big %d > %d", bodyLen, maxBody))
+		nsqd.NsqLogger().Logf("topic: %v message body too large %v vs %v ", topicName, bodyLen, maxBody)
+		if isMpub {
+			return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+				fmt.Sprintf("body too big %d > %d", bodyLen, maxBody))
+		} else {
+			return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+				fmt.Sprintf("message too big %d > %d", bodyLen, maxBody))
+		}
 	}
 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
@@ -1234,7 +1240,7 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
-	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize)
+	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1247,13 +1253,14 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	defer topic.BufferPoolPut(messageBodyBuffer)
 	asyncAction := shouldHandleAsync(client, params)
 
+	topicName := topic.GetTopicName()
 	_, err = io.CopyN(messageBodyBuffer, client.Reader, int64(bodyLen))
 	if err != nil {
+		nsqd.NsqLogger().Logf("topic: %v message body read error %v ", topicName, err.Error())
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "failed to read message body")
 	}
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 
-	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
 	var traceID uint64
 	var realBody []byte
@@ -1302,7 +1309,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 
 func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
-	_, topic, preErr := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize)
+	_, topic, preErr := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize, true)
 	if preErr != nil {
 		return nil, preErr
 	}
