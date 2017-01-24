@@ -2,6 +2,7 @@ package nsqlookupd
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -22,6 +23,9 @@ type NSQLookupd struct {
 }
 
 func New(opts *Options) *NSQLookupd {
+	if opts.Logger == nil {
+		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+	}
 	n := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
@@ -31,9 +35,6 @@ func New(opts *Options) *NSQLookupd {
 }
 
 func (l *NSQLookupd) logf(f string, args ...interface{}) {
-	if l.opts.Logger == nil {
-		return
-	}
 	l.opts.Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
