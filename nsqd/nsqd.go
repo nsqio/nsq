@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -72,6 +73,9 @@ func New(opts *Options) *NSQD {
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
 		dataPath = cwd
+	}
+	if opts.Logger == nil {
+		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
 
 	n := &NSQD{
@@ -139,9 +143,6 @@ func New(opts *Options) *NSQD {
 }
 
 func (n *NSQD) logf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
-		return
-	}
 	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
 }
 

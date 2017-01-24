@@ -14,6 +14,7 @@ type Options struct {
 	// basic options
 	ID                       int64         `flag:"worker-id" cfg:"id"`
 	Verbose                  bool          `flag:"verbose"`
+	LogPrefix                string        `flag:"log-prefix"`
 	TCPAddress               string        `flag:"tcp-address"`
 	HTTPAddress              string        `flag:"http-address"`
 	HTTPSAddress             string        `flag:"https-address"`
@@ -87,7 +88,8 @@ func NewOptions() *Options {
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
 	return &Options{
-		ID: defaultID,
+		ID:        defaultID,
+		LogPrefix: "[nsqd] ",
 
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",
@@ -134,7 +136,5 @@ func NewOptions() *Options {
 		SnappyEnabled:   true,
 
 		TLSMinVersion: tls.VersionTLS10,
-
-		Logger: log.New(os.Stderr, "[nsqd] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 }

@@ -21,6 +21,7 @@ var (
 
 	config      = flagSet.String("config", "", "path to config file")
 	showVersion = flagSet.Bool("version", false, "print version string")
+	logPrefix   = flagSet.String("log-prefix", "[nsqadmin] ", "log message prefix")
 
 	httpAddress = flagSet.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
 
