@@ -1,12 +1,11 @@
 package nsqadmin
 
 import (
-	"log"
-	"os"
 	"time"
 )
 
 type Options struct {
+	LogPrefix   string `flag:"log-prefix"`
 	HTTPAddress string `flag:"http-address"`
 
 	GraphiteURL   string `flag:"graphite-url"`
@@ -36,6 +35,7 @@ type Options struct {
 
 func NewOptions() *Options {
 	return &Options{
+		LogPrefix:                "[nsqadmin] ",
 		HTTPAddress:              "0.0.0.0:4171",
 		StatsdPrefix:             "nsq.%s",
 		StatsdCounterFormat:      "stats.counters.%s.count",
@@ -43,6 +43,5 @@ func NewOptions() *Options {
 		StatsdInterval:           60 * time.Second,
 		HTTPClientConnectTimeout: 2 * time.Second,
 		HTTPClientRequestTimeout: 5 * time.Second,
-		Logger: log.New(os.Stderr, "[nsqadmin] ", log.Ldate|log.Ltime|log.Lmicroseconds),
 	}
 }

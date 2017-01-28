@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +31,10 @@ type NSQAdmin struct {
 }
 
 func New(opts *Options) *NSQAdmin {
+	if opts.Logger == nil {
+		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+	}
+
 	n := &NSQAdmin{
 		notifications: make(chan *AdminAction),
 	}
@@ -116,9 +121,6 @@ func New(opts *Options) *NSQAdmin {
 }
 
 func (n *NSQAdmin) logf(f string, args ...interface{}) {
-	if n.getOpts().Logger == nil {
-		return
-	}
 	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
