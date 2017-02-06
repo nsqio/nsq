@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"path"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -24,7 +23,7 @@ const (
 )
 
 func getMetadata(n *NSQD) (*meta, error) {
-	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
+	fn := newMetadataFile(n.getOpts())
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
@@ -156,6 +155,106 @@ func TestStartup(t *testing.T) {
 
 	exitChan <- 1
 	<-doneExitChan
+}
+
+func TestMetadataMigrate(t *testing.T) {
+	old_meta := `
+	{
+	  "topics": [
+	    {
+	      "channels": [
+	        {"name": "c1", "paused": false},
+	        {"name": "c2", "paused": false}
+	      ],
+	      "name": "t1",
+	      "paused": false
+	    }
+	  ],
+	  "version": "1.0.0-alpha"
+	}`
+
+	tmpDir, err := ioutil.TempDir("", "nsq-test-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	opts := NewOptions()
+	opts.DataPath = tmpDir
+	opts.Logger = test.NewTestLogger(t)
+
+	oldFn := oldMetadataFile(opts)
+	err = ioutil.WriteFile(oldFn, []byte(old_meta), 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	_, _, nsqd := mustStartNSQD(opts)
+	err = nsqd.LoadMetadata()
+	test.Nil(t, err)
+	err = nsqd.PersistMetadata()
+	test.Nil(t, err)
+	nsqd.Exit()
+
+	oldFi, err := os.Lstat(oldFn)
+	test.Nil(t, err)
+	test.Equal(t, oldFi.Mode()&os.ModeType, os.ModeSymlink)
+
+	_, _, nsqd = mustStartNSQD(opts)
+	err = nsqd.LoadMetadata()
+	test.Nil(t, err)
+
+	t1, err := nsqd.GetExistingTopic("t1")
+	test.Nil(t, err)
+	test.NotNil(t, t1)
+	c2, err := t1.GetExistingChannel("c2")
+	test.Nil(t, err)
+	test.NotNil(t, c2)
+
+	nsqd.Exit()
+}
+
+func TestMetadataConflict(t *testing.T) {
+	old_meta := `
+	{
+	  "topics": [{
+	    "name": "t1", "paused": false,
+	    "channels": [{"name": "c1", "paused": false}]
+	  }],
+	  "version": "1.0.0-alpha"
+	}`
+	new_meta := `
+	{
+	  "topics": [{
+	    "name": "t2", "paused": false,
+	    "channels": [{"name": "c2", "paused": false}]
+	  }],
+	  "version": "1.0.0-alpha"
+	}`
+
+	tmpDir, err := ioutil.TempDir("", "nsq-test-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	opts := NewOptions()
+	opts.DataPath = tmpDir
+	opts.Logger = test.NewTestLogger(t)
+
+	err = ioutil.WriteFile(oldMetadataFile(opts), []byte(old_meta), 0600)
+	if err != nil {
+		panic(err)
+	}
+	err = ioutil.WriteFile(newMetadataFile(opts), []byte(new_meta), 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	_, _, nsqd := mustStartNSQD(opts)
+	err = nsqd.LoadMetadata()
+	test.NotNil(t, err)
+	nsqd.Exit()
 }
 
 func TestEphemeralTopicsAndChannels(t *testing.T) {

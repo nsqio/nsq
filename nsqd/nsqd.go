@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -102,7 +104,7 @@ func New(opts *Options) *NSQD {
 	}
 
 	if opts.ID < 0 || opts.ID >= 1024 {
-		n.logf("FATAL: --worker-id must be [0,1024)")
+		n.logf("FATAL: --node-id must be [0,1024)")
 		os.Exit(1)
 	}
 
@@ -268,24 +270,73 @@ type meta struct {
 	} `json:"topics"`
 }
 
-func (n *NSQD) LoadMetadata() {
-	atomic.StoreInt32(&n.isLoading, 1)
-	defer atomic.StoreInt32(&n.isLoading, 0)
+func newMetadataFile(opts *Options) string {
+	return path.Join(opts.DataPath, "nsqd.dat")
+}
 
-	fn := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
+func oldMetadataFile(opts *Options) string {
+	return path.Join(opts.DataPath, fmt.Sprintf("nsqd.%d.dat", opts.ID))
+}
+
+func readOrEmpty(fn string) ([]byte, error) {
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			n.logf("ERROR: failed to read channel metadata from %s - %s", fn, err)
+			return nil, fmt.Errorf("failed to read metadata from %s - %s", fn, err)
 		}
-		return
+	}
+	return data, nil
+}
+
+func writeSyncFile(fn string, data []byte) error {
+	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	f.Close()
+	return err
+}
+
+func (n *NSQD) LoadMetadata() error {
+	atomic.StoreInt32(&n.isLoading, 1)
+	defer atomic.StoreInt32(&n.isLoading, 0)
+
+	fn := newMetadataFile(n.getOpts())
+	// old metadata filename with ID, maintained in parallel to enable roll-back
+	fnID := oldMetadataFile(n.getOpts())
+
+	data, err := readOrEmpty(fn)
+	if err != nil {
+		return err
+	}
+	dataID, errID := readOrEmpty(fnID)
+	if errID != nil {
+		return errID
+	}
+
+	if data == nil && dataID == nil {
+		return nil // fresh start
+	}
+	if data != nil && dataID != nil {
+		if bytes.Compare(data, dataID) != 0 {
+			return fmt.Errorf("metadata in %s and %s do not match (delete one)", fn, fnID)
+		}
+	}
+	if data == nil {
+		// only old metadata file exists, use it
+		fn = fnID
+		data = dataID
 	}
 
 	var m meta
 	err = json.Unmarshal(data, &m)
 	if err != nil {
-		n.logf("ERROR: failed to parse metadata - %s", err)
-		return
+		return fmt.Errorf("failed to parse metadata in %s - %s", fn, err)
 	}
 
 	for _, t := range m.Topics {
@@ -309,12 +360,15 @@ func (n *NSQD) LoadMetadata() {
 			}
 		}
 	}
+	return nil
 }
 
 func (n *NSQD) PersistMetadata() error {
-	// persist metadata about what topics/channels we have
-	// so that upon restart we can get back to the same state
-	fileName := fmt.Sprintf(path.Join(n.getOpts().DataPath, "nsqd.%d.dat"), n.getOpts().ID)
+	// persist metadata about what topics/channels we have, across restarts
+	fileName := newMetadataFile(n.getOpts())
+	// old metadata filename with ID, maintained in parallel to enable roll-back
+	fileNameID := oldMetadataFile(n.getOpts())
+
 	n.logf("NSQ: persisting topic/channel metadata to %s", fileName)
 
 	js := make(map[string]interface{})
@@ -353,23 +407,43 @@ func (n *NSQD) PersistMetadata() error {
 	}
 
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
-	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+
+	err = writeSyncFile(tmpFileName, data)
+	if err != nil {
+		return err
+	}
+	err = os.Rename(tmpFileName, fileName)
+	if err != nil {
+		return err
+	}
+	// technically should fsync DataPath here
+
+	stat, err := os.Lstat(fileNameID)
+	if err == nil && stat.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+
+	// if no symlink (yet), race condition:
+	// crash right here may cause next startup to see metadata conflict and abort
+
+	tmpFileNameID := fmt.Sprintf("%s.%d.tmp", fileNameID, rand.Int())
+
+	if runtime.GOOS != "windows" {
+		err = os.Symlink(fileName, tmpFileNameID)
+	} else {
+		// on Windows need Administrator privs to Symlink
+		// instead write copy every time
+		err = writeSyncFile(tmpFileNameID, data)
+	}
 	if err != nil {
 		return err
 	}
 
-	_, err = f.Write(data)
-	if err != nil {
-		f.Close()
-		return err
-	}
-	f.Sync()
-	f.Close()
-
-	err = atomicRename(tmpFileName, fileName)
+	err = os.Rename(tmpFileNameID, fileNameID)
 	if err != nil {
 		return err
 	}
+	// technically should fsync DataPath here
 
 	return nil
 }
