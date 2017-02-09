@@ -195,19 +195,6 @@ func TestPause(t *testing.T) {
 	test.Equal(t, int64(1), channel.Depth())
 }
 
-func TestTopicBackendMaxMsgSize(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(t)
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "test_topic_backend_maxmsgsize" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-
-	test.Equal(t, int32(opts.MaxMsgSize+minValidMsgLength), topic.backend.(*diskQueue).maxMsgSize)
-}
-
 func BenchmarkTopicPut(b *testing.B) {
 	b.StopTimer()
 	topicName := "bench_topic_put" + strconv.Itoa(b.N)
