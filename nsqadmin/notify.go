@@ -16,6 +16,7 @@ type AdminAction struct {
 	Node      string `json:"node,omitempty"`
 	Timestamp int64  `json:"timestamp"`
 	User      string `json:"user,omitempty"`
+	UserEmail string `json:"user_email,omitempty"`
 	RemoteIP  string `json:"remote_ip"`
 	UserAgent string `json:"user_agent"`
 	URL       string `json:"url"` // The URL of the HTTP request that triggered this action
@@ -61,6 +62,7 @@ func (s *httpServer) notifyAdminAction(action, topic, channel, node string, req 
 		Node:      node,
 		Timestamp: time.Now().Unix(),
 		User:      basicAuthUser(req),
+		UserEmail: req.Header.Get("X-Forwarded-Email"),
 		RemoteIP:  req.RemoteAddr,
 		UserAgent: req.UserAgent(),
 		URL:       u.String(),

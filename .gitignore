@@ -14,6 +14,7 @@ apps/nsq_to_http/nsq_to_http
 apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
 apps/to_nsq/to_nsq
+apps/nsqadmin_to_slack/nsqadmin_to_slack
 nsqadmin/static/build
 dist
 _site
