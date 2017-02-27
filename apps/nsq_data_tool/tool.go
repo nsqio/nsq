@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
@@ -30,6 +31,22 @@ var (
 func getBackendName(topicName string, part int) string {
 	backendName := nsqd.GetTopicFullName(topicName, part)
 	return backendName
+}
+
+func decodeMessage(b []byte) (*nsqd.Message, error) {
+	var msg nsqd.Message
+
+	if len(b) < 16+8+2 {
+		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+	}
+
+	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
+	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
+	msg.ID = nsqd.MessageID(binary.BigEndian.Uint64(b[10:18]))
+	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
+
+	msg.Body = b[26:]
+	return &msg, nil
 }
 
 func main() {
@@ -133,7 +150,14 @@ func main() {
 				log.Fatalf("read data error: %v", ret)
 				return
 			}
-			fmt.Printf("%v:%v:%v\n", ret.Offset, ret.MovedSize, ret.Data)
+
+			fmt.Printf("%v:%v:%v, string: %v\n", ret.Offset, ret.MovedSize, ret.Data, string(ret.Data))
+			msg, err := decodeMessage(ret.Data)
+			if err != nil {
+				log.Fatalf("decode data error: %v", err)
+				continue
+			}
+			fmt.Printf("%v:%v:%v:%v, body: %v\n", msg.ID, msg.TraceID, msg.Timestamp, msg.Attempts, string(msg.Body))
 		}
 	}
 }
