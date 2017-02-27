@@ -1071,10 +1071,6 @@ func (self *TopicCommitLogMgr) switchForMaster(master bool) {
 	} else {
 		slaveBuf := self.bufSize
 		if self.bufSize < DEFAULT_COMMIT_BUF_SIZE/4 {
-			slaveBuf = slaveBuf * 8
-		} else if self.bufSize < DEFAULT_COMMIT_BUF_SIZE/2 {
-			slaveBuf = slaveBuf * 4
-		} else if self.bufSize < DEFAULT_COMMIT_BUF_SIZE {
 			slaveBuf = slaveBuf * 2
 		}
 		if cap(self.committedLogs) != slaveBuf {

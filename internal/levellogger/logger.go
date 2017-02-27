@@ -3,6 +3,8 @@ package levellogger
 import (
 	"fmt"
 	"github.com/absolute8511/glog"
+	"log"
+	"os"
 	"sync/atomic"
 )
 
@@ -10,6 +12,37 @@ type Logger interface {
 	Output(maxdepth int, s string) error
 	OutputErr(maxdepth int, s string) error
 	OutputWarning(maxdepth int, s string) error
+}
+
+type SimpleLogger struct {
+	l *log.Logger
+}
+
+func NewSimpleLog() *SimpleLogger {
+	return &SimpleLogger{
+		l: log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds|log.Lshortfile),
+	}
+}
+
+func (self *SimpleLogger) Output(maxdepth int, s string) error {
+	if self.l != nil {
+		self.l.Output(maxdepth, s)
+	}
+	return nil
+}
+
+func (self *SimpleLogger) OutputErr(maxdepth int, s string) error {
+	if self.l != nil {
+		self.l.Output(maxdepth, s)
+	}
+	return nil
+}
+
+func (self *SimpleLogger) OutputWarning(maxdepth int, s string) error {
+	if self.l != nil {
+		self.l.Output(maxdepth, s)
+	}
+	return nil
 }
 
 type GLogger struct {

@@ -7,6 +7,7 @@ import (
 	"path"
 
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 )
@@ -38,6 +39,9 @@ func main() {
 		fmt.Printf("nsq_data_tool v%s\n", version.Binary)
 		return
 	}
+
+	nsqd.SetLogger(levellogger.NewSimpleLog())
+	consistence.SetCoordLogger(levellogger.NewSimpleLog(), levellogger.LOG_INFO)
 
 	if *topic == "" {
 		log.Fatal("--topic is required\n")
