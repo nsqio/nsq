@@ -12,8 +12,8 @@ import (
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/stringy"
 	"github.com/blang/semver"
-	"sync/atomic"
 	"math"
+	"sync/atomic"
 )
 
 var v1EndpointVersion semver.Version
@@ -602,9 +602,6 @@ func (c *ClusterInfo) GetNSQDAllMessageHistoryStats(producers Producers) (map[st
 	var errs []error
 
 	nodeHistoryStatsMap := make(map[string]int64)
-	type respType struct {
-		Topics []*TopicStats `json:"topics"`
-	}
 
 	var lock sync.Mutex
 	var wg sync.WaitGroup
@@ -616,7 +613,7 @@ func (c *ClusterInfo) GetNSQDAllMessageHistoryStats(producers Producers) (map[st
 			addr := p.HTTPAddress()
 			endpoint := fmt.Sprintf("http://%s/message/historystats", addr)
 			var nodeHistoryStatsResp struct {
-				HistoryStats []*NodeHourlyPubsize        `json:"node_hourly_pub_size_stats"`
+				HistoryStats []*NodeHourlyPubsize `json:"node_hourly_pub_size_stats"`
 			}
 			err := c.client.NegotiateV1(endpoint, &nodeHistoryStatsResp)
 			c.logf("CI: querying nsqd %s resp: %v", endpoint, nodeHistoryStatsResp)
@@ -649,7 +646,7 @@ func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTo
 	//aggregate partition dist data from producers
 	endpoint := fmt.Sprintf("http://%s/message/historystats?topic=%s&partition=%s", nsqdHTTPAddr, selectedTopic, par)
 	var historyStatsResp struct {
-		HistoryStat []int64	`json:"hourly_pub_size"`
+		HistoryStat []int64 `json:"hourly_pub_size"`
 	}
 	err := c.client.NegotiateV1(endpoint, &historyStatsResp)
 	if err != nil {
@@ -720,9 +717,9 @@ func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic strin
 var INDEX = int32(0)
 
 func (c *ClusterInfo) GetClusterInfo(lookupdAdresses []string) (*ClusterNodeInfo, error) {
-	INDEX = atomic.AddInt32(&INDEX, 1) & math.MaxInt32;
+	INDEX = atomic.AddInt32(&INDEX, 1) & math.MaxInt32
 	c.logf("INDEX for picking lookup http address: %d", INDEX)
-	lookupdAdress := lookupdAdresses[int(INDEX) % (len(lookupdAdresses))]
+	lookupdAdress := lookupdAdresses[int(INDEX)%(len(lookupdAdresses))]
 	c.logf("lookupd http address %s picked.", lookupdAdress)
 	endpoint := fmt.Sprintf("http://%s/cluster/stats", lookupdAdress)
 
@@ -781,12 +778,18 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 				if selectedTopic != "" && topic.TopicName != selectedTopic {
 					continue
 				}
+				if topic.StatsdName == "" {
+					topic.StatsdName = topic.TopicName
+				}
 				topicStatsList = append(topicStatsList, topic)
 
 				for _, channel := range topic.Channels {
 					channel.Node = addr
 					channel.Hostname = p.Hostname
 					channel.TopicName = topic.TopicName
+					channel.TopicPartition = topic.TopicPartition
+					channel.StatsdName = topic.StatsdName
+					channel.IsMultiOrdered = topic.IsMultiOrdered
 					channel.MemoryDepth = channel.Depth - channel.BackendDepth
 					key := channel.ChannelName
 					if selectedTopic == "" {
@@ -795,9 +798,12 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 					channelStats, ok := channelStatsMap[key]
 					if !ok {
 						channelStats = &ChannelStats{
-							Node:        addr,
-							TopicName:   topic.TopicName,
-							ChannelName: channel.ChannelName,
+							Node:           addr,
+							TopicName:      topic.TopicName,
+							TopicPartition: topic.TopicPartition,
+							StatsdName:     topic.StatsdName,
+							ChannelName:    channel.ChannelName,
+							IsMultiOrdered: topic.IsMultiOrdered,
 						}
 						channelStatsMap[key] = channelStats
 					}
@@ -822,7 +828,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 		sort.Sort(TopicStatsByChannelDepth{topicStatsList})
 	} else if sortBy == "message-count" {
 		sort.Sort(TopicStatsByMessageCount{topicStatsList})
-	} else{
+	} else {
 		sort.Sort(TopicStatsByPartitionAndHost{topicStatsList})
 	}
 

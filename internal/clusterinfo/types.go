@@ -103,17 +103,17 @@ type ClientPubStats struct {
 }
 
 type NodeStat struct {
-	HostName		string	`json:"hostname"`
-	BroadcastAddress	string	`json:"broadcast_address"`
-	TCPPort			int 	`json:"tcp_port"`
-	HTTPPort		int 	`json:"http_port"`
-	LeaderLoadFactor	float64	`json:"leader_load_factor"`
-	NodeLoadFactor		float64	`json:"node_load_factor"`
+	HostName         string  `json:"hostname"`
+	BroadcastAddress string  `json:"broadcast_address"`
+	TCPPort          int     `json:"tcp_port"`
+	HTTPPort         int     `json:"http_port"`
+	LeaderLoadFactor float64 `json:"leader_load_factor"`
+	NodeLoadFactor   float64 `json:"node_load_factor"`
 }
 
 type ClusterNodeInfo struct {
-	Stable		bool		`json:"stable"`
-	NodeStatList	[]*NodeStat	`json:"node_stat_list"`
+	Stable       bool        `json:"stable"`
+	NodeStatList []*NodeStat `json:"node_stat_list"`
 }
 
 type TopicStats struct {
@@ -121,25 +121,27 @@ type TopicStats struct {
 	Hostname       string        `json:"hostname"`
 	TopicName      string        `json:"topic_name"`
 	TopicPartition string        `json:"topic_partition"`
+	StatsdName     string        `json:"statsd_name"`
 	IsLeader       bool          `json:"is_leader"`
+	IsMultiOrdered bool          `json:"is_multi_ordered"`
 	SyncingNum     int           `json:"syncing_num"`
 	ISRStats       []ISRStat     `json:"isr_stats"`
-	CatchupStats         []CatchupStat `json:"catchup_stats"`
-	Depth                int64         `json:"depth"`
-	MemoryDepth          int64         `json:"memory_depth"`
+	CatchupStats   []CatchupStat `json:"catchup_stats"`
+	Depth          int64         `json:"depth"`
+	MemoryDepth    int64         `json:"memory_depth"`
 	// the queue maybe auto cleaned, so the start means the queue oldest offset.
-	BackendStart      int64           `json:"backend_start"`
-	BackendDepth      int64           `json:"backend_depth"`
-	MessageCount      int64           `json:"message_count"`
-	NodeStats         []*TopicStats   `json:"nodes"`
-	Channels          []*ChannelStats `json:"channels"`
-	TotalChannelDepth int64	`json:"total_channel_depth"`
-	Paused            bool             `json:"paused"`
-	HourlyPubSize     int64            `json:"hourly_pubsize"`
-	PartitionHourlyPubSize     []int64          `json:"partition_hourly_pubsize"`
-	Clients           []ClientPubStats `json:"client_pub_stats"`
-	MessageSizeStats  [16]int64 `json:"msg_size_stats"`
-	MessageLatencyStats [16]int64 `json:"msg_write_latency_stats"`
+	BackendStart           int64            `json:"backend_start"`
+	BackendDepth           int64            `json:"backend_depth"`
+	MessageCount           int64            `json:"message_count"`
+	NodeStats              []*TopicStats    `json:"nodes"`
+	Channels               []*ChannelStats  `json:"channels"`
+	TotalChannelDepth      int64            `json:"total_channel_depth"`
+	Paused                 bool             `json:"paused"`
+	HourlyPubSize          int64            `json:"hourly_pubsize"`
+	PartitionHourlyPubSize []int64          `json:"partition_hourly_pubsize"`
+	Clients                []ClientPubStats `json:"client_pub_stats"`
+	MessageSizeStats       [16]int64        `json:"msg_size_stats"`
+	MessageLatencyStats    [16]int64        `json:"msg_write_latency_stats"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -153,6 +155,14 @@ type TopicMsgStatsInfo struct {
 
 func (t *TopicStats) Add(a *TopicStats) {
 	t.Node = "*"
+	if t.IsMultiOrdered {
+		// for multi ordered partitions, it may have several partitions on the single node,
+		// so in order to get all the partitions, we should query "topic.*" to get all partitions
+		t.StatsdName = t.TopicName + ".*"
+	} else {
+		t.StatsdName = t.TopicName
+	}
+
 	t.Depth += a.Depth
 	t.MemoryDepth += a.MemoryDepth
 	t.BackendDepth += a.BackendDepth
@@ -187,6 +197,8 @@ type ChannelStats struct {
 	Node           string          `json:"node"`
 	Hostname       string          `json:"hostname"`
 	TopicName      string          `json:"topic_name"`
+	TopicPartition string          `json:"topic_partition"`
+	StatsdName     string          `json:"statsd_name"`
 	ChannelName    string          `json:"channel_name"`
 	Depth          int64           `json:"depth"`
 	DepthSize      int64           `json:"depth_size"`
@@ -203,12 +215,18 @@ type ChannelStats struct {
 	NodeStats      []*ChannelStats `json:"nodes"`
 	Clients        []*ClientStats  `json:"clients"`
 	Paused         bool            `json:"paused"`
+	IsMultiOrdered bool            `json:"is_multi_ordered"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
 
 func (c *ChannelStats) Add(a *ChannelStats) {
 	c.Node = "*"
+	if c.IsMultiOrdered {
+		c.StatsdName = c.TopicName + ".*"
+	} else {
+		c.StatsdName = c.TopicName
+	}
 	c.Depth += a.Depth
 	c.DepthSize += a.DepthSize
 	c.DepthTimestamp = a.DepthTimestamp
@@ -224,7 +242,7 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 		c.Paused = a.Paused
 	}
 	c.NodeStats = append(c.NodeStats, a)
-	sort.Sort(ChannelStatsByHost{c.NodeStats})
+	sort.Sort(ChannelStatsByPartAndHost{c.NodeStats})
 	if c.E2eProcessingLatency == nil {
 		c.E2eProcessingLatency = &quantile.E2eProcessingLatencyAggregate{
 			Addr:    c.Node,
@@ -301,12 +319,18 @@ type ChannelStatsList []*ChannelStats
 func (c ChannelStatsList) Len() int      { return len(c) }
 func (c ChannelStatsList) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
 
-type ChannelStatsByHost struct {
+type ChannelStatsByPartAndHost struct {
 	ChannelStatsList
 }
 
-func (c ChannelStatsByHost) Less(i, j int) bool {
-	return c.ChannelStatsList[i].Hostname < c.ChannelStatsList[j].Hostname
+func (c ChannelStatsByPartAndHost) Less(i, j int) bool {
+	if c.ChannelStatsList[i].TopicPartition == c.ChannelStatsList[j].TopicPartition {
+		return c.ChannelStatsList[i].Hostname < c.ChannelStatsList[j].Hostname
+	}
+	l, _ := strconv.Atoi(c.ChannelStatsList[i].TopicPartition)
+	r, _ := strconv.Atoi(c.ChannelStatsList[j].TopicPartition)
+
+	return l < r
 }
 
 type ClientStatsList []*ClientStats
@@ -319,6 +343,9 @@ type ClientsByHost struct {
 }
 
 func (c ClientsByHost) Less(i, j int) bool {
+	if c.ClientStatsList[i].Hostname == c.ClientStatsList[j].Hostname {
+		return c.ClientStatsList[i].RemoteAddress < c.ClientStatsList[j].RemoteAddress
+	}
 	return c.ClientStatsList[i].Hostname < c.ClientStatsList[j].Hostname
 }
 
@@ -449,7 +476,7 @@ type LookupdNodes struct {
 }
 
 type NodeHourlyPubsize struct {
-	TopicName	string	`json:"topic_name"`
-	TopicPartition	string	`json:"topic_partition"`
-	HourlyPubSize	int64	`json:"hourly_pub_size"`
+	TopicName      string `json:"topic_name"`
+	TopicPartition string `json:"topic_partition"`
+	HourlyPubSize  int64  `json:"hourly_pub_size"`
 }

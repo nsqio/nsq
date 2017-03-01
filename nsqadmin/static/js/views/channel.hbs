@@ -47,7 +47,7 @@
     <h4>Channel</h4>
     <table class="table table-bordered table-condensed">
         <tr>
-            <th>&nbsp;</th>
+            <th colspan="2" class="text-center">&nbsp;</th>
             <th colspan="5" class="text-center">Message Queues</th>
             <th colspan="{{#if graph_active}}5{{else}}4{{/if}}" class="text-center">Statistics</th>
             {{#if e2e_processing_latency.percentiles.length}}
@@ -56,6 +56,7 @@
         </tr>
         <tr>
             <th>NSQd Host</th>
+            <th>Partition</th>
             <th>Depth</th>
             <th>DepthTimestamp</th>
             <th>Memory + DiskSize</th>
@@ -80,6 +81,7 @@
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
+            <td>{{topic_partition}}</td>
             <td>{{commafy depth}}</td>
             <td>{{depth_ts}}</td>
             <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
@@ -89,7 +91,7 @@
             <td>{{commafy timeout_count}}</td>
             <td>{{commafy message_count}}</td>
             {{#if ../graph_active}}
-                <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
+                <td class="bold rate" target="{{rate "topic" node statsd_name ""}}"></td>
             {{/if}}
             <td>{{commafy clients.length}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
@@ -103,16 +105,17 @@
         {{#if ../graph_active}}
         <tr class="graph-row">
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
+            <td></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "depth"}}"></a></td>
             <td></td>
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "timeout_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "message_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "in_flight_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "deferred_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "requeue_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "timeout_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "message_count"}}"></a></td>
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "clients"}}"></a></td>
             {{#if e2e_processing_latency.percentiles.length}}
             <td colspan="{{e2e_processing_latency.percentiles.length}}">
                 <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20" src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
@@ -123,6 +126,7 @@
         {{/each}}
         <tr class="info">
             <td>Total:</td>
+            <td></td>
             <td>{{commafy depth}}</td>
             <td></td>
             <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
@@ -132,7 +136,7 @@
             <td>{{commafy timeout_count}}</td>
             <td>{{commafy message_count}}</td>
             {{#if ../graph_active}}
-                <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
+                <td class="bold rate" target="{{rate "topic" node statsd_name ""}}"></td>
             {{/if}}
             <td>{{commafy clients.length}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
@@ -146,16 +150,17 @@
         {{#if graph_active}}
         <tr class="graph-row">
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
+            <td></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "depth"}}"></a></td>
             <td></td>
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "timeout_count"}}"></a></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "message_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "in_flight_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "deferred_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "requeue_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "timeout_count"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "message_count"}}"></a></td>
             <td></td>
-            <td><a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a></td>
+            <td><a href="{{large_graph "channel" node statsd_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node statsd_name channel_name "clients"}}"></a></td>
             {{#if e2e_processing_latency.percentiles.length}}
             <td colspan="{{e2e_processing_latency.percentiles.length}}">
                 <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
