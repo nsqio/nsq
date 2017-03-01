@@ -489,6 +489,17 @@ func (self *NsqLookupCoordinator) handleRemovingNodes(monitorChan chan struct{})
 				// we add a new replica for the removing node
 				for _, topicInfo := range allTopics {
 					if FindSlice(topicInfo.ISR, nid) == -1 {
+						if FindSlice(topicInfo.CatchupList, nid) != -1 {
+							topicInfo.CatchupList = FilterList(topicInfo.CatchupList, []string{nid})
+							self.notifyOldNsqdsForTopicMetaInfo(&topicInfo, []string{nid})
+							err := self.leadership.UpdateTopicNodeInfo(topicInfo.Name, topicInfo.Partition,
+								&topicInfo.TopicPartitionReplicaInfo, topicInfo.Epoch)
+							if err != nil {
+								anyPending = true
+							} else {
+								self.notifyTopicMetaInfo(&topicInfo)
+							}
+						}
 						continue
 					}
 					if len(topicInfo.ISR) <= topicInfo.Replica {
