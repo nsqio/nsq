@@ -14,6 +14,7 @@ type Options struct {
 	logLevel  lg.LogLevel // private, not really an option
 
 	HTTPAddress string `flag:"http-address"`
+	BasePath    string `flag:"base-path"`
 
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`
@@ -48,6 +49,7 @@ func NewOptions() *Options {
 		LogPrefix:                "[nsqadmin] ",
 		LogLevel:                 "info",
 		HTTPAddress:              "0.0.0.0:4171",
+		BasePath:                 "/",
 		StatsdPrefix:             "nsq.%s",
 		StatsdCounterFormat:      "stats.counters.%s.count",
 		StatsdGaugeFormat:        "stats.gauges.%s",

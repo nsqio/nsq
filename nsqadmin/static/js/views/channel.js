@@ -45,7 +45,7 @@ var ChannelView = BaseView.extend({
             if (action === 'delete') {
                 $.ajax(this.model.url(), {'method': 'DELETE'})
                     .done(function() {
-                        window.location = '/topics/' + encodeURIComponent(this.model.get('topic'));
+                        window.location = AppState.basePath('/topics/' + encodeURIComponent(this.model.get('topic')));
                     })
                     .fail(this.handleAJAXError.bind(this));
             } else {

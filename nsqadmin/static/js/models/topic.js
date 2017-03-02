@@ -11,7 +11,7 @@ var Topic = Backbone.Model.extend({
     },
 
     url: function() {
-        return AppState.url('/topics/' + encodeURIComponent(this.get('name')));
+        return AppState.apiPath('/topics/' + encodeURIComponent(this.get('name')));
     },
 
     parse: function(response) {

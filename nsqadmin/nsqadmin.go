@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 
@@ -130,9 +131,22 @@ func New(opts *Options) *NSQAdmin {
 		}
 	}
 
+	opts.BasePath = normalizeBasePath(opts.BasePath)
+
 	n.logf(LOG_INFO, version.String("nsqadmin"))
 
 	return n
+}
+
+func normalizeBasePath(p string) string {
+	if len(p) == 0 {
+		return "/"
+	}
+	// add leading slash
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	return path.Clean(p)
 }
 
 func (n *NSQAdmin) getOpts() *Options {

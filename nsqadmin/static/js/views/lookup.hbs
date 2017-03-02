@@ -34,11 +34,11 @@
         <ul>
             {{#each topics}}
             <li>
-                <button class="btn-link red delete-topic-link" data-topic="{{name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{name}}">{{name}}</a>
+                <button class="btn-link red delete-topic-link" data-topic="{{name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="{{basePath "/topics"}}/{{name}}">{{name}}</a>
                 <ul>
                     {{#each channels}}
                     <li>
-                        <button class="btn-link red delete-channel-link" data-topic="{{../name}}" data-channel="{{this}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{../name}}/{{this}}">{{this}}</a>
+                        <button class="btn-link red delete-channel-link" data-topic="{{../name}}" data-channel="{{this}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="{{basePath "/topics"}}/{{../name}}/{{this}}">{{this}}</a>
                     </li>
                     {{/each}}
                 </ul>

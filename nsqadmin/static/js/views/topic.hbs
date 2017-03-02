@@ -2,7 +2,7 @@
 {{> error}}
 
 <ol class="breadcrumb">
-  <li><a class="link" href="/">Streams</a>
+  <li><a class="link" href="{{basePath "/"}}">Streams</a>
   <li class="active">{{name}}</li>
 </ol>
 
@@ -20,7 +20,7 @@
         <h4>Topic Message Queue</h4>
         <div class="alert alert-warning">
             <h4>Notice</h4> No producers exist for this topic.
-            <p>See <a href="/lookup">Lookup</a> for more information.
+            <p>See <a href="{{basePath "/lookup"}}">Lookup</a> for more information.
         </div>
     </div>
 </div>
@@ -69,9 +69,9 @@
             <td>
                 <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
                 {{#if show_broadcast_address}}
-                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{hostname_port}} (<a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a>)
                 {{else}}
-                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                <a class="link" href="{{basePath "/nodes"}}/{{node}}">{{hostname_port}}</a>
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
@@ -178,7 +178,7 @@
             {{#each channels}}
             <tr>
                 <th>
-                    <a class="link" href="/topics/{{urlencode topic_name}}/{{urlencode channel_name}}">{{channel_name}}</a>
+                    <a class="link" href="{{basePath "/topics"}}/{{urlencode topic_name}}/{{urlencode channel_name}}">{{channel_name}}</a>
                     {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
                 </th>
                 <td>{{commafy depth}}</td>

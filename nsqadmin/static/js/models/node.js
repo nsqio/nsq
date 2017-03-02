@@ -9,7 +9,7 @@ var Node = Backbone.Model.extend({ //eslint-disable-line no-undef
     },
 
     urlRoot: function() {
-        return AppState.url('/nodes');
+        return AppState.apiPath('/nodes');
     },
 
     tombstoneTopic: function(topic) {

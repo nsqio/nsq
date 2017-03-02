@@ -11,7 +11,7 @@ var Channel = Backbone.Model.extend({
     },
 
     url: function() {
-        return AppState.url('/topics/' +
+        return AppState.apiPath('/topics/' +
             encodeURIComponent(this.get('topic')) + '/' +
             encodeURIComponent(this.get('name')));
     },

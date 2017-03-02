@@ -16,7 +16,7 @@ var formatStatsdKey = function(metricType, key) {
     }
 
     return fullKey;
-}
+};
 
 var statsdPrefix = function(host) {
     var prefix = AppState.get('STATSD_PREFIX');
@@ -25,7 +25,6 @@ var statsdPrefix = function(host) {
     if (prefix.substring(prefix.length, 1) !== '.') {
         prefix += '.';
     }
-    
     return prefix;
 };
 
@@ -281,3 +280,7 @@ Handlebars.registerHelper('rate', function(typ, node, ns1, ns2) {
 
 Handlebars.registerPartial('error', require('../views/error.hbs'));
 Handlebars.registerPartial('warning', require('../views/warning.hbs'));
+
+Handlebars.registerHelper('basePath', function(p) {
+    return AppState.basePath(p);
+});

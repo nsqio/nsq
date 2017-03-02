@@ -43,7 +43,7 @@ var TopicView = BaseView.extend({
             }
             if (action === 'delete') {
                 $.ajax(this.model.url(), {'method': 'DELETE'})
-                    .done(function() { window.location = '/'; });
+                    .done(function() { window.location = AppState.basePath('/'); });
             } else {
                 $.post(this.model.url(), JSON.stringify({'action': action}))
                     .done(function() { window.location.reload(true); })
