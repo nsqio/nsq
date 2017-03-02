@@ -1130,6 +1130,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 		}
 	}
 
+	origPart := partition
 	if partition == -1 {
 		partition = p.ctx.getDefaultPartition(topicName)
 	}
@@ -1159,6 +1160,11 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	if err != nil {
 		nsqd.NsqLogger().Logf("not existing topic: %v-%v, err:%v", topicName, partition, err.Error())
 		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
+	}
+
+	if origPart == -1 && topic.GetDynamicInfo().OrderedMulti {
+		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+			fmt.Sprintf("topic partition is not valid for multi partition: %v", origPart))
 	}
 
 	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
