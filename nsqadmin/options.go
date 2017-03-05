@@ -28,6 +28,8 @@ type Options struct {
 	HTTPClientTLSCert               string `flag:"http-client-tls-cert"`
 	HTTPClientTLSKey                string `flag:"http-client-tls-key"`
 
+	AllowConfigFromCIDR string `flag:"allow-config-from-cidr"`
+
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
 
 	Logger Logger
@@ -43,5 +45,6 @@ func NewOptions() *Options {
 		StatsdInterval:           60 * time.Second,
 		HTTPClientConnectTimeout: 2 * time.Second,
 		HTTPClientRequestTimeout: 5 * time.Second,
+		AllowConfigFromCIDR:      "127.0.0.1/8",
 	}
 }
