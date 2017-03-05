@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -693,6 +694,24 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 
 func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	opt := ps.ByName("opt")
+
+	allowConfigFromCIDR := s.ctx.nsqadmin.getOpts().AllowConfigFromCIDR
+	if allowConfigFromCIDR != "" {
+		_, ipnet, _ := net.ParseCIDR(allowConfigFromCIDR)
+		addr, _, err := net.SplitHostPort(req.RemoteAddr)
+		if err != nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to parse RemoteAddr %s", req.RemoteAddr)
+			return nil, http_api.Err{400, "INVALID_REMOTE_ADDR"}
+		}
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			s.ctx.nsqadmin.logf("ERROR: failed to parse RemoteAddr %s", req.RemoteAddr)
+			return nil, http_api.Err{400, "INVALID_REMOTE_ADDR"}
+		}
+		if !ipnet.Contains(ip) {
+			return nil, http_api.Err{403, "FORBIDDEN"}
+		}
+	}
 
 	if req.Method == "PUT" {
 		// add 1 so that it's greater than our max when we test for it
