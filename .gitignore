@@ -34,7 +34,8 @@ _obj
 _test
 build
 .idea
-
+.DS_Store
+conf
 # Architecture specific extensions/prefixes
 *.[568vq]
 [568vq].out
