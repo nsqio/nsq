@@ -555,3 +555,23 @@ func TestHTTPconfig(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, addrs, string(body))
 }
+
+func TestHTTPconfigCIDR(t *testing.T) {
+	opts := NewOptions()
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.NSQLookupdHTTPAddresses = []string{"127.0.0.1:4161"}
+	opts.Logger = test.NewTestLogger(t)
+	opts.AllowConfigFromCIDR = "10.0.0.0/8"
+	nsqadmin := New(opts)
+	go nsqadmin.Main()
+	defer nsqadmin.Exit()
+
+	time.Sleep(100 * time.Millisecond)
+
+	url := fmt.Sprintf("http://%s/config/nsqlookupd_http_addresses", nsqadmin.RealHTTPAddr())
+	resp, err := http.Get(url)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	_, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 403, resp.StatusCode)
+}

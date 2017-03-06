@@ -43,6 +43,8 @@ var (
 	httpClientTLSCert               = flagSet.String("http-client-tls-cert", "", "path to certificate file for the HTTP client")
 	httpClientTLSKey                = flagSet.String("http-client-tls-key", "", "path to key file for the HTTP client")
 
+	allowConfigFromCIDR = flagSet.String("allow-config-from-cidr", "127.0.0.1/8", "A CIDR from which to allow HTTP requests to the /config endpoint")
+
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
 )

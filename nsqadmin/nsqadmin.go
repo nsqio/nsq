@@ -115,6 +115,14 @@ func New(opts *Options) *NSQAdmin {
 		n.graphiteURL = url
 	}
 
+	if opts.AllowConfigFromCIDR != "" {
+		_, _, err := net.ParseCIDR(opts.AllowConfigFromCIDR)
+		if err != nil {
+			n.logf("FATAL: failed to parse --allow-config-from-cidr='%s' - %s", opts.AllowConfigFromCIDR, err)
+			os.Exit(1)
+		}
+	}
+
 	n.logf(version.String("nsqadmin"))
 
 	return n
