@@ -782,20 +782,27 @@ func (c TopicsByHourlyPubsize) Less(i, j int) bool {
 }
 
 func (s *httpServer) clusterStatsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var messages []string
-
-	clusterNodeInfo, err := s.ci.GetClusterInfo(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
+	//get leader lookupd
+	lookupdNodes, err := s.ci.ListAllLookupdNodes(s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
-		pe, ok := err.(clusterinfo.PartialErr)
-		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get cluster nodes stats - %s", err)
-			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
-		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
-		messages = append(messages, pe.Error())
-	}
+		s.ctx.nsqadmin.logf("WARNING: failed to list lookupd nodes : %v", err)
+		return nil, err
+	} else {
+		if lookupdNodes.LeaderNode.ID != "" {
+			leaderAddr := net.JoinHostPort(lookupdNodes.LeaderNode.NodeIP, lookupdNodes.LeaderNode.HttpPort)
+			clusterNodeInfo, err := s.ci.GetClusterInfo([]string{leaderAddr})
+			if err != nil {
+				s.ctx.nsqadmin.logf("ERROR: failed to get cluster nodes stats - %s", err)
+				return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
+			} else {
+				return clusterNodeInfo, nil
+			}
 
-	return clusterNodeInfo, nil
+		} else {
+			s.ctx.nsqadmin.logf("WARNING: failed to find lookupd leader at this moment")
+			return nil, http_api.Err{503, "Service Unavailable"}
+		}
+	}
 }
 
 func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
