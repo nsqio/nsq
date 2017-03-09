@@ -146,7 +146,7 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 
 	backendName := getBackendName(t.tname, t.partition)
-	queue, err := newDiskQueueWriter(backendName,
+	queue, err := NewDiskQueueWriter(backendName,
 		t.dataPath,
 		opt.MaxBytesPerFile,
 		int32(minValidMsgLength),

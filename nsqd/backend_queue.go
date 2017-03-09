@@ -31,6 +31,7 @@ type BackendQueueWriter interface {
 	Empty() error
 	Flush() error
 	GetQueueWriteEnd() BackendQueueEnd
+	GetQueueReadStart() BackendQueueEnd
 	GetQueueReadEnd() BackendQueueEnd
 	RollbackWrite(BackendOffset, uint64) error
 	ResetWriteEnd(BackendOffset, int64) error
