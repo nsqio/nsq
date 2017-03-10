@@ -658,6 +658,35 @@ func (c *ClusterInfo) GetNSQDMessageHistoryStats(nsqdHTTPAddr string, selectedTo
 	return historyStatsResp.HistoryStat, nil
 }
 
+func (c *ClusterInfo) GetNSQDMessageByID(p Producer, selectedTopic string,
+	part string, msgID int64) (string, int64, error) {
+	if selectedTopic == "" {
+		return "", 0, fmt.Errorf("missing topic while get message")
+	}
+	type msgInfo struct {
+		ID        int64  `json:"id"`
+		TraceID   uint64 `json:"trace_id"`
+		Body      string `json:"body"`
+		Timestamp int64  `json:"timestamp"`
+		Attempts  uint16 `json:"attempts"`
+
+		Offset        int64 `json:"offset"`
+		QueueCntIndex int64 `json:"queue_cnt_index"`
+	}
+
+	addr := p.HTTPAddress()
+	endpoint := fmt.Sprintf("http://%s/message/get?topic=%s&partition=%s&search_mode=id&search_pos=%d", addr,
+		url.QueryEscape(selectedTopic), url.QueryEscape(part), msgID)
+	c.logf("CI: querying nsqd %s", endpoint)
+
+	var resp msgInfo
+	_, err := c.client.GETV1(endpoint, &resp)
+	if err != nil {
+		return "", 0, err
+	}
+	return resp.Body, resp.Offset, nil
+}
+
 func (c *ClusterInfo) GetNSQDCoordStats(producers Producers, selectedTopic string, part string) (*CoordStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup

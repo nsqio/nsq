@@ -833,7 +833,7 @@ func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, di
 
 	if trace {
 		if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
-			nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+			nsqMsgTracer.TracePub(t.GetTopicName(), t.GetTopicPart(), m.TraceID, m, offset, dend.TotalMsgCnt())
 		}
 	}
 	return m.ID, offset, writeBytes, dend, nil

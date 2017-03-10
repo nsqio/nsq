@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"mime"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"bytes"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
@@ -96,6 +98,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
 	router.Handle("GET", "/api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
 	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
+	router.Handle("GET", "/api/search/messages", http_api.Decorate(s.searchMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
 	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
 	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
@@ -533,6 +536,159 @@ func (s *httpServer) tombstoneNodeForTopicHandler(w http.ResponseWriter, req *ht
 	return struct {
 		Message string `json:"message"`
 	}{maybeWarnMsg(messages)}, nil
+}
+
+func hashTraceID(v string) int {
+	h := 0
+	if len(v) > 0 {
+		for i := 0; i < len(v); i++ {
+			h = 31*h + int(v[i])
+		}
+	}
+	if h < 0 {
+		h = -1 * h
+	}
+	return h
+}
+
+const (
+	MAX_INCR_ID_BIT = 50
+)
+
+func GetPartitionFromMsgID(id int64) int {
+	// the max partition id will be less than 1024
+	return int((uint64(id) & (uint64(1024-1) << MAX_INCR_ID_BIT)) >> MAX_INCR_ID_BIT)
+}
+
+func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	if s.ctx.nsqadmin.opts.TraceQueryURL == "" {
+		return nil, http_api.Err{400, "TRACE service url is not configured"}
+	}
+
+	filters := make(IndexFieldsQuery, 0)
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+	v, ok := reqParams.Values["topic"]
+	if !ok || len(v) == 0 {
+		return nil, http_api.Err{400, "topic should not be empty to search message"}
+	}
+	topicName := v[0]
+	isHashed, _ := reqParams.Get("hashed")
+
+	requestMsgID := int64(0)
+	for k, v := range reqParams.Values {
+		if len(v) == 0 {
+			continue
+		}
+		if k == "hashed" {
+			continue
+		}
+		var kv QueryPairs
+		kv.FieldName = k
+		kv.FieldValue = v[0]
+		filters = append(filters, kv)
+		if k == "msgid" {
+			requestMsgID, _ = strconv.ParseInt(v[0], 10, 64)
+		} else if k == "traceid" {
+			if isHashed != "true" {
+				kv.FieldValue = strconv.Itoa(hashTraceID(v[0]))
+			}
+		}
+	}
+
+	queryBody := NewLogQueryInfo(s.ctx.nsqadmin.opts.TraceAppID,
+		s.ctx.nsqadmin.opts.TraceAppName,
+		s.ctx.nsqadmin.opts.TraceLogIndexID,
+		s.ctx.nsqadmin.opts.TraceLogIndexName,
+		time.Hour*24,
+		filters)
+	d, _ := json.Marshal(queryBody)
+
+	s.ctx.nsqadmin.logf("search body: %v", string(d))
+	traceReq, err := http.NewRequest("POST", s.ctx.nsqadmin.opts.TraceQueryURL, bytes.NewReader(d))
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	traceReq.Header.Add("Content-Type", "application/json; charset=UTF-8")
+	resp, err := http.DefaultClient.Do(traceReq)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, http_api.Err{resp.StatusCode,
+			fmt.Errorf("trace query service response: %v %v", resp.Status, string(body)).Error()}
+	}
+	var traceResp TraceLogResp
+	err = json.Unmarshal(body, &traceResp)
+	if err != nil {
+		s.ctx.nsqadmin.logf("parse search respnse err: %v", err)
+	}
+	s.ctx.nsqadmin.logf("parse search respnse : %v", traceResp)
+	resultList := traceResp.Data
+
+	_, partitionProducers, _ := s.ci.GetTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+	needGetRequestMsg := true
+	for index, m := range resultList.LogDataDtos {
+		items := make([]TraceLogItemInfo, 0)
+		extraJsonStr, _ := strconv.Unquote(m.Extra)
+		err := json.Unmarshal([]byte(extraJsonStr), &items)
+		if err != nil || len(items) == 0 {
+			s.ctx.nsqadmin.logf("msg extra invalid: %v: %v", m.Extra, err)
+			err = json.Unmarshal([]byte(m.Extra), &items)
+			// try compatible
+			if err != nil || len(items) == 0 {
+				continue
+			}
+		}
+		item := items[0]
+		resultList.LogDataDtos[index].ExtraInfo = item
+		pid := GetPartitionFromMsgID(int64(item.MsgID))
+		if len(partitionProducers[strconv.Itoa(pid)]) == 0 {
+			s.ctx.nsqadmin.logf("partition producer not found: %v", pid)
+			continue
+		}
+		producer := partitionProducers[strconv.Itoa(pid)][0]
+
+		if int64(item.MsgID) == requestMsgID {
+			needGetRequestMsg = false
+		}
+		msgBody, _, err := s.ci.GetNSQDMessageByID(*producer, topicName, strconv.Itoa(pid), int64(item.MsgID))
+		if err != nil {
+			s.ctx.nsqadmin.logf("get msg %v data failed : %v", item, err)
+			continue
+		}
+		resultList.LogDataDtos[index].RawMsgData = msgBody
+	}
+	sort.Sort(&resultList)
+	var requestMsg string
+	if needGetRequestMsg && requestMsgID > 0 {
+		pid := GetPartitionFromMsgID(int64(requestMsgID))
+		if len(partitionProducers[strconv.Itoa(pid)]) == 0 {
+			s.ctx.nsqadmin.logf("partition producer not found: %v", pid)
+		} else {
+			producer := partitionProducers[strconv.Itoa(pid)][0]
+			msgBody, _, err := s.ci.GetNSQDMessageByID(*producer, topicName, strconv.Itoa(pid), requestMsgID)
+			if err != nil {
+				s.ctx.nsqadmin.logf("get msg %v data failed : %v", requestMsgID, err)
+			} else {
+				requestMsg = msgBody
+			}
+		}
+	}
+
+	return struct {
+		LogDataDtos []TraceLogData `json:"logDataDtos"`
+		TotalCount  int            `json:"totalCount"`
+		RequestMsg  string         `json:"request_msg"`
+	}{resultList.LogDataDtos, resultList.TotalCount, requestMsg}, nil
 }
 
 func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

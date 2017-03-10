@@ -27,6 +27,11 @@ type Options struct {
 	HTTPClientTLSKey                string `flag:"http-client-tls-key"`
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
+	TraceQueryURL            string `flag:"trace-query-url"`
+	TraceAppID               string `flag:"trace-app-id"`
+	TraceAppName             string `flag:"trace-app-name"`
+	TraceLogIndexID          string `flag:"trace-log-index-id"`
+	TraceLogIndexName        string `flag:"trace-log-index-name"`
 
 	LogDir string `flag:"log-dir" cfg:"log_dir"`
 	Logger levellogger.Logger
