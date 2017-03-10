@@ -840,6 +840,21 @@ func (self *NsqdCoordinator) IsMineLeaderForTopic(topic string, part int) bool {
 	return tcData.GetLeader() == self.myNode.GetID() && tcData.GetLeaderSessionID() == self.myNode.GetID()
 }
 
+func (self *NsqdCoordinator) SearchLogByMsgID(topic string, part int, msgID int64) (*CommitLogData, int64, int64, error) {
+	tcData, err := self.getTopicCoordData(topic, part)
+	if err != nil || tcData.logMgr == nil {
+		return nil, 0, 0, err.ToErrorType()
+	}
+	_, _, l, localErr := tcData.logMgr.SearchLogDataByMsgID(msgID)
+	if localErr != nil {
+		coordLog.Infof("search data failed: %v", localErr)
+		return nil, 0, 0, localErr
+	}
+	realOffset := l.MsgOffset
+	curCount := l.MsgCnt - 1
+	return l, realOffset, curCount, nil
+}
+
 func (self *NsqdCoordinator) SearchLogByMsgOffset(topic string, part int, offset int64) (*CommitLogData, int64, int64, error) {
 	tcData, err := self.getTopicCoordData(topic, part)
 	if err != nil || tcData.logMgr == nil {

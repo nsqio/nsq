@@ -5,6 +5,7 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"strconv"
 	"testing"
@@ -13,6 +14,21 @@ import (
 
 func newTestLogger(tbl test.TbLog) levellogger.Logger {
 	return &test.TestLogger{tbl, 0}
+}
+
+func TestCommitLogGetPartitionIDFromMsgID(t *testing.T) {
+	for pid := 0; pid < 1024; pid++ {
+		msgID := int64(uint64(pid)<<MAX_INCR_ID_BIT + 1)
+		test.Equal(t, pid, GetPartitionFromMsgID(msgID))
+		cnt := 0
+		for cnt < 10000 {
+			msgID += int64(rand.Intn(100))
+			test.Equal(t, pid, GetPartitionFromMsgID(msgID))
+			cnt++
+		}
+		msgID = int64(uint64(pid)<<MAX_INCR_ID_BIT + uint64(1)<<MAX_INCR_ID_BIT - 1)
+		test.Equal(t, pid, GetPartitionFromMsgID(msgID))
+	}
 }
 
 func TestCommitLogWrite(t *testing.T) {

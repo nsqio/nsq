@@ -59,6 +59,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.V1))
+	router.Handle("GET", "/message/get", http_api.Decorate(s.doMessageGet, log, http_api.V1))
 	router.Handle("GET", "/message/historystats", http_api.Decorate(s.doMessageHistoryStats, log, http_api.V1))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
@@ -700,6 +701,87 @@ func (s *httpServer) doMessageHistoryStats(w http.ResponseWriter, req *http.Requ
 			HourlyPubSize []int64 `json:"hourly_pub_size"`
 		}{pubhsNew}, nil
 	}
+}
+
+func (s *httpServer) doMessageGet(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	searchMode := reqParams.Get("search_mode")
+	searchPosStr := reqParams.Get("search_pos")
+	searchPos, err := strconv.ParseInt(searchPosStr, 10, 64)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	var topicPart int
+	if searchMode == "id" {
+		topicPart = consistence.GetPartitionFromMsgID(searchPos)
+		if topicPart >= 1024 {
+			nsqd.NsqLogger().LogErrorf("get invalid partition %v from message id- %v",
+				topicPart, searchPos)
+			return nil, http_api.Err{400, "invalid message id"}
+		}
+	} else {
+		topicPartStr := reqParams.Get("partition")
+		topicPart, err = strconv.Atoi(topicPartStr)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+			if searchMode == "id" {
+				topicPart = consistence.GetPartitionFromMsgID(searchPos)
+				if topicPart >= 1024 {
+					nsqd.NsqLogger().LogErrorf("get invalid partition %v from message id- %v",
+						topicPart, searchPos)
+					return nil, http_api.Err{400, "invalid message id"}
+				}
+			} else {
+				return nil, http_api.Err{400, err.Error()}
+			}
+		}
+	}
+
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
+	var realOffset int64
+	if searchMode == "count" {
+		_, realOffset, _, err = s.ctx.nsqdCoord.SearchLogByMsgCnt(topicName, topicPart, searchPos)
+	} else if searchMode == "id" {
+		_, realOffset, _, err = s.ctx.nsqdCoord.SearchLogByMsgID(topicName, topicPart, searchPos)
+	} else if searchMode == "virtual_offset" {
+		_, realOffset, _, err = s.ctx.nsqdCoord.SearchLogByMsgOffset(topicName, topicPart, searchPos)
+	} else {
+		return nil, http_api.Err{400, "search mode should be one of id/count/virtual_offset"}
+	}
+	if err != nil {
+		return nil, http_api.Err{404, err.Error()}
+	}
+	backendReader := t.GetDiskQueueSnapshot()
+	if backendReader == nil {
+		return nil, http_api.Err{500, "Failed to get queue reader"}
+	}
+	backendReader.SeekTo(nsqd.BackendOffset(realOffset))
+	ret := backendReader.ReadOne()
+	if ret.Err != nil {
+		nsqd.NsqLogger().LogErrorf("search %v-%v, read data error: %v", searchMode, searchPos, ret)
+		return nil, http_api.Err{400, err.Error()}
+	}
+	msg, err := nsqd.DecodeMessage(ret.Data)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("search %v-%v, decode data error: %v", searchMode, searchPos, err)
+		return nil, http_api.Err{400, err.Error()}
+	}
+	return struct {
+		ID        nsqd.MessageID `json:"id"`
+		TraceID   uint64         `json:"trace_id"`
+		Body      string         `json:"body"`
+		Timestamp int64          `json:"timestamp"`
+		Attempts  uint16         `json:"attempts"`
+
+		Offset        nsqd.BackendOffset `json:"offset"`
+		QueueCntIndex int64              `json:"queue_cnt_index"`
+	}{msg.ID, msg.TraceID, string(msg.Body), msg.Timestamp, msg.Attempts, ret.Offset, ret.CurCnt}, nil
 }
 
 func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
