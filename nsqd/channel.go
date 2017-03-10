@@ -600,7 +600,7 @@ func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID)
 			clientID)
 		return 0, 0, false, err
 	}
-	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN", msg.TraceID, msg, clientAddr)
 	}
 	if c.e2eProcessingLatencyStream != nil {
@@ -883,7 +883,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, clientAddr 
 		}
 		return shouldSend, err
 	}
-	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "START", msg.TraceID, msg, clientAddr)
 	}
 	return shouldSend, nil

@@ -138,7 +138,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 	for {
 		if client.HeartbeatInterval > 0 {
-			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 2))
+			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 3))
 		} else {
 			client.SetReadDeadline(zeroTime)
 		}

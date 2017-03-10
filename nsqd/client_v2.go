@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/auth"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/mreiferson/go-snappystream"
 )
 
@@ -402,7 +403,7 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	}
 	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
-	if nsqLog.Level() > 1 {
+	if nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, errCnt: %d",
 			c, readyCount, inFlightCount, errCnt)
 	}
@@ -472,7 +473,9 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 		atomic.AddInt64(&c.DeferredCount, -1)
 	} else {
 		atomic.AddInt64(&c.TimeoutCount, 1)
-		c.IncrSubError(int64(1))
+		if time.Now().Unix() > atomic.LoadInt64(&c.lastConsumeTimeout) {
+			c.IncrSubError(int64(1))
+		}
 		atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
 	}
 	c.tryUpdateReadyState()
