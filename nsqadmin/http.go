@@ -82,6 +82,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", "/statistics", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", "/search", http_api.Decorate(s.indexHandler, log))
 
 	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
@@ -98,7 +99,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
 	router.Handle("GET", "/api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
 	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
-	router.Handle("GET", "/api/search/messages", http_api.Decorate(s.searchMessageTrace, log, http_api.V1))
+	router.Handle("POST", "/api/search/messages", http_api.Decorate(s.searchMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
 	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
 	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
@@ -564,20 +565,52 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 	if s.ctx.nsqadmin.opts.TraceQueryURL == "" {
 		return nil, http_api.Err{400, "TRACE service url is not configured"}
 	}
+	var queryParam struct {
+		Topic     string `json:"topic"`
+		Partition string `json:"partition_id"`
+		MsgID     string `json:"msgid"`
+		TraceID   string `json:"traceid"`
+		Hours     string `json:"hours"`
+		IsHashed  bool   `json:"ishashed"`
+	}
+	err := json.NewDecoder(req.Body).Decode(&queryParam)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	if !protocol.IsValidTopicName(queryParam.Topic) {
+		return nil, http_api.Err{400, "INVALID_TOPIC"}
+	}
 
 	filters := make(IndexFieldsQuery, 0)
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
-	v, ok := reqParams.Values["topic"]
-	if !ok || len(v) == 0 {
-		return nil, http_api.Err{400, "topic should not be empty to search message"}
+	v := reqParams.Values["topic"]
+	topicName := queryParam.Topic
+	if topicName == "" && len(v) > 0 {
+		topicName = v[0]
 	}
-	topicName := v[0]
-	isHashed, _ := reqParams.Get("hashed")
+	var kv QueryPairs
+	kv.FieldName = "topic"
+	kv.FieldValue = topicName
+	filters = append(filters, kv)
 
+	isHashed := queryParam.IsHashed
+	kv.FieldName = "traceid"
+	if isHashed {
+		kv.FieldValue = queryParam.TraceID
+	} else {
+		kv.FieldValue = strconv.Itoa(hashTraceID(queryParam.TraceID))
+	}
+	filters = append(filters, kv)
 	requestMsgID := int64(0)
+	kv.FieldName = "msgid"
+	kv.FieldValue = queryParam.MsgID
+	requestMsgID, _ = strconv.ParseInt(queryParam.MsgID, 10, 64)
+	filters = append(filters, kv)
+
 	for k, v := range reqParams.Values {
 		if len(v) == 0 {
 			continue
@@ -589,20 +622,20 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		kv.FieldName = k
 		kv.FieldValue = v[0]
 		filters = append(filters, kv)
-		if k == "msgid" {
-			requestMsgID, _ = strconv.ParseInt(v[0], 10, 64)
-		} else if k == "traceid" {
-			if isHashed != "true" {
-				kv.FieldValue = strconv.Itoa(hashTraceID(v[0]))
-			}
-		}
 	}
 
+	recentHour := 24
+	if queryParam.Hours != "" {
+		recentHour, err = strconv.Atoi(queryParam.Hours)
+		if err != nil {
+			recentHour = 24
+		}
+	}
 	queryBody := NewLogQueryInfo(s.ctx.nsqadmin.opts.TraceAppID,
 		s.ctx.nsqadmin.opts.TraceAppName,
 		s.ctx.nsqadmin.opts.TraceLogIndexID,
 		s.ctx.nsqadmin.opts.TraceLogIndexName,
-		time.Hour*24,
+		time.Hour*time.Duration(recentHour),
 		filters)
 	d, _ := json.Marshal(queryBody)
 
@@ -633,6 +666,15 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 	s.ctx.nsqadmin.logf("parse search respnse : %v", traceResp)
 	resultList := traceResp.Data
 
+	if topicName == "" {
+		if len(resultList.LogDataDtos) > 0 {
+			topicName = resultList.LogDataDtos[0].Topic
+		}
+	}
+	if topicName == "" {
+		return nil, http_api.Err{400, "topic should not be empty to search message"}
+	}
+
 	_, partitionProducers, _ := s.ci.GetTopicProducers(topicName, s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 		s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 	needGetRequestMsg := true
@@ -649,7 +691,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 			}
 		}
 		item := items[0]
-		resultList.LogDataDtos[index].ExtraInfo = item
+		resultList.LogDataDtos[index].TraceLogItemInfo = item
 		pid := GetPartitionFromMsgID(int64(item.MsgID))
 		if len(partitionProducers[strconv.Itoa(pid)]) == 0 {
 			s.ctx.nsqadmin.logf("partition producer not found: %v", pid)
@@ -660,7 +702,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		if int64(item.MsgID) == requestMsgID {
 			needGetRequestMsg = false
 		}
-		msgBody, _, err := s.ci.GetNSQDMessageByID(*producer, topicName, strconv.Itoa(pid), int64(item.MsgID))
+		msgBody, _, err := s.ci.GetNSQDMessageByID(*producer, item.Topic, strconv.Itoa(pid), int64(item.MsgID))
 		if err != nil {
 			s.ctx.nsqadmin.logf("get msg %v data failed : %v", item, err)
 			continue

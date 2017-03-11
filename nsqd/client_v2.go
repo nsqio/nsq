@@ -473,9 +473,7 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 		atomic.AddInt64(&c.DeferredCount, -1)
 	} else {
 		atomic.AddInt64(&c.TimeoutCount, 1)
-		if time.Now().Unix() > atomic.LoadInt64(&c.lastConsumeTimeout) {
-			c.IncrSubError(int64(1))
-		}
+		c.IncrSubError(int64(1))
 		atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
 	}
 	c.tryUpdateReadyState()

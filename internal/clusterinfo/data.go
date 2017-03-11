@@ -284,7 +284,7 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 				return
 			}
 
-			c.logf("CI: querying nsqlookupd return %v, partitions: %v", resp, resp.PartitionProducers)
+			//c.logf("CI: querying nsqlookupd return %v, partitions: %v", resp, resp.PartitionProducers)
 			lock.Lock()
 			defer lock.Unlock()
 			for _, p := range resp.Producers {
@@ -616,7 +616,7 @@ func (c *ClusterInfo) GetNSQDAllMessageHistoryStats(producers Producers) (map[st
 				HistoryStats []*NodeHourlyPubsize `json:"node_hourly_pub_size_stats"`
 			}
 			err := c.client.NegotiateV1(endpoint, &nodeHistoryStatsResp)
-			c.logf("CI: querying nsqd %s resp: %v", endpoint, nodeHistoryStatsResp)
+			//c.logf("CI: querying nsqd %s resp: %v", endpoint, nodeHistoryStatsResp)
 			if err != nil {
 				lock.Lock()
 				errs = append(errs, err)

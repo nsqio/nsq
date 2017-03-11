@@ -44,7 +44,7 @@ func NewLogQueryInfo(appID string, appName string, logStoreID string,
 	d, _ := json.Marshal(indexFields)
 	q.IndexFields = string(d)
 	q.PageNumber = 1
-	q.PageSize = 100
+	q.PageSize = 30
 	return q
 }
 
@@ -58,15 +58,15 @@ type TraceLogItemInfo struct {
 }
 
 type TraceLogData struct {
-	ID         string           `json:"id"`
-	Time       string           `json:"time"`
-	Level      string           `json:"level"`
-	HostIp     string           `json:"hostIp"`
-	HostName   string           `json:"hostName"`
-	Content    string           `json:"content"`
-	Extra      string           `json:"extra"`
-	ExtraInfo  TraceLogItemInfo `json:"extra_info"`
-	RawMsgData string           `json:"raw_msg_data"`
+	ID       string `json:"id"`
+	Time     string `json:"time"`
+	Level    string `json:"level"`
+	HostIp   string `json:"hostIp"`
+	HostName string `json:"hostName"`
+	Content  string `json:"content"`
+	Extra    string `json:"extra"`
+	TraceLogItemInfo
+	RawMsgData string `json:"raw_msg_data"`
 }
 
 type TraceLog struct {
@@ -81,7 +81,7 @@ func (self *TraceLog) Swap(i, j int) {
 	self.LogDataDtos[i], self.LogDataDtos[j] = self.LogDataDtos[j], self.LogDataDtos[i]
 }
 func (self *TraceLog) Less(i, j int) bool {
-	return self.LogDataDtos[i].ExtraInfo.Timestamp < self.LogDataDtos[j].ExtraInfo.Timestamp
+	return self.LogDataDtos[i].Timestamp < self.LogDataDtos[j].Timestamp
 }
 
 type TraceLogResp struct {
