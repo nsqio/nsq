@@ -540,16 +540,16 @@ func (s *httpServer) tombstoneNodeForTopicHandler(w http.ResponseWriter, req *ht
 }
 
 func hashTraceID(v string) int {
-	h := 0
+	h := int32(0)
 	if len(v) > 0 {
 		for i := 0; i < len(v); i++ {
-			h = 31*h + int(v[i])
+			h = 31*h + int32(v[i])
 		}
 	}
 	if h < 0 {
 		h = -1 * h
 	}
-	return h
+	return int(h)
 }
 
 const (
