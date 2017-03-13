@@ -40,7 +40,8 @@ var SearchView = BaseView.extend({
                 this.render({
                     'messages': data['logDataDtos'],
                     'total_cnt': data['totalCount'],
-                    'message': data['request_msg']
+                    'request_msg': data['request_msg'],
+                    'message': data['message']
                 });
                 $('#loadingmessage').hide();
             }.bind(this))

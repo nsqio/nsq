@@ -14,7 +14,7 @@
           <input type="text" class="form-control" name="topic" style="width:250px;" placeholder="Topic Name">
         </div>
         <div class="form-group">
-          <label>Topic Partition ID (1~255)</lable>
+          <label>Topic Partition ID </lable>
           <input type="number" class="form-control" min=1 max=255 name="partition_id" style="width:250px;" placeholder="Partition ID">
         </div>
         <div class="form-group">
@@ -39,8 +39,12 @@
 </div>
 
 <div class="row">
-  <div class="col-md-6">
-    <p>{{request_msg}}</p>
+  <div class="col-md-8">
+    {{#if request_msg}}
+    <div class="alert alert-info">
+        <p><pre>{{request_msg}}</pre></p>
+    </div>
+    {{/if}}
   </div>
 </div
 

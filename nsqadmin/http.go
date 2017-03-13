@@ -562,6 +562,7 @@ func GetPartitionFromMsgID(id int64) int {
 }
 
 func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var warnMessages []string
 	if s.ctx.nsqadmin.opts.TraceQueryURL == "" {
 		return nil, http_api.Err{400, "TRACE service url is not configured"}
 	}
@@ -662,6 +663,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 	err = json.Unmarshal(body, &traceResp)
 	if err != nil {
 		s.ctx.nsqadmin.logf("parse search respnse err: %v", err)
+		warnMessages = append(warnMessages, err.Error())
 	}
 	s.ctx.nsqadmin.logf("parse search respnse : %v", traceResp)
 	resultList := traceResp.Data
@@ -720,8 +722,16 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 			msgBody, _, err := s.ci.GetNSQDMessageByID(*producer, topicName, strconv.Itoa(pid), requestMsgID)
 			if err != nil {
 				s.ctx.nsqadmin.logf("get msg %v data failed : %v", requestMsgID, err)
+				warnMessages = append(warnMessages, err.Error())
 			} else {
 				requestMsg = msgBody
+				var buf bytes.Buffer
+				err := json.Indent(&buf, []byte(msgBody), "", "  ")
+				if err == nil {
+					requestMsg = buf.String()
+				} else {
+					s.ctx.nsqadmin.logf("pretty json failed : %v", err)
+				}
 			}
 		}
 	}
@@ -730,7 +740,8 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		LogDataDtos []TraceLogData `json:"logDataDtos"`
 		TotalCount  int            `json:"totalCount"`
 		RequestMsg  string         `json:"request_msg"`
-	}{resultList.LogDataDtos, resultList.TotalCount, requestMsg}, nil
+		Message     string         `json:"message"`
+	}{resultList.LogDataDtos, resultList.TotalCount, requestMsg, maybeWarnMsg(warnMessages)}, nil
 }
 
 func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
