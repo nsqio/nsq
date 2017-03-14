@@ -755,7 +755,7 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, clientAddr string, 
 		nsqLog.Logf("channel %s : failed requeue for delay: %v, %v", c.GetName(), id, err)
 		return err
 	}
-	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "REQ_END", msg.TraceID, msg, clientAddr)
 	}
 	_, _, _, err = c.ConfirmBackendQueue(msg)
