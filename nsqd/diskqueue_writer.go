@@ -300,7 +300,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 		return &newStart, nil
 	}
 
-	nsqLog.Warningf("DISKQUEUE %v clean queue from %v, %v to new start : %v", d.name,
+	nsqLog.Infof("DISKQUEUE %v clean queue from %v, %v to new start : %v", d.name,
 		d.diskQueueStart, d.diskWriteEnd, newStart)
 
 	d.diskQueueStart = newStart

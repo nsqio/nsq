@@ -1004,6 +1004,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	delayStart = time.Now()
 	var longestDelayOutMsg *nsq.Message
 	// requeue while blocking
+	minDelay := opts.ReqToEndThreshold
 	for i := 0; i < int(opts.MaxConfirmWin)*2; i++ {
 		msgOut := recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
@@ -1021,6 +1022,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 			delay := opts.ReqToEndThreshold
 			if i < int(opts.MaxConfirmWin)/2 {
 				delay = delay * time.Duration(i)
+				minDelay = delay
 			}
 			_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
 			test.Nil(t, err)
@@ -1043,7 +1045,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
-	test.Equal(t, delayDone >= delayToEnd, true)
+	test.Equal(t, delayDone >= minDelay, true)
 	test.Equal(t, delayDone < delayToEnd+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
 
 	test.Equal(t, putCnt, finCnt)

@@ -750,6 +750,10 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	timeout time.Duration, newMsgID MessageID,
 	newOffset BackendOffset, newRawSize int32, newMsgEnd BackendQueueEnd) error {
 
+	c.RLock()
+	client := c.clients[clientID]
+	c.RUnlock()
+
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	// change the timeout for inflight
@@ -774,6 +778,25 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	}
 	msg.pri = newTimeout.UnixNano()
 	isOldDeferred := atomic.LoadInt32(&msg.isDeferred) == 1
+
+	// if too much defer messages , we should not push new to inflight
+	// to avoid too much inflight messages, in this way we should just
+	// treat the client timeouted this message
+	if atomic.LoadInt64(&c.deferredCount) >= c.option.MaxConfirmWin {
+		if client != nil {
+			client.TimedOutMessage(isOldDeferred)
+		}
+		if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
+			clientAddr := ""
+			if client != nil {
+				clientAddr = client.String()
+			} else {
+				clientAddr = strconv.Itoa(int(msg.clientID))
+			}
+			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DEFER_OVERFLOW", msg.TraceID, msg, clientAddr)
+		}
+		return nil
+	}
 	atomic.StoreInt32(&msg.isDeferred, 1)
 	newMsg := *msg
 	newMsg.ID = newMsgID

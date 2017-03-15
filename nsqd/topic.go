@@ -1158,7 +1158,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 		}
 		err = snapReader.SkipToNext()
 		if err != nil {
-			nsqLog.LogWarningf("failed to skip - %s ", err)
+			nsqLog.Logf("failed to skip - %s ", err)
 			break
 		}
 		readInfo = snapReader.GetCurrentReadQueueOffset()
@@ -1169,7 +1169,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 		}
 	}
 
-	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
+	nsqLog.Infof("clean topic %v data from %v under retention %v, %v",
 		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
 	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
 		nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
