@@ -27,6 +27,12 @@ func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
 	return binary.BigEndian.Uint64(id[8 : 8+MsgTraceIDLength])
 }
 
+func PrintMessage(m *Message) string {
+	return fmt.Sprintf("%v %v %s %v %v %v %v %v %v %v %v %v %v",
+		m.ID, m.TraceID, string(m.Body), m.Timestamp, m.Attempts, m.deliveryTS,
+		m.clientID, m.pri, m.index, m.isDeferred, m.offset, m.rawMoveSize, m.queueCntIndex)
+}
+
 type Message struct {
 	ID        MessageID
 	TraceID   uint64

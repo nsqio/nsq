@@ -757,7 +757,7 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	// change the timeout for inflight
-	msg, err := c.popInFlightMessage(clientID, id, false)
+	msg, err := c.popInFlightMessage(clientID, id, true)
 	if err != nil {
 		nsqLog.Logf("channel %s : failed requeue for delay: %v, %v", c.GetName(), id, err)
 		return err
@@ -1336,6 +1336,7 @@ LOOP:
 				}
 				resumedFirst = false
 			}
+			lastMsg = *msg
 			isSkipped = false
 		case <-c.tryReadBackend:
 			atomic.StoreInt32(&c.needNotifyRead, 0)
@@ -1353,8 +1354,6 @@ LOOP:
 		if msg == nil {
 			continue
 		}
-
-		lastMsg = *msg
 
 		if c.IsConsumeDisabled() {
 			continue
@@ -1454,7 +1453,8 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 						break
 					}
 					if blockingMsg != nil {
-						nsqLog.Logf("msg %v is blocking confirm, requeue to end, inflight %v, waiting confirm: %v, confirmed: %v", blockingMsg,
+						nsqLog.Logf("msg %v is blocking confirm, requeue to end, inflight %v, waiting confirm: %v, confirmed: %v",
+							PrintMessage(blockingMsg),
 							flightCnt, atomic.LoadInt32(&c.waitingConfirm), confirmed)
 
 						copyMsg := blockingMsg.GetCopy()

@@ -964,7 +964,7 @@ CheckFileOpen:
 	}
 	if (d.readQueueInfo.EndOffset.Pos > d.maxBytesPerFile) && !isEnd {
 		// this can happen if the maxbytesperfile configure is changed.
-		nsqLog.Logf("should be end since next position is larger than maxfile size. %v", d.readQueueInfo)
+		nsqLog.LogDebugf("should be end since next position is larger than maxfile size. %v", d.readQueueInfo)
 	}
 	if isEnd {
 		if d.readFile != nil {
