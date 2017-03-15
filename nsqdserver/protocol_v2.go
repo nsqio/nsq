@@ -1015,13 +1015,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
-	timeoutDuration time.Duration) error {
-	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
+	timeoutDuration time.Duration) (bool, error) {
+	isOldDeferred, err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
 	if err != nil {
 		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
-		return err
+		return isOldDeferred, err
 	}
-	return nil
+	return isOldDeferred, nil
 }
 
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1065,9 +1065,10 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	// can update the inflight message to the new message put backed at the queue
 
 	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
+	isOldDeferred := false
 	if oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
 		msgID, timeoutDuration, true); toEnd {
-		err = p.requeueToEnd(client, oldMsg, timeoutDuration)
+		isOldDeferred, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}
@@ -1077,7 +1078,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}
 
-	client.RequeuedMessage(timeoutDuration > 0)
+	client.RequeuedMessage(timeoutDuration > 0, isOldDeferred)
 
 	return nil, nil
 }

@@ -117,7 +117,10 @@ func recvNextMsgAndCheckClientMsg(t *testing.T, conn io.ReadWriter, expLen int, 
 		test.Nil(t, err)
 		frameType, data, err := nsq.UnpackResponse(resp)
 		test.Nil(t, err)
-		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeError {
+			t.Log(resp)
+			continue
+		}
 		if frameType == frameTypeResponse {
 			if string(data) == string(heartbeatBytes) {
 				cmd := nsq.Nop()
@@ -1005,6 +1008,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	var longestDelayOutMsg *nsq.Message
 	// requeue while blocking
 	minDelay := opts.ReqToEndThreshold
+	waitingReqList := make([]*nsq.Message, 0)
 	for i := 0; i < int(opts.MaxConfirmWin)*2; i++ {
 		msgOut := recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
@@ -1019,14 +1023,16 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 			nsq.Finish(msgOut.ID).WriteTo(conn)
 			finCnt++
 		} else {
-			delay := opts.ReqToEndThreshold
-			if i < int(opts.MaxConfirmWin)/2 {
-				delay = delay * time.Duration(i)
-				minDelay = delay
-			}
-			_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
-			test.Nil(t, err)
+			waitingReqList = append(waitingReqList, msgOut)
 		}
+	}
+	for i, msgOut := range waitingReqList {
+		delay := opts.ReqToEndThreshold
+		if i < int(opts.MaxConfirmWin)/2 {
+			delay = delay * time.Duration(i)
+			minDelay = delay
+		}
+		nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
 	}
 
 	var msgClientOut *nsq.Message

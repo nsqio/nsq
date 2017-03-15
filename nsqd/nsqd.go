@@ -45,7 +45,7 @@ const (
 	FLUSH_DISTANCE = 4
 )
 
-type ReqToEndFunc func(*Channel, *Message, time.Duration) error
+type ReqToEndFunc func(*Channel, *Message, time.Duration) (bool, error)
 type NSQD struct {
 	sync.RWMutex
 

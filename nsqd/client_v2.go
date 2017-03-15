@@ -478,11 +478,11 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) RequeuedMessage(delayed bool) {
+func (c *ClientV2) RequeuedMessage(delayed bool, isOldDelayed bool) {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	if !delayed {
 		atomic.AddInt64(&c.InFlightCount, -1)
-	} else {
+	} else if !isOldDelayed {
 		atomic.AddInt64(&c.DeferredCount, 1)
 	}
 	c.tryUpdateReadyState()
