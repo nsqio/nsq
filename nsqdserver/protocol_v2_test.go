@@ -1001,6 +1001,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 		topic.ForceFlush()
 	}
 
+	delayStart = time.Now()
 	var longestDelayOutMsg *nsq.Message
 	// requeue while blocking
 	for i := 0; i < int(opts.MaxConfirmWin)*2; i++ {
@@ -1040,9 +1041,14 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	test.Equal(t, traceID, uint64(9))
 	test.Equal(t, true, uint64(nsq.GetNewMessageID(msgClientOut.ID[:])) > largestID)
 
+	delayDone = time.Since(delayStart)
+	t.Log(delayDone)
+	test.Equal(t, delayDone >= delayToEnd, true)
+	test.Equal(t, delayDone < delayToEnd+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
+
 	test.Equal(t, putCnt, finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second)
 }
 
 func TestTouch(t *testing.T) {

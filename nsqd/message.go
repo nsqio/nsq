@@ -75,6 +75,17 @@ func (m *Message) GetFullMsgID() FullMessageID {
 	return buf
 }
 
+func (m *Message) GetCopy() *Message {
+	newMsg := *m
+	newMsg.Body = make([]byte, len(m.Body))
+	copy(newMsg.Body, m.Body)
+	return &newMsg
+}
+
+func (m *Message) GetClientID() int64 {
+	return m.clientID
+}
+
 func (m *Message) WriteToWithDetail(w io.Writer) (int64, error) {
 	return m.internalWriteTo(w, true)
 }

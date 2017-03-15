@@ -101,6 +101,7 @@ type Topic struct {
 	pubWaitingChan  PubInfoChan
 	quitChan        chan struct{}
 	pubLoopFunc     func(v *Topic)
+	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
 }
 
@@ -111,7 +112,8 @@ func GetTopicFullName(topic string, part int) string {
 // Topic constructor
 func NewTopic(topicName string, part int, opt *Options,
 	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{}), loopFunc func(v *Topic)) *Topic {
+	notify func(v interface{}), loopFunc func(v *Topic),
+	reqToEnd ReqToEndFunc) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -129,6 +131,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		pubWaitingChan: make(PubInfoChan, 200),
 		quitChan:       make(chan struct{}),
 		pubLoopFunc:    loopFunc,
+		reqToEndCB:     reqToEnd,
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -590,7 +593,8 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, readEnd,
-			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
+			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled),
+			t.notifyCall, t.reqToEndCB)
 
 		channel.UpdateQueueEnd(readEnd, false)
 		if t.IsWriteDisabled() {

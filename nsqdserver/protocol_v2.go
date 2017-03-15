@@ -1015,27 +1015,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
-	msgID nsqd.MessageID,
 	timeoutDuration time.Duration) error {
-	topic, err := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
-	if topic == nil || err != nil {
+	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
+	if err != nil {
 		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
 		return err
 	}
-	// pause to avoid the put to end message to be send to
-	// the client before we requeue and update in the flight
-	client.Channel.Pause()
-	defer client.Channel.UnPause()
-	newID, offset, rawSize, msgEnd, putErr := p.ctx.PutMessage(topic, oldMsg.Body, oldMsg.TraceID)
-	if putErr != nil {
-		nsqd.NsqLogger().Logf("[%s] req message %v to end failed, channel %v, put error: %v ",
-			client, oldMsg, client.Channel.GetName(), putErr)
-		return putErr
-	}
-	err = client.Channel.ReqWithNewMsgAndConfirmOld(client.ID, client.String(),
-		msgID, timeoutDuration, true, newID, offset, rawSize, msgEnd)
-
-	return err
+	return nil
 }
 
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1081,7 +1067,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
 	if oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
 		msgID, timeoutDuration, true); toEnd {
-		err = p.requeueToEnd(client, oldMsg, msgID, timeoutDuration)
+		err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}

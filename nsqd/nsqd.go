@@ -45,6 +45,7 @@ const (
 	FLUSH_DISTANCE = 4
 )
 
+type ReqToEndFunc func(*Channel, *Message, time.Duration) error
 type NSQD struct {
 	sync.RWMutex
 
@@ -69,6 +70,7 @@ type NSQD struct {
 	exiting     bool
 	persisting  int32
 	pubLoopFunc func(t *Topic)
+	reqToEndCB  ReqToEndFunc
 }
 
 func New(opts *Options) *NSQD {
@@ -143,6 +145,12 @@ func New(opts *Options) *NSQD {
 	}
 
 	return n
+}
+
+func (n *NSQD) SetReqToEndCB(reqToEndCB ReqToEndFunc) {
+	n.Lock()
+	n.reqToEndCB = reqToEndCB
+	n.Unlock()
 }
 
 func (n *NSQD) SetPubLoop(loop func(t *Topic)) {
@@ -478,7 +486,8 @@ func (n *NSQD) internalGetTopic(topicName string, part int, disabled int32) *Top
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
 	}
-	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify, n.pubLoopFunc)
+	t := NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify,
+		n.pubLoopFunc, n.reqToEndCB)
 	if t == nil {
 		nsqLog.Errorf("TOPIC(%s): create failed", topicName)
 	} else {
@@ -545,12 +554,12 @@ func (n *NSQD) ForceDeleteTopicData(name string, partition int) error {
 	if err != nil {
 		// not exist, create temp for check
 		n.Lock()
-		loopFunc := n.pubLoopFunc
-		n.Unlock()
 		deleteCallback := func(t *Topic) {
 			// do nothing
 		}
-		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
+		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify,
+			n.pubLoopFunc, n.reqToEndCB)
+		n.Unlock()
 		if topic == nil {
 			return errors.New("failed to init new topic")
 		}
@@ -565,11 +574,11 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 	if err != nil {
 		// not exist, create temp for check
 		n.Lock()
-		loopFunc := n.pubLoopFunc
-		n.Unlock()
 		deleteCallback := func(t *Topic) {
 		}
-		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify, loopFunc)
+		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify,
+			n.pubLoopFunc, n.reqToEndCB)
+		n.Unlock()
 		if localTopic == nil {
 			return "", errors.New("failed to init new topic")
 		}
