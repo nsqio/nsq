@@ -315,6 +315,9 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 		nsqd.NsqLogger().LogWarningf("req channel %v topic not found: %v", ch.GetName(), err)
 		return false, err
 	}
+	if topic.GetDynamicInfo().OrderedMulti {
+		return false, errors.New("ordered topic can not requeue to end")
+	}
 	if ch.Exiting() {
 		return false, nsqd.ErrExiting
 	}

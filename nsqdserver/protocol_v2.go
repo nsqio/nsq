@@ -1066,8 +1066,13 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 
 	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
 	isOldDeferred := false
-	if oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
-		msgID, timeoutDuration, true); toEnd {
+	topic, _ := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
+	oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
+		msgID, timeoutDuration, true)
+	if topic != nil && topic.GetDynamicInfo().OrderedMulti {
+		toEnd = false
+	}
+	if toEnd {
 		isOldDeferred, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)

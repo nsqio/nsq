@@ -963,7 +963,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	putCnt++
 	topic.ForceFlush()
 
-	_, err = nsq.Ready(1).WriteTo(conn)
+	_, err = nsq.Ready(int(opts.MaxConfirmWin)).WriteTo(conn)
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
@@ -990,7 +990,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 
 	var longestDelayMsg *nsqdNs.Message
 	var largestID uint64
-	for i := 0; i < int(opts.MaxConfirmWin)*4; i++ {
+	for i := 1; i < int(opts.MaxConfirmWin)*4; i++ {
 		msg := nsqdNs.NewMessage(0, []byte("test body"+strconv.Itoa(i)))
 		msg.TraceID = uint64(i)
 		topic.PutMessage(msg)
@@ -1008,7 +1008,6 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	var longestDelayOutMsg *nsq.Message
 	// requeue while blocking
 	minDelay := opts.ReqToEndThreshold
-	waitingReqList := make([]*nsq.Message, 0)
 	for i := 0; i < int(opts.MaxConfirmWin)*2; i++ {
 		msgOut := recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
@@ -1017,36 +1016,35 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 			_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delayToEnd).WriteTo(conn)
 			test.Nil(t, err)
 			longestDelayOutMsg = msgOut
-			continue
+			break
 		}
 		if i > 10 {
 			nsq.Finish(msgOut.ID).WriteTo(conn)
 			finCnt++
 		} else {
-			waitingReqList = append(waitingReqList, msgOut)
+			delay := opts.ReqToEndThreshold
+			if i < int(opts.MaxConfirmWin)/2 {
+				delay = delay * time.Duration(i)
+				minDelay = delay
+			}
+			nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
 		}
-	}
-	for i, msgOut := range waitingReqList {
-		delay := opts.ReqToEndThreshold
-		if i < int(opts.MaxConfirmWin)/2 {
-			delay = delay * time.Duration(i)
-			minDelay = delay
-		}
-		nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
 	}
 
 	var msgClientOut *nsq.Message
-	for finCnt < putCnt {
+	for finCnt < putCnt+10 {
 		msgClientOut = recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		nsq.Finish(msgClientOut.ID).WriteTo(conn)
 		recvCnt++
 		finCnt++
+		traceID := binary.BigEndian.Uint64(msgClientOut.ID[8:])
+		if traceID == longestDelayOutMsg.GetTraceID() {
+			break
+		}
 	}
-	traceID := binary.BigEndian.Uint64(msgClientOut.ID[8:])
 
 	test.Equal(t, msgClientOut.Body, longestDelayOutMsg.Body)
 	test.Equal(t, msgClientOut.Body, []byte("test body9"))
-	test.Equal(t, traceID, uint64(9))
 	test.Equal(t, true, uint64(nsq.GetNewMessageID(msgClientOut.ID[:])) > largestID)
 
 	delayDone = time.Since(delayStart)
@@ -1054,7 +1052,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	test.Equal(t, delayDone >= minDelay, true)
 	test.Equal(t, delayDone < delayToEnd+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
 
-	test.Equal(t, putCnt, finCnt)
+	test.Equal(t, true, putCnt <= finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)
 	time.Sleep(time.Second)
 }

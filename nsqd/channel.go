@@ -823,7 +823,8 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	}
 
 	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqLog.Debugf("channel %v req old msg %v to end, new msg: %v ", c.GetName(), msg, newMsg)
+		nsqLog.Debugf("channel %v req old msg %v to end timeout %v, new msg: %v ", c.GetName(),
+			msg, timeout, newMsg)
 	}
 	return isOldDeferred, nil
 }
@@ -1451,9 +1452,13 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 						if m.offset != confirmed {
 							continue
 						}
+						threshold := time.Minute
+						if c.option.ReqToEndThreshold >= time.Second {
+							threshold = c.option.ReqToEndThreshold
+						}
 						// if the blocking message still need waiting too long,
 						// we requeue to end or just timeout it immediately
-						if m.pri > time.Now().Add(c.option.ReqToEndThreshold*2).UnixNano() {
+						if m.pri > time.Now().Add(threshold).UnixNano() {
 							blockingMsg = m
 						}
 						break
