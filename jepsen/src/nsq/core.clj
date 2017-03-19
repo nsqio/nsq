@@ -36,6 +36,7 @@
 (def nsqlookupd-logfile "/var/log/nsqlookupd.log")
 (def nsqlookupd-pidfile "/var/run/nsqlookupd.pid")
 (def etcd-cluster-url "http://etcd0.example.com:2379/v2/keys/NSQMetaData/test-jepsen-dev-1")
+(def nsq-package "nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4")
 
 (defn prepare-binary! 
   [test node]
@@ -51,14 +52,14 @@
           (when-not (cu/exists? "build/nsqd")
             (c/exec :mkdir :-p "/opt/nsq/build")
             (c/exec :chmod :-R "a+rwx" "/opt/nsq")
-            (c/exec :rm :-f (c/lit "/opt/nsq/nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4.tar.gz*"))
+            (c/exec :rm :-f (c/lit (str "/opt/nsq/" nsq-package ".tar.gz*")))
             (info node "downloading nsq")
             ;(c/exec :wget "https://github.com/absolute8511/nsq/releases/download/v0.3.7-HA.1.5.3.1/nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4.tar.gz")
-            (c/upload (.getFile (io/resource "nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4.tar.gz")) "/opt/nsq/nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4.tar.gz")
+            (c/upload (.getFile (io/resource (str nsq-package ".tar.gz"))) (str "/opt/nsq/" nsq-package ".tar.gz"))
             (info node "tar nsq")
-            (c/exec :tar :-xvzf "nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4.tar.gz")
+            (c/exec :tar :-xvzf (str nsq-package ".tar.gz"))
             (info node "copying nsq binary")
-            (c/exec :cp :-rp (c/lit "nsq-0.3.7-HA.1.5.3.1.linux-amd64.go1.7.4/bin/*") "build/"))
+            (c/exec :cp :-rp (c/lit (str nsq-package "/bin/*")) "build/"))
           (info node "copying nsq")
           (c/exec :cp :-rp (c/lit "build/*") "/usr/bin/"))))
 
@@ -195,6 +196,7 @@
 (def ^NSQConfig nsqconf
   (let [conf (NSQConfig.)]
     (.setConsumerName conf "jepsen-ch")
+    (.setMsgTimeoutInMillisecond conf 5000)
     conf))
 
 (defn dequeue!
