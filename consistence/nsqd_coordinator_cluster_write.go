@@ -366,6 +366,7 @@ retrysync:
 				exitErr++
 				coordLog.Infof("operation failed and no retry type: %v, %v", rpcErr.ErrType, exitErr)
 				if exitErr > len(tcData.topicInfo.ISR)/2 {
+					needLeaveISR = true
 					goto exitsync
 				}
 			}
