@@ -191,8 +191,8 @@ func (self *coordData) checkWriteForLeader(myID string) *CoordErr {
 	return nil
 }
 
-func (self *coordData) IsISRReadyForWrite() bool {
-	return len(self.topicInfo.ISR) > self.topicInfo.Replica/2
+func (self *coordData) IsISRReadyForWrite(myID string) bool {
+	return (len(self.topicInfo.ISR) > self.topicInfo.Replica/2) && self.IsMineISR(myID)
 }
 
 func (self *coordData) SetForceLeave(leave bool) {

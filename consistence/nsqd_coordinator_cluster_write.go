@@ -262,7 +262,7 @@ func (self *NsqdCoordinator) doSyncOpToCluster(isWrite bool, coord *TopicCoordin
 		coordErrStats.incWriteErr(clusterWriteErr)
 		return clusterWriteErr
 	}
-	if isWrite && !tcData.IsISRReadyForWrite() {
+	if isWrite && !tcData.IsISRReadyForWrite(self.myNode.GetID()) {
 		coordLog.Infof("topic(%v) operation failed since no enough ISR:%v", topicFullName, tcData.topicInfo)
 		coordErrStats.incWriteErr(ErrWriteQuorumFailed)
 		return ErrWriteQuorumFailed
@@ -307,7 +307,7 @@ retrysync:
 			coordLog.Warningf("topic(%v) failed refresh data:%v", topicFullName, clusterWriteErr)
 			goto exitsync
 		}
-		if isWrite && !tcData.IsISRReadyForWrite() {
+		if isWrite && !tcData.IsISRReadyForWrite(self.myNode.GetID()) {
 			coordLog.Infof("topic(%v) sync write failed since no enough ISR:%v", topicFullName, tcData.topicInfo)
 			coordErrStats.incWriteErr(ErrWriteQuorumFailed)
 			clusterWriteErr = ErrWriteQuorumFailed
@@ -775,7 +775,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	changed := false
 	var confirmed nsqd.BackendQueueEnd
 	if channel.IsOrdered() {
-		if !coord.GetData().IsISRReadyForWrite() {
+		if !coord.GetData().IsISRReadyForWrite(self.myNode.GetID()) {
 			coordLog.Warningf("topic(%v) finish message ordered failed since no enough ISR", topicName)
 			coordErrStats.incWriteErr(ErrWriteQuorumFailed)
 			return ErrWriteQuorumFailed.ToErrorType()
