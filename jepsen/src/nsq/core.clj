@@ -200,8 +200,8 @@
 (defn dequeue!
   "Given a channel and an operation, dequeues a value and returns the
   corresponding operation."
-  [rc op]
-  (let [timeout-ch (async/timeout 10000)]
+  [to_ms rc op]
+  (let [timeout-ch (async/timeout to_ms)]
     (alt!!
       timeout-ch (assoc op :type :fail :value :timeout)
       rc ([value] (assoc op :type :ok :value value)))))
@@ -234,14 +234,14 @@
                      (warn e "pub failed")
                      (assoc op :type :fail))))
 
-      :dequeue (dequeue! receive-ch op)
+      :dequeue (dequeue! 5000 receive-ch op)
 
       :drain   (do
                  ; Note that this does more dequeues than strictly necessary
                  ; owing to lazy sequence chunking.
                  (->> (repeat op)                  ; Explode drain into
                    (map #(assoc % :f :dequeue)) ; infinite dequeues, then
-                   (map (partial dequeue! receive-ch))  ; dequeue something
+                   (map (partial dequeue! 40000 receive-ch))  ; dequeue something
                    (take-while op/ok?)  ; as long as stuff arrives,
                    (interleave (repeat op))     ; interleave with invokes
                    (drop 1)                     ; except the initial one
