@@ -105,6 +105,12 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	}
 	handleSyncResult := func(successNum int, tcData *coordData) bool {
 		if successNum == len(tcData.topicInfo.ISR) {
+			if successNum > tcData.topicInfo.Replica/2 {
+			} else {
+				coordLog.Warningf("write all isr but not enough quorum: %v, %v, message: %v, %v",
+					tcData.topicInfo.GetTopicDesp(), tcData.topicInfo, commitLog, msg)
+				return false
+			}
 			return true
 		}
 		return false
@@ -116,6 +122,9 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	var err error
 	if clusterErr != nil {
 		err = clusterErr.ToErrorType()
+	} else if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Infof("sync write success put offset: %v, logmgr: %v, %v",
+			commitLog, logMgr.pLogID, logMgr.nLogID)
 	}
 	return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, queueEnd, err
 }
@@ -203,6 +212,12 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	}
 	handleSyncResult := func(successNum int, tcData *coordData) bool {
 		if successNum == len(tcData.topicInfo.ISR) {
+			if successNum > tcData.topicInfo.Replica/2 {
+			} else {
+				coordLog.Warningf("write all isr but not enough quorum: %v, %v, message: %v",
+					tcData.topicInfo.GetTopicDesp(), tcData.topicInfo, commitLog)
+				return false
+			}
 			return true
 		}
 		return false
@@ -213,6 +228,9 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	var err error
 	if clusterErr != nil {
 		err = clusterErr.ToErrorType()
+	} else if coordLog.Level() >= levellogger.LOG_DETAIL {
+		coordLog.Infof("sync write success put offset: %v, logmgr: %v, %v",
+			commitLog, logMgr.pLogID, logMgr.nLogID)
 	}
 
 	return nsqd.MessageID(commitLog.LogID), nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize, err
@@ -287,6 +305,12 @@ retrysync:
 		}
 		if clusterWriteErr = doRefresh(tcData); clusterWriteErr != nil {
 			coordLog.Warningf("topic(%v) failed refresh data:%v", topicFullName, clusterWriteErr)
+			goto exitsync
+		}
+		if isWrite && !tcData.IsISRReadyForWrite() {
+			coordLog.Infof("topic(%v) sync write failed since no enough ISR:%v", topicFullName, tcData.topicInfo)
+			coordErrStats.incWriteErr(ErrWriteQuorumFailed)
+			clusterWriteErr = ErrWriteQuorumFailed
 			goto exitsync
 		}
 		if retryCnt > 3 {
