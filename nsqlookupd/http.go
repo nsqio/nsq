@@ -98,7 +98,7 @@ func newHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/topics", http_api.Decorate(s.doTopics, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/channels", http_api.Decorate(s.doChannels, log, http_api.NegotiateVersion))
 	router.Handle("GET", "/nodes", http_api.Decorate(s.doNodes, log, http_api.NegotiateVersion))
-	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, log, http_api.NegotiateVersion))
+	router.Handle("GET", "/listlookup", http_api.Decorate(s.doListLookup, debugLog, http_api.NegotiateVersion))
 	router.Handle("GET", "/cluster/stats", http_api.Decorate(s.doClusterStats, debugLog, http_api.V1))
 	router.Handle("POST", "/cluster/node/remove", http_api.Decorate(s.doRemoveClusterDataNode, log, http_api.V1))
 	router.Handle("POST", "/cluster/upgrade/begin", http_api.Decorate(s.doClusterBeginUpgrade, log, http_api.V1))
