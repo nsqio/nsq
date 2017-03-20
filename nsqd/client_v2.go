@@ -413,8 +413,8 @@ func (c *ClientV2) IsReadyForMessages() bool {
 		return false
 	}
 	if deferCnt > c.ctxOpts.MaxConfirmWin {
-		nsqLog.Infof("[%s] too much deferred message : %v rdy: %4d inflt: %4d",
-			c, deferCnt, readyCount, inFlightCount)
+		nsqLog.Infof("[%s] too much deferred message in channel %s : %v rdy: %4d inflt: %4d",
+			c, c.Channel.GetName(), deferCnt, readyCount, inFlightCount)
 		return false
 	}
 	return true

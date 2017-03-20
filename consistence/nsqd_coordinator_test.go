@@ -586,7 +586,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 
 	// test catchup again with more logs than leader
 	fakeSession.LeaderNode = nodeInfo1
-	fakeSession.Session = fakeSession.Session
+	//fakeSession.Session = fakeSession.Session
 	fakeSession.LeaderEpoch++
 	topicInitInfo.Epoch = changedInfo.Epoch + 1
 	topicInitInfo.EpochForWrite = changedInfo.EpochForWrite + 1
@@ -819,7 +819,7 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 
 	// test catchup again with more logs than leader
 	fakeSession.LeaderNode = nodeInfo1
-	fakeSession.Session = fakeSession.Session
+	//fakeSession.Session = fakeSession.Session
 	fakeSession.LeaderEpoch++
 	topicInitInfo.Epoch = changedInfo.Epoch + 1
 	topicInitInfo.EpochForWrite = changedInfo.EpochForWrite + 1
