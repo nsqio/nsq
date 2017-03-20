@@ -47,13 +47,14 @@ type Options struct {
 	QueueScanDirtyPercent    float64
 
 	// msg and command options
-	MsgTimeout    time.Duration `flag:"msg-timeout" arg:"60s"`
-	MaxMsgTimeout time.Duration `flag:"max-msg-timeout"`
-	MaxMsgSize    int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
-	MaxBodySize   int64         `flag:"max-body-size"`
-	MaxReqTimeout time.Duration `flag:"max-req-timeout"`
-	MaxConfirmWin int64         `flag:"max-confirm-win"`
-	ClientTimeout time.Duration
+	MsgTimeout        time.Duration `flag:"msg-timeout" arg:"60s"`
+	MaxMsgTimeout     time.Duration `flag:"max-msg-timeout"`
+	MaxMsgSize        int64         `flag:"max-msg-size" deprecated:"max-message-size" cfg:"max_msg_size"`
+	MaxBodySize       int64         `flag:"max-body-size"`
+	MaxReqTimeout     time.Duration `flag:"max-req-timeout"`
+	MaxConfirmWin     int64         `flag:"max-confirm-win"`
+	ClientTimeout     time.Duration
+	ReqToEndThreshold time.Duration `flag:"req-to-end-threshold"`
 
 	// client overridable configuration options
 	MaxHeartbeatInterval   time.Duration `flag:"max-heartbeat-interval"`
@@ -129,12 +130,13 @@ func NewOptions() *Options {
 		QueueScanWorkerPoolMax:   4,
 		QueueScanDirtyPercent:    0.25,
 
-		MsgTimeout:    60 * time.Second,
-		MaxMsgTimeout: 15 * time.Minute,
-		MaxMsgSize:    1024 * 1024,
-		MaxBodySize:   5 * 1024 * 1024,
-		MaxReqTimeout: 1 * time.Hour,
-		ClientTimeout: 60 * time.Second,
+		MsgTimeout:        60 * time.Second,
+		MaxMsgTimeout:     15 * time.Minute,
+		MaxMsgSize:        1024 * 1024,
+		MaxBodySize:       5 * 1024 * 1024,
+		MaxReqTimeout:     1 * time.Hour,
+		ClientTimeout:     60 * time.Second,
+		ReqToEndThreshold: 60 * time.Second,
 
 		MaxHeartbeatInterval:   60 * time.Second,
 		MaxRdyCount:            2500,
@@ -168,7 +170,6 @@ func NewOptions() *Options {
 func getIPv4ForInterfaceName(ifname string) string {
 	interfaces, _ := net.Interfaces()
 	for _, inter := range interfaces {
-		log.Printf("found interface: %s\n", inter.Name)
 		if inter.Name == ifname {
 			if addrs, err := inter.Addrs(); err == nil {
 				for _, addr := range addrs {

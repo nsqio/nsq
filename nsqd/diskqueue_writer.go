@@ -80,14 +80,22 @@ type extraMeta struct {
 func NewDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
 	syncEvery int64) (BackendQueueWriter, error) {
-	return newDiskQueueWriter(name, dataPath, maxBytesPerFile, minMsgSize, maxMsgSize, syncEvery)
+	return newDiskQueueWriter(name, dataPath, maxBytesPerFile,
+		minMsgSize, maxMsgSize, syncEvery, false)
+}
+
+func NewDiskQueueWriterForRead(name string, dataPath string, maxBytesPerFile int64,
+	minMsgSize int32, maxMsgSize int32,
+	syncEvery int64) (BackendQueueWriter, error) {
+	return newDiskQueueWriter(name, dataPath, maxBytesPerFile,
+		minMsgSize, maxMsgSize, syncEvery, true)
 }
 
 // newDiskQueue instantiates a new instance of diskQueueWriter, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 	minMsgSize int32, maxMsgSize int32,
-	syncEvery int64) (BackendQueueWriter, error) {
+	syncEvery int64, readOnly bool) (BackendQueueWriter, error) {
 
 	d := diskQueueWriter{
 		name:            name,
@@ -107,7 +115,10 @@ func newDiskQueueWriter(name string, dataPath string, maxBytesPerFile int64,
 		nsqLog.LogErrorf("diskqueue(%s) failed to init queue start- %s", d.name, err)
 		return &d, err
 	}
-	d.saveExtraMeta()
+
+	if !readOnly {
+		d.saveExtraMeta()
+	}
 
 	return &d, nil
 }
@@ -289,7 +300,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 		return &newStart, nil
 	}
 
-	nsqLog.Warningf("DISKQUEUE %v clean queue from %v, %v to new start : %v", d.name,
+	nsqLog.Infof("DISKQUEUE %v clean queue from %v, %v to new start : %v", d.name,
 		d.diskQueueStart, d.diskWriteEnd, newStart)
 
 	d.diskQueueStart = newStart

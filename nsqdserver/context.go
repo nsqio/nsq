@@ -307,3 +307,31 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 		}
 	}
 }
+
+func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
+	oldMsg *nsqd.Message, timeoutDuration time.Duration) (bool, error) {
+	topic, err := c.getExistingTopic(ch.GetTopicName(), ch.GetTopicPart())
+	if topic == nil || err != nil {
+		nsqd.NsqLogger().LogWarningf("req channel %v topic not found: %v", ch.GetName(), err)
+		return false, err
+	}
+	if topic.GetDynamicInfo().OrderedMulti {
+		return false, errors.New("ordered topic can not requeue to end")
+	}
+	if ch.Exiting() {
+		return false, nsqd.ErrExiting
+	}
+	// pause to avoid the put to end message to be send to
+	// the client before we requeue and update in the flight
+	ch.Pause()
+	defer ch.UnPause()
+	newID, offset, rawSize, msgEnd, putErr := c.PutMessage(topic, oldMsg.Body, oldMsg.TraceID)
+	if putErr != nil {
+		nsqd.NsqLogger().Logf("req message %v to end failed, channel %v, put error: %v ",
+			oldMsg, ch.GetName(), putErr)
+		return false, putErr
+	}
+	isOldDeferred, err := ch.ReqWithNewMsgAndConfirmOld(oldMsg.GetClientID(),
+		oldMsg.ID, timeoutDuration, newID, offset, rawSize, msgEnd)
+	return isOldDeferred, err
+}

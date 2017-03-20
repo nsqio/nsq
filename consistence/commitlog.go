@@ -66,6 +66,11 @@ func GetNextLogOffset(cur int64) int64 {
 	return cur + int64(GetLogDataSize())
 }
 
+func GetPartitionFromMsgID(id int64) int {
+	// the max partition id will be less than 1024
+	return int((uint64(id) & (uint64(1024-1) << MAX_INCR_ID_BIT)) >> MAX_INCR_ID_BIT)
+}
+
 func getCommitLogFile(path string, start int64, for_write bool) (*os.File, error) {
 	name := getSegmentFilename(path, start)
 	mode := os.O_RDONLY

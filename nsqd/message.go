@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,12 @@ func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
 	return binary.BigEndian.Uint64(id[8 : 8+MsgTraceIDLength])
 }
 
+func PrintMessage(m *Message) string {
+	return fmt.Sprintf("%v %v %s %v %v %v %v %v %v %v %v %v %v",
+		m.ID, m.TraceID, string(m.Body), m.Timestamp, m.Attempts, m.deliveryTS,
+		m.clientID, m.pri, m.index, m.deferredCnt, m.offset, m.rawMoveSize, m.queueCntIndex)
+}
+
 type Message struct {
 	ID        MessageID
 	TraceID   uint64
@@ -35,11 +42,11 @@ type Message struct {
 	Attempts  uint16
 
 	// for in-flight handling
-	deliveryTS time.Time
-	clientID   int64
-	pri        int64
-	index      int
-	isDeferred int32
+	deliveryTS  time.Time
+	clientID    int64
+	pri         int64
+	index       int
+	deferredCnt int32
 	//for backend queue
 	offset        BackendOffset
 	rawMoveSize   BackendOffset
@@ -73,6 +80,21 @@ func (m *Message) GetFullMsgID() FullMessageID {
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.ID))
 	binary.BigEndian.PutUint64(buf[8:8+MsgTraceIDLength], uint64(m.TraceID))
 	return buf
+}
+
+func (m *Message) IsDeferred() bool {
+	return atomic.LoadInt32(&m.deferredCnt) > 0
+}
+
+func (m *Message) GetCopy() *Message {
+	newMsg := *m
+	newMsg.Body = make([]byte, len(m.Body))
+	copy(newMsg.Body, m.Body)
+	return &newMsg
+}
+
+func (m *Message) GetClientID() int64 {
+	return m.clientID
 }
 
 func (m *Message) WriteToWithDetail(w io.Writer) (int64, error) {

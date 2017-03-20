@@ -138,7 +138,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 	for {
 		if client.HeartbeatInterval > 0 {
-			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 2))
+			client.SetReadDeadline(time.Now().Add(client.HeartbeatInterval * 3))
 		} else {
 			client.SetReadDeadline(zeroTime)
 		}
@@ -541,7 +541,10 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				continue
 			}
 
-			subChannel.StartInFlightTimeout(msg, client.ID, client.String(), msgTimeout)
+			shouldSend, err := subChannel.StartInFlightTimeout(msg, client.ID, client.String(), msgTimeout)
+			if !shouldSend {
+				continue
+			}
 			client.SendingMessage()
 			err = SendMessage(client, msg, &buf, subChannel.IsOrdered())
 			if err != nil {
@@ -1011,6 +1014,16 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	return nil, nil
 }
 
+func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
+	timeoutDuration time.Duration) (bool, error) {
+	isOldDeferred, err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
+	if err != nil {
+		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
+		return isOldDeferred, err
+	}
+	return isOldDeferred, nil
+}
+
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {
@@ -1042,14 +1055,35 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	if client.Channel == nil {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
-	err = client.Channel.RequeueMessage(client.ID, client.String(), nsqd.GetMessageIDFromFullMsgID(*id), timeoutDuration, true)
+	// in the queue, we confirm the message as a fifo-alike queue,
+	// Too much req messages in memory will block the queue read from disk until the requeued message confirmed.
+	// To avoid block by req, we put some of the req messages to the end of queue of some conditions meet
+	// 1. the req delay time is large than 10 mins (this delay means latency is trival)
+	// 2. this message has been req for more than 10 times
+	// 3. this message is blocking confirm queue for 10 mins
+	// to avoid delivery the delayed message early than required, we
+	// can update the inflight message to the new message put backed at the queue
+
+	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
+	isOldDeferred := false
+	topic, _ := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
+	oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
+		msgID, timeoutDuration, true)
+	if topic != nil && topic.GetDynamicInfo().OrderedMulti {
+		toEnd = false
+	}
+	if toEnd {
+		isOldDeferred, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
+	} else {
+		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
+	}
 	if err != nil {
 		client.IncrSubError(int64(1))
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}
 
-	client.RequeuedMessage(timeoutDuration > 0)
+	client.RequeuedMessage(timeoutDuration > 0, isOldDeferred)
 
 	return nil, nil
 }

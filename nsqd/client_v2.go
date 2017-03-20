@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/auth"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/mreiferson/go-snappystream"
 )
 
@@ -402,19 +403,18 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	}
 	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
-	if nsqLog.Level() > 1 {
-		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, errCnt: %d",
-			c, readyCount, inFlightCount, errCnt)
+	if nsqLog.Level() >= levellogger.LOG_DETAIL {
+		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, defer: %4d, errCnt: %d",
+			c, readyCount, inFlightCount, deferCnt, errCnt)
 	}
 
 	// deferCnt should consider as not in flight
 	if inFlightCount >= readyCount+deferCnt || readyCount <= 0 {
 		return false
 	}
-	if deferCnt > readyCount*100 || deferCnt > 1000 {
+	if deferCnt > c.ctxOpts.MaxConfirmWin {
 		nsqLog.Infof("[%s] too much deferred message : %v rdy: %4d inflt: %4d",
 			c, deferCnt, readyCount, inFlightCount)
-
 		return false
 	}
 	return true
@@ -478,11 +478,11 @@ func (c *ClientV2) TimedOutMessage(isDefer bool) {
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) RequeuedMessage(delayed bool) {
+func (c *ClientV2) RequeuedMessage(delayed bool, isOldDelayed bool) {
 	atomic.AddUint64(&c.RequeueCount, 1)
 	if !delayed {
 		atomic.AddInt64(&c.InFlightCount, -1)
-	} else {
+	} else if !isOldDelayed {
 		atomic.AddInt64(&c.DeferredCount, 1)
 	}
 	c.tryUpdateReadyState()

@@ -216,7 +216,7 @@ func TestChannelSkip(t *testing.T) {
 	channel.SetConsumeOffset(backendOffsetMid, 10, true)
 	for i := 0; i < 10; i++ {
 		outputMsg := <-channel.clientMsgChan
-		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10));
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10))
 	}
 }
 
@@ -265,7 +265,7 @@ func TestChannelResetReadEnd(t *testing.T) {
 	channel.SetConsumeOffset(backendOffsetMid, 10, true)
 	for i := 0; i < 10; i++ {
 		outputMsg := <-channel.clientMsgChan
-		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10));
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10))
 	}
 	equal(t, channel.Depth(), int64(10))
 
@@ -274,10 +274,11 @@ func TestChannelResetReadEnd(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		outputMsg := <-channel.clientMsgChan
 		t.Logf("Msg: %s", outputMsg.Body)
-		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i));
+		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i))
 	}
 }
 
+// depth timestamp is the next msg time need to be consumed
 func TestChannelDepthTimestamp(t *testing.T) {
 	// handle read no data, reset, etc
 	opts := NewOptions()
@@ -297,14 +298,21 @@ func TestChannelDepthTimestamp(t *testing.T) {
 		var msgId MessageID
 		msgBytes := []byte(strconv.Itoa(i + 11))
 		msg := NewMessage(msgId, msgBytes)
+		time.Sleep(time.Millisecond)
 		msgs = append(msgs, msg)
 	}
 	topic.PutMessages(msgs)
 	topic.flush(true)
 
-	for i := 0; i < 10; i++ {
-		msgOutput := <- channel.clientMsgChan
-		equal(t, msgOutput.Timestamp, channel.DepthTimestamp());
+	lastDepthTs := int64(0)
+	for i := 0; i < 9; i++ {
+		msgOutput := <-channel.clientMsgChan
+		time.Sleep(time.Millisecond)
+		if lastDepthTs != 0 {
+			// next msg timestamp == last depth ts
+			equal(t, msgOutput.Timestamp, lastDepthTs)
+		}
+		lastDepthTs = channel.DepthTimestamp()
 	}
 	channel.resetReaderToConfirmed()
 	equal(t, channel.DepthTimestamp(), int64(0))

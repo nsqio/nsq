@@ -17,10 +17,12 @@ import (
 
 const (
 	resetReaderTimeoutSec = 10
+	MAX_MEM_REQ_TIMES     = 10
 )
 
 var (
 	ErrMsgNotInFlight                 = errors.New("Message ID not in flight")
+	ErrMsgDeferredTooMuch             = errors.New("Too much deferred messages in flight")
 	ErrMsgAlreadyInFlight             = errors.New("Message ID already in flight")
 	ErrConsumeDisabled                = errors.New("Consume is disabled currently")
 	ErrMsgDeferred                    = errors.New("Message is deferred")
@@ -32,6 +34,7 @@ type Consumer interface {
 	UnPause()
 	Pause()
 	TimedOutMessage(delayed bool)
+	RequeuedMessage(delayed bool, isOldDelayed bool)
 	Stats() ClientStats
 	Exit()
 	Empty()
@@ -108,11 +111,13 @@ type Channel struct {
 	waitingProcessMsgTs    int64
 	waitingDeliveryState   int32
 	tmpRemovedConfirmed    []*Message
+	requeueMsgCb           ReqToEndFunc
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, part int, channelName string, chEnd BackendQueueEnd, opt *Options,
-	deleteCallback func(*Channel), consumeDisabled int32, notify func(v interface{})) *Channel {
+	deleteCallback func(*Channel), consumeDisabled int32,
+	notify func(v interface{}), reqToEndCB ReqToEndFunc) *Channel {
 
 	c := &Channel{
 		topicName:          topicName,
@@ -135,6 +140,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		notifyCall:          notify,
 		consumeDisabled:     consumeDisabled,
 		tmpRemovedConfirmed: make([]*Message, 0, 10),
+		requeueMsgCb:        reqToEndCB,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -593,13 +599,13 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID) (BackendOffset, int64, bool, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
-	msg, err := c.popInFlightMessage(clientID, id)
+	msg, err := c.popInFlightMessage(clientID, id, false)
 	if err != nil {
 		nsqLog.LogDebugf("channel (%v): message %v fin error: %v from client %v", c.GetName(), id, err,
 			clientID)
 		return 0, 0, false, err
 	}
-	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN", msg.TraceID, msg, clientAddr)
 	}
 	if c.e2eProcessingLatencyStream != nil {
@@ -618,6 +624,83 @@ func (c *Channel) ContinueConsumeForOrder() {
 	}
 }
 
+func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id MessageID,
+	timeout time.Duration, byClient bool) (*Message, bool) {
+	if !byClient {
+		return nil, false
+	}
+	if c.IsOrdered() {
+		return nil, false
+	}
+	threshold := time.Minute
+	if c.option.ReqToEndThreshold >= time.Second {
+		threshold = c.option.ReqToEndThreshold
+	}
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	// change the timeout for inflight
+	msg, ok := c.inFlightMessages[id]
+	if !ok {
+		return nil, false
+	}
+	if msg.clientID != clientID || msg.IsDeferred() {
+		return nil, false
+	}
+
+	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.LogDebugf("check requeue to end, timeout:%v, msg timestamp:%v, depth ts:%v, msg attemp:%v, waiting :%v",
+			timeout, msg.Timestamp,
+			c.DepthTimestamp(), msg.Attempts, atomic.LoadInt32(&c.waitingConfirm))
+	}
+
+	if timeout > threshold*10 {
+		return msg, true
+	}
+	if msg.Timestamp > c.DepthTimestamp()+time.Second.Nanoseconds() {
+		return nil, false
+	}
+
+	if msg.Attempts < 3 {
+		return nil, false
+	}
+	ts := time.Now().UnixNano() - c.DepthTimestamp()
+	isBlocking := atomic.LoadInt32(&c.waitingConfirm) >= int32(c.option.MaxConfirmWin)
+	if isBlocking {
+		if c.Depth() > 100 && ts > 20*threshold.Nanoseconds() {
+			return msg, true
+		} else {
+			if msg.Attempts > MAX_MEM_REQ_TIMES && ts > 10*threshold.Nanoseconds() {
+				return msg, true
+			}
+			if timeout > threshold && ts > 2*threshold.Nanoseconds() {
+				return msg, true
+			}
+			if ts < 5*threshold.Nanoseconds() {
+				return nil, false
+			}
+			if timeout > 2*threshold {
+				return msg, true
+			}
+			return nil, false
+		}
+	} else {
+		if msg.Attempts < MAX_MEM_REQ_TIMES {
+			return nil, false
+		}
+		if ts < 20*threshold.Nanoseconds() {
+			return nil, false
+		}
+		if timeout < 2*threshold {
+			return nil, false
+		}
+		if c.Depth() < 100 {
+			return nil, false
+		}
+		return msg, true
+	}
+	return nil, false
+}
+
 // RequeueMessage requeues a message based on `time.Duration`, ie:
 //
 // `timeoutMs` == 0 - requeue a message immediately
@@ -629,7 +712,7 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 	defer c.inFlightMutex.Unlock()
 	if timeout == 0 {
 		// remove from inflight first
-		msg, err := c.popInFlightMessage(clientID, id)
+		msg, err := c.popInFlightMessage(clientID, id, false)
 		if err != nil {
 			nsqLog.LogDebugf("channel (%v): message %v requeue error: %v from client %v", c.GetName(), id, err,
 				clientID)
@@ -652,6 +735,10 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		return fmt.Errorf("client does not own message %v: %v vs %v", id,
 			msg.clientID, clientID)
 	}
+	// one message should not defer again before the old defer timeout
+	if msg.IsDeferred() {
+		return ErrMsgDeferred
+	}
 	newTimeout := time.Now().Add(timeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.option.MaxReqTimeout {
@@ -661,8 +748,85 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 	}
 	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
-	atomic.StoreInt32(&msg.isDeferred, 1)
+	atomic.AddInt32(&msg.deferredCnt, 1)
 	return nil
+}
+
+func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
+	timeout time.Duration, newMsgID MessageID,
+	newOffset BackendOffset, newRawSize int32, newMsgEnd BackendQueueEnd) (bool, error) {
+
+	c.RLock()
+	client := c.clients[clientID]
+	c.RUnlock()
+
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	// change the timeout for inflight
+	msg, err := c.popInFlightMessage(clientID, id, true)
+	if err != nil {
+		nsqLog.Logf("channel %s : failed requeue for delay: %v, %v", c.GetName(), id, err)
+		return false, err
+	}
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
+		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "REQ_END", msg.TraceID, msg, "")
+	}
+	_, _, _, err = c.ConfirmBackendQueue(msg)
+	if err != nil {
+		nsqLog.LogWarningf("channel %s : failed confirm msg %v for requeue to end: %v", c.GetName(), msg, err)
+	}
+	newTimeout := time.Now().Add(timeout)
+	if newTimeout.Sub(msg.deliveryTS) >=
+		c.option.MaxReqTimeout {
+		// we would have gone over, set to the max
+		nsqLog.Logf("requeue message: %v exceed max requeue timeout: %v, %v", id, msg.deliveryTS, newTimeout)
+		newTimeout = msg.deliveryTS.Add(c.option.MaxReqTimeout)
+	}
+	msg.pri = newTimeout.UnixNano()
+	isOldDeferred := msg.IsDeferred()
+
+	// if too much defer messages , we should not push new to inflight
+	// to avoid too much inflight messages, in this way we should just
+	// treat the client timeouted this message
+	if atomic.LoadInt64(&c.deferredCount) >= c.option.MaxConfirmWin {
+		if client != nil {
+			client.TimedOutMessage(isOldDeferred)
+		}
+		if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
+			clientAddr := ""
+			if client != nil {
+				clientAddr = client.String()
+			} else {
+				clientAddr = strconv.Itoa(int(msg.clientID))
+			}
+			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DEFER_OVERFLOW", msg.TraceID, msg, clientAddr)
+		}
+		return isOldDeferred, ErrMsgDeferredTooMuch
+	}
+	atomic.AddInt32(&msg.deferredCnt, 1)
+	newMsg := *msg
+	newMsg.ID = newMsgID
+	newMsg.offset = newOffset
+	newMsg.rawMoveSize = BackendOffset(newRawSize)
+	newMsg.queueCntIndex = newMsgEnd.TotalMsgCnt()
+
+	_, ok := c.inFlightMessages[newMsg.ID]
+	if ok {
+		nsqLog.LogWarningf("push message already in flight : %v",
+			newMsg.GetFullMsgID())
+		return isOldDeferred, ErrMsgAlreadyInFlight
+	}
+	c.inFlightMessages[newMsg.ID] = &newMsg
+	c.inFlightPQ.Push(&newMsg)
+	if !isOldDeferred {
+		atomic.AddInt64(&c.deferredCount, 1)
+	}
+
+	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.Debugf("channel %v req old msg %v to end timeout %v, new msg: %v ", c.GetName(),
+			msg, timeout, newMsg)
+	}
+	return isOldDeferred, nil
 }
 
 func (c *Channel) RequeueClientMessages(clientID int64, clientAddr string) {
@@ -738,22 +902,27 @@ func (c *Channel) RemoveClient(clientID int64) {
 	}
 }
 
-func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, clientAddr string, timeout time.Duration) error {
+func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, clientAddr string, timeout time.Duration) (bool, error) {
 	now := time.Now()
 	msg.clientID = clientID
 	msg.deliveryTS = now
 	msg.pri = now.Add(timeout).UnixNano()
 	msg.Attempts++
-	err := c.pushInFlightMessage(msg)
+	old, err := c.pushInFlightMessage(msg)
+	shouldSend := true
 	if err != nil {
-		nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
-			msg.GetFullMsgID())
-		return err
+		if old != nil && old.IsDeferred() {
+			shouldSend = false
+		} else {
+			nsqLog.LogWarningf("push message in flight failed: %v, %v", err,
+				msg.GetFullMsgID())
+		}
+		return shouldSend, err
 	}
-	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "START", msg.TraceID, msg, clientAddr)
 	}
-	return nil
+	return shouldSend, nil
 }
 
 func (c *Channel) GetInflightNum() int {
@@ -794,23 +963,23 @@ func (c *Channel) doRequeue(m *Message, clientAddr string) error {
 }
 
 // pushInFlightMessage atomically adds a message to the in-flight dictionary
-func (c *Channel) pushInFlightMessage(msg *Message) error {
+func (c *Channel) pushInFlightMessage(msg *Message) (*Message, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
 	if c.IsConsumeDisabled() {
-		return ErrConsumeDisabled
+		return nil, ErrConsumeDisabled
 	}
-	_, ok := c.inFlightMessages[msg.ID]
+	m, ok := c.inFlightMessages[msg.ID]
 	if ok {
-		return ErrMsgAlreadyInFlight
+		return m, ErrMsgAlreadyInFlight
 	}
 	c.inFlightMessages[msg.ID] = msg
 	c.inFlightPQ.Push(msg)
-	return nil
+	return nil, nil
 }
 
 // popInFlightMessage atomically removes a message from the in-flight dictionary
-func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, error) {
+func (c *Channel) popInFlightMessage(clientID int64, id MessageID, force bool) (*Message, error) {
 	msg, ok := c.inFlightMessages[id]
 	if !ok {
 		return nil, ErrMsgNotInFlight
@@ -819,7 +988,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, fmt.Errorf("client does not own message : %v vs %v",
 			msg.clientID, clientID)
 	}
-	if atomic.LoadInt32(&msg.isDeferred) == 1 {
+	if !force && msg.IsDeferred() {
 		nsqLog.LogWarningf("channel (%v): should never pop a deferred message here unless the timeout : %v", c.GetName(), msg.ID)
 		return nil, ErrMsgDeferred
 	}
@@ -1174,6 +1343,7 @@ LOOP:
 				}
 				resumedFirst = false
 			}
+			lastMsg = *msg
 			isSkipped = false
 		case <-c.tryReadBackend:
 			atomic.StoreInt32(&c.needNotifyRead, 0)
@@ -1192,8 +1362,6 @@ LOOP:
 			continue
 		}
 
-		lastMsg = *msg
-
 		if c.IsConsumeDisabled() {
 			continue
 		}
@@ -1206,7 +1374,7 @@ LOOP:
 			}
 		}
 		atomic.StoreInt32(&c.waitingDeliveryState, 1)
-		atomic.StoreInt32(&msg.isDeferred, 0)
+		atomic.StoreInt32(&msg.deferredCnt, 0)
 		if c.IsOrdered() {
 			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readBackendWait = true
@@ -1277,6 +1445,43 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 				nsqLog.LogDebugf("no timeout, inflight %v, waiting confirm: %v, confirmed: %v",
 					flightCnt, atomic.LoadInt32(&c.waitingConfirm),
 					c.GetConfirmed())
+				if !c.IsOrdered() && atomic.LoadInt32(&c.waitingConfirm) >= int32(c.option.MaxConfirmWin) {
+					confirmed := c.GetConfirmed().Offset()
+					var blockingMsg *Message
+					for _, m := range c.inFlightMessages {
+						if m.offset != confirmed {
+							continue
+						}
+						threshold := time.Minute
+						if c.option.ReqToEndThreshold >= time.Second {
+							threshold = c.option.ReqToEndThreshold
+						}
+						// if the blocking message still need waiting too long,
+						// we requeue to end or just timeout it immediately
+						if m.pri > time.Now().Add(threshold).UnixNano() {
+							blockingMsg = m
+						}
+						break
+					}
+					if blockingMsg != nil {
+						nsqLog.Logf("msg %v is blocking confirm, requeue to end, inflight %v, waiting confirm: %v, confirmed: %v",
+							PrintMessage(blockingMsg),
+							flightCnt, atomic.LoadInt32(&c.waitingConfirm), confirmed)
+
+						copyMsg := blockingMsg.GetCopy()
+						go func() {
+							isOldDeferred, err := c.requeueMsgCb(c, copyMsg, time.Duration(copyMsg.pri-time.Now().UnixNano()))
+							if err == nil {
+								c.RLock()
+								client := c.clients[copyMsg.clientID]
+								c.RUnlock()
+								if client != nil {
+									client.RequeuedMessage(true, isOldDeferred)
+								}
+							}
+						}()
+					}
+				}
 			}
 			c.inFlightMutex.Unlock()
 			goto exit
@@ -1291,7 +1496,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		delete(c.inFlightMessages, msg.ID)
 		// note: if this message is deferred by client, we treat it as a delay message,
 		// so we consider it is by demanded to delay not timeout of message.
-		if atomic.LoadInt32(&msg.isDeferred) == 1 {
+		if msg.IsDeferred() {
 			atomic.AddInt64(&c.deferredCount, -1)
 		} else {
 			atomic.AddUint64(&c.timeoutCount, 1)
@@ -1305,7 +1510,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		client, ok := c.clients[msg.clientID]
 		c.RUnlock()
 		if ok {
-			client.TimedOutMessage(atomic.LoadInt32(&msg.isDeferred) == 1)
+			client.TimedOutMessage(msg.IsDeferred())
 		}
 		if msgCopy.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			clientAddr := ""
@@ -1314,7 +1519,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			} else {
 				clientAddr = strconv.Itoa(int(msg.clientID))
 			}
-			if atomic.LoadInt32(&msg.isDeferred) == 1 {
+			if msg.IsDeferred() {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
 			} else {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)

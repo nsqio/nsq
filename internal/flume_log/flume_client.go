@@ -109,6 +109,7 @@ func (c *FlumeClient) reconnect() (err error) {
 		c.conn = nil
 		c.bw = nil
 	}
+	log.Printf("reconnect flumelogger to %v ", c.remoteAddr)
 	conn, err := net.DialTimeout("tcp", c.remoteAddr, time.Second*5)
 	if err != nil {
 		log.Printf("connect to %v failed: %v", c.remoteAddr, err)

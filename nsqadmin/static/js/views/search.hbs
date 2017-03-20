@@ -1,0 +1,76 @@
+{{> warning}}
+{{> error}}
+
+<div class="row">
+  <div class="col-md-6">
+    <form class="search-trace">
+        <legend>Search and Trace Topic Messages</legend>
+        <div class="alert alert-info">
+            <p>This provides a way to search topic message and trace
+            the life cycle of the traced message. (at most 30 messages for each search)
+        </div>
+        <div class="form-group">
+          <label>Topic Name</lable>
+          <input type="text" class="form-control" name="topic" style="width:250px;" placeholder="Topic Name">
+        </div>
+        <div class="form-group">
+          <label>Topic Partition ID </lable>
+          <input type="number" class="form-control" min=1 max=255 name="partition_id" style="width:250px;" placeholder="Partition ID">
+        </div>
+        <div class="form-group">
+          <label>Message internal id in NSQ</lable>
+          <input type="number" class="form-control" name="msgid" style="width:250px;" placeholder="Message Internal ID">
+        </div>
+        <div class="form-group">
+          <label>How many hours to search</lable>
+          <input type="number" class="form-control" min=1 max=240 name="hours" style="width:250px;" placeholder="hours">
+        </div>
+        <div class="form-group">
+          <label>Trace ID</lable>
+          <input type="text" class="form-control" name="traceid" style="width:250px;" placeholder="Trace id for tracing">
+          <input type="checkbox" name="hashed" value="" checked="checked">Is Hashed TraceID</p>
+        </div>
+            <button class="btn btn-default" >Search/Trace</button>
+    </form>
+    <div id="loadingmessage" style="display:none">
+      <p class="bg-warning">Searching...
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-8">
+    {{#if request_msg}}
+    <div class="alert alert-info">
+        <p><pre>{{request_msg}}</pre></p>
+    </div>
+    {{/if}}
+  </div>
+</div
+
+<div class="row">
+    <div class="col-md-12">
+        <table class="table table-condensed table-bordered">
+            <tr>
+                <th>ID</th>
+                <th>TraceID</th>
+                <th>Channel</th>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>RawData</th>
+            </tr>
+            {{#each messages}}
+            <tr>
+                <td>{{msgid}}</td>
+                <td>{{traceid}}</td>
+                <td>{{channel}}</td>
+                <td>{{timestamp}}</td>
+                <td>{{action}}</td>
+                <td>{{raw_msg_data}}</td>
+            </tr>
+            {{/each}}
+        </table>
+    </div>
+</div>
+
+

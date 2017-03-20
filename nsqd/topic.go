@@ -101,6 +101,7 @@ type Topic struct {
 	pubWaitingChan  PubInfoChan
 	quitChan        chan struct{}
 	pubLoopFunc     func(v *Topic)
+	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
 }
 
@@ -111,7 +112,8 @@ func GetTopicFullName(topic string, part int) string {
 // Topic constructor
 func NewTopic(topicName string, part int, opt *Options,
 	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{}), loopFunc func(v *Topic)) *Topic {
+	notify func(v interface{}), loopFunc func(v *Topic),
+	reqToEnd ReqToEndFunc) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -129,6 +131,7 @@ func NewTopic(topicName string, part int, opt *Options,
 		pubWaitingChan: make(PubInfoChan, 200),
 		quitChan:       make(chan struct{}),
 		pubLoopFunc:    loopFunc,
+		reqToEndCB:     reqToEnd,
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -146,7 +149,7 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 
 	backendName := getBackendName(t.tname, t.partition)
-	queue, err := newDiskQueueWriter(backendName,
+	queue, err := NewDiskQueueWriter(backendName,
 		t.dataPath,
 		opt.MaxBytesPerFile,
 		int32(minValidMsgLength),
@@ -590,7 +593,8 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, readEnd,
-			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled), t.notifyCall)
+			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled),
+			t.notifyCall, t.reqToEndCB)
 
 		channel.UpdateQueueEnd(readEnd, false)
 		if t.IsWriteDisabled() {
@@ -833,7 +837,7 @@ func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, di
 
 	if trace {
 		if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
-			nsqMsgTracer.TracePub(t.GetFullName(), m.TraceID, m, offset, dend.TotalMsgCnt())
+			nsqMsgTracer.TracePub(t.GetTopicName(), t.GetTopicPart(), m.TraceID, m, offset, dend.TotalMsgCnt())
 		}
 	}
 	return m.ID, offset, writeBytes, dend, nil
@@ -1154,7 +1158,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 		}
 		err = snapReader.SkipToNext()
 		if err != nil {
-			nsqLog.LogWarningf("failed to skip - %s ", err)
+			nsqLog.Logf("failed to skip - %s ", err)
 			break
 		}
 		readInfo = snapReader.GetCurrentReadQueueOffset()
@@ -1165,7 +1169,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 		}
 	}
 
-	nsqLog.Warningf("clean topic %v data from %v under retention %v, %v",
+	nsqLog.Infof("clean topic %v data from %v under retention %v, %v",
 		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
 	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
 		nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",

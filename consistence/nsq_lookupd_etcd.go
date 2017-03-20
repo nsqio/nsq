@@ -375,6 +375,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 }
 
 func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
+	atomic.StoreInt32(&self.ifTopicChanged, 0)
 	rsp, err := self.client.Get(self.topicRoot, true, true)
 	if err != nil {
 		atomic.StoreInt32(&self.ifTopicChanged, 1)
@@ -383,7 +384,6 @@ func (self *NsqLookupdEtcdMgr) scanTopics() ([]TopicPartitionMetaInfo, error) {
 		}
 		return nil, err
 	}
-	atomic.StoreInt32(&self.ifTopicChanged, 0)
 
 	topicMetaMap := make(map[string]TopicMetaInfo)
 	topicReplicasMap := make(map[string]map[string]TopicPartitionReplicaInfo)

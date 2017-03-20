@@ -43,6 +43,12 @@ var (
 	httpClientTLSCert               = flagSet.String("http-client-tls-cert", "", "path to certificate file for the HTTP client")
 	httpClientTLSKey                = flagSet.String("http-client-tls-key", "", "path to key file for the HTTP client")
 
+	traceQueryURL     = flagSet.String("trace-query-url", "", "trace service url")
+	traceAppID        = flagSet.String("trace-app-id", "", "trace service app")
+	traceAppName      = flagSet.String("trace-app-name", "", "trace service app")
+	traceLogIndexID   = flagSet.String("trace-log-index-id", "", "trace service log index")
+	traceLogIndexName = flagSet.String("trace-log-index-name", "", "trace service log index")
+
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
 )
