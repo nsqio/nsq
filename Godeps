@@ -1,6 +1,7 @@
 github.com/cenkalti/backoff
 github.com/absolute8511/gorpc  
 github.com/absolute8511/go-nsq          
+github.com/spaolacci/murmur3
 github.com/coreos/etcd/client           128344c45541a477053f9df2ac39328027badc02
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
