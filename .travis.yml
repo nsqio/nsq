@@ -1,15 +1,16 @@
 language: go
 go:
-  - 1.5.3
-  - 1.6
+  - 1.6.x
+  - 1.7.x
 env:
   - GOARCH=amd64
   - GOARCH=386
 sudo: false
 script:
-  - curl -s https://raw.githubusercontent.com/pote/gpm/v1.2.3/bin/gpm > gpm
+  - curl -s https://raw.githubusercontent.com/pote/gpm/v1.4.0/bin/gpm > gpm
   - chmod +x gpm
   - ./gpm install
   - ./test.sh
+  - go test `go list ./... | grep -v consistence`
 notifications:
   email: false

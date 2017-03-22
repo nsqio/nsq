@@ -23,7 +23,7 @@ arch=$(go env GOARCH)
 version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
 
-for os in linux darwin freebsd windows; do
+for os in linux darwin ; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d -t nsqXXXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
