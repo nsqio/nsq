@@ -450,6 +450,13 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 		nsqLog.LogDebugf("commited is rollbacked: %v, %v", cur, offset)
 	}
 	t.committedOffset.Store(offset)
+	if t.dynamicConf.SyncEvery == 1 || offset.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
+		if !t.IsWriteDisabled() {
+			t.flush(true)
+		}
+	} else {
+		t.flushForChannels()
+	}
 }
 
 func (t *Topic) GetDiskQueueSnapshot() *DiskQueueSnapshot {
@@ -692,15 +699,6 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 	}
 
 	id, offset, writeBytes, dend, err := t.put(m, true)
-	if err == nil {
-		if t.dynamicConf.SyncEvery == 1 || dend.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
-			if !t.IsWriteDisabled() {
-				t.flush(true)
-			}
-		} else {
-			t.flushForChannels()
-		}
-	}
 	return id, offset, writeBytes, &dend, err
 }
 
@@ -775,7 +773,6 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 	wend := t.backend.GetQueueWriteEnd()
 	firstMsgID := MessageID(0)
 	firstOffset := BackendOffset(-1)
-	totalCnt := int64(0)
 	firstCnt := int64(0)
 	var diskEnd diskQueueEndInfo
 	batchBytes := int32(0)
@@ -792,20 +789,11 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 		}
 		diskEnd = end
 		batchBytes += bytes
-		totalCnt = diskEnd.TotalMsgCnt()
 		if firstOffset == BackendOffset(-1) {
 			firstOffset = offset
 			firstMsgID = id
 			firstCnt = diskEnd.TotalMsgCnt()
 		}
-	}
-
-	if int64(len(msgs)) >= t.dynamicConf.SyncEvery || totalCnt-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
-		if !t.IsWriteDisabled() {
-			t.flush(true)
-		}
-	} else {
-		t.flushForChannels()
 	}
 	return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, nil
 }

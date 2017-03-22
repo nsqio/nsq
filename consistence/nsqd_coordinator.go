@@ -1672,7 +1672,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
 		localTopic.Unlock()
 		coordLog.Infof("current topic %v write state: %v",
 			tcData.topicInfo.GetTopicDesp(), isWriteDisabled)
-		if !isWriteDisabled && tcData.IsISRReadyForWrite() {
+		if !isWriteDisabled && tcData.IsISRReadyForWrite(self.myNode.GetID()) {
 			// try fix channel consume count here, since the old version has not count info,
 			// we need restore from commit log.
 			localTopic.EnableForMaster()

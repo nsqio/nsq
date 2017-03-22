@@ -88,5 +88,5 @@ func (self *NsqdCoordinator) requestLeaveFromISRByLeader(topic string, partition
 		return err
 	}
 	//defer self.putLookupRemoteProxy(c)
-	return c.RequestLeaveFromISRByLeader(topic, partition, self.myNode.GetID(), &topicCoord.topicLeaderSession)
+	return c.RequestLeaveFromISRByLeader(topic, partition, nid, &topicCoord.topicLeaderSession)
 }

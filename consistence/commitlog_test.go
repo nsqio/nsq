@@ -13,7 +13,7 @@ import (
 )
 
 func newTestLogger(tbl test.TbLog) levellogger.Logger {
-	return &test.TestLogger{tbl, 0}
+	return &test.TestLogger{TbLog: tbl, Level: 0}
 }
 
 func TestCommitLogGetPartitionIDFromMsgID(t *testing.T) {
