@@ -2,6 +2,85 @@
 
 ## Binaries
 
+### 1.0.0-compat - 2017-03-21
+
+**Upgrading from 0.3.8**: Numerous backwards incompatible changes:
+
+ * Deprecated `nsqd` features removed:
+   * Pre-V1 HTTP endpoints / response format:
+     * `/{m,}put` (use `/{m,}pub`)
+     * `/{create,delete,empty,pause,unpause}_{topic,channel}` (use `/{topic,channel}/<operation>`)
+   * `--max-message-size` flag (use `--max-msg-size`)
+   * `V2` protocol `IDENTIFY` command `short_id` and `long_id` properties (use `client_id`, `hostname`, and `user_agent`)
+   * `/stats` HTTP response `name` property (use `client_id`)
+ * Deprecated `nsqlookupd` features removed:
+   * Pre-V1 HTTP endpoints / response format:
+     * `/{create,delete}_{topic,channel}` (use `/{topic,channel}/<operation>`)
+     * `/tombstone_topic_producer` (use `/topic/tombstone`)
+ * Deprecated `nsqadmin` features removed:
+   * `--template-dir` flag (not required, templates are compiled into binary)
+   * `--use-statsd-prefixes` flag (use `--statsd-counter-format` and `--statsd-gauge-format`)
+ * `nsq_stat` `--status-every` flag (use `--interval`)
+ * `--reader-opt` on all binaries that had this flag (use `--consumer-opt`)
+ * `nsq_to_file` `--gzip-compression` flag (use `--gzip-level`)
+ * `nsq_to_http` `--http-timeout` and `--http-timeout-ms` flags (use `--http-connect-timeout` and `--http-request-timeout`)
+ * `nsq_to_http` `--round-robin` flag (use `--mode=round-robin`)
+ * `nsq_to_http` `--max-backoff-duration` flag (use `--consumer-opt=max_backoff_duration,X`)
+ * `nsq_to_http` `--throttle-fraction` flag (use `--sample=X`)
+ * `nsq_to_nsq` `--max-backoff-duration` flag (use `--consumer-opt=max_backoff_duration,X`)
+ * `nsqd` `--worker-id` deprecated in favor of `--node-id` (to be fully removed in subsequent release)
+
+This is a compatibility release that drops a wide range of previously deprecated features (#367)
+while introducing some new deprecations (#844) that we intend to fully remove in a subsequent 1.0
+release.
+
+Of note, all of the pre-1.0 HTTP endpoints (and response formats) are gone. Any clients or tools
+that use these endpoints/response formats won't work with this release. These changes have been
+available since 0.2.29 (released in July of 2014). Clients wishing to forwards-compatibly upgrade
+can either use the new endpoints or send the following header:
+
+    Accept: application/vnd.nsq version=1.0
+
+Also, many command line flags have been removed — in almost all cases an alternative is available
+with a (hopefully) more obvious name. These changes have the same affect on config file option
+names.
+
+On Linux, this release will automatically migrate `nsq.<worker-id>.dat` named metadata files to
+`nsq.dat` in a way that allows users to seamlessly _downgrade_ from this release back to 0.3.8, if
+necessary. A subsequent release will clean up these convenience symlinks and observe only
+`nsq.dat`. See the discussion in #741 and the changes #844 for more details.
+
+Performance wise, #741 landed which significantly reduces global contention on internal message ID
+generation, providing a ~1.75x speed improvement on multi-topic benchmarks.
+
+Finally, a number of minor issues were resolved spanning contributions from 9 community members!
+Thanks!
+
+Features:
+
+ * #766 - use `alpine` base image for official Docker container (thanks @kenjones-cisco)
+ * #775 - `nsqadmin:` `/config` API (thanks @kenjones-cisco)
+ * #776 - `nsqadmin`, `nsq_stat`, `nsq_to_file`, `nsq_to_http`: HTTP client connect/request timeouts (thanks @kenjones-cisco)
+ * #777/#778/#783/#785 - improve test coverage (thanks @kenjones-cisco)
+ * #788 - `to_nsq`: add `--rate` message throttling option
+ * #367 - purge deprecated features (see above)
+ * #741 - `nsqd`: per-topic message IDs (multi-topic pub benchmarks up to ~1.75x faster)
+ * #850 - `nsqd`, `nsqlookupd`, `nsqadmin`: add `--log-prefix` option (thanks @ploxiln)
+ * #844 - `nsqd`: deprecate `--worker-id` for `--node-id` and drop ID from `nsqd.dat` file (thanks @ploxiln)
+
+Bugs:
+
+ * #787 - `nsqlookupd`: properly close TCP connection in `IOLoop` (thanks @JackDrogon)
+ * #792 - `nsqdmin`: fix root CA verification (thanks @joshuarubin)
+ * #794 - `nsq_to_file`: require `--topic` or `--topic-pattern` (thanks @judwhite)
+ * #816/#823 - `nsqadmin`: fix handling of IPv6 broadcast addresses (thanks @magnetised)
+ * #805/#832 - `nsqd`: fix requeue and deferred message accounting (thanks @sdbaiguanghe)
+ * #532/#830 - `nsqd`: switch to golang/snappy to fix snappy deadlock
+ * #826/#831/#837/#839 - `nsqd`: fix default `--broadcast-address` and error when `nsqlookupd` reqs fail (thanks @ploxiln @stephensearles)
+ * #822/#835 - `nsqd`: prevent panic in binary `/mpub` (thanks @yangyifeng01)
+ * #841 - `nsqadmin`: allow ctrl/meta+click to open a new tab
+ * #843 - `nsqd`: check for exit before requeing
+
 ### 0.3.8 - 2016-05-26
 
 **Upgrading from 0.3.7**: Binaries contain no backwards incompatible changes.
