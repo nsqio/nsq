@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-GOMAXPROCS=1 go test -timeout 900s ./...
-GOMAXPROCS=4 go test -timeout 900s -race ./...
+GOMAXPROCS=1 go test -timeout 900s `go list ./... | grep -v consistence | grep -v nsqadmin`
+GOMAXPROCS=4 go test -timeout 900s -race `go list ./... | grep -v consistence | grep -v nsqadmin`
 
 # no tests, but a build is something
 for dir in $(find apps bench -maxdepth 1 -type d) nsqadmin; do

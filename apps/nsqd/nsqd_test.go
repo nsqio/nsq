@@ -12,6 +12,7 @@ import (
 
 func TestConfigFlagParsing(t *testing.T) {
 	opts := nsqd.NewOptions()
+	opts.Logger = nil
 
 	flagSet := nsqdFlagSet(opts)
 	flagSet.Parse([]string{})

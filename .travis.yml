@@ -11,6 +11,5 @@ script:
   - chmod +x gpm
   - ./gpm install
   - ./test.sh
-  - go test `go list ./... | grep -v consistence`
 notifications:
   email: false
