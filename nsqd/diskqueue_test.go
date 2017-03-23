@@ -229,17 +229,38 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 	equal(t, d.writeFileNum, int64(0))
 	equal(t, d.readPos, int64(0))
 	equal(t, d.writePos, int64(1004))
+	for i := 0; i < 10; i++ {
+		d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+		if d.depth == 1 &&
+			d.readFileNum == 0 &&
+			d.writeFileNum == 0 &&
+			d.readPos == 0 &&
+			d.writePos == 1004 {
+			// success
+			goto next
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	panic("fail")
+
+next:
 	dq.Put(msg)
-
 	<-dq.ReadChan()
-	time.Sleep(100 * time.Millisecond)
 
-	d = readMetaDataFile(dq.(*diskQueue).metaDataFileName())
-	equal(t, d.depth, int64(1))
-	equal(t, d.readFileNum, int64(0))
-	equal(t, d.writeFileNum, int64(0))
-	equal(t, d.readPos, int64(1004))
-	equal(t, d.writePos, int64(2008))
+	for i := 0; i < 10; i++ {
+		d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
+		if d.depth == 1 &&
+			d.readFileNum == 0 &&
+			d.writeFileNum == 0 &&
+			d.readPos == 1004 &&
+			d.writePos == 2008 {
+			// success
+			goto done
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	panic("fail")
+done:
 }
 
 func TestDiskQueueTorture(t *testing.T) {

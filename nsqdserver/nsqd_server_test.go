@@ -28,10 +28,27 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 	opts.HTTPAddress = "127.0.0.1:0"
 	lookupd := nsqlookupd.New(opts)
 
-	lookupd.Lock()
-	nsqlookupd.SetLogger(opts)
-	lookupd.Unlock()
 	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
+}
+
+func initNSQD(opts *nsqdNs.Options) (*net.TCPAddr, *net.TCPAddr, *nsqdNs.NSQD, *NsqdServer) {
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.HTTPSAddress = "127.0.0.1:0"
+	if opts.DataPath == "" {
+		tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+		if err != nil {
+			panic(err)
+		}
+		opts.DataPath = tmpDir
+	}
+	if opts.LogDir == "" {
+		opts.LogDir = opts.DataPath
+	}
+	glog.SetGLogDir(opts.LogDir)
+	_, nsqdServer := NewNsqdServer(opts)
+	glog.StartWorker(time.Second)
+	return nsqdServer.ctx.realTCPAddr(), nsqdServer.ctx.realHTTPAddr(), nsqdServer.ctx.nsqd, nsqdServer
 }
 
 func mustStartNSQD(opts *nsqdNs.Options) (*net.TCPAddr, *net.TCPAddr, *nsqdNs.NSQD, *NsqdServer) {
@@ -115,6 +132,10 @@ func TestReconfigure(t *testing.T) {
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)
 	_, _, lookupd3 := mustStartNSQLookupd(lopts)
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd, nsqdServer := initNSQD(opts)
+
 	lookupd1.Main()
 	lookupd2.Main()
 	lookupd3.Main()
@@ -122,9 +143,7 @@ func TestReconfigure(t *testing.T) {
 	defer lookupd2.Exit()
 	defer lookupd3.Exit()
 
-	opts := nsqdNs.NewOptions()
-	opts.Logger = newTestLogger(t)
-	_, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	nsqdServer.Main()
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
 

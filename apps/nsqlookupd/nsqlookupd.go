@@ -90,7 +90,7 @@ func (p *program) Start() error {
 	if opts.LogDir != "" {
 		glog.SetGLogDir(opts.LogDir)
 	}
-	nsqlookupd.SetLogger(opts)
+	nsqlookupd.SetLogger(opts.Logger, opts.LogLevel)
 	glog.StartWorker(time.Second * 2)
 	daemon := nsqlookupd.New(opts)
 

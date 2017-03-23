@@ -5,10 +5,10 @@ import (
 	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
-var nsqlookupLog = levellogger.NewLevelLogger(1, &levellogger.GLogger{})
+var nsqlookupLog = levellogger.NewLevelLogger(1, &levellogger.SimpleLogger{})
 
-func SetLogger(opts *Options) {
-	nsqlookupLog.Logger = opts.Logger
-	nsqlookupLog.SetLevel(opts.LogLevel)
-	consistence.SetCoordLogger(opts.Logger, opts.LogLevel)
+func SetLogger(logger levellogger.Logger, level int32) {
+	nsqlookupLog.Logger = logger
+	nsqlookupLog.SetLevel(level)
+	consistence.SetCoordLogger(logger, level)
 }
