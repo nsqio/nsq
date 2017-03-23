@@ -254,7 +254,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	if err != nil {
 		nsqd.NsqLogger().Logf("PROTOCOL(V2): client [%s] exiting ioloop with error: %v", client, err)
 	}
-	nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): client [%s] exiting ioloop", client)
+	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
+		nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): client [%s] exiting ioloop", client)
+	}
 	close(client.ExitChan)
 	p.ctx.nsqd.CleanClientPubStats(client.RemoteAddr().String(), "tcp")
 	<-msgPumpStoppedChan
@@ -555,7 +557,9 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 	}
 
 exit:
-	nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	if nsqd.NsqLogger().Level() > levellogger.LOG_DEBUG {
+		nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] exiting messagePump", client)
+	}
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {

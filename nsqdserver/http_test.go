@@ -257,7 +257,6 @@ func TestHTTPSRequire(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	//opts.LogLevel = 2
 	//opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
@@ -301,7 +300,6 @@ func TestHTTPSRequire(t *testing.T) {
 func TestHTTPSRequireVerify(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -364,7 +362,6 @@ func TestHTTPSRequireVerify(t *testing.T) {
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"

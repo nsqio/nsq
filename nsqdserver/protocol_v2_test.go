@@ -273,7 +273,7 @@ func TestClientTimeout(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 150 * time.Millisecond
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -351,7 +351,7 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.ClientTimeout = 200 * time.Millisecond
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	tcpAddr, _, _, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -505,7 +505,7 @@ func TestEmptyCommand(t *testing.T) {
 func TestTcpPUBTRACE(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -591,7 +591,7 @@ func TestTcpPUBTRACE(t *testing.T) {
 func TestTcpPub(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -692,7 +692,7 @@ func TestTcpPub(t *testing.T) {
 func TestSizeLimits(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -833,9 +833,8 @@ func TestDelayMessage(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 2
+	opts.LogLevel = 1
 	opts.SyncEvery = 1
-	opts.LogLevel = 3
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxReqTimeout = time.Second * 100
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -934,7 +933,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
 	opts.SyncEvery = 1
-	opts.LogLevel = 4
+	opts.LogLevel = 1
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxReqTimeout = time.Second * 100
 	opts.MaxConfirmWin = 10
@@ -1061,7 +1060,7 @@ func TestTouch(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MsgTimeout = 150 * time.Millisecond
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1107,7 +1106,7 @@ func TestSubOrderedMulti(t *testing.T) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -1155,7 +1154,7 @@ func TestSubOrdered(t *testing.T) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -1231,7 +1230,7 @@ func TestSubOrdered(t *testing.T) {
 func TestMaxRdyCount(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxRdyCount = 50
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1300,7 +1299,7 @@ func TestFatalError(t *testing.T) {
 func TestOutputBuffering(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxOutputBufferSize = 512 * 1024
 	opts.MaxOutputBufferTimeout = time.Second
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -1349,7 +1348,7 @@ func TestOutputBuffering(t *testing.T) {
 func TestOutputBufferingValidity(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.MaxOutputBufferSize = 512 * 1024
 	opts.MaxOutputBufferTimeout = time.Second
 	tcpAddr, _, _, nsqdServer := mustStartNSQD(opts)
@@ -1392,7 +1391,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 func TestTLS(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	tcpAddr, _, _, nsqdServer := mustStartNSQD(opts)
@@ -1431,7 +1430,7 @@ func TestTLS(t *testing.T) {
 func TestTLSRequired(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRequired = TLSRequiredExceptHTTP
@@ -1480,7 +1479,7 @@ func TestTLSRequired(t *testing.T) {
 func TestTLSAuthRequire(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
@@ -1546,7 +1545,7 @@ func TestTLSAuthRequire(t *testing.T) {
 func TestTLSAuthRequireVerify(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 1
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -1635,7 +1634,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 func TestDeflate(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.DeflateEnabled = true
 	tcpAddr, _, _, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1671,7 +1670,7 @@ type readWriter struct {
 func TestSnappy(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.SnappyEnabled = true
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1724,7 +1723,7 @@ func TestSnappy(t *testing.T) {
 func TestTLSDeflate(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.DeflateEnabled = true
 	opts.TLSCert = "./test/certs/cert.pem"
 	opts.TLSKey = "./test/certs/key.pem"
@@ -1867,7 +1866,7 @@ func TestSampling(t *testing.T) {
 func TestTLSSnappy(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.SnappyEnabled = true
 	opts.TLSCert = "./test/certs/cert.pem"
 	opts.TLSKey = "./test/certs/key.pem"
@@ -1918,7 +1917,7 @@ func TestTLSSnappy(t *testing.T) {
 func TestClientMsgTimeout(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1970,8 +1969,8 @@ func TestTimeoutFin(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 3
-	opts.LogLevel = 3
+	opts.LogLevel = 2
+	opts.LogLevel = 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -2043,7 +2042,7 @@ func TestTimeoutTooMuch(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.ClientTimeout = time.Second * 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -2124,7 +2123,7 @@ func TestTimeoutTooMuch(t *testing.T) {
 func TestSetChannelOffset(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -2190,7 +2189,7 @@ func TestBadFin(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.Verbose = true
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -2260,7 +2259,7 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.AuthHTTPAddresses = []string{addr.Host}
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -2293,7 +2292,7 @@ func TestResetChannelToOld(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	//opts.Logger = &levellogger.GLogger{}
-	opts.LogLevel = 3
+	opts.LogLevel = 2
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
@@ -2442,7 +2441,6 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
 
 	prot := &protocolV2{ctx: &context{nsqd: nsqdNs.New(opts)}}
 	defer prot.ctx.nsqd.Exit()

@@ -34,7 +34,6 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
 
 	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: New(opts)}}
 

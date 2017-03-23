@@ -237,7 +237,7 @@ func (t *Topic) removeMagicCode() {
 	fileName := t.getMagicCodeFileName()
 	err := os.Remove(fileName)
 	if err != nil {
-		nsqLog.Errorf("remove the magic file %v failed:%v", fileName, err)
+		nsqLog.Infof("remove the magic file %v failed:%v", fileName, err)
 	}
 }
 
@@ -270,7 +270,7 @@ func (t *Topic) removeHistoryStat() {
 	fileName := t.getHistoryStatsFileName()
 	err := os.Remove(fileName)
 	if err != nil {
-		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
+		nsqLog.Infof("remove file %v failed:%v", fileName, err)
 	}
 }
 

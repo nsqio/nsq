@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 )
@@ -77,7 +78,9 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	nsqlookupLog.Logf("CLIENT(%s): closing, %v", client, err)
+	if nsqlookupLog.Level() >= levellogger.LOG_DEBUG {
+		nsqlookupLog.LogDebugf("CLIENT(%s): closing, %v", client, err)
+	}
 	if client.peerInfo != nil {
 		p.ctx.nsqlookupd.DB.RemoveAllByPeerId(client.peerInfo.Id)
 	}

@@ -354,7 +354,6 @@ func TestTombstoneRecover(t *testing.T) {
 func TestTombstoneUnregister(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.LogLevel = 3
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 

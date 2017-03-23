@@ -245,6 +245,9 @@ func (p *program) Start() error {
 	if opts.RPCPort != "" {
 		initDisabled = 1
 	}
+	nsqd.SetLogger(opts.Logger)
+	nsqd.SetRemoteMsgTracer(opts.RemoteTracer)
+
 	nsqd, nsqdServer := nsqdserver.NewNsqdServer(opts)
 
 	nsqd.LoadMetadata(initDisabled)
