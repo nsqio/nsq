@@ -27,7 +27,10 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
 	lookupd := nsqlookupd.New(opts)
-	lookupd.Main()
+
+	lookupd.Lock()
+	nsqlookupd.SetLogger(opts)
+	lookupd.Unlock()
 	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
 }
 
@@ -109,12 +112,14 @@ func TestChannelEmptyConsumer(t *testing.T) {
 func TestReconfigure(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
-	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
-	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)
-	defer lookupd2.Exit()
 	_, _, lookupd3 := mustStartNSQLookupd(lopts)
+	lookupd1.Main()
+	lookupd2.Main()
+	lookupd3.Main()
+	defer lookupd1.Exit()
+	defer lookupd2.Exit()
 	defer lookupd3.Exit()
 
 	opts := nsqdNs.NewOptions()
@@ -157,8 +162,8 @@ func TestCluster(t *testing.T) {
 	lopts.Logger = newTestLogger(t)
 	lopts.BroadcastAddress = "127.0.0.1"
 	lopts.BroadcastInterface = ""
-	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd := mustStartNSQLookupd(lopts)
+	lookupd.Main()
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -186,7 +191,7 @@ func TestCluster(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/debug", lookupd.RealHTTPAddr())
 	data, err := API(endpoint)
-	test.Equal(t, err, nil)
+	test.Equal(t, nil, err)
 
 	t.Logf("debug data: %v", data)
 	topicData := data.Get("topic:" + topicName)

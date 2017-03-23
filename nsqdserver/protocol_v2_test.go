@@ -2159,6 +2159,7 @@ func TestSetChannelOffset(t *testing.T) {
 	test.Equal(t, msgOut.Body, msg.Body)
 
 	conn.Close()
+	time.Sleep(time.Millisecond * 100)
 
 	msgRawSize := msgOut.RawSize
 	conn, err = mustConnectNSQD(tcpAddr)

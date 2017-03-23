@@ -1507,19 +1507,19 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 		c.inFlightMutex.Unlock()
 
 		c.RLock()
-		client, ok := c.clients[msg.clientID]
+		client, ok := c.clients[msgCopy.clientID]
 		c.RUnlock()
 		if ok {
-			client.TimedOutMessage(msg.IsDeferred())
+			client.TimedOutMessage(msgCopy.IsDeferred())
 		}
 		if msgCopy.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 			clientAddr := ""
 			if client != nil {
 				clientAddr = client.String()
 			} else {
-				clientAddr = strconv.Itoa(int(msg.clientID))
+				clientAddr = strconv.Itoa(int(msgCopy.clientID))
 			}
-			if msg.IsDeferred() {
+			if msgCopy.IsDeferred() {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
 			} else {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)

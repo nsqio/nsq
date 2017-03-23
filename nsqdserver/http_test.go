@@ -541,10 +541,11 @@ func TestHTTPgetStatusText(t *testing.T) {
 func TestHTTPconfig(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
-	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd1 := mustStartNSQLookupd(lopts)
-	defer lookupd1.Exit()
 	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	lookupd1.Main()
+	lookupd2.Main()
+	defer lookupd1.Exit()
 	defer lookupd2.Exit()
 
 	opts := nsqd.NewOptions()
@@ -618,14 +619,14 @@ func TestNSQDStatsFilter(t *testing.T) {
 	for _, topic := range nsqd.GetStats(false) {
 		parNum, _ := strconv.Atoi(topic.TopicPartition)
 		nsqd.DeleteExistingTopic(topic.TopicName, parNum)
-		topicCnt ++
+		topicCnt++
 	}
 	t.Logf("%d topic(s) deleted.", topicCnt)
-	topicName := fmt.Sprintf("test_nsqd_stats_filter%d", time.Now().UnixNano());
+	topicName := fmt.Sprintf("test_nsqd_stats_filter%d", time.Now().UnixNano())
 	nsqd.GetTopic(topicName, 0)
 	defer nsqd.DeleteExistingTopic(topicName, 0)
 
-	topicNameAnother := fmt.Sprintf("test_nsqd_stats_filter_another%d", time.Now().UnixNano());
+	topicNameAnother := fmt.Sprintf("test_nsqd_stats_filter_another%d", time.Now().UnixNano())
 	nsqd.GetTopic(topicNameAnother, 0)
 	topic_another, err := nsqd.GetExistingTopic(topicNameAnother, 0)
 	topic_another.DisableForSlave()
@@ -643,10 +644,10 @@ func TestNSQDStatsFilter(t *testing.T) {
 	resp.Body.Close()
 
 	type NSQDStats struct {
-		TopicStats	[]map[string]interface{}	`json:"topics"`
-		Version		string				`json:"version"`
-		Health		string				`json:"health"`
-		StartTime	int64				`json:"start_time"`
+		TopicStats []map[string]interface{} `json:"topics"`
+		Version    string                   `json:"version"`
+		Health     string                   `json:"health"`
+		StartTime  int64                    `json:"start_time"`
 	}
 
 	var stats NSQDStats
@@ -693,13 +694,13 @@ func BenchmarkFetchNodeHourlyPubsize(b *testing.B) {
 	}
 
 	type TopicHourlyPubsizeStat struct {
-		TopicName	string	`json:"topic_name"`
-		TopicPartition	string	`json:"topic_partition"`
-		HourlyPubsize	int64	`json:"hourly_pub_size"`
+		TopicName      string `json:"topic_name"`
+		TopicPartition string `json:"topic_partition"`
+		HourlyPubsize  int64  `json:"hourly_pub_size"`
 	}
 
 	type NodeHourlyPubsizeStats struct {
-		TopicHourlyPubsizeList	[]*TopicHourlyPubsizeStat	`json:"node_hourly_pub_size_stats"`
+		TopicHourlyPubsizeList []*TopicHourlyPubsizeStat `json:"node_hourly_pub_size_stats"`
 	}
 
 	b.StartTimer()
@@ -712,7 +713,7 @@ func BenchmarkFetchNodeHourlyPubsize(b *testing.B) {
 		}
 		client := http.Client{}
 		resp, err := client.Do(req)
-		var nodeHourlyPubsizeStats	NodeHourlyPubsizeStats
+		var nodeHourlyPubsizeStats NodeHourlyPubsizeStats
 		body, _ := ioutil.ReadAll(resp.Body)
 		json.Unmarshal(body, &nodeHourlyPubsizeStats)
 		resp.Body.Close()

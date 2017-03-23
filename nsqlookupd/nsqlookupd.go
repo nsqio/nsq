@@ -29,7 +29,6 @@ func New(opts *Options) *NSQLookupd {
 		opts: opts,
 		DB:   NewRegistrationDB(),
 	}
-	nsqlookupLog.Logf(version.String("nsqlookupd"))
 	return n
 }
 
@@ -56,6 +55,7 @@ func getIPv4ForInterfaceName(ifname string) string {
 func (l *NSQLookupd) Main() {
 	ctx := &Context{l}
 
+	nsqlookupLog.Logf(version.String("nsqlookupd"))
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
 		nsqlookupLog.LogErrorf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)

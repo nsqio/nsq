@@ -87,9 +87,6 @@ func New(opts *Options) *NSQD {
 	}
 	DEFAULT_RETENTION_DAYS = int(opts.RetentionDays)
 
-	nsqLog.Logger = opts.Logger
-	SetRemoteMsgTracer(opts.RemoteTracer)
-
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]map[int]*Topic),
@@ -99,6 +96,10 @@ func New(opts *Options) *NSQD {
 		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil)),
 		dl:                   dirlock.New(dataPath),
 	}
+	n.Lock()
+	nsqLog.Logger = opts.Logger
+	SetRemoteMsgTracer(opts.RemoteTracer)
+	n.Unlock()
 	n.SwapOpts(opts)
 
 	n.errValue.Store(errStore{})

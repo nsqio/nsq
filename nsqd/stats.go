@@ -83,6 +83,9 @@ type ChannelStats struct {
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
+	c.inFlightMutex.Lock()
+	inflightCnt := len(c.inFlightMessages)
+	c.inFlightMutex.Unlock()
 	return ChannelStats{
 		ChannelName:    c.name,
 		Depth:          c.Depth(),
@@ -90,7 +93,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		// the message bytes need to be consumed
 		DepthSize:     c.DepthSize(),
 		BackendDepth:  c.backend.Depth(),
-		InFlightCount: len(c.inFlightMessages),
+		InFlightCount: inflightCnt,
 		// this is total message count need consume.
 		// may diff with topic total size since some is in buffer.
 		MessageCount:  uint64(c.backend.GetQueueReadEnd().TotalMsgCnt()),
