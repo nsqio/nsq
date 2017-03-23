@@ -16,8 +16,8 @@ import (
 )
 
 func TestDiskQueueWriter(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -50,8 +50,8 @@ func TestDiskQueueWriter(t *testing.T) {
 }
 
 func TestDiskQueueWriterCleanOffsetmeta(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -93,8 +93,8 @@ func TestDiskQueueWriterCleanOffsetmeta(t *testing.T) {
 }
 
 func TestDiskQueueWriterRoll(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 	dqName := "test_disk_queue_roll" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -123,8 +123,8 @@ func TestDiskQueueWriterRoll(t *testing.T) {
 }
 
 func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 	nsqLog.SetLevel(3)
 	dqName := "test_disk_queue_" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -182,8 +182,8 @@ func TestDiskQueueWriterRollbackAndResetWrite(t *testing.T) {
 }
 
 func TestDiskQueueWriterEmpty(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 	nsqLog.SetLevel(4)
 	dqName := "test_disk_queue_empty" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -324,8 +324,8 @@ func TestDiskQueueWriterEmpty(t *testing.T) {
 }
 
 func TestDiskQueueWriterCorruption(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 	dqName := "test_disk_queue_corruption" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -386,8 +386,8 @@ func TestDiskQueueWriterCorruption(t *testing.T) {
 
 func TestDiskQueueWriterRollbackAndResetEnd(t *testing.T) {
 	//rollback and reset write end across file test
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -472,8 +472,8 @@ func TestDiskQueueWriterRollbackToQueueStart(t *testing.T) {
 }
 
 func TestDiskQueueWriterInitWithQueueStart(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
+	//l := newTestLogger(t)
+	//nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -545,8 +545,6 @@ func TestDiskQueueWriterInitWithQueueStart(t *testing.T) {
 func TestDiskQueueWriterTorture(t *testing.T) {
 	var wg sync.WaitGroup
 
-	l := newTestLogger(t)
-	nsqLog.Logger = l
 	dqName := "test_disk_queue_torture" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -701,8 +699,8 @@ func BenchmarkDiskQueueWriterPut4096Sync(b *testing.B) {
 
 func benchmarkDiskQueueWriterPut(size int64, syncEvery int64, b *testing.B) {
 	b.StopTimer()
-	l := newTestLogger(b)
-	nsqLog.Logger = l
+	//l := newTestLogger(b)
+	//nsqLog.Logger = l
 	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_put" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -758,8 +756,8 @@ func BenchmarkDiskQueueReaderGet1048576(b *testing.B) {
 
 func benchmarkDiskQueueReaderGet(size int64, b *testing.B) {
 	b.StopTimer()
-	l := newTestLogger(b)
-	nsqLog.Logger = l
+	//l := newTestLogger(b)
+	//nsqLog.Logger = l
 	nsqLog.SetLevel(0)
 	dqName := "bench_disk_queue_get" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))

@@ -11,8 +11,6 @@ import (
 )
 
 func TestDiskQueueReaderResetConfirmed(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -82,8 +80,6 @@ func TestDiskQueueReaderResetConfirmed(t *testing.T) {
 
 func TestDiskQueueReaderResetRead(t *testing.T) {
 	// backward, forward
-	l := newTestLogger(t)
-	nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -181,8 +177,6 @@ func TestDiskQueueReaderResetRead(t *testing.T) {
 func TestDiskQueueReaderSkip(t *testing.T) {
 	// skip offset, skip next, skip end
 	// skip to read, skip to confirmed
-	l := newTestLogger(t)
-	nsqLog.Logger = l
 
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
@@ -276,9 +270,6 @@ func TestDiskQueueReaderUpdateEnd(t *testing.T) {
 	// init old reader with end
 	// reader position should read from meta file
 
-	l := newTestLogger(t)
-	nsqLog.Logger = l
-
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
@@ -344,8 +335,6 @@ func TestDiskQueueReaderUpdateEnd(t *testing.T) {
 }
 
 func TestDiskQueueSnapshotReader(t *testing.T) {
-	l := newTestLogger(t)
-	nsqLog.Logger = l
 	dqName := "test_disk_queue" + strconv.Itoa(int(time.Now().Unix()))
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	test.Nil(t, err)
