@@ -10,7 +10,7 @@
 </ul>
 </p>
 
-[![Build Status](https://secure.travis-ci.org/nsqio/nsq.svg?branch=master)](http://travis-ci.org/nsqio/nsq) [![GitHub release](https://img.shields.io/github/release/nsqio/nsq.svg)](https://github.com/nsqio/nsq/releases/latest)
+[![Build Status](https://travis-ci.org/absolute8511/nsq.svg?branch=master)](https://travis-ci.org/absolute8511/nsq) [![GitHub release](https://img.shields.io/github/release/absolute8511/nsq.svg)](https://github.com/absolute8511/nsq/releases/latest)
 
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.
