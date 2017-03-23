@@ -333,7 +333,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	if ok {
 		tmp := make([]byte, 4)
 		msgs, buffers, err = readMPUB(req.Body, tmp, topic,
-			s.ctx.getOpts().MaxMsgSize, false)
+			s.ctx.getOpts().MaxMsgSize, s.ctx.getOpts().MaxBodySize, false)
 		defer func() {
 			for _, b := range buffers {
 				topic.BufferPoolPut(b)

@@ -156,6 +156,7 @@ func TestCluster(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = newTestLogger(t)
 	lopts.BroadcastAddress = "127.0.0.1"
+	lopts.BroadcastInterface = ""
 	nsqlookupd.SetLogger(lopts)
 	_, _, lookupd := mustStartNSQLookupd(lopts)
 
@@ -163,6 +164,7 @@ func TestCluster(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.NSQLookupdTCPAddresses = []string{lookupd.RealTCPAddr().String()}
 	opts.BroadcastAddress = "127.0.0.1"
+	opts.BroadcastInterface = ""
 	tcpAddr, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()

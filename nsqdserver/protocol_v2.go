@@ -1355,7 +1355,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 	}
 
 	messages, buffers, preErr := readMPUB(client.Reader, client.LenSlice, topic,
-		p.ctx.getOpts().MaxMsgSize, traceEnable)
+		p.ctx.getOpts().MaxMsgSize, p.ctx.getOpts().MaxBodySize, traceEnable)
 
 	defer func() {
 		for _, b := range buffers {
@@ -1431,13 +1431,17 @@ func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, erro
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64, traceEnable bool) ([]*nsqd.Message, []*bytes.Buffer, error) {
+func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64,
+	maxBodySize int64, traceEnable bool) ([]*nsqd.Message, []*bytes.Buffer, error) {
 	numMessages, err := readLen(r, tmp)
 	if err != nil {
 		return nil, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
 	}
 
-	if numMessages <= 0 {
+	// 4 == total num, 5 == length + min 1
+	maxMessages := (maxBodySize - 4) / 5
+
+	if numMessages <= 0 || int64(numMessages) > maxMessages {
 		return nil, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY",
 			fmt.Sprintf("MPUB invalid message count %d", numMessages))
 	}

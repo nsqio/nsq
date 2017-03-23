@@ -12,7 +12,7 @@ import (
 
 	"github.com/absolute8511/nsq/internal/auth"
 	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/mreiferson/go-snappystream"
+	"github.com/golang/snappy"
 )
 
 const defaultBufferSize = 8 * 1024
@@ -644,8 +644,8 @@ func (c *ClientV2) UpgradeSnappy() error {
 		conn = c.tlsConn
 	}
 
-	c.Reader = NewBufioReader(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum))
-	c.Writer = newBufioWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
+	c.Reader = NewBufioReader(snappy.NewReader(conn))
+	c.Writer = newBufioWriterSize(snappy.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)
 
