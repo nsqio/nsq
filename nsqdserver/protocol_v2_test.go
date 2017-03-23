@@ -1787,7 +1787,6 @@ func TestSampling(t *testing.T) {
 	opts.LogLevel = 4
 	opts.MaxRdyCount = int64(num)
 	opts.MaxConfirmWin = int64(num * 10)
-	nsqdNs.SetLogger(opts.Logger)
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()

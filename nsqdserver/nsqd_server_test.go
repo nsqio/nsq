@@ -166,7 +166,7 @@ func TestReconfigure(t *testing.T) {
 	nsqd.TriggerOptsNotification()
 	test.Equal(t, len(nsqd.GetOpts().NSQLookupdTCPAddresses), 2)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	var lookupPeers []string
 	for _, lp := range nsqdServer.lookupPeers.Load().([]*clusterinfo.LookupPeer) {
