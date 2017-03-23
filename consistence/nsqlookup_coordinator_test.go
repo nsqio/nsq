@@ -598,7 +598,7 @@ func checkDeleteErr(t *testing.T, err error) {
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_INFO)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_INFO)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -893,7 +893,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	// 3 partition 1 replica
 	// 2 partition 2 replica
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1058,7 +1058,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 
 func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1167,7 +1167,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 
 func TestNsqLookupMarkNodeRemove(t *testing.T) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1281,7 +1281,7 @@ func TestNsqLookupMarkNodeRemove(t *testing.T) {
 
 func TestNsqLookupExpandPartition(t *testing.T) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1391,7 +1391,7 @@ func TestNsqLookupExpandPartition(t *testing.T) {
 
 func TestNsqLookupMovePartition(t *testing.T) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1553,7 +1553,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 
 func TestNsqLookupOrderedTopicCreate(t *testing.T) {
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1710,7 +1710,7 @@ func checkOrderedMultiTopic(t *testing.T, topic string, expectedPart int, aliveN
 func TestNsqLookupOrderedTopicBalance(t *testing.T) {
 	// test add node and remove node for balance the ordered multi partitions
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_INFO)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_INFO)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {

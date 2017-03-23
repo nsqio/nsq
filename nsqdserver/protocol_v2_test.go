@@ -832,7 +832,7 @@ func TestSizeLimits(t *testing.T) {
 func TestDelayMessage(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 1
 	opts.SyncEvery = 1
 	opts.MsgTimeout = time.Second * 2
@@ -931,7 +931,7 @@ func TestDelayMessage(t *testing.T) {
 func TestDelayMessageToQueueEnd(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.SyncEvery = 1
 	opts.LogLevel = 1
 	opts.MsgTimeout = time.Second * 2
@@ -1968,7 +1968,7 @@ func TestClientMsgTimeout(t *testing.T) {
 func TestTimeoutFin(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 2
 	opts.LogLevel = 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
@@ -2041,7 +2041,7 @@ func TestTimeoutFin(t *testing.T) {
 func TestTimeoutTooMuch(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 2
 	opts.ClientTimeout = time.Second * 2
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
@@ -2291,7 +2291,7 @@ func TestResetChannelToOld(t *testing.T) {
 	// to old offset.
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 2
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxMsgSize = 100
@@ -2457,7 +2457,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(b)
 	opts.LogLevel = 0
-	_ = &levellogger.GLogger{}
+	_ = &levellogger.SimpleLogger{}
 	_, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -2478,7 +2478,7 @@ func benchmarkProtocolV2PubWithArg(b *testing.B, size int, single bool) {
 	opts := nsqdNs.NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = newTestLogger(b)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
@@ -2590,7 +2590,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	b.StopTimer()
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(b)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	//glog.SetFlags(2, "INFO", "./")
 	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)
@@ -2647,7 +2647,7 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 	<-goChan
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
-	//traceLog := &levellogger.GLogger{}
+	//traceLog := &levellogger.SimpleLogger{}
 	//traceLog.Output(1, fmt.Sprintf("begin from client: %v", conn.LocalAddr()))
 	num := n / workers
 	for i := 0; i < num; i++ {
@@ -2715,7 +2715,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(b)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	//glog.SetFlags(2, "INFO", "./")
 	opts.LogLevel = 0
 	opts.MemQueueSize = int64(b.N)

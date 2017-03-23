@@ -21,6 +21,10 @@ import (
 	"github.com/bitly/go-simplejson"
 )
 
+func init() {
+	SetLogger(&levellogger.SimpleLogger{})
+}
+
 func assert(t *testing.T, condition bool, msg string, v ...interface{}) {
 	if !condition {
 		_, file, line, _ := runtime.Caller(1)

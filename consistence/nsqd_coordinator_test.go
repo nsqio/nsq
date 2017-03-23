@@ -208,7 +208,7 @@ func newNsqdNode(t *testing.T, id string) (*nsqdNs.NSQD, int, *NsqdNodeInfo, str
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	if testing.Verbose() {
-		opts.Logger = &levellogger.GLogger{}
+		opts.Logger = &levellogger.SimpleLogger{}
 		opts.LogLevel = levellogger.LOG_INFO
 		glog.StartWorker(time.Second)
 	} else {
@@ -238,7 +238,7 @@ func TestNsqdCoordStartup(t *testing.T) {
 	partition := 1
 
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -352,7 +352,7 @@ func TestNsqdCoordLeaveFromISR(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -435,7 +435,7 @@ func TestNsqdCoordCatchup(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -668,7 +668,7 @@ func TestNsqdCoordCatchupMultiCommitSegment(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -898,7 +898,7 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	topic := "coordTestTopic"
 	partition := 1
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1090,7 +1090,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	partition := 1
 
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_DETAIL)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_DETAIL)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
@@ -1384,7 +1384,7 @@ func benchmarkNsqdCoordPubWithArg(b *testing.B, replica int, size int) {
 	partition := 1
 
 	if testing.Verbose() {
-		SetCoordLogger(&levellogger.GLogger{}, levellogger.LOG_WARN)
+		SetCoordLogger(&levellogger.SimpleLogger{}, levellogger.LOG_WARN)
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {

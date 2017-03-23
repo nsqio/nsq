@@ -27,7 +27,7 @@ func TestHTTPpub(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.LogLevel = 2
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	tcpAddr, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -76,7 +76,7 @@ func TestHTTPpubpartition(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.LogLevel = 2
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	_, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -100,7 +100,7 @@ func TestHTTPpubtrace(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.LogLevel = 2
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	_, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -256,7 +256,7 @@ func TestHTTPSRequire(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)
 	//opts.LogLevel = 2
-	//opts.Logger = &levellogger.GLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"

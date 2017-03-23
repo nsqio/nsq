@@ -446,7 +446,6 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
 	if testing.Verbose() {
-		opts.Logger = &levellogger.GLogger{}
 		opts.LogLevel = 3
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)

@@ -12,7 +12,6 @@ import (
 func TestPutMessage(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.GLogger{}
 	opts.LogLevel = 3
 	opts.SyncEvery = 1
 	_, _, nsqd := mustStartNSQD(opts)
