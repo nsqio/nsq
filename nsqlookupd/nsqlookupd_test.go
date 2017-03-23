@@ -354,6 +354,7 @@ func TestTombstoneRecover(t *testing.T) {
 func TestTombstoneUnregister(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 3
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
@@ -368,15 +369,21 @@ func TestTombstoneUnregister(t *testing.T) {
 	_, err := nsq.ReadResponse(conn)
 	equal(t, err, nil)
 
-	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
+	endpoint := fmt.Sprintf("http://%s/lookup?topic=%s&access=w", httpAddr, topicName)
+	data, err := API(endpoint)
+	equal(t, err, nil)
+	producers, _ := data.Get("producers").Array()
+	equal(t, len(producers), 1)
+
+	endpoint = fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s",
 		httpAddr, topicName, "ip.address:5555")
 	_, err = http_api.NewClient(nil).POSTV1(endpoint)
 	equal(t, err, nil)
 
 	endpoint = fmt.Sprintf("http://%s/lookup?topic=%s&access=w", httpAddr, topicName)
-	data, err := API(endpoint)
+	data, err = API(endpoint)
 	equal(t, err, nil)
-	producers, _ := data.Get("producers").Array()
+	producers, _ = data.Get("producers").Array()
 	equal(t, len(producers), 0)
 
 	nsq.UnRegister(topicName, "0", "").WriteTo(conn)
@@ -752,10 +759,10 @@ func TestOldNsqdTopicRegUnReg(t *testing.T) {
 	data, err = API(endpoint)
 	equal(t, err, nil)
 
+	// old nsqd has no partitions
 	retPartitions, err := data.Get("partitions").Map()
 	equal(t, err, nil)
-	t.Logf("got returnedPartitions %v", retPartitions)
-	equal(t, true, len(retPartitions) > 0)
+	equal(t, 0, len(retPartitions))
 
 	returnedProducers, err = data.Get("producers").Array()
 	t.Logf("got returnedProducers %v", returnedProducers)

@@ -286,7 +286,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if len(registrations) == 0 {
 		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
 		// try to find in cluster info
-		if accessMode == "w" {
+		if accessMode == "w" && s.ctx.nsqlookupd.coordinator != nil {
 			clusterNodes, clusterErr := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)
 			if clusterErr != nil {
 				if clusterErr == consistence.ErrKeyNotFound {
@@ -338,7 +338,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	for _, r := range registrations {
 		var leaderProducer *Producer
 		pid, _ := strconv.Atoi(r.PartitionID)
-		if checkConsistent != "" {
+		if checkConsistent != "" && s.ctx.nsqlookupd.coordinator != nil {
 			// check leader only the client need consistent
 			if s.ctx.nsqlookupd.coordinator.IsTopicLeader(topicName, pid, r.ProducerNode.peerInfo.DistributedID) {
 				leaderProducer = r.ProducerNode
@@ -376,7 +376,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	// maybe channels should be under topic partitions?
 	channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, topicPartition).Channels()
 	needMeta := reqParams.Get("metainfo")
-	if needMeta != "" {
+	if needMeta != "" && s.ctx.nsqlookupd.coordinator != nil {
 		meta, err := s.ctx.nsqlookupd.coordinator.GetTopicMetaInfo(topicName)
 		if err != nil {
 			// maybe topic on old nsqd
