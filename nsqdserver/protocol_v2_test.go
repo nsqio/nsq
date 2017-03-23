@@ -1777,16 +1777,17 @@ func TestTLSDeflate(t *testing.T) {
 func TestSampling(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	num := 10000
+	num := 1000
 	sampleRate := 42
-	slack := 5
+	slack := 10
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
-	opts.LogLevel = 2
+	opts.LogLevel = 4
 	opts.MaxRdyCount = int64(num)
-	opts.MaxConfirmWin = int64(num * 100)
+	opts.MaxConfirmWin = int64(num * 10)
+	nsqdNs.SetLogger(opts.Logger)
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -1821,12 +1822,19 @@ func TestSampling(t *testing.T) {
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(num).WriteTo(conn)
 	test.Nil(t, err)
+	start := time.Now()
 
+	doneChan := make(chan int)
 	go func() {
 		for {
 			_, err := nsq.ReadResponse(conn)
 			if err != nil {
 				return
+			}
+			select {
+			case <-doneChan:
+				return
+			default:
 			}
 			//frameType, data, _ := nsq.UnpackResponse(resp)
 			//if frameType == frameTypeResponse {
@@ -1844,24 +1852,27 @@ func TestSampling(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(time.Second * 15)
-	test.Equal(t, channel.GetChannelEnd().Offset(),
-		nsqdNs.BackendOffset(num*(4+len(testBody)+10+16)))
-	//doneChan := make(chan int)
-	//go func() {
-	//	for {
-	//		if channel.GetConfirmedOffset() ==
-	//			channel.GetChannelEnd() {
-	//			close(doneChan)
-	//			return
-	//		}
-	//		time.Sleep(5 * time.Millisecond)
-	//	}
-	//}()
-	//<-doneChan
+	go func() {
+		for {
+			// TODO: check if we read all disk data and waiting ack
+			time.Sleep(500 * time.Millisecond)
+			numInFlight := channel.GetInflightNum()
+			if numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0) &&
+				numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0) {
+				close(doneChan)
+				return
+			}
+			if time.Since(start) > time.Second*30 {
+				t.Errorf("timeout waiting sampling")
+				close(doneChan)
+				return
+			}
+		}
+	}()
+	<-doneChan
 
+	time.Sleep(time.Second * 3)
 	numInFlight := channel.GetInflightNum()
-
 	test.Equal(t, numInFlight <= int(float64(num)*float64(sampleRate+slack)/100.0), true)
 	test.Equal(t, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0), true)
 }
