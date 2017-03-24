@@ -1403,6 +1403,66 @@ func TestBadFin(t *testing.T) {
 	test.Equal(t, "E_INVALID Invalid Message ID", string(data))
 }
 
+func TestReqTimeoutRange(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.Verbose = true
+	opts.MaxReqTimeout = 1 * time.Minute
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_req" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("ch")
+	msg := NewMessage(topic.GenerateID(), []byte("test body"))
+	topic.PutMessage(msg)
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Nil(t, err)
+
+	resp, err := nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	msgOut, _ := decodeMessage(data)
+	test.Equal(t, frameTypeMessage, frameType)
+	test.Equal(t, msg.ID, msgOut.ID)
+
+	_, err = nsq.Requeue(nsq.MessageID(msg.ID), -1).WriteTo(conn)
+	test.Nil(t, err)
+
+	// It should be immediately available for another attempt
+	resp, err = nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	frameType, data, err = nsq.UnpackResponse(resp)
+	msgOut, _ = decodeMessage(data)
+	test.Equal(t, frameTypeMessage, frameType)
+	test.Equal(t, msg.ID, msgOut.ID)
+
+	// The priority (processing time) should be >= this
+	minTs := time.Now().Add(opts.MaxReqTimeout).UnixNano()
+
+	_, err = nsq.Requeue(nsq.MessageID(msg.ID), opts.MaxReqTimeout*2).WriteTo(conn)
+	test.Nil(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	channel.deferredMutex.Lock()
+	pqItem := channel.deferredMessages[msg.ID]
+	channel.deferredMutex.Unlock()
+
+	test.NotNil(t, pqItem)
+	test.Equal(t, true, pqItem.Priority >= minTs)
+}
+
 func TestClientAuth(t *testing.T) {
 	authResponse := `{"ttl":1, "authorizations":[]}`
 	authSecret := "testsecret"
