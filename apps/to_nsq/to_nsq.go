@@ -68,7 +68,11 @@ func main() {
 
 	throttleEnabled := *rate >= 1
 	balance := int64(1)
-	interval := time.Second / time.Duration(*rate)
+	// avoid divide by 0 if !throttleEnabled
+	var interval time.Duration
+	if throttleEnabled {
+		interval = time.Second / time.Duration(*rate)
+	}
 	go func() {
 		if !throttleEnabled {
 			return
