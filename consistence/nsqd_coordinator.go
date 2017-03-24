@@ -242,7 +242,7 @@ func (self *NsqdCoordinator) Stop() {
 
 func (self *NsqdCoordinator) checkAndCleanOldData() {
 	defer self.wg.Done()
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(time.Minute * 30)
 	doCheckAndCleanOld := func(checkRetentionDay bool) {
 		tmpCoords := make(map[string]map[int]*TopicCoordinator)
 		self.coordMutex.RLock()
