@@ -381,7 +381,7 @@ func (c *ClientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 	errCnt := atomic.LoadInt64(&c.subErrCnt)
-	if errCnt >= slowDownThreshold {
+	if readyCount > 1 && errCnt >= slowDownThreshold {
 		// slow down this client if has some error
 		adjustReadyCount := readyCount - errCnt + slowDownThreshold
 		if adjustReadyCount <= 0 {
@@ -389,13 +389,11 @@ func (c *ClientV2) IsReadyForMessages() bool {
 			c.LockRead()
 			msgTimeout := c.MsgTimeout
 			c.UnlockRead()
+			readyCount = 1
 			if time.Now().Add(-2*msgTimeout).Unix() < lct {
-				// the wait time maybe large than the msgtimeout (maybe need wait heartbeat )
-				readyCount = 0
-				nsqLog.Logf("[%s] state inflt: %4d, errCnt: %d temporarily disabled since last timeout %v",
+				// the wait time maybe large than the msgtimeout (maybe need wait heartbeat to trigge channel wakeup)
+				nsqLog.Logf("[%s] state inflt: %4d, errCnt: %d temporarily slow down since last timeout %v",
 					c, inFlightCount, errCnt, lct)
-			} else {
-				readyCount = 1
 			}
 		} else if adjustReadyCount < readyCount {
 			readyCount = adjustReadyCount
