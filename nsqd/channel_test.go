@@ -24,8 +24,7 @@ func TestPutMessage(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel1 := topic.GetChannel("ch")
 
-	var id MessageID
-	msg := NewMessage(id, []byte("test"))
+	msg := NewMessage(<-nsqd.idChan, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg := <-channel1.memoryMsgChan
@@ -46,8 +45,7 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
-	var id MessageID
-	msg := NewMessage(id, []byte("test"))
+	msg := NewMessage(<-nsqd.idChan, []byte("test"))
 	topic.PutMessage(msg)
 
 	outputMsg1 := <-channel1.memoryMsgChan
