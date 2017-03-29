@@ -751,7 +751,7 @@ func (self *TopicCommitLogMgr) CleanOldData(fileIndex int64, fileOffset int64) e
 	}
 
 	self.saveLogSegStartInfo()
-	coordLog.Warningf("commit segment start clean from %v to : %v (%v:%v)",
+	coordLog.Infof("commit segment start clean from %v to : %v (%v:%v)",
 		oldStartInfo, self.logStartInfo, fileIndex, fileOffset)
 	return nil
 }

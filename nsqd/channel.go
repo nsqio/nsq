@@ -986,7 +986,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID, force bool) (
 			msg.clientID, clientID)
 	}
 	if !force && msg.IsDeferred() {
-		nsqLog.LogWarningf("channel (%v): should never pop a deferred message here unless the timeout : %v", c.GetName(), msg.ID)
+		nsqLog.Logf("channel (%v): should never pop a deferred message here unless the timeout : %v", c.GetName(), msg.ID)
 		return nil, ErrMsgDeferred
 	}
 	delete(c.inFlightMessages, id)

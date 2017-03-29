@@ -30,7 +30,6 @@ func getQueueFileOffsetMeta(dataFileName string) (int64, int64, int64, error) {
 	fName := dataFileName + ".offsetmeta.dat"
 	f, err := os.OpenFile(fName, os.O_RDONLY, 0644)
 	if err != nil {
-		nsqLog.LogErrorf("failed to read offset meta file (%v): %v", fName, err)
 		return 0, 0, 0, err
 	}
 	defer f.Close()
@@ -263,7 +262,7 @@ func (d *diskQueueWriter) CleanOldDataByRetention(cleanEndInfo BackendQueueOffse
 		}
 		cnt, _, endPos, err := getQueueFileOffsetMeta(d.fileName(cleanFileNum - 1))
 		if err != nil {
-			nsqLog.LogWarningf("disk %v failed to get queue offset meta: %v", d.fileName(cleanFileNum), err)
+			nsqLog.Logf("disk %v failed to get queue offset meta: %v", d.fileName(cleanFileNum), err)
 			return &newStart, err
 		}
 		if maxCleanOffset != BackendOffset(0) && BackendOffset(endPos) > maxCleanOffset {
