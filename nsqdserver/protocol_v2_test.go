@@ -2407,7 +2407,13 @@ func TestResetChannelToOld(t *testing.T) {
 			continue
 		}
 		if recvCnt == int(opts.MaxConfirmWin)*2+1 {
+			end := channel.GetChannelEnd()
 			channel.UpdateQueueEnd(resetOldEnd, false)
+			test.Equal(t, end, realEnd)
+			channel.UpdateQueueEnd(resetOldEnd, true)
+			test.NotEqual(t, end, resetOldEnd)
+			end = channel.GetChannelEnd()
+			test.Equal(t, end, resetOldEnd)
 		}
 		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
 		test.Nil(t, err)

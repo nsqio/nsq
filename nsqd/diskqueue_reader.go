@@ -30,6 +30,7 @@ var (
 	ErrReadQueueCountMissing   = errors.New("read queue count info missing")
 	ErrReadEndOfQueue          = errors.New("read to the end of queue")
 	ErrInvalidReadable         = errors.New("readable data is invalid")
+	ErrReadEndChangeToOld      = errors.New("queue read end change to old without reload")
 	ErrExiting                 = errors.New("exiting")
 )
 
@@ -1160,6 +1161,10 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 	if d.readQueueInfo.EndOffset.GreatThan(&endPos.EndOffset) || d.readQueueInfo.Offset() > endPos.Offset() {
 		nsqLog.LogWarningf("new end old than the read end: %v, %v, %v", d.readQueueInfo.EndOffset,
 			endPos, d.queueEndInfo)
+		if !forceReload {
+			// if rollback or reset, should set the force reload flag
+			return false, nil
+		}
 		d.readQueueInfo = *endPos
 		forceReload = true
 	}

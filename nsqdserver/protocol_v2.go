@@ -531,7 +531,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
-				offset, _, _, _ := subChannel.ConfirmBackendQueue(msg)
+				offset, _, _ := subChannel.ConfirmBackendQueue(msg)
 				// TODO: sync to replica nodes.
 				_ = offset
 				continue

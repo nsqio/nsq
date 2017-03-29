@@ -509,14 +509,13 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 // we need handle this case: a old message is not confirmed,
 // and we keep all the newer confirmed messages so we can confirm later.
 // indicated weather the confirmed offset is changed
-func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool, error) {
+func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
-	//c.finMsgs[msg.ID] = msg
 	curConfirm := c.GetConfirmed()
 	if msg.offset < curConfirm.Offset() {
 		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, curConfirm)
-		return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false, nil
+		return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false
 	}
 	c.confirmedMsgs[int64(msg.offset)] = msg
 	reduced := false
@@ -550,7 +549,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 				}
 				atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 			}
-			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced, err
+			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced
 		}
 		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 &&
 			atomic.LoadInt32(&c.needNotifyRead) == 1 &&
@@ -578,7 +577,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool,
 				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
 		}
 	}
-	return newConfirmed, confirmedCnt, reduced, nil
+	return newConfirmed, confirmedCnt, reduced
 	// TODO: if some messages lost while re-queue, it may happen that some messages not
 	// in inflight queue and also not wait confirm. In this way, we need reset
 	// backend queue to force read the data from disk again.
@@ -611,8 +610,9 @@ func (c *Channel) FinishMessage(clientID int64, clientAddr string, id MessageID)
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
 	}
-	offset, cnt, changed, err := c.ConfirmBackendQueue(msg)
-	return offset, cnt, changed, err
+	// confirm should be no error, since the inflight has been poped
+	offset, cnt, changed := c.ConfirmBackendQueue(msg)
+	return offset, cnt, changed, nil
 }
 
 func (c *Channel) ContinueConsumeForOrder() {
@@ -771,10 +771,7 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_INFO {
 		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "REQ_END", msg.TraceID, msg, "")
 	}
-	_, _, _, err = c.ConfirmBackendQueue(msg)
-	if err != nil {
-		nsqLog.LogWarningf("channel %s : failed confirm msg %v for requeue to end: %v", c.GetName(), msg, err)
-	}
+	c.ConfirmBackendQueue(msg)
 	newTimeout := time.Now().Add(timeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.option.MaxReqTimeout {
