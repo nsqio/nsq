@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"strings"
+
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/internal/version"
@@ -478,7 +480,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	defer nsqd.Exit()
 
 	nsqd.startTime = testTime
-	expectedJSON := fmt.Sprintf(`{"version":"%v","health":"OK","start_time":%v,"topics":[]}`, version.Binary, testTime.Unix())
+	expectedJSON := fmt.Sprintf(`{"version":"%v","health":"OK","start_time":%v,"topics":[],"memory":{`, version.Binary, testTime.Unix())
 
 	url := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
 	resp, err := http.Get(url)
@@ -486,7 +488,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
-	test.Equal(t, expectedJSON, string(body))
+	test.Equal(t, true, strings.HasPrefix(string(body), expectedJSON))
 }
 
 func TestHTTPgetStatusText(t *testing.T) {
