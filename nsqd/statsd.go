@@ -3,8 +3,6 @@ package nsqd
 import (
 	"fmt"
 	"math"
-	"runtime"
-	"sort"
 	"time"
 
 	"github.com/nsqio/nsq/internal/statsd"
@@ -25,7 +23,7 @@ func (s Uint64Slice) Less(i, j int) bool {
 }
 
 func (n *NSQD) statsdLoop() {
-	var lastMemStats runtime.MemStats
+	var lastMemStats *memStats
 	var lastStats []TopicStats
 	ticker := time.NewTicker(n.getOpts().StatsdInterval)
 	for {
@@ -115,29 +113,19 @@ func (n *NSQD) statsdLoop() {
 			lastStats = stats
 
 			if n.getOpts().StatsdMemStats {
-				var memStats runtime.MemStats
-				runtime.ReadMemStats(&memStats)
+				ms := getMemStats()
 
-				// sort the GC pause array
-				length := len(memStats.PauseNs)
-				if int(memStats.NumGC) < length {
-					length = int(memStats.NumGC)
-				}
-				gcPauses := make(Uint64Slice, length)
-				copy(gcPauses, memStats.PauseNs[:length])
-				sort.Sort(gcPauses)
+				client.Gauge("mem.heap_objects", int64(ms.HeapObjects))
+				client.Gauge("mem.heap_idle_bytes", int64(ms.HeapIdleBytes))
+				client.Gauge("mem.heap_in_use_bytes", int64(ms.HeapInUseBytes))
+				client.Gauge("mem.heap_released_bytes", int64(ms.HeapReleasedBytes))
+				client.Gauge("mem.gc_pause_usec_100", int64(ms.GCPauseUsec100))
+				client.Gauge("mem.gc_pause_usec_99", int64(ms.GCPauseUsec99))
+				client.Gauge("mem.gc_pause_usec_95", int64(ms.GCPauseUsec95))
+				client.Gauge("mem.next_gc_bytes", int64(ms.NextGCBytes))
+				client.Incr("mem.gc_runs", int64(ms.GCTotalRuns-lastMemStats.GCTotalRuns))
 
-				client.Gauge("mem.heap_objects", int64(memStats.HeapObjects))
-				client.Gauge("mem.heap_idle_bytes", int64(memStats.HeapIdle))
-				client.Gauge("mem.heap_in_use_bytes", int64(memStats.HeapInuse))
-				client.Gauge("mem.heap_released_bytes", int64(memStats.HeapReleased))
-				client.Gauge("mem.gc_pause_usec_100", int64(percentile(100.0, gcPauses, len(gcPauses))/1000))
-				client.Gauge("mem.gc_pause_usec_99", int64(percentile(99.0, gcPauses, len(gcPauses))/1000))
-				client.Gauge("mem.gc_pause_usec_95", int64(percentile(95.0, gcPauses, len(gcPauses))/1000))
-				client.Gauge("mem.next_gc_bytes", int64(memStats.NextGC))
-				client.Incr("mem.gc_runs", int64(memStats.NumGC-lastMemStats.NumGC))
-
-				lastMemStats = memStats
+				lastMemStats = ms
 			}
 
 			client.Close()

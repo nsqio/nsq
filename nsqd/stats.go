@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"runtime"
 	"sort"
 	"sync/atomic"
 
@@ -142,4 +143,43 @@ func (n *NSQD) GetStats() []TopicStats {
 		topics = append(topics, NewTopicStats(t, channels))
 	}
 	return topics
+}
+
+type memStats struct {
+	HeapObjects       uint64 `json:"heap_objects"`
+	HeapIdleBytes     uint64 `json:"heap_idle_bytes"`
+	HeapInUseBytes    uint64 `json:"heap_in_use_bytes"`
+	HeapReleasedBytes uint64 `json:"heap_released_bytes"`
+	GCPauseUsec100    uint64 `json:"gc_pause_usec_100"`
+	GCPauseUsec99     uint64 `json:"gc_pause_usec_99"`
+	GCPauseUsec95     uint64 `json:"gc_pause_usec_95"`
+	NextGCBytes       uint64 `json:"next_gc_bytes"`
+	GCTotalRuns       uint32 `json:"gc_total_runs"`
+}
+
+func getMemStats() *memStats {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+
+	// sort the GC pause array
+	length := len(ms.PauseNs)
+	if int(ms.NumGC) < length {
+		length = int(ms.NumGC)
+	}
+	gcPauses := make(Uint64Slice, length)
+	copy(gcPauses, ms.PauseNs[:length])
+	sort.Sort(gcPauses)
+
+	return &memStats{
+		ms.HeapObjects,
+		ms.HeapIdle,
+		ms.HeapInuse,
+		ms.HeapReleased,
+		percentile(100.0, gcPauses, len(gcPauses)) / 1000,
+		percentile(99.0, gcPauses, len(gcPauses)) / 1000,
+		percentile(95.0, gcPauses, len(gcPauses)) / 1000,
+		ms.NextGC,
+		ms.NumGC,
+	}
+
 }
