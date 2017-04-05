@@ -269,21 +269,14 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			// TODO: avoid too much in a batch
 		default:
 			if len(pubInfoList) == 0 {
-				nsqd.NsqLogger().LogDebugf("topic %v pub loop waiting for message", topic.GetFullName())
 				select {
 				case <-quitChan:
 					return
 				case info := <-infoChan:
-					if info.MsgBody.Len() <= 0 {
-						nsqd.NsqLogger().Logf("empty msg body")
-					}
 					messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
 					pubInfoList = append(pubInfoList, info)
 				}
 				continue
-			}
-			if len(pubInfoList) > 1 {
-				nsqd.NsqLogger().LogDebugf("pub loop batch number: %v", len(pubInfoList))
 			}
 			var retErr error
 			if c.checkForMasterWrite(topicName, partition) {

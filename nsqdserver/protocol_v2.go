@@ -427,6 +427,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 	heartbeatChan := heartbeatTicker.C
 	heartbeatFailedCnt := 0
 	msgTimeout := client.MsgTimeout
+	lastActiveTime := time.Now()
 
 	// v2 opportunistically buffers data to clients to reduce write system calls
 	// we force flush in two cases:
@@ -512,6 +513,19 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.TryWakeupRead()
 			}
 
+			if subChannel.Depth() <= 0 {
+				lastActiveTime = time.Now()
+			}
+			// close this client if depth is large and the active is long ago.
+			// maybe some bug blocking this client, reconnect can solve bug.
+			if subChannel != nil &&
+				time.Since(lastActiveTime) > (msgTimeout*10+client.HeartbeatInterval) &&
+				!subChannel.IsOrdered() && subChannel.Depth() > 10 &&
+				subChannel.GetInflightNum() <= 0 {
+				nsqd.NsqLogger().Warningf("client %s not active since %v, current : %v, %v, %v", client, lastActiveTime,
+					subChannel.Depth(), subChannel.DepthTimestamp(), subChannel.GetChannelDebugStats())
+				goto exit
+			}
 			err = Send(client, frameTypeResponse, heartbeatBytes)
 			nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): [%s] send heartbeat", client)
 			if err != nil {
@@ -547,6 +561,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			if !shouldSend {
 				continue
 			}
+			lastActiveTime = time.Now()
 			client.SendingMessage()
 			err = SendMessage(client, msg, &buf, subChannel.IsOrdered())
 			if err != nil {
