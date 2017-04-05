@@ -30,6 +30,19 @@ We publish [binary releases][installing] for linux and darwin.
 
 NOTE: master is our *development* branch and may not be stable at all times.
 
+## About this fork
+
+This fork add many features missing in the original and has been used in Youzan.com for several years.
+Features:
+* Replication
+* HA
+* Auto balance and migrate
+* Partition
+* Delivery in Order
+* Consume history data
+* Trace the message life-cycle
+* Performance improvement
+
 ## In Production
 
 <a href="http://bitly.com"><img src="http://nsq.io/static/img/bitly_logo.png" width="84" align="middle"/></a>&nbsp;&nbsp;
