@@ -100,13 +100,23 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 
 // this expects the caller to handle locking
 func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
+	// block read when delete channel
+	t.RLock()
 	channel, ok := t.channelMap[channelName]
+	t.RUnlock()
 	if !ok {
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}
 		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
+		t.Lock()
+		// avoid re-create channel
+		if oldchannel, ok := t.channelMap[channelName]; ok {
+			t.Unlock()
+			return oldchannel, false
+		}
 		t.channelMap[channelName] = channel
+		t.Unlock()
 		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
 	}
