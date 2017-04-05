@@ -513,7 +513,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.TryWakeupRead()
 			}
 
-			if subChannel.Depth() <= 0 {
+			if subChannel != nil && subChannel.Depth() <= 0 {
 				lastActiveTime = time.Now()
 			}
 			// close this client if depth is large and the active is long ago.
