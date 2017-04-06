@@ -102,6 +102,8 @@ func init() {
 func startBenchPub(msg []byte, batch [][]byte) {
 	var wg sync.WaitGroup
 	config.EnableTrace = *trace
+	config.WriteTimeout = 0
+	config.ReadTimeout = 0
 	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
@@ -193,6 +195,9 @@ func startBenchSub() {
 	var wg sync.WaitGroup
 
 	log.SetPrefix("[bench_reader] ")
+
+	config.WriteTimeout = 0
+	config.ReadTimeout = 0
 
 	quitChan := make(chan int)
 	goChan := make(chan int)
