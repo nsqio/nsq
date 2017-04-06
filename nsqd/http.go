@@ -495,8 +495,9 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		}
 	}
 
+	ms := getMemStats()
 	if !jsonFormat {
-		return s.printStats(stats, health, startTime, uptime), nil
+		return s.printStats(stats, ms, health, startTime, uptime), nil
 	}
 
 	return struct {
@@ -504,10 +505,11 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		Health    string       `json:"health"`
 		StartTime int64        `json:"start_time"`
 		Topics    []TopicStats `json:"topics"`
-	}{version.Binary, health, startTime.Unix(), stats}, nil
+		Memory    *memStats    `json:"memory"`
+	}{version.Binary, health, startTime.Unix(), stats, ms}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, ms *memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()
@@ -518,6 +520,17 @@ func (s *httpServer) printStats(stats []TopicStats, health string, startTime tim
 		io.WriteString(w, "\nNO_TOPICS\n")
 		return buf.Bytes()
 	}
+	fmt.Fprintf(w, "\nMemory:\n")
+	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_objects", ms.HeapObjects)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
+	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
+
 	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
 	for _, t := range stats {
 		var pausedPrefix string
