@@ -31,6 +31,9 @@ func (self *NsqLookupCoordinator) rpcFailRetryFunc(monitorChan chan struct{}) {
 
 			checkConn++
 			if checkConn%30 == 0 {
+				if len(currentNodes) == 0 {
+					currentNodes, _ = self.getCurrentNodesWithRemoving()
+				}
 				self.rpcMutex.Lock()
 				for nid, c := range self.nsqdRpcClients {
 					_, nodeOK := currentNodes[nid]

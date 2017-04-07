@@ -67,7 +67,7 @@ req_to_end_threshold = "1m"
 max_body_size = 5123840
 
 ## maximum finished count with unordered
-max_confirm_win = 1000
+max_confirm_win = 5000
 
 ## maximum client configurable duration of time between client heartbeats
 max_heartbeat_interval = "60s"
