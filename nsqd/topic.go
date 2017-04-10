@@ -1160,8 +1160,10 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 	nsqLog.Infof("clean topic %v data from %v under retention %v, %v",
 		t.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
 	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
-		nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
-			t.GetFullName(), cleanEndInfo, oldestPos, maxCleanOffset)
+		if cleanEndInfo != nil {
+			nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
+				t.GetFullName(), cleanEndInfo, oldestPos, maxCleanOffset)
+		}
 		return nil, nil
 	}
 	return t.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanOffset)
