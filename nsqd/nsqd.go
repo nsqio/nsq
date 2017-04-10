@@ -39,6 +39,11 @@ type errStore struct {
 	err error
 }
 
+type Client interface {
+	Stats() ClientStats
+	IsProducer() bool
+}
+
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
@@ -53,6 +58,9 @@ type NSQD struct {
 	startTime time.Time
 
 	topicMap map[string]*Topic
+
+	clientLock sync.RWMutex
+	clients    map[int64]Client
 
 	lookupPeers atomic.Value
 
@@ -84,6 +92,7 @@ func New(opts *Options) *NSQD {
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
+		clients:              make(map[int64]Client),
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
@@ -213,6 +222,23 @@ func (n *NSQD) GetHealth() string {
 
 func (n *NSQD) GetStartTime() time.Time {
 	return n.startTime
+}
+
+func (n *NSQD) AddClient(clientID int64, client Client) {
+	n.clientLock.Lock()
+	n.clients[clientID] = client
+	n.clientLock.Unlock()
+}
+
+func (n *NSQD) RemoveClient(clientID int64) {
+	n.clientLock.Lock()
+	_, ok := n.clients[clientID]
+	if !ok {
+		n.clientLock.Unlock()
+		return
+	}
+	delete(n.clients, clientID)
+	n.clientLock.Unlock()
 }
 
 func (n *NSQD) Main() {

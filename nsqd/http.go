@@ -481,6 +481,8 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	channelName, _ := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
+	producerStats := s.ctx.nsqd.GetProducerStats()
+
 	stats := s.ctx.nsqd.GetStats(topicName, channelName)
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
@@ -503,23 +505,46 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 				break
 			}
 		}
+
+		filteredProducerStats := make([]ClientStats, 0)
+		for _, clientStat := range producerStats {
+			var found bool
+			var count uint64
+			for _, v := range clientStat.PubCounts {
+				if v.Topic == topicName {
+					count = v.Count
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+			clientStat.PubCounts = []PubCount{PubCount{
+				Topic: topicName,
+				Count: count,
+			}}
+			filteredProducerStats = append(filteredProducerStats, clientStat)
+		}
+		producerStats = filteredProducerStats
 	}
 
 	ms := getMemStats()
 	if !jsonFormat {
-		return s.printStats(stats, ms, health, startTime, uptime), nil
+		return s.printStats(stats, producerStats, ms, health, startTime, uptime), nil
 	}
 
 	return struct {
-		Version   string       `json:"version"`
-		Health    string       `json:"health"`
-		StartTime int64        `json:"start_time"`
-		Topics    []TopicStats `json:"topics"`
-		Memory    memStats     `json:"memory"`
-	}{version.Binary, health, startTime.Unix(), stats, ms}, nil
+		Version   string        `json:"version"`
+		Health    string        `json:"health"`
+		StartTime int64         `json:"start_time"`
+		Topics    []TopicStats  `json:"topics"`
+		Memory    memStats      `json:"memory"`
+		Producers []ClientStats `json:"producers"`
+	}{version.Binary, health, startTime.Unix(), stats, ms, producerStats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 
@@ -599,6 +624,34 @@ func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, 
 			}
 		}
 	}
+
+	if len(producerStats) == 0 {
+		fmt.Fprintf(w, "\nProducers: None\n")
+	} else {
+		fmt.Fprintf(w, "\nProducers:")
+		for _, client := range producerStats {
+			connectTime := time.Unix(client.ConnectTime, 0)
+			// truncate to the second
+			duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
+			var totalPubCount uint64
+			for _, v := range client.PubCounts {
+				totalPubCount += v.Count
+			}
+			fmt.Fprintf(w, "\n   [%s %-21s] msgs: %-8d connected: %s\n",
+				client.Version,
+				client.ClientID,
+				totalPubCount,
+				duration,
+			)
+			for _, v := range client.PubCounts {
+				fmt.Fprintf(w, "      [%-15s] msgs: %-8d\n",
+					v.Topic,
+					v.Count,
+				)
+			}
+		}
+	}
+
 	return buf.Bytes()
 }
 
