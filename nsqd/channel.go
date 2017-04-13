@@ -563,18 +563,9 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
 		curConfirm = c.GetConfirmed()
 		flightCnt := len(c.inFlightMessages)
-		c.waitingRequeueMutex.Lock()
-		reqLen := len(c.waitingRequeueMsgs)
-		reqLen += len(c.requeuedMsgChan)
-		c.waitingRequeueMutex.Unlock()
-		if flightCnt == 0 && reqLen <= 0 {
-			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v",
-				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
-			//atomic.StoreInt32(&c.needResetReader, 1)
-		}
-		if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v, %v",
-				len(c.confirmedMsgs), curConfirm, flightCnt, reqLen)
+		if flightCnt == 0 && nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v",
+				len(c.confirmedMsgs), curConfirm, flightCnt)
 		}
 	}
 	return newConfirmed, confirmedCnt, reduced
@@ -1400,8 +1391,10 @@ func (c *Channel) GetChannelDebugStats() string {
 	c.inFlightMutex.Lock()
 	inFlightCount := len(c.inFlightMessages)
 	debugStr += fmt.Sprintf("inflight %v messages : ", inFlightCount)
-	for _, msg := range c.inFlightMessages {
-		debugStr += fmt.Sprintf("%v(%v),", msg.ID, msg.offset)
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		for _, msg := range c.inFlightMessages {
+			debugStr += fmt.Sprintf("%v(%v),", msg.ID, msg.offset)
+		}
 	}
 	c.inFlightMutex.Unlock()
 	debugStr += "\n"
@@ -1409,9 +1402,6 @@ func (c *Channel) GetChannelDebugStats() string {
 	debugStr += fmt.Sprintf("channel end : %v, current confirm %v, confirmed %v messages: ",
 		c.GetChannelEnd(),
 		c.GetConfirmed(), len(c.confirmedMsgs))
-	for _, msg := range c.confirmedMsgs {
-		debugStr += fmt.Sprintf("%v(%v), ", msg.ID, msg.offset)
-	}
 	c.confirmMutex.Unlock()
 	debugStr += "\n"
 	return debugStr
