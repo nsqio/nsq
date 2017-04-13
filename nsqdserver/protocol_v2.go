@@ -521,7 +521,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			if subChannel != nil &&
 				time.Since(lastActiveTime) > (msgTimeout*10+client.HeartbeatInterval) &&
 				!subChannel.IsOrdered() && subChannel.Depth() > 10 &&
-				subChannel.GetInflightNum() <= 0 {
+				subChannel.GetInflightNum() <= 0 && !subChannel.IsPaused() {
 				nsqd.NsqLogger().Warningf("client %s not active since %v, current : %v, %v, %v", client, lastActiveTime,
 					subChannel.Depth(), subChannel.DepthTimestamp(), subChannel.GetChannelDebugStats())
 				goto exit
