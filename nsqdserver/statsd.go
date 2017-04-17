@@ -56,12 +56,10 @@ func (n *NsqdServer) statsdLoop() {
 					}
 				}
 				statdName := topic.StatsdName
-				if topic.IsMultiOrdered {
-					if !topic.IsLeader {
-						continue
-					}
-				}
 				diff := topic.MessageCount - lastTopic.MessageCount
+				if topic.IsMultiOrdered && !topic.IsLeader {
+					diff = 0
+				}
 				stat := fmt.Sprintf("topic.%s.message_count", statdName)
 				err := client.Incr(stat, int64(diff))
 				if err != nil {
@@ -87,6 +85,10 @@ func (n *NsqdServer) statsdLoop() {
 						}
 					}
 					diff := channel.MessageCount - lastChannel.MessageCount
+					if topic.IsMultiOrdered && !topic.IsLeader {
+						diff = 0
+					}
+
 					stat := fmt.Sprintf("topic.%s.channel.%s.message_count", statdName, channel.ChannelName)
 					client.Incr(stat, int64(diff))
 
