@@ -21,9 +21,10 @@ type Options struct {
 	ClusterID                  string `flag:"cluster-id"`
 	ClusterLeadershipAddresses string `flag:"cluster-leadership-addresses" cfg:"cluster_leadership_addresses"`
 
-	InactiveProducerTimeout time.Duration `flag:"inactive-producer-timeout"`
-	NsqdPingTimeout         time.Duration `flag:"nsqd-ping-timeout"`
-	BalanceInterval         []string      `flag:"balance-interval"`
+	InactiveProducerTimeout  time.Duration `flag:"inactive-producer-timeout"`
+	NsqdPingTimeout          time.Duration `flag:"nsqd-ping-timeout"`
+	BalanceInterval          []string      `flag:"balance-interval"`
+	AllowWriteWithNoChannels bool          `flag:"allow-write-with-nochannels"`
 
 	LogLevel int32  `flag:"log-level" cfg:"log_level"`
 	LogDir   string `flag:"log-dir" cfg:"log_dir"`

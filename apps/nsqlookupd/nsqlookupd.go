@@ -35,12 +35,13 @@ var (
 	clusterLeadershipAddresses = flagSet.String("cluster-leadership-addresses", "", " the cluster leadership server list")
 	clusterID                  = flagSet.String("cluster-id", "nsq-test-cluster", "the cluster id used for separating different nsq cluster.")
 
-	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 60*time.Second, "duration of time a producer will remain in the active list since its last ping")
-	nsqdPingTimeout         = flagSet.Duration("nsqd-ping-timeout", 15*time.Second, "duration of nsqd ping timeout, should be at least twice as the nsqd ping interval")
-	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
-	logLevel                = flagSet.Int("log-level", 1, "log verbose level")
-	logDir                  = flagSet.String("log-dir", "", "directory for log file")
-	balanceInterval         = app.StringArray{}
+	inactiveProducerTimeout  = flagSet.Duration("inactive-producer-timeout", 60*time.Second, "duration of time a producer will remain in the active list since its last ping")
+	nsqdPingTimeout          = flagSet.Duration("nsqd-ping-timeout", 15*time.Second, "duration of nsqd ping timeout, should be at least twice as the nsqd ping interval")
+	tombstoneLifetime        = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
+	logLevel                 = flagSet.Int("log-level", 1, "log verbose level")
+	logDir                   = flagSet.String("log-dir", "", "directory for log file")
+	allowWriteWithNoChannels = flagSet.Bool("allow-write-with-nochannels", false, "allow write to topic with no channels")
+	balanceInterval          = app.StringArray{}
 )
 
 func init() {
