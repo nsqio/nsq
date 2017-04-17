@@ -24,13 +24,14 @@
 
 
 ## 常用运维操作
-### topic禁止某个分区节点写入 往所有的lookup节点发送如下命令
+### topic禁止某个分区节点写入
+往所有的lookup节点发送如下命令
 <pre>
-/topic/tombstone?topic=xxx&node=ip:httpport
+POST /topic/tombstone?topic=xxx&node=ip:httpport
 </pre>
 重新允许写入 
 <pre>
-/topic/tombstone?topic=xxx&node=ip:httpport&restore=true
+POST /topic/tombstone?topic=xxx&node=ip:httpport&restore=true
 </pre>
 此操作可以用于当某个节点磁盘不足时临时禁止写入.
 
@@ -42,15 +43,17 @@ nsqlookupd: curl -X POST "http://127.0.0.1:4161/loglevel/set?loglevel=3"
 loglevel数字越大, 日志越详细
 
 ### 集群节点维护
-以下几个API是nsqlookupd的HTTP接口
+以下几个API是nsqlookupd的HTTP接口, 对于修改API, 只能发送到nsqlookupd的leader节点, 可以通过listlookup
+判断哪个节点是当前的leader.
+
 主动下线某个节点, 其中nodeid是分布式的id, 可以在nsqadmin里面查看对应节点的id, 调用后, 系统会自动将topic数据逐步平滑迁移到其他节点, 等待完成后, 运维就可以直接关机了. 此操作用于永久从集群中下线一台机子.
 <pre>
-/cluster/node/remove?remove_node=nodeid
+POST /cluster/node/remove?remove_node=nodeid
 </pre>
 
 以下API可以用于改变topic的元数据信息, 支持修改副本数, 刷盘策略, 保留时间, 如果不需要改,可以不需要传对应的参数.
 <pre>
-/topic/meta/update?topic=xxx&replicator=xx&syncdisk=xx&retention=xxx
+POST /topic/meta/update?topic=xxx&replicator=xx&syncdisk=xx&retention=xxx
 </pre>
 
 ### 消息跟踪

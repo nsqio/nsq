@@ -223,12 +223,6 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
-	equal(t, d.depth, int64(1))
-	equal(t, d.readFileNum, int64(0))
-	equal(t, d.writeFileNum, int64(0))
-	equal(t, d.readPos, int64(0))
-	equal(t, d.writePos, int64(1004))
 	for i := 0; i < 10; i++ {
 		d := readMetaDataFile(dq.(*diskQueue).metaDataFileName())
 		if d.depth == 1 &&
@@ -239,7 +233,7 @@ func TestDiskQueueSyncAfterRead(t *testing.T) {
 			// success
 			goto next
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	panic("fail")
 
@@ -257,7 +251,7 @@ next:
 			// success
 			goto done
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	panic("fail")
 done:

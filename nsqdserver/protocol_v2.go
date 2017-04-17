@@ -247,6 +247,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		response, err = p.Exec(client, params)
 		err = handleRequestReponseForClient(client, response, err)
 		if err != nil {
+			nsqd.NsqLogger().Logf("PROTOCOL(V2) handle client command: %v failed", line)
 			break
 		}
 	}
@@ -405,7 +406,7 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	case bytes.Equal(params[0], []byte("INTERNAL_CREATE_TOPIC")):
 		return p.internalCreateTopic(client, params)
 	}
-	return nil, protocol.NewFatalClientErr(nil, E_INVALID, fmt.Sprintf("invalid command %v", params[0]))
+	return nil, protocol.NewFatalClientErr(nil, E_INVALID, fmt.Sprintf("invalid command %v", params))
 }
 
 func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
@@ -1062,7 +1063,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	timeoutMs, err := protocol.ByteToBase10(params[2])
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, E_INVALID,
-			fmt.Sprintf("REQ could not parse timeout %s", params[2]))
+			fmt.Sprintf("REQ could not parse timeout %s, %s", params[1], params[2]))
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 

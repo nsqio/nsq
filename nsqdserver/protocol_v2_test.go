@@ -101,24 +101,37 @@ func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName str
 	test.Equal(t, frameType, frameTypeError)
 }
 
-func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
-	resp, err := nsq.ReadResponse(conn)
-	test.Equal(t, err, nil)
-	frameType, data, err := nsq.UnpackResponse(resp)
-	test.Equal(t, err, nil)
-	test.Equal(t, frameType, f)
-	test.Equal(t, string(data), d)
-	return data
+func readValidate(t *testing.T, conn io.ReadWriter, f int32, d string) []byte {
+	for {
+		resp, err := nsq.ReadResponse(conn)
+		test.Equal(t, err, nil)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Equal(t, err, nil)
+
+		if d != string(heartbeatBytes) && string(data) == string(heartbeatBytes) {
+			cmd := nsq.Nop()
+			cmd.WriteTo(conn)
+			continue
+		}
+
+		test.Equal(t, frameType, f)
+		test.Equal(t, string(data), d)
+		return data
+	}
 }
 
 func recvNextMsgAndCheckClientMsg(t *testing.T, conn io.ReadWriter, expLen int, expTraceID uint64, autoFin bool) *nsq.Message {
 	for {
 		resp, err := nsq.ReadResponse(conn)
+		if err != nil {
+			t.Logf("read response err: %v", err.Error())
+		}
+
 		test.Nil(t, err)
 		frameType, data, err := nsq.UnpackResponse(resp)
 		test.Nil(t, err)
 		if frameType == frameTypeError {
-			t.Log(resp)
+			t.Log(string(resp))
 			continue
 		}
 		if frameType == frameTypeResponse {
@@ -157,7 +170,7 @@ func recvNextMsgAndCheck(t *testing.T, conn io.ReadWriter,
 		frameType, data, err := nsq.UnpackResponse(resp)
 		test.Nil(t, err)
 		if frameType == frameTypeError {
-			t.Log(resp)
+			t.Log(string(resp))
 			continue
 		}
 		if frameType == frameTypeResponse {
@@ -1016,6 +1029,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	for i := 0; i < int(opts.MaxConfirmWin)*2; i++ {
 		msgOut := recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
+		t.Logf("recv msg %v, %v", msgOut.ID, recvCnt)
 		if uint64(nsq.GetNewMessageID(msgOut.ID[:])) == uint64(longestDelayMsg.ID) {
 			test.Equal(t, longestDelayMsg.Body, msgOut.Body)
 			_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delayToEnd).WriteTo(conn)
@@ -1039,6 +1053,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	var msgClientOut *nsq.Message
 	for finCnt < putCnt+10 {
 		msgClientOut = recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
+		t.Logf("recv msg %v, %v", msgClientOut.ID, recvCnt)
 		nsq.Finish(msgClientOut.ID).WriteTo(conn)
 		recvCnt++
 		finCnt++
@@ -2123,6 +2138,7 @@ func TestTimeoutTooMuch(t *testing.T) {
 	cnt = 0
 	for cnt < 21 {
 		msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+		t.Logf("recv msg: %v, %v", msgOut.ID, cnt)
 		_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 		test.Nil(t, err)
 		cnt++

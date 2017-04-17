@@ -213,6 +213,7 @@ func TestChannelSkip(t *testing.T) {
 	//skip forward to message 10
 	t.Logf("backendOffsetMid: %d", backendOffsetMid)
 	channel.SetConsumeOffset(backendOffsetMid, 10, true)
+	time.Sleep(time.Second)
 	for i := 0; i < 10; i++ {
 		outputMsg := <-channel.clientMsgChan
 		equal(t, string(outputMsg.Body[:]), strconv.Itoa(i+10))
@@ -297,7 +298,7 @@ func TestChannelDepthTimestamp(t *testing.T) {
 		var msgId MessageID
 		msgBytes := []byte(strconv.Itoa(i + 11))
 		msg := NewMessage(msgId, msgBytes)
-		time.Sleep(time.Millisecond)
+		time.Sleep(time.Millisecond * 10)
 		msgs = append(msgs, msg)
 	}
 	topic.PutMessages(msgs)
@@ -306,7 +307,7 @@ func TestChannelDepthTimestamp(t *testing.T) {
 	lastDepthTs := int64(0)
 	for i := 0; i < 9; i++ {
 		msgOutput := <-channel.clientMsgChan
-		time.Sleep(time.Millisecond)
+		time.Sleep(time.Millisecond * 10)
 		if lastDepthTs != 0 {
 			// next msg timestamp == last depth ts
 			equal(t, msgOutput.Timestamp, lastDepthTs)

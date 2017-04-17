@@ -51,14 +51,19 @@ Other deploy can be the same as the Official.
 
 ## FAQ for this Fork
 
-1. Can I use the Official client SDK?
+### Can I use the Official client SDK?
+
 Most client SDK can be used to communication with the new server without using the new features and for new features in this 
 fork the new client SDK should be used.
+
 Golang: <a href="https://github.com/absolute8511/go-nsq" >https://github.com/absolute8511/go-nsq</a>
+
 Java: <a href="https://github.com/youzan/nsqJavaSDK">https://github.com/youzan/nsqJavaSDK</a>
+
 PHP: <a href="https://github.com/youzan/php-nsq-client">https://github.com/youzan/php-nsq-client</a>
 
-2. Auto topic create has been disabled.
+### Auto topic create has been disabled.
+
 In order to manager the topics by nsqlookupd, we removed the create api on the nsqd. So in order to create a new topic,
 you need create the topic in the nsqadmin or
 send the create api to the nsqlookupd as below:
@@ -77,7 +82,8 @@ For the ordered topic, we can create as much as we need partitions. (replicator 
 Also, the first channel for this topic should be created after the topic is created, otherwise this topic is not 
 allowed to be written.
 
-3. The log can be adjust dynamically.
+### The log can be adjust dynamically.
+
 This is useful to debug on the fly. 
 <pre>
 nsqd: curl -X POST "http://127.0.0.1:4151/loglevel/set?loglevel=3"
@@ -85,7 +91,8 @@ nsqlookupd: curl -X POST "http://127.0.0.1:4161/loglevel/set?loglevel=3"
 </pre>
 The log is much more detail when the log level increased.
 
-4. Change the consume position to allow consume history or skip some messages.
+### Change the consume position to allow consume history or skip some messages.
+
 <pre>
 curl -X POST -d "timestamp:xxxxxxxxx" "http://127.0.0.1:4151/channel/setoffset?topic=xxx&partition=xx&channel=xxx"
 
@@ -96,7 +103,8 @@ msgcount:xxx (the message count from the begin)
 </pre>
 For multi nsqd nodes, each node for each partition should be done using the api above.
 
-5. For more documents
+### For more documents
+
 please see the other documents under the doc 
 
 ## In Production
