@@ -150,6 +150,9 @@ func recvNextMsgAndCheck(t *testing.T, conn io.ReadWriter,
 	expLen int, expTraceID uint64, autoFin bool) *nsqdNs.Message {
 	for {
 		resp, err := nsq.ReadResponse(conn)
+		if err != nil {
+			t.Logf("read response err: %v", err.Error())
+		}
 		test.Nil(t, err)
 		frameType, data, err := nsq.UnpackResponse(resp)
 		test.Nil(t, err)
@@ -2371,6 +2374,7 @@ func TestResetChannelToOld(t *testing.T) {
 				}
 				t.Errorf("should stop on : %v", recvCnt)
 				conn.Close()
+				return
 			}
 		}
 	}()
