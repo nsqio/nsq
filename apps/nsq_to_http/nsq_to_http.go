@@ -160,7 +160,6 @@ func hasArg(s string) bool {
 	})
 	return argExist
 }
-
 func main() {
 	var publisher Publisher
 	var addresses app.StringArray
