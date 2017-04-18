@@ -350,7 +350,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 			if accessMode == "w" {
 				// check if any channel on the specific topic producer node
 				channels := s.ctx.nsqlookupd.DB.FindChannelRegs(topicName, r.PartitionID)
-				if len(channels) == 0 {
+				if len(channels) == 0 && !s.ctx.nsqlookupd.opts.AllowWriteWithNoChannels {
 					nsqlookupLog.Logf("no channels under this partition node: %v, %v", topicName, r)
 					emptyChanFiltered = true
 					continue

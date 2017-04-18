@@ -32,7 +32,7 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 ## About this fork
 
-This fork add many features missing in the original and has been used in Youzan.com for several years.
+This fork add many features missing in the original and has been used in Youzan.com.
 Features:
 * Replication
 * HA
@@ -42,6 +42,70 @@ Features:
 * Consume history data
 * Trace the message life-cycle
 * Performance improvement
+
+## Deploy Dependency
+This fork need the etcd cluster, so to deploy we need set the configure for the nsqd and nsqlookupd. 
+For details please refer to the sample configure files under contrib directory.
+
+Other deploy can be the same as the Official.
+
+## FAQ for this Fork
+
+### Can I use the Official client SDK?
+
+Most client SDK can be used to communication with the new server without using the new features and for new features in this 
+fork the new client SDK should be used.
+
+Golang: <a href="https://github.com/absolute8511/go-nsq" >https://github.com/absolute8511/go-nsq</a>
+
+Java: <a href="https://github.com/youzan/nsqJavaSDK">https://github.com/youzan/nsqJavaSDK</a>
+
+PHP: <a href="https://github.com/youzan/php-nsq-client">https://github.com/youzan/php-nsq-client</a>
+
+### Auto topic create has been disabled.
+
+In order to manager the topics by nsqlookupd, we removed the create api on the nsqd. So in order to create a new topic,
+you need create the topic in the nsqadmin or
+send the create api to the nsqlookupd as below:
+<pre>
+curl -X POST "http://127.0.0.1:4161/topic/create?topic=xxx&partition_num=2&replicator=3&syncdisk=1000"
+
+Explain:
+partition_num=2 : topic partition number
+replicator=3: topic replica number
+syncdisk=1000: fsync disk every syncdisk messages
+for ordered topic the query param "orderedmulti=true" is needed.
+</pre>
+The new server introduced the partitions but in order to keep compatible with the old clients, each node can hold
+only one partition of the topic. So the partition_num*replicator should not be great than the nsqd nodes.
+For the ordered topic, we can create as much as we need partitions. (replicator <= number of nsqd node)
+Also, the first channel for this topic should be created after the topic is created, otherwise this topic is not 
+allowed to be written.
+
+### The log can be adjust dynamically.
+
+This is useful to debug on the fly. 
+<pre>
+nsqd: curl -X POST "http://127.0.0.1:4151/loglevel/set?loglevel=3"
+nsqlookupd: curl -X POST "http://127.0.0.1:4161/loglevel/set?loglevel=3"
+</pre>
+The log is much more detail when the log level increased.
+
+### Change the consume position to allow consume history or skip some messages.
+
+<pre>
+curl -X POST -d "timestamp:xxxxxxxxx" "http://127.0.0.1:4151/channel/setoffset?topic=xxx&partition=xx&channel=xxx"
+
+Post body explain:
+timestamp:xxxx (the seconds since 1970-1-1)
+virtual_queue:xxx (the queue offset position from the begin)
+msgcount:xxx (the message count from the begin)
+</pre>
+For multi nsqd nodes, each node for each partition should be done using the api above.
+
+### For more documents
+
+please see the other documents under the doc 
 
 ## In Production
 
@@ -95,7 +159,7 @@ NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) a
 Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 
 [protocol]: http://nsq.io/clients/tcp_protocol_spec.html
-[installing]: http://nsq.io/deployment/installing.html
+[installing]: https://github.com/absolute8511/nsq/releases/latest
 [snakes_twitter]: https://twitter.com/imsnakes
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
@@ -103,3 +167,5 @@ Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 [contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
 [wolasi_twitter]: https://twitter.com/kisalow
+
+

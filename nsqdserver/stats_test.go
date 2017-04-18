@@ -3,15 +3,34 @@ package nsqdserver
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/absolute8511/go-nsq"
 	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"github.com/golang/snappy"
 )
+
+func readValidate2(t *testing.T, conn io.Reader, f int32, d string) []byte {
+	for {
+		resp, err := nsq.ReadResponse(conn)
+		test.Equal(t, err, nil)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Equal(t, err, nil)
+
+		if d != string(heartbeatBytes) && string(data) == string(heartbeatBytes) {
+			continue
+		}
+
+		test.Equal(t, frameType, f)
+		test.Equal(t, string(data), d)
+		return data
+	}
+}
 
 func TestStats(t *testing.T) {
 	opts := nsqdNs.NewOptions()
@@ -68,7 +87,7 @@ func TestClientAttributes(t *testing.T) {
 
 	r := snappy.NewReader(conn)
 	w := snappy.NewWriter(conn)
-	readValidate(t, r, frameTypeResponse, "OK")
+	readValidate2(t, r, frameTypeResponse, "OK")
 
 	topicName := "test_client_attributes" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopicIgnPart(topicName)

@@ -35,3 +35,6 @@ log_dir = "./"
 
 ## the time period (in hour) that the balance is allowed.
 balance_interval = ["4", "5"]
+
+## allow return topic as writable while no any channel under the topic
+allow_write_with_nochannels = true
