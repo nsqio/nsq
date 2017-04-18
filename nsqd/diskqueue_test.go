@@ -190,13 +190,16 @@ type md struct {
 }
 
 func readMetaDataFile(fileName string) md {
+	var ret md
 	f, err := os.OpenFile(fileName, os.O_RDONLY, 0600)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return ret
+		}
 		panic(err)
 	}
 	defer f.Close()
 
-	var ret md
 	_, err = fmt.Fscanf(f, "%d\n%d,%d\n%d,%d\n",
 		&ret.depth,
 		&ret.readFileNum, &ret.readPos,
