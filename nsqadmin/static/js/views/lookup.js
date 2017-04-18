@@ -21,7 +21,9 @@ var LookupView = BaseView.extend({
 
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
-        $.ajax(AppState.url('/topics?inactive=true'))
+        $.ajax({
+            url : AppState.url('/topics?inactive=true'),
+        })
             .done(function(data) {
                 this.template = require('./lookup.hbs');
                 this.render({
@@ -39,19 +41,26 @@ var LookupView = BaseView.extend({
         e.preventDefault();
         e.stopPropagation();
         var topic = $(e.target.form.elements['topic']).val();
+        var channel = $(e.target.form.elements['channel']).val();
         var partition_num = $(e.target.form.elements['partition_num']).val();
         var replicator = $(e.target.form.elements['replicator']).val();
         var retention_days = $(e.target.form.elements['retention_days']).val();
         var syncdisk = $(e.target.form.elements['syncdisk']).val();
-        if (topic === '' || partition_num === '' || replicator === '') {
+        var orderedmulti = 'false'
+        if($(e.target.form.elements['orderedmulti']).is(':checked')){
+            orderedmulti = 'true'
+        }
+        if (topic === '' || partition_num === '' || replicator === '' || channel === '') {
             return;
         }
         $.post(AppState.url('/topics'), JSON.stringify({
                 'topic': topic,
+                'channel': channel,
                 'partition_num': partition_num,
                 'replicator': replicator,
                 'retention_days': retention_days,
-                'syncdisk': syncdisk
+                'syncdisk': syncdisk,
+                'orderedmulti': orderedmulti
             }))
             .done(function() { window.location.reload(true); })
             .fail(this.handleAJAXError.bind(this));

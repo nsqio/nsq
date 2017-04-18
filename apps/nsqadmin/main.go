@@ -49,6 +49,9 @@ var (
 	traceLogIndexID   = flagSet.String("trace-log-index-id", "", "trace service log index")
 	traceLogIndexName = flagSet.String("trace-log-index-name", "", "trace service log index")
 
+	channelCreateRetry = flagSet.Int("channel-create-retry", 3, "max retry for creating channel in topic creation")
+	channelCreateBackoffInterval = flagSet.Int("channel-create-backoff-interval", 1000, "backoff interval when default channel fail to create in topic creation")
+
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
 )

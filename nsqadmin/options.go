@@ -33,6 +33,9 @@ type Options struct {
 	TraceLogIndexID          string `flag:"trace-log-index-id"`
 	TraceLogIndexName        string `flag:"trace-log-index-name"`
 
+	ChannelCreationRetry	int	`flag:"channel-create-retry"`
+	ChannelCreationBackoffInterval	int `flag:"channel-create-backoff-interval"`
+
 	LogDir string `flag:"log-dir" cfg:"log_dir"`
 	Logger levellogger.Logger
 }
@@ -45,6 +48,8 @@ func NewOptions() *Options {
 		StatsdCounterFormat: "stats.counters.%s.count",
 		StatsdGaugeFormat:   "stats.gauges.%s",
 		StatsdInterval:      60 * time.Second,
+		ChannelCreationRetry:3,
+		ChannelCreationBackoffInterval:1000,
 		Logger:              &levellogger.GLogger{},
 	}
 }

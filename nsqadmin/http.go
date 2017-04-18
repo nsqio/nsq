@@ -753,6 +753,8 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		Replicator    string `json:"replicator"`
 		RetentionDays string `json:"retention_days"`
 		SyncDisk      string `json:"syncdisk"`
+		Channel       string `json:"channel"`
+		OrderedMulti  string `json:"orderedmulti"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -784,7 +786,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 	syncDisk, _ := strconv.Atoi(body.SyncDisk)
 	err = s.ci.CreateTopic(body.Topic, pnum, replica,
-		syncDisk, body.RetentionDays,
+		syncDisk, body.RetentionDays, body.OrderedMulti,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
@@ -797,6 +799,27 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 
 	s.notifyAdminAction("create_topic", body.Topic, "", "", req)
+
+	//create default channel
+	if body.Channel != "" {
+		go func() {
+			retry := s.ctx.nsqadmin.opts.ChannelCreationRetry
+			for i := 0; i < retry; i++ {
+				err := s.ci.CreateTopicChannelAfterTopicCreation(body.Topic, body.Channel,
+					s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses, pnum)
+				if err == nil {
+					s.notifyAdminAction("create_channel", body.Topic, body.Channel, "", req)
+					s.ctx.nsqadmin.logf("channel created.")
+					break
+				} else {
+					s.ctx.nsqadmin.logf(err.Error())
+					backoffTimeout := time.Duration(s.ctx.nsqadmin.opts.ChannelCreationBackoffInterval * pnum) * time.Millisecond
+					s.ctx.nsqadmin.logf("Backoff for %v as previous channel %v creation attemp failed.", backoffTimeout, body.Channel)
+					time.Sleep(backoffTimeout)
+				}
+			}
+		}()
+	}
 
 	return struct {
 		Message string `json:"message"`
