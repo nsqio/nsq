@@ -46,7 +46,6 @@
         {{/if}}
     </div>
 </div>
-
 <div class="row">
     <div class="col-md-4">
         <form class="hierarchy">
@@ -56,11 +55,13 @@
                 before services are deployed to production.
             </div>
             <div class="form-group">
-                <input type="text" name="topic" placeholder="Topic Name">
-                <input type="number" min=1 max=255 name="partition_num" style="width:100px;" placeholder="Partition Num">
-                <input type="number" min=1 max=5 name="replicator" style="width:100px;" placeholder="Replicator">
-                <input type="number" min=0 max=50000 step=100 name="syncdisk" style="width:150px;" placeholder="SyncDisk(2000)">
-                <input type="number" min=0 max=300 step=1 name="retention_days" style="width:150px;" placeholder="Retention(0)">
+                Topic Name: <input type="text" name="topic" placeholder="Topic Name" required><br>
+                Partition Number: <input type="number" min=1 max=255 name="partition_num" style="width:100px;" placeholder="Partition Num" required><br>
+                Replica Number: <input type="number" min=1 max=5 name="replicator" style="width:100px;" placeholder="Replicator" required><br>
+                Sync Disk: <input type="number" min=0 max=50000 step=100 name="syncdisk" style="width:150px;" placeholder="SyncDisk(2000)"><br>
+                Retention Days: <input type="number" min=0 max=300 step=1 name="retention_days" style="width:150px;" placeholder="Retention(0)"><br>
+                Default Channel: <input type="text" name="channel" placeholder="Channel Name" required><br>
+                Is Topic Ordered: <input type="checkbox" name="orderedmulti" value="Is Ordered"><br>
             </div>
             <button class="btn btn-default" type="submit">Create</button>
         </form>

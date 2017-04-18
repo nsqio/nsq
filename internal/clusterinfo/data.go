@@ -14,6 +14,7 @@ import (
 	"github.com/blang/semver"
 	"math"
 	"sync/atomic"
+	"errors"
 )
 
 var v1EndpointVersion semver.Version
@@ -893,6 +894,65 @@ func (c *ClusterInfo) TombstoneNodeForTopic(topic string, node string, lookupdHT
 	return nil
 }
 
+func (c *ClusterInfo) CreateTopicChannelAfterTopicCreation(topicName string, channelName string, lookupdHTTPAddrs []string, partitionNum int) error {
+	var errs []error
+
+	//fetch nsqd from leader only
+	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
+	if err != nil {
+		c.logf("failed to list lookupd nodes while create topic: %v", err)
+		return err
+	}
+	leaderAddr := make([]string, 0)
+	leaderAddr = append(leaderAddr, net.JoinHostPort(lookupdNodes.LeaderNode.NodeIP, lookupdNodes.LeaderNode.HttpPort))
+
+	producers, partitionProducers, err := c.GetTopicProducers(topicName, leaderAddr, nil)
+	if err != nil {
+		pe, ok := err.(PartialErr)
+		if !ok {
+			return err
+		}
+		errs = append(errs, pe.Errors()...)
+	}
+
+	if len(producers) == 0 && len(partitionProducers) == 0 {
+		c.logf(fmt.Sprintf("Producer:%d, PartitionProducers:%d", len(producers), len(partitionProducers)));
+		text := fmt.Sprintf("no producer or partition producer found for Topic:%s, Channel:%s", topicName, channelName)
+		return errors.New(text)
+	}
+	if len(producers) > 0 && len(partitionProducers) == 0 {
+		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
+		err = c.versionPivotProducers(producers, "create_channel", "channel/create", qs)
+		if err != nil {
+			pe, ok := err.(PartialErr)
+			if !ok {
+				return err
+			}
+			errs = append(errs, pe.Errors()...)
+		}
+	} else {
+		if len(partitionProducers) < partitionNum {
+			text := fmt.Sprintf("Partition number: %v returned from leader lookup is less than expected partition number: %v", len(partitionProducers), partitionNum)
+			return errors.New(text)
+		}
+		for pid, pp := range partitionProducers {
+			qs := fmt.Sprintf("topic=%s&channel=%s&partition=%s", url.QueryEscape(topicName), url.QueryEscape(channelName), pid)
+			err = c.versionPivotProducers(pp, "create_channel", "channel/create", qs)
+			if err != nil {
+				pe, ok := err.(PartialErr)
+				if !ok {
+					return err
+				}
+				errs = append(errs, pe.Errors()...)
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return ErrList(errs)
+	}
+	return nil
+}
+
 func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, lookupdHTTPAddrs []string) error {
 	var errs []error
 
@@ -935,13 +995,13 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 }
 
 func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int,
-	retentionDays string, lookupdHTTPAddrs []string) error {
+	retentionDays string, orderedmulti string, lookupdHTTPAddrs []string) error {
 	var errs []error
 
 	// TODO: found the master lookup node first
 	// create the topic on all the nsqlookupd
-	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d&retention=%s",
-		url.QueryEscape(topicName), partitionNum, replica, syncDisk, retentionDays)
+	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d&retention=%s&orderedmulti=%s",
+		url.QueryEscape(topicName), partitionNum, replica, syncDisk, retentionDays, orderedmulti)
 	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
 	if err != nil {
 		c.logf("failed to list lookupd nodes while create topic: %v", err)
