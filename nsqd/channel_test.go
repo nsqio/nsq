@@ -1,9 +1,6 @@
 package nsqd
 
 import (
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"testing"

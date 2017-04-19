@@ -1434,8 +1434,7 @@ func TestReqTimeoutRange(t *testing.T) {
 
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("ch")
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	topic.Pub([]wal.EntryWriterTo{NewEntry([]byte("test body"), time.Now().UnixNano(), 0)})
 
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
@@ -1443,31 +1442,31 @@ func TestReqTimeoutRange(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
-	msgOut, _ := decodeMessage(data)
+	msgOut, _ := decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
 
-	_, err = nsq.Requeue(nsq.MessageID(msg.ID), -1).WriteTo(conn)
+	_, err = nsq.Requeue(nsq.MessageID(msgOut.ID), -1).WriteTo(conn)
 	test.Nil(t, err)
 
 	// It should be immediately available for another attempt
 	resp, err = nsq.ReadResponse(conn)
 	test.Nil(t, err)
 	frameType, data, err = nsq.UnpackResponse(resp)
-	msgOut, _ = decodeMessage(data)
+	msgOut, _ = decodeWireMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
-	test.Equal(t, msg.ID, msgOut.ID)
+	// test.Equal(t, msg.ID, msgOut.ID)
 
 	// The priority (processing time) should be >= this
 	minTs := time.Now().Add(opts.MaxReqTimeout).UnixNano()
 
-	_, err = nsq.Requeue(nsq.MessageID(msg.ID), opts.MaxReqTimeout*2).WriteTo(conn)
+	_, err = nsq.Requeue(nsq.MessageID(msgOut.ID), opts.MaxReqTimeout*2).WriteTo(conn)
 	test.Nil(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 
 	channel.deferredMutex.Lock()
-	pqItem := channel.deferredMessages[msg.ID]
+	pqItem := channel.deferredMessages[msgOut.ID]
 	channel.deferredMutex.Unlock()
 
 	test.NotNil(t, pqItem)
