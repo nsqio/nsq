@@ -155,7 +155,7 @@ type TopicMsgStatsInfo struct {
 
 func (t *TopicStats) Add(a *TopicStats) {
 	t.Node = "*"
-	if t.IsMultiOrdered {
+	if t.IsMultiOrdered || a.IsMultiOrdered {
 		// for multi ordered partitions, it may have several partitions on the single node,
 		// so in order to get all the partitions, we should query "topic.*" to get all partitions
 		t.StatsdName = t.TopicName + ".*"
@@ -222,7 +222,7 @@ type ChannelStats struct {
 
 func (c *ChannelStats) Add(a *ChannelStats) {
 	c.Node = "*"
-	if c.IsMultiOrdered {
+	if c.IsMultiOrdered || a.IsMultiOrdered {
 		c.StatsdName = c.TopicName + ".*"
 	} else {
 		c.StatsdName = c.TopicName

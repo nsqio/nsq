@@ -370,7 +370,15 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		}
 	}
 
-	allNodesTopicStats := &clusterinfo.TopicStats{TopicName: topicName}
+	isOrdered := false
+	if len(topicStats) > 0 {
+		isOrdered = topicStats[0].IsMultiOrdered
+	}
+	allNodesTopicStats := &clusterinfo.TopicStats{
+		TopicName:      topicName,
+		StatsdName:     topicName,
+		IsMultiOrdered: isOrdered,
+	}
 	for _, t := range topicStats {
 		stat, ok := statsMap[t.TopicName]
 		if ok {
@@ -813,7 +821,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 					break
 				} else {
 					s.ctx.nsqadmin.logf(err.Error())
-					backoffTimeout := time.Duration(s.ctx.nsqadmin.opts.ChannelCreationBackoffInterval * pnum) * time.Millisecond
+					backoffTimeout := time.Duration(s.ctx.nsqadmin.opts.ChannelCreationBackoffInterval*pnum) * time.Millisecond
 					s.ctx.nsqadmin.logf("Backoff for %v as previous channel %v creation attemp failed.", backoffTimeout, body.Channel)
 					time.Sleep(backoffTimeout)
 				}
