@@ -50,7 +50,7 @@ func (n *NsqdServer) statsdLoop() {
 				// try to find the topic in the last collection
 				lastTopic := nsqd.TopicStats{}
 				for _, checkTopic := range lastStats {
-					if topic.TopicName == checkTopic.TopicName {
+					if topic.StatsdName == checkTopic.StatsdName {
 						lastTopic = checkTopic
 						break
 					}
