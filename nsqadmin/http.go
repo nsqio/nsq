@@ -654,26 +654,31 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		return nil, http_api.Err{500, err.Error()}
 	}
 	traceReq.Header.Add("Content-Type", "application/json; charset=UTF-8")
+	var traceResp TraceLogResp
 	resp, err := http.DefaultClient.Do(traceReq)
 	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, http_api.Err{resp.StatusCode,
-			fmt.Errorf("trace query service response: %v %v", resp.Status, string(body)).Error()}
-	}
-	var traceResp TraceLogResp
-	err = json.Unmarshal(body, &traceResp)
-	if err != nil {
-		s.ctx.nsqadmin.logf("parse search respnse err: %v", err)
+		s.ctx.nsqadmin.logf("search failed: %v", err)
 		warnMessages = append(warnMessages, err.Error())
+	} else {
+		body, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			s.ctx.nsqadmin.logf("search failed: %v", err)
+			warnMessages = append(warnMessages, err.Error())
+		} else {
+			if resp.StatusCode != http.StatusOK {
+				s.ctx.nsqadmin.logf("search failed: %v", fmt.Errorf("trace query service response: %v %v", resp.Status, string(body)).Error())
+				warnMessages = append(warnMessages, resp.Status)
+			} else {
+				err = json.Unmarshal(body, &traceResp)
+				if err != nil {
+					s.ctx.nsqadmin.logf("parse search respnse err: %v", err)
+					warnMessages = append(warnMessages, err.Error())
+				}
+				s.ctx.nsqadmin.logf("parse search respnse : %v", traceResp)
+			}
+		}
 	}
-	s.ctx.nsqadmin.logf("parse search respnse : %v", traceResp)
 	resultList := traceResp.Data
 
 	if topicName == "" {
