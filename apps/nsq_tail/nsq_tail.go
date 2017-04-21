@@ -21,6 +21,7 @@ var (
 	topic         = flag.String("topic", "", "NSQ topic")
 	partition     = flag.Int("partition", -1, "NSQ topic partition")
 	channel       = flag.String("channel", "", "NSQ channel")
+	ordered       = flag.Bool("ordered", false, "consume in ordered way")
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 
@@ -88,6 +89,9 @@ func main() {
 
 	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
+	if *ordered {
+		cfg.EnableOrdered = true
+	}
 
 	consumer, err := nsq.NewPartitionConsumer(*topic, *partition, *channel, cfg)
 	if err != nil {
