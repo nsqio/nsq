@@ -33,7 +33,11 @@
 
 <div class="row">
     <div class="col-md-12">
-    <h4>Topic Coordinator Status </h4>
+    <div class="toggle">
+        <h4>Topic Coordinator Status</h4>
+        <a>click to show >>></a>
+    </div>
+    <div class="canHide" style="display: none;">
     <table class="table table-bordered table-condensed">
         <tr>
             <th>Partition ID</th>
@@ -73,11 +77,16 @@
         {{/each}}
     </table>
     </div>
+    </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-    <h4>Topic Message Queue</h4>
+    <div class="toggle">
+        <h4>Topic Message Queue</h4>
+        <a>click to show >>></a>
+    </div>
+    <div class="canHide" style="display: none;">
     <table class="table table-bordered table-condensed">
         {{#if e2e_processing_latency.percentiles.length}}
         <tr>
@@ -184,12 +193,17 @@
         {{/if}}
     </table>
     </div>
+    </div>
 </div>
 {{/unless}}
 
 <div class="row">
     <div class="col-md-12">
-        <h4>Message Size Distribution</h4>
+        <div class="toggle">
+            <h4>Message Size Distribution</h4>
+            <a>click to show >>></a>
+        </div>
+        <div class="canHide" style="display: none;">
         <table class="table table-bordered table-condensed">
             <tr>
                 <th>NSQd Host</th>
@@ -227,12 +241,17 @@
             </tr>
             {{/each}}
         </table>
+        </div>
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-        <h4>Message Latency Distribution</h4>
+        <div class="toggle">
+            <h4>Message Latency Distribution</h4>
+            <a>click to show >>></a>
+        </div>
+        <div class="canHide" style="display: none;">
             <table class="table table-bordered table-condensed">
                 <tr>
                     <th>NSQd Host</th>
@@ -270,6 +289,7 @@
                 </tr>
                 {{/each}}
             </table>
+        </div>
     </div>
 </div>
 
