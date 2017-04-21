@@ -1091,6 +1091,12 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		msgID, timeoutDuration, true)
 	if topic != nil && topic.GetDynamicInfo().OrderedMulti {
 		toEnd = false
+		// for ordered topic, disable defer since it may block the consume
+		if timeoutDuration > 0 {
+			nsqd.NsqLogger().Logf("ignore delay for ordered topic: %v, %v, %v, %v",
+				client, client.Channel.GetTopicName(), client.Channel.GetName(), timeoutDuration)
+			return nil, nil
+		}
 	}
 	if toEnd {
 		isOldDeferred, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
