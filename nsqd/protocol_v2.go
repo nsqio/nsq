@@ -615,9 +615,23 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
-	channel := topic.GetChannel(channelName)
-	channel.AddClient(client.ID, client)
+	var topic *Topic
+	var channel *Channel
+
+	for {
+		topic = p.ctx.nsqd.GetTopic(topicName)
+		if topic.Exiting() {
+			time.Sleep(1 * time.Microsecond)
+			continue
+		}
+		channel = topic.GetChannel(channelName)
+		if channel.Exiting() {
+			time.Sleep(1 * time.Microsecond)
+			continue
+		}
+		channel.AddClient(client.ID, client)
+		break
+	}
 
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel
