@@ -33,9 +33,9 @@ nsqd_http_addresses = [
 
 log_dir = "/data/logs/nsqadmin"
 
-trace_query_url = ""
-trace_app_id = ""
-trace_app_name = ""
-trace_log_index_id = ""
-trace_log_index_name = ""
+#trace_query_url = ""
+#trace_app_id = ""
+#trace_app_name = ""
+#trace_log_index_id = ""
+#trace_log_index_name = ""
 

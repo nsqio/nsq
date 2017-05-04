@@ -777,6 +777,12 @@ func (c *Channel) ReqWithNewMsgAndConfirmOld(clientID int64, id MessageID,
 	// to avoid too much inflight messages, in this way we should just
 	// treat the client timeouted this message
 	if atomic.LoadInt64(&c.deferredCount) >= c.option.MaxConfirmWin {
+		if isOldDeferred {
+			atomic.AddInt64(&c.deferredCount, -1)
+		} else {
+			atomic.AddUint64(&c.timeoutCount, 1)
+		}
+
 		if client != nil {
 			client.TimedOutMessage(isOldDeferred)
 		}

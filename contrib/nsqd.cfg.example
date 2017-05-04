@@ -22,7 +22,7 @@ http_address = "0.0.0.0:4151"
 # https_address = "0.0.0.0:4152"
 
 ## local reverse proxy port, basically used for collecting the stats 
-reverse_proxy_port = "4153"
+# reverse_proxy_port = "4153"
 
 ## keep alive heartbeat interval between the nsqd node with the nsqlookupd
 lookup_ping_interval = "5s"
@@ -31,7 +31,7 @@ lookup_ping_interval = "5s"
 # data_path = "/var/lib/nsq"
 
 ## the remote message trace server
-remote_tracer = "127.0.0.1:1234"
+# remote_tracer = "127.0.0.1:1234"
 
 ## default retention days to keep the consumed topic data
 retention_days = 7
@@ -139,6 +139,7 @@ snappy = true
 
 ## bigger level means more log details
 log_level = 2
+
 ## if empty, use the default flag value in glog
 log_dir = "./"
 
