@@ -698,11 +698,15 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		extraJsonStr, _ := strconv.Unquote(m.Extra)
 		err := json.Unmarshal([]byte(extraJsonStr), &items)
 		if err != nil || len(items) == 0 {
-			s.ctx.nsqadmin.logf("msg extra invalid: %v: %v", m.Extra, err)
+			s.ctx.nsqadmin.logf("msg extra invalid: %v: %v, %v", m.Extra, m.Extra1, err)
 			err = json.Unmarshal([]byte(m.Extra), &items)
 			// try compatible
 			if err != nil || len(items) == 0 {
-				continue
+				extraJsonStr, _ := strconv.Unquote(m.Extra1)
+				err = json.Unmarshal([]byte(extraJsonStr), &items)
+				if err != nil || len(items) == 0 {
+					continue
+				}
 			}
 		}
 		item := items[0]

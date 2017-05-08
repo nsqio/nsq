@@ -65,6 +65,7 @@ type TraceLogData struct {
 	HostName string `json:"hostName"`
 	Content  string `json:"content"`
 	Extra    string `json:"extra"`
+	Extra1   string `json:"extra1"`
 	TraceLogItemInfo
 	RawMsgData string `json:"raw_msg_data"`
 }
