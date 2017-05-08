@@ -32,7 +32,7 @@ type TraceLogQueryInfo struct {
 func NewLogQueryInfo(appID string, appName string, logStoreID string,
 	logStoreName string, span time.Duration, indexFields IndexFieldsQuery) *TraceLogQueryInfo {
 	q := &TraceLogQueryInfo{
-		Sort:         "time",
+		Sort:         "score",
 		AppID:        appID,
 		AppName:      appName,
 		LogStoreID:   logStoreID,
@@ -44,7 +44,7 @@ func NewLogQueryInfo(appID string, appName string, logStoreID string,
 	d, _ := json.Marshal(indexFields)
 	q.IndexFields = string(d)
 	q.PageNumber = 1
-	q.PageSize = 30
+	q.PageSize = 60
 	return q
 }
 
