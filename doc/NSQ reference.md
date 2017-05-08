@@ -1,5 +1,19 @@
 # 新版使用指南
 
+## 简易部署配置指南
+大部分参数和原版本一致, 除了几个新的集群相关的配置之外. 简单的配置步骤如下:
+
+对nsqlookup和nsqd 使用模板配置文件并在配置文件中修改几个必要配置项
+<pre>
+broadcast_interface = // 监听的网卡名称
+cluster_id = // 集群id, 用于区分不同集群
+cluster_leadership_addresses = // etcd集群地址
+log_dir=
+data_path=
+</pre>
+然后分别使用 `nsqlookupd -config=/path/to/config` 启动nsqlookup, `nsqd -config=/path/to/config` 启动nsqd. (先启动nsqlookupd).
+nsqdadmin使用默认配置和nsqlookupd同机部署即可.
+
 ## 实现上值得一提的兼容性改动
 ### 内部ID
 内部消息ID 使用16 字节存储, 但是具体的内容有所变动, 理论上外部客户端不依赖内部消息ID的具体内容, 因此标准的SDK可以兼容使用. 内部ID由原来的16字节的ascii hex string, 改变成了8字节的自增ID和8字节的跟踪ID.客户端的新功能和高级接口会使用跟踪ID的内容.
