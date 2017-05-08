@@ -479,6 +479,10 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	}
 	allowMultiOrdered := reqParams.Get("orderedmulti")
 
+	if s.ctx.nsqlookupd.coordinator == nil {
+		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
+	}
+
 	if !s.ctx.nsqlookupd.coordinator.IsMineLeader() {
 		nsqlookupLog.LogDebugf("create topic (%s) from remote %v should request to leader", topicName, req.RemoteAddr)
 		return nil, http_api.Err{400, consistence.ErrFailedOnNotLeader}
@@ -486,9 +490,6 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	nsqlookupLog.Logf("creating topic(%s) with partition %v replicator: %v load: %v", topicName, pnum, replicator, suggestLF)
 
-	if s.ctx.nsqlookupd.coordinator == nil {
-		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
-	}
 	meta := consistence.TopicMetaInfo{}
 	meta.PartitionNum = pnum
 	meta.Replica = replicator
