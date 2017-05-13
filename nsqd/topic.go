@@ -107,7 +107,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		channel = NewChannel(t.name, channelName, t.ctx, deleteCallback)
 		t.channelMap[channelName] = channel
-		t.ctx.nsqd.logf("TOPIC(%s): new channel(%s)", t.name, channel.name)
+		t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): new channel(%s)", t.name, channel.name)
 		return channel, true
 	}
 	return channel, false
@@ -136,7 +136,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	numChannels := len(t.channelMap)
 	t.Unlock()
 
-	t.ctx.nsqd.logf("TOPIC(%s): deleting channel %s", t.name, channel.name)
+	t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting channel %s", t.name, channel.name)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
@@ -196,7 +196,7 @@ func (t *Topic) put(m *Message) error {
 		bufferPoolPut(b)
 		t.ctx.nsqd.SetHealth(err)
 		if err != nil {
-			t.ctx.nsqd.logf(
+			t.ctx.nsqd.logf(LOG_ERROR,
 				"TOPIC(%s) ERROR: failed to write message to backend - %s",
 				t.name, err)
 			return err
@@ -236,7 +236,7 @@ func (t *Topic) messagePump() {
 		case buf = <-backendChan:
 			msg, err = decodeMessage(buf)
 			if err != nil {
-				t.ctx.nsqd.logf("ERROR: failed to decode message - %s", err)
+				t.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
 		case <-t.channelUpdateChan:
@@ -284,7 +284,7 @@ func (t *Topic) messagePump() {
 			}
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				t.ctx.nsqd.logf(
+				t.ctx.nsqd.logf(LOG_ERROR,
 					"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
 					t.name, msg.ID, channel.name, err)
 			}
@@ -292,7 +292,7 @@ func (t *Topic) messagePump() {
 	}
 
 exit:
-	t.ctx.nsqd.logf("TOPIC(%s): closing ... messagePump", t.name)
+	t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): closing ... messagePump", t.name)
 }
 
 // Delete empties the topic and all its channels and closes
@@ -311,13 +311,13 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	if deleted {
-		t.ctx.nsqd.logf("TOPIC(%s): deleting", t.name)
+		t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting", t.name)
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
 		t.ctx.nsqd.Notify(t)
 	} else {
-		t.ctx.nsqd.logf("TOPIC(%s): closing", t.name)
+		t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): closing", t.name)
 	}
 
 	close(t.exitChan)
@@ -343,7 +343,7 @@ func (t *Topic) exit(deleted bool) error {
 		err := channel.Close()
 		if err != nil {
 			// we need to continue regardless of error to close all the channels
-			t.ctx.nsqd.logf("ERROR: channel(%s) close - %s", channel.name, err)
+			t.ctx.nsqd.logf(LOG_ERROR, "channel(%s) close - %s", channel.name, err)
 		}
 	}
 
@@ -369,7 +369,7 @@ func (t *Topic) flush() error {
 	var msgBuf bytes.Buffer
 
 	if len(t.memoryMsgChan) > 0 {
-		t.ctx.nsqd.logf(
+		t.ctx.nsqd.logf(LOG_INFO,
 			"TOPIC(%s): flushing %d memory messages to backend",
 			t.name, len(t.memoryMsgChan))
 	}
@@ -379,7 +379,7 @@ func (t *Topic) flush() error {
 		case msg := <-t.memoryMsgChan:
 			err := writeMessageToBackend(&msgBuf, msg, t.backend)
 			if err != nil {
-				t.ctx.nsqd.logf(
+				t.ctx.nsqd.logf(LOG_ERROR,
 					"ERROR: failed to write message to backend - %s", err)
 			}
 		default:

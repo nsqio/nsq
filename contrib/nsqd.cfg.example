@@ -1,5 +1,5 @@
-## enable verbose logging
-verbose = false
+## log verbosity level: debug, info, warn, error, or fatal
+log-level = "info"
 
 ## unique identifier (int) for this worker (will default to a hash of hostname)
 # id = 5150

@@ -7,8 +7,9 @@ import (
 )
 
 type Options struct {
-	Verbose   bool   `flag:"verbose"`
+	LogLevel  string `flag:"log-level"`
 	LogPrefix string `flag:"log-prefix"`
+	Verbose   bool   `flag:"verbose"` // for backwards compatibility
 
 	TCPAddress       string `flag:"tcp-address"`
 	HTTPAddress      string `flag:"http-address"`
@@ -28,6 +29,7 @@ func NewOptions() *Options {
 
 	return &Options{
 		LogPrefix:        "[nsqlookupd] ",
+		LogLevel:         "info",
 		TCPAddress:       "0.0.0.0:4160",
 		HTTPAddress:      "0.0.0.0:4161",
 		BroadcastAddress: hostname,

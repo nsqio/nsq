@@ -34,7 +34,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = "debug"
 
 	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: New(opts)}}
 
