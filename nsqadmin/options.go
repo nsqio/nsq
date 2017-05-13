@@ -5,7 +5,11 @@ import (
 )
 
 type Options struct {
-	LogPrefix   string `flag:"log-prefix"`
+	LogLevel  string `flag:"log-level"`
+	logLevel  int
+	LogPrefix string `flag:"log-prefix"`
+	Verbose   bool   `flag:"verbose"` // for backwards compatibility
+
 	HTTPAddress string `flag:"http-address"`
 
 	GraphiteURL   string `flag:"graphite-url"`
@@ -38,6 +42,7 @@ type Options struct {
 func NewOptions() *Options {
 	return &Options{
 		LogPrefix:                "[nsqadmin] ",
+		LogLevel:                 "info",
 		HTTPAddress:              "0.0.0.0:4171",
 		StatsdPrefix:             "nsq.%s",
 		StatsdCounterFormat:      "stats.counters.%s.count",

@@ -151,7 +151,7 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	c.ctx.nsqd.logf("[%s] IDENTIFY: %+v", c, data)
+	c.ctx.nsqd.logf(LOG_INFO, "[%s] IDENTIFY: %+v", c, data)
 
 	c.metaLock.Lock()
 	c.ClientID = data.ClientID
@@ -303,10 +303,8 @@ func (c *clientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	if c.ctx.nsqd.getOpts().Verbose {
-		c.ctx.nsqd.logf("[%s] state rdy: %4d inflt: %4d",
-			c, readyCount, inFlightCount)
-	}
+	c.ctx.nsqd.logf(LOG_DEBUG, "[%s] state rdy: %4d inflt: %4d",
+		c, readyCount, inFlightCount)
 
 	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false

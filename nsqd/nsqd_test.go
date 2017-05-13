@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -495,6 +496,7 @@ func TestSetHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	nsqd := New(opts)
+	defer nsqd.Exit()
 
 	test.Equal(t, nil, nsqd.GetError())
 	test.Equal(t, true, nsqd.IsHealthy())
@@ -512,4 +514,78 @@ func TestSetHealth(t *testing.T) {
 	test.Nil(t, nsqd.GetError())
 	test.Equal(t, "OK", nsqd.GetHealth())
 	test.Equal(t, true, nsqd.IsHealthy())
+}
+
+func TestCrashingLogger(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		// Test invalid log level causes error
+		opts := NewOptions()
+		opts.LogLevel = "bad"
+		_ = New(opts)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestCrashingLogger")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+type mockLogger struct {
+	Count int
+}
+
+func (l *mockLogger) Output(maxdepth int, s string) error {
+	l.Count++
+	return nil
+}
+
+func TestLogging(t *testing.T) {
+	logger := &mockLogger{}
+	opts := NewOptions()
+	opts.Logger = logger
+
+	// Test only fatal get through
+	opts.LogLevel = "FaTaL"
+	nsqd := New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqd.logf(i, "Test")
+	}
+	test.Equal(t, 1, logger.Count)
+	nsqd.Exit()
+
+	// Test only warnings or higher get through
+	opts.LogLevel = "WARN"
+	nsqd = New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqd.logf(i, "Test")
+	}
+	test.Equal(t, 3, logger.Count)
+	nsqd.Exit()
+
+	// Test everything gets through
+	opts.LogLevel = "debuG"
+	nsqd = New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqd.logf(i, "Test")
+	}
+	test.Equal(t, 5, logger.Count)
+	nsqd.Exit()
+
+	// Test everything gets through with verbose = true
+	opts.LogLevel = "fatal"
+	nsqd = New(opts)
+	logger.Count = 0
+	opts.Verbose = true
+	for i := 1; i <= 5; i++ {
+		nsqd.logf(i, "Test")
+	}
+	test.Equal(t, 5, logger.Count)
+	nsqd.Exit()
+
 }

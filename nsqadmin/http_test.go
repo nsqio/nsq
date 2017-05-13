@@ -554,6 +554,25 @@ func TestHTTPconfig(t *testing.T) {
 	body, _ = ioutil.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, addrs, string(body))
+
+	url = fmt.Sprintf("http://%s/config/log_level", nsqadmin1.RealHTTPAddr())
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`fatal`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, LOG_FATAL, nsqadmin1.getOpts().logLevel)
+
+	url = fmt.Sprintf("http://%s/config/log_level", nsqadmin1.RealHTTPAddr())
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`bad`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 400, resp.StatusCode)
 }
 
 func TestHTTPconfigCIDR(t *testing.T) {

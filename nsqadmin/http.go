@@ -196,10 +196,10 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get topics - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get topics - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -242,20 +242,20 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get topic producers - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get topic producers - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get topic metadata - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get topic metadata - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -282,20 +282,20 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get topic producers - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get topic producers - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get channel metadata - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get channel metadata - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -312,10 +312,10 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps h
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nodes - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get nodes - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -334,10 +334,10 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get producers - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get producers - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -348,7 +348,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 
 	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "")
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
+		s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get nsqd stats - %s", err)
 		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 	}
 
@@ -398,10 +398,10 @@ func (s *httpServer) tombstoneNodeForTopicHandler(w http.ResponseWriter, req *ht
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to tombstone node for topic - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to tombstone node for topic - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -437,10 +437,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to create topic/channel - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to create topic/channel - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -465,10 +465,10 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to delete topic - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to delete topic - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -491,10 +491,10 @@ func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Reque
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to delete channel - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to delete channel - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -577,10 +577,10 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to %s topic/channel - %s", body.Action, err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to %s topic/channel - %s", body.Action, err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -604,20 +604,20 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get counter producer list - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get counter producer list - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 	_, channelStats, err := s.ci.GetNSQDStats(producers, "")
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get nsqd stats - %s", err)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get nsqd stats - %s", err)
 			return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
 		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
+		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
 
@@ -667,7 +667,7 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 	query := fmt.Sprintf("/render?%s", params.Encode())
 	url := s.ctx.nsqadmin.getOpts().GraphiteURL + query
 
-	s.ctx.nsqadmin.logf("GRAPHITE: %s", url)
+	s.ctx.nsqadmin.logf(LOG_INFO, "GRAPHITE: %s", url)
 
 	var response []struct {
 		Target     string       `json:"target"`
@@ -675,7 +675,7 @@ func (s *httpServer) graphiteHandler(w http.ResponseWriter, req *http.Request, p
 	}
 	err = s.client.GETV1(url, &response)
 	if err != nil {
-		s.ctx.nsqadmin.logf("ERROR: graphite request failed - %s", err)
+		s.ctx.nsqadmin.logf(LOG_ERROR, "graphite request failed - %s", err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
@@ -700,12 +700,12 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 		_, ipnet, _ := net.ParseCIDR(allowConfigFromCIDR)
 		addr, _, err := net.SplitHostPort(req.RemoteAddr)
 		if err != nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to parse RemoteAddr %s", req.RemoteAddr)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to parse RemoteAddr %s", req.RemoteAddr)
 			return nil, http_api.Err{400, "INVALID_REMOTE_ADDR"}
 		}
 		ip := net.ParseIP(addr)
 		if ip == nil {
-			s.ctx.nsqadmin.logf("ERROR: failed to parse RemoteAddr %s", req.RemoteAddr)
+			s.ctx.nsqadmin.logf(LOG_ERROR, "failed to parse RemoteAddr %s", req.RemoteAddr)
 			return nil, http_api.Err{400, "INVALID_REMOTE_ADDR"}
 		}
 		if !ipnet.Contains(ip) {
@@ -732,6 +732,16 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
+		case "log_level":
+			logLevelStr := string(body)
+			logLevelInt := s.ctx.nsqadmin.logLevelFromString(logLevelStr)
+			if logLevelInt == -1 {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+
+			// save the log level
+			opts.LogLevel = logLevelStr
+			opts.logLevel = logLevelInt
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}

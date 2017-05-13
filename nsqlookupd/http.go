@@ -142,7 +142,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
-	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
+	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
 	key := Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
@@ -162,13 +162,13 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
 	for _, registration := range registrations {
-		s.ctx.nsqlookupd.logf("DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
+		s.ctx.nsqlookupd.logf(LOG_INFO, "DB: removing channel(%s) from topic(%s)", registration.SubKey, topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}
 
 	registrations = s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	for _, registration := range registrations {
-		s.ctx.nsqlookupd.logf("DB: removing topic(%s)", topicName)
+		s.ctx.nsqlookupd.logf(LOG_INFO, "DB: removing topic(%s)", topicName)
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}
 
@@ -191,7 +191,7 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
 	}
 
-	s.ctx.nsqlookupd.logf("DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
+	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	for _, p := range producers {
 		thisNode := fmt.Sprintf("%s:%d", p.peerInfo.BroadcastAddress, p.peerInfo.HTTPPort)
@@ -214,11 +214,11 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{400, err.Error()}
 	}
 
-	s.ctx.nsqlookupd.logf("DB: adding channel(%s) in topic(%s)", channelName, topicName)
+	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding channel(%s) in topic(%s)", channelName, topicName)
 	key := Registration{"channel", topicName, channelName}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
-	s.ctx.nsqlookupd.logf("DB: adding topic(%s)", topicName)
+	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
 	key = Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
 
@@ -241,7 +241,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
-	s.ctx.nsqlookupd.logf("DB: removing channel(%s) from topic(%s)", channelName, topicName)
+	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: removing channel(%s) from topic(%s)", channelName, topicName)
 	for _, registration := range registrations {
 		s.ctx.nsqlookupd.DB.RemoveRegistration(registration)
 	}

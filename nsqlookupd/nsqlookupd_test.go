@@ -3,6 +3,8 @@ package nsqlookupd
 import (
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -72,7 +74,7 @@ func TestNoLogger(t *testing.T) {
 	opts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupd := New(opts)
 
-	nsqlookupd.logf("should never be logged")
+	nsqlookupd.logf(LOG_FATAL, "should never be logged")
 }
 
 func TestBasicLookupd(t *testing.T) {
@@ -358,4 +360,81 @@ func TestTombstonedNodes(t *testing.T) {
 	test.Equal(t, 1, len(producers[0].Topics))
 	test.Equal(t, topicName, producers[0].Topics[0].Topic)
 	test.Equal(t, true, producers[0].Topics[0].Tombstoned)
+}
+
+func TestCrashingLogger(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		// Test invalid log level causes error
+		opts := NewOptions()
+		opts.LogLevel = "bad"
+		_ = New(opts)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestCrashingLogger")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+type mockLogger struct {
+	Count int
+}
+
+func (l *mockLogger) Output(maxdepth int, s string) error {
+	l.Count++
+	return nil
+}
+
+func TestLogging(t *testing.T) {
+	logger := &mockLogger{}
+
+	opts := NewOptions()
+	opts.Logger = logger
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+
+	// Test only fatal get through
+	opts.LogLevel = "FaTaL"
+	nsqlookupd := New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqlookupd.logf(i, "Test")
+	}
+	test.Equal(t, 1, logger.Count)
+	nsqlookupd.Exit()
+
+	// Test only warnings or higher get through
+	opts.LogLevel = "WARN"
+	nsqlookupd = New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqlookupd.logf(i, "Test")
+	}
+	test.Equal(t, 3, logger.Count)
+	nsqlookupd.Exit()
+
+	// Test everything gets through
+	opts.LogLevel = "debuG"
+	nsqlookupd = New(opts)
+	logger.Count = 0
+	for i := 1; i <= 5; i++ {
+		nsqlookupd.logf(i, "Test")
+	}
+	test.Equal(t, 5, logger.Count)
+	nsqlookupd.Exit()
+
+	// Test everything gets through with verbose = true
+	logger.Count = 0
+	opts.LogLevel = "fatal"
+	nsqlookupd = New(opts)
+	opts.Verbose = true
+	for i := 1; i <= 5; i++ {
+		nsqlookupd.logf(i, "Test")
+	}
+	test.Equal(t, 5, logger.Count)
+	nsqlookupd.Exit()
+
 }

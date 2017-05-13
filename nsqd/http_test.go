@@ -202,7 +202,7 @@ func TestHTTPpubDefer(t *testing.T) {
 func TestHTTPSRequire(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = "debug"
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
@@ -247,7 +247,7 @@ func TestHTTPSRequire(t *testing.T) {
 func TestHTTPSRequireVerify(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = "debug"
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -311,7 +311,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	opts.Verbose = true
+	opts.LogLevel = "debug"
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
@@ -543,6 +543,44 @@ func TestHTTPconfig(t *testing.T) {
 	body, _ = ioutil.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, addrs, string(body))
+
+	url = fmt.Sprintf("http://%s/config/log_level", httpAddr)
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`fatal`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, LOG_FATAL, nsqd.getOpts().logLevel)
+
+	url = fmt.Sprintf("http://%s/config/log_level", httpAddr)
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`bad`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 400, resp.StatusCode)
+
+	url = fmt.Sprintf("http://%s/config/verbose", httpAddr)
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`true`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, true, nsqd.getOpts().Verbose)
+
+	url = fmt.Sprintf("http://%s/config/verbose", httpAddr)
+	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`bad`)))
+	test.Nil(t, err)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ = ioutil.ReadAll(resp.Body)
+	test.Equal(t, 400, resp.StatusCode)
 }
 
 func TestHTTPerrors(t *testing.T) {
