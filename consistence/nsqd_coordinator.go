@@ -455,8 +455,7 @@ func (self *NsqdCoordinator) watchNsqLookupd() {
 				return
 			}
 			self.lookupMutex.Lock()
-			if n.GetID() != self.lookupLeader.GetID() ||
-				n.Epoch != self.lookupLeader.Epoch {
+			if n.GetID() != self.lookupLeader.GetID() {
 				coordLog.Infof("on nsqd: lookup leader changed from %v to %v", self.lookupLeader, *n)
 				self.lookupLeader = *n
 			}

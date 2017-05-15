@@ -227,7 +227,6 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 		var lookupdInfo NsqLookupdNodeInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 		if err == nil {
-			lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 			select {
 			case leader <- &lookupdInfo:
 			case <-stop:
@@ -286,7 +285,6 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			if err != nil {
 				continue
 			}
-			lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 			if lookupdInfo.NodeIP != "" {
 				isMissing = false
 			}
@@ -299,7 +297,6 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 					if err != nil {
 						continue
 					}
-					lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 					if lookupdInfo.NodeIP != "" {
 						isMissing = false
 					}
