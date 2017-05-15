@@ -210,7 +210,7 @@ func (c *ClientV2) UnlockWrite() {
 }
 
 func (c *ClientV2) Identify(data IdentifyDataV2) error {
-	nsqLog.Logf("[%s] IDENTIFY: %+v", c, data)
+	nsqLog.Logf("[%s]-%v IDENTIFY: %+v", c, c.ID, data)
 
 	// TODO: for backwards compatibility, remove in 1.0
 	hostname := data.Hostname

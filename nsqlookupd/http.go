@@ -284,7 +284,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	registrations := s.ctx.nsqlookupd.DB.FindTopicProducers(topicName, topicPartition)
 	isFoundInRegister := len(registrations) > 0
 	if len(registrations) == 0 {
-		nsqlookupLog.LogDebugf("lookup topic %v-%v not found", topicName, topicPartition)
+		nsqlookupLog.Logf("lookup topic %v-%v not found", topicName, topicPartition)
 		// try to find in cluster info
 		if accessMode == "w" && s.ctx.nsqlookupd.coordinator != nil {
 			clusterNodes, clusterErr := s.ctx.nsqlookupd.coordinator.GetTopicLeaderNodes(topicName)

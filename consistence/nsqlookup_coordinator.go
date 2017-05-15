@@ -394,6 +394,12 @@ func (self *NsqLookupCoordinator) handleNsqdNodes(monitorChan chan struct{}) {
 				//coordLog.Infof("nsqd node %v : %v", v.GetID(), v)
 				newNodes[v.GetID()] = v
 			}
+			// check if etcd is ok
+			_, err := self.leadership.GetClusterEpoch()
+			if err != nil {
+				coordLog.Infof("get cluster epoch failed: %v", err)
+				continue
+			}
 			self.nodesMutex.Lock()
 			self.nsqdNodes = newNodes
 			check := false
@@ -683,6 +689,13 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 			coordLog.Infof("ISR is not enough for topic %v, isr is :%v", t.GetTopicDesp(), t.ISR)
 			needMigrate = true
 			checkOK = false
+		}
+
+		// check if etcd is ok
+		_, err := self.leadership.GetClusterEpoch()
+		if err != nil {
+			coordLog.Infof("get cluster epoch failed: %v", err)
+			continue
 		}
 
 		self.joinStateMutex.Lock()

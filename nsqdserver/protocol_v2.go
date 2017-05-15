@@ -484,7 +484,8 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 		case <-client.ReadyStateChan:
 		case subChannel = <-subEventChan:
 			// you can't SUB anymore
-			nsqd.NsqLogger().Logf("client %v sub to channel: %v", client.ID,
+			nsqd.NsqLogger().Logf("client %v sub to topic %v channel: %v", client.ID,
+				subChannel.GetTopicName(),
 				subChannel.GetName())
 			subEventChan = nil
 		case identifyData := <-identifyEventChan:

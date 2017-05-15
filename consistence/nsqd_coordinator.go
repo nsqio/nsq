@@ -405,6 +405,9 @@ func (self *NsqdCoordinator) getLookupRemoteProxy() (INsqlookupRemoteProxy, *Coo
 	addr := net.JoinHostPort(l.NodeIP, l.RpcPort)
 	c, ok := self.lookupRemoteClients[addr]
 	self.lookupMutex.Unlock()
+	if l.NodeIP == "" {
+		return nil, NewCoordErr("missing lookup leader", CoordNetErr)
+	}
 	if ok && c != nil {
 		return c, nil
 	}
@@ -1447,7 +1450,8 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		if synced && joinISRSession == "" {
 			// notify nsqlookupd coordinator to add myself to isr list.
 			// if success, the topic leader will disable new write.
-			coordLog.Infof("I am requesting join isr: %v", self.myNode.GetID())
+			coordLog.Infof("I am requesting join isr: %v on topic: %v",
+				self.myNode.GetID(), topicInfo.Name)
 			stat, err := c.GetTopicStats(topicInfo.Name)
 			if err != nil {
 				coordLog.Infof("try get stats from leader failed: %v", err)
@@ -1458,7 +1462,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 				localTopic.GetDetailStats().UpdateHistory(stat.TopicHourlyPubDataList[topicInfo.GetTopicDesp()])
 				chList, ok := stat.ChannelList[topicInfo.GetTopicDesp()]
 				coordLog.Infof("topic %v sync channel list from leader: %v", topicInfo.GetTopicDesp(), chList)
-				if ok {
+				if ok && len(chList) > 0 {
 					oldChList := localTopic.GetChannelMapCopy()
 					for _, chName := range chList {
 						localTopic.GetChannel(chName)
@@ -1466,7 +1470,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 					}
 					coordLog.Infof("topic %v local channel not on leader: %v", topicInfo.GetTopicDesp(), oldChList)
 					for chName, _ := range oldChList {
-						localTopic.DeleteExistingChannel(chName)
+						localTopic.CloseExistingChannel(chName, false)
 					}
 					localTopic.SaveChannelMeta()
 				}

@@ -625,8 +625,7 @@ func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
 	return channel, nil
 }
 
-// DeleteExistingChannel removes a channel from the topic only if it exists
-func (t *Topic) DeleteExistingChannel(channelName string) error {
+func (t *Topic) CloseExistingChannel(channelName string, deleteData bool) error {
 	t.channelLock.Lock()
 	channel, ok := t.channelMap[channelName]
 	if !ok {
@@ -642,13 +641,20 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
-	channel.Delete()
+	if deleteData {
+		channel.Delete()
+	}
 
 	if numChannels == 0 && t.ephemeral == true {
 		go t.deleter.Do(func() { t.deleteCallback(t) })
 	}
 
 	return nil
+}
+
+// DeleteExistingChannel removes a channel from the topic only if it exists
+func (t *Topic) DeleteExistingChannel(channelName string) error {
+	return t.CloseExistingChannel(channelName, true)
 }
 
 func (t *Topic) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
