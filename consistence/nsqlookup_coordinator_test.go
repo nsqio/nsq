@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	testEtcdServers       = "127.0.0.1:2379"
+	testEtcdServers       = "http://127.0.0.1:2379"
 	TEST_NSQ_CLUSTER_NAME = "test-nsq-cluster-unit-test"
 )
 
@@ -506,13 +507,18 @@ func startNsqLookupCoord(t *testing.T, useFakeLeadership bool) (*NsqLookupCoordi
 func prepareCluster(t *testing.T, nodeList []string, useFakeLeadership bool) (*NsqLookupCoordinator, map[string]*testClusterNodeInfo) {
 	rand.Seed(time.Now().Unix())
 	nsqdNodeInfoList := make(map[string]*testClusterNodeInfo)
+	rootPath := testEtcdServers + "/v2/keys/NSQMetaData/" + TEST_NSQ_CLUSTER_NAME + "/Topics?recursive=true"
+	if !strings.HasPrefix(rootPath, "http://") {
+		rootPath = "http://" + rootPath
+
+	}
 	req, _ := http.NewRequest("DELETE",
-		"http://"+testEtcdServers+"/v2/keys/NSQMetaData/"+TEST_NSQ_CLUSTER_NAME+"/Topics?recursive=true",
+		rootPath,
 		nil,
 	)
 	rsp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Errorf("init cluster failed: %v", err)
+		t.Fatalf("init cluster failed: %v", err)
 	} else {
 		rsp.Body.Close()
 	}
