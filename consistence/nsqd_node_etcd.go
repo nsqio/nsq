@@ -227,6 +227,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 		var lookupdInfo NsqLookupdNodeInfo
 		err = json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 		if err == nil {
+			lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
 			select {
 			case leader <- &lookupdInfo:
 			case <-stop:
@@ -246,6 +247,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 			cancel()
 		}
 	}()
+	isMissing := true
 	for {
 		rsp, err = watcher.Next(ctx)
 		if err != nil {
@@ -257,11 +259,13 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 				coordLog.Errorf("watcher key[%s] error: %s", key, err.Error())
 				//rewatch
 				if etcdlock.IsEtcdWatchExpired(err) {
+					isMissing = true
 					rsp, err = self.client.Get(key, false, true)
 					if err != nil {
 						coordLog.Errorf("rewatch and get key[%s] error: %s", key, err.Error())
 						continue
 					}
+					coordLog.Warningf("rewatch key %v with newest index: %s, new data: %v", key, rsp.Index, rsp.Node.String())
 					watcher = self.client.Watch(key, rsp.Index+1, true)
 				} else {
 					time.Sleep(5 * time.Second)
@@ -272,16 +276,37 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 		if rsp == nil {
 			continue
 		}
+		// note: if watch expire we use get to get the newest key value, Action will be "get"
 		var lookupdInfo NsqLookupdNodeInfo
 		if rsp.Action == "expire" || rsp.Action == "delete" {
 			coordLog.Infof("key[%s] action[%s]", key, rsp.Action)
+			isMissing = true
 		} else if rsp.Action == "create" || rsp.Action == "update" || rsp.Action == "set" {
 			err := json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
 			if err != nil {
 				continue
 			}
+			lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
+			if lookupdInfo.NodeIP != "" {
+				isMissing = false
+			}
 		} else {
-			continue
+			if isMissing {
+				coordLog.Infof("key[%s] action[%s]", key, rsp.Action)
+				if rsp.Node != nil {
+					coordLog.Warningf("key %v new data: %v", key, rsp.Node.String())
+					err := json.Unmarshal([]byte(rsp.Node.Value), &lookupdInfo)
+					if err != nil {
+						continue
+					}
+					lookupdInfo.Epoch = EpochType(rsp.Node.ModifiedIndex)
+					if lookupdInfo.NodeIP != "" {
+						isMissing = false
+					}
+				}
+			} else {
+				continue
+			}
 		}
 		select {
 		case leader <- &lookupdInfo:
