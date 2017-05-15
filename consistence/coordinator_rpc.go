@@ -134,8 +134,9 @@ func (self *NsqdCoordRpcServer) stop() {
 }
 
 func (self *NsqdCoordRpcServer) checkLookupForWrite(lookupEpoch EpochType) *CoordErr {
-	if lookupEpoch < self.nsqdCoord.lookupLeader.Epoch {
-		coordLog.Warningf("the lookupd epoch is smaller than last: %v", lookupEpoch)
+	if lookupEpoch < self.nsqdCoord.GetCurrentLookupd().Epoch {
+		coordLog.Warningf("the lookupd epoch is smaller than last: %v vs %v", lookupEpoch,
+			self.nsqdCoord.GetCurrentLookupd().Epoch)
 		coordErrStats.incRpcCheckFailed()
 		return ErrEpochMismatch
 	}

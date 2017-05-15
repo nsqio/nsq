@@ -201,6 +201,7 @@ func (self *NsqLookupdEtcdMgr) processMasterEvents(master etcdlock.Master, leade
 			if e.Type == etcdlock.MASTER_ADD || e.Type == etcdlock.MASTER_MODIFY {
 				// Acquired the lock || lock change.
 				var lookupdNode NsqLookupdNodeInfo
+				lookupdNode.Epoch = EpochType(e.ModifiedIndex)
 				if err := json.Unmarshal([]byte(e.Master), &lookupdNode); err != nil {
 					leader <- &lookupdNode
 					continue
@@ -211,9 +212,11 @@ func (self *NsqLookupdEtcdMgr) processMasterEvents(master etcdlock.Master, leade
 				coordLog.Infof("master event delete.")
 				// Lost the lock.
 				var lookupdNode NsqLookupdNodeInfo
+				lookupdNode.Epoch = EpochType(e.ModifiedIndex)
 				leader <- &lookupdNode
 			} else {
 				// TODO: lock error.
+				coordLog.Infof("master event unkown: %v.", e)
 			}
 		case <-stop:
 			master.Stop()

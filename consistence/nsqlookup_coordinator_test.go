@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	testEtcdServers       = "10.9.3.13:2379"
+	testEtcdServers       = "127.0.0.1:2379"
 	TEST_NSQ_CLUSTER_NAME = "test-nsq-cluster-unit-test"
 )
 
