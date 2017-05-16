@@ -643,6 +643,8 @@ func (t *Topic) CloseExistingChannel(channelName string, deleteData bool) error 
 	// (so that we dont leave any messages around)
 	if deleteData {
 		channel.Delete()
+	} else {
+		channel.Close()
 	}
 
 	if numChannels == 0 && t.ephemeral == true {
