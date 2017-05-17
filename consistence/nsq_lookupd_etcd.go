@@ -279,6 +279,7 @@ func (self *NsqLookupdEtcdMgr) WatchNsqdNodes(nsqds chan []NsqdNodeInfo, stop ch
 					rsp, err = self.client.Get(key, false, true)
 					if err != nil {
 						coordLog.Errorf("rewatch and get key[%s] error: %s", key, err.Error())
+						time.Sleep(time.Second)
 						continue
 					}
 					watcher = self.client.Watch(key, rsp.Index+1, true)
@@ -360,6 +361,7 @@ func (self *NsqLookupdEtcdMgr) watchTopics() {
 					rsp, err := self.client.Get(self.topicRoot, false, true)
 					if err != nil {
 						coordLog.Errorf("rewatch and get key[%s] error: %s", self.topicRoot, err.Error())
+						time.Sleep(time.Second)
 						continue
 					}
 					watcher = self.client.Watch(self.topicRoot, rsp.Index+1, true)
@@ -800,6 +802,7 @@ func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *Wat
 					rsp, err = self.client.Get(topicLeaderSessionPath, false, true)
 					if err != nil {
 						coordLog.Errorf("rewatch and get key[%s] error: %s", topicLeaderSessionPath, err.Error())
+						time.Sleep(time.Second)
 						continue
 					}
 					watcher = self.client.Watch(topicLeaderSessionPath, rsp.Index+1, true)

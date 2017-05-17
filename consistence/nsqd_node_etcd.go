@@ -261,6 +261,7 @@ func (self *NsqdEtcdMgr) WatchLookupdLeader(leader chan *NsqLookupdNodeInfo, sto
 					isMissing = true
 					rsp, err = self.client.Get(key, false, true)
 					if err != nil {
+						time.Sleep(time.Second)
 						coordLog.Errorf("rewatch and get key[%s] error: %s", key, err.Error())
 						continue
 					}
