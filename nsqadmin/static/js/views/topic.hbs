@@ -9,7 +9,10 @@
 <div class="row">
     <div class="col-md-6">
         <blockquote>
-            <p>Topic: <strong>{{name}}</strong>
+            <p>Topic: <strong>{{name}}</strong></p>
+            {{#if is_multi_ordered}}
+                <a class="label label-primary">Order</a>
+            {{/if}}
         </blockquote>
     </div>
 </div>
@@ -33,7 +36,14 @@
 
 <div class="row">
     <div class="col-md-12">
-    <h4>Topic Coordinator Status </h4>
+    <div class="toggle">
+        <h4>Topic Coordinator Status
+            <span>
+                <a> >>></a>
+            </span>
+        </h4>
+    </div>
+    <div class="canHide" style="display: none;">
     <table class="table table-bordered table-condensed">
         <tr>
             <th>Partition ID</th>
@@ -73,11 +83,19 @@
         {{/each}}
     </table>
     </div>
+    </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-    <h4>Topic Message Queue</h4>
+    <div class="toggle">
+        <h4>Topic Message Queue
+        <span>
+            <a> >>></a>
+        </span>
+        </h4>
+    </div>
+    <div class="canHide" style="display: none;">
     <table class="table table-bordered table-condensed">
         {{#if e2e_processing_latency.percentiles.length}}
         <tr>
@@ -184,12 +202,20 @@
         {{/if}}
     </table>
     </div>
+    </div>
 </div>
 {{/unless}}
 
 <div class="row">
     <div class="col-md-12">
-        <h4>Message Size Distribution</h4>
+        <div class="toggle">
+            <h4>Message Size Distribution
+            <span>
+                <a> >>></a>
+            </span>
+            </h4>
+        </div>
+        <div class="canHide" style="display: none;">
         <table class="table table-bordered table-condensed">
             <tr>
                 <th>NSQd Host</th>
@@ -227,12 +253,20 @@
             </tr>
             {{/each}}
         </table>
+        </div>
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-        <h4>Message Latency Distribution</h4>
+        <div class="toggle">
+            <h4>Message Latency Distribution
+                <span>
+                    <a> >>></a>
+                </span>
+            </h4>
+        </div>
+        <div class="canHide" style="display: none;">
             <table class="table table-bordered table-condensed">
                 <tr>
                     <th>NSQd Host</th>
@@ -270,12 +304,20 @@
                 </tr>
                 {{/each}}
             </table>
+        </div>
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-12">
-        <h4>Topic Producer Connections</h4>
+        <div class="toggle">
+            <h4>Topic Producer Connections
+                <span>
+                    <a> >>></a>
+                </span>
+            </h4>
+        </div>
+        <div class="canHide" style="display: none;">
         {{#unless has_client_pub}}
             <div class="alert alert-warning"><h4>Notice</h4>No producer connected to this topic</div>
         {{else}}
@@ -308,6 +350,7 @@
                 </tbody>
             </table>
         {{/unless}}
+        </div>
     </div>
 </div>
 

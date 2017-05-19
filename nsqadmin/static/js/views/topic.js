@@ -9,6 +9,9 @@ var AppState = require('../app_state');
 
 var BaseView = require('./base');
 
+var click2Show=" >>>";
+var click2Hide=" <<<";
+
 var TopicView = BaseView.extend({
     className: 'topic container-fluid',
 
@@ -17,6 +20,8 @@ var TopicView = BaseView.extend({
     events: {
         'click .topic-actions button': 'topicAction',
         'click .channel-action .hierarchy button': 'onCreateTopicChannel',
+        'click .toggle h4': 'onToggle',
+        'click .toggle h4 span a': 'onToggle',
     },
 
     initialize: function() {
@@ -32,6 +37,23 @@ var TopicView = BaseView.extend({
         $('[data-toggle="tooltip"]').tooltip({
                 placement : 'top'
             });
+    },
+
+    onToggle: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var canHideClass = "canHide";
+        var parent = $(e.target).parents(".toggle").first();
+        var divCanHide = parent.next();
+        if(divCanHide != null && divCanHide.attr("class") != null && divCanHide.attr("class").indexOf(canHideClass) !== -1) {
+            divCanHide.toggle(300);
+            var anchor = parent.find("a").first();
+            if(anchor.text().indexOf(click2Hide) !== -1) {
+                anchor.text(click2Show);
+            } else {
+                anchor.text(click2Hide);
+            }
+        }
     },
 
     topicAction: function(e) {
