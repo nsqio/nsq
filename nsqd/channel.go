@@ -1424,9 +1424,9 @@ func (c *Channel) GetChannelDebugStats() string {
 	c.inFlightMutex.Unlock()
 	debugStr += "\n"
 	c.confirmMutex.Lock()
-	debugStr += fmt.Sprintf("channel end : %v, current confirm %v, confirmed %v messages: ",
+	debugStr += fmt.Sprintf("channel end : %v, current confirm %v, confirmed %v messages: %s\n",
 		c.GetChannelEnd(),
-		c.GetConfirmed(), c.confirmedMsgs.Len())
+		c.GetConfirmed(), c.confirmedMsgs.Len(), c.confirmedMsgs.ToString())
 	c.confirmMutex.Unlock()
 	debugStr += "\n"
 	return debugStr

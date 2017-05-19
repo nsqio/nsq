@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"fmt"
 	"github.com/Workiva/go-datastructures/augmentedtree"
 )
 
@@ -99,6 +100,14 @@ func (self *IntervalTree) AddOrMerge(inter QueueInterval) QueueInterval {
 
 func (self *IntervalTree) Len() int {
 	return int(self.tr.Len())
+}
+
+func (self *IntervalTree) ToString() string {
+	dataStr := ""
+	self.tr.Traverse(func(inter augmentedtree.Interval) {
+		dataStr += fmt.Sprintf("interval %v, ", inter)
+	})
+	return dataStr
 }
 
 func (self *IntervalTree) Delete(inter QueueInterval) {
