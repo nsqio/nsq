@@ -93,7 +93,7 @@ type Channel struct {
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
-	confirmedMsgs   map[int64]*Message
+	confirmedMsgs   *IntervalTree
 	confirmMutex    sync.Mutex
 	waitingConfirm  int32
 	tryReadBackend  chan bool
@@ -129,7 +129,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		exitChan:           make(chan int),
 		exitSyncChan:       make(chan bool),
 		clients:            make(map[int64]Consumer),
-		confirmedMsgs:      make(map[int64]*Message),
+		confirmedMsgs:      NewIntervalTree(),
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
 		tryReadBackend:      make(chan bool, 1),
@@ -469,7 +469,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
-	if len(c.confirmedMsgs) != 0 {
+	if c.confirmedMsgs.Len() != 0 {
 		nsqLog.LogWarningf("should empty confirmed queue on slave.")
 	}
 	var err error
@@ -517,41 +517,57 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, curConfirm)
 		return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false
 	}
-	c.confirmedMsgs[int64(msg.offset)] = msg
+	//c.confirmedMsgs[int64(msg.offset)] = msg
+	mergedInterval := c.confirmedMsgs.AddOrMerge(&queueInterval{start: int64(msg.offset),
+		end:      int64(msg.offset) + int64(msg.rawMoveSize),
+		startCnt: uint64(msg.queueCntIndex - 1),
+		endCnt:   uint64(msg.queueCntIndex),
+	})
 	reduced := false
 	newConfirmed := curConfirm.Offset()
 	confirmedCnt := int64(0)
 	defer func() {
 		c.tmpRemovedConfirmed = c.tmpRemovedConfirmed[:0]
 	}()
-	for {
-		if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
-			//nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
-			//	newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
-			newConfirmed += m.rawMoveSize
-			confirmedCnt = m.queueCntIndex
-			delete(c.confirmedMsgs, int64(m.offset))
-			c.tmpRemovedConfirmed = append(c.tmpRemovedConfirmed, m)
-			reduced = true
-		} else {
-			break
-		}
+	//for {
+	//	if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
+	//		//nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
+	//		//	newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
+	//		newConfirmed += m.rawMoveSize
+	//		confirmedCnt = m.queueCntIndex
+	//		delete(c.confirmedMsgs, int64(m.offset))
+	//		c.tmpRemovedConfirmed = append(c.tmpRemovedConfirmed, m)
+	//		reduced = true
+	//	} else {
+	//		break
+	//	}
+	//}
+	if mergedInterval.End() <= int64(newConfirmed) {
+		c.confirmedMsgs.DeleteLower(int64(newConfirmed))
+	} else if mergedInterval.Start() <= int64(newConfirmed) {
+		newConfirmed = BackendOffset(mergedInterval.End())
+		confirmedCnt = int64(mergedInterval.EndCnt())
+		reduced = true
+	} else {
 	}
-	atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
+	//atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
+	atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
 	if reduced {
 		err := c.backend.ConfirmRead(newConfirmed, confirmedCnt)
 		if err != nil {
 			if err != ErrExiting {
 				nsqLog.LogWarningf("channel (%v): confirm read failed: %v, msg: %v", c.GetName(), err, msg)
 				// rollback removed confirmed messages
-				for _, m := range c.tmpRemovedConfirmed {
-					c.confirmedMsgs[int64(msg.offset)] = m
-				}
-				atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
+				//for _, m := range c.tmpRemovedConfirmed {
+				//	c.confirmedMsgs[int64(msg.offset)] = m
+				//}
+				//atomic.StoreInt32(&c.waitingConfirm, int32(len(c.confirmedMsgs)))
 			}
 			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced
+		} else {
+			c.confirmedMsgs.DeleteLower(int64(newConfirmed))
 		}
-		if int64(len(c.confirmedMsgs)) < c.option.MaxConfirmWin/2 &&
+		if int64(c.confirmedMsgs.Len()) < c.option.MaxConfirmWin/2 &&
 			atomic.LoadInt32(&c.needNotifyRead) == 1 &&
 			!c.IsOrdered() {
 			select {
@@ -560,12 +576,12 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 			}
 		}
 	}
-	if int64(len(c.confirmedMsgs)) > c.option.MaxConfirmWin {
+	if int64(c.confirmedMsgs.Len()) > c.option.MaxConfirmWin {
 		curConfirm = c.GetConfirmed()
 		flightCnt := len(c.inFlightMessages)
 		if flightCnt == 0 && nsqLog.Level() >= levellogger.LOG_DEBUG {
 			nsqLog.LogDebugf("lots of confirmed messages : %v, %v, %v",
-				len(c.confirmedMsgs), curConfirm, flightCnt)
+				c.confirmedMsgs.Len(), curConfirm, flightCnt)
 		}
 	}
 	return newConfirmed, confirmedCnt, reduced
@@ -577,7 +593,10 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 func (c *Channel) IsConfirmed(msg *Message) bool {
 	c.confirmMutex.Lock()
 	//c.finMsgs[msg.ID] = msg
-	_, ok := c.confirmedMsgs[int64(msg.offset)]
+	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.offset),
+		end:      int64(msg.offset) + int64(msg.rawMoveSize),
+		startCnt: uint64(msg.queueCntIndex - 1),
+		endCnt:   uint64(msg.queueCntIndex)}, true)
 	c.confirmMutex.Unlock()
 	if ok {
 		c.ContinueConsumeForOrder()
@@ -1053,7 +1072,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	c.waitingRequeueMutex.Unlock()
 	if clearConfirmed {
 		c.confirmMutex.Lock()
-		c.confirmedMsgs = make(map[int64]*Message)
+		c.confirmedMsgs = NewIntervalTree()
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
 	}
@@ -1407,7 +1426,7 @@ func (c *Channel) GetChannelDebugStats() string {
 	c.confirmMutex.Lock()
 	debugStr += fmt.Sprintf("channel end : %v, current confirm %v, confirmed %v messages: ",
 		c.GetChannelEnd(),
-		c.GetConfirmed(), len(c.confirmedMsgs))
+		c.GetConfirmed(), c.confirmedMsgs.Len())
 	c.confirmMutex.Unlock()
 	debugStr += "\n"
 	return debugStr

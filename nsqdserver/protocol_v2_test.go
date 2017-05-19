@@ -2438,7 +2438,9 @@ func TestResetChannelToOld(t *testing.T) {
 			test.Equal(t, end, resetOldEnd)
 		}
 		_, err = nsq.Finish(msgOut.ID).WriteTo(conn)
-		test.Nil(t, err)
+		if err != nil {
+			t.Errorf("FIN msg %v error: %v", msgOut.ID, err.Error())
+		}
 		if channel.GetConfirmed().Offset() == realEnd.Offset() {
 			break
 		}
