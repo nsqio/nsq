@@ -22,6 +22,7 @@ import (
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"
@@ -92,14 +93,14 @@ func New(opts *Options) *NSQD {
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
 
-	// check log-level is valid and translate to int
-	opts.logLevel = n.logLevelFromString(opts.LogLevel)
-	if opts.logLevel == -1 {
-		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+	var err error
+	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
+	if err != nil {
+		n.logf(LOG_FATAL, "%s", err)
 		os.Exit(1)
 	}
 
-	err := n.dl.Lock()
+	err = n.dl.Lock()
 	if err != nil {
 		n.logf(LOG_FATAL, "--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
 		os.Exit(1)

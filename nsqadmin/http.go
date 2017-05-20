@@ -19,6 +19,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -734,14 +735,12 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			}
 		case "log_level":
 			logLevelStr := string(body)
-			logLevelInt := s.ctx.nsqadmin.logLevelFromString(logLevelStr)
-			if logLevelInt == -1 {
+			logLevel, err := lg.ParseLogLevel(logLevelStr, opts.Verbose)
+			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
-
-			// save the log level
 			opts.LogLevel = logLevelStr
-			opts.logLevel = logLevelInt
+			opts.logLevel = logLevel
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}

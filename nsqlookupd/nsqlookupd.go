@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
@@ -30,10 +31,10 @@ func New(opts *Options) *NSQLookupd {
 		DB:   NewRegistrationDB(),
 	}
 
-	// check log-level is valid and translate to int
-	n.opts.logLevel = n.logLevelFromString(opts.LogLevel)
-	if n.opts.logLevel == -1 {
-		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+	var err error
+	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
+	if err != nil {
+		n.logf(LOG_FATAL, "%s", err)
 		os.Exit(1)
 	}
 

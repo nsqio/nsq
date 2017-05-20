@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type Options struct {
@@ -11,7 +13,7 @@ type Options struct {
 	LogPrefix string `flag:"log-prefix"`
 	Verbose   bool   `flag:"verbose"` // for backwards compatibility
 	Logger    Logger
-	logLevel  int // private, not really an option
+	logLevel  lg.LogLevel // private, not really an option
 
 	TCPAddress       string `flag:"tcp-address"`
 	HTTPAddress      string `flag:"http-address"`
