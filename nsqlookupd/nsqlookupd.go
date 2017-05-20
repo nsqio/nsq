@@ -19,7 +19,6 @@ type NSQLookupd struct {
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
-	logLevel     int
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -32,8 +31,8 @@ func New(opts *Options) *NSQLookupd {
 	}
 
 	// check log-level is valid and translate to int
-	n.logLevel = n.logLevelFromString(opts.LogLevel)
-	if n.logLevel == -1 {
+	n.opts.logLevel = n.logLevelFromString(opts.LogLevel)
+	if n.opts.logLevel == -1 {
 		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
 		os.Exit(1)
 	}

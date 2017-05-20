@@ -89,6 +89,8 @@ func New(opts *Options) *NSQD {
 		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)),
 		dl:                   dirlock.New(dataPath),
 	}
+	n.swapOpts(opts)
+	n.errValue.Store(errStore{})
 
 	// check log-level is valid and translate to int
 	opts.logLevel = n.logLevelFromString(opts.LogLevel)
@@ -96,9 +98,6 @@ func New(opts *Options) *NSQD {
 		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
 		os.Exit(1)
 	}
-
-	n.swapOpts(opts)
-	n.errValue.Store(errStore{})
 
 	err := n.dl.Lock()
 	if err != nil {
