@@ -65,16 +65,29 @@ func (n *NSQD) lookupLoop() {
 	ticker := time.Tick(15 * time.Second)
 	for {
 		if connect {
-			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
-				if in(host, lookupAddrs) {
+			for _, address := range n.getOpts().NSQLookupdTCPAddresses {
+				host, port, err := net.SplitHostPort(address)
+				if err != nil {
+					n.logf(LOG_ERROR, "LOOKUP(%s): parsing address - %s", host, err)
 					continue
 				}
-				n.logf(LOG_INFO, "LOOKUP(%s): adding peer", host)
-				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.getOpts().Logger,
-					connectCallback(n, hostname, syncTopicChan))
-				lookupPeer.Command(nil) // start the connection
-				lookupPeers = append(lookupPeers, lookupPeer)
-				lookupAddrs = append(lookupAddrs, host)
+				resolved, err := net.LookupHost(host)
+				if err != nil {
+					n.logf(LOG_ERROR, "LOOKUP(%s): resolving address - %s", host, err)
+					continue
+				}
+				for _, host := range resolved {
+					address := net.JoinHostPort(host, port)
+					if in(address, lookupAddrs) {
+						continue
+					}
+					n.logf(LOG_INFO, "LOOKUP(%s): adding peer", address)
+					lookupPeer := newLookupPeer(address, n.getOpts().MaxBodySize, n.getOpts().Logger,
+						connectCallback(n, hostname, syncTopicChan))
+					lookupPeer.Command(nil) // start the connection
+					lookupPeers = append(lookupPeers, lookupPeer)
+					lookupAddrs = append(lookupAddrs, address)
+				}
 			}
 			n.lookupPeers.Store(lookupPeers)
 			connect = false
