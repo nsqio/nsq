@@ -1,7 +1,6 @@
 package nsqlookupd
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -20,6 +19,7 @@ type NSQLookupd struct {
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
+	logLevel     int
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -30,12 +30,16 @@ func New(opts *Options) *NSQLookupd {
 		opts: opts,
 		DB:   NewRegistrationDB(),
 	}
-	n.logf(version.String("nsqlookupd"))
-	return n
-}
 
-func (l *NSQLookupd) logf(f string, args ...interface{}) {
-	l.opts.Logger.Output(2, fmt.Sprintf(f, args...))
+	// check log-level is valid and translate to int
+	n.logLevel = n.logLevelFromString(opts.LogLevel)
+	if n.logLevel == -1 {
+		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+		os.Exit(1)
+	}
+
+	n.logf(LOG_INFO, version.String("nsqlookupd"))
+	return n
 }
 
 func (l *NSQLookupd) Main() {
@@ -43,7 +47,7 @@ func (l *NSQLookupd) Main() {
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.opts.TCPAddress, err)
+		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.TCPAddress, err)
 		os.Exit(1)
 	}
 	l.Lock()
@@ -56,7 +60,7 @@ func (l *NSQLookupd) Main() {
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
-		l.logf("FATAL: listen (%s) failed - %s", l.opts.HTTPAddress, err)
+		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
 	l.Lock()

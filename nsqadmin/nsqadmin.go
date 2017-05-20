@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -38,15 +37,23 @@ func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
 		notifications: make(chan *AdminAction),
 	}
+
+	// check log-level is valid and translate to int
+	opts.logLevel = n.logLevelFromString(opts.LogLevel)
+	if opts.logLevel == -1 {
+		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+		os.Exit(1)
+	}
+
 	n.swapOpts(opts)
 
 	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
-		n.logf("--nsqd-http-address or --lookupd-http-address required.")
+		n.logf(LOG_FATAL, "--nsqd-http-address or --lookupd-http-address required.")
 		os.Exit(1)
 	}
 
 	if len(opts.NSQDHTTPAddresses) != 0 && len(opts.NSQLookupdHTTPAddresses) != 0 {
-		n.logf("use --nsqd-http-address or --lookupd-http-address not both")
+		n.logf(LOG_FATAL, "use --nsqd-http-address or --lookupd-http-address not both")
 		os.Exit(1)
 	}
 
@@ -54,19 +61,19 @@ func New(opts *Options) *NSQAdmin {
 	verifyAddress := func(arg string, address string) *net.TCPAddr {
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
-			n.logf("FATAL: failed to resolve %s address (%s) - %s", arg, address, err)
+			n.logf(LOG_FATAL, "failed to resolve %s address (%s) - %s", arg, address, err)
 			os.Exit(1)
 		}
 		return addr
 	}
 
 	if opts.HTTPClientTLSCert != "" && opts.HTTPClientTLSKey == "" {
-		n.logf("FATAL: --http-client-tls-key must be specified with --http-client-tls-cert")
+		n.logf(LOG_FATAL, "--http-client-tls-key must be specified with --http-client-tls-cert")
 		os.Exit(1)
 	}
 
 	if opts.HTTPClientTLSKey != "" && opts.HTTPClientTLSCert == "" {
-		n.logf("FATAL: --http-client-tls-cert must be specified with --http-client-tls-key")
+		n.logf(LOG_FATAL, "--http-client-tls-cert must be specified with --http-client-tls-key")
 		os.Exit(1)
 	}
 
@@ -76,7 +83,7 @@ func New(opts *Options) *NSQAdmin {
 	if opts.HTTPClientTLSCert != "" && opts.HTTPClientTLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(opts.HTTPClientTLSCert, opts.HTTPClientTLSKey)
 		if err != nil {
-			n.logf("FATAL: failed to LoadX509KeyPair %s, %s - %s",
+			n.logf(LOG_FATAL, "failed to LoadX509KeyPair %s, %s - %s",
 				opts.HTTPClientTLSCert, opts.HTTPClientTLSKey, err)
 			os.Exit(1)
 		}
@@ -86,12 +93,12 @@ func New(opts *Options) *NSQAdmin {
 		tlsCertPool := x509.NewCertPool()
 		caCertFile, err := ioutil.ReadFile(opts.HTTPClientTLSRootCAFile)
 		if err != nil {
-			n.logf("FATAL: failed to read TLS root CA file %s - %s",
+			n.logf(LOG_FATAL, "failed to read TLS root CA file %s - %s",
 				opts.HTTPClientTLSRootCAFile, err)
 			os.Exit(1)
 		}
 		if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
-			n.logf("FATAL: failed to AppendCertsFromPEM %s", opts.HTTPClientTLSRootCAFile)
+			n.logf(LOG_FATAL, "failed to AppendCertsFromPEM %s", opts.HTTPClientTLSRootCAFile)
 			os.Exit(1)
 		}
 		n.httpClientTLSConfig.RootCAs = tlsCertPool
@@ -109,7 +116,7 @@ func New(opts *Options) *NSQAdmin {
 	if opts.ProxyGraphite {
 		url, err := url.Parse(opts.GraphiteURL)
 		if err != nil {
-			n.logf("FATAL: failed to parse --graphite-url='%s' - %s", opts.GraphiteURL, err)
+			n.logf(LOG_FATAL, "failed to parse --graphite-url='%s' - %s", opts.GraphiteURL, err)
 			os.Exit(1)
 		}
 		n.graphiteURL = url
@@ -118,18 +125,14 @@ func New(opts *Options) *NSQAdmin {
 	if opts.AllowConfigFromCIDR != "" {
 		_, _, err := net.ParseCIDR(opts.AllowConfigFromCIDR)
 		if err != nil {
-			n.logf("FATAL: failed to parse --allow-config-from-cidr='%s' - %s", opts.AllowConfigFromCIDR, err)
+			n.logf(LOG_FATAL, "failed to parse --allow-config-from-cidr='%s' - %s", opts.AllowConfigFromCIDR, err)
 			os.Exit(1)
 		}
 	}
 
-	n.logf(version.String("nsqadmin"))
+	n.logf(LOG_INFO, version.String("nsqadmin"))
 
 	return n
-}
-
-func (n *NSQAdmin) logf(f string, args ...interface{}) {
-	n.getOpts().Logger.Output(2, fmt.Sprintf(f, args...))
 }
 
 func (n *NSQAdmin) getOpts() *Options {
@@ -150,16 +153,16 @@ func (n *NSQAdmin) handleAdminActions() {
 	for action := range n.notifications {
 		content, err := json.Marshal(action)
 		if err != nil {
-			n.logf("ERROR: failed to serialize admin action - %s", err)
+			n.logf(LOG_ERROR, "failed to serialize admin action - %s", err)
 		}
 		httpclient := &http.Client{
 			Transport: http_api.NewDeadlineTransport(n.getOpts().HTTPClientConnectTimeout, n.getOpts().HTTPClientRequestTimeout),
 		}
-		n.logf("POSTing notification to %s", n.getOpts().NotificationHTTPEndpoint)
+		n.logf(LOG_INFO, "POSTing notification to %s", n.getOpts().NotificationHTTPEndpoint)
 		resp, err := httpclient.Post(n.getOpts().NotificationHTTPEndpoint,
 			"application/json", bytes.NewBuffer(content))
 		if err != nil {
-			n.logf("ERROR: failed to POST notification - %s", err)
+			n.logf(LOG_ERROR, "failed to POST notification - %s", err)
 		}
 		resp.Body.Close()
 	}
@@ -168,7 +171,7 @@ func (n *NSQAdmin) handleAdminActions() {
 func (n *NSQAdmin) Main() {
 	httpListener, err := net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
-		n.logf("FATAL: listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
+		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
 	n.Lock()

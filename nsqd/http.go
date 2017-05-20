@@ -137,7 +137,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -157,7 +157,7 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.Req
 func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -303,7 +303,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -332,7 +332,7 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -352,7 +352,7 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 
@@ -372,7 +372,7 @@ func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps h
 		err = topic.Pause()
 	}
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
@@ -443,7 +443,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 		err = channel.Pause()
 	}
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failure in %s - %s", req.URL.Path, err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
 
@@ -458,7 +458,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		s.ctx.nsqd.logf("ERROR: failed to parse request params - %s", err)
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
@@ -607,6 +607,16 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
+		case "log_level":
+			logLevelStr := string(body)
+			logLevelInt := s.ctx.nsqd.logLevelFromString(logLevelStr)
+			if logLevelInt == -1 {
+				return nil, http_api.Err{400, "INVALID_VALUE"}
+			}
+
+			// save the log level
+			opts.LogLevel = logLevelStr
+			opts.logLevel = logLevelInt
 		case "verbose":
 			err := json.Unmarshal(body, &opts.Verbose)
 			if err != nil {

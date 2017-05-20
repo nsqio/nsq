@@ -78,9 +78,12 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 
 	// basic options
 	flagSet.Bool("version", false, "print version string")
-	flagSet.Bool("verbose", false, "enable verbose logging")
 	flagSet.String("config", "", "path to config file")
+
+	flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal)")
 	flagSet.String("log-prefix", "[nsqd] ", "log message prefix")
+	flagSet.Bool("verbose", false, "deprecated in favor of log-level")
+
 	flagSet.Int64("node-id", opts.ID, "unique part for message IDs, (int) in range [0,1024) (default is hash of hostname)")
 	flagSet.Bool("worker-id", false, "do NOT use this, use --node-id")
 

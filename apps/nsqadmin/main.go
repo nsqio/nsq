@@ -21,7 +21,10 @@ var (
 
 	config      = flagSet.String("config", "", "path to config file")
 	showVersion = flagSet.Bool("version", false, "print version string")
-	logPrefix   = flagSet.String("log-prefix", "[nsqadmin] ", "log message prefix")
+
+	logLevel  = flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal)")
+	logPrefix = flagSet.String("log-prefix", "[nsqadmin] ", "log message prefix")
+	verbose   = flagSet.Bool("verbose", false, "deprecated in favor of log-level")
 
 	httpAddress = flagSet.String("http-address", "0.0.0.0:4171", "<addr>:<port> to listen on for HTTP clients")
 
