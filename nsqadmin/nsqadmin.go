@@ -37,6 +37,7 @@ func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
 		notifications: make(chan *AdminAction),
 	}
+	n.swapOpts(opts)
 
 	// check log-level is valid and translate to int
 	opts.logLevel = n.logLevelFromString(opts.LogLevel)
@@ -44,8 +45,6 @@ func New(opts *Options) *NSQAdmin {
 		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
 		os.Exit(1)
 	}
-
-	n.swapOpts(opts)
 
 	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
 		n.logf(LOG_FATAL, "--nsqd-http-address or --lookupd-http-address required.")

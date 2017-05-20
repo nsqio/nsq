@@ -351,11 +351,15 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 func TestReconfigure(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = test.NewTestLogger(t)
-	_, _, lookupd1 := mustStartNSQLookupd(lopts)
+
+	lopts1 := *lopts
+	_, _, lookupd1 := mustStartNSQLookupd(&lopts1)
 	defer lookupd1.Exit()
-	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	lopts2 := *lopts
+	_, _, lookupd2 := mustStartNSQLookupd(&lopts2)
 	defer lookupd2.Exit()
-	_, _, lookupd3 := mustStartNSQLookupd(lopts)
+	lopts3 := *lopts
+	_, _, lookupd3 := mustStartNSQLookupd(&lopts3)
 	defer lookupd3.Exit()
 
 	opts := NewOptions()

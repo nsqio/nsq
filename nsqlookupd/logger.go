@@ -50,7 +50,7 @@ func (n *NSQLookupd) logf(level int, f string, args ...interface{}) {
 		levelString = "FATAL"
 	}
 
-	if level >= n.logLevel || n.opts.Verbose {
+	if level >= n.opts.logLevel || n.opts.Verbose {
 		n.opts.Logger.Output(2, fmt.Sprintf(levelString+": "+f, args...))
 	}
 }
