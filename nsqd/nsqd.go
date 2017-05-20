@@ -120,7 +120,7 @@ func New(opts *Options) *NSQD {
 		var port string
 		_, port, err = net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
-			n.logf(LOG_ERROR, "failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
+			n.logf(LOG_FATAL, "failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 			os.Exit(1)
 		}
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
