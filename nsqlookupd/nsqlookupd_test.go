@@ -67,16 +67,6 @@ func identify(t *testing.T, conn net.Conn) {
 	test.Nil(t, err)
 }
 
-func TestNoLogger(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = nil
-	opts.TCPAddress = "127.0.0.1:0"
-	opts.HTTPAddress = "127.0.0.1:0"
-	nsqlookupd := New(opts)
-
-	nsqlookupd.logf(LOG_FATAL, "should never be logged")
-}
-
 func TestBasicLookupd(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
@@ -377,64 +367,4 @@ func TestCrashingLogger(t *testing.T) {
 		return
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
-}
-
-type mockLogger struct {
-	Count int
-}
-
-func (l *mockLogger) Output(maxdepth int, s string) error {
-	l.Count++
-	return nil
-}
-
-func TestLogging(t *testing.T) {
-	logger := &mockLogger{}
-
-	opts := NewOptions()
-	opts.Logger = logger
-	opts.TCPAddress = "127.0.0.1:0"
-	opts.HTTPAddress = "127.0.0.1:0"
-
-	// Test only fatal get through
-	opts.LogLevel = "FaTaL"
-	nsqlookupd := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqlookupd.logf(i, "Test")
-	}
-	test.Equal(t, 1, logger.Count)
-	nsqlookupd.Exit()
-
-	// Test only warnings or higher get through
-	opts.LogLevel = "WARN"
-	nsqlookupd = New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqlookupd.logf(i, "Test")
-	}
-	test.Equal(t, 3, logger.Count)
-	nsqlookupd.Exit()
-
-	// Test everything gets through
-	opts.LogLevel = "debuG"
-	nsqlookupd = New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqlookupd.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
-	nsqlookupd.Exit()
-
-	// Test everything gets through with verbose = true
-	logger.Count = 0
-	opts.LogLevel = "fatal"
-	nsqlookupd = New(opts)
-	opts.Verbose = true
-	for i := 1; i <= 5; i++ {
-		nsqlookupd.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
-	nsqlookupd.Exit()
-
 }

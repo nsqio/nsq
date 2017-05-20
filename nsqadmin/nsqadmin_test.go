@@ -10,24 +10,15 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqd"
 )
 
-func TestNoLogger(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = nil
-	opts.HTTPAddress = "127.0.0.1:0"
-	opts.NSQLookupdHTTPAddresses = []string{"127.0.0.1:4161"}
-	nsqadmin := New(opts)
-
-	nsqadmin.logf(LOG_ERROR, "should never be logged")
-}
-
 func TestNeitherNSQDAndNSQLookup(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		opts := NewOptions()
-		opts.Logger = nil
+		opts.Logger = lg.NilLogger{}
 		opts.HTTPAddress = "127.0.0.1:0"
 		New(opts)
 		return
@@ -45,7 +36,7 @@ func TestNeitherNSQDAndNSQLookup(t *testing.T) {
 func TestBothNSQDAndNSQLookup(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		opts := NewOptions()
-		opts.Logger = nil
+		opts.Logger = lg.NilLogger{}
 		opts.HTTPAddress = "127.0.0.1:0"
 		opts.NSQLookupdHTTPAddresses = []string{"127.0.0.1:4161"}
 		opts.NSQDHTTPAddresses = []string{"127.0.0.1:4151"}
@@ -115,13 +106,9 @@ func mustStartNSQD(opts *nsqd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqd.NSQD) 
 func TestCrashingLogger(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		// Test invalid log level causes error
-		nsqdOpts := nsqd.NewOptions()
-		_, _, nsqd := mustStartNSQD(nsqdOpts)
-		defer os.RemoveAll(nsqdOpts.DataPath)
-		defer nsqd.Exit()
-
 		opts := NewOptions()
 		opts.LogLevel = "bad"
+		opts.NSQLookupdHTTPAddresses = []string{"127.0.0.1:4161"}
 		_ = New(opts)
 		return
 	}
@@ -132,64 +119,4 @@ func TestCrashingLogger(t *testing.T) {
 		return
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
-}
-
-type mockLogger struct {
-	Count int
-}
-
-func (l *mockLogger) Output(maxdepth int, s string) error {
-	l.Count++
-	return nil
-}
-
-func TestLogging(t *testing.T) {
-	nsqdOpts := nsqd.NewOptions()
-	_, nsqdHTTPAddr, nsqd := mustStartNSQD(nsqdOpts)
-	defer os.RemoveAll(nsqdOpts.DataPath)
-	defer nsqd.Exit()
-
-	logger := &mockLogger{}
-
-	opts := NewOptions()
-	opts.HTTPAddress = "127.0.0.1:0"
-	opts.NSQDHTTPAddresses = []string{nsqdHTTPAddr.String()}
-	opts.Logger = logger
-
-	// Test only fatal get through
-	opts.LogLevel = "FaTaL"
-	nsqadmin1 := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqadmin1.logf(i, "Test")
-	}
-	test.Equal(t, 1, logger.Count)
-
-	// Test only warnings or higher get through
-	opts.LogLevel = "WARN"
-	nsqadmin2 := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqadmin2.logf(i, "Test")
-	}
-	test.Equal(t, 3, logger.Count)
-
-	// Test everything gets through
-	opts.LogLevel = "debuG"
-	nsqadmin3 := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqadmin3.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
-
-	// Test everything gets through with verbose = true
-	opts.LogLevel = "fatal"
-	opts.Verbose = true
-	nsqadmin4 := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqadmin4.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
 }
