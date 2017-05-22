@@ -55,21 +55,21 @@ type httpServer struct {
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
-	log := http_api.Log(ctx.nsqadmin.getOpts().Logger)
+	log := http_api.Log(ctx.nsqadmin.logf)
 
 	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
 		ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqadmin.getOpts().Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.getOpts().Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.getOpts().Logger)
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqadmin.logf)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.logf)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.logf)
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,
 		client: client,
-		ci:     clusterinfo.New(ctx.nsqadmin.getOpts().Logger, client),
+		ci:     clusterinfo.New(ctx.nsqadmin.logf, client),
 	}
 
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))

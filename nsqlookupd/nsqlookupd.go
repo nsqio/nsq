@@ -55,7 +55,7 @@ func (l *NSQLookupd) Main() {
 	l.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
+		protocol.TCPServer(tcpListener, tcpServer, l.logf)
 	})
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
@@ -68,7 +68,7 @@ func (l *NSQLookupd) Main() {
 	l.Unlock()
 	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
+		http_api.Serve(httpListener, httpServer, "HTTP", l.logf)
 	})
 }
 
