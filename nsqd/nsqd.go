@@ -87,9 +87,11 @@ func New(opts *Options) *NSQD {
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
-		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)),
 		dl:                   dirlock.New(dataPath),
 	}
+	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
+	n.ci = clusterinfo.New(n.logf, httpcli)
+
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
 
@@ -226,7 +228,7 @@ func (n *NSQD) Main() {
 	n.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.getOpts().Logger)
+		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
 	})
 
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
@@ -240,7 +242,7 @@ func (n *NSQD) Main() {
 		n.Unlock()
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
-			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.getOpts().Logger)
+			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf)
 		})
 	}
 	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
@@ -253,7 +255,7 @@ func (n *NSQD) Main() {
 	n.Unlock()
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, "HTTP", n.getOpts().Logger)
+		http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf)
 	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })

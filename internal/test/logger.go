@@ -1,8 +1,8 @@
 package test
 
-import (
-	"github.com/nsqio/nsq/internal/app"
-)
+type Logger interface {
+	Output(maxdepth int, s string) error
+}
 
 type tbLog interface {
 	Log(...interface{})
@@ -17,6 +17,6 @@ func (tl *testLogger) Output(maxdepth int, s string) error {
 	return nil
 }
 
-func NewTestLogger(tbl tbLog) app.Logger {
+func NewTestLogger(tbl tbLog) Logger {
 	return &testLogger{tbl}
 }
