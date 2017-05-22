@@ -8,16 +8,14 @@ import (
 type QueueInterval interface {
 	Start() int64
 	End() int64
-	StartCnt() uint64
 	EndCnt() uint64
 	augmentedtree.Interval
 }
 
 type queueInterval struct {
-	start    int64
-	end      int64
-	startCnt uint64
-	endCnt   uint64
+	start  int64
+	end    int64
+	endCnt uint64
 }
 
 func (self *queueInterval) Start() int64 {
@@ -25,9 +23,6 @@ func (self *queueInterval) Start() int64 {
 }
 func (self *queueInterval) End() int64 {
 	return self.end
-}
-func (self *queueInterval) StartCnt() uint64 {
-	return self.startCnt
 }
 func (self *queueInterval) EndCnt() uint64 {
 	return self.endCnt
@@ -80,12 +75,10 @@ func (self *IntervalTree) AddOrMerge(inter QueueInterval) QueueInterval {
 		qi := &queueInterval{}
 		qi.start = inter.Start()
 		qi.end = inter.End()
-		qi.startCnt = inter.StartCnt()
 		qi.endCnt = inter.EndCnt()
 		for _, v := range overlaps {
 			if v.LowAtDimension(0) < qi.LowAtDimension(0) {
 				qi.start = v.LowAtDimension(0)
-				qi.startCnt = v.(QueueInterval).StartCnt()
 			}
 			if v.HighAtDimension(0) > qi.HighAtDimension(0) {
 				qi.end = v.HighAtDimension(0)
@@ -122,10 +115,9 @@ func (self *IntervalTree) Delete(inter QueueInterval) {
 
 func (self *IntervalTree) DeleteLower(low int64) int {
 	qi := &queueInterval{
-		start:    0,
-		end:      low,
-		startCnt: 0,
-		endCnt:   0,
+		start:  0,
+		end:    low,
+		endCnt: 0,
 	}
 	overlaps := self.tr.Query(qi)
 	cnt := 0
@@ -174,10 +166,9 @@ func (self *IntervalTree) Query(inter QueueInterval, excludeBoard bool) []QueueI
 
 func (self *IntervalTree) IsLowestAt(low int64) QueueInterval {
 	qi := &queueInterval{
-		start:    0,
-		end:      low,
-		startCnt: 0,
-		endCnt:   0,
+		start:  0,
+		end:    low,
+		endCnt: 0,
 	}
 	overlaps := self.tr.Query(qi)
 	if len(overlaps) == 0 {

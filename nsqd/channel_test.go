@@ -321,18 +321,18 @@ func TestChannelDepthTimestamp(t *testing.T) {
 
 func TestRangeTree(t *testing.T) {
 	atr := augmentedtree.New(1)
-	atr.Add(&queueInterval{100, 110, 1, 2})
-	atr.Add(&queueInterval{110, 120, 2, 3})
-	atr.Add(&queueInterval{120, 130, 3, 4})
-	atr.Add(&queueInterval{130, 140, 4, 5})
-	aret := atr.Query(&queueInterval{111, 140, 2, 5})
+	atr.Add(&queueInterval{100, 110, 2})
+	atr.Add(&queueInterval{110, 120, 3})
+	atr.Add(&queueInterval{120, 130, 4})
+	atr.Add(&queueInterval{130, 140, 5})
+	aret := atr.Query(&queueInterval{111, 140, 5})
 	equal(t, len(aret), 3)
-	aret = atr.Query(&queueInterval{99, 100, 0, 1})
+	aret = atr.Query(&queueInterval{99, 100, 1})
 	equal(t, len(aret), 1)
 	atr.Traverse(func(inter augmentedtree.Interval) {
 		t.Logf("inter: %v\n", inter)
 	})
-	atr.Delete(&queueInterval{110, 120, 2, 5})
+	atr.Delete(&queueInterval{110, 120, 5})
 	t.Log("after delete \n")
 	atr.Traverse(func(inter augmentedtree.Interval) {
 		t.Logf("inter: %v\n", inter)
@@ -340,12 +340,12 @@ func TestRangeTree(t *testing.T) {
 	equal(t, atr.Len(), uint64(3))
 
 	tr := NewIntervalTree()
-	m1 := &queueInterval{0, 10, 1, 2}
-	m2 := &queueInterval{10, 20, 2, 3}
-	m3 := &queueInterval{20, 30, 3, 4}
-	m4 := &queueInterval{30, 40, 4, 5}
-	m5 := &queueInterval{40, 50, 5, 6}
-	m6 := &queueInterval{50, 60, 6, 7}
+	m1 := &queueInterval{0, 10, 2}
+	m2 := &queueInterval{10, 20, 3}
+	m3 := &queueInterval{20, 30, 4}
+	m4 := &queueInterval{30, 40, 5}
+	m5 := &queueInterval{40, 50, 6}
+	m6 := &queueInterval{50, 60, 7}
 	ret := tr.Query(m1, false)
 	equal(t, len(ret), 0)
 	tr.AddOrMerge(m1)
@@ -375,7 +375,6 @@ func TestRangeTree(t *testing.T) {
 
 	merged := tr.AddOrMerge(m2)
 	equal(t, merged.Start(), m1.Start())
-	equal(t, merged.StartCnt(), m1.StartCnt())
 	equal(t, merged.End(), m3.End())
 	equal(t, merged.EndCnt(), m3.EndCnt())
 
@@ -384,7 +383,6 @@ func TestRangeTree(t *testing.T) {
 
 	merged = tr.AddOrMerge(m6)
 	equal(t, merged.Start(), m5.Start())
-	equal(t, merged.StartCnt(), m5.StartCnt())
 	equal(t, merged.End(), m6.End())
 	equal(t, merged.EndCnt(), m6.EndCnt())
 
@@ -396,7 +394,6 @@ func TestRangeTree(t *testing.T) {
 	equal(t, tr.Len(), int(1))
 	equal(t, merged.Start(), int64(0))
 	equal(t, merged.End(), int64(60))
-	equal(t, merged.StartCnt(), uint64(1))
 	equal(t, merged.EndCnt(), uint64(7))
 
 	deleted = tr.DeleteLower(m1.Start() + (m1.End()-m1.Start())/2)

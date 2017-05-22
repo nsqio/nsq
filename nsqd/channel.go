@@ -519,16 +519,15 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	}
 	//c.confirmedMsgs[int64(msg.offset)] = msg
 	mergedInterval := c.confirmedMsgs.AddOrMerge(&queueInterval{start: int64(msg.offset),
-		end:      int64(msg.offset) + int64(msg.rawMoveSize),
-		startCnt: uint64(msg.queueCntIndex - 1),
-		endCnt:   uint64(msg.queueCntIndex),
+		end:    int64(msg.offset) + int64(msg.rawMoveSize),
+		endCnt: uint64(msg.queueCntIndex),
 	})
 	reduced := false
 	newConfirmed := curConfirm.Offset()
-	confirmedCnt := int64(0)
-	defer func() {
-		c.tmpRemovedConfirmed = c.tmpRemovedConfirmed[:0]
-	}()
+	confirmedCnt := curConfirm.TotalMsgCnt()
+	//defer func() {
+	//	c.tmpRemovedConfirmed = c.tmpRemovedConfirmed[:0]
+	//}()
 	//for {
 	//	if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
 	//		//nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
@@ -594,9 +593,8 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 	c.confirmMutex.Lock()
 	//c.finMsgs[msg.ID] = msg
 	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.offset),
-		end:      int64(msg.offset) + int64(msg.rawMoveSize),
-		startCnt: uint64(msg.queueCntIndex - 1),
-		endCnt:   uint64(msg.queueCntIndex)}, true)
+		end:    int64(msg.offset) + int64(msg.rawMoveSize),
+		endCnt: uint64(msg.queueCntIndex)}, true)
 	c.confirmMutex.Unlock()
 	if ok {
 		c.ContinueConsumeForOrder()
