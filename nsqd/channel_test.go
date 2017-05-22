@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	//"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/Workiva/go-datastructures/augmentedtree"
 	"os"
 	"strconv"
 	"testing"
@@ -316,4 +317,88 @@ func TestChannelDepthTimestamp(t *testing.T) {
 	}
 	channel.resetReaderToConfirmed()
 	equal(t, channel.DepthTimestamp(), int64(0))
+}
+
+func TestRangeTree(t *testing.T) {
+	atr := augmentedtree.New(1)
+	atr.Add(&queueInterval{100, 110, 2})
+	atr.Add(&queueInterval{110, 120, 3})
+	atr.Add(&queueInterval{120, 130, 4})
+	atr.Add(&queueInterval{130, 140, 5})
+	aret := atr.Query(&queueInterval{111, 140, 5})
+	equal(t, len(aret), 3)
+	aret = atr.Query(&queueInterval{99, 100, 1})
+	equal(t, len(aret), 1)
+	atr.Traverse(func(inter augmentedtree.Interval) {
+		t.Logf("inter: %v\n", inter)
+	})
+	atr.Delete(&queueInterval{110, 120, 5})
+	t.Log("after delete \n")
+	atr.Traverse(func(inter augmentedtree.Interval) {
+		t.Logf("inter: %v\n", inter)
+	})
+	equal(t, atr.Len(), uint64(3))
+
+	tr := NewIntervalTree()
+	m1 := &queueInterval{0, 10, 2}
+	m2 := &queueInterval{10, 20, 3}
+	m3 := &queueInterval{20, 30, 4}
+	m4 := &queueInterval{30, 40, 5}
+	m5 := &queueInterval{40, 50, 6}
+	m6 := &queueInterval{50, 60, 7}
+	ret := tr.Query(m1, false)
+	equal(t, len(ret), 0)
+	tr.AddOrMerge(m1)
+	lowest := tr.IsLowestAt(m1.Start())
+	equal(t, lowest, m1)
+	lowest = tr.IsLowestAt(m1.End())
+	equal(t, lowest, nil)
+	deleted := tr.DeleteLower(m1.Start() + (m1.End()-m1.Start())/2)
+	equal(t, deleted, 0)
+	ret = tr.Query(m3, false)
+	equal(t, len(ret), 0)
+	lowest = tr.IsLowestAt(m1.Start())
+	equal(t, lowest, m1)
+	tr.AddOrMerge(m3)
+	ret = tr.Query(m5, false)
+	equal(t, len(ret), 0)
+	tr.AddOrMerge(m5)
+	ret = tr.Query(m2, false)
+	equal(t, len(ret), 2)
+	lowest = tr.IsLowestAt(m1.Start())
+	equal(t, lowest, m1)
+	lowest = tr.IsLowestAt(m3.Start())
+	equal(t, lowest, nil)
+
+	deleted = tr.DeleteLower(m1.Start() + (m1.End()-m1.Start())/2)
+	equal(t, deleted, 0)
+
+	merged := tr.AddOrMerge(m2)
+	equal(t, merged.Start(), m1.Start())
+	equal(t, merged.End(), m3.End())
+	equal(t, merged.EndCnt(), m3.EndCnt())
+
+	ret = tr.Query(m6, false)
+	equal(t, len(ret), 1)
+
+	merged = tr.AddOrMerge(m6)
+	equal(t, merged.Start(), m5.Start())
+	equal(t, merged.End(), m6.End())
+	equal(t, merged.EndCnt(), m6.EndCnt())
+
+	ret = tr.Query(m4, false)
+	equal(t, len(ret), 2)
+
+	merged = tr.AddOrMerge(m4)
+
+	equal(t, tr.Len(), int(1))
+	equal(t, merged.Start(), int64(0))
+	equal(t, merged.End(), int64(60))
+	equal(t, merged.EndCnt(), uint64(7))
+
+	deleted = tr.DeleteLower(m1.Start() + (m1.End()-m1.Start())/2)
+	equal(t, deleted, 0)
+	deleted = tr.DeleteLower(int64(60))
+	equal(t, deleted, 1)
+	equal(t, tr.Len(), int(0))
 }
