@@ -214,7 +214,7 @@ func (self *NsqLookupdEtcdMgr) processMasterEvents(master etcdlock.Master, leade
 				leader <- &lookupdNode
 			} else {
 				// TODO: lock error.
-				coordLog.Infof("master event unkown: %v.", e)
+				coordLog.Infof("master event unknown: %v.", e)
 			}
 		case <-stop:
 			master.Stop()
@@ -774,8 +774,6 @@ func (self *NsqLookupdEtcdMgr) WatchTopicLeader(leader chan *TopicLeaderSession,
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (self *NsqLookupdEtcdMgr) watchTopicLeaderSession(watchTopicLeaderInfo *WatchTopicLeaderInfo, leader chan *TopicLeaderSession) {

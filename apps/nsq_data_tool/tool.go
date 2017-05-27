@@ -137,7 +137,7 @@ func main() {
 		backendName := getBackendName(*topic, *partition)
 		backendWriter, err := nsqd.NewDiskQueueWriterForRead(backendName, topicDataPath, 1024*1024*1024, 1, 1024*1024*100, 1)
 		if err != nil {
-			log.Fatal("init disk writer failed: %v", err)
+			log.Fatalf("init disk writer failed: %v", err)
 			return
 		}
 		backendReader := nsqd.NewDiskQueueSnapshot(backendName, topicDataPath, backendWriter.GetQueueReadEnd())

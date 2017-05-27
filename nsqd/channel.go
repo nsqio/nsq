@@ -656,7 +656,7 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 	}
 
 	if c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-		nsqLog.LogDebugf("check requeue to end, timeout:%v, msg timestamp:%v, depth ts:%v, msg attemp:%v, waiting :%v",
+		nsqLog.LogDebugf("check requeue to end, timeout:%v, msg timestamp:%v, depth ts:%v, msg attempt:%v, waiting :%v",
 			timeout, msg.Timestamp,
 			c.DepthTimestamp(), msg.Attempts, atomic.LoadInt32(&c.waitingConfirm))
 	}
@@ -706,7 +706,6 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		}
 		return msg, true
 	}
-	return nil, false
 }
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:

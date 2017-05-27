@@ -464,7 +464,7 @@ func (self *NsqLookupCoordinator) handleRemovingNodes(monitorChan chan struct{})
 				removingNodes[nid] = removeState
 			}
 			self.nodesMutex.RUnlock()
-			// remove state: marked -> pending -> data_transfered -> done
+			// remove state: marked -> pending -> data_transferred -> done
 			if len(removingNodes) == 0 {
 				continue
 			}
@@ -515,10 +515,10 @@ func (self *NsqLookupCoordinator) handleRemovingNodes(monitorChan chan struct{})
 						err := self.dpm.addToCatchupAndWaitISRReady(monitorChan, topicInfo.Name, topicInfo.Partition,
 							"", nodeTopicStats, true)
 						if err != nil {
-							coordLog.Infof("topic %v data on node %v transfered failed, waiting next time", topicInfo.GetTopicDesp(), nid)
+							coordLog.Infof("topic %v data on node %v transferred failed, waiting next time", topicInfo.GetTopicDesp(), nid)
 							continue
 						}
-						coordLog.Infof("topic %v data on node %v transfered success", topicInfo.GetTopicDesp(), nid)
+						coordLog.Infof("topic %v data on node %v transferred success", topicInfo.GetTopicDesp(), nid)
 						anyStateChanged = true
 					}
 					if topicInfo.Leader == nid {
@@ -529,11 +529,11 @@ func (self *NsqLookupCoordinator) handleRemovingNodes(monitorChan chan struct{})
 				}
 				if !anyPending {
 					anyStateChanged = true
-					coordLog.Infof("node %v data has been transfered, it can be removed from cluster: state: %v", nid, removingNodes[nid])
-					if removingNodes[nid] != "data_transfered" && removingNodes[nid] != "done" {
-						removingNodes[nid] = "data_transfered"
+					coordLog.Infof("node %v data has been transferred, it can be removed from cluster: state: %v", nid, removingNodes[nid])
+					if removingNodes[nid] != "data_transferred" && removingNodes[nid] != "done" {
+						removingNodes[nid] = "data_transferred"
 					} else {
-						if removingNodes[nid] == "data_transfered" {
+						if removingNodes[nid] == "data_transferred" {
 							removingNodes[nid] = "done"
 						} else if removingNodes[nid] == "done" {
 							self.nodesMutex.Lock()

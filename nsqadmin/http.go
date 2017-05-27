@@ -320,8 +320,6 @@ func (s *httpServer) coordinatorHandler(w http.ResponseWriter, req *http.Request
 		*clusterinfo.CoordStats
 		Message string `json:"message"`
 	}{topicCoordStats, maybeWarnMsg(messages)}, nil
-
-	return nil, nil
 }
 
 func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -831,7 +829,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 				} else {
 					s.ctx.nsqadmin.logf(err.Error())
 					backoffTimeout := time.Duration(s.ctx.nsqadmin.opts.ChannelCreationBackoffInterval*pnum) * time.Millisecond
-					s.ctx.nsqadmin.logf("Backoff for %v as previous channel %v creation attemp failed.", backoffTimeout, body.Channel)
+					s.ctx.nsqadmin.logf("Backoff for %v as previous channel %v creation attempt failed.", backoffTimeout, body.Channel)
 					time.Sleep(backoffTimeout)
 				}
 			}
@@ -1153,7 +1151,12 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 	return struct {
 		RankName string       `json:"rank_name"`
 		Top10    []*rankStats `json:"top10"`
-	}{rankName, rank[:maxLen]}, nil
+		Message  string       `json:"message"`
+	}{
+		RankName: rankName,
+		Top10:    rank[:maxLen],
+		Message:  maybeWarnMsg(messages),
+	}, nil
 }
 
 func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

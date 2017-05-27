@@ -535,7 +535,7 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 	test.Equal(t, resetStart.TotalMsgCnt(), channel.GetChannelEnd().TotalMsgCnt())
 	for i := 0; i < msgNum; i++ {
 		msg.ID = 0
-		_, _, msgSize, dend, _ = topic.PutMessage(msg)
+		_, _, _, dend, _ = topic.PutMessage(msg)
 		msg.Timestamp = time.Now().Add(-1 * time.Hour * 24 * time.Duration(4-dend.(*diskQueueEndInfo).EndOffset.FileNum)).UnixNano()
 	}
 	topic.ForceFlush()

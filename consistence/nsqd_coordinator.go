@@ -2060,7 +2060,7 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 			if tcData.IsMineLeaderSessionReady(self.GetMyID()) {
 				// leader
 				self.leadership.ReleaseTopicLeader(topicName, pid, &tcData.topicLeaderSession)
-				coordLog.Infof("The leader for topic %v is transfered.", tcData.topicInfo.GetTopicDesp())
+				coordLog.Infof("The leader for topic %v is transferred.", tcData.topicInfo.GetTopicDesp())
 			}
 
 			localTopic.PrintCurrentStats()

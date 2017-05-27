@@ -63,7 +63,7 @@ func DeprecatedAPI(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 		return f(w, req, ps)
 		// deprecated this later
-		return nil, Err{400, ErrDeprecatedAPI.Error()}
+		//return nil, Err{400, ErrDeprecatedAPI.Error()}
 	}
 }
 

@@ -133,7 +133,6 @@ func (self *fakeNsqdLeadership) WatchLookupdLeader(leader chan *NsqLookupdNodeIn
 		close(leader)
 		return nil
 	}
-	return nil
 }
 
 func (self *fakeNsqdLeadership) UpdateTopics(topic string, info map[int]*TopicPartitionMetaInfo) {

@@ -946,7 +946,8 @@ func (self *NsqdCoordinator) DeleteChannel(topic *nsqd.Topic, channelName string
 			coordLog.Infof("delete channel(%v) to replica %v failed: %v", channelName,
 				nodeID, rpcErr)
 		}
-		return rpcErr
+		// ignore delete channel error
+		return nil
 	}
 	handleSyncResult := func(successNum int, tcData *coordData) bool {
 		// we can ignore the error if this channel is not ordered. (just sync next time)

@@ -1152,6 +1152,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 
 	// test update the sync and retention , all partition and replica should be updated
 	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, 1234, 3, -1)
+	test.Nil(t, err)
 	time.Sleep(time.Second)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	test.Equal(t, 1234, tmeta.SyncEvery)
@@ -1272,7 +1273,7 @@ func TestNsqLookupMarkNodeRemove(t *testing.T) {
 		lookupCoord.nodesMutex.Lock()
 		state := lookupCoord.removingNodes[nid]
 		lookupCoord.nodesMutex.Unlock()
-		if state == "data_transfered" || state == "done" {
+		if state == "data_transferred" || state == "done" {
 			break
 		} else {
 			t.Logf("still waiting state: %v ", state)

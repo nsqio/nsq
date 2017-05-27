@@ -1362,7 +1362,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 		test.Equal(t, channel1.Depth(), int64(msgCnt-i-1))
 		test.Equal(t, channel1.DepthSize(), msgRawSize*int64(msgCnt-i-1))
 	}
-	msgConsumed = msgCnt
+	//msgConsumed = msgCnt
 	// TODO: test retry write
 }
 

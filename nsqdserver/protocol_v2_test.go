@@ -97,7 +97,7 @@ func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName str
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
 	test.Equal(t, err, nil)
 	resp, err := nsq.ReadResponse(conn)
-	frameType, _, err := nsq.UnpackResponse(resp)
+	frameType, _, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameType, frameTypeError)
 }
 
@@ -236,6 +236,7 @@ func TestBasicV2(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
+	test.Nil(t, err)
 	msgOut, _ := nsqdNs.DecodeMessage(data)
 	test.Equal(t, frameType, frameTypeMessage)
 	test.Equal(t, msgOut.ID, msg.ID)
@@ -943,6 +944,7 @@ func TestDelayMessage(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
+	test.Nil(t, err)
 	test.Equal(t, frameType, frameTypeError)
 	test.Equal(t, string(data), fmt.Sprintf("E_INVALID REQ timeout %v out of range 0-%v", opts.MaxReqTimeout+time.Second*2, opts.MaxReqTimeout))
 }
@@ -1291,6 +1293,7 @@ func TestMaxRdyCount(t *testing.T) {
 	resp, err := nsq.ReadResponse(conn)
 	test.Equal(t, err, nil)
 	frameType, data, err := nsq.UnpackResponse(resp)
+	test.Nil(t, err)
 	test.Equal(t, frameType, int32(1))
 	test.Equal(t, string(data), "E_INVALID RDY count 51 out of range 0-50")
 }
@@ -1353,7 +1356,7 @@ func TestOutputBuffering(t *testing.T) {
 	v, ok := decoded["output_buffer_size"]
 	test.Equal(t, ok, true)
 	test.Equal(t, int(v.(float64)), outputBufferSize)
-	v, ok = decoded["output_buffer_timeout"]
+	v, _ = decoded["output_buffer_timeout"]
 	test.Equal(t, int(v.(float64)), outputBufferTimeout)
 	sub(t, conn, topicName, "ch")
 
@@ -2030,16 +2033,16 @@ func TestTimeoutFin(t *testing.T) {
 	}, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	attemp := 1
+	attempt := 1
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
 	test.Equal(t, msgOut.ID, msg.ID)
-	test.Equal(t, msgOut.Attempts, uint16(attemp))
+	test.Equal(t, msgOut.Attempts, uint16(attempt))
 	test.Equal(t, msgOut.Body, msg.Body)
 
-	attemp++
+	attempt++
 	for i := 0; i < 6; i++ {
 		//time.Sleep(1100*time.Millisecond + opts.QueueScanInterval)
 
@@ -2047,9 +2050,9 @@ func TestTimeoutFin(t *testing.T) {
 		msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
 		if uint64(msgOut.ID) == uint64(msg.ID) {
 			t.Log(msgOut)
-			test.Equal(t, msgOut.Attempts, uint16(attemp))
+			test.Equal(t, msgOut.Attempts, uint16(attempt))
 			test.Equal(t, msgOut.Body, msg.Body)
-			attemp++
+			attempt++
 			if i > 3 {
 				_, err = nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(conn)
 				test.Nil(t, err)
@@ -2102,13 +2105,13 @@ func TestTimeoutTooMuch(t *testing.T) {
 	}, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	attemp := 1
+	attempt := 1
 	_, err = nsq.Ready(3).WriteTo(conn)
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
 	test.Equal(t, msgOut.ID, msg.ID)
-	test.Equal(t, msgOut.Attempts, uint16(attemp))
+	test.Equal(t, msgOut.Attempts, uint16(attempt))
 	test.Equal(t, msgOut.Body, msg.Body)
 
 	startTime := time.Now()

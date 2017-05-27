@@ -146,6 +146,7 @@ func TestCommitLogWrite(t *testing.T) {
 	currentCount := logMgr.currentCount
 	logMgr.Close()
 	logMgr, err = InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Nil(t, err)
 	test.Equal(t, currentStart, logMgr.currentStart)
 	test.Equal(t, currentCount, logMgr.currentCount)
 }
@@ -1464,6 +1465,7 @@ func TestCommitLogReopen(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, int64(0), cntIndex)
 	logMgr2, err := InitTopicCommitLogMgr(logName, 0, tmpDir, 4)
+	test.Nil(t, err)
 	test.Equal(t, logMgr.nLogID, logMgr2.nLogID)
 	test.Equal(t, logMgr.pLogID, logMgr2.pLogID)
 	test.Equal(t, logMgr.currentStart, logMgr2.currentStart)

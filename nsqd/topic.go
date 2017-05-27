@@ -447,7 +447,7 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 	}
 	cur := t.GetCommitted()
 	if cur != nil && offset.Offset() < cur.Offset() {
-		nsqLog.LogDebugf("commited is rollbacked: %v, %v", cur, offset)
+		nsqLog.LogDebugf("committed is rollbacked: %v, %v", cur, offset)
 	}
 	t.committedOffset.Store(offset)
 	if t.dynamicConf.SyncEvery == 1 || offset.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {

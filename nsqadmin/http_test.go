@@ -426,13 +426,13 @@ func TestHTTPGetStatisticsRanks(t *testing.T) {
 	equal(t, resp.StatusCode, 200)
 
 	type Filters struct {
-		Filters	[]string	`json:"filters"`
+		Filters []string `json:"filters"`
 	}
 
 	var filters Filters
 	data, err := ioutil.ReadAll(resp.Body)
 	if err == nil && data != nil {
-		err = json.Unmarshal(data, &filters)
+		json.Unmarshal(data, &filters)
 	}
 	equal(t, len(filters.Filters), 2)
 	for _, val := range filters.Filters {
@@ -445,27 +445,27 @@ func TestHTTPGetStatisticsRanks(t *testing.T) {
 		equal(t, resp.StatusCode, 200)
 
 		type RankItem struct {
-			TopicName 	string	`json:"topic_name"`
-			TotalChannelDepth	int64	`json:"total_channel_depth"`
-			MessageCount	int64	`json:"message_count"`
-			HourlyPubsize	int64	`json:"hourly_pubsize"`
+			TopicName         string `json:"topic_name"`
+			TotalChannelDepth int64  `json:"total_channel_depth"`
+			MessageCount      int64  `json:"message_count"`
+			HourlyPubsize     int64  `json:"hourly_pubsize"`
 		}
 
 		type Rank struct {
-			RankName	string 	`json:"rank_name"`
-			Top10		[]RankItem	`top10`
+			RankName string     `json:"rank_name"`
+			Top10    []RankItem `json:"top10"`
 		}
 
 		var aRank Rank
 		data, err := ioutil.ReadAll(resp.Body)
 		assert(t, err == nil, "Fail to read response.", nil)
 		if err == nil && data != nil {
-			err = json.Unmarshal(data, &aRank)
+			json.Unmarshal(data, &aRank)
 		}
 	}
 }
 
-func TestHTTPGetClusterStableInfo(t *testing.T){
+func TestHTTPGetClusterStableInfo(t *testing.T) {
 	dataPath, _, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
 	defer os.RemoveAll(dataPath)
 	defer nsqds[0].Exit()
@@ -482,23 +482,23 @@ func TestHTTPGetClusterStableInfo(t *testing.T){
 	equal(t, resp.StatusCode, 200)
 
 	type NodeStat struct {
-		Hostname		string		`json:"hostname"`
-		BroadcastAddress	string		`json:"broadcast_address"`
-		TCPPort			int		`json:"tcp_port"`
-		HTTPPort		int		`json:"http_port"`
-		LeaderLoadFactor	float64		`json:"leader_load_factor"`
-		NodeLoadFactor		float64		`json:"node_load_factor"`
+		Hostname         string  `json:"hostname"`
+		BroadcastAddress string  `json:"broadcast_address"`
+		TCPPort          int     `json:"tcp_port"`
+		HTTPPort         int     `json:"http_port"`
+		LeaderLoadFactor float64 `json:"leader_load_factor"`
+		NodeLoadFactor   float64 `json:"node_load_factor"`
 	}
 
 	type ClusterInfo struct {
-		Stable		bool		`json:"stable"`
-		NodeStatList	[]*NodeStat	`json:"node_stat_list"`
+		Stable       bool        `json:"stable"`
+		NodeStatList []*NodeStat `json:"node_stat_list"`
 	}
 
 	var aClusterStats ClusterInfo
 	data, err := ioutil.ReadAll(resp.Body)
-	assert(t, err==nil, "Fail to read form response.", nil)
+	assert(t, err == nil, "Fail to read form response.", nil)
 	if err == nil && data != nil {
-		err = json.Unmarshal(data, &aClusterStats)
+		json.Unmarshal(data, &aClusterStats)
 	}
 }

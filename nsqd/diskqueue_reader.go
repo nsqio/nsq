@@ -498,8 +498,8 @@ func stepOffset(dataRoot string, readFrom string, cur diskQueueEndInfo, step Bac
 		// handle backward
 		step = 0 - step
 		for step > BackendOffset(newOffset.EndOffset.Pos) {
-			nsqLog.Logf("step read back to previous file: %v, %v", step, newOffset)
 			virtualCur -= BackendOffset(newOffset.EndOffset.Pos)
+			nsqLog.Logf("step read back to previous file: %v, %v, virtual offset: %v", step, newOffset, virtualCur)
 			step -= BackendOffset(newOffset.EndOffset.Pos)
 			newOffset.EndOffset.FileNum--
 			if newOffset.EndOffset.FileNum < 0 {
