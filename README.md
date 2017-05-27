@@ -11,6 +11,7 @@
 </p>
 
 [![Build Status](https://travis-ci.org/absolute8511/nsq.svg?branch=master)](https://travis-ci.org/absolute8511/nsq) [![GitHub release](https://img.shields.io/github/release/absolute8511/nsq.svg)](https://github.com/absolute8511/nsq/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/absolute8511/nsq)](https://goreportcard.com/report/github.com/absolute8511/nsq)
 
 **NSQ** is a realtime distributed messaging platform designed to operate at scale, handling
 billions of messages per day.

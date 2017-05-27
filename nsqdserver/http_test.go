@@ -709,8 +709,7 @@ func BenchmarkFetchNodeHourlyPubsize(b *testing.B) {
 			b.Fail()
 		}
 		client := http.Client{}
-		resp, err := client.Do(req)
-		test.Nil(t, err)
+		resp, _ := client.Do(req)
 		var nodeHourlyPubsizeStats NodeHourlyPubsizeStats
 		body, _ := ioutil.ReadAll(resp.Body)
 		json.Unmarshal(body, &nodeHourlyPubsizeStats)
