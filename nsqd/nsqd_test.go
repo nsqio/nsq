@@ -351,11 +351,15 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 func TestReconfigure(t *testing.T) {
 	lopts := nsqlookupd.NewOptions()
 	lopts.Logger = test.NewTestLogger(t)
-	_, _, lookupd1 := mustStartNSQLookupd(lopts)
+
+	lopts1 := *lopts
+	_, _, lookupd1 := mustStartNSQLookupd(&lopts1)
 	defer lookupd1.Exit()
-	_, _, lookupd2 := mustStartNSQLookupd(lopts)
+	lopts2 := *lopts
+	_, _, lookupd2 := mustStartNSQLookupd(&lopts2)
 	defer lookupd2.Exit()
-	_, _, lookupd3 := mustStartNSQLookupd(lopts)
+	lopts3 := *lopts
+	_, _, lookupd3 := mustStartNSQLookupd(&lopts3)
 	defer lookupd3.Exit()
 
 	opts := NewOptions()
@@ -531,61 +535,4 @@ func TestCrashingLogger(t *testing.T) {
 		return
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
-}
-
-type mockLogger struct {
-	Count int
-}
-
-func (l *mockLogger) Output(maxdepth int, s string) error {
-	l.Count++
-	return nil
-}
-
-func TestLogging(t *testing.T) {
-	logger := &mockLogger{}
-	opts := NewOptions()
-	opts.Logger = logger
-
-	// Test only fatal get through
-	opts.LogLevel = "FaTaL"
-	nsqd := New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqd.logf(i, "Test")
-	}
-	test.Equal(t, 1, logger.Count)
-	nsqd.Exit()
-
-	// Test only warnings or higher get through
-	opts.LogLevel = "WARN"
-	nsqd = New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqd.logf(i, "Test")
-	}
-	test.Equal(t, 3, logger.Count)
-	nsqd.Exit()
-
-	// Test everything gets through
-	opts.LogLevel = "debuG"
-	nsqd = New(opts)
-	logger.Count = 0
-	for i := 1; i <= 5; i++ {
-		nsqd.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
-	nsqd.Exit()
-
-	// Test everything gets through with verbose = true
-	opts.LogLevel = "fatal"
-	nsqd = New(opts)
-	logger.Count = 0
-	opts.Verbose = true
-	for i := 1; i <= 5; i++ {
-		nsqd.logf(i, "Test")
-	}
-	test.Equal(t, 5, logger.Count)
-	nsqd.Exit()
-
 }

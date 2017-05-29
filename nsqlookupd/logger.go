@@ -1,56 +1,19 @@
 package nsqlookupd
 
 import (
-	"fmt"
-	"strings"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
-type Logger interface {
-	Output(maxdepth int, s string) error
-}
+type Logger lg.Logger
 
 const (
-	LOG_DEBUG = 1
-	LOG_INFO  = 2
-	LOG_WARN  = 3
-	LOG_ERROR = 4
-	LOG_FATAL = 5
+	LOG_DEBUG = lg.DEBUG
+	LOG_INFO  = lg.INFO
+	LOG_WARN  = lg.WARN
+	LOG_ERROR = lg.ERROR
+	LOG_FATAL = lg.FATAL
 )
 
-func (n *NSQLookupd) logLevelFromString(level string) int {
-	// check log-level is valid and translate to int
-	switch strings.ToLower(level) {
-	case "debug":
-		return LOG_DEBUG
-	case "info":
-		return LOG_INFO
-	case "warn":
-		return LOG_WARN
-	case "error":
-		return LOG_ERROR
-	case "fatal":
-		return LOG_FATAL
-	default:
-		return -1
-	}
-}
-
-func (n *NSQLookupd) logf(level int, f string, args ...interface{}) {
-	levelString := "INFO"
-	switch level {
-	case LOG_DEBUG:
-		levelString = "DEBUG"
-	case LOG_INFO:
-		levelString = "INFO"
-	case LOG_WARN:
-		levelString = "WARNING"
-	case LOG_ERROR:
-		levelString = "ERROR"
-	case LOG_FATAL:
-		levelString = "FATAL"
-	}
-
-	if level >= n.logLevel || n.opts.Verbose {
-		n.opts.Logger.Output(2, fmt.Sprintf(levelString+": "+f, args...))
-	}
+func (n *NSQLookupd) logf(level lg.LogLevel, f string, args ...interface{}) {
+	lg.Logf(n.opts.Logger, n.opts.logLevel, level, f, args...)
 }

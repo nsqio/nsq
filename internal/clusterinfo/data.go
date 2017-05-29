@@ -11,6 +11,7 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/stringy"
 )
 
@@ -33,16 +34,12 @@ func (l ErrList) Errors() []error {
 	return l
 }
 
-type logger interface {
-	Output(maxdepth int, s string) error
-}
-
 type ClusterInfo struct {
-	log    logger
+	log    lg.AppLogFunc
 	client *http_api.Client
 }
 
-func New(log logger, client *http_api.Client) *ClusterInfo {
+func New(log lg.AppLogFunc, client *http_api.Client) *ClusterInfo {
 	return &ClusterInfo{
 		log:    log,
 		client: client,
@@ -50,10 +47,9 @@ func New(log logger, client *http_api.Client) *ClusterInfo {
 }
 
 func (c *ClusterInfo) logf(f string, args ...interface{}) {
-	if c.log == nil {
-		return
+	if c.log != nil {
+		c.log(lg.INFO, f, args...)
 	}
-	c.log.Output(2, fmt.Sprintf(f, args...))
 }
 
 // GetVersion returns a semver.Version object by querying /info

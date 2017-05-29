@@ -22,6 +22,7 @@ import (
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"
@@ -86,21 +87,22 @@ func New(opts *Options) *NSQD {
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
-		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)),
 		dl:                   dirlock.New(dataPath),
 	}
-
-	// check log-level is valid and translate to int
-	opts.logLevel = n.logLevelFromString(opts.LogLevel)
-	if opts.logLevel == -1 {
-		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
-		os.Exit(1)
-	}
+	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
+	n.ci = clusterinfo.New(n.logf, httpcli)
 
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
 
-	err := n.dl.Lock()
+	var err error
+	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
+	if err != nil {
+		n.logf(LOG_FATAL, "%s", err)
+		os.Exit(1)
+	}
+
+	err = n.dl.Lock()
 	if err != nil {
 		n.logf(LOG_FATAL, "--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
 		os.Exit(1)
@@ -120,7 +122,7 @@ func New(opts *Options) *NSQD {
 		var port string
 		_, port, err = net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
-			n.logf(LOG_ERROR, "failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
+			n.logf(LOG_FATAL, "failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 			os.Exit(1)
 		}
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
@@ -226,7 +228,7 @@ func (n *NSQD) Main() {
 	n.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.getOpts().Logger)
+		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
 	})
 
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
@@ -240,7 +242,7 @@ func (n *NSQD) Main() {
 		n.Unlock()
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
-			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.getOpts().Logger)
+			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf)
 		})
 	}
 	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
@@ -253,7 +255,7 @@ func (n *NSQD) Main() {
 	n.Unlock()
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, "HTTP", n.getOpts().Logger)
+		http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf)
 	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })

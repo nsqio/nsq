@@ -19,6 +19,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -31,13 +32,13 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer {
-	log := http_api.Log(ctx.nsqd.getOpts().Logger)
+	log := http_api.Log(ctx.nsqd.logf)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqd.getOpts().Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqd.getOpts().Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqd.getOpts().Logger)
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqd.logf)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqd.logf)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqd.logf)
 	s := &httpServer{
 		ctx:         ctx,
 		tlsEnabled:  tlsEnabled,
@@ -609,14 +610,12 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			}
 		case "log_level":
 			logLevelStr := string(body)
-			logLevelInt := s.ctx.nsqd.logLevelFromString(logLevelStr)
-			if logLevelInt == -1 {
+			logLevel, err := lg.ParseLogLevel(logLevelStr, opts.Verbose)
+			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
-
-			// save the log level
 			opts.LogLevel = logLevelStr
-			opts.logLevel = logLevelInt
+			opts.logLevel = logLevel
 		case "verbose":
 			err := json.Unmarshal(body, &opts.Verbose)
 			if err != nil {

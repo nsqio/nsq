@@ -8,15 +8,19 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type Options struct {
 	// basic options
-	ID                       int64  `flag:"node-id" cfg:"id"`
-	LogLevel                 string `flag:"log-level"`
-	logLevel                 int
-	LogPrefix                string        `flag:"log-prefix"`
-	Verbose                  bool          `flag:"verbose"` // for backwards compatibility
+	ID        int64  `flag:"node-id" cfg:"id"`
+	LogLevel  string `flag:"log-level"`
+	LogPrefix string `flag:"log-prefix"`
+	Verbose   bool   `flag:"verbose"` // for backwards compatibility
+	Logger    Logger
+	logLevel  lg.LogLevel // private, not really an option
+
 	TCPAddress               string        `flag:"tcp-address"`
 	HTTPAddress              string        `flag:"http-address"`
 	HTTPSAddress             string        `flag:"https-address"`
@@ -75,8 +79,6 @@ type Options struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
-
-	Logger Logger
 }
 
 func NewOptions() *Options {
@@ -93,7 +95,6 @@ func NewOptions() *Options {
 		ID:        defaultID,
 		LogPrefix: "[nsqd] ",
 		LogLevel:  "info",
-		logLevel:  2,
 
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",

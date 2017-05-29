@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
@@ -19,7 +20,6 @@ type NSQLookupd struct {
 	httpListener net.Listener
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
-	logLevel     int
 }
 
 func New(opts *Options) *NSQLookupd {
@@ -31,10 +31,10 @@ func New(opts *Options) *NSQLookupd {
 		DB:   NewRegistrationDB(),
 	}
 
-	// check log-level is valid and translate to int
-	n.logLevel = n.logLevelFromString(opts.LogLevel)
-	if n.logLevel == -1 {
-		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+	var err error
+	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
+	if err != nil {
+		n.logf(LOG_FATAL, "%s", err)
 		os.Exit(1)
 	}
 
@@ -55,7 +55,7 @@ func (l *NSQLookupd) Main() {
 	l.Unlock()
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.opts.Logger)
+		protocol.TCPServer(tcpListener, tcpServer, l.logf)
 	})
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
@@ -68,7 +68,7 @@ func (l *NSQLookupd) Main() {
 	l.Unlock()
 	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, "HTTP", l.opts.Logger)
+		http_api.Serve(httpListener, httpServer, "HTTP", l.logf)
 	})
 }
 

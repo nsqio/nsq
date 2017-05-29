@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 // lookupPeer is a low-level type for connecting/reading/writing to nsqlookupd
@@ -16,7 +17,7 @@ import (
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
 type lookupPeer struct {
-	l               Logger
+	logf            lg.AppLogFunc
 	addr            string
 	conn            net.Conn
 	state           int32
@@ -36,9 +37,9 @@ type peerInfo struct {
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, maxBodySize int64, l Logger, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, maxBodySize int64, l lg.AppLogFunc, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
-		l:               l,
+		logf:            l,
 		addr:            addr,
 		state:           stateDisconnected,
 		maxBodySize:     maxBodySize,
@@ -48,7 +49,7 @@ func newLookupPeer(addr string, maxBodySize int64, l Logger, connectCallback fun
 
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
-	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
+	lp.logf(lg.INFO, "LOOKUP connecting to %s", lp.addr)
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
 		return err

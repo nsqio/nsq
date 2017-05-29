@@ -2,13 +2,16 @@ package nsqadmin
 
 import (
 	"time"
+
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type Options struct {
 	LogLevel  string `flag:"log-level"`
-	logLevel  int
 	LogPrefix string `flag:"log-prefix"`
 	Verbose   bool   `flag:"verbose"` // for backwards compatibility
+	Logger    Logger
+	logLevel  lg.LogLevel // private, not really an option
 
 	HTTPAddress string `flag:"http-address"`
 
@@ -35,8 +38,6 @@ type Options struct {
 	AllowConfigFromCIDR string `flag:"allow-config-from-cidr"`
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
-
-	Logger Logger
 }
 
 func NewOptions() *Options {

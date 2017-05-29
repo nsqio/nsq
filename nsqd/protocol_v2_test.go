@@ -1362,7 +1362,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	_, err = nsq.Ready(0).WriteTo(conn)
 	test.Nil(t, err)
 
-	time.Sleep(1100 * time.Millisecond)
+	time.Sleep(1150 * time.Millisecond)
 
 	test.Equal(t, 1, int(atomic.LoadUint64(&ch.timeoutCount)))
 	test.Equal(t, 0, int(atomic.LoadUint64(&ch.requeueCount)))

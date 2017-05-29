@@ -18,13 +18,13 @@ type httpServer struct {
 }
 
 func newHTTPServer(ctx *Context) *httpServer {
-	log := http_api.Log(ctx.nsqlookupd.opts.Logger)
+	log := http_api.Log(ctx.nsqlookupd.logf)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
-	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqlookupd.opts.Logger)
-	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqlookupd.opts.Logger)
-	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqlookupd.opts.Logger)
+	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqlookupd.logf)
+	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqlookupd.logf)
+	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqlookupd.logf)
 	s := &httpServer{
 		ctx:    ctx,
 		router: router,

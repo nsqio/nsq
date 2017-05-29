@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -37,15 +38,14 @@ func New(opts *Options) *NSQAdmin {
 	n := &NSQAdmin{
 		notifications: make(chan *AdminAction),
 	}
+	n.swapOpts(opts)
 
-	// check log-level is valid and translate to int
-	opts.logLevel = n.logLevelFromString(opts.LogLevel)
-	if opts.logLevel == -1 {
-		n.logf(LOG_FATAL, "log level '%s' should be one of: debug, info, warn, error, or fatal", opts.LogLevel)
+	var err error
+	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
+	if err != nil {
+		n.logf(LOG_FATAL, "%s", err)
 		os.Exit(1)
 	}
-
-	n.swapOpts(opts)
 
 	if len(opts.NSQDHTTPAddresses) == 0 && len(opts.NSQLookupdHTTPAddresses) == 0 {
 		n.logf(LOG_FATAL, "--nsqd-http-address or --lookupd-http-address required.")
@@ -179,7 +179,7 @@ func (n *NSQAdmin) Main() {
 	n.Unlock()
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.getOpts().Logger)
+		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.logf)
 	})
 	n.waitGroup.Wrap(func() { n.handleAdminActions() })
 }

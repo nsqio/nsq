@@ -21,7 +21,7 @@ func nsqlookupdFlagSet(opts *nsqlookupd.Options) *flag.FlagSet {
 	flagSet.String("config", "", "path to config file")
 	flagSet.Bool("version", false, "print version string")
 
-	flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal)")
+	flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal")
 	flagSet.String("log-prefix", "[nsqlookupd] ", "log message prefix")
 	flagSet.Bool("verbose", false, "deprecated in favor of log-level")
 
