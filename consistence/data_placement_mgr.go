@@ -1255,8 +1255,13 @@ func (self *DataPlacement) checkTopicNodeConflict(topicInfo *TopicPartitionMetaI
 			}
 			tmpInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicInfo.Name, i)
 			if err != nil {
-				coordLog.Infof("failed to get topic %v info: %v", topicInfo.GetTopicDesp(), err)
-				return false
+				if err != ErrKeyNotFound {
+					coordLog.Infof("failed to get topic %v info: %v", topicInfo.GetTopicDesp(), err)
+					return false
+				} else {
+					coordLog.Infof("part of topic %v info not found: %v", topicInfo.Name, i)
+					continue
+				}
 			}
 			for _, id := range tmpInfo.ISR {
 				if id == tmpInfo.Leader {
