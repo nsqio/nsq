@@ -222,6 +222,9 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{503, "EXITING"}
 	}
 
+	// Add the cross origin header to allow direct calls from web clients
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	
 	return "OK", nil
 }
 
