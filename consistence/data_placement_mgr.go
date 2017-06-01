@@ -1636,6 +1636,12 @@ func (self *DataPlacement) rebalanceOrderedTopic(monitorChan chan struct{}) (boo
 					topicInfo.Name, topicInfo.Partition, nid)
 				moved = true
 			}
+			newTopicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicInfo.Name, topicInfo.Partition)
+			if err != nil {
+				break
+			} else {
+				topicInfo = *newTopicInfo
+			}
 		}
 		if (topicInfo.Leader != partitionNodes[topicInfo.Partition][0]) &&
 			(len(topicInfo.ISR) >= topicInfo.Replica) {
