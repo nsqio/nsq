@@ -507,11 +507,12 @@ func startNsqLookupCoord(t *testing.T, useFakeLeadership bool) (*NsqLookupCoordi
 func prepareCluster(t *testing.T, nodeList []string, useFakeLeadership bool) (*NsqLookupCoordinator, map[string]*testClusterNodeInfo) {
 	rand.Seed(time.Now().Unix())
 	nsqdNodeInfoList := make(map[string]*testClusterNodeInfo)
-	rootPath := testEtcdServers + "/v2/keys/NSQMetaData/" + TEST_NSQ_CLUSTER_NAME + "/Topics?recursive=true"
+	serverAddrList := strings.Split(testEtcdServers, ",")
+	rootPath := serverAddrList[0] + "/v2/keys/NSQMetaData/" + TEST_NSQ_CLUSTER_NAME + "/Topics?recursive=true"
 	if !strings.HasPrefix(rootPath, "http://") {
 		rootPath = "http://" + rootPath
-
 	}
+
 	req, _ := http.NewRequest("DELETE",
 		rootPath,
 		nil,
@@ -596,10 +597,13 @@ func TestNsqLookupNsqdNodesChange(t *testing.T) {
 
 func checkDeleteErr(t *testing.T, err error) {
 	if err != nil {
-		if err != ErrKeyNotFound {
-			t.Errorf("delete error: %v", err)
+		if err != ErrKeyNotFound && err != ErrClusterUnstable {
+			t.Fatalf("delete error: %v", err)
+		} else {
+			t.Logf("delete failed: %v", err)
 		}
 	}
+	time.Sleep(time.Second)
 }
 
 func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
@@ -608,7 +612,7 @@ func testNsqLookupNsqdNodesChange(t *testing.T, useFakeLeadership bool) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 	idList := []string{"id1", "id2", "id3", "id4", "id5"}
 	lookupCoord1, nodeInfoList := prepareCluster(t, idList, useFakeLeadership)
@@ -903,7 +907,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 	idList := []string{"id1", "id2", "id3", "id4"}
 	lookupCoord1, nodeInfoList := prepareCluster(t, idList, false)
@@ -928,6 +932,7 @@ func TestNsqLookupNsqdCreateTopic(t *testing.T) {
 	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p2_r2, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord1, time.Second*3)
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p1_r1, "**"))
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p1_r3, "**"))
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p3_r1, "**"))
@@ -1068,7 +1073,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 
 	idList := []string{"id1", "id2", "id3", "id4"}
@@ -1087,6 +1092,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p2_r1, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord, time.Second*3)
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r1, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p2_r1, "**"))
 		time.Sleep(time.Second * 3)
@@ -1104,6 +1110,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	// test increase replicator and decrease the replicator
 	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 3)
 	lookupCoord.triggerCheckTopics("", 0, 0)
+	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second * 5)
 	tmeta, _, _ := lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	test.Equal(t, 3, tmeta.Replica)
@@ -1115,6 +1122,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 
 	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 2)
 	lookupCoord.triggerCheckTopics("", 0, 0)
+	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second * 3)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	test.Equal(t, 2, tmeta.Replica)
@@ -1126,7 +1134,8 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 
 	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 2)
 	lookupCoord.triggerCheckTopics("", 0, 0)
-	time.Sleep(time.Second * 3)
+	waitClusterStable(lookupCoord, time.Second*5)
+	time.Sleep(time.Second * 5)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p2_r1)
 	test.Equal(t, 2, tmeta.Replica)
 	for i := 0; i < tmeta.PartitionNum; i++ {
@@ -1140,6 +1149,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	test.NotNil(t, err)
 
 	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 1)
+	waitClusterStable(lookupCoord, time.Second*5)
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	time.Sleep(time.Second * 3)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p2_r1)
@@ -1153,6 +1163,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	// test update the sync and retention , all partition and replica should be updated
 	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, 1234, 3, -1)
 	test.Nil(t, err)
+	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second)
 	tmeta, _, _ = lookupLeadership.GetTopicMetaInfo(topic_p1_r1)
 	test.Equal(t, 1234, tmeta.SyncEvery)
@@ -1178,7 +1189,7 @@ func TestNsqLookupMarkNodeRemove(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 
 	idList := []string{"id1", "id2", "id3", "id4", "id5"}
@@ -1199,6 +1210,7 @@ func TestNsqLookupMarkNodeRemove(t *testing.T) {
 	checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r3, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord, time.Second*3)
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p4_r1, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p2_r2, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r3, "**"))
@@ -1292,7 +1304,7 @@ func TestNsqLookupExpandPartition(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 
 	idList := []string{"id1", "id2", "id3", "id4", "id5", "id6"}
@@ -1313,6 +1325,7 @@ func TestNsqLookupExpandPartition(t *testing.T) {
 	checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r3, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord, time.Second*3)
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r1, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r2, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r3, "**"))
@@ -1402,7 +1415,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 
 	idList := []string{"id1", "id2", "id3", "id4", "id5"}
@@ -1421,6 +1434,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p2_r2, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord, time.Second*3)
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p1_r1, "**"))
 		checkDeleteErr(t, lookupCoord.DeleteTopic(topic_p2_r2, "**"))
 		time.Sleep(time.Second * 3)
@@ -1501,10 +1515,17 @@ func TestNsqLookupMovePartition(t *testing.T) {
 			if FindSlice(t1.ISR, node.nodeInfo.GetID()) != -1 {
 				continue
 			}
+		} else {
+			t.Logf("failed to get topic info: %v", err)
+			continue
 		}
 		toNode = node.nodeInfo.GetID()
 		break
 	}
+	if toNode == "" {
+		t.Fatalf("toNode error: %v, %v, %v", t0, nodeInfoList)
+	}
+	test.Equal(t, true, toNode != "")
 
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	time.Sleep(time.Second)
@@ -1535,10 +1556,17 @@ func TestNsqLookupMovePartition(t *testing.T) {
 			if FindSlice(t1.ISR, node.nodeInfo.GetID()) != -1 {
 				continue
 			}
+		} else {
+			t.Logf("failed to get topic info: %v", err)
+			continue
 		}
 		toNode = node.nodeInfo.GetID()
 		break
 	}
+	if toNode == "" {
+		t.Fatalf("toNode error: %v, %v, %v", t0, nodeInfoList)
+	}
+	test.Equal(t, true, toNode != "")
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	time.Sleep(time.Second)
 	err = lookupCoord.MoveTopicPartitionDataByManual(topic_p2_r2, 0, false, fromNode, toNodeInvalid)
@@ -1555,6 +1583,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	test.Equal(t, FindSlice(t0.ISR, toNode) != -1, true)
 	test.Equal(t, -1, FindSlice(t0.ISR, fromNode))
 
+	// TODO: test move ordered topic
 	SetCoordLogger(newTestLogger(t), levellogger.LOG_ERR)
 }
 
@@ -1564,7 +1593,7 @@ func TestNsqLookupOrderedTopicCreate(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 	idList := []string{"id1", "id2", "id3", "id4"}
 	lookupCoord1, nodeInfoList := prepareCluster(t, idList, false)
@@ -1586,6 +1615,7 @@ func TestNsqLookupOrderedTopicCreate(t *testing.T) {
 	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p25_r3, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord1, time.Second*3)
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p8_r3, "**"))
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p13_r1, "**"))
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p25_r3, "**"))
@@ -1721,7 +1751,7 @@ func TestNsqLookupOrderedTopicBalance(t *testing.T) {
 		glog.SetFlags(0, "", "", true, true, 1)
 		glog.StartWorker(time.Second)
 	} else {
-		SetCoordLogger(newTestLogger(t), levellogger.LOG_DEBUG)
+		SetCoordLogger(newTestLogger(t), levellogger.LOG_WARN)
 	}
 	idList := []string{"id1", "id2", "id3", "id4"}
 	lookupCoord1, nodeInfoList := prepareCluster(t, idList, false)
@@ -1739,6 +1769,7 @@ func TestNsqLookupOrderedTopicBalance(t *testing.T) {
 	checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p13_r2, "**"))
 	time.Sleep(time.Second * 3)
 	defer func() {
+		waitClusterStable(lookupCoord1, time.Second*3)
 		checkDeleteErr(t, lookupCoord1.DeleteTopic(topic_p13_r2, "**"))
 		time.Sleep(time.Second * 3)
 

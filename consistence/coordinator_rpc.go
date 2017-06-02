@@ -559,7 +559,7 @@ func (self *NsqdCoordRpcServer) GetTopicStats(topic string) *NodeTopicStats {
 			pubhs := localTopic.GetDetailStats().GetHourlyStats()
 			stat.TopicHourlyPubDataList[ts.TopicFullName] = pubhs
 		}
-		if ts.IsLeader {
+		if ts.IsLeader || coordData.GetLeader() == self.nsqdCoord.myNode.GetID() {
 			stat.TopicLeaderDataSize[ts.TopicFullName] += (ts.BackendDepth-ts.BackendStart)/1024/1024 + 1
 			stat.ChannelNum[ts.TopicFullName] = len(ts.Channels)
 			chList := stat.ChannelList[ts.TopicFullName]
