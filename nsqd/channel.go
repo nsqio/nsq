@@ -661,9 +661,6 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 			c.DepthTimestamp(), msg.Attempts, atomic.LoadInt32(&c.waitingConfirm))
 	}
 
-	if timeout > threshold*10 {
-		return msg, true
-	}
 	if msg.Timestamp > c.DepthTimestamp()+time.Second.Nanoseconds() {
 		return nil, false
 	}
@@ -698,7 +695,7 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		if ts < 20*threshold.Nanoseconds() {
 			return nil, false
 		}
-		if timeout < 2*threshold {
+		if timeout < 10*threshold {
 			return nil, false
 		}
 		if c.Depth() < 100 {

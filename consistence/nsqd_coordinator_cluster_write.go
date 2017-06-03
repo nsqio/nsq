@@ -20,12 +20,16 @@ type handleSyncResultFunc func(int, *coordData) bool
 
 type checkDupFunc func(*coordData) bool
 
-func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
+func (self *NsqdCoordinator) PutMessageBodyToCluster(topic *nsqd.Topic,
 	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
-	var commitLog CommitLogData
-	var queueEnd nsqd.BackendQueueEnd
 	msg := nsqd.NewMessage(0, body)
 	msg.TraceID = traceID
+	return self.PutMessageToCluster(topic, msg)
+}
+func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
+	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	var commitLog CommitLogData
+	var queueEnd nsqd.BackendQueueEnd
 
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()

@@ -127,14 +127,25 @@ func (c *context) checkForMasterWrite(topic string, part int) bool {
 	return c.nsqdCoord.IsMineLeaderForTopic(topic, part)
 }
 
-func (c *context) PutMessage(topic *nsqd.Topic,
-	msg []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+func (c *context) PutMessageObj(topic *nsqd.Topic,
+	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	if c.nsqdCoord == nil {
-		msg := nsqd.NewMessage(0, msg)
+		return topic.PutMessage(msg)
+	}
+	return c.nsqdCoord.PutMessageToCluster(topic, msg)
+}
+
+func (c *context) PutMessage(topic *nsqd.Topic,
+	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	if c.nsqdCoord == nil {
+		msg := nsqd.NewMessage(0, body)
 		msg.TraceID = traceID
 		return topic.PutMessage(msg)
 	}
-	return c.nsqdCoord.PutMessageToCluster(topic, msg, traceID)
+
+	msg := nsqd.NewMessage(0, body)
+	msg.TraceID = traceID
+	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
 
 func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, error) {
@@ -318,7 +329,10 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	// the client before we requeue and update in the flight
 	ch.Pause()
 	defer ch.UnPause()
-	newID, offset, rawSize, msgEnd, putErr := c.PutMessage(topic, oldMsg.Body, oldMsg.TraceID)
+	newMsg := nsqd.NewMessage(0, oldMsg.Body)
+	newMsg.TraceID = oldMsg.TraceID
+	newMsg.Attempts = oldMsg.Attempts
+	newID, offset, rawSize, msgEnd, putErr := c.PutMessageObj(topic, newMsg)
 	if putErr != nil {
 		nsqd.NsqLogger().Logf("req message %v to end failed, channel %v, put error: %v ",
 			oldMsg, ch.GetName(), putErr)
