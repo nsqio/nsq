@@ -562,12 +562,17 @@ func waitClusterStable(lookupd *NsqLookupCoordinator, waitTime time.Duration) bo
 	go lookupd.triggerCheckTopics("", 0, time.Millisecond*100)
 	start := time.Now()
 	time.Sleep(time.Second)
+	checkAgain := true
 	for {
 		if lookupd.IsClusterStable() {
 			break
 		}
 		if time.Since(start) > waitTime {
 			return false
+		}
+		if checkAgain && time.Since(start) > waitTime/2 {
+			lookupd.triggerCheckTopics("", 0, 0)
+			checkAgain = false
 		}
 		time.Sleep(time.Millisecond * 100)
 	}
@@ -1451,14 +1456,13 @@ func TestNsqLookupMovePartition(t *testing.T) {
 
 	err = lookupCoord.CreateTopic(topic_p2_r2, TopicMetaInfo{2, 2, 0, 0, 0, 0, false})
 	test.Nil(t, err)
-	waitClusterStable(lookupCoord, time.Second*3)
-
 	err = lookupCoord.CreateTopic(topic_ordered_p4_r3, TopicMetaInfo{4, 3, 0, 0, 0, 0, true})
 	test.Nil(t, err)
-	waitClusterStable(lookupCoord, time.Second*3)
+	waitClusterStable(lookupCoord, time.Second*5)
 
 	lookupCoord.triggerCheckTopics("", 0, 0)
-	waitClusterStable(lookupCoord, time.Second*3)
+	waitClusterStable(lookupCoord, time.Second*5)
+	t.Log("=========== begin check move partition =======")
 	// test move leader to other isr;
 	// test move leader to other catchup;
 	// test move non-leader to other node;
@@ -1475,16 +1479,15 @@ func TestNsqLookupMovePartition(t *testing.T) {
 		toNode = node.nodeInfo.GetID()
 		break
 	}
-	lookupCoord.triggerCheckTopics("", 0, 0)
-	time.Sleep(time.Second)
+	waitClusterStable(lookupCoord, time.Second*5)
 	err = lookupCoord.MoveTopicPartitionDataByManual(topic_p1_r1, 0, true, t0.Leader, toNode)
 	test.Nil(t, err)
-	waitClusterStable(lookupCoord, time.Second*3)
+	waitClusterStable(lookupCoord, time.Second*5)
 
 	t0, err = lookupLeadership.GetTopicInfo(topic_p1_r1, 0)
 	test.Nil(t, err)
 	// it may be two nodes in isr if the moved leader rejoin as isr
-	test.Equal(t, len(t0.ISR) >= 1, true)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
 	test.Equal(t, t0.Leader, toNode)
 
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
@@ -1499,7 +1502,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 		toNode = nid
 		break
 	}
-	waitClusterStable(lookupCoord, time.Second*3)
+	waitClusterStable(lookupCoord, time.Second*5)
 	// move leader to other isr node
 	oldLeader := t0.Leader
 	err = lookupCoord.MoveTopicPartitionDataByManual(topic_p2_r2, 0, true, t0.Leader, toNode)
@@ -1508,7 +1511,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
 	test.Nil(t, err)
-	test.Equal(t, len(t0.ISR) >= 2, true)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
 	test.NotEqual(t, t0.Leader, oldLeader)
 	test.Equal(t, t0.Leader, toNode)
 
@@ -1544,6 +1547,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	waitClusterStable(lookupCoord, time.Second*3)
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
 	test.Nil(t, err)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
 	test.NotEqual(t, oldLeader, t0.Leader)
 	test.Equal(t, true, FindSlice(t0.ISR, toNode) != -1)
 	// wait to remove replica if more than replicator
@@ -1596,6 +1600,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	waitClusterStable(lookupCoord, time.Second*3)
 	t0, err = lookupLeadership.GetTopicInfo(topic_p2_r2, 0)
 	test.Nil(t, err)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
 	test.Equal(t, FindSlice(t0.ISR, toNode) != -1, true)
 	test.Equal(t, -1, FindSlice(t0.ISR, fromNode))
 
@@ -1638,6 +1643,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 		t.Fatalf("toNode error: %v, %v, %v", t0, nodeInfoList)
 	}
 	test.Equal(t, true, toNode != "")
+	t.Logf("move leader to %v", toNode)
 
 	oldLeader = t0.Leader
 	err = lookupCoord.MoveTopicPartitionDataByManual(topic_ordered_p4_r3, t0.Partition, true, t0.Leader, toNode)
@@ -1646,6 +1652,8 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	t0, err = lookupLeadership.GetTopicInfo(topic_ordered_p4_r3, 0)
 	test.Nil(t, err)
 	test.NotEqual(t, t0.Leader, oldLeader)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
+	t.Log(t0)
 	test.Equal(t, true, FindSlice(t0.ISR, toNode) != -1)
 
 	for len(t0.ISR) > t0.Replica {
@@ -1679,6 +1687,7 @@ func TestNsqLookupMovePartition(t *testing.T) {
 	waitClusterStable(lookupCoord, time.Second*3)
 	t0, err = lookupLeadership.GetTopicInfo(topic_ordered_p4_r3, 0)
 	test.Nil(t, err)
+	test.Equal(t, len(t0.ISR) >= t0.Replica, true)
 	test.Equal(t, FindSlice(t0.ISR, toNode) != -1, true)
 	test.Equal(t, -1, FindSlice(t0.ISR, fromNode))
 
