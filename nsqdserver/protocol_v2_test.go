@@ -952,14 +952,18 @@ func TestDelayMessage(t *testing.T) {
 func TestDelayMessageToQueueEnd(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	//opts.Logger = &levellogger.SimpleLogger{}
-	opts.SyncEvery = 1
 	opts.LogLevel = 1
+	if testing.Verbose() {
+		opts.LogLevel = 3
+		nsqdNs.SetLogger(opts.Logger)
+	}
+	opts.SyncEvery = 1
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxReqTimeout = time.Second * 100
 	opts.MaxConfirmWin = 10
-	opts.ReqToEndThreshold = time.Second
+	opts.ReqToEndThreshold = time.Millisecond * 10
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
 
@@ -993,16 +997,14 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	time.Sleep(75 * time.Millisecond)
 
 	// requeue with timeout that put to end
-	delayToEnd := opts.ReqToEndThreshold * 15
+	delayToEnd := opts.ReqToEndThreshold * time.Duration(11+int(opts.MaxConfirmWin))
 	delayStart := time.Now()
 	_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delayToEnd).WriteTo(conn)
 	test.Equal(t, err, nil)
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
 	recvCnt++
-	// put to end will change the id of msgOut
-	test.NotEqual(t, msgOut.ID, msg.ID)
-	test.Equal(t, msgOut.ID > msg.ID, true)
+	test.Equal(t, msgOut.ID >= msg.ID, true)
 	delayDone := time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone >= delayToEnd, true)
@@ -1028,7 +1030,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	delayStart = time.Now()
 	var longestDelayOutMsg *nsq.Message
 	// requeue while blocking
-	minDelay := opts.ReqToEndThreshold
+	var longestDelay time.Duration
 	for i := 0; ; i++ {
 		msgOut := recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
@@ -1036,6 +1038,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 		if uint64(nsq.GetNewMessageID(msgOut.ID[:])) == uint64(longestDelayMsg.ID) {
 			test.Equal(t, longestDelayMsg.Body, msgOut.Body)
 			_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delayToEnd).WriteTo(conn)
+			longestDelay += delayToEnd
 			test.Nil(t, err)
 			longestDelayOutMsg = msgOut
 			t.Logf("longest delay msg %v, %v", msgOut.ID, recvCnt)
@@ -1048,33 +1051,49 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 			delay := opts.ReqToEndThreshold
 			if i < int(opts.MaxConfirmWin)/2 {
 				delay = delay * time.Duration(i)
-				minDelay = delay
 			}
 			nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), delay).WriteTo(conn)
 		}
 	}
 
 	var msgClientOut *nsq.Message
+	reqToEndAttempts := 5
 	for finCnt < putCnt+10 {
 		msgClientOut = recvNextMsgAndCheckClientMsg(t, conn, 0, msg.TraceID, false)
 		recvCnt++
 		t.Logf("recv msg %v, %v", msgClientOut.ID, recvCnt)
-		nsq.Finish(msgClientOut.ID).WriteTo(conn)
+
 		finCnt++
 		traceID := binary.BigEndian.Uint64(msgClientOut.ID[8:])
 		if traceID == longestDelayOutMsg.GetTraceID() {
-			break
+			if reqToEndAttempts < 0 {
+				nsq.Finish(msgClientOut.ID).WriteTo(conn)
+				break
+			}
+			reqToEndAttempts--
+			test.Equal(t, longestDelayOutMsg.Body, msgClientOut.Body)
+			delayTime := time.Second
+			if reqToEndAttempts < 1 {
+				delayTime = delayToEnd
+			}
+			_, err = nsq.Requeue(msgClientOut.ID, delayTime).WriteTo(conn)
+			longestDelay += delayTime
+			test.Nil(t, err)
+		} else {
+			nsq.Finish(msgClientOut.ID).WriteTo(conn)
 		}
 	}
 
 	test.Equal(t, msgClientOut.Body, longestDelayOutMsg.Body)
 	test.Equal(t, msgClientOut.Body, []byte("test body9"))
-	test.Equal(t, true, uint64(nsq.GetNewMessageID(msgClientOut.ID[:])) > largestID)
+	if string(msgClientOut.ID[:]) != string(longestDelayOutMsg.ID[:]) {
+		test.Equal(t, true, uint64(nsq.GetNewMessageID(msgClientOut.ID[:])) > largestID)
+	}
 
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
-	test.Equal(t, delayDone >= minDelay, true)
-	test.Equal(t, delayDone < delayToEnd+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
+	test.Equal(t, delayDone >= longestDelay, true)
+	test.Equal(t, delayDone < longestDelay+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
 
 	test.Equal(t, true, putCnt <= finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)

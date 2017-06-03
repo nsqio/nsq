@@ -641,7 +641,7 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		return nil, false
 	}
 	threshold := time.Minute
-	if c.option.ReqToEndThreshold >= time.Second {
+	if c.option.ReqToEndThreshold >= time.Millisecond {
 		threshold = c.option.ReqToEndThreshold
 	}
 	c.inFlightMutex.Lock()
@@ -659,10 +659,6 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		nsqLog.LogDebugf("check requeue to end, timeout:%v, msg timestamp:%v, depth ts:%v, msg attempt:%v, waiting :%v",
 			timeout, msg.Timestamp,
 			c.DepthTimestamp(), msg.Attempts, atomic.LoadInt32(&c.waitingConfirm))
-	}
-
-	if msg.Timestamp > c.DepthTimestamp()+time.Second.Nanoseconds() {
-		return nil, false
 	}
 
 	if msg.Attempts < 3 {
@@ -689,6 +685,10 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 			return nil, false
 		}
 	} else {
+		if msg.Timestamp > c.DepthTimestamp()+time.Second.Nanoseconds() {
+			return nil, false
+		}
+
 		if msg.Attempts < MAX_MEM_REQ_TIMES {
 			return nil, false
 		}
