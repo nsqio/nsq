@@ -958,10 +958,11 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 		nsqdNs.SetLogger(opts.Logger)
 	}
 	opts.SyncEvery = 1
+	opts.QueueScanInterval = time.Millisecond * 20
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxReqTimeout = time.Second * 100
 	opts.MaxConfirmWin = 10
-	opts.ReqToEndThreshold = time.Millisecond * 10
+	opts.ReqToEndThreshold = time.Millisecond * 20
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 
 	defer os.RemoveAll(opts.DataPath)
@@ -1092,8 +1093,9 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
+	t.Logf("delay should be: %v", longestDelay)
 	test.Equal(t, delayDone >= longestDelay, true)
-	test.Equal(t, delayDone < longestDelay+opts.MsgTimeout+time.Duration(time.Millisecond*500*2), true)
+	test.Equal(t, delayDone < longestDelay+opts.MsgTimeout+5*opts.QueueScanInterval, true)
 
 	test.Equal(t, true, putCnt <= finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)
