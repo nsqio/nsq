@@ -39,7 +39,7 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="https://moz.com/"><img src="http://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://path.com/"><img src="http://nsq.io/static/img/path_logo.png" width="84" align="middle"/></a><br/>
 
-<a href="https://segment.com/"><img src="http://nsq.io/static/img/segmentio_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://segment.com/"><img src="http://nsq.io/static/img/segment_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://eventful.com/events"><img src="http://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a>&nbsp;&nbsp;
 <a href="http://www.energyhub.com"><img src="http://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://project-fifo.net"><img src="http://nsq.io/static/img/project_fifo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
