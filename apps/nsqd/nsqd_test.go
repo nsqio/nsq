@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/nsqd"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/nsqd"
 )
 
 func TestConfigFlagParsing(t *testing.T) {
-	flagSet := nsqFlagset()
+	opts := nsqd.NewOptions()
+
+	flagSet := nsqdFlagSet(opts)
 	flagSet.Parse([]string{})
 
 	var cfg config
@@ -22,9 +24,8 @@ func TestConfigFlagParsing(t *testing.T) {
 	toml.DecodeReader(f, &cfg)
 	cfg.Validate()
 
-	opts := nsqd.NewNSQDOptions()
 	options.Resolve(opts, flagSet, cfg)
-	nsqd.NewNSQD(opts)
+	nsqd.New(opts)
 
 	if opts.TLSMinVersion != tls.VersionTLS10 {
 		t.Errorf("min %#v not expected %#v", opts.TLSMinVersion, tls.VersionTLS10)

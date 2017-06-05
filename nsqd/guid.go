@@ -6,46 +6,63 @@ package nsqd
 // Twitter's `snowflake` https://github.com/twitter/snowflake
 
 // only minor cleanup and changes to introduce a type, combine the concept
-// of workerId + datacenterId into a single identifier, and modify the
+// of workerID + datacenterId into a single identifier, and modify the
 // behavior when sequences rollover for our specific implementation needs
 
 import (
 	"encoding/hex"
 	"errors"
+	"sync"
 	"time"
 )
 
 const (
-	workerIdBits   = uint64(10)
+	nodeIDBits     = uint64(10)
 	sequenceBits   = uint64(12)
-	workerIdShift  = sequenceBits
-	timestampShift = sequenceBits + workerIdBits
+	nodeIDShift    = sequenceBits
+	timestampShift = sequenceBits + nodeIDBits
 	sequenceMask   = int64(-1) ^ (int64(-1) << sequenceBits)
 
-	// Tue, 21 Mar 2006 20:50:14.000 GMT
-	twepoch = int64(1288834974657)
+	// ( 2012-10-28 16:23:42 UTC ).UnixNano() >> 20
+	twepoch = int64(1288834974288)
 )
 
 var ErrTimeBackwards = errors.New("time has gone backwards")
 var ErrSequenceExpired = errors.New("sequence expired")
+var ErrIDBackwards = errors.New("ID went backward")
 
 type guid int64
 
 type guidFactory struct {
+	sync.Mutex
+
+	nodeID        int64
 	sequence      int64
 	lastTimestamp int64
+	lastID        guid
 }
 
-func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
-	ts := time.Now().UnixNano() / 1e6
+func NewGUIDFactory(nodeID int64) *guidFactory {
+	return &guidFactory{
+		nodeID: nodeID,
+	}
+}
+
+func (f *guidFactory) NewGUID() (guid, error) {
+	f.Lock()
+
+	// divide by 1048576, giving pseudo-milliseconds
+	ts := time.Now().UnixNano() >> 20
 
 	if ts < f.lastTimestamp {
+		f.Unlock()
 		return 0, ErrTimeBackwards
 	}
 
 	if f.lastTimestamp == ts {
 		f.sequence = (f.sequence + 1) & sequenceMask
 		if f.sequence == 0 {
+			f.Unlock()
 			return 0, ErrSequenceExpired
 		}
 	} else {
@@ -54,11 +71,20 @@ func (f *guidFactory) NewGUID(workerId int64) (guid, error) {
 
 	f.lastTimestamp = ts
 
-	id := ((ts - twepoch) << timestampShift) |
-		(workerId << workerIdShift) |
-		f.sequence
+	id := guid(((ts - twepoch) << timestampShift) |
+		(f.nodeID << nodeIDShift) |
+		f.sequence)
 
-	return guid(id), nil
+	if id <= f.lastID {
+		f.Unlock()
+		return 0, ErrIDBackwards
+	}
+
+	f.lastID = id
+
+	f.Unlock()
+
+	return id, nil
 }
 
 func (g guid) Hex() MessageID {

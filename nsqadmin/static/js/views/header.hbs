@@ -1,0 +1,38 @@
+<nav class="navbar navbar-inverse navbar-static-top">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/"><img src="/static/nsq_blue.png" width="30" height="30">NSQ</a>
+        </div>
+        <div class="collapse navbar-collapse" id="navbar">
+            <ul class="nav navbar-nav">
+                <li><a class="link" href="/">Streams</a></li>
+                <li><a class="link" href="/nodes">Nodes</a></li>
+                <li><a class="link" href="/counter">Counter</a></li>
+                <li><a class="link" href="/lookup">Lookup</a></li>
+                {{#if graph_enabled}}
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-picture white"></span> {{graph_interval}} <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                      <li class="dropdown-header">Graph Timeframe</li>
+                    {{#each graph_intervals}}
+                        <li><a href="javascript:;">{{this}}</a></li>
+                    {{/each}}
+                    </ul>
+                </li>
+                {{/if}}
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="http://nsq.io/">Documentation</a></li>
+                <li><a href="https://github.com/nsqio/nsq">GitHub</a></li>
+                <li class="hidden-xs"><p class="navbar-text"><span class="label label-success">v{{version}}</span></p></li>
+                </ul>
+            </ul>
+        </div>
+    </div>
+</nav>

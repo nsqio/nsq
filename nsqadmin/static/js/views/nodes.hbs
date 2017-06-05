@@ -1,0 +1,51 @@
+{{> warning}}
+{{> error}}
+
+<div class="row">
+    <div class="col-md-12">
+        <h2>NSQd Nodes ({{collection.length}})</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <table class="table table-condensed table-bordered">
+            <tr>
+                <th>Hostname</th>
+                <th>Broadcast Address</th>
+                <th>TCP Port</th>
+                <th>HTTP Port</th>
+                <th>Version</th>
+                {{#if nsqlookupd.length}}
+                <th>Lookupd Conns.</th>
+                {{/if}}
+                <th>Topics</th>
+            </tr>
+            {{#each collection}}
+            <tr {{#if out_of_date}}class="warning"{{/if}}>
+                <td>{{hostname}}</td>
+                <td><a class="link" href="/nodes/{{broadcast_address}}:{{http_port}}">{{broadcast_address}}</a></td>
+                <td>{{tcp_port}}</td>
+                <td>{{http_port}}</td>
+                <td>{{version}}</td>
+                {{#if ../nsqlookupd.length}}
+                <td>
+                    <a class="conn-count btn btn-default btn-xs {{#unlesseq ../../nsqlookupd.length remote_addresses.length}}btn-warning{{/unlesseq}}">{{remote_addresses.length}}</a>
+                    <div style="display: none;">
+                        {{#each remote_addresses}}{{this}}<br/>{{/each}}
+                    </div>
+                </td>
+                {{/if}}
+                <td>
+                {{#if topics.length}}
+                    <span class="badge">{{topics.length}}</span>
+                    {{#each topics}}
+                    <a href="/topics/{{topic}}" class="link label {{#if tombstoned}}label-warning{{else}}label-primary{{/if}}" {{#if tombstoned}}title="this topic is currently tombstoned on this node"{{/if}}>{{topic}}</a>
+                    {{/each}}
+                {{/if}}
+                </td>
+            </tr>
+            {{/each}}
+        </table>
+    </div>
+</div>

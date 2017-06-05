@@ -23,12 +23,20 @@ func BenchmarkGUIDUnsafe(b *testing.B) {
 }
 
 func BenchmarkGUID(b *testing.B) {
+	var okays, errors, fails int64
+	var previd guid
 	factory := &guidFactory{}
 	for i := 0; i < b.N; i++ {
-		guid, err := factory.NewGUID(0)
+		id, err := factory.NewGUID()
 		if err != nil {
-			continue
+			errors++
+		} else if id == previd {
+			fails++
+			b.Fail()
+		} else {
+			okays++
 		}
-		guid.Hex()
+		id.Hex()
 	}
+	b.Logf("okays=%d errors=%d bads=%d", okays, errors, fails)
 }

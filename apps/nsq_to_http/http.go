@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/bitly/nsq/util"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var httpclient *http.Client
 var userAgent string
 
 func init() {
-	httpclient = &http.Client{Transport: util.NewDeadlineTransport(*httpTimeout)}
-	userAgent = fmt.Sprintf("nsq_to_http v%s", util.BINARY_VERSION)
+	httpclient = &http.Client{Transport: http_api.NewDeadlineTransport(*httpConnectTimeout, *httpRequestTimeout), Timeout: *httpRequestTimeout}
+	userAgent = fmt.Sprintf("nsq_to_http v%s", version.Binary)
 }
 
-func HttpGet(endpoint string) (*http.Response, error) {
+func HTTPGet(endpoint string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -25,7 +26,7 @@ func HttpGet(endpoint string) (*http.Response, error) {
 	return httpclient.Do(req)
 }
 
-func HttpPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
+func HTTPPost(endpoint string, body *bytes.Buffer) (*http.Response, error) {
 	req, err := http.NewRequest("POST", endpoint, body)
 	if err != nil {
 		return nil, err

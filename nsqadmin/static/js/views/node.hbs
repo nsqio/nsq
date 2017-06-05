@@ -1,0 +1,177 @@
+{{> warning}}
+{{> error}}
+
+<ol class="breadcrumb">
+    <li><a class="link" href="/nodes">Nodes</a>
+    <li class="active">{{name}}</li>
+</ol>
+
+{{#if graph_active}}
+<div class="row">
+  <div class="col-md-8 col-md-offset-2">
+    <table class="table muted">
+      <tr>
+        <td>
+          <a href="{{large_graph "node" node "" "" "*_bytes"}}"><img class="img-polaroid" width="200" src="{{large_graph "node" node "" "" "*_bytes"}}"/></a>
+          <h5 style="text-align: center;">GC Pressure</h5>
+        </td>
+        <td>
+          <a href="{{large_graph "node" node "" "" "gc_pause_*"}}"><img class="img-polaroid" width="200" src="{{large_graph "node" node "" "" "gc_pause_*"}}"/></a>
+          <h5 style="text-align: center;">GC Pause Percentiles</h5>
+        </td>
+        <td>
+          <a href="{{large_graph "node" node "" "" "gc_runs"}}"><img class="img-polaroid" width="200" src="{{large_graph "node" node "" "" "gc_runs"}}"/></a>
+          <h5 style="text-align: center;">GC Runs</h5>
+        </td>
+        <td>
+          <a href="{{large_graph "node" node "" "" "heap_objects"}}"><img class="img-polaroid" width="200" src="{{large_graph "node" node "" "" "heap_objects"}}"/></a>
+          <h5 style="text-align: center;">Heap Objects In-Use</h5>
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+{{/if}}
+
+<div class="row">
+    <div class="col-md-12">
+    {{#unless topics.length}}
+        <div class="alert alert-warning">
+            <h4>Notice</h4> No topics exist on this node.
+        </div>
+    {{else}}
+    <table class="table table-condensed">
+        <tr>
+            <td colspan="2"><strong>{{../topics.length}}</strong> Topics</td>
+            <td colspan="7"></td>
+            <td><strong>{{commafy total_messages}}</strong> Messages</td>
+            <td><strong>{{commafy total_clients}}</strong> Clients</td>
+        </tr>
+        {{#each topics}}
+        <tr>
+            <th colspan="3">Topic</th>
+            <th>Depth</th>
+            <th>Memory + Disk</th>
+            <th colspan="4"></th>
+            <th>Messages</th>
+            <th>Channels</th>
+        </tr>
+        <tr class="info">
+            <td colspan="3">
+                <button class="btn-link red tombstone-link" data-node="{{../name}}" data-topic="{{topic_name}}" style="padding: 0 6px; border: 0;">✘</button> {{topic_name}}
+            </td>
+            <td>
+                {{#if ../graph_active}}<a href="{{large_graph "topic" node name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a>{{/if}}
+                {{commafy depth}}
+            </td>
+            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td colspan="4"></td>
+            <td>
+                {{#if ../graph_active}}<a href="{{large_graph "topic" node topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a>{{/if}}
+                {{commafy message_count}}
+            </td>
+            <td>{{commafy channels.length}}</td>
+        </tr>
+        {{#unless channels.length}}
+        <tr>
+            <td colspan="11">
+              <div class="alert alert-warning"><h4>Notice</h4> No channels exist for this topic.</div>
+            </td>
+        </tr>
+        {{else}}
+        {{#each channels}}
+        <tr>
+            <th width="25"></th>
+            <th colspan="2">Channel</th>
+            <th>Depth</th>
+            <th>Memory + Disk</th>
+            <th>In-Flight</th>
+            <th>Deferred</th>
+            <th>Requeued</th>
+            <th>Timed Out</th>
+            <th>Messages</th>
+            <th>Connections</th>
+        </tr>
+        <tr class="warning">
+            <td></td>
+            <td colspan="2">
+                {{channel_name}}
+                {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
+            </td>
+            <td>
+                {{#if ../../../graph_active}}<a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20" src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a>{{/if}}
+                {{commafy depth}}
+            </td>
+            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy in_flight_count}}</td>
+            <td>{{commafy deferred_count}}</td>
+            <td>{{commafy requeue_count}}</td>
+            <td>{{commafy timeout_count}}</td>
+            <td>{{commafy message_count}}</td>
+            <td>
+                {{#if ../../../graph_active}}<a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20" src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a>{{/if}}
+                {{commafy clients.length}}
+            </td>
+        </tr>
+        {{#unless clients.length}}
+        <tr>
+            <td colspan="11">
+                <div class="alert alert-warning"><h4>Notice</h4>No clients connected to this channel.</div>
+            </td>
+        </tr>
+        {{else}}
+        <tr>
+            <th></th>
+            <th>Client Host</th>
+            <th>User-Agent</th>
+            <th></th>
+            <th>Attributes</th>
+            <th>In-Flight</th>
+            <th>Ready Count</th>
+            <th>Requeued</th>
+            <th>Finished</th>
+            <th>Messages</th>
+            <th>Connected</th>
+        </tr>
+        {{#each clients}}
+        <tr>
+            <td></td>
+            <td title="{{remote_address}}">{{hostname}}{{#if show_client_id}} ({{client_id}}){{/if}}</td>
+            <td>{{#if user_agent.length}}<small>{{user_agent}}</small>{{/if}}</td>
+            <td></td>
+            <td>
+                {{#if sample_rate}}
+                    <span class="label label-info">Sampled {{sample_rate}}%</span>
+                {{/if}}
+                {{#if tls}}
+                    <span class="label label-warning" {{#if tls_version}}title="{{tls_version}} {{tls_cipher_suite}} {{tls_negotiated_protocol}} mutual:{{tls_negotiated_protocol_is_mutual}}"{{/if}}>TLS</span>
+                {{/if}}
+                {{#if deflate}}
+                    <span class="label label-default">Delfate</span>
+                {{/if}}
+                {{#if snappy}}
+                    <span class="label label-primary">Snappy</span>
+                {{/if}}
+                {{#if authed}}
+                    <span class="label label-success">
+                    {{#if auth_identity_url}}<a href="{{auth_identity_url}}">{{/if}}
+                    <span class="glyphicon glyphicon-user white" title="Authed{{#if auth_identity}} Identity:{{auth_identity}}{{/if}}"></span>
+                    {{#if auth_identity_url}}</a>{{/if}}
+                    </span>
+                {{/if}}
+            </td>
+            <td>{{commafy in_flight_count}}</td>
+            <td>{{commafy ready_count}}</td>
+            <td>{{commafy requeue_count}}</td>
+            <td>{{commafy finish_count}}</td>
+            <td>{{commafy message_count}}</td>
+            <td>{{nanotohuman connected}}</td>
+        </tr>
+        {{/each}}
+        {{/unless}}
+        {{/each}}
+        {{/unless}}
+        {{/each}}
+    </table>
+    {{/unless}}
+</div>

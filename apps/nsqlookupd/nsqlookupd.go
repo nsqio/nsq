@@ -5,55 +5,86 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
+	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/bitly/nsq/nsqlookupd"
-	"github.com/bitly/nsq/util"
+	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/version"
+	"github.com/nsqio/nsq/nsqlookupd"
 )
 
-var (
-	flagSet = flag.NewFlagSet("nsqlookupd", flag.ExitOnError)
+func nsqlookupdFlagSet(opts *nsqlookupd.Options) *flag.FlagSet {
+	flagSet := flag.NewFlagSet("nsqlookupd", flag.ExitOnError)
 
-	config      = flagSet.String("config", "", "path to config file")
-	showVersion = flagSet.Bool("version", false, "print version string")
-	verbose     = flagSet.Bool("verbose", false, "enable verbose logging")
+	flagSet.String("config", "", "path to config file")
+	flagSet.Bool("version", false, "print version string")
 
-	tcpAddress       = flagSet.String("tcp-address", "0.0.0.0:4160", "<addr>:<port> to listen on for TCP clients")
-	httpAddress      = flagSet.String("http-address", "0.0.0.0:4161", "<addr>:<port> to listen on for HTTP clients")
-	broadcastAddress = flagSet.String("broadcast-address", "", "address of this lookupd node, (default to the OS hostname)")
+	flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal")
+	flagSet.String("log-prefix", "[nsqlookupd] ", "log message prefix")
+	flagSet.Bool("verbose", false, "deprecated in favor of log-level")
 
-	inactiveProducerTimeout = flagSet.Duration("inactive-producer-timeout", 300*time.Second, "duration of time a producer will remain in the active list since its last ping")
-	tombstoneLifetime       = flagSet.Duration("tombstone-lifetime", 45*time.Second, "duration of time a producer will remain tombstoned if registration remains")
-)
+	flagSet.String("tcp-address", opts.TCPAddress, "<addr>:<port> to listen on for TCP clients")
+	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")
+	flagSet.String("broadcast-address", opts.BroadcastAddress, "address of this lookupd node, (default to the OS hostname)")
+
+	flagSet.Duration("inactive-producer-timeout", opts.InactiveProducerTimeout, "duration of time a producer will remain in the active list since its last ping")
+	flagSet.Duration("tombstone-lifetime", opts.TombstoneLifetime, "duration of time a producer will remain tombstoned if registration remains")
+
+	return flagSet
+}
+
+type program struct {
+	nsqlookupd *nsqlookupd.NSQLookupd
+}
 
 func main() {
+	prg := &program{}
+	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (p *program) Init(env svc.Environment) error {
+	if env.IsWindowsService() {
+		dir := filepath.Dir(os.Args[0])
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
+func (p *program) Start() error {
+	opts := nsqlookupd.NewOptions()
+
+	flagSet := nsqlookupdFlagSet(opts)
 	flagSet.Parse(os.Args[1:])
 
-	if *showVersion {
-		fmt.Println(util.Version("nsqlookupd"))
-		return
+	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
+		fmt.Println(version.String("nsqlookupd"))
+		os.Exit(0)
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
 	var cfg map[string]interface{}
-	if *config != "" {
-		_, err := toml.DecodeFile(*config, &cfg)
+	configFile := flagSet.Lookup("config").Value.String()
+	if configFile != "" {
+		_, err := toml.DecodeFile(configFile, &cfg)
 		if err != nil {
-			log.Fatalf("ERROR: failed to load config file %s - %s", *config, err.Error())
+			log.Fatalf("ERROR: failed to load config file %s - %s", configFile, err.Error())
 		}
 	}
 
-	opts := nsqlookupd.NewNSQLookupdOptions()
 	options.Resolve(opts, flagSet, cfg)
-	daemon := nsqlookupd.NewNSQLookupd(opts)
+	daemon := nsqlookupd.New(opts)
 
 	daemon.Main()
-	<-signalChan
-	daemon.Exit()
+	p.nsqlookupd = daemon
+	return nil
+}
+
+func (p *program) Stop() error {
+	if p.nsqlookupd != nil {
+		p.nsqlookupd.Exit()
+	}
+	return nil
 }

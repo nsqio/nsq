@@ -1,0 +1,71 @@
+{{> warning}}
+{{> error}}
+
+<div class="row">
+    <div class="col-md-12">
+        <h2>Lookup</h2>
+    </div>
+</div>
+
+{{#unless nsqlookupd.length}}
+<div class="alert alert-warning">
+    <h4>Notice</h4> nsqadmin is not configured with nsqlookupd hosts
+</div>
+{{else}}
+<div class="row">
+    <div class="col-md-4">
+        <table class="table table-bordered table-condensed">
+            <tr>
+                <th>nsqlookupd Host</th>
+            </tr>
+            {{#each nsqlookupd}}
+            <tr><td>{{this}}</td></tr>
+            {{/each}}
+        </table>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        {{#if topics}}
+        <div class="alert alert-info">
+            Below is a tree of Topics/Channels that are currently inactive (i.e. not produced on any nsqd in the cluster but are present in the lookup data)
+        </div>
+        <ul>
+            {{#each topics}}
+            <li>
+                <button class="btn-link red delete-topic-link" data-topic="{{name}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{name}}">{{name}}</a>
+                <ul>
+                    {{#each channels}}
+                    <li>
+                        <button class="btn-link red delete-channel-link" data-topic="{{../name}}" data-channel="{{this}}" style="padding: 0 6px; border: 0;">✘</button> <a class="link" href="/topics/{{../name}}/{{this}}">{{this}}</a>
+                    </li>
+                    {{/each}}
+                </ul>
+            </li>
+            {{/each}}
+        </ul>
+        {{else}}
+        <div class="alert alert-warning"><h4>Notice</h4>No inactive Topics</div>
+        {{/if}}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <form class="hierarchy">
+            <legend>Create Topic/Channel</legend>
+            <div class="alert alert-info">
+                <p>This provides a way to setup a stream hierarchy
+                before services are deployed to production.
+                <p>If <em>Channel Name</em> is empty, just the topic is created.
+            </div>
+            <div class="form-group">
+                <input type="text" name="topic" placeholder="Topic Name">
+                <input type="text" name="channel" placeholder="Channel Name">
+            </div>
+            <button class="btn btn-default" type="submit">Create</button>
+        </form>
+    </div>
+</div>
+{{/unless}}

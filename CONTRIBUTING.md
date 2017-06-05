@@ -2,6 +2,10 @@
 
 Thanks for your interest in contributing to NSQ!
 
+## Code of Conduct
+
+Help us keep NSQ open and inclusive. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Getting Started
 
 * make sure you have a [GitHub account](https://github.com/signup/free)
@@ -33,5 +37,5 @@ nsqd: fixed bug in protocol_v2
 ## Submitting Changes
 
 * push your changes to your branch in your fork of the repository
-* submit a pull request against bitly's repository
+* submit a pull request against nsqio's repository
 * comment in the pull request when you're ready for the changes to be reviewed: `"ready for review"`

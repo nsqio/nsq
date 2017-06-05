@@ -1,9 +1,11 @@
 package nsqd
 
 import (
+	"runtime"
 	"sort"
+	"sync/atomic"
 
-	"github.com/bitly/nsq/util"
+	"github.com/nsqio/nsq/internal/quantile"
 )
 
 type TopicStats struct {
@@ -14,7 +16,7 @@ type TopicStats struct {
 	MessageCount uint64         `json:"message_count"`
 	Paused       bool           `json:"paused"`
 
-	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
+	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
@@ -23,10 +25,10 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Channels:     channels,
 		Depth:        t.Depth(),
 		BackendDepth: t.backend.Depth(),
-		MessageCount: t.messageCount,
+		MessageCount: atomic.LoadUint64(&t.messageCount),
 		Paused:       t.IsPaused(),
 
-		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().PercentileResult(),
+		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
 	}
 }
 
@@ -42,7 +44,7 @@ type ChannelStats struct {
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
 
-	E2eProcessingLatency *util.PercentileResult `json:"e2e_processing_latency"`
+	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
@@ -52,20 +54,17 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		BackendDepth:  c.backend.Depth(),
 		InFlightCount: len(c.inFlightMessages),
 		DeferredCount: len(c.deferredMessages),
-		MessageCount:  c.messageCount,
-		RequeueCount:  c.requeueCount,
-		TimeoutCount:  c.timeoutCount,
+		MessageCount:  atomic.LoadUint64(&c.messageCount),
+		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
+		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
 		Clients:       clients,
 		Paused:        c.IsPaused(),
 
-		E2eProcessingLatency: c.e2eProcessingLatencyStream.PercentileResult(),
+		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}
 }
 
 type ClientStats struct {
-	// TODO: deprecated, remove in 1.0
-	Name string `json:"name"`
-
 	ClientID        string `json:"client_id"`
 	Hostname        string `json:"hostname"`
 	Version         string `json:"version"`
@@ -116,39 +115,71 @@ func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Chan
 
 func (n *NSQD) GetStats() []TopicStats {
 	n.RLock()
-	defer n.RUnlock()
-
 	realTopics := make([]*Topic, 0, len(n.topicMap))
 	for _, t := range n.topicMap {
 		realTopics = append(realTopics, t)
 	}
+	n.RUnlock()
 	sort.Sort(TopicsByName{realTopics})
-
-	topics := make([]TopicStats, 0, len(n.topicMap))
+	topics := make([]TopicStats, 0, len(realTopics))
 	for _, t := range realTopics {
 		t.RLock()
-
 		realChannels := make([]*Channel, 0, len(t.channelMap))
 		for _, c := range t.channelMap {
 			realChannels = append(realChannels, c)
 		}
+		t.RUnlock()
 		sort.Sort(ChannelsByName{realChannels})
-
-		channels := make([]ChannelStats, 0, len(t.channelMap))
+		channels := make([]ChannelStats, 0, len(realChannels))
 		for _, c := range realChannels {
 			c.RLock()
 			clients := make([]ClientStats, 0, len(c.clients))
 			for _, client := range c.clients {
 				clients = append(clients, client.Stats())
 			}
-			channels = append(channels, NewChannelStats(c, clients))
 			c.RUnlock()
+			channels = append(channels, NewChannelStats(c, clients))
 		}
-
 		topics = append(topics, NewTopicStats(t, channels))
+	}
+	return topics
+}
 
-		t.RUnlock()
+type memStats struct {
+	HeapObjects       uint64 `json:"heap_objects"`
+	HeapIdleBytes     uint64 `json:"heap_idle_bytes"`
+	HeapInUseBytes    uint64 `json:"heap_in_use_bytes"`
+	HeapReleasedBytes uint64 `json:"heap_released_bytes"`
+	GCPauseUsec100    uint64 `json:"gc_pause_usec_100"`
+	GCPauseUsec99     uint64 `json:"gc_pause_usec_99"`
+	GCPauseUsec95     uint64 `json:"gc_pause_usec_95"`
+	NextGCBytes       uint64 `json:"next_gc_bytes"`
+	GCTotalRuns       uint32 `json:"gc_total_runs"`
+}
+
+func getMemStats() *memStats {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+
+	// sort the GC pause array
+	length := len(ms.PauseNs)
+	if int(ms.NumGC) < length {
+		length = int(ms.NumGC)
+	}
+	gcPauses := make(Uint64Slice, length)
+	copy(gcPauses, ms.PauseNs[:length])
+	sort.Sort(gcPauses)
+
+	return &memStats{
+		ms.HeapObjects,
+		ms.HeapIdle,
+		ms.HeapInuse,
+		ms.HeapReleased,
+		percentile(100.0, gcPauses, len(gcPauses)) / 1000,
+		percentile(99.0, gcPauses, len(gcPauses)) / 1000,
+		percentile(95.0, gcPauses, len(gcPauses)) / 1000,
+		ms.NextGC,
+		ms.NumGC,
 	}
 
-	return topics
 }

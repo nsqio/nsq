@@ -1,0 +1,220 @@
+{{> warning}}
+{{> error}}
+
+<ol class="breadcrumb">
+  <li><a class="link" href="/">Streams</a>
+  <li class="active">{{name}}</li>
+</ol>
+
+<div class="row">
+    <div class="col-md-6">
+        <blockquote>
+            <p>Topic: <strong>{{name}}</strong>
+        </blockquote>
+    </div>
+</div>
+
+{{#unless nodes.length}}
+<div class="row">
+    <div class="col-md-6">
+        <h4>Topic Message Queue</h4>
+        <div class="alert alert-warning">
+            <h4>Notice</h4> No producers exist for this topic.
+            <p>See <a href="/lookup">Lookup</a> for more information.
+        </div>
+    </div>
+</div>
+{{else}}
+<div class="row topic-actions">
+    <div class="col-md-2">
+        <button class="btn btn-medium btn-warning" data-action="empty">Empty Queue</button>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-medium btn-danger" data-action="delete">Delete Topic</button>
+    </div>
+    <div class="col-md-2">
+        {{#if paused}}
+        <button class="btn btn-medium btn-success" data-action="unpause">UnPause Topic</button>
+        {{else}}
+        <button class="btn btn-medium btn-primary" data-action="pause">Pause Topic</button>
+        {{/if}}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+    <h4>Topic Message Queue</h4>
+    <table class="table table-bordered table-condensed">
+        {{#if e2e_processing_latency.percentiles.length}}
+        <tr>
+            <th colspan="{{#if graph_active}}6{{else}}5{{/if}}"></th>
+            <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
+        </tr>
+        {{/if}}
+        <tr>
+            <th>NSQd Host</th>
+            <th>Depth</th>
+            <th>Memory + Disk</th>
+            <th>Messages</th>
+            {{#if graph_active}}<th>Rate</th>{{/if}}
+            <th>Channels</th>
+            {{#each e2e_processing_latency.percentiles}}
+                <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
+            {{/each}}
+        </tr>
+        {{#each nodes}}
+        <tr>
+            <td>
+                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                {{#if show_broadcast_address}}
+                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{else}}
+                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                {{/if}}
+                {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
+            </td>
+            <td>{{commafy depth}}</td>
+            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy message_count}}</td>
+            {{#if ../graph_active}}
+                <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
+            {{/if}}
+            <td>{{commafy ../channels.length}}</td>
+            {{#if e2e_processing_latency.percentiles.length}}
+                {{#each e2e_processing_latency.percentiles}}
+                <td>
+                    <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
+                </td>
+                {{/each}}
+            {{/if}}
+        </tr>
+        {{#if ../graph_active}}
+            <tr class="graph-row">
+                <td></td>
+                <td><a href="{{large_graph "topic" node topic_name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a></td>
+                <td></td>
+                <td><a href="{{large_graph "topic" node topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a></td>
+                <td></td>
+                <td></td>
+                {{#if e2e_processing_latency.percentiles.length}}
+                <td colspan="{{e2e_processing_latency.percentiles.length}}">
+                    <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
+                </td>
+                {{/if}}
+            </tr>
+        {{/if}}
+        {{/each}}
+        <tr class="info">
+            <td>Total:</td>
+            <td>{{commafy depth}}</td>
+            <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+            <td>{{commafy message_count}}</td>
+            {{#if graph_active}}<td class="bold rate" target="{{rate "topic" "*" topic_name ""}}"></td>{{/if}}
+            <td>{{commafy channels.length}}</td>
+            {{#if e2e_processing_latency.percentiles.length}}
+                {{#each e2e_processing_latency.percentiles}}
+                <td>
+                    <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
+                </td>
+                {{/each}}
+            {{/if}}
+        </tr>
+        {{#if graph_active}}
+            <tr class="graph-row">
+                <td></td>
+                <td><a href="{{large_graph "topic" "*" topic_name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a></td>
+                <td></td>
+                <td><a href="{{large_graph "topic" "*" topic_name "" "message_count"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "message_count"}}"></a></td>
+                <td></td>
+                <td></td>
+                {{#if e2e_processing_latency.percentiles.length}}
+                <td colspan="{{e2e_processing_latency.percentiles.length}}">
+                    <a href="{{large_graph "e2e" "*" e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
+                </td>
+                {{/if}}
+            </tr>
+        {{/if}}
+    </table>
+    </div>
+</div>
+{{/unless}}
+
+
+<div class="row">
+    {{#unless channels.length}}
+    <div class="col-md-6">
+        <h4>Channel Message Queues</h4>
+        <div class="alert alert-warning">
+            <h4>Notice</h4> No channels exist for this topic.
+            <p>Messages will queue at the topic until a channel is created.
+        </div>
+    {{else}}
+    <div class="col-md-12">
+        <h4>Channel Message Queues</h4>
+        <table class="table table-bordered table-condensed">
+            {{#if e2e_processing_latency.percentiles.length}}
+            <tr>
+                <th colspan="{{#if graph_active}}10{{else}}9{{/if}}"></th>
+                <th colspan="{{e2e_processing_latency.percentiles.length}}">E2E Processing Latency</th>
+            </tr>
+            {{/if}}
+            <tr>
+                <th>Channel</th>
+                <th>Depth</th>
+                <th>Memory + Disk</th>
+                <th>In-Flight</th>
+                <th>Deferred</th>
+                <th>Requeued</th>
+                <th>Timed Out</th>
+                <th>Messages</th>
+                <th>Connections</th>
+                {{#each e2e_processing_latency.percentiles}}
+                <th>{{floatToPercent quantile}}<sup>{{percSuffix quantile}}</sup></th>
+                {{/each}}
+            </tr>
+
+            {{#each channels}}
+            <tr>
+                <th>
+                    <a class="link" href="/topics/{{urlencode topic_name}}/{{urlencode channel_name}}">{{channel_name}}</a>
+                    {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
+                </th>
+                <td>{{commafy depth}}</td>
+                <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>
+                <td>{{commafy in_flight_count}}</td>
+                <td>{{commafy deferred_count}}</td>
+                <td>{{commafy requeue_count}}</td>
+                <td>{{commafy timeout_count}}</td>
+                <td>{{commafy message_count}}</td>
+                <td>{{commafy clients.length}}</td>
+                {{#if e2e_processing_latency.percentiles.length}}
+                    {{#each e2e_processing_latency.percentiles}}
+                    <td>
+                        <span title="{{floatToPercent quantile}}: min = {{nanotohuman min}}, max = {{nanotohuman max}}">{{nanotohuman average}}</span>
+                    </td>
+                  {{/each}}
+                {{/if}}
+            </tr>
+            {{#if ../graph_active}}
+            <tr class="graph-row">
+                <td></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "depth"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "depth"}}"></a></td>
+                <td></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "in_flight_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "in_flight_count"}}"></a></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "deferred_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "deferred_count"}}"></a></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "requeue_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "requeue_count"}}"></a></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "timeout_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "timeout_count"}}"></a></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "message_count"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "message_count"}}"></a></td>
+                <td><a href="{{large_graph "channel" node topic_name channel_name "clients"}}"><img width="120" height="20"  src="{{sparkline "channel" node topic_name channel_name "clients"}}"></a></td>
+                {{#if e2e_processing_latency.percentiles.length}}
+                    <td colspan="{{e2e_processing_latency.percentiles.length}}">
+                        <a href="{{large_graph "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"><img width="120" height="20"  src="{{sparkline "e2e" node e2e_processing_latency "" "e2e_processing_latency"}}"></a>
+                    </td>
+                {{/if}}
+            </tr>
+            {{/if}}
+            {{/each}}
+        </table>
+        {{/unless}}
+    </div>
+</div>

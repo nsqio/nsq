@@ -19,9 +19,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
-	"github.com/bitly/nsq/util/lookupd"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/clusterinfo"
+	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var (
@@ -36,27 +38,22 @@ var (
 	hostIdentifier = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
 	gzipLevel      = flag.Int("gzip-level", 6, "gzip compression level (1-9, 1=BestSpeed, 9=BestCompression)")
 	gzipEnabled    = flag.Bool("gzip", false, "gzip output files.")
-	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writting empty files")
+	skipEmptyFiles = flag.Bool("skip-empty-files", false, "Skip writing empty files")
 	topicPollRate  = flag.Duration("topic-refresh", time.Minute, "how frequently the topic list should be refreshed")
-	topicPattern   = flag.String("topic-pattern", ".*", "Only log topics matching the following pattern")
+	topicPattern   = flag.String("topic-pattern", "", "Only log topics matching the following pattern")
 
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
 
-	consumerOpts     = util.StringArray{}
-	nsqdTCPAddrs     = util.StringArray{}
-	lookupdHTTPAddrs = util.StringArray{}
-	topics           = util.StringArray{}
+	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
+	httpRequestTimeout = flag.Duration("http-client-request-timeout", 5*time.Second, "timeout for HTTP request")
 
-	// TODO: remove, deprecated
-	gzipCompression = flag.Int("gzip-compression", 3, "(deprecated) use --gzip-level, gzip compression level (1 = BestSpeed, 2 = BestCompression, 3 = DefaultCompression)")
+	nsqdTCPAddrs     = app.StringArray{}
+	lookupdHTTPAddrs = app.StringArray{}
+	topics           = app.StringArray{}
 )
 
 func init() {
-	// TODO: remove, deprecated
-	flag.Var(&consumerOpts, "reader-opt", "(deprecated) use --consumer-opt")
-	flag.Var(&consumerOpts, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
-
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 	flag.Var(&topics, "topic", "nsq topic (may be given multiple times)")
@@ -92,19 +89,21 @@ type TopicDiscoverer struct {
 	termChan chan os.Signal
 	hupChan  chan os.Signal
 	wg       sync.WaitGroup
+	cfg      *nsq.Config
 }
 
-func newTopicDiscoverer() *TopicDiscoverer {
+func newTopicDiscoverer(cfg *nsq.Config) *TopicDiscoverer {
 	return &TopicDiscoverer{
 		topics:   make(map[string]*ConsumerFileLogger),
 		termChan: make(chan os.Signal),
 		hupChan:  make(chan os.Signal),
+		cfg:      cfg,
 	}
 }
 
-func (l *FileLogger) HandleMessage(m *nsq.Message) error {
+func (f *FileLogger) HandleMessage(m *nsq.Message) error {
 	m.DisableAutoResponse()
-	l.logChan <- m
+	f.logChan <- m
 	return nil
 }
 
@@ -253,7 +252,7 @@ func (f *FileLogger) updateFile() {
 	if filename != f.lastFilename {
 		f.rev = 0 // reset revsion to 0 if it is a new filename
 	} else {
-		f.rev += 1
+		f.rev++
 	}
 	f.lastFilename = filename
 	f.lastOpenTime = time.Now()
@@ -271,7 +270,7 @@ func (f *FileLogger) updateFile() {
 
 	var err error
 	var fi os.FileInfo
-	for ; ; f.rev += 1 {
+	for ; ; f.rev++ {
 		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%06d", f.rev), -1)
 		openFlag := os.O_WRONLY | os.O_CREATE
 		if f.gzipEnabled {
@@ -311,13 +310,12 @@ func (f *FileLogger) updateFile() {
 }
 
 func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
-	// TODO: remove, deprecated, for compat <GZIPREV>
-	filenameFormat = strings.Replace(filenameFormat, "<GZIPREV>", "<REV>", -1)
 	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 {
 		if strings.Index(filenameFormat, "<REV>") == -1 {
 			return nil, errors.New("missing <REV> in --filename-format when gzip or rotation enabled")
 		}
-	} else { // remove <REV> as we don't need it
+	} else {
+		// remove <REV> as we don't need it
 		filenameFormat = strings.Replace(filenameFormat, "<REV>", "", -1)
 	}
 
@@ -351,27 +349,20 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 }
 
 func hasArg(s string) bool {
-	for _, arg := range os.Args {
-		if strings.Contains(arg, s) {
-			return true
+	argExist := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == s {
+			argExist = true
 		}
-	}
-	return false
+	})
+	return argExist
 }
 
-func newConsumerFileLogger(topic string) (*ConsumerFileLogger, error) {
+func newConsumerFileLogger(topic string, cfg *nsq.Config) (*ConsumerFileLogger, error) {
 	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
 	if err != nil {
 		return nil, err
 	}
-
-	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
-	err = util.ParseOpts(cfg, consumerOpts)
-	if err != nil {
-		return nil, err
-	}
-	cfg.MaxInFlight = *maxInFlight
 
 	consumer, err := nsq.NewConsumer(topic, *channel, cfg)
 	if err != nil {
@@ -404,6 +395,9 @@ func (t *TopicDiscoverer) startTopicRouter(logger *ConsumerFileLogger) {
 }
 
 func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
+	if pattern == "" {
+		return true
+	}
 	match, err := regexp.MatchString(pattern, name)
 	if err != nil {
 		return false
@@ -412,8 +406,9 @@ func (t *TopicDiscoverer) allowTopicName(pattern string, name string) bool {
 	return match
 }
 
-func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
-	newTopics, err := lookupd.GetLookupdTopics(addrs)
+func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string,
+	connectTimeout time.Duration, requestTimeout time.Duration) {
+	newTopics, err := clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout)).GetLookupdTopics(addrs)
 	if err != nil {
 		log.Printf("ERROR: could not retrieve topic list: %s", err)
 	}
@@ -423,7 +418,7 @@ func (t *TopicDiscoverer) syncTopics(addrs []string, pattern string) {
 				log.Println("Skipping topic ", topic, "as it didn't match required pattern:", pattern)
 				continue
 			}
-			logger, err := newConsumerFileLogger(topic)
+			logger, err := newConsumerFileLogger(topic, t.cfg)
 			if err != nil {
 				log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
 				continue
@@ -446,13 +441,14 @@ func (t *TopicDiscoverer) hup() {
 	}
 }
 
-func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string) {
+func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string,
+	connectTimeout time.Duration, requestTimeout time.Duration) {
 	ticker := time.Tick(*topicPollRate)
 	for {
 		select {
 		case <-ticker:
 			if sync {
-				t.syncTopics(addrs, pattern)
+				t.syncTopics(addrs, pattern, connectTimeout, requestTimeout)
 			}
 		case <-t.termChan:
 			t.stop()
@@ -465,15 +461,28 @@ func (t *TopicDiscoverer) watch(addrs []string, sync bool, pattern string) {
 }
 
 func main() {
+	cfg := nsq.NewConfig()
+
+	flag.Var(&nsq.ConfigFlag{cfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("nsq_to_file v%s\n", util.BINARY_VERSION)
+		fmt.Printf("nsq_to_file v%s\n", version.Binary)
 		return
 	}
 
 	if *channel == "" {
 		log.Fatal("--channel is required")
+	}
+
+	connectTimeout := *httpConnectTimeout
+	if int64(connectTimeout) <= 0 {
+		log.Fatal("--http-client-connect-timeout should be positive")
+	}
+
+	requestTimeout := *httpRequestTimeout
+	if int64(requestTimeout) <= 0 {
+		log.Fatal("--http-client-request-timeout should be positive")
 	}
 
 	var topicsFromNSQLookupd bool
@@ -489,33 +498,24 @@ func main() {
 		log.Fatalf("invalid --gzip-level value (%d), should be 1-9", *gzipLevel)
 	}
 
-	// TODO: remove, deprecated
-	if hasArg("gzip-compression") {
-		log.Printf("WARNING: --gzip-compression is deprecated in favor of --gzip-level")
-		switch *gzipCompression {
-		case 1:
-			*gzipLevel = gzip.BestSpeed
-		case 2:
-			*gzipLevel = gzip.BestCompression
-		case 3:
-			*gzipLevel = gzip.DefaultCompression
-		default:
-			log.Fatalf("invalid --gzip-compression value (%d), should be 1,2,3", *gzipCompression)
-		}
-	}
+	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
+	cfg.MaxInFlight = *maxInFlight
 
-	discoverer := newTopicDiscoverer()
+	discoverer := newTopicDiscoverer(cfg)
 
 	signal.Notify(discoverer.hupChan, syscall.SIGHUP)
 	signal.Notify(discoverer.termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if len(topics) < 1 {
+		if len(*topicPattern) < 1 {
+			log.Fatal("use --topic to list at least one topic to subscribe to or specify --topic-pattern to subscribe to matching topics (use \"--topic-pattern .*\" to subscribe to all topics)")
+		}
 		if len(lookupdHTTPAddrs) < 1 {
 			log.Fatal("use --topic to list at least one topic to subscribe to or specify at least one --lookupd-http-address to subscribe to all its topics")
 		}
 		topicsFromNSQLookupd = true
 		var err error
-		topics, err = lookupd.GetLookupdTopics(lookupdHTTPAddrs)
+		topics, err = clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout)).GetLookupdTopics(lookupdHTTPAddrs)
 		if err != nil {
 			log.Fatalf("ERROR: could not retrieve topic list: %s", err)
 		}
@@ -527,7 +527,7 @@ func main() {
 			continue
 		}
 
-		logger, err := newConsumerFileLogger(topic)
+		logger, err := newConsumerFileLogger(topic, cfg)
 		if err != nil {
 			log.Fatalf("ERROR: couldn't create logger for topic %s: %s", topic, err)
 		}
@@ -535,5 +535,5 @@ func main() {
 		go discoverer.startTopicRouter(logger)
 	}
 
-	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd, *topicPattern)
+	discoverer.watch(lookupdHTTPAddrs, topicsFromNSQLookupd, *topicPattern, connectTimeout, requestTimeout)
 }

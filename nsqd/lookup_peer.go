@@ -1,11 +1,14 @@
 package nsqd
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
-	"github.com/bitly/go-nsq"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 // lookupPeer is a low-level type for connecting/reading/writing to nsqlookupd
@@ -14,18 +17,19 @@ import (
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
 type lookupPeer struct {
-	l               logger
+	logf            lg.AppLogFunc
 	addr            string
 	conn            net.Conn
 	state           int32
 	connectCallback func(*lookupPeer)
+	maxBodySize     int64
 	Info            peerInfo
 }
 
 // peerInfo contains metadata for a lookupPeer instance (and is JSON marshalable)
 type peerInfo struct {
-	TcpPort          int    `json:"tcp_port"`
-	HttpPort         int    `json:"http_port"`
+	TCPPort          int    `json:"tcp_port"`
+	HTTPPort         int    `json:"http_port"`
 	Version          string `json:"version"`
 	BroadcastAddress string `json:"broadcast_address"`
 }
@@ -33,18 +37,19 @@ type peerInfo struct {
 // newLookupPeer creates a new lookupPeer instance connecting to the supplied address.
 //
 // The supplied connectCallback will be called *every* time the instance connects.
-func newLookupPeer(addr string, l logger, connectCallback func(*lookupPeer)) *lookupPeer {
+func newLookupPeer(addr string, maxBodySize int64, l lg.AppLogFunc, connectCallback func(*lookupPeer)) *lookupPeer {
 	return &lookupPeer{
-		l:               l,
+		logf:            l,
 		addr:            addr,
 		state:           stateDisconnected,
+		maxBodySize:     maxBodySize,
 		connectCallback: connectCallback,
 	}
 }
 
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
-	lp.l.Output(2, fmt.Sprintf("LOOKUP connecting to %s", lp.addr))
+	lp.logf(lg.INFO, "LOOKUP connecting to %s", lp.addr)
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
 		return err
@@ -73,7 +78,10 @@ func (lp *lookupPeer) Write(data []byte) (int, error) {
 // Close implements the io.Closer interface
 func (lp *lookupPeer) Close() error {
 	lp.state = stateDisconnected
-	return lp.conn.Close()
+	if lp.conn != nil {
+		return lp.conn.Close()
+	}
+	return nil
 }
 
 // Command performs a round-trip for the specified Command.
@@ -103,10 +111,34 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		lp.Close()
 		return nil, err
 	}
-	resp, err := nsq.ReadResponse(lp)
+	resp, err := readResponseBounded(lp, lp.maxBodySize)
 	if err != nil {
 		lp.Close()
 		return nil, err
 	}
 	return resp, nil
+}
+
+func readResponseBounded(r io.Reader, limit int64) ([]byte, error) {
+	var msgSize int32
+
+	// message size
+	err := binary.Read(r, binary.BigEndian, &msgSize)
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(msgSize) > limit {
+		return nil, fmt.Errorf("response body size (%d) is greater than limit (%d)",
+			msgSize, limit)
+	}
+
+	// message binary data
+	buf := make([]byte, msgSize)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }

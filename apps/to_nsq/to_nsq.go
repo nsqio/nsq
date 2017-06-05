@@ -11,26 +11,31 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
+	"time"
 
-	"github.com/bitly/go-nsq"
-	"github.com/bitly/nsq/util"
+	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/version"
 )
 
 var (
 	topic     = flag.String("topic", "", "NSQ topic to publish to")
-	delimiter = flag.String("delimiter", "\n", "character to split input from stdin (defaults to '\n')")
+	delimiter = flag.String("delimiter", "\n", "character to split input from stdin")
 
-	destNsqdTCPAddrs = util.StringArray{}
-	producerOpts     = util.StringArray{}
+	destNsqdTCPAddrs = app.StringArray{}
 )
 
 func init() {
-	flag.Var(&producerOpts, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, http://godoc.org/github.com/bitly/go-nsq#Config)")
 	flag.Var(&destNsqdTCPAddrs, "nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 }
 
 func main() {
+	cfg := nsq.NewConfig()
+	flag.Var(&nsq.ConfigFlag{cfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	rate := flag.Int64("rate", 0, "Throttle messages to n/second. 0 to disable")
+
 	flag.Parse()
 
 	if len(*topic) == 0 {
@@ -45,13 +50,7 @@ func main() {
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	cfg := nsq.NewConfig()
-	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", util.BINARY_VERSION, nsq.VERSION)
-
-	err := util.ParseOpts(cfg, producerOpts)
-	if err != nil {
-		log.Fatal(err)
-	}
+	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
 
 	// make the producers
 	producers := make(map[string]*nsq.Producer)
@@ -67,11 +66,43 @@ func main() {
 		log.Fatal("--nsqd-tcp-address required")
 	}
 
+	throttleEnabled := *rate >= 1
+	balance := int64(1)
+	// avoid divide by 0 if !throttleEnabled
+	var interval time.Duration
+	if throttleEnabled {
+		interval = time.Second / time.Duration(*rate)
+	}
+	go func() {
+		if !throttleEnabled {
+			return
+		}
+		log.Printf("Throttling messages rate to max:%d/second", *rate)
+		// every tick increase the number of messages we can send
+		for _ = range time.Tick(interval) {
+			n := atomic.AddInt64(&balance, 1)
+			// if we build up more than 1s of capacity just bound to that
+			if n > int64(*rate) {
+				atomic.StoreInt64(&balance, int64(*rate))
+			}
+		}
+	}()
+
 	r := bufio.NewReader(os.Stdin)
 	delim := (*delimiter)[0]
 	go func() {
 		for {
-			err := readAndPublish(r, delim, producers)
+			var err error
+			if throttleEnabled {
+				currentBalance := atomic.LoadInt64(&balance)
+				if currentBalance <= 0 {
+					time.Sleep(interval)
+				}
+				err = readAndPublish(r, delim, producers)
+				atomic.AddInt64(&balance, -1)
+			} else {
+				err = readAndPublish(r, delim, producers)
+			}
 			if err != nil {
 				if err != io.EOF {
 					log.Fatal(err)

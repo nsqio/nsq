@@ -1,5 +1,5 @@
 %define name nsq
-%define version 0.3.2
+%define version 1.0.0-compat
 %define release 1
 %define path usr/local
 %define group Database/Applications
@@ -19,12 +19,12 @@ AutoReqProv: no
 
 %description 
 NSQ - A realtime distributed messaging platform
-https://github.com/bitly/nsq
+https://github.com/nsqio/nsq
 
 %prep
 mkdir -p $RPM_BUILD_DIR/%{name}-%{version}-%{release}
 cd $RPM_BUILD_DIR/%{name}-%{version}-%{release}
-git clone git@github.com:bitly/nsq.git
+git clone git@github.com:nsqio/nsq.git
 
 %build
 cd $RPM_BUILD_DIR/%{name}-%{version}-%{release}/nsq

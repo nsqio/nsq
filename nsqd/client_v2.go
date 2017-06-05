@@ -4,15 +4,14 @@ import (
 	"bufio"
 	"compress/flate"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/bitly/nsq/util/auth"
-	"github.com/mreiferson/go-snappystream"
+	"github.com/golang/snappy"
+	"github.com/nsqio/nsq/internal/auth"
 )
 
 const defaultBufferSize = 16 * 1024
@@ -26,9 +25,6 @@ const (
 )
 
 type identifyDataV2 struct {
-	ShortId string `json:"short_id"` // TODO: deprecated, remove in 1.0
-	LongId  string `json:"long_id"`  // TODO: deprecated, remove in 1.0
-
 	ClientID            string `json:"client_id"`
 	Hostname            string `json:"hostname"`
 	HeartbeatInterval   int    `json:"heartbeat_interval"`
@@ -59,7 +55,8 @@ type clientV2 struct {
 	FinishCount   uint64
 	RequeueCount  uint64
 
-	sync.RWMutex
+	writeLock sync.RWMutex
+	metaLock  sync.RWMutex
 
 	ID        int64
 	ctx       *context
@@ -106,7 +103,7 @@ type clientV2 struct {
 	lenSlice []byte
 
 	AuthSecret string
-	AuthState  *auth.AuthState
+	AuthState  *auth.State
 }
 
 func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
@@ -127,7 +124,7 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: 250 * time.Millisecond,
 
-		MsgTimeout: ctx.nsqd.opts.MsgTimeout,
+		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout,
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -143,7 +140,7 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
-		HeartbeatInterval: ctx.nsqd.opts.ClientTimeout / 2,
+		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
 	}
 	c.lenSlice = c.lenBuf[:]
 	return c
@@ -154,24 +151,13 @@ func (c *clientV2) String() string {
 }
 
 func (c *clientV2) Identify(data identifyDataV2) error {
-	c.ctx.nsqd.logf("[%s] IDENTIFY: %+v", c, data)
+	c.ctx.nsqd.logf(LOG_INFO, "[%s] IDENTIFY: %+v", c, data)
 
-	// TODO: for backwards compatibility, remove in 1.0
-	hostname := data.Hostname
-	if hostname == "" {
-		hostname = data.LongId
-	}
-	// TODO: for backwards compatibility, remove in 1.0
-	clientId := data.ClientID
-	if clientId == "" {
-		clientId = data.ShortId
-	}
-
-	c.Lock()
-	c.ClientID = clientId
-	c.Hostname = hostname
+	c.metaLock.Lock()
+	c.ClientID = data.ClientID
+	c.Hostname = data.Hostname
 	c.UserAgent = data.UserAgent
-	c.Unlock()
+	c.metaLock.Unlock()
 
 	err := c.SetHeartbeatInterval(data.HeartbeatInterval)
 	if err != nil {
@@ -215,27 +201,21 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 }
 
 func (c *clientV2) Stats() ClientStats {
-	c.RLock()
-	// TODO: deprecated, remove in 1.0
-	name := c.ClientID
-
-	clientId := c.ClientID
+	c.metaLock.RLock()
+	clientID := c.ClientID
 	hostname := c.Hostname
 	userAgent := c.UserAgent
 	var identity string
-	var identityUrl string
+	var identityURL string
 	if c.AuthState != nil {
 		identity = c.AuthState.Identity
-		identityUrl = c.AuthState.IdentityUrl
+		identityURL = c.AuthState.IdentityURL
 	}
-	c.RUnlock()
+	c.metaLock.RUnlock()
 	stats := ClientStats{
-		// TODO: deprecated, remove in 1.0
-		Name: name,
-
 		Version:         "V2",
 		RemoteAddress:   c.RemoteAddr().String(),
-		ClientID:        clientId,
+		ClientID:        clientID,
 		Hostname:        hostname,
 		UserAgent:       userAgent,
 		State:           atomic.LoadInt32(&c.State),
@@ -251,7 +231,7 @@ func (c *clientV2) Stats() ClientStats {
 		Snappy:          atomic.LoadInt32(&c.Snappy) == 1,
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
-		AuthIdentityURL: identityUrl,
+		AuthIdentityURL: identityURL,
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -268,54 +248,51 @@ type prettyConnectionState struct {
 	tls.ConnectionState
 }
 
-// taken from http://golang.org/src/pkg/crypto/tls/cipher_suites.go
-// to be compatible with older versions
-const (
-	local_TLS_RSA_WITH_RC4_128_SHA                uint16 = 0x0005
-	local_TLS_RSA_WITH_3DES_EDE_CBC_SHA           uint16 = 0x000a
-	local_TLS_RSA_WITH_AES_128_CBC_SHA            uint16 = 0x002f
-	local_TLS_RSA_WITH_AES_256_CBC_SHA            uint16 = 0x0035
-	local_TLS_ECDHE_ECDSA_WITH_RC4_128_SHA        uint16 = 0xc007
-	local_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA    uint16 = 0xc009
-	local_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA    uint16 = 0xc00a
-	local_TLS_ECDHE_RSA_WITH_RC4_128_SHA          uint16 = 0xc011
-	local_TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA     uint16 = 0xc012
-	local_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA      uint16 = 0xc013
-	local_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA      uint16 = 0xc014
-	local_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256   uint16 = 0xc02f
-	local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 uint16 = 0xc02b
-)
-
 func (p *prettyConnectionState) GetCipherSuite() string {
 	switch p.CipherSuite {
-	case local_TLS_RSA_WITH_RC4_128_SHA:
+	case tls.TLS_RSA_WITH_RC4_128_SHA:
 		return "TLS_RSA_WITH_RC4_128_SHA"
-	case local_TLS_RSA_WITH_3DES_EDE_CBC_SHA:
+	case tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:
 		return "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
-	case local_TLS_RSA_WITH_AES_128_CBC_SHA:
+	case tls.TLS_RSA_WITH_AES_128_CBC_SHA:
 		return "TLS_RSA_WITH_AES_128_CBC_SHA"
-	case local_TLS_RSA_WITH_AES_256_CBC_SHA:
+	case tls.TLS_RSA_WITH_AES_256_CBC_SHA:
 		return "TLS_RSA_WITH_AES_256_CBC_SHA"
-	case local_TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:
+	case tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:
 		return "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA"
-	case local_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:
 		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
-	case local_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:
 		return "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA"
-	case local_TLS_ECDHE_RSA_WITH_RC4_128_SHA:
+	case tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA:
 		return "TLS_ECDHE_RSA_WITH_RC4_128_SHA"
-	case local_TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:
+	case tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:
 		return "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA"
-	case local_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:
+	case tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:
 		return "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"
-	case local_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:
+	case tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:
 		return "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"
-	case local_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
+	case tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
 		return "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-	case local_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
 		return "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
 	}
-	return fmt.Sprintf("unkown %d", p.CipherSuite)
+	return fmt.Sprintf("Unknown %d", p.CipherSuite)
+}
+
+func (p *prettyConnectionState) GetVersion() string {
+	switch p.Version {
+	case tls.VersionSSL30:
+		return "SSL30"
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	default:
+		return fmt.Sprintf("Unknown %d", p.Version)
+	}
 }
 
 func (c *clientV2) IsReadyForMessages() bool {
@@ -326,10 +303,7 @@ func (c *clientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	if c.ctx.nsqd.opts.Verbose {
-		c.ctx.nsqd.logf("[%s] state rdy: %4d inflt: %4d",
-			c, readyCount, inFlightCount)
-	}
+	c.ctx.nsqd.logf(LOG_DEBUG, "[%s] state rdy: %4d inflt: %4d", c, readyCount, inFlightCount)
 
 	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
@@ -396,8 +370,8 @@ func (c *clientV2) UnPause() {
 }
 
 func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case desiredInterval == -1:
@@ -405,10 +379,10 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
-		desiredInterval <= int(c.ctx.nsqd.opts.MaxHeartbeatInterval/time.Millisecond):
+		desiredInterval <= int(c.ctx.nsqd.getOpts().MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("heartbeat interval (%d) is invalid", desiredInterval))
+		return fmt.Errorf("heartbeat interval (%d) is invalid", desiredInterval)
 	}
 
 	return nil
@@ -423,15 +397,15 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 		size = 1
 	case desiredSize == 0:
 		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.opts.MaxOutputBufferSize):
+	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.getOpts().MaxOutputBufferSize):
 		size = desiredSize
 	default:
-		return errors.New(fmt.Sprintf("output buffer size (%d) is invalid", desiredSize))
+		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
 	}
 
 	if size > 0 {
-		c.Lock()
-		defer c.Unlock()
+		c.writeLock.Lock()
+		defer c.writeLock.Unlock()
 		c.OutputBufferSize = size
 		err := c.Writer.Flush()
 		if err != nil {
@@ -444,8 +418,8 @@ func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
 }
 
 func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case desiredTimeout == -1:
@@ -453,10 +427,10 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case desiredTimeout >= 1 &&
-		desiredTimeout <= int(c.ctx.nsqd.opts.MaxOutputBufferTimeout/time.Millisecond):
+		desiredTimeout <= int(c.ctx.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("output buffer timeout (%d) is invalid", desiredTimeout))
+		return fmt.Errorf("output buffer timeout (%d) is invalid", desiredTimeout)
 	}
 
 	return nil
@@ -464,32 +438,32 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 
 func (c *clientV2) SetSampleRate(sampleRate int32) error {
 	if sampleRate < 0 || sampleRate > 99 {
-		return errors.New(fmt.Sprintf("sample rate (%d) is invalid", sampleRate))
+		return fmt.Errorf("sample rate (%d) is invalid", sampleRate)
 	}
 	atomic.StoreInt32(&c.SampleRate, sampleRate)
 	return nil
 }
 
 func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	switch {
 	case msgTimeout == 0:
 		// do nothing (use default)
 	case msgTimeout >= 1000 &&
-		msgTimeout <= int(c.ctx.nsqd.opts.MaxMsgTimeout/time.Millisecond):
+		msgTimeout <= int(c.ctx.nsqd.getOpts().MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
-		return errors.New(fmt.Sprintf("msg timeout (%d) is invalid", msgTimeout))
+		return fmt.Errorf("msg timeout (%d) is invalid", msgTimeout)
 	}
 
 	return nil
 }
 
 func (c *clientV2) UpgradeTLS() error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	tlsConn := tls.Server(c.Conn, c.ctx.nsqd.tlsConfig)
 	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -508,8 +482,8 @@ func (c *clientV2) UpgradeTLS() error {
 }
 
 func (c *clientV2) UpgradeDeflate(level int) error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	conn := c.Conn
 	if c.tlsConn != nil {
@@ -528,16 +502,16 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 }
 
 func (c *clientV2) UpgradeSnappy() error {
-	c.Lock()
-	defer c.Unlock()
+	c.writeLock.Lock()
+	defer c.writeLock.Unlock()
 
 	conn := c.Conn
 	if c.tlsConn != nil {
 		conn = c.tlsConn
 	}
 
-	c.Reader = bufio.NewReaderSize(snappystream.NewReader(conn, snappystream.SkipVerifyChecksum), defaultBufferSize)
-	c.Writer = bufio.NewWriterSize(snappystream.NewWriter(conn), c.OutputBufferSize)
+	c.Reader = bufio.NewReaderSize(snappy.NewReader(conn), defaultBufferSize)
+	c.Writer = bufio.NewWriterSize(snappy.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)
 
@@ -565,7 +539,7 @@ func (c *clientV2) Flush() error {
 }
 
 func (c *clientV2) QueryAuthd() error {
-	remoteIp, _, err := net.SplitHostPort(c.String())
+	remoteIP, _, err := net.SplitHostPort(c.String())
 	if err != nil {
 		return err
 	}
@@ -576,8 +550,9 @@ func (c *clientV2) QueryAuthd() error {
 		tlsEnabled = "true"
 	}
 
-	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.opts.AuthHTTPAddresses,
-		remoteIp, tlsEnabled, c.AuthSecret)
+	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
+		remoteIP, tlsEnabled, c.AuthSecret, c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
+		c.ctx.nsqd.getOpts().HTTPClientRequestTimeout)
 	if err != nil {
 		return err
 	}

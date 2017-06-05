@@ -1,2 +1,2 @@
 #!/bin/bash
-go fmt ./...
+find . -name "*.go" | xargs goimports -w

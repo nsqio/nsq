@@ -1,8 +1,10 @@
-package main
+package nsqadmin
 
 import (
 	"encoding/base64"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -16,6 +18,8 @@ type AdminAction struct {
 	User      string `json:"user,omitempty"`
 	RemoteIP  string `json:"remote_ip"`
 	UserAgent string `json:"user_agent"`
+	URL       string `json:"url"` // The URL of the HTTP request that triggered this action
+	Via       string `json:"via"` // the Hostname of the nsqadmin performing this action
 }
 
 func basicAuthUser(req *http.Request) string {
@@ -34,21 +38,34 @@ func basicAuthUser(req *http.Request) string {
 	return pair[0]
 }
 
-func (s *httpServer) notifyAdminAction(actionType string, topicName string,
-	channelName string, node string, req *http.Request) {
-	if s.ctx.nsqadmin.opts.NotificationHTTPEndpoint == "" {
+func (s *httpServer) notifyAdminAction(action, topic, channel, node string, req *http.Request) {
+	if s.ctx.nsqadmin.getOpts().NotificationHTTPEndpoint == "" {
 		return
 	}
-	action := &AdminAction{
-		actionType,
-		topicName,
-		channelName,
-		node,
-		time.Now().Unix(),
-		basicAuthUser(req),
-		req.RemoteAddr,
-		req.UserAgent(),
+	via, _ := os.Hostname()
+
+	u := url.URL{
+		Scheme:   "http",
+		Host:     req.Host,
+		Path:     req.URL.Path,
+		RawQuery: req.URL.RawQuery,
+	}
+	if req.TLS != nil || req.Header.Get("X-Scheme") == "https" {
+		u.Scheme = "https"
+	}
+
+	a := &AdminAction{
+		Action:    action,
+		Topic:     topic,
+		Channel:   channel,
+		Node:      node,
+		Timestamp: time.Now().Unix(),
+		User:      basicAuthUser(req),
+		RemoteIP:  req.RemoteAddr,
+		UserAgent: req.UserAgent(),
+		URL:       u.String(),
+		Via:       via,
 	}
 	// Perform all work in a new goroutine so this never blocks
-	go func() { s.ctx.nsqadmin.notifications <- action }()
+	go func() { s.ctx.nsqadmin.notifications <- a }()
 }

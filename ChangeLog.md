@@ -2,6 +2,249 @@
 
 ## Binaries
 
+### 1.0.0-compat - 2017-03-21
+
+**Upgrading from 0.3.8**: Numerous backwards incompatible changes:
+
+ * Deprecated `nsqd` features removed:
+   * Pre-V1 HTTP endpoints / response format:
+     * `/{m,}put` (use `/{m,}pub`)
+     * `/{create,delete,empty,pause,unpause}_{topic,channel}` (use `/{topic,channel}/<operation>`)
+   * `--max-message-size` flag (use `--max-msg-size`)
+   * `V2` protocol `IDENTIFY` command `short_id` and `long_id` properties (use `client_id`, `hostname`, and `user_agent`)
+   * `/stats` HTTP response `name` property (use `client_id`)
+ * Deprecated `nsqlookupd` features removed:
+   * Pre-V1 HTTP endpoints / response format:
+     * `/{create,delete}_{topic,channel}` (use `/{topic,channel}/<operation>`)
+     * `/tombstone_topic_producer` (use `/topic/tombstone`)
+ * Deprecated `nsqadmin` features removed:
+   * `--template-dir` flag (not required, templates are compiled into binary)
+   * `--use-statsd-prefixes` flag (use `--statsd-counter-format` and `--statsd-gauge-format`)
+ * `nsq_stat` `--status-every` flag (use `--interval`)
+ * `--reader-opt` on all binaries that had this flag (use `--consumer-opt`)
+ * `nsq_to_file` `--gzip-compression` flag (use `--gzip-level`)
+ * `nsq_to_http` `--http-timeout` and `--http-timeout-ms` flags (use `--http-connect-timeout` and `--http-request-timeout`)
+ * `nsq_to_http` `--round-robin` flag (use `--mode=round-robin`)
+ * `nsq_to_http` `--max-backoff-duration` flag (use `--consumer-opt=max_backoff_duration,X`)
+ * `nsq_to_http` `--throttle-fraction` flag (use `--sample=X`)
+ * `nsq_to_nsq` `--max-backoff-duration` flag (use `--consumer-opt=max_backoff_duration,X`)
+ * `nsqd` `--worker-id` deprecated in favor of `--node-id` (to be fully removed in subsequent release)
+
+This is a compatibility release that drops a wide range of previously deprecated features (#367)
+while introducing some new deprecations (#844) that we intend to fully remove in a subsequent 1.0
+release.
+
+Of note, all of the pre-1.0 HTTP endpoints (and response formats) are gone. Any clients or tools
+that use these endpoints/response formats won't work with this release. These changes have been
+available since 0.2.29 (released in July of 2014). Clients wishing to forwards-compatibly upgrade
+can either use the new endpoints or send the following header:
+
+    Accept: application/vnd.nsq version=1.0
+
+Also, many command line flags have been removed — in almost all cases an alternative is available
+with a (hopefully) more obvious name. These changes have the same affect on config file option
+names.
+
+On Linux, this release will automatically migrate `nsq.<worker-id>.dat` named metadata files to
+`nsq.dat` in a way that allows users to seamlessly _downgrade_ from this release back to 0.3.8, if
+necessary. A subsequent release will clean up these convenience symlinks and observe only
+`nsq.dat`. See the discussion in #741 and the changes #844 for more details.
+
+Performance wise, #741 landed which significantly reduces global contention on internal message ID
+generation, providing a ~1.75x speed improvement on multi-topic benchmarks.
+
+Finally, a number of minor issues were resolved spanning contributions from 9 community members!
+Thanks!
+
+Features:
+
+ * #766 - use `alpine` base image for official Docker container (thanks @kenjones-cisco)
+ * #775 - `nsqadmin:` `/config` API (thanks @kenjones-cisco)
+ * #776 - `nsqadmin`, `nsq_stat`, `nsq_to_file`, `nsq_to_http`: HTTP client connect/request timeouts (thanks @kenjones-cisco)
+ * #777/#778/#783/#785 - improve test coverage (thanks @kenjones-cisco)
+ * #788 - `to_nsq`: add `--rate` message throttling option
+ * #367 - purge deprecated features (see above)
+ * #741 - `nsqd`: per-topic message IDs (multi-topic pub benchmarks up to ~1.75x faster)
+ * #850 - `nsqd`, `nsqlookupd`, `nsqadmin`: add `--log-prefix` option (thanks @ploxiln)
+ * #844 - `nsqd`: deprecate `--worker-id` for `--node-id` and drop ID from `nsqd.dat` file (thanks @ploxiln)
+
+Bugs:
+
+ * #787 - `nsqlookupd`: properly close TCP connection in `IOLoop` (thanks @JackDrogon)
+ * #792 - `nsqdmin`: fix root CA verification (thanks @joshuarubin)
+ * #794 - `nsq_to_file`: require `--topic` or `--topic-pattern` (thanks @judwhite)
+ * #816/#823 - `nsqadmin`: fix handling of IPv6 broadcast addresses (thanks @magnetised)
+ * #805/#832 - `nsqd`: fix requeue and deferred message accounting (thanks @sdbaiguanghe)
+ * #532/#830 - `nsqd`: switch to golang/snappy to fix snappy deadlock
+ * #826/#831/#837/#839 - `nsqd`: fix default `--broadcast-address` and error when `nsqlookupd` reqs fail (thanks @ploxiln @stephensearles)
+ * #822/#835 - `nsqd`: prevent panic in binary `/mpub` (thanks @yangyifeng01)
+ * #841 - `nsqadmin`: allow ctrl/meta+click to open a new tab
+ * #843 - `nsqd`: check for exit before requeing
+
+### 0.3.8 - 2016-05-26
+
+**Upgrading from 0.3.7**: Binaries contain no backwards incompatible changes.
+
+This release fixes a critical regression in `0.3.7` that could result in message loss when
+attempting to cleanly shutdown `nsqd` by sending it a `SIGTERM`. The expected behavior was for it
+to flush messages in internal buffers to disk before exiting. See #757 and #759 for more details.
+
+A few performance improvements landed including #743, which improves channel throughput by ~17%,
+and #740, which reduces garbage when reading messages from disk.
+
+We're now stripping debug info, reducing binary size, in the official binary downloads and Windows
+binaries are now bundled with the appropriate `.exe` extension (#726 and #751).
+
+Features:
+
+ * #743 - `nsqd`: remove channel `messagePump`
+ * #751 - strip debug info from binaries (thanks @ploxiln)
+ * #740 - `nsqd`: reduce garbage when reading from diskqueue (thanks @dieterbe)
+
+Bugs:
+
+ * #757/#759 - `nsqd`: properly handle `SIGTERM` (thanks @judwhite)
+ * #738 - updates for latest `go-options`
+ * #730 - `nsqd`: diskqueue sync count on both read/write
+ * #734 - `nsqadmin`: make `rate` column work without `--proxy-graphite` (thanks @ploxiln)
+ * #726 - add `.exe` extension to Windows binaries (thanks @ploxiln)
+ * #722 - `nsqadmin`: fix connected duration > `1hr`
+
+### 0.3.7 - 2016-02-23
+
+**Upgrading from 0.3.6**: Binaries contain no backwards incompatible changes.
+
+This release has been built with Go 1.6.
+
+Highlights include the various work done to reduce `nsqd` lock contention, significantly improving
+the impact of high load on the `/stats` endpoint, addressing issues with timeouts and failures
+in `nsqadmin` (#700, #701, #703, #709).
+
+Thanks to @judwhite, `nsqd` and `nsqlookupd` now natively support being run as a Windows service
+(#718). We're also now publishing official Windows releases.
+
+`nsqd` will now `flock` its data directory on linux, preventing two `nsqd` from running
+simultaneously pointed at the same path (#583).
+
+On the bugfix side, the most noteworthy change is that `nsqd` will now correctly reset health state
+on a successful backend write (#671).
+
+Features:
+
+ * #700/#701/#703/#709 - `nsqd`: reduce lock contention (thanks @zachbadgett @absolute8511)
+ * #718 - `nsqd`/`nsqlookupd`: support running as a windows service (thanks @judwhite)
+ * #706 - `nsqd`: support enabling/disabling block profile via HTTP (thanks @absolute8511)
+ * #710 - `nsqd`: support `POST` `/debug/pprof/symbol` (thanks @absolute8511)
+ * #662 - `nsqadmin`: add flags for formatting statsd keys (thanks @kesutton)
+ * #583 - `nsqd`: `flock` `--data-path` on linux
+ * #663 - `nsqd`: optimize GUID generation (thanks @ploxiln)
+
+Bugs:
+
+ * #672 - `nsqd`: fix max size accounting in `diskqueue` (thanks @judwhite)
+ * #671 - `nsqd`: reset health on successful backend write (thanks @judwhite)
+ * #615 - `nsqd`: prevent OOM when reading from `nsqlookupd` peer
+ * #664/#666 - dist.sh/Makefile cleanup (thanks @ploxiln)
+
+### 0.3.6 - 2015-09-24
+
+**Upgrading from 0.3.5**: Binaries contain no backwards incompatible changes.
+
+We've adopted the [Contributor Covenant 1.2 Code of Conduct](CODE_OF_CONDUCT.md) (#593). Help us
+keep NSQ open and inclusive by reading and following this document.
+
+We closed a few longstanding issues related to `nsqadmin`, namely (#323, et al.) converting it to
+an API and single-page app (so that it is _much_ easier to develop), displaying fine-grained errors
+(#421, #657), and enabling support for `--tls-required` configurations (#396).
+
+For `nsqd`, we added support for deferred publishing aka `DPUB` (#293), which allows a producer to
+specify a duration of time to delay initial delivery of the message. We also addressed performance
+issues relating to large numbers of topics/channels (#577) by removing some per-channel goroutines
+in favor of a centralized, periodic, garbage collection approach.
+
+In order to provide more flexibility when deploying NSQ in dynamically orchestrated topologies,
+`nsqd` now supports the ability to configure `nsqlookupd` peers at runtime via HTTP (#601),
+eliminating the need to restart the daemon.
+
+As part of the large `nsqadmin` refactoring, we took the opportunity to cleanup the internals for
+_all_ of the daemon's HTTP code paths (#601, #610, #612, #641) as well as improving the test suite
+so that it doesn't leave around temporary files (#553).
+
+Features:
+
+ * #593 - add code of conduct
+ * #323/#631/#632/#642/#421/#649/#650/#651/#652/#654 - `nsqadmin`: convert to API / single-page app
+ * #653 - `nsqadmin`: expand notification context
+ * #293 - `nsqd`: add deferred pub (`DPUB`)
+ * #577 - `nsqd`: drop per-channel queue workers in favor of centralized queue GC
+ * #584 - `nsqlookupd`: improve registration DB performance (thanks @xiaost)
+ * #601 - `nsqd`: HTTP endpoints to dynamically configure `nsqlookupd` peers
+ * #608 - `nsqd`: support for filtering `/stats` to topic/channel (thanks @chrusty)
+ * #601/#610/#612/#641 - improved HTTP internal routing / log HTTP requests
+ * #628 - `nsqd`: clarify help text for `--e2e-processing-latency-percentile`
+ * #640 - switch `--{consumer,producer}-opt` to `nsq.ConfigFlag`
+
+Bugs:
+
+ * #656 - `nsqadmin`: update `statsd` prefix to `stats.counters`
+ * #421/#657 - `nsqadmin`: display upstream/partial errors
+ * #396 - `nsqdamin`/`nsqd`: support for `--tls-required`
+ * #558 - don't overwrite docker root FS
+ * #582 - `nsqd`: ignore benign EOF errors
+ * #587 - `nsqd`: GUID error handling / catch errors if GUID goes backwards (thanks @mpe)
+ * #586 - `nsqd`: fix valid range for `--worker-id`
+ * #550/#602/#617/#618/#619/#620/#622 - `nsqd`: fix benchmarks (thanks @Dieterbe)
+ * #553 - cleanup test dirs
+ * #600 - `nsqd`: enforce diskqueue min/max message size (thanks @twmb)
+
+### 0.3.5 - 2015-04-26
+
+**Upgrading from 0.3.3**: Binaries contain no backwards incompatible changes.
+
+This is another quick bug fix release to address the broken `nsqadmin` binary in the distribution
+(see #578).
+
+### 0.3.4 - 2015-04-26
+
+**WARNING**: please upgrade to `v0.3.5` to address the broken `nsqadmin` binary.
+
+**Upgrading from 0.3.3**: Binaries contain no backwards incompatible changes.
+
+This is a quick bug fix release to fix the outdated `go-nsq` dependency in `v0.3.3`
+for the bundled utilities (see 6e8504e).
+
+### 0.3.3 - 2015-04-26
+
+**WARNING**: please upgrade to `v0.3.5` to address the outdated `go-nsq` dependency for the
+bundled utilities and the broken `nsqadmin` binary.
+
+**Upgrading from 0.3.2**: Binaries contain no backwards incompatible changes.
+
+This release is primarily a bug fix release after cleaning up and reorganizing the codebase.
+`nsqadmin` is now importable, which paves the way for completing #323. The bundled utilities
+received a few feature additions and bug fixes (mostly from bug fixes on the `go-nsq` side).
+
+Features:
+
+ * #569 - `nsqadmin`: re-org into importable package
+ * #562 - `nsq_to_{nsq,http}`: add `epsilon-greedy` mode (thanks @twmb)
+ * #547 - `nsqd`: adds `start_time` to `/stats` (thanks @ShawnSpooner)
+ * #544 - `nsq_to_http`: accept any `200` response as success (thanks @mikedewar)
+ * #548 - `nsq_to_http`: read entire request body (thanks @imgix)
+ * #552/#554/#555/#556/#561 - code cleanup and `/internal` package re-org (thanks @cespare)
+
+Bugs:
+
+ * #573 - `nsqd`: don't persist metadata upon startup (thanks @xiaost)
+ * #560 - `nsqd`: do not print `EOF` error when client closes cleanly (thanks @twmb)
+ * #557 - `nsqd`: fix `--tls-required=tcp-https` with `--tls-client-auth-policy` (thanks @twmb)
+ * #545 - enable shell expansion in official Docker image (thanks @paddyforan)
+
+NOTE: the bundled utilities are built against [`go-nsq` `v1.0.4`][go-nsq_104] and include all of
+those features/fixes.
+
+[go-nsq_104]: https://github.com/nsqio/go-nsq/releases/tag/v1.0.4
+
 ### 0.3.2 - 2015-02-08
 
 **Upgrading from 0.3.1**: Binaries contain no backwards incompatible changes however as of this
@@ -14,7 +257,7 @@ The new image is an order of magnitude smaller, weighing in around 70mb.
 
 In addition, the impetus for this quick release is to address a slew of reconnect related bug fixes
 in the utility apps (`nsq_to_nsq`, `nsq_to_file`, etc.), for details see the [`go-nsq` `v1.0.3`
-release notes](https://github.com/bitly/go-nsq/releases/tag/v1.0.3).
+release notes](https://github.com/nsqio/go-nsq/releases/tag/v1.0.3).
 
 Features:
 
@@ -67,7 +310,7 @@ means that client libraries no longer have to periodically re-send `RDY`. For so
 already provided back-pressure due to the fact that a client must respond to messages before
 receiving new ones. The decremented `RDY` count only made the implementation of the server and
 client more complex without additional benefit. Now the `RDY` command can be treated as an "on/off"
-switch. For details see #404 and the associated changes in bitly/go-nsq#83 and bitly/pynsq#98.
+switch. For details see #404 and the associated changes in nsqio/go-nsq#83 and nsqio/pynsq#98.
 
 The second biggest change (and oft-requested feature!) is `#ephemeral` topics. Their behavior
 mirrors that of channels. This feature is incredibly useful for situations where you're using
@@ -232,9 +475,9 @@ client certificate policy via `--tls-client-auth-policy` (`require` or `require-
 This can be used as a form of client authentication.
 
 Additionally, `nsqd` is now structured such that it is importable in other Go applications
-via `github.com/bitly/nsq/nsqd`, thanks to @kzvezdarov.
+via `github.com/nsqio/nsq/nsqd`, thanks to @kzvezdarov.
 
-Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or 
+Finally, thanks to @paddyforan, `nsq_to_file` can now archive *multiple* topics or
 optionally archive *all* discovered topics (by specifying no `--topic` params
 and using `--lookupd-http-address`).
 
@@ -243,7 +486,7 @@ New Features / Enhancements:
  * #334 - `nsq_to_file` can archive many topics (thanks @paddyforan)
  * #327 - add `nsqd` TLS client certificate verification policy, ability
           to require TLS, and HTTPS support (thanks @chrisroberts)
- * #325 - make `nsqd` importable (`github.com/bitly/nsq/nsqd`) (thanks @kzvezdarov)
+ * #325 - make `nsqd` importable (`github.com/nsqio/nsq/nsqd`) (thanks @kzvezdarov)
  * #321 - improve `IDENTIFY` options (replace `short_id` and `long_id` with
           `client_id` and `hostname`)
  * #319 - allow path separator in `nsq_to_file` filenames (thanks @jsocol)
@@ -251,7 +494,7 @@ New Features / Enhancements:
 
 Bug Fixes:
 
- * bitly/go-nsq#19 and bitly/go-nsq#29 - fix deadlocks on `nsq.Reader` connection close/exit, this
+ * nsqio/go-nsq#19 and nsqio/go-nsq#29 - fix deadlocks on `nsq.Reader` connection close/exit, this
                                          impacts the utilities packaged with the NSQ binary
                                          distribution such as `nsq_to_file`, `nsq_to_http`,
                                          `nsq_to_nsq` and `nsq_tail`.
@@ -368,7 +611,7 @@ New Features / Enhancements:
 **Upgrading from 0.2.22**: No backwards incompatible changes.
 
 We now use [godep](https://github.com/kr/godep) in order to achieve reproducible builds with pinned
-dependencies.  If you're on go1.1+ you can now just use `godep get github.com/bitly/nsq/...`.
+dependencies.  If you're on go1.1+ you can now just use `godep get github.com/nsqio/nsq/...`.
 
 This release includes `nsqd` protocol compression feature negotiation.
 [Snappy](https://code.google.com/p/snappy/) and [Deflate](http://en.wikipedia.org/wiki/DEFLATE) are
@@ -675,8 +918,8 @@ removed in a future release.
 
 ## go-nsq Client Library
 
- * #264 moved **go-nsq** to its own [repository](https://github.com/bitly/go-nsq)
+ * #264 moved **go-nsq** to its own [repository](https://github.com/nsqio/go-nsq)
 
 ## pynsq Python Client Library
 
- * #88 moved **pynsq** to its own [repository](https://github.com/bitly/pynsq)
+ * #88 moved **pynsq** to its own [repository](https://github.com/nsqio/pynsq)

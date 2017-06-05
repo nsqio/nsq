@@ -1,9 +1,11 @@
-code.google.com/p/snappy-go/snappy      12e4b4183793ac4b061921e7980845e750679fd0
 github.com/BurntSushi/toml              2dff11163ee667d51dcc066660925a92ce138deb
 github.com/bitly/go-hostpool            58b95b10d6ca26723a7f46017b348653b825a8d6
-github.com/bitly/go-nsq                 5a2abdba46a853a75ccdeeead30ad34eabc4d72a # v1.0.3
-github.com/bitly/go-simplejson          fc395a5db941cf38922b1ccbc083640cd76fe4bc # v0.5.0-alpha
+github.com/nsqio/go-nsq                 a53d495e81424aaf7a7665a9d32a97715c40e953
 github.com/bmizerany/perks/quantile     6cb9d9d729303ee2628580d9aec5db968da3a607
-github.com/mreiferson/go-options        2cf7eb1fdd83e2bb3375fef6fdadb04c3ad564da
-github.com/mreiferson/go-snappystream   307a466b220aaf34bcee2d19c605ed9e96b4bcdb # v0.2.0
+github.com/mreiferson/go-options        77551d20752b54535462404ad9d877ebdb26e53d
+github.com/golang/snappy                d9eb7a3d35ec988b8585d4a0068e462c27d28380
 github.com/bitly/timer_metrics          afad1794bb13e2a094720aeb27c088aa64564895
+github.com/blang/semver                 9bf7bff48b0388cb75991e58c6df7d13e982f1f2
+github.com/julienschmidt/httprouter     6aacfd5ab513e34f7e64ea9627ab9670371b34e7
+github.com/judwhite/go-svc/svc          63c12402f579f0bdf022653c821a1aa5d7544f01
+github.com/nsqio/go-diskqueue           d7805f889b023afcd5b8933e815ce9ba36327333
