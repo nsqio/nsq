@@ -188,10 +188,17 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 }
 
 func (f *FileLogger) Close() {
+	var err error
 	if f.out != nil {
-		f.out.Sync()
 		if f.gzipWriter != nil {
-			f.gzipWriter.Close()
+			err = f.gzipWriter.Close()
+			if err != nil {
+				log.Printf("ERROR: Failed to close the gzip writer: %s", err)
+			}
+		}
+		err = f.out.Sync()
+		if err != nil {
+			log.Printf("ERROR: Failed to sync file to disk: %s", err)
 		}
 		f.out.Close()
 		f.out = nil
