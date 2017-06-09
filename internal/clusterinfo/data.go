@@ -56,7 +56,7 @@ func (c *ClusterInfo) logf(f string, args ...interface{}) {
 func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	endpoint := fmt.Sprintf("http://%s/info", addr)
 	var resp struct {
-		Version string `json:'version'`
+		Version string `json:"version"`
 	}
 	err := c.client.GETV1(endpoint, &resp)
 	if err != nil {
