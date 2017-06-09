@@ -15,6 +15,38 @@ import (
 	"time"
 )
 
+type fakeConsumer struct {
+	cid int64
+}
+
+func NewFakeConsumer(id int64) *fakeConsumer {
+	return &fakeConsumer{cid: id}
+}
+
+func (c *fakeConsumer) UnPause() {
+}
+func (c *fakeConsumer) Pause() {
+}
+func (c *fakeConsumer) TimedOutMessage() {
+}
+func (c *fakeConsumer) RequeuedMessage() {
+}
+func (c *fakeConsumer) FinishedMessage() {
+}
+func (c *fakeConsumer) Stats() nsqdNs.ClientStats {
+	return nsqdNs.ClientStats{}
+}
+func (c *fakeConsumer) Exit() {
+}
+func (c *fakeConsumer) Empty() {
+}
+func (c *fakeConsumer) String() string {
+	return ""
+}
+func (c *fakeConsumer) GetID() int64 {
+	return c.cid
+}
+
 type testClusterNodeInfo struct {
 	id        string
 	localNsqd *nsqdNs.NSQD
@@ -998,7 +1030,7 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	for i := 0; i < totalMsgNum-1; i++ {
 		select {
 		case msg := <-ch.GetClientMsgChan():
-			ch.StartInFlightTimeout(msg, 1, "", time.Second)
+			ch.StartInFlightTimeout(msg, NewFakeConsumer(1), "", time.Second)
 			err := nsqdCoord1.FinishMessageToCluster(ch, 1, "", msg.ID)
 			test.Nil(t, err)
 		case <-time.After(time.Second):
@@ -1260,7 +1292,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	coordLog.Infof("==== test client consume messages ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel1.GetClientMsgChan()
-		channel1.StartInFlightTimeout(msg, 1, "", 10)
+		channel1.StartInFlightTimeout(msg, NewFakeConsumer(1), "", 10)
 		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, "", msg.ID)
 		test.Nil(t, err)
 
@@ -1353,7 +1385,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	coordLog.Infof("==== test client consume ====")
 	for i := msgConsumed; i < msgCnt; i++ {
 		msg := <-channel2.GetClientMsgChan()
-		channel2.StartInFlightTimeout(msg, 1, "", 10)
+		channel2.StartInFlightTimeout(msg, NewFakeConsumer(1), "", 10)
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, "", msg.ID)
 		test.Nil(t, err)
 		time.Sleep(time.Millisecond)
