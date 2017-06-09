@@ -59,8 +59,6 @@ type ClientV2 struct {
 	MessageCount  uint64
 	FinishCount   uint64
 	RequeueCount  uint64
-	TimeoutCount  int64
-	DeferredCount int64
 
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex
@@ -167,6 +165,10 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 
 func (c *ClientV2) String() string {
 	return c.remoteAddr
+}
+
+func (c *ClientV2) GetID() int64 {
+	return c.ID
 }
 
 func (c *ClientV2) Exit() {
@@ -300,8 +302,6 @@ func (c *ClientV2) Stats() ClientStats {
 		MessageCount:    atomic.LoadUint64(&c.MessageCount),
 		FinishCount:     atomic.LoadUint64(&c.FinishCount),
 		RequeueCount:    atomic.LoadUint64(&c.RequeueCount),
-		TimeoutCount:    atomic.LoadInt64(&c.TimeoutCount),
-		DeferredCount:   atomic.LoadInt64(&c.DeferredCount),
 		ConnectTime:     c.ConnectTime.Unix(),
 		SampleRate:      atomic.LoadInt32(&c.SampleRate),
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
@@ -399,20 +399,13 @@ func (c *ClientV2) IsReadyForMessages() bool {
 			readyCount = adjustReadyCount
 		}
 	}
-	deferCnt := atomic.LoadInt64(&c.DeferredCount)
 
 	if nsqLog.Level() >= levellogger.LOG_DETAIL {
-		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, defer: %4d, errCnt: %d",
-			c, readyCount, inFlightCount, deferCnt, errCnt)
+		nsqLog.LogDebugf("[%s] state rdy: %4d inflt: %4d, errCnt: %d",
+			c, readyCount, inFlightCount, errCnt)
 	}
 
-	// deferCnt should consider as not in flight
-	if inFlightCount >= readyCount+deferCnt || readyCount <= 0 {
-		return false
-	}
-	if deferCnt > c.ctxOpts.MaxConfirmWin {
-		nsqLog.Infof("[%s] too much deferred message in channel %s : %v rdy: %4d inflt: %4d",
-			c, c.Channel.GetName(), deferCnt, readyCount, inFlightCount)
+	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
 	}
 	return true
@@ -443,9 +436,6 @@ func (c *ClientV2) IncrSubError(delta int64) {
 }
 
 func (c *ClientV2) FinishedMessage() {
-	// since deferred message should be only requeued while timeout
-	// Before deliver message, the delay state will be cleared.
-	// So we no need handle the DeferredCount here.
 	atomic.AddUint64(&c.FinishCount, 1)
 	atomic.AddInt64(&c.InFlightCount, -1)
 	c.IncrSubError(int64(-1))
@@ -454,7 +444,6 @@ func (c *ClientV2) FinishedMessage() {
 
 func (c *ClientV2) Empty() {
 	atomic.StoreInt64(&c.InFlightCount, 0)
-	atomic.StoreInt64(&c.DeferredCount, 0)
 	atomic.StoreInt64(&c.subErrCnt, 0)
 	c.tryUpdateReadyState()
 }
@@ -464,25 +453,16 @@ func (c *ClientV2) SendingMessage() {
 	atomic.AddUint64(&c.MessageCount, 1)
 }
 
-func (c *ClientV2) TimedOutMessage(isDefer bool) {
+func (c *ClientV2) TimedOutMessage() {
 	atomic.AddInt64(&c.InFlightCount, -1)
-	if isDefer {
-		atomic.AddInt64(&c.DeferredCount, -1)
-	} else {
-		atomic.AddInt64(&c.TimeoutCount, 1)
-		c.IncrSubError(int64(1))
-		atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
-	}
+	c.IncrSubError(int64(1))
+	atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
 	c.tryUpdateReadyState()
 }
 
-func (c *ClientV2) RequeuedMessage(delayed bool, isOldDelayed bool) {
+func (c *ClientV2) RequeuedMessage() {
 	atomic.AddUint64(&c.RequeueCount, 1)
-	if !delayed {
-		atomic.AddInt64(&c.InFlightCount, -1)
-	} else if !isOldDelayed {
-		atomic.AddInt64(&c.DeferredCount, 1)
-	}
+	atomic.AddInt64(&c.InFlightCount, -1)
 	c.tryUpdateReadyState()
 }
 

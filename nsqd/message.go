@@ -29,9 +29,9 @@ func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
 }
 
 func PrintMessage(m *Message) string {
-	return fmt.Sprintf("%v %v %s %v %v %v %v %v %v %v %v %v %v",
+	return fmt.Sprintf("%v %v %s %v %v %v %v %v %v %v %v %v",
 		m.ID, m.TraceID, string(m.Body), m.Timestamp, m.Attempts, m.deliveryTS,
-		m.clientID, m.pri, m.index, m.deferredCnt, m.offset, m.rawMoveSize, m.queueCntIndex)
+		m.pri, m.index, m.deferredCnt, m.offset, m.rawMoveSize, m.queueCntIndex)
 }
 
 type Message struct {
@@ -42,15 +42,19 @@ type Message struct {
 	Attempts  uint16
 
 	// for in-flight handling
-	deliveryTS  time.Time
-	clientID    int64
-	pri         int64
-	index       int
-	deferredCnt int32
+	deliveryTS time.Time
+	//clientID    int64
+	belongedConsumer Consumer
+	pri              int64
+	index            int
+	deferredCnt      int32
 	//for backend queue
 	offset        BackendOffset
 	rawMoveSize   BackendOffset
 	queueCntIndex int64
+	// for delayed queue message
+	DelayedTs      int64
+	DelayedChannel string
 }
 
 func MessageHeaderBytes() int {
@@ -94,7 +98,10 @@ func (m *Message) GetCopy() *Message {
 }
 
 func (m *Message) GetClientID() int64 {
-	return m.clientID
+	if m.belongedConsumer != nil {
+		return m.belongedConsumer.GetID()
+	}
+	return 0
 }
 
 func (m *Message) WriteToWithDetail(w io.Writer) (int64, error) {
@@ -144,6 +151,49 @@ func (m *Message) internalWriteTo(w io.Writer, writeDetail bool) (int64, error) 
 	return total, nil
 }
 
+func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
+	var buf [16]byte
+	var total int64
+
+	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
+	binary.BigEndian.PutUint16(buf[8:10], m.Attempts)
+
+	n, err := w.Write(buf[:10])
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	binary.BigEndian.PutUint64(buf[:8], uint64(m.ID))
+	binary.BigEndian.PutUint64(buf[8:8+MsgTraceIDLength], uint64(m.TraceID))
+	n, err = w.Write(buf[:MsgIDLength])
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	binary.BigEndian.PutUint64(buf[:8], uint64(m.DelayedTs))
+	binary.BigEndian.PutUint32(buf[8:8+4], uint32(len(m.DelayedChannel)))
+	n, err = w.Write(buf[:8+4])
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+	n, err = w.Write([]byte(m.DelayedChannel))
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	n, err = w.Write(m.Body)
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	return total, nil
+}
+
 func DecodeMessage(b []byte) (*Message, error) {
 	return decodeMessage(b)
 }
@@ -172,5 +222,42 @@ func decodeMessage(b []byte) (*Message, error) {
 	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
 
 	msg.Body = b[26:]
+	return &msg, nil
+}
+
+func DecodeDelayedMessage(b []byte) (*Message, error) {
+	var msg Message
+
+	if len(b) < minValidMsgLength {
+		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+	}
+
+	pos := 0
+	msg.Timestamp = int64(binary.BigEndian.Uint64(b[pos:8]))
+	pos += 8
+	msg.Attempts = binary.BigEndian.Uint16(b[pos : pos+2])
+	pos += 2
+	msg.ID = MessageID(binary.BigEndian.Uint64(b[pos : pos+8]))
+	pos += 8
+	msg.TraceID = binary.BigEndian.Uint64(b[pos : pos+8])
+	pos += 8
+
+	if len(b) < minValidMsgLength+8+4 {
+		return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+	}
+
+	msg.DelayedTs = int64(binary.BigEndian.Uint64(b[pos : pos+8]))
+	pos += 8
+	nameLen := binary.BigEndian.Uint32(b[pos : pos+4])
+	pos += 4
+
+	if len(b) < minValidMsgLength+8+4+int(nameLen) {
+		return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+	}
+
+	msg.DelayedChannel = string(b[pos : pos+int(nameLen)])
+	pos += int(nameLen)
+
+	msg.Body = b[pos:]
 	return &msg, nil
 }

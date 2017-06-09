@@ -556,11 +556,12 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			// this may happen while the channel reader is reset to old position
 			// due to some retry or leader change.
 			if subChannel.IsConfirmed(msg) {
+				subChannel.ContinueConsumeForOrder()
 				continue
 			}
 
-			shouldSend, err := subChannel.StartInFlightTimeout(msg, client.ID, client.String(), msgTimeout)
-			if !shouldSend {
+			shouldSend, err := subChannel.StartInFlightTimeout(msg, client, client.String(), msgTimeout)
+			if !shouldSend || err != nil {
 				continue
 			}
 			lastActiveTime = time.Now()
@@ -1030,7 +1031,6 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewClientErr(err, "E_FIN_FAILED",
 			fmt.Sprintf("FIN %v failed %s", *id, err.Error()))
 	}
-	client.FinishedMessage()
 
 	return nil, nil
 }
@@ -1086,7 +1086,6 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	// can update the inflight message to the new message put backed at the queue
 
 	msgID := nsqd.GetMessageIDFromFullMsgID(*id)
-	isOldDeferred := false
 	topic, _ := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
 	oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
 		msgID, timeoutDuration, true)
@@ -1100,17 +1099,18 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		}
 	}
 	if toEnd {
-		isOldDeferred, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
+		_, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}
 	if err != nil {
 		client.IncrSubError(int64(1))
+
+		nsqd.NsqLogger().LogWarningf("client %v req failed for topic: %v, %v, %v, %v",
+			client, client.Channel.GetTopicName(), client.Channel.GetName(), msgID, timeoutDuration)
 		return nil, protocol.NewClientErr(err, "E_REQ_FAILED",
 			fmt.Sprintf("REQ %v failed %s", *id, err.Error()))
 	}
-
-	client.RequeuedMessage(timeoutDuration > 0, isOldDeferred)
 
 	return nil, nil
 }

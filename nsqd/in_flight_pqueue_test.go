@@ -12,14 +12,14 @@ func TestPriorityQueue(t *testing.T) {
 	pq := newInFlightPqueue(c)
 
 	for i := 0; i < c+1; i++ {
-		pq.Push(&Message{clientID: int64(i), pri: int64(i)})
+		pq.Push(&Message{belongedConsumer: NewFakeConsumer(int64(i)), pri: int64(i)})
 	}
 	equal(t, len(pq), c+1)
 	equal(t, cap(pq), c*2)
 
 	for i := 0; i < c+1; i++ {
 		msg := pq.Pop()
-		equal(t, msg.clientID, int64(i))
+		equal(t, msg.GetClientID(), int64(i))
 	}
 	equal(t, cap(pq), c/4)
 }

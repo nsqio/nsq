@@ -187,11 +187,9 @@
                 <th>Attributes</th>
                 <th>NSQd Host</th>
                 <th>In-Flight</th>
-                <th>Deferred</th>
                 <th>Ready Count</th>
                 <th>Finished</th>
                 <th>Requeued</th>
-                <th>TimedOut</th>
                 <th>Messages</th>
                 <th>Connected</th>
             </tr>
@@ -222,11 +220,9 @@
                 </td>
                 <td><a class="link" href="/nodes/{{node}}">{{node}}</a></td>
                 <td>{{commafy in_flight_count}}</td>
-                <td>{{commafy deferred_count}}</td>
                 <td>{{commafy ready_count}}</td>
                 <td>{{commafy finish_count}}</td>
                 <td>{{commafy requeue_count}}</td>
-                <td>{{commafy timeout_count}}</td>
                 <td>{{commafy message_count}}</td>
                 <td>{{nanotohuman connected}}</td>
             </tr>

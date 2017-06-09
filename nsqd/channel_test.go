@@ -9,6 +9,38 @@ import (
 	"time"
 )
 
+type fakeConsumer struct {
+	cid int64
+}
+
+func NewFakeConsumer(id int64) *fakeConsumer {
+	return &fakeConsumer{cid: id}
+}
+
+func (c *fakeConsumer) UnPause() {
+}
+func (c *fakeConsumer) Pause() {
+}
+func (c *fakeConsumer) TimedOutMessage() {
+}
+func (c *fakeConsumer) RequeuedMessage() {
+}
+func (c *fakeConsumer) FinishedMessage() {
+}
+func (c *fakeConsumer) Stats() ClientStats {
+	return ClientStats{}
+}
+func (c *fakeConsumer) Exit() {
+}
+func (c *fakeConsumer) Empty() {
+}
+func (c *fakeConsumer) String() string {
+	return ""
+}
+func (c *fakeConsumer) GetID() int64 {
+	return c.cid
+}
+
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
 	opts := NewOptions()
@@ -93,7 +125,7 @@ func TestInFlightWorker(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		msg := NewMessage(topic.nextMsgID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, NewFakeConsumer(0), "", opts.MsgTimeout)
 	}
 
 	channel.Lock()
@@ -136,7 +168,7 @@ func TestChannelEmpty(t *testing.T) {
 	msgs := make([]*Message, 0, 25)
 	for i := 0; i < 25; i++ {
 		msg := NewMessage(topic.nextMsgID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, "", opts.MsgTimeout)
+		channel.StartInFlightTimeout(msg, NewFakeConsumer(0), "", opts.MsgTimeout)
 		msgs = append(msgs, msg)
 	}
 
