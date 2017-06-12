@@ -1971,6 +1971,220 @@ func TestTLSSnappy(t *testing.T) {
 	test.Equal(t, data, []byte("OK"))
 }
 
+func TestClientMsgTimeoutReqCount(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 3
+	opts.QueueScanRefreshInterval = 100 * time.Millisecond
+	if testing.Verbose() {
+		nsqdNs.SetLogger(opts.Logger)
+	}
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	msg := nsqdNs.NewMessage(0, make([]byte, 100))
+	topic.PutMessage(msg)
+	topic.PutMessage(nsqdNs.NewMessage(0, make([]byte, 100)))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	identify(t, conn, map[string]interface{}{
+		"msg_timeout": 1000,
+	}, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+	test.Equal(t, msgOut.ID, msg.ID)
+	test.Equal(t, msgOut.Body, msg.Body)
+
+	tstats := nsqd.GetTopicStats(true, topicName)
+	test.Equal(t, 1, len(tstats))
+	test.Equal(t, 1, len(tstats[0].Channels))
+	test.Equal(t, 1, len(tstats[0].Channels[0].Clients))
+	chStats := tstats[0].Channels[0]
+	clientStats := tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(1), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.InFlightCount)
+
+	test.Equal(t, 1, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(0), chStats.RequeueCount)
+	test.Equal(t, uint64(0), chStats.TimeoutCount)
+
+	_, err = nsq.Ready(0).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	time.Sleep(1100*time.Millisecond + opts.QueueScanInterval)
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(1), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(0), clientStats.RequeueCount)
+	test.Equal(t, uint64(0), clientStats.FinishCount)
+
+	test.Equal(t, 0, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(1), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, data, _ := nsq.UnpackResponse(resp)
+	test.Equal(t, frameType, frameTypeError)
+	test.Equal(t, string(data),
+		fmt.Sprintf("E_FIN_FAILED FIN %v failed Message ID not in flight", msgOut.GetFullMsgID()))
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, int64(0), clientStats.InFlightCount)
+	test.Equal(t, uint64(1), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(0), clientStats.RequeueCount)
+	test.Equal(t, uint64(0), clientStats.FinishCount)
+
+	test.Equal(t, 0, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(1), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(2), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(0), clientStats.RequeueCount)
+	test.Equal(t, uint64(0), clientStats.FinishCount)
+
+	test.Equal(t, 1, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(1), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+	_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), 0).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(3), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(1), clientStats.RequeueCount)
+	test.Equal(t, uint64(0), clientStats.FinishCount)
+
+	test.Equal(t, 1, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(2), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	_, err = nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), time.Second*3).WriteTo(conn)
+	test.Equal(t, err, nil)
+	time.Sleep(time.Millisecond)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	t.Log(chStats)
+	test.Equal(t, uint64(2), clientStats.RequeueCount)
+
+	test.Equal(t, 2, chStats.InFlightCount)
+	test.Equal(t, 1, chStats.DeferredCount)
+	test.Equal(t, uint64(2), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(4), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(2), clientStats.RequeueCount)
+	test.Equal(t, uint64(0), clientStats.FinishCount)
+
+	// delayed message still in delay, another message waiting fin
+	test.Equal(t, 2, chStats.InFlightCount)
+	test.Equal(t, 1, chStats.DeferredCount)
+	test.Equal(t, uint64(2), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	_, err = nsq.Ready(0).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
+	test.Equal(t, err, nil)
+	time.Sleep(time.Millisecond)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(4), clientStats.MessageCount)
+	test.Equal(t, int64(0), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(2), clientStats.RequeueCount)
+	test.Equal(t, uint64(1), clientStats.FinishCount)
+
+	test.Equal(t, 1, chStats.InFlightCount)
+	test.Equal(t, 1, chStats.DeferredCount)
+	test.Equal(t, uint64(2), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(5), clientStats.MessageCount)
+	test.Equal(t, int64(1), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(2), clientStats.RequeueCount)
+	test.Equal(t, uint64(1), clientStats.FinishCount)
+
+	test.Equal(t, 1, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(3), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+
+	_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
+	test.Equal(t, err, nil)
+	time.Sleep(time.Millisecond)
+
+	tstats = nsqd.GetTopicStats(true, topicName)
+	chStats = tstats[0].Channels[0]
+	clientStats = tstats[0].Channels[0].Clients[0]
+	test.Equal(t, uint64(5), clientStats.MessageCount)
+	test.Equal(t, int64(0), clientStats.InFlightCount)
+	test.Equal(t, int64(1), clientStats.TimeoutCount)
+	test.Equal(t, uint64(2), clientStats.RequeueCount)
+	test.Equal(t, uint64(2), clientStats.FinishCount)
+
+	test.Equal(t, 0, chStats.InFlightCount)
+	test.Equal(t, 0, chStats.DeferredCount)
+	test.Equal(t, uint64(3), chStats.RequeueCount)
+	test.Equal(t, uint64(1), chStats.TimeoutCount)
+}
+
 func TestClientMsgTimeout(t *testing.T) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)

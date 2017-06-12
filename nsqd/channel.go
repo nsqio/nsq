@@ -755,6 +755,7 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		nsqLog.Logf("requeue message: %v exceed max requeue timeout: %v, %v", id, msg.deliveryTS, newTimeout)
 		newTimeout = msg.deliveryTS.Add(c.option.MaxReqTimeout)
 	}
+
 	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
 	atomic.AddInt32(&msg.deferredCnt, 1)
@@ -763,6 +764,7 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		msg.belongedConsumer.RequeuedMessage()
 	}
 	msg.belongedConsumer = nil
+	nsqLog.LogDebugf("client %v requeue with delayed %v message: %v", clientID, timeout, id)
 	return nil
 }
 
