@@ -59,6 +59,7 @@ type ClientV2 struct {
 	MessageCount  uint64
 	FinishCount   uint64
 	RequeueCount  uint64
+	TimeoutCount  uint64
 
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex
@@ -302,6 +303,7 @@ func (c *ClientV2) Stats() ClientStats {
 		MessageCount:    atomic.LoadUint64(&c.MessageCount),
 		FinishCount:     atomic.LoadUint64(&c.FinishCount),
 		RequeueCount:    atomic.LoadUint64(&c.RequeueCount),
+		TimeoutCount:    int64(atomic.LoadUint64(&c.TimeoutCount)),
 		ConnectTime:     c.ConnectTime.Unix(),
 		SampleRate:      atomic.LoadInt32(&c.SampleRate),
 		TLS:             atomic.LoadInt32(&c.TLS) == 1,
@@ -455,6 +457,7 @@ func (c *ClientV2) SendingMessage() {
 
 func (c *ClientV2) TimedOutMessage() {
 	atomic.AddInt64(&c.InFlightCount, -1)
+	atomic.AddUint64(&c.TimeoutCount, 1)
 	c.IncrSubError(int64(1))
 	atomic.StoreInt64(&c.lastConsumeTimeout, time.Now().Unix())
 	c.tryUpdateReadyState()
