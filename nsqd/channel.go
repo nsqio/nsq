@@ -112,7 +112,6 @@ type Channel struct {
 	processResetReaderTime int64
 	waitingProcessMsgTs    int64
 	waitingDeliveryState   int32
-	tmpRemovedConfirmed    []*Message
 	requeueMsgCb           ReqToEndFunc
 }
 
@@ -134,15 +133,14 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		confirmedMsgs:      NewIntervalTree(),
 		//finMsgs:            make(map[MessageID]*Message),
 		//finErrMsgs:     make(map[MessageID]string),
-		tryReadBackend:      make(chan bool, 1),
-		readerChanged:       make(chan resetChannelData, 10),
-		endUpdatedChan:      make(chan bool, 1),
-		deleteCallback:      deleteCallback,
-		option:              opt,
-		notifyCall:          notify,
-		consumeDisabled:     consumeDisabled,
-		tmpRemovedConfirmed: make([]*Message, 0, 10),
-		requeueMsgCb:        reqToEndCB,
+		tryReadBackend:  make(chan bool, 1),
+		readerChanged:   make(chan resetChannelData, 10),
+		endUpdatedChan:  make(chan bool, 1),
+		deleteCallback:  deleteCallback,
+		option:          opt,
+		notifyCall:      notify,
+		consumeDisabled: consumeDisabled,
+		requeueMsgCb:    reqToEndCB,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -301,6 +299,9 @@ func (c *Channel) Close() error {
 }
 
 func (c *Channel) IsWaitingMoreData() bool {
+	if c.IsPaused() {
+		return false
+	}
 	d, ok := c.backend.(*diskQueueReader)
 	if ok {
 		return d.IsWaitingMoreData()
