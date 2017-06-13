@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 )
@@ -29,6 +30,7 @@ type coordData struct {
 	topicLeaderSession TopicLeaderSession
 	consumeMgr         *ChannelConsumeMgr
 	logMgr             *TopicCommitLogMgr
+	delayedLogMgr      *TopicCommitLogMgr
 	forceLeave         int32
 }
 
@@ -50,6 +52,7 @@ type TopicCoordinator struct {
 	catchupRunning int32
 	disableWrite   int32
 	exiting        int32
+	basePath       string
 }
 
 func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
@@ -59,12 +62,14 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
 	tc.disableWrite = 1
+	tc.basePath = basepath
 	var err error
 	err = os.MkdirAll(basepath, 0755)
 	if err != nil {
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
 		return nil, err
 	}
+	os.MkdirAll(path.Join(tc.basePath, "delayed"), 0755)
 	// sync 1 means flush every message
 	// all other sync we can make the default buffer, since the commit log
 	// is just index of disk data and can be restored from disk queue.
@@ -80,6 +85,23 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 		return nil, err
 	}
 	return tc, nil
+}
+
+func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error) {
+	var err error
+	var logMgr *TopicCommitLogMgr
+	self.dataMutex.Lock()
+	if self.delayedLogMgr == nil {
+		self.delayedLogMgr, err = InitTopicCommitLogMgr(self.topicInfo.Name, self.topicInfo.Partition,
+			path.Join(self.basePath, "delayed"), DEFAULT_COMMIT_BUF_SIZE)
+	}
+	logMgr = self.delayedLogMgr
+	self.dataMutex.Unlock()
+	if err != nil {
+		coordLog.Errorf("topic(%v) failed to init delayed queue log: %v ", self.topicInfo.GetTopicDesp(), err)
+		return nil, err
+	}
+	return logMgr, nil
 }
 
 func (self *TopicCoordinator) DeleteNoWriteLock(removeData bool) {

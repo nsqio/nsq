@@ -103,6 +103,8 @@ type Topic struct {
 	pubLoopFunc     func(v *Topic)
 	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
+
+	delayedQueue *DelayQueue
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -186,6 +188,13 @@ func NewTopic(topicName string, part int, opt *Options,
 	}
 	t.LoadChannelMeta()
 	return t
+}
+
+func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) *DelayQueue {
+	if t.delayedQueue == nil {
+		t.delayedQueue = NewDelayQueue(idGen)
+	}
+	return t.delayedQueue
 }
 
 func (t *Topic) GetWaitChan() PubInfoChan {

@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"errors"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqd"
 	"strconv"
@@ -26,10 +27,23 @@ func (self *NsqdCoordinator) PutMessageBodyToCluster(topic *nsqd.Topic,
 	msg.TraceID = traceID
 	return self.PutMessageToCluster(topic, msg)
 }
+
 func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	return self.internalPutMessageToCluster(topic, msg, false)
+}
+
+func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
+	msg *nsqd.Message, putDelayed bool) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+
 	var commitLog CommitLogData
 	var queueEnd nsqd.BackendQueueEnd
+	if putDelayed {
+		if msg.DelayedTs == 0 || msg.DelayedChannel == "" {
+			return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize,
+				queueEnd, errors.New("Invalid delayed message")
+		}
+	}
 
 	topicName := topic.GetTopicName()
 	partition := topic.GetTopicPart()
@@ -42,8 +56,24 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
+		if putDelayed {
+			var err error
+			logMgr, err = coord.GetDelayedQueueLogMgr()
+			if err != nil {
+				return &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			}
+		}
+		var id nsqd.MessageID
+		var offset nsqd.BackendOffset
+		var writeBytes int32
+		var qe nsqd.BackendQueueEnd
+		var localErr error
 		topic.Lock()
-		id, offset, writeBytes, qe, localErr := topic.PutMessageNoLock(msg)
+		if putDelayed {
+			id, offset, writeBytes, qe, localErr = topic.GetOrCreateDelayedQueueNoLock(logMgr).PutDelayMessageNoLock(msg)
+		} else {
+			id, offset, writeBytes, qe, localErr = topic.PutMessageNoLock(msg)
+		}
 		queueEnd = qe
 		topic.Unlock()
 		if localErr != nil {
@@ -78,19 +108,31 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 			coordLog.Errorf("topic : %v, Generator %v failed write commit log : %v, logmgr: %v, %v",
 				topic.GetFullName(), topic.GetMsgGenerator(), localErr, logMgr.pLogID, logMgr.nLogID)
 		}
-		topic.Lock()
-		topic.UpdateCommittedOffset(queueEnd)
-		topic.Unlock()
+		if !putDelayed {
+			topic.Lock()
+			topic.UpdateCommittedOffset(queueEnd)
+			topic.Unlock()
+		}
 		return localErr
 	}
 	doLocalRollback := func() {
 		coordLog.Warningf("failed write begin rollback : %v, %v", topic.GetFullName(), commitLog)
-		topic.Lock()
-		topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
-		topic.Unlock()
+		if !putDelayed {
+			topic.Lock()
+			topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
+			topic.Unlock()
+		}
 	}
 	doRefresh := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
+		if putDelayed {
+			var err error
+			logMgr, err = coord.GetDelayedQueueLogMgr()
+			if err != nil {
+				return &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			}
+		}
+
 		if d.GetTopicEpochForWrite() != commitLog.Epoch {
 			coordLog.Warningf("write epoch changed during write: %v, %v", d.GetTopicEpochForWrite(), commitLog)
 			return ErrEpochMismatch
@@ -100,12 +142,21 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
 		// should retry if failed, and the slave should keep the last success write to avoid the duplicated
-		putErr := c.PutMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
-		if putErr != nil {
-			coordLog.Infof("sync write to replica %v failed: %v. put offset:%v, logmgr: %v, %v",
-				nodeID, putErr, commitLog, logMgr.pLogID, logMgr.nLogID)
+		if putDelayed {
+			putErr := c.PutDelayedMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
+			if putErr != nil {
+				coordLog.Infof("sync write to replica %v failed: %v. put offset:%v, logmgr: %v, %v",
+					nodeID, putErr, commitLog, logMgr.pLogID, logMgr.nLogID)
+			}
+			return putErr
+		} else {
+			putErr := c.PutMessage(&tcData.topicLeaderSession, &tcData.topicInfo, commitLog, msg)
+			if putErr != nil {
+				coordLog.Infof("sync write to replica %v failed: %v. put offset:%v, logmgr: %v, %v",
+					nodeID, putErr, commitLog, logMgr.pLogID, logMgr.nLogID)
+			}
+			return putErr
 		}
-		return putErr
 	}
 	handleSyncResult := func(successNum int, tcData *coordData) bool {
 		if successNum == len(tcData.topicInfo.ISR) {
@@ -457,7 +508,8 @@ exitsync:
 	return clusterWriteErr
 }
 
-func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData CommitLogData, msg *nsqd.Message) *CoordErr {
+func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData CommitLogData,
+	msg *nsqd.Message, putDelayed bool) *CoordErr {
 	var logMgr *TopicCommitLogMgr
 	var topic *nsqd.Topic
 	var queueEnd nsqd.BackendQueueEnd
@@ -468,6 +520,14 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 			coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
 		}
 		logMgr = tc.logMgr
+		if putDelayed {
+			var err error
+			logMgr, err = coord.GetDelayedQueueLogMgr()
+			if err != nil {
+				coordLog.Warningf("topic %v failed to get delay log mgr : %v", tc.topicInfo.GetTopicDesp(), err)
+				return false
+			}
+		}
 		if logMgr.IsCommitted(logData.LogID) {
 			coordLog.Infof("pub the already committed log id : %v", logData.LogID)
 			return true
@@ -491,8 +551,15 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 			return &CoordErr{ErrLocalTopicPartitionMismatch.String(), RpcErrTopicNotExist, CoordSlaveErr}
 		}
 
+		if logMgr == nil {
+			return &CoordErr{"missing commit log manager", RpcNoErr, CoordLocalErr}
+		}
 		topic.Lock()
-		queueEnd, localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+		if putDelayed {
+			queueEnd, localErr = topic.GetOrCreateDelayedQueueNoLock(logMgr).PutDelayMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+		} else {
+			queueEnd, localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+		}
 		topic.Unlock()
 		if localErr != nil {
 			coordLog.Errorf("put message on slave failed: %v", localErr)
@@ -507,9 +574,11 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 			coordLog.Errorf("write commit log on slave failed: %v", localErr)
 			return localErr
 		}
-		topic.Lock()
-		topic.UpdateCommittedOffset(queueEnd)
-		topic.Unlock()
+		if !putDelayed {
+			topic.Lock()
+			topic.UpdateCommittedOffset(queueEnd)
+			topic.Unlock()
+		}
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {

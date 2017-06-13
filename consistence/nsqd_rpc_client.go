@@ -342,6 +342,21 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	return convertRpcError(err, retErr)
 }
 
+func (self *NsqdRpcClient) PutDelayedMessage(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
+	// it seems grpc is slower, so disable it.
+	var putData RpcPutMessage
+	putData.LogData = log
+	putData.TopicName = info.Name
+	putData.TopicPartition = info.Partition
+	putData.TopicMessage = message
+	putData.TopicWriteEpoch = info.EpochForWrite
+	putData.Epoch = info.Epoch
+	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
+	putData.TopicLeaderSession = leaderSession.Session
+	retErr, err := self.CallWithRetry("PutDelayedMessage", &putData)
+	return convertRpcError(err, retErr)
+}
+
 func (self *NsqdRpcClient) PutMessage(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
 	// it seems grpc is slower, so disable it.
 	if self.grpcClient != nil && false {

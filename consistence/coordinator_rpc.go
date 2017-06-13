@@ -712,6 +712,35 @@ func (self *NsqdCoordRpcServer) DeleteChannel(info *RpcChannelOffsetArg) *CoordE
 }
 
 // receive from leader
+func (self *NsqdCoordRpcServer) PutDelayedMessage(info *RpcPutMessage) *CoordErr {
+	if self.nsqdCoord.enableBenchCost || coordLog.Level() >= levellogger.LOG_DEBUG {
+		s := time.Now()
+		defer func() {
+			e := time.Now()
+			if e.Sub(s) > time.Second*time.Duration(RPC_TIMEOUT/2) {
+				coordLog.Infof("PutDelayedMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
+			}
+			coordLog.Warningf("PutDelayedMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
+		}()
+	}
+
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// do local pub message
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, true)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
+// receive from leader
 func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 	if self.nsqdCoord.enableBenchCost || coordLog.Level() >= levellogger.LOG_DEBUG {
 		s := time.Now()
@@ -732,7 +761,7 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 		return &ret
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, false)
 	if err != nil {
 		ret = *err
 		return &ret
