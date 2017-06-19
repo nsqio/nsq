@@ -154,6 +154,10 @@ func New(opts *Options) *NSQD {
 	return n
 }
 
+func (n *NSQD) ExitChan() *chan int {
+	return &n.exitChan
+}
+
 func (n *NSQD) getOpts() *Options {
 	return n.opts.Load().(*Options)
 }
@@ -263,6 +267,10 @@ func (n *NSQD) Main() {
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(func() { n.statsdLoop() })
 	}
+}
+
+func (n *NSQD) RegisterAddon(addonFn func()) {
+       n.waitGroup.Wrap(func() { addonFn() })
 }
 
 type meta struct {

@@ -149,6 +149,6 @@ func NewOptions() *Options {
 		TLSMinVersion: tls.VersionTLS10,
 
 		DogStatsdPrefix:   "nsq.%s",
-		DogStatsdInterval: 60 * time.Second,
+		DogStatsdInterval: 10 * time.Second,
 	}
 }

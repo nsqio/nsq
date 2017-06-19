@@ -241,8 +241,8 @@ func (p *program) Start() error {
 	nsqd.Main()
 
 	// hook into addons
-	addons := contrib.NewNSQDAddons()
-	addons.Start(opts, nsqd)
+	addons := contrib.NewNSQDAddons(opts, nsqd)
+	addons.Start()
 
 	p.nsqd = nsqd
 	return nil
