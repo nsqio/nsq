@@ -265,6 +265,10 @@ func (n *NSQD) Main() {
 	}
 }
 
+func (n *NSQD) AddModuleGoroutine(addonFn func(exitChan chan int)) {
+	n.waitGroup.Wrap(func() { addonFn(n.exitChan) })
+}
+
 type meta struct {
 	Topics []struct {
 		Name     string `json:"name"`
