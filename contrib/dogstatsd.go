@@ -6,14 +6,22 @@ import (
 )
 
 
+type NSQDDogStatsdOptions struct {
+	DogStatsdAddress  string        `flag:"dogstatsd-address"`
+	DogStatsdPrefix   string        `flag:"dogstatsd-prefix"`
+	DogStatsdInterval time.Duration `flag:"dogstatsd-interval"`
+}
+
+
 type NSQDDogStatsd struct {
-	opts *nsqd.Options
 	nsqd *nsqd.NSQD
+	contribOpts *NSQDContribOptions
 }
 
 
 func (dd *NSQDDogStatsd) Active() bool {
-	if dd.opts.DogStatsdAddress != "" {
+	dd.nsqd.Logf(nsqd.LOG_ERROR, "%s", dd.contribOpts)
+	if dd.contribOpts.DogStatsdAddress != "" {
 		return true
 	} else {
 		return false
@@ -27,7 +35,7 @@ func (dd *NSQDDogStatsd) Start() {
 }
 
 func (dd *NSQDDogStatsd) Loop() {
-	ticker := time.NewTicker(dd.opts.DogStatsdInterval)
+	ticker := time.NewTicker(dd.contribOpts.DogStatsdInterval)
 	dd.nsqd.Logf(nsqd.LOG_DEBUG, "Loop started")
 	exitChan := *dd.nsqd.ExitChan()
 

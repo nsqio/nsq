@@ -79,12 +79,6 @@ type Options struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
-
-	// contrib
-	// TODO cleanly extend this in the the contrib app
-	DogStatsdAddress  string        `flag:"dogstatsd-address"`
-	DogStatsdPrefix   string        `flag:"dogstatsd-prefix"`
-	DogStatsdInterval time.Duration `flag:"dogstatsd-interval"`
 }
 
 func NewOptions() *Options {
@@ -147,8 +141,5 @@ func NewOptions() *Options {
 		SnappyEnabled:   true,
 
 		TLSMinVersion: tls.VersionTLS10,
-
-		DogStatsdPrefix:   "nsq.%s",
-		DogStatsdInterval: 10 * time.Second,
 	}
 }

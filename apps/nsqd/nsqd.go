@@ -145,13 +145,6 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
-	// contrib
-	// TODO cleanly extend this in the the contrib app
-	flagSet.String("dogstatsd-address", opts.DogStatsdAddress, "UDP <addr>:<port> of a statsd daemon for pushing stats")
-	flagSet.Duration("dogstatsd-interval", opts.DogStatsdInterval, "duration between pushing to dogstatsd")
-	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
-	flagSet.String("dogstatsd-prefix", opts.DogStatsdPrefix, "prefix used for keys sent to statsd (%s for host replacement)")
-
 	return flagSet
 }
 
@@ -208,6 +201,13 @@ func (p *program) Start() error {
 	opts := nsqd.NewOptions()
 
 	flagSet := nsqdFlagSet(opts)
+
+	// add the contrib options to these
+	contribOpts := contrib.NewContribOptions()
+	// add the flags for each of contrib
+	contrib.AddNSQDContribFlags(contribOpts, flagSet)
+
+	// add the contrib flags to these
 	flagSet.Parse(os.Args[1:])
 
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -228,6 +228,8 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
+	options.Resolve(contribOpts, flagSet, cfg)
+
 	nsqd := nsqd.New(opts)
 
 	err := nsqd.LoadMetadata()
@@ -241,7 +243,7 @@ func (p *program) Start() error {
 	nsqd.Main()
 
 	// hook into addons
-	addons := contrib.NewNSQDAddons(opts, nsqd)
+	addons := contrib.NewNSQDAddons(contribOpts, nsqd)
 	addons.Start()
 
 	p.nsqd = nsqd
