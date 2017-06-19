@@ -22,10 +22,7 @@ type NSQDContribOptions struct {
 // Instantiates all contrib default options
 func NewContribOptions() *NSQDContribOptions {
 	return &NSQDContribOptions{
-		&NSQDDogStatsdOptions{
-			DogStatsdPrefix:   "nsq.",
-			DogStatsdInterval: 10 * time.Second,
-		},
+		NewNSQDDogStatsdDefaultOptions(),
 	}
 }
 

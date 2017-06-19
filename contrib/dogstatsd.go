@@ -12,6 +12,13 @@ type NSQDDogStatsdOptions struct {
 	DogStatsdInterval time.Duration `flag:"dogstatsd-interval"`
 }
 
+func NewNSQDDogStatsdDefaultOptions() *NSQDDogStatsdOptions {
+	return &NSQDDogStatsdOptions{
+		DogStatsdPrefix:   "nsq.",
+		DogStatsdInterval: 10 * time.Second,
+	}
+}
+
 type NSQDDogStatsd struct {
 	nsqd        *nsqd.NSQD
 	contribOpts *NSQDContribOptions
