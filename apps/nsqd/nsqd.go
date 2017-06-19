@@ -19,6 +19,7 @@ import (
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
+	"github.com/nsqio/nsq/contrib"
 )
 
 type tlsRequiredOption int
@@ -144,6 +145,13 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
+	// contrib
+	// TODO cleanly extend this in the the contrib app
+	flagSet.String("dogstatsd-address", opts.DogStatsdAddress, "UDP <addr>:<port> of a statsd daemon for pushing stats")
+	flagSet.Duration("dogstatsd-interval", opts.DogStatsdInterval, "duration between pushing to dogstatsd")
+	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
+	flagSet.String("dogstatsd-prefix", opts.DogStatsdPrefix, "prefix used for keys sent to statsd (%s for host replacement)")
+
 	return flagSet
 }
 
@@ -231,6 +239,10 @@ func (p *program) Start() error {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
 	nsqd.Main()
+
+	// hook into addons
+	addons := contrib.NewNSQDAddons()
+	addons.Start(opts, nsqd)
 
 	p.nsqd = nsqd
 	return nil
