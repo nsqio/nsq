@@ -24,4 +24,3 @@ func (n *NSQD) logf(level lg.LogLevel, f string, args ...interface{}) {
 func (n *NSQD) Logf(level lg.LogLevel, f string, args ...interface{}) {
 	n.logf(level, f, args...)
 }
-

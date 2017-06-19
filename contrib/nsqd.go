@@ -1,16 +1,14 @@
 package contrib
 
 import (
+	"flag"
 	"github.com/nsqio/nsq/nsqd"
 	"log"
 	"os"
-	"flag"
 	"time"
 )
 
-
 var logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lmicroseconds)
-
 
 type INSQDAddon interface {
 	Active() bool
@@ -25,7 +23,7 @@ type NSQDContribOptions struct {
 func NewContribOptions() *NSQDContribOptions {
 	return &NSQDContribOptions{
 		&NSQDDogStatsdOptions{
-			DogStatsdPrefix:   "nsq.%s",
+			DogStatsdPrefix:   "nsq.",
 			DogStatsdInterval: 10 * time.Second,
 		},
 	}
@@ -37,7 +35,6 @@ func AddNSQDContribFlags(opts *NSQDContribOptions, flagSet *flag.FlagSet) {
 	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
 	flagSet.String("dogstatsd-prefix", opts.DogStatsdPrefix, "prefix used for keys sent to statsd (%s for host replacement)")
 }
-
 
 type NSQDAddons struct {
 	addons []INSQDAddon
@@ -54,15 +51,13 @@ func (as *NSQDAddons) Start() {
 	}
 }
 
-
 func NewNSQDAddons(contribOpts *NSQDContribOptions, nsqd *nsqd.NSQD) *NSQDAddons {
 	return &NSQDAddons{
 		addons: []INSQDAddon{
 			&NSQDDogStatsd{
 				contribOpts: contribOpts,
-				nsqd: nsqd,
+				nsqd:        nsqd,
 			},
 		},
 	}
 }
-

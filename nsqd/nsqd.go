@@ -270,7 +270,7 @@ func (n *NSQD) Main() {
 }
 
 func (n *NSQD) RegisterAddon(addonFn func()) {
-       n.waitGroup.Wrap(func() { addonFn() })
+	n.waitGroup.Wrap(func() { addonFn() })
 }
 
 type meta struct {
