@@ -18,3 +18,10 @@ func (n *NSQD) logf(level lg.LogLevel, f string, args ...interface{}) {
 	opts := n.getOpts()
 	lg.Logf(opts.Logger, opts.logLevel, level, f, args...)
 }
+
+// would like to expose logf to the contrib modules so that contrib can share the
+// configuration end user specifies on CLI
+func (n *NSQD) Logf(level lg.LogLevel, f string, args ...interface{}) {
+	n.logf(level, f, args...)
+}
+

@@ -28,7 +28,7 @@ func (dd *NSQDDogStatsd) Start() {
 
 func (dd *NSQDDogStatsd) Loop() {
 	ticker := time.NewTicker(dd.opts.DogStatsdInterval)
-	logger.Println("Loop started")
+	dd.nsqd.Logf(nsqd.LOG_DEBUG, "Loop started")
 	exitChan := *dd.nsqd.ExitChan()
 
 	for {
@@ -36,7 +36,7 @@ func (dd *NSQDDogStatsd) Loop() {
 		case <- exitChan:
 			goto exit
 		case <- ticker.C:
-			logger.Println("LOOPING")
+			dd.nsqd.Logf(nsqd.LOG_DEBUG, "LOOPING")
 		}
 	}
 
