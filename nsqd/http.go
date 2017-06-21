@@ -506,11 +506,11 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		Health    string       `json:"health"`
 		StartTime int64        `json:"start_time"`
 		Topics    []TopicStats `json:"topics"`
-		Memory    *memStats    `json:"memory"`
+		Memory    memStats     `json:"memory"`
 	}{version.Binary, health, startTime.Unix(), stats, ms}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, ms *memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 	now := time.Now()

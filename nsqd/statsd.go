@@ -23,7 +23,7 @@ func (s Uint64Slice) Less(i, j int) bool {
 }
 
 func (n *NSQD) statsdLoop() {
-	var lastMemStats *memStats
+	var lastMemStats memStats
 	var lastStats []TopicStats
 	ticker := time.NewTicker(n.getOpts().StatsdInterval)
 	for {
