@@ -157,7 +157,7 @@ type memStats struct {
 	GCTotalRuns       uint32 `json:"gc_total_runs"`
 }
 
-func getMemStats() *memStats {
+func getMemStats() memStats {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
@@ -170,7 +170,7 @@ func getMemStats() *memStats {
 	copy(gcPauses, ms.PauseNs[:length])
 	sort.Sort(gcPauses)
 
-	return &memStats{
+	return memStats{
 		ms.HeapObjects,
 		ms.HeapIdle,
 		ms.HeapInuse,
