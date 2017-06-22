@@ -82,7 +82,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqdserver.Nsqd
 	nsqlookupdOpts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
-	nsqlookupd.SetLogger(nsqlookupdOpts)
+	nsqlookupd.SetLogger(nsqlookupdOpts.Logger, nsqlookupdOpts.LogLevel)
 	nsqlookupd1 := nsqlookupd.New(nsqlookupdOpts)
 	go nsqlookupd1.Main()
 
@@ -174,6 +174,7 @@ func TestHTTPTopicGET(t *testing.T) {
 	equal(t, js.Get("backend_depth").MustInt(), 0)
 	equal(t, js.Get("message_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
+	equal(t, js.Get("skipped").MustBool(), false)
 }
 
 func TestHTTPNodesGET(t *testing.T) {
@@ -237,6 +238,7 @@ func TestHTTPChannelGET(t *testing.T) {
 	equal(t, js.Get("backend_depth").MustInt(), 0)
 	equal(t, js.Get("message_count").MustInt(), 0)
 	equal(t, js.Get("paused").MustBool(), false)
+	equal(t, js.Get("skipped").MustBool(), false)
 	equal(t, js.Get("in_flight_count").MustInt(), 0)
 	equal(t, js.Get("deferred_count").MustInt(), 0)
 	equal(t, js.Get("requeue_count").MustInt(), 0)
@@ -335,6 +337,41 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
+	equal(t, err, nil)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+}
+
+func TestHTTPSkipChannelPOST(t *testing.T) {
+	dataPath, _, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupds[0].Exit()
+	defer nsqadmin1.Exit()
+
+	topicName := "test_skip_channel_post" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqds[0].GetNsqdInstance().GetTopic(topicName, 0)
+	topic.GetChannel("ch")
+	time.Sleep(100 * time.Millisecond)
+
+	client := http.Client{}
+	url := fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ := json.Marshal(map[string]interface{}{
+		"action": "skip",
+	})
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := client.Do(req)
+	equal(t, err, nil)
+	body, _ = ioutil.ReadAll(resp.Body)
+	equal(t, resp.StatusCode, 200)
+	resp.Body.Close()
+
+	url = fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
+	body, _ = json.Marshal(map[string]interface{}{
+		"action": "unskip",
+	})
+	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err = client.Do(req)
 	equal(t, err, nil)
 	equal(t, resp.StatusCode, 200)
 	resp.Body.Close()
@@ -465,7 +502,7 @@ func TestHTTPGetStatisticsRanks(t *testing.T) {
 	}
 }
 
-func TestHTTPGetClusterStableInfo(t *testing.T) {
+func TestHTTPGetClusterStableInfoFail(t *testing.T) {
 	dataPath, _, nsqds, nsqlookupds, nsqadmin1 := bootstrapNSQCluster(t)
 	defer os.RemoveAll(dataPath)
 	defer nsqds[0].Exit()
@@ -479,7 +516,7 @@ func TestHTTPGetClusterStableInfo(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	equal(t, err, nil)
-	equal(t, resp.StatusCode, 200)
+	equal(t, resp.StatusCode, 503)
 
 	type NodeStat struct {
 		Hostname         string  `json:"hostname"`
