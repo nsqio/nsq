@@ -184,6 +184,14 @@ func (c *context) UpdateChannelState(ch *nsqd.Channel, paused int, skipped int) 
 		case 0:
 			err = ch.UnPause()
 		}
+
+		switch skipped {
+		case 1:
+			err = ch.Skip()
+		case 0:
+			err = ch.UnSkip()
+		}
+
 	} else {
 		err = c.nsqdCoord.UpdateChannelStateToCluster(ch, paused, skipped)
 	}

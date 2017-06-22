@@ -306,6 +306,12 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 			if paused {
 				channel.Pause()
 			}
+
+
+			skipped, _ := channelJs.Get("skipped").Bool()
+			if skipped {
+				channel.Skip()
+			}
 		}
 		// we load channels from the new meta file
 		topic.LoadChannelMeta()

@@ -581,16 +581,21 @@ func (s *httpServer) doSkipChannel(w http.ResponseWriter, req *http.Request, ps 
 	if strings.Contains(req.URL.Path, "unskip") {
 		//update channel state before set channel consume offset
 		err = s.ctx.UpdateChannelState(channel, -1, 0)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
 		err = s.ctx.nsqdCoord.SetChannelConsumeOffsetToCluster(channel, int64(channel.GetConfirmed().Offset()), channel.GetConfirmed().TotalMsgCnt(), true)
 		if err != nil {
 			nsqd.NsqLogger().Errorf("fail to set channel consume offset channel %v topic %v, unskip quit.", channel.GetName(), topic.GetTopicName())
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
 	} else {
 		err = s.ctx.UpdateChannelState(channel, -1, 1)
-	}
-	if err != nil {
-		nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
 	}
 
 	// pro-actively persist metadata so in case of process failure
