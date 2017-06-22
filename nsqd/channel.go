@@ -84,6 +84,7 @@ type Channel struct {
 	// state tracking
 	clients        map[int64]Consumer
 	paused         int32
+	skipped	       int32
 	ephemeral      bool
 	deleteCallback func(*Channel)
 	deleter        sync.Once
@@ -413,6 +414,27 @@ func (c *Channel) doPause(pause bool) error {
 
 func (c *Channel) IsPaused() bool {
 	return atomic.LoadInt32(&c.paused) == 1
+}
+
+func (c *Channel) Skip() error {
+	return c.doSkip(true)
+}
+
+func (c *Channel) UnSkip() error {
+	return c.doSkip(false)
+}
+
+func (c *Channel) IsSkipped() bool {
+	return atomic.LoadInt32(&c.skipped) == 1
+}
+
+func (c *Channel) doSkip(pause bool) error {
+	if pause {
+		atomic.StoreInt32(&c.skipped, 1)
+	} else {
+		atomic.StoreInt32(&c.skipped, 0)
+	}
+	return nil
 }
 
 // When topic message is put, update the new end of the queue
@@ -1397,6 +1419,13 @@ LOOP:
 				continue
 			}
 		}
+
+		//let timer sync to update backend in replicas' channels
+		if c.IsSkipped() {
+			c.ConfirmBackendQueue(msg)
+			continue LOOP
+		}
+
 		atomic.StoreInt32(&c.waitingDeliveryState, 1)
 		atomic.StoreInt32(&msg.deferredCnt, 0)
 		if c.IsOrdered() {

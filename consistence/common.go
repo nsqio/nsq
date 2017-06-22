@@ -185,6 +185,8 @@ var (
 	ErrLocalInitTopicFailed                = NewCoordErr("local topic init failed", CoordLocalErr)
 	ErrLocalInitTopicCoordFailed           = NewCoordErr("topic coordinator init failed", CoordLocalErr)
 	ErrLocalTopicDataCorrupt               = NewCoordErr("local topic data corrupt", CoordLocalErr)
+	ErrLocalChannelPauseFailed               = NewCoordErr("local channel pause/unpause failed", CoordLocalErr)
+	ErrLocalChannelSkipFailed               = NewCoordErr("local channel skip/unskip failed", CoordLocalErr)
 )
 
 func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {

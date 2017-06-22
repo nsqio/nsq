@@ -403,6 +403,7 @@
                 <th>
                     <a class="link" href="/topics/{{urlencode topic_name}}/{{urlencode channel_name}}">{{channel_name}}</a>
                     {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
+                    {{#if skipped}}<span class="label label-primary">skipped</span>{{/if}}
                 </th>
                 <td>{{commafy depth}}</td>
                 <td>{{depth_ts}}</td>

@@ -303,6 +303,22 @@ func (self *NsqdRpcClient) DeleteChannel(leaderSession *TopicLeaderSession, info
 	return convertRpcError(err, retErr)
 }
 
+func (self *NsqdRpcClient) NotifyUpdateChannelState(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, paused int, skipped int) *CoordErr {
+	var channelState RpcChannelState
+	channelState.TopicName = info.Name
+	channelState.TopicPartition = info.Partition
+	channelState.TopicWriteEpoch = info.EpochForWrite
+	channelState.Epoch = info.Epoch
+	channelState.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
+	channelState.TopicLeaderSession = leaderSession.Session
+	channelState.Channel = channel
+	channelState.Paused = paused
+	channelState.Skipped = skipped
+
+	err := self.dc.Send("UpdateChannelState", &channelState)
+	return convertRpcError(err, nil)
+}
+
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
 	// it seems grpc is slower, so disable it.
 	if self.grpcClient != nil && false {
