@@ -65,6 +65,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/skip", http_api.Decorate(s.doSkipChannel, log, http_api.V1))
+	router.Handle("POST", "/channel/unskip", http_api.Decorate(s.doSkipChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
@@ -563,6 +565,44 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 	return nil, nil
 }
 
+func (s *httpServer) doSkipChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+
+	channel, err := topic.GetExistingChannel(channelName)
+	if err != nil {
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	}
+
+	nsqd.NsqLogger().Logf("topic:%v channel:%v ", topic.GetTopicName(), channel.GetName())
+
+	if strings.Contains(req.URL.Path, "unskip") {
+		//update channel state before set channel consume offset
+		err = s.ctx.UpdateChannelState(channel, -1, 0)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+		err = s.ctx.nsqdCoord.SetChannelConsumeOffsetToCluster(channel, int64(channel.GetConfirmed().Offset()), channel.GetConfirmed().TotalMsgCnt(), true)
+		if err != nil {
+			nsqd.NsqLogger().Errorf("fail to set channel consume offset channel %v topic %v, unskip quit.", channel.GetName(), topic.GetTopicName())
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+	} else {
+		err = s.ctx.UpdateChannelState(channel, -1, 1)
+		if err != nil {
+			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
+			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		}
+	}
+
+	// pro-actively persist metadata so in case of process failure
+	s.ctx.persistMetadata()
+	return nil, nil
+}
+
 func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
@@ -574,10 +614,11 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
+	nsqd.NsqLogger().Logf("topic:%v channel:%v ", topic.GetTopicName(), channel.GetName())
 	if strings.Contains(req.URL.Path, "unpause") {
-		err = channel.UnPause()
+		err = s.ctx.UpdateChannelState(channel, 0, -1)
 	} else {
-		err = channel.Pause()
+		err = s.ctx.UpdateChannelState(channel, 1, -1)
 	}
 	if err != nil {
 		nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)

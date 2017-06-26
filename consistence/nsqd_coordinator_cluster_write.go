@@ -767,6 +767,68 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 	return nil
 }
 
+func (self *NsqdCoordinator) UpdateChannelStateToCluster(channel *nsqd.Channel, paused int, skipped int) error {
+	topicName := channel.GetTopicName()
+	partition := channel.GetTopicPart()
+	coord, checkErr := self.getTopicCoord(topicName, partition)
+	if checkErr != nil {
+		return checkErr.ToErrorType()
+	}
+
+	doLocalWrite := func(d *coordData) *CoordErr {
+		var pauseErr error
+		switch paused {
+		case 1:
+			pauseErr = channel.Pause()
+		case 0:
+			pauseErr = channel.UnPause()
+		}
+		if pauseErr != nil {
+			coordLog.Warningf("update channel(%v) state pause:%v failed: %v, topic %v,%v", channel.GetName(), paused, pauseErr, topicName, partition)
+			return &CoordErr{pauseErr.Error(), RpcNoErr, CoordLocalErr}
+		}
+
+		var skipErr error
+		switch skipped {
+		case 1:
+			skipErr = channel.Skip()
+		case 0:
+			skipErr = channel.UnSkip()
+		}
+		if skipErr != nil {
+			coordLog.Warningf("update channel(%v) state skip:%v failed: %v, topic %v,%v", channel.GetName(), skipped, pauseErr, topicName, partition)
+			return &CoordErr{pauseErr.Error(), RpcNoErr, CoordLocalErr}
+		}
+		return nil
+	}
+	doLocalExit := func(err *CoordErr) {}
+	doLocalCommit := func() error {
+		return nil
+	}
+	doLocalRollback := func() {
+	}
+	doRefresh := func(d *coordData) *CoordErr {
+		return nil
+	}
+	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		var rpcErr *CoordErr
+		rpcErr = c.NotifyUpdateChannelState(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), paused, skipped)
+		if rpcErr != nil {
+			coordLog.Infof("sync channel(%v) state pause:%v, skip:%v to replica %v failed: %v, topic %v,%v", channel.GetName(), paused, skipped, nodeID, rpcErr, topicName, partition)
+		}
+		return rpcErr
+	}
+	handleSyncResult := func(successNum int, tcData *coordData) bool {
+		return true
+	}
+	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+		doRefresh, doSlaveSync, handleSyncResult)
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
+}
+
 func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	topicName := channel.GetTopicName()
 	partition := channel.GetTopicPart()
@@ -844,6 +906,67 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		doRefresh, doSlaveSync, handleSyncResult)
 	if clusterErr != nil {
 		return clusterErr.ToErrorType()
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) updateChannelStateOnSlave(tc *coordData, channelName string, paused int, skipped int) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
+
+	_, coordErr := self.getTopicCoord(topicName, partition)
+	if coordErr != nil {
+		return ErrMissingTopicCoord
+	}
+
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+	if localErr != nil {
+		coordLog.Warningf("slave missing topic : %v", topicName)
+		// TODO: leave the isr and try re-sync with leader
+		return &CoordErr{localErr.Error(), RpcCommonErr, CoordSlaveErr}
+	}
+
+	if topic.GetTopicPart() != partition {
+		coordLog.Errorf("topic on slave has different partition : %v vs %v", topic.GetTopicPart(), partition)
+		return ErrLocalMissingTopic
+	}
+	var ch *nsqd.Channel
+	ch, localErr = topic.GetExistingChannel(channelName)
+	// if a new channel on slave, we should set the consume offset by force
+	if localErr != nil {
+		ch = topic.GetChannel(channelName)
+		coordLog.Infof("slave init the channel : %v, %v, offset: %v", topic.GetTopicName(), channelName, ch.GetConfirmed())
+	}
+	if ch.IsEphemeral() {
+		coordLog.Errorf("ephemeral channel %v should not be synced on slave", channelName)
+	}
+
+	var pauseErr error
+	switch paused {
+	case 1:
+		pauseErr = ch.Pause()
+	case 0:
+		pauseErr = ch.UnPause()
+	}
+	if pauseErr != nil {
+		coordLog.Errorf("fail to pause/unpause %v, channel: %v, %v", paused, topic.GetTopicName(), channelName)
+		return ErrLocalChannelPauseFailed
+	}
+
+	var skipErr error
+	switch skipped {
+	case 1:
+		skipErr = ch.Skip()
+	case 0:
+		skipErr = ch.UnSkip()
+	}
+	if skipErr != nil {
+		coordLog.Errorf("fail to skip/unskip %v, channel: %v, %v", skipped, topic.GetTopicName(), channelName)
+		return ErrLocalChannelSkipFailed
 	}
 	return nil
 }

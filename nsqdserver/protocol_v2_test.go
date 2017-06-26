@@ -445,6 +445,76 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 	test.Equal(t, string(data), "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid")
 }
 
+func TestSkipping(t *testing.T) {
+	topicName := "test_skip_v2" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	msg := nsqdNs.NewMessage(0, []byte("test body"))
+	channel := topic.GetChannel("ch")
+	topic.PutMessage(msg)
+
+	// receive the first message via the client, finish it, and send new RDY
+	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, true)
+	test.Equal(t, msgOut.Body, []byte("test body"))
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	// skip the channel... the client shouldn't receive any more messages
+	channel.Skip()
+
+	// sleep to allow the skipped state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	offset1 := channel.GetConfirmed().Offset()
+
+	msg = nsqdNs.NewMessage(0, []byte("test body2"))
+	topic.PutMessage(msg)
+
+	// allow the client to possibly get a message, the test would hang indefinitely
+	// if pausing was not working on the internal clientMsgChan read
+	time.Sleep(50 * time.Millisecond)
+	offset2 := channel.GetConfirmed().Offset()
+
+	test.NotEqual(t, offset1, offset2)
+
+	select {
+	case msg = <-channel.GetClientMsgChan():
+		t.Logf("message should not be received.")
+		t.Fail()
+	case <-time.Tick(500 * time.Millisecond):
+	}
+
+	// unskip the channel... the client should now be pushed a message
+	channel.UnSkip()
+
+	msg = nsqdNs.NewMessage(0, []byte("test body3"))
+	topic.PutMessage(msg)
+
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, true)
+	test.Equal(t, msgOut.Body, []byte("test body3"))
+}
+
 func TestPausing(t *testing.T) {
 	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
 

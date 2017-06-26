@@ -1116,6 +1116,16 @@ func (c *ClusterInfo) UnPauseChannel(topicName string, channelName string, looku
 	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "unpause_channel", "channel/unpause", qs)
 }
 
+func (c *ClusterInfo) SkipChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
+	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "skip_channel", "channel/skip", qs)
+}
+
+func (c *ClusterInfo) UnSkipChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
+	qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
+	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "unskip_channel", "channel/unskip", qs)
+}
+
 func (c *ClusterInfo) EmptyTopic(topicName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	qs := fmt.Sprintf("topic=%s", url.QueryEscape(topicName))
 	return c.actionHelper(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs, "empty_topic", "topic/empty", qs)

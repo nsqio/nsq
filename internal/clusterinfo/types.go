@@ -215,6 +215,7 @@ type ChannelStats struct {
 	NodeStats      []*ChannelStats `json:"nodes"`
 	Clients        []*ClientStats  `json:"clients"`
 	Paused         bool            `json:"paused"`
+	Skipped        bool            `json:"skipped"`
 	IsMultiOrdered bool            `json:"is_multi_ordered"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
@@ -240,6 +241,9 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 	c.ClientCount += a.ClientCount
 	if a.Paused {
 		c.Paused = a.Paused
+	}
+	if a.Skipped {
+		c.Skipped = a.Skipped
 	}
 	c.NodeStats = append(c.NodeStats, a)
 	sort.Sort(ChannelStatsByPartAndHost{c.NodeStats})

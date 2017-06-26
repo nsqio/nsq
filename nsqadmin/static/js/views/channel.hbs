@@ -40,6 +40,13 @@
         <button class="btn btn-medium btn-primary" data-action="pause">Pause Channel</button>
         {{/if}}
     </div>
+    <div class="col-md-2">
+        {{#if skipped}}
+            <button class="btn btn-medium btn-success" data-action="unskip">UnSkip Channel</button>
+        {{else}}
+            <button class="btn btn-medium btn-primary" data-action="skip">Skip Channel</button>
+        {{/if}}
+    </div>
 </div>
 
 <div class="row">
@@ -80,6 +87,7 @@
                 <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
+                {{#if skipped}} <span class="label label-primary">skipped</span>{{/if}}
             </td>
             <td>{{topic_partition}}</td>
             <td>{{commafy depth}}</td>

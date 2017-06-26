@@ -584,6 +584,13 @@ type RpcTopicData struct {
 	TopicLeader             string
 }
 
+type RpcChannelState struct {
+	RpcTopicData
+	Channel string
+	Paused int
+	Skipped   int
+}
+
 type RpcChannelOffsetArg struct {
 	RpcTopicData
 	Channel string
@@ -675,6 +682,23 @@ func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicC
 		coordLog.Warningf("call write with mismatch session: %v, loca %v", rpcData, tcData.GetLeaderSession())
 	}
 	return topicCoord, nil
+}
+
+func (self *NsqdCoordRpcServer) UpdateChannelState(state *RpcChannelState) *CoordErr {
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(state.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// update local channel offset
+	err = self.nsqdCoord.updateChannelStateOnSlave(tc.GetData(), state.Channel, state.Paused, state.Skipped)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
 }
 
 func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *CoordErr {
