@@ -175,6 +175,33 @@ func (c *context) DeleteExistingChannel(topic *nsqd.Topic, channelName string) e
 	return c.nsqdCoord.DeleteChannel(topic, channelName)
 }
 
+func (c *context) UpdateChannelState(ch *nsqd.Channel, paused int, skipped int) error {
+	var err error
+	if c.nsqdCoord == nil {
+		switch paused {
+		case 1:
+			err = ch.Pause()
+		case 0:
+			err = ch.UnPause()
+		}
+
+		switch skipped {
+		case 1:
+			err = ch.Skip()
+		case 0:
+			err = ch.UnSkip()
+		}
+
+	} else {
+		err = c.nsqdCoord.UpdateChannelStateToCluster(ch, paused, skipped)
+	}
+	if err != nil {
+		nsqd.NsqLogger().Logf("failed to update channel(%v) state pause: %v, skip: %v, topic %v, err: %v", ch.GetName(), paused, skipped, ch.GetTopicName(), err)
+		return err
+	}
+	return nil
+}
+
 func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, int64, error) {
 	var l *consistence.CommitLogData
 	var queueOffset int64

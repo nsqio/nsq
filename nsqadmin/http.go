@@ -943,6 +943,22 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 
 			s.notifyAdminAction("unpause_topic", topicName, "", "", req)
 		}
+	case "skip":
+		if channelName != "" {
+			err = s.ci.SkipChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("skip_channel", topicName, channelName, "", req)
+		}
+	case "unskip":
+		if channelName != "" {
+			err = s.ci.UnSkipChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+
+			s.notifyAdminAction("unskip_channel", topicName, channelName, "", req)
+		}
 	case "empty":
 		if channelName != "" {
 			err = s.ci.EmptyChannel(topicName, channelName,

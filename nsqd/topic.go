@@ -64,6 +64,7 @@ type PubInfoChan chan *PubInfo
 type ChannelMetaInfo struct {
 	Name   string `json:"name"`
 	Paused bool   `json:"paused"`
+	Skipped bool  `json:"skipped"`
 }
 
 type Topic struct {
@@ -370,6 +371,10 @@ func (t *Topic) LoadChannelMeta() error {
 		if ch.Paused {
 			channel.Pause()
 		}
+
+		if ch.Skipped {
+			channel.Skip()
+		}
 	}
 	return nil
 }
@@ -384,6 +389,7 @@ func (t *Topic) SaveChannelMeta() error {
 			meta := &ChannelMetaInfo{
 				Name:   channel.name,
 				Paused: channel.IsPaused(),
+				Skipped: channel.IsSkipped(),
 			}
 			channels = append(channels, meta)
 		}
