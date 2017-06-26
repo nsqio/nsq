@@ -53,8 +53,25 @@ type Message struct {
 	rawMoveSize   BackendOffset
 	queueCntIndex int64
 	// for delayed queue message
+	// 1 - delayed message by channel
+	// 2 - delayed pub
+	// 3 - uncommitted transaction
+	//
+	DelayedType    int32
 	DelayedTs      int64
+	DelayedOrigID  MessageID
 	DelayedChannel string
+}
+
+func IsValidDelayedMessage(m *Message) bool {
+	if m.DelayedType == 1 {
+		return m.DelayedOrigID > 0 && len(m.DelayedChannel) > 0 && m.DelayedTs > 0
+	} else if m.DelayedType == 2 {
+		return m.DelayedTs > 0
+	} else if m.DelayedType == 3 {
+		return true
+	}
+	return false
 }
 
 func MessageHeaderBytes() int {
@@ -152,7 +169,7 @@ func (m *Message) internalWriteTo(w io.Writer, writeDetail bool) (int64, error) 
 }
 
 func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
-	var buf [16]byte
+	var buf [32]byte
 	var total int64
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
@@ -172,9 +189,16 @@ func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
 		return total, err
 	}
 
-	binary.BigEndian.PutUint64(buf[:8], uint64(m.DelayedTs))
-	binary.BigEndian.PutUint32(buf[8:8+4], uint32(len(m.DelayedChannel)))
-	n, err = w.Write(buf[:8+4])
+	pos := 0
+	binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(m.DelayedType))
+	pos += 4
+	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(m.DelayedTs))
+	pos += 8
+	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(m.DelayedOrigID))
+	pos += 8
+	binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(len(m.DelayedChannel)))
+	pos += 4
+	n, err = w.Write(buf[:pos])
 	total += int64(n)
 	if err != nil {
 		return total, err
@@ -242,11 +266,15 @@ func DecodeDelayedMessage(b []byte) (*Message, error) {
 	msg.TraceID = binary.BigEndian.Uint64(b[pos : pos+8])
 	pos += 8
 
-	if len(b) < minValidMsgLength+8+4 {
+	if len(b) < minValidMsgLength+4+8+8+4 {
 		return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
 	}
 
+	msg.DelayedType = int32(binary.BigEndian.Uint32(b[pos : pos+4]))
+	pos += 4
 	msg.DelayedTs = int64(binary.BigEndian.Uint64(b[pos : pos+8]))
+	pos += 8
+	msg.DelayedOrigID = MessageID(binary.BigEndian.Uint64(b[pos : pos+8]))
 	pos += 8
 	nameLen := binary.BigEndian.Uint32(b[pos : pos+4])
 	pos += 4

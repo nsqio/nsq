@@ -190,11 +190,12 @@ func NewTopic(topicName string, part int, opt *Options,
 	return t
 }
 
-func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) *DelayQueue {
+func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue, error) {
+	var err error
 	if t.delayedQueue == nil {
-		t.delayedQueue = NewDelayQueue(idGen)
+		t.delayedQueue, err = NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
 	}
-	return t.delayedQueue
+	return t.delayedQueue, err
 }
 
 func (t *Topic) GetWaitChan() PubInfoChan {

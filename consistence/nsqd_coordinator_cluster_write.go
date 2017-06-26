@@ -39,7 +39,7 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	var commitLog CommitLogData
 	var queueEnd nsqd.BackendQueueEnd
 	if putDelayed {
-		if msg.DelayedTs == 0 || msg.DelayedChannel == "" {
+		if !nsqd.IsValidDelayedMessage(msg) {
 			return msg.ID, nsqd.BackendOffset(commitLog.MsgOffset), commitLog.MsgSize,
 				queueEnd, errors.New("Invalid delayed message")
 		}
@@ -70,7 +70,12 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 		var localErr error
 		topic.Lock()
 		if putDelayed {
-			id, offset, writeBytes, qe, localErr = topic.GetOrCreateDelayedQueueNoLock(logMgr).PutDelayMessageNoLock(msg)
+			delayQ, err := topic.GetOrCreateDelayedQueueNoLock(logMgr)
+			if err == nil {
+				id, offset, writeBytes, qe, localErr = delayQ.PutDelayMessage(msg)
+			} else {
+				localErr = err
+			}
 		} else {
 			id, offset, writeBytes, qe, localErr = topic.PutMessageNoLock(msg)
 		}
@@ -510,23 +515,23 @@ exitsync:
 
 func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData CommitLogData,
 	msg *nsqd.Message, putDelayed bool) *CoordErr {
-	var logMgr *TopicCommitLogMgr
 	var topic *nsqd.Topic
 	var queueEnd nsqd.BackendQueueEnd
+
+	logMgr := coord.GetData().logMgr
+	if putDelayed {
+		var err error
+		logMgr, err = coord.GetDelayedQueueLogMgr()
+		if err != nil {
+			coordLog.Warningf("topic %v failed to get delay log mgr : %v", coord.GetData().topicInfo.GetTopicDesp(), err)
+			return &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+		}
+	}
 
 	checkDupOnSlave := func(tc *coordData) bool {
 		if coordLog.Level() >= levellogger.LOG_DETAIL {
 			topicName := tc.topicInfo.Name
 			coordLog.Debugf("pub on slave : %v, msg %v", topicName, msg.ID)
-		}
-		logMgr = tc.logMgr
-		if putDelayed {
-			var err error
-			logMgr, err = coord.GetDelayedQueueLogMgr()
-			if err != nil {
-				coordLog.Warningf("topic %v failed to get delay log mgr : %v", tc.topicInfo.GetTopicDesp(), err)
-				return false
-			}
 		}
 		if logMgr.IsCommitted(logData.LogID) {
 			coordLog.Infof("pub the already committed log id : %v", logData.LogID)
@@ -556,7 +561,12 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		}
 		topic.Lock()
 		if putDelayed {
-			queueEnd, localErr = topic.GetOrCreateDelayedQueueNoLock(logMgr).PutDelayMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+			delayQ, err := topic.GetOrCreateDelayedQueueNoLock(logMgr)
+			if err == nil {
+				queueEnd, localErr = delayQ.PutDelayMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+			} else {
+				localErr = err
+			}
 		} else {
 			queueEnd, localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
 		}

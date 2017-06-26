@@ -4,17 +4,19 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"sync"
+	"github.com/boltdb/bolt"
+	"os"
+	"path"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
 
-type KVStore interface {
-	Put(key []byte, value []byte) error
-	Get(key []byte) ([]byte, error)
-	Delete(key []byte) error
-	GetLatestBinLogOffset() (int64, error)
-}
+var (
+	syncedOffsetKey  = []byte("synced_offset")
+	bucketDelayedMsg = []byte("delayed_message")
+	bucketMeta       = []byte("meta")
+)
 
 func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
 	buf.Reset()
@@ -26,30 +28,64 @@ func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueue
 }
 
 type DelayQueue struct {
-	sync.Mutex
-
 	tname     string
 	fullName  string
 	partition int
 	backend   *diskQueueWriter
 	dataPath  string
-	flushChan chan int
 	exitFlag  int32
 
 	msgIDCursor  MsgIDGenerator
 	defaultIDSeq uint64
 
-	option      *Options
 	needFlush   int32
 	lastSyncCnt int64
 	putBuffer   bytes.Buffer
-	quitChan    chan struct{}
-	wg          sync.WaitGroup
-	kvStore     KVStore
+	kvStore     *bolt.DB
 }
 
-func NewDelayQueue(idGen MsgIDGenerator) *DelayQueue {
-	return &DelayQueue{msgIDCursor: idGen}
+func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
+	idGen MsgIDGenerator) (*DelayQueue, error) {
+	q := &DelayQueue{
+		tname:       topicName,
+		partition:   part,
+		putBuffer:   bytes.Buffer{},
+		dataPath:    dataPath,
+		msgIDCursor: idGen,
+	}
+	q.fullName = GetTopicFullName(q.tname, q.partition)
+	backendName := getDelayQueueBackendName(q.tname, q.partition)
+	// max delay message size need add the delay ts and channel name
+	queue, err := NewDiskQueueWriter(backendName,
+		q.dataPath,
+		opt.MaxBytesPerFile,
+		int32(minValidMsgLength),
+		int32(opt.MaxMsgSize)+minValidMsgLength+8+255, 0)
+
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init delayed disk queue: %v , %v ", q.fullName, err, backendName)
+		return nil, err
+	}
+	q.backend = queue.(*diskQueueWriter)
+	q.kvStore, err = bolt.Open(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)), 0644, nil)
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init delayed db: %v , %v ", q.fullName, err, backendName)
+		return nil, err
+	}
+	err = q.kvStore.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(bucketDelayedMsg)
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(bucketMeta)
+		return err
+	})
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to init delayed db: %v , %v ", q.fullName, err, backendName)
+		return nil, err
+	}
+
+	return q, nil
 }
 
 func (q *DelayQueue) GetFullName() string {
@@ -64,27 +100,6 @@ func (q *DelayQueue) GetTopicPart() int {
 	return q.partition
 }
 
-func (q *DelayQueue) SetMsgGenerator(idGen MsgIDGenerator) {
-	q.Lock()
-	q.msgIDCursor = idGen
-	q.Unlock()
-}
-
-func (q *DelayQueue) GetMsgGenerator() MsgIDGenerator {
-	q.Lock()
-	cursor := q.msgIDCursor
-	q.Unlock()
-	return cursor
-}
-
-func (q *DelayQueue) SetDynamicInfo(idGen MsgIDGenerator) {
-	q.Lock()
-	if idGen != nil {
-		q.msgIDCursor = idGen
-	}
-	q.Unlock()
-}
-
 func (q *DelayQueue) nextMsgID() MessageID {
 	id := uint64(0)
 	if q.msgIDCursor != nil {
@@ -95,15 +110,7 @@ func (q *DelayQueue) nextMsgID() MessageID {
 	return MessageID(id)
 }
 
-// PutMessage writes a Message to the queue
 func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
-	q.Lock()
-	id, offset, writeBytes, dend, err := q.PutDelayMessageNoLock(m)
-	q.Unlock()
-	return id, offset, writeBytes, dend, err
-}
-
-func (q *DelayQueue) PutDelayMessageNoLock(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
 	if atomic.LoadInt32(&q.exitFlag) == 1 {
 		return 0, 0, 0, nil, errors.New("exiting")
 	}
@@ -157,7 +164,15 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 	binary.BigEndian.PutUint64(msgKey[:8], uint64(m.DelayedTs))
 	binary.BigEndian.PutUint64(msgKey[8:16], uint64(m.ID))
 
-	err = q.kvStore.Put(msgKey[:], q.putBuffer.Bytes())
+	err = q.kvStore.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketDelayedMsg)
+		err := b.Put(msgKey[:], q.putBuffer.Bytes())
+		if err != nil {
+			return err
+		}
+		b = tx.Bucket(bucketMeta)
+		return b.Put(syncedOffsetKey, []byte(strconv.Itoa(int(dend.Offset()))))
+	})
 	if err != nil {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to write delayed message %v to kv store- %s",
@@ -176,18 +191,13 @@ func (q *DelayQueue) Close() error {
 }
 
 func (q *DelayQueue) exit(deleted bool) error {
-	q.Lock()
-	defer q.Unlock()
 	if !atomic.CompareAndSwapInt32(&q.exitFlag, 0, 1) {
 		return errors.New("exiting")
 	}
 
-	close(q.quitChan)
-	q.wg.Wait()
-
+	q.kvStore.Close()
 	if deleted {
-		// empty the queue (deletes the backend files, too)
-		// TODO remove kv store
+		os.RemoveAll(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)))
 		return q.backend.Delete()
 	}
 
@@ -215,6 +225,65 @@ func (q *DelayQueue) flush() error {
 	if err != nil {
 		nsqLog.LogErrorf("failed flush: %v", err)
 		return err
+	}
+	q.kvStore.Sync()
+	return err
+}
+
+func (q *DelayQueue) PeekRecentTimeout(results [][]byte) (int, error) {
+	db := q.kvStore
+	idx := 0
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketDelayedMsg)
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			delayedTs := int64(binary.BigEndian.Uint64(k[:8]))
+			if delayedTs > time.Now().UnixNano() || idx >= len(results) {
+				break
+			}
+			results[idx] = v
+			idx++
+		}
+		return nil
+	})
+	return idx, err
+}
+
+func (q *DelayQueue) GetSyncedOffset() (BackendOffset, error) {
+	var synced BackendOffset
+	err := q.kvStore.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMeta)
+		v := b.Get(syncedOffsetKey)
+		offset, err := strconv.Atoi(string(v))
+		if err != nil {
+			return err
+		}
+		synced = BackendOffset(offset)
+		return nil
+	})
+	if err != nil {
+		nsqLog.LogErrorf("failed to get synced offset: %v", err)
+	}
+	return synced, err
+}
+
+func (q *DelayQueue) ConfirmedMessage(msgID MessageID, delayedTs int64) error {
+	var msgKey [16]byte
+	binary.BigEndian.PutUint64(msgKey[:8], uint64(delayedTs))
+	binary.BigEndian.PutUint64(msgKey[8:16], uint64(msgID))
+
+	err := q.kvStore.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketDelayedMsg)
+		err := b.Delete(msgKey[:])
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		nsqLog.LogErrorf(
+			"TOPIC(%s) : failed to delete delayed message %v-%v, %v",
+			q.GetFullName(), msgID, delayedTs, err)
 	}
 	return err
 }
