@@ -169,7 +169,7 @@ func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcRelease
 	}
 	if rpcTopicReq.Epoch < coordData.topicInfo.Epoch ||
 		coordData.topicLeaderSession.LeaderEpoch != rpcTopicReq.TopicLeaderSessionEpoch {
-		coordLog.Warningf("topic info epoch mismatch while release leader: %v, %v", coordData,
+		coordLog.Infof("topic info epoch mismatch while release leader: %v, %v", coordData,
 			rpcTopicReq)
 		ret = *ErrEpochMismatch
 		return &ret
@@ -587,8 +587,8 @@ type RpcTopicData struct {
 type RpcChannelState struct {
 	RpcTopicData
 	Channel string
-	Paused int
-	Skipped   int
+	Paused  int
+	Skipped int
 }
 
 type RpcChannelOffsetArg struct {

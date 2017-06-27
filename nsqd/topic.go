@@ -62,9 +62,9 @@ type PubInfo struct {
 type PubInfoChan chan *PubInfo
 
 type ChannelMetaInfo struct {
-	Name   string `json:"name"`
-	Paused bool   `json:"paused"`
-	Skipped bool  `json:"skipped"`
+	Name    string `json:"name"`
+	Paused  bool   `json:"paused"`
+	Skipped bool   `json:"skipped"`
 }
 
 type Topic struct {
@@ -193,6 +193,9 @@ func NewTopic(topicName string, part int, opt *Options,
 
 func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue, error) {
 	var err error
+	if t.dynamicConf.OrderedMulti {
+		return nil, errors.New("ordered topic can not has delayed queue")
+	}
 	if t.delayedQueue == nil {
 		t.delayedQueue, err = NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
 	}
@@ -387,8 +390,8 @@ func (t *Topic) SaveChannelMeta() error {
 		channel.RLock()
 		if !channel.ephemeral {
 			meta := &ChannelMetaInfo{
-				Name:   channel.name,
-				Paused: channel.IsPaused(),
+				Name:    channel.name,
+				Paused:  channel.IsPaused(),
 				Skipped: channel.IsSkipped(),
 			}
 			channels = append(channels, meta)
@@ -423,7 +426,7 @@ func (t *Topic) RemoveChannelMeta() {
 	fileName := t.getChannelMetaFileName()
 	err := os.Remove(fileName)
 	if err != nil {
-		nsqLog.Errorf("remove file %v failed:%v", fileName, err)
+		nsqLog.Infof("remove file %v failed:%v", fileName, err)
 	}
 }
 

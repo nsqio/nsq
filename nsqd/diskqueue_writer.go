@@ -756,7 +756,7 @@ func (d *diskQueueWriter) initQueueReadStart() error {
 	// first try read from meta file
 	err := d.loadExtraMeta()
 	if err != nil {
-		nsqLog.Warningf("failed to load extra meta from file: %v", err)
+		nsqLog.Infof("failed to load extra meta from file: %v", err)
 	} else {
 		return nil
 	}

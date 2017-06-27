@@ -1218,7 +1218,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			needFullSync = true
 			break
 		} else if rpcErr != nil {
-			coordLog.Warningf("something wrong while get leader logdata while catchup: %v", rpcErr)
+			coordLog.Infof("something wrong while get leader logdata while catchup: %v", rpcErr)
 			if retryCnt > MAX_CATCHUP_RETRY {
 				return rpcErr
 			}
@@ -1514,7 +1514,7 @@ func (self *NsqdCoordinator) checkUpdateState(topicCoord *coordData, writeDisabl
 	topicDesp := topicCoord.topicInfo.GetTopicDesp()
 	if newData.EpochForWrite < topicCoord.topicInfo.EpochForWrite ||
 		newData.Epoch < topicCoord.topicInfo.Epoch {
-		coordLog.Warningf("topic (%v) epoch should be increased: %v, %v", topicDesp,
+		coordLog.Infof("topic (%v) epoch should be increased: %v, %v", topicDesp,
 			newData, topicCoord.topicInfo)
 		return ErrEpochLessThanCurrent
 	}
@@ -1728,7 +1728,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
 		if localErr != nil {
 			offset.AllowBackward = true
 			ch = localTopic.GetChannel(chName)
-			coordLog.Warningf("slave init the channel : %v, %v, offset: %v",
+			coordLog.Infof("slave init the channel : %v, %v, offset: %v",
 				tcData.topicInfo.GetTopicDesp(), chName, ch.GetConfirmed())
 		}
 
@@ -1742,7 +1742,7 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
 		}
 		err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.VCnt, offset.AllowBackward)
 		if err != nil {
-			coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
+			coordLog.Infof("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",
 				chName, offset, err, currentEnd, localTopic.TotalDataSize())
 		}
 	}
