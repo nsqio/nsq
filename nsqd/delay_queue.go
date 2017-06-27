@@ -38,10 +38,9 @@ type DelayQueue struct {
 	msgIDCursor  MsgIDGenerator
 	defaultIDSeq uint64
 
-	needFlush   int32
-	lastSyncCnt int64
-	putBuffer   bytes.Buffer
-	kvStore     *bolt.DB
+	needFlush int32
+	putBuffer bytes.Buffer
+	kvStore   *bolt.DB
 }
 
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
@@ -115,11 +114,11 @@ func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int3
 		return 0, 0, 0, nil, errors.New("exiting")
 	}
 	if m.ID > 0 {
-		nsqLog.Logf("should pass id in message ")
+		nsqLog.Logf("should not pass id in message ")
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
-	if m.DelayedChannel == "" {
-		return 0, 0, 0, nil, errors.New("invalid delayed message with no channel")
+	if !IsValidDelayedMessage(m) {
+		return 0, 0, 0, nil, errors.New("invalid delayed message")
 	}
 
 	id, offset, writeBytes, dend, err := q.put(m, true)
@@ -135,10 +134,9 @@ func (q *DelayQueue) PutDelayMessageOnReplica(m *Message, offset BackendOffset) 
 		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", q.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
-	if m.DelayedChannel == "" {
-		return nil, errors.New("invalid delayed message with no channel")
+	if !IsValidDelayedMessage(m) {
+		return nil, errors.New("invalid delayed message")
 	}
-
 	_, _, _, dend, err := q.put(m, false)
 	if err != nil {
 		return nil, err
@@ -166,11 +164,26 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 
 	err = q.kvStore.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
+		exists := b.Get(msgKey[:]) != nil
 		err := b.Put(msgKey[:], q.putBuffer.Bytes())
 		if err != nil {
 			return err
 		}
 		b = tx.Bucket(bucketMeta)
+		if !exists {
+			cntKey := []byte("counter_" + strconv.Itoa(int(m.DelayedType)) + "_" + m.DelayedChannel)
+			cnt := uint64(0)
+			cntBytes := b.Get(cntKey)
+			if cntBytes != nil {
+				cnt = binary.BigEndian.Uint64(cntBytes)
+			}
+			cnt++
+			binary.BigEndian.PutUint64(cntBytes[:8], cnt)
+			err = b.Put(cntKey, cntBytes)
+			if err != nil {
+				return err
+			}
+		}
 		return b.Put(syncedOffsetKey, []byte(strconv.Itoa(int(dend.Offset()))))
 	})
 	if err != nil {
@@ -220,7 +233,6 @@ func (q *DelayQueue) flush() error {
 	if !ok {
 		return nil
 	}
-	atomic.StoreInt64(&q.lastSyncCnt, q.backend.GetQueueWriteEnd().TotalMsgCnt())
 	err := q.backend.Flush()
 	if err != nil {
 		nsqLog.LogErrorf("failed flush: %v", err)
@@ -230,7 +242,8 @@ func (q *DelayQueue) flush() error {
 	return err
 }
 
-func (q *DelayQueue) PeekRecentTimeout(results [][]byte) (int, error) {
+func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []*Message, peekTs int64, filterType int,
+	filterChannel string) (int, error) {
 	db := q.kvStore
 	idx := 0
 	err := db.View(func(tx *bolt.Tx) error {
@@ -238,15 +251,35 @@ func (q *DelayQueue) PeekRecentTimeout(results [][]byte) (int, error) {
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			delayedTs := int64(binary.BigEndian.Uint64(k[:8]))
-			if delayedTs > time.Now().UnixNano() || idx >= len(results) {
+			if delayedTs > peekTs || idx >= len(results) {
 				break
 			}
-			results[idx] = v
+
+			m, err := DecodeDelayedMessage(v)
+			if err != nil {
+				nsqLog.LogErrorf("failed to decode delayed message: %v, %v", m, err)
+				continue
+			}
+			if filterType >= 0 && filterType != int(m.DelayedType) {
+				continue
+			}
+			if len(filterChannel) > 0 && filterChannel != m.DelayedChannel {
+				continue
+			}
+			results[idx] = m
 			idx++
 		}
 		return nil
 	})
 	return idx, err
+}
+
+func (q *DelayQueue) PeekRecentTimeout(results []*Message) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), -1, "")
+}
+
+func (q *DelayQueue) PeekAll(results []*Message) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, time.Now().Add(time.Hour*24*365).UnixNano(), -1, "")
 }
 
 func (q *DelayQueue) GetSyncedOffset() (BackendOffset, error) {
@@ -274,9 +307,31 @@ func (q *DelayQueue) ConfirmedMessage(msgID MessageID, delayedTs int64) error {
 
 	err := q.kvStore.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
+		oldV := b.Get(msgKey[:])
 		err := b.Delete(msgKey[:])
 		if err != nil {
 			return err
+		}
+		if oldV != nil {
+			m, err := DecodeDelayedMessage(oldV)
+			if err != nil {
+				nsqLog.Infof("failed to decode delayed message: %v, %v", oldV, err)
+				return err
+			}
+			cntKey := []byte("counter_" + strconv.Itoa(int(m.DelayedType)) + "_" + m.DelayedChannel)
+			cnt := uint64(0)
+			cntBytes := b.Get(cntKey)
+			if cntBytes != nil {
+				cnt = binary.BigEndian.Uint64(cntBytes)
+			}
+			if cnt > 0 {
+				cnt--
+				binary.BigEndian.PutUint64(cntBytes[:8], cnt)
+				err = b.Put(cntKey, cntBytes)
+				if err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
