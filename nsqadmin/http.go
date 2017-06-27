@@ -948,7 +948,11 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 			err = s.ci.SkipChannel(topicName, channelName,
 				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
-
+			if err == nil {
+				err = s.ci.EmptyChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+			}
 			s.notifyAdminAction("skip_channel", topicName, channelName, "", req)
 		}
 	case "unskip":
