@@ -31,8 +31,6 @@ const (
 
 var (
 	showVersion = flag.Bool("version", false, "print version string")
-
-	topic       = flag.String("topic", "", "nsq topic")
 	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
 	destTopic   = flag.String("destination-topic", "", "destination nsq topic")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
@@ -44,6 +42,7 @@ var (
 	lookupdHTTPAddrs    = app.StringArray{}
 	destNsqdTCPAddrs    = app.StringArray{}
 	whitelistJSONFields = app.StringArray{}
+	topics              = app.StringArray{}
 
 	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
 	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
@@ -53,7 +52,7 @@ func init() {
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&destNsqdTCPAddrs, "destination-nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
-
+	flag.Var(&topics, "topic", "nsq topic (may be given multiple times)")
 	flag.Var(&whitelistJSONFields, "whitelist-json-field", "for JSON messages: pass this field (may be given multiple times)")
 }
 
@@ -255,32 +254,28 @@ func hasArg(s string) bool {
 	return argExist
 }
 
-func main() {
-	var selectedMode int
+func commandLineValidation() {
 
-	cCfg := nsq.NewConfig()
-	pCfg := nsq.NewConfig()
-
-	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
-	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
-
-	flag.Parse()
-
-	if *showVersion {
-		fmt.Printf("nsq_to_nsq v%s\n", version.Binary)
-		return
-	}
-
-	if *topic == "" || *channel == "" {
+	if len(topics) == 0 || *channel == "" {
 		log.Fatal("--topic and --channel are required")
 	}
 
-	if *destTopic == "" {
-		*destTopic = *topic
+	if len(topics) == 1 {
+		if *destTopic == "" {
+			*destTopic = topics[0]
+		}
 	}
 
-	if !protocol.IsValidTopicName(*topic) {
-		log.Fatal("--topic is invalid")
+	if len(topics) > 1 {
+		if *destTopic == "" {
+			log.Fatal("--destination-topic must be specified when multi topic is enabled")
+		}
+	}
+
+	for _, topic := range topics {
+		if !protocol.IsValidTopicName(topic) {
+	        log.Fatal("--topic is invalid")
+		}
 	}
 
 	if !protocol.IsValidTopicName(*destTopic) {
@@ -301,6 +296,25 @@ func main() {
 	if len(destNsqdTCPAddrs) == 0 {
 		log.Fatal("--destination-nsqd-tcp-address required")
 	}
+}
+
+func main() {
+	var selectedMode int
+
+	cCfg := nsq.NewConfig()
+	pCfg := nsq.NewConfig()
+
+	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
+
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("nsq_to_nsq v%s\n", version.Binary)
+		return
+	}
+
+	commandLineValidation()
 
 	switch *mode {
 	case "round-robin":
@@ -317,9 +331,14 @@ func main() {
 	cCfg.UserAgent = defaultUA
 	cCfg.MaxInFlight = *maxInFlight
 
-	consumer, err := nsq.NewConsumer(*topic, *channel, cCfg)
-	if err != nil {
-		log.Fatal(err)
+	var consumerList []*nsq.Consumer
+
+	for _, topic := range topics {
+		consumer, err := nsq.NewConsumer(topic, *channel, cCfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		consumerList = append(consumerList, consumer)
 	}
 
 	pCfg.UserAgent = defaultUA
@@ -358,28 +377,55 @@ func main() {
 		perAddressStatus: perAddressStatus,
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
-	consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
+
+	for _, consumer := range consumerList {
+		consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
+	}
+
 
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
 		go handler.responder()
 	}
 
-	err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
-	if err != nil {
-		log.Fatal(err)
+	for _, consumer := range consumerList {
+		err := consumer.ConnectToNSQDs(nsqdTCPAddrs)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
-	if err != nil {
-		log.Fatal(err)
+	for _, consumer := range consumerList {
+		err := consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
+
+	aggregateStopChan := make(chan bool)
+
+	for _, consumer := range consumerList {
+		go func(consumer *nsq.Consumer, aggregateStopChan chan<- bool) {
+			for {
+				select {
+					case <-consumer.StopChan:
+						aggregateStopChan<-true
+						return
+				}
+			}
+
+		}(consumer, aggregateStopChan)
+	}
+
 
 	for {
 		select {
-		case <-consumer.StopChan:
+		case <-aggregateStopChan:
 			return
 		case <-termChan:
-			consumer.Stop()
+			for _, consumer := range consumerList {
+				consumer.Stop()
+			}
 		}
 	}
+
 }
