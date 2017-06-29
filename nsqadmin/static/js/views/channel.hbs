@@ -226,6 +226,9 @@
                         {{#if auth_identity_url}}</a>{{/if}}
                         </span>
                     {{/if}}
+                    {{#if desired_tag}}
+                        <span class="label label-primary">DesiredTag: {{desired_tag}}</span>
+                    {{/if}}
                 </td>
                 <td><a class="link" href="/nodes/{{node}}">{{node}}</a></td>
                 <td>{{commafy in_flight_count}}</td>

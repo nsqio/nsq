@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync/atomic"
 	"time"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -35,11 +36,13 @@ func PrintMessage(m *Message) string {
 }
 
 type Message struct {
-	ID        MessageID
-	TraceID   uint64
-	Body      []byte
-	Timestamp int64
-	Attempts  uint16
+	ID            MessageID
+	TraceID       uint64
+	Body          []byte
+	Timestamp     int64
+	Attempts      uint16
+	ExtBytes      []byte
+	ExtVer        ext.ExtVer
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -59,6 +62,17 @@ type Message struct {
 
 func MessageHeaderBytes() int {
 	return MsgIDLength + 8 + 2
+}
+
+func NewMessageWithExt(id MessageID, body []byte, extVer ext.ExtVer, extBytes[]byte) *Message {
+	return &Message{
+		ID:        id,
+		TraceID:   0,
+		ExtVer:    extVer,
+		ExtBytes:  extBytes,
+		Body:      body,
+		Timestamp: time.Now().UnixNano(),
+	}
 }
 
 func NewMessage(id MessageID, body []byte) *Message {
@@ -104,15 +118,15 @@ func (m *Message) GetClientID() int64 {
 	return 0
 }
 
-func (m *Message) WriteToWithDetail(w io.Writer) (int64, error) {
-	return m.internalWriteTo(w, true)
+func (m *Message) WriteToWithDetail(w io.Writer, writeExt bool) (int64, error) {
+	return m.internalWriteTo(w, writeExt, true)
 }
 
-func (m *Message) WriteTo(w io.Writer) (int64, error) {
-	return m.internalWriteTo(w, false)
+func (m *Message) WriteTo(w io.Writer, writeExt bool) (int64, error) {
+	return m.internalWriteTo(w, writeExt, false)
 }
 
-func (m *Message) internalWriteTo(w io.Writer, writeDetail bool) (int64, error) {
+func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) (int64, error) {
 	var buf [16]byte
 	var total int64
 
@@ -131,6 +145,32 @@ func (m *Message) internalWriteTo(w io.Writer, writeDetail bool) (int64, error) 
 	total += int64(n)
 	if err != nil {
 		return total, err
+	}
+
+	//write ext content
+	if  writeExt {
+		//write ext version
+		buf[0] = byte(m.ExtVer)
+		n, err = w.Write(buf[:1])
+		total += int64(n)
+		if err != nil {
+			return total, err
+		}
+
+		if m.ExtVer != ext.NO_EXT_VER {
+			binary.BigEndian.PutUint16(buf[1:1 + 2], uint16(len(m.ExtBytes)))
+			n, err = w.Write(buf[1:1 + 2])
+			total += int64(n)
+			if err != nil {
+				return total, err
+			}
+
+			n, err = w.Write(m.ExtBytes)
+			total += int64(n)
+			if err != nil {
+				return total, err
+			}
+		}
 	}
 
 	if writeDetail {
@@ -194,8 +234,8 @@ func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
-func DecodeMessage(b []byte) (*Message, error) {
-	return decodeMessage(b)
+func DecodeMessage(b []byte, ext bool) (*Message, error) {
+	return decodeMessage(b, ext)
 }
 
 // note: the message body is using the origin buffer, so never modify the buffer after decode.
@@ -209,7 +249,7 @@ func DecodeMessage(b []byte) (*Message, error) {
 //                        (uint16)
 //                         2-byte
 //                        attempts
-func decodeMessage(b []byte) (*Message, error) {
+func decodeMessage(b []byte, isExt bool) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength {
@@ -221,7 +261,25 @@ func decodeMessage(b []byte) (*Message, error) {
 	msg.ID = MessageID(binary.BigEndian.Uint64(b[10:18]))
 	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
 
-	msg.Body = b[26:]
+	bodyStart := 26
+
+	if isExt {
+		extVer := ext.ExtVer(uint8(b[bodyStart]))
+		switch extVer {
+		case ext.TAG_EXT_VER:
+			tagLen := binary.BigEndian.Uint16(b[27:27+2])
+			msg.ExtVer = ext.TAG_EXT_VER
+			msg.ExtBytes = b[29:29+tagLen]
+			bodyStart = 29 + int(tagLen)
+		case ext.NO_EXT_VER:
+			msg.ExtVer = ext.NO_EXT_VER
+			bodyStart = 27
+		default:
+			return nil, fmt.Errorf("invalid ext version %v", extVer)
+		}
+	}
+
+	msg.Body = b[bodyStart:]
 	return &msg, nil
 }
 

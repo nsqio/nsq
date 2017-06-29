@@ -157,7 +157,7 @@ func TestStartup(t *testing.T) {
 	tmpbuf := bytes.NewBuffer(make([]byte, 1024))
 	tmpmsg := NewMessage(0, body)
 	tmpbuf.Reset()
-	msgRawSize, _ := tmpmsg.WriteTo(tmpbuf)
+	msgRawSize, _ := tmpmsg.WriteTo(tmpbuf, false)
 	msgRawSize += 4
 	topic := nsqd.GetTopicIgnPart(topicName)
 	channel1 := topic.GetChannel("ch1")

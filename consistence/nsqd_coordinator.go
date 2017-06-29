@@ -50,7 +50,7 @@ func (self *TopicPartitionID) String() string {
 	return self.TopicName + "-" + strconv.Itoa(self.TopicPartition)
 }
 
-func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]*nsqd.Message, error) {
+func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, ext bool, tmpbuf []byte) ([]*nsqd.Message, error) {
 	msgs = msgs[:0]
 	size := int32(len(data))
 	current := int32(0)
@@ -64,7 +64,7 @@ func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, tmpbuf []byte) ([]
 			return msgs, io.ErrUnexpectedEOF
 		}
 		buf := data[current : current+msgSize]
-		msg, err := nsqd.DecodeMessage(buf)
+		msg, err := nsqd.DecodeMessage(buf, ext)
 		if err != nil {
 			return msgs, err
 		}
@@ -614,6 +614,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				AutoCommit:   0,
 				RetentionDay: topicInfo.RetentionDay,
 				OrderedMulti: topicInfo.OrderedMulti,
+				Ext:       topicInfo.Ext,
 			}
 			tc.GetData().logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
@@ -949,6 +950,7 @@ type MsgTimestampComparator struct {
 	localTopicReader *nsqd.DiskQueueSnapshot
 	searchEnd        int64
 	searchTs         int64
+	ext              bool
 }
 
 func (self *MsgTimestampComparator) SearchEndBoundary() int64 {
@@ -966,7 +968,7 @@ func (self *MsgTimestampComparator) LessThanLeftBoundary(l *CommitLogData) bool 
 		coordLog.Errorf("seek disk queue failed: %v, %v", l, r.Err)
 		return true
 	}
-	msg, err := nsqd.DecodeMessage(r.Data)
+	msg, err := nsqd.DecodeMessage(r.Data, self.ext)
 	if err != nil {
 		coordLog.Errorf("failed to decode message - %s - %v", err, r)
 		return true
@@ -989,7 +991,7 @@ func (self *MsgTimestampComparator) GreatThanRightBoundary(l *CommitLogData) boo
 		coordLog.Errorf("seek disk queue failed: %v, %v", l, r.Err)
 		return false
 	}
-	msg, err := nsqd.DecodeMessage(r.Data)
+	msg, err := nsqd.DecodeMessage(r.Data, self.ext)
 	if err != nil {
 		coordLog.Errorf("failed to decode message - %s - %v", err, r)
 		return false
@@ -1016,6 +1018,7 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 		localTopicReader: snap,
 		searchEnd:        tcData.logMgr.GetCurrentStart(),
 		searchTs:         ts_sec * 1000 * 1000 * 1000,
+		ext:              tcData.topicInfo.Ext,
 	}
 	startSearch := time.Now()
 	_, _, l, localErr := tcData.logMgr.SearchLogDataByComparator(comp)
@@ -1041,7 +1044,7 @@ func (self *NsqdCoordinator) SearchLogByMsgTimestamp(topic string, part int, ts_
 			}
 			return l, realOffset, curCount, ret.Err
 		} else {
-			msg, err := nsqd.DecodeMessage(ret.Data)
+			msg, err := nsqd.DecodeMessage(ret.Data, tcData.topicInfo.Ext)
 			if err != nil {
 				coordLog.Errorf("failed to decode message - %v - %v", err, ret)
 				return l, realOffset, curCount, err
@@ -1248,6 +1251,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 		OrderedMulti: topicInfo.OrderedMulti,
+		Ext:       topicInfo.Ext,
 	}
 	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, logMgr)
@@ -1392,7 +1396,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		for i, l := range logs {
 			d := dataList[i]
 			// read and decode all messages
-			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, tmpBuf)
+			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, topicInfo.Ext, tmpBuf)
 			if localErr != nil || len(newMsgs) == 0 {
 				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v, decoded len: %v", localErr, len(d), d, len(newMsgs))
 				hasErr = true
@@ -1792,6 +1796,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		AutoCommit:   0,
 		RetentionDay: tcData.topicInfo.RetentionDay,
 		OrderedMulti: tcData.topicInfo.OrderedMulti,
+		Ext:       tcData.topicInfo.Ext,
 	}
 	tcData.logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
@@ -1990,6 +1995,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 		AutoCommit:   0,
 		RetentionDay: topicInfo.RetentionDay,
 		OrderedMulti: topicInfo.OrderedMulti,
+		Ext:    topicInfo.Ext,
 	}
 	logMgr.updateBufferSize(int(dyConf.SyncEvery - 1))
 	t.SetDynamicInfo(*dyConf, logMgr)

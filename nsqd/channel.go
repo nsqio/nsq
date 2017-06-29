@@ -13,6 +13,7 @@ import (
 
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -48,6 +49,11 @@ type resetChannelData struct {
 	Cnt    int64
 }
 
+type MsgChanData struct {
+	MsgChan chan *Message
+	ClientCnt int64
+}
+
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
@@ -75,7 +81,13 @@ type Channel struct {
 	requeuedMsgChan     chan *Message
 	waitingRequeueMsgs  map[MessageID]*Message
 	waitingRequeueMutex sync.Mutex
+	tagMsgChansMutex	    sync.RWMutex
+	//mapping from tag to messages chan
+	tagMsgChans	    map[string] *MsgChanData
+	tagChanInitChan     chan string
+	tagChanRemovedChan  chan string
 	clientMsgChan       chan *Message
+
 	exitChan            chan int
 	exitSyncChan        chan bool
 	exitFlag            int32
@@ -108,6 +120,8 @@ type Channel struct {
 	EnableTrace int32
 	//finMsgs     map[MessageID]*Message
 	//finErrMsgs map[MessageID]string
+	Ext         int32
+
 	requireOrder           int32
 	needResetReader        int32
 	processResetReaderTime int64
@@ -119,7 +133,7 @@ type Channel struct {
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, part int, channelName string, chEnd BackendQueueEnd, opt *Options,
 	deleteCallback func(*Channel), consumeDisabled int32,
-	notify func(v interface{}), reqToEndCB ReqToEndFunc) *Channel {
+	notify func(v interface{}), reqToEndCB ReqToEndFunc, ext int32) *Channel {
 
 	c := &Channel{
 		topicName:          topicName,
@@ -128,6 +142,9 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		requeuedMsgChan:    make(chan *Message, opt.MaxRdyCount+1),
 		waitingRequeueMsgs: make(map[MessageID]*Message, 100),
 		clientMsgChan:      make(chan *Message),
+		tagMsgChans:	    make(map[string]*MsgChanData),
+		tagChanInitChan:    make(chan string, 10),
+		tagChanRemovedChan: make(chan string, 10),
 		exitChan:           make(chan int),
 		exitSyncChan:       make(chan bool),
 		clients:            make(map[int64]Consumer),
@@ -142,6 +159,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		notifyCall:      notify,
 		consumeDisabled: consumeDisabled,
 		requeueMsgCb:    reqToEndCB,
+		Ext:		     ext,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -192,8 +210,76 @@ func (c *Channel) GetTopicPart() int {
 	return c.topicPart
 }
 
+func (c *Channel) closeClientMsgChannels() {
+	c.tagMsgChansMutex.Lock()
+	defer c.tagMsgChansMutex.Unlock()
+
+	for tag, _ := range c.tagMsgChans {
+		delete(c.tagMsgChans, tag)
+	}
+}
+
+func (c *Channel) RemoveTagClientMsgChannel(tag ext.TagExt) {
+	c.tagMsgChansMutex.Lock()
+	defer c.tagMsgChansMutex.Unlock()
+
+	tagStr := string(tag)
+	cnt := c.tagMsgChans[tagStr].ClientCnt
+	if cnt - 1 > int64(0) {
+		c.tagMsgChans[tagStr].ClientCnt = cnt - 1
+	} else {
+		c.tagMsgChans[tagStr].ClientCnt = 0
+		delete(c.tagMsgChans, tagStr)
+		select {
+		case c.tagChanRemovedChan <- tagStr:
+		case <-time.After(50 * time.Millisecond):
+			nsqLog.Infof("timeout sending tag channel remove signal for %v", tag)
+		}
+	}
+}
+
+
+//get or create tag message chanel, invoked from protocol_v2.messagePump()
+func (c *Channel) GetOrCreateClientMsgChannel(tag ext.TagExt) chan *Message {
+	c.tagMsgChansMutex.Lock()
+	defer c.tagMsgChansMutex.Unlock()
+	tagMsgChanData, exist := c.tagMsgChans[string(tag)]
+
+	if exist {
+		tagMsgChanData.ClientCnt = tagMsgChanData.ClientCnt + 1
+	} else {
+		//initialize tag channel
+		c.tagMsgChans[string(tag)] = &MsgChanData{
+			make(chan *Message),
+			1,
+		}
+		select {
+		case c.tagChanInitChan <- string(tag):
+		case <-time.After(50 * time.Millisecond):
+			nsqLog.Infof("timeout sending tag channel init signal for %v", tag)
+		}
+	}
+
+	return c.tagMsgChans[string(tag)].MsgChan
+}
+
 func (c *Channel) GetClientMsgChan() chan *Message {
 	return c.clientMsgChan
+}
+
+/**
+get active tag channel or default message channel from tag channel map
+ */
+func (c *Channel) GetClientTagMsgChan(tag ext.TagExt) (chan *Message, bool) {
+	c.tagMsgChansMutex.RLock()
+	defer c.tagMsgChansMutex.RUnlock()
+	msgChanData, exist := c.tagMsgChans[string(tag)]
+	if !exist {
+		nsqLog.Warningf("tag message channel fo tag %v not found.", tag)
+		return nil, false
+	}
+	nsqLog.Logf("tag msg chan %v returned", msgChanData)
+	return msgChanData.MsgChan, true
 }
 
 func (c *Channel) IsTraced() bool {
@@ -202,6 +288,18 @@ func (c *Channel) IsTraced() bool {
 
 func (c *Channel) IsEphemeral() bool {
 	return c.ephemeral
+}
+
+func (c *Channel) SetExt(enable bool) {
+	if enable {
+		atomic.StoreInt32(&c.Ext, 1)
+	} else {
+		atomic.StoreInt32(&c.Ext, 0)
+	}
+}
+
+func (c *Channel) IsExt() bool {
+	return atomic.LoadInt32(&c.Ext) == 1
 }
 
 func (c *Channel) SetTrace(enable bool) {
@@ -916,7 +1014,6 @@ func (c *Channel) GetClients() map[int64]Consumer {
 	return results
 }
 
-// AddClient adds a client to the Channel's client list
 func (c *Channel) AddClient(clientID int64, client Consumer) error {
 	c.Lock()
 	defer c.Unlock()
@@ -933,7 +1030,12 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 }
 
 // RemoveClient removes a client from the Channel's client list
-func (c *Channel) RemoveClient(clientID int64) {
+func (c *Channel) RemoveClient(clientID int64, clientTag ext.TagExt) {
+
+	if clientTag != nil {
+		c.RemoveTagClientMsgChannel(clientTag)
+	}
+
 	c.Lock()
 	defer c.Unlock()
 
@@ -1210,7 +1312,6 @@ func (c *Channel) messagePump() {
 	lastDataNeedRead := false
 	readBackendWait := false
 	backendErr := 0
-
 LOOP:
 	for {
 		// do an extra check for closed exit before we select on all the memory/backend/exitChan
@@ -1351,7 +1452,7 @@ LOOP:
 				nsqLog.Infof("channel %v backend error auto recovery: %v", c.GetName(), backendErr)
 			}
 			backendErr = 0
-			msg, err = decodeMessage(data.Data)
+			msg, err = decodeMessage(data.Data, c.IsExt())
 			if err != nil {
 				nsqLog.LogErrorf("channel (%v): failed to decode message - %s - %v", c.GetName(), err, data)
 				continue LOOP
@@ -1432,7 +1533,42 @@ LOOP:
 			atomic.StoreInt32(&c.needNotifyRead, 1)
 			readBackendWait = true
 		}
+
+		var msgHasTag bool
+		var msgTag ext.TagExt
+tagMsgLoop:
+		//deliver according to tag value in message
+		if msg.ExtVer == ext.TAG_EXT_VER {
+			msgHasTag = true
+			msgTag = ext.TagExt(msg.ExtBytes)
+			tagMsgChan, chanExist := c.GetClientTagMsgChan(msgTag)
+			if chanExist {
+				select {
+				case tagMsgChan <- msg:
+					msg = nil
+					continue
+				case <-c.tagChanRemovedChan:
+					//do not go to msgDefaultLoop, as tag chan remove event may invoked from previously deleted client
+					goto tagMsgLoop
+				case resetOffset := <-c.readerChanged:
+					nsqLog.Infof("got reader reset notify while dispatch message:%v ", resetOffset)
+					c.resetChannelReader(resetOffset, &lastDataNeedRead, origReadChan, &lastMsg, &needReadBackend, &readBackendWait)
+					continue
+				case <-c.exitChan:
+					goto exit
+				}
+			}
+		}
+
+msgDefaultLoop:
 		select {
+		case newTag := <-c.tagChanInitChan:
+			if msgHasTag && newTag == string(msgTag) {
+				nsqLog.Infof("client with tag %v initialized, try deliver in tag loop", newTag)
+				goto tagMsgLoop
+			} else {
+				goto msgDefaultLoop
+			}
 		case c.clientMsgChan <- msg:
 		case resetOffset := <-c.readerChanged:
 			nsqLog.Infof("got reader reset notify while dispatch message:%v ", resetOffset)

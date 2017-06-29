@@ -124,6 +124,7 @@ type TopicStats struct {
 	StatsdName     string        `json:"statsd_name"`
 	IsLeader       bool          `json:"is_leader"`
 	IsMultiOrdered bool          `json:"is_multi_ordered"`
+	IsExt          bool          `json:"is_ext"`
 	SyncingNum     int           `json:"syncing_num"`
 	ISRStats       []ISRStat     `json:"isr_stats"`
 	CatchupStats   []CatchupStat `json:"catchup_stats"`
@@ -217,6 +218,7 @@ type ChannelStats struct {
 	Paused         bool            `json:"paused"`
 	Skipped        bool            `json:"skipped"`
 	IsMultiOrdered bool            `json:"is_multi_ordered"`
+	IsExt          bool            `json:"is_ext"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -282,6 +284,8 @@ type ClientStats struct {
 	Authed            bool          `json:"authed"`
 	AuthIdentity      string        `json:"auth_identity"`
 	AuthIdentityURL   string        `json:"auth_identity_url"`
+
+	DesiredTag	  string 	`json:"desired_tag"`
 
 	TLS                           bool   `json:"tls"`
 	CipherSuite                   string `json:"tls_cipher_suite"`
