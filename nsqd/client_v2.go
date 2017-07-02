@@ -394,7 +394,7 @@ func (c *ClientV2) IsReadyForMessages() bool {
 			readyCount = 1
 			if time.Now().Add(-2*msgTimeout).Unix() < lct {
 				// the wait time maybe large than the msgtimeout (maybe need wait heartbeat to trigge channel wakeup)
-				nsqLog.Logf("[%s] state inflt: %4d, errCnt: %d temporarily slow down since last timeout %v",
+				nsqLog.LogDebugf("[%s] state inflt: %4d, errCnt: %d temporarily slow down since last timeout %v",
 					c, inFlightCount, errCnt, lct)
 			}
 		} else if adjustReadyCount < readyCount {

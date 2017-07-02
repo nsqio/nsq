@@ -33,6 +33,11 @@ func (self *NsqdCoordinator) PutMessageToCluster(topic *nsqd.Topic,
 	return self.internalPutMessageToCluster(topic, msg, false)
 }
 
+func (self *NsqdCoordinator) PutDelayedMessageToCluster(topic *nsqd.Topic,
+	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	return self.internalPutMessageToCluster(topic, msg, true)
+}
+
 func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	msg *nsqd.Message, putDelayed bool) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 
@@ -929,9 +934,10 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		confirmed = channel.GetConfirmed()
 	}
 	// TODO: maybe use channel to aggregate all the sync of message to reduce the rpc call.
+	var delayedMsg *nsqd.Message
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		offset, cnt, tmpChanged, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
+		offset, cnt, tmpChanged, msg, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 			changed = false
@@ -940,6 +946,9 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		changed = tmpChanged
 		syncOffset.VOffset = int64(offset)
 		syncOffset.VCnt = cnt
+		if msg != nil && msg.DelayedType == 1 && len(msg.DelayedChannel) > 0 {
+			delayedMsg = msg
+		}
 		return nil
 	}
 	doLocalExit := func(err *CoordErr) {}
@@ -966,7 +975,13 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 			// if ordered, we need make sure all the consume offset is synced to all replicas
 			rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 		} else {
-			c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
+			if delayedMsg != nil {
+				// TODO:
+				//rpcErr = c.ConfirmDelayedMsg(&tcData.topicLeaderSession, &tcData.topicInfo,
+				//	channel.GetName(), delayedMsg)
+			} else {
+				c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
+			}
 		}
 		if rpcErr != nil {
 			coordLog.Infof("sync channel(%v) offset to replica %v failed: %v, offset: %v", channel.GetName(),
@@ -976,7 +991,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	}
 	handleSyncResult := func(successNum int, tcData *coordData) bool {
 		// we can ignore the error if this channel is not ordered. (just sync next time)
-		if successNum == len(tcData.topicInfo.ISR) || !channel.IsOrdered() {
+		if successNum == len(tcData.topicInfo.ISR) || (!channel.IsOrdered() && delayedMsg == nil) {
 			return true
 		}
 		return false

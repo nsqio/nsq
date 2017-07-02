@@ -1036,13 +1036,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
-	timeoutDuration time.Duration) (bool, error) {
-	isOldDeferred, err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
+	timeoutDuration time.Duration) error {
+	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
 	if err != nil {
 		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
-		return isOldDeferred, err
+		return err
 	}
-	return isOldDeferred, nil
+	return nil
 }
 
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1099,7 +1099,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		}
 	}
 	if toEnd {
-		_, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
+		err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}

@@ -198,6 +198,11 @@ func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue
 	}
 	if t.delayedQueue == nil {
 		t.delayedQueue, err = NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
+		if err == nil {
+			for _, ch := range t.channelMap {
+				ch.SetDelayedQueue(t.delayedQueue)
+			}
+		}
 	}
 	return t.delayedQueue, err
 }
@@ -341,6 +346,11 @@ func (t *Topic) SetTrace(enable bool) {
 	} else {
 		atomic.StoreInt32(&t.EnableTrace, 0)
 	}
+	t.Lock()
+	if t.delayedQueue != nil {
+		t.delayedQueue.SetTrace(enable)
+	}
+	t.Unlock()
 }
 
 func (t *Topic) getChannelMetaFileName() string {
@@ -705,14 +715,22 @@ func (t *Topic) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error 
 
 // PutMessage writes a Message to the queue
 func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
-	t.Lock()
 	if m.ID > 0 {
 		nsqLog.Logf("should not pass id in message while pub: %v", m.ID)
-		t.Unlock()
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
+	t.Lock()
+	defer t.Unlock()
+	if m.DelayedType > 0 {
+		dq, err := t.GetOrCreateDelayedQueueNoLock(nil)
+		if err == nil {
+			id, offset, writeBytes, dend, err := dq.PutDelayMessage(m)
+			return id, offset, writeBytes, dend, err
+		}
+		return 0, 0, 0, nil, err
+	}
+
 	id, offset, writeBytes, dend, err := t.PutMessageNoLock(m)
-	t.Unlock()
 	return id, offset, writeBytes, dend, err
 }
 
@@ -852,9 +870,11 @@ func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, di
 
 	if trace {
 		if m.TraceID != 0 || atomic.LoadInt32(&t.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
-			nsqMsgTracer.TracePub(t.GetTopicName(), t.GetTopicPart(), m.TraceID, m, offset, dend.TotalMsgCnt())
+			nsqMsgTracer.TracePub(t.GetTopicName(), t.GetTopicPart(), "PUB", m.TraceID, m, offset, dend.TotalMsgCnt())
 		}
 	}
+	// TODO: handle delayed type for dpub and transaction message
+	// should remove from delayed queue after written on disk file
 	return m.ID, offset, writeBytes, dend, nil
 }
 

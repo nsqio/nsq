@@ -659,6 +659,12 @@ type RpcTestRsp struct {
 	RetErr  *CoordErr
 }
 
+type RpcConfirmDelayedMsg struct {
+	DelayedType int32
+	DelayedTs   int64
+	DelayedID   int64
+}
+
 func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	topicCoord, err := self.getTopicCoord(rpcData.TopicName, rpcData.TopicPartition)
 	if err != nil || topicCoord == nil {

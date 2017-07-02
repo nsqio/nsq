@@ -132,6 +132,9 @@ func (c *context) PutMessageObj(topic *nsqd.Topic,
 	if c.nsqdCoord == nil {
 		return topic.PutMessage(msg)
 	}
+	if msg.DelayedType > 0 {
+		return c.nsqdCoord.PutDelayedMessageToCluster(topic, msg)
+	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
 
@@ -158,7 +161,7 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
-		_, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)
+		_, _, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)
 		if err == nil {
 			ch.ContinueConsumeForOrder()
 		}
@@ -340,32 +343,37 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 }
 
 func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
-	oldMsg *nsqd.Message, timeoutDuration time.Duration) (bool, error) {
+	oldMsg *nsqd.Message, timeoutDuration time.Duration) error {
 	topic, err := c.getExistingTopic(ch.GetTopicName(), ch.GetTopicPart())
 	if topic == nil || err != nil {
 		nsqd.NsqLogger().LogWarningf("req channel %v topic not found: %v", ch.GetName(), err)
-		return false, err
+		return err
 	}
 	if topic.GetDynamicInfo().OrderedMulti {
-		return false, errors.New("ordered topic can not requeue to end")
+		return errors.New("ordered topic can not requeue to end")
 	}
 	if ch.Exiting() {
-		return false, nsqd.ErrExiting
+		return nsqd.ErrExiting
 	}
 	// pause to avoid the put to end message to be send to
 	// the client before we requeue and update in the flight
 	ch.Pause()
 	defer ch.UnPause()
 	newMsg := nsqd.NewMessage(0, oldMsg.Body)
+	newMsg.Timestamp = oldMsg.Timestamp
 	newMsg.TraceID = oldMsg.TraceID
 	newMsg.Attempts = oldMsg.Attempts
-	newID, offset, rawSize, msgEnd, putErr := c.PutMessageObj(topic, newMsg)
+	newMsg.DelayedType = 1
+	newMsg.DelayedTs = time.Now().Add(timeoutDuration).UnixNano()
+	newMsg.DelayedOrigID = oldMsg.ID
+	newMsg.DelayedChannel = ch.GetName()
+	_, _, _, _, putErr := c.PutMessageObj(topic, newMsg)
 	if putErr != nil {
 		nsqd.NsqLogger().Logf("req message %v to end failed, channel %v, put error: %v ",
 			oldMsg, ch.GetName(), putErr)
-		return false, putErr
+		return putErr
 	}
-	isOldDeferred, err := ch.ReqWithNewMsgAndConfirmOld(oldMsg.GetClientID(),
-		oldMsg.ID, timeoutDuration, newID, offset, rawSize, msgEnd)
-	return isOldDeferred, err
+
+	err = c.FinishMessage(ch, oldMsg.GetClientID(), "", oldMsg.ID)
+	return err
 }

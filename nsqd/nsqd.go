@@ -45,7 +45,7 @@ const (
 	FLUSH_DISTANCE = 4
 )
 
-type ReqToEndFunc func(*Channel, *Message, time.Duration) (bool, error)
+type ReqToEndFunc func(*Channel, *Message, time.Duration) error
 type NSQD struct {
 	sync.RWMutex
 
@@ -306,7 +306,6 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 			if paused {
 				channel.Pause()
 			}
-
 
 			skipped, _ := channelJs.Get("skipped").Bool()
 			if skipped {

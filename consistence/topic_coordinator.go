@@ -69,7 +69,6 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 		coordLog.Errorf("topic(%v) failed to create directory: %v ", name, err)
 		return nil, err
 	}
-	os.MkdirAll(path.Join(tc.basePath, "delayed"), 0755)
 	// sync 1 means flush every message
 	// all other sync we can make the default buffer, since the commit log
 	// is just index of disk data and can be restored from disk queue.
@@ -92,6 +91,7 @@ func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error
 	var logMgr *TopicCommitLogMgr
 	self.dataMutex.Lock()
 	if self.delayedLogMgr == nil {
+		os.MkdirAll(path.Join(self.basePath, "delayed_queue"), 0755)
 		self.delayedLogMgr, err = InitTopicCommitLogMgr(self.topicInfo.Name, self.topicInfo.Partition,
 			path.Join(self.basePath, "delayed"), DEFAULT_COMMIT_BUF_SIZE)
 	}
