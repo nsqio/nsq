@@ -320,6 +320,9 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	t.removeHistoryStat()
 	t.RemoveChannelMeta()
 	t.removeMagicCode()
+	if t.delayedQueue != nil {
+		t.delayedQueue.Delete()
+	}
 	return renamePath, err
 }
 
@@ -968,6 +971,10 @@ func (t *Topic) exit(deleted bool) error {
 			channel.Delete()
 		}
 		t.channelLock.Unlock()
+
+		if t.delayedQueue != nil {
+			t.delayedQueue.Delete()
+		}
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
 		t.removeHistoryStat()
@@ -992,6 +999,9 @@ func (t *Topic) exit(deleted bool) error {
 	}
 	t.channelLock.RUnlock()
 
+	if t.delayedQueue != nil {
+		t.delayedQueue.Close()
+	}
 	return t.backend.Close()
 }
 
@@ -1070,6 +1080,10 @@ func (t *Topic) ForceFlush() {
 }
 
 func (t *Topic) flush(notifyChan bool) error {
+	if t.delayedQueue != nil {
+		t.delayedQueue.ForceFlush()
+	}
+
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
 	if !ok {
 		if notifyChan {
@@ -1086,6 +1100,7 @@ func (t *Topic) flush(notifyChan bool) error {
 	if notifyChan {
 		t.updateChannelsEnd(false)
 	}
+
 	return err
 }
 
