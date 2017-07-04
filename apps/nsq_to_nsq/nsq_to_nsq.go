@@ -32,7 +32,7 @@ const (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
-	destTopic   = flag.String("destination-topic", "", "destination nsq topic")
+	singleDestinationTopic   = flag.String("single-destination-topic", "", "activate single destination nsq topic Note: default destination topic is the topic itself")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
@@ -65,6 +65,7 @@ type PublishHandler struct {
 	mode      int
 	hostPool  hostpool.HostPool
 	respChan  chan *nsq.ProducerTransaction
+	destinationTopic string
 
 	requireJSONValueParsed   bool
 	requireJSONValueIsNumber bool
@@ -227,11 +228,11 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 		idx := counter % uint64(len(ph.addresses))
 		addr := ph.addresses[idx]
 		p := ph.producers[addr]
-		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime, addr)
+		err = p.PublishAsync(ph.destinationTopic, msgBody, ph.respChan, m, startTime, addr)
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
 		p := ph.producers[hostPoolResponse.Host()]
-		err = p.PublishAsync(*destTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
+		err = p.PublishAsync(ph.destinationTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
 		if err != nil {
 			hostPoolResponse.Mark(err)
 		}
@@ -260,26 +261,14 @@ func commandLineValidation() {
 		log.Fatal("--topic and --channel are required")
 	}
 
-	if len(topics) == 1 {
-		if *destTopic == "" {
-			*destTopic = topics[0]
-		}
-	}
-
-	if len(topics) > 1 {
-		if *destTopic == "" {
-			log.Fatal("--destination-topic must be specified when multi topic is enabled")
-		}
-	}
-
 	for _, topic := range topics {
 		if !protocol.IsValidTopicName(topic) {
 	        log.Fatal("--topic is invalid")
 		}
 	}
 
-	if !protocol.IsValidTopicName(*destTopic) {
-		log.Fatal("--destination-topic is invalid")
+	if *singleDestinationTopic != "" && !protocol.IsValidTopicName(*singleDestinationTopic) {
+		log.Fatal("--single-destination-topic is invalid")
 	}
 
 	if !protocol.IsValidChannelName(*channel) {
@@ -296,6 +285,62 @@ func commandLineValidation() {
 	if len(destNsqdTCPAddrs) == 0 {
 		log.Fatal("--destination-nsqd-tcp-address required")
 	}
+}
+
+
+func initConsumerAndHandler(cCfg *nsq.Config,
+	                        producers map[string]*nsq.Producer,
+	                        selectedMode int,
+	                        hostPool hostpool.HostPool,
+	                        perAddressStatus map[string]*timer_metrics.TimerMetrics) []*nsq.Consumer {
+	var consumerList []*nsq.Consumer
+	var singleDestinationHandler *PublishHandler
+	var handlerList []*PublishHandler
+
+	if *singleDestinationTopic != "" {
+		singleDestinationHandler = &PublishHandler{
+			addresses:        destNsqdTCPAddrs,
+			producers:        producers,
+			mode:             selectedMode,
+			hostPool:         hostPool,
+			respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+			perAddressStatus: perAddressStatus,
+			timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+			destinationTopic: *singleDestinationTopic,
+		}
+		handlerList = append(handlerList, singleDestinationHandler)
+	}
+
+	for _, topic := range topics {
+		consumer, err := nsq.NewConsumer(topic, *channel, cCfg)
+		consumerList = append(consumerList, consumer)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if (singleDestinationHandler != nil) {
+			consumer.AddConcurrentHandlers(singleDestinationHandler, len(destNsqdTCPAddrs))
+		} else {
+			handler := &PublishHandler{
+				addresses:        destNsqdTCPAddrs,
+				producers:        producers,
+				mode:             selectedMode,
+				hostPool:         hostPool,
+				respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+				perAddressStatus: perAddressStatus,
+				timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+				destinationTopic: topic,
+			}
+			consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
+			handlerList = append(handlerList, handler)
+		}
+	}
+	for i := 0; i < len(destNsqdTCPAddrs); i++ {
+		for _, handler := range handlerList {
+			go handler.responder()
+		}
+	}
+
+	return consumerList;
 }
 
 func main() {
@@ -330,17 +375,6 @@ func main() {
 
 	cCfg.UserAgent = defaultUA
 	cCfg.MaxInFlight = *maxInFlight
-
-	var consumerList []*nsq.Consumer
-
-	for _, topic := range topics {
-		consumer, err := nsq.NewConsumer(topic, *channel, cCfg)
-		if err != nil {
-			log.Fatal(err)
-		}
-		consumerList = append(consumerList, consumer)
-	}
-
 	pCfg.UserAgent = defaultUA
 
 	producers := make(map[string]*nsq.Producer)
@@ -368,24 +402,7 @@ func main() {
 		hostPool = hostpool.NewEpsilonGreedy(destNsqdTCPAddrs, 0, &hostpool.LinearEpsilonValueCalculator{})
 	}
 
-	handler := &PublishHandler{
-		addresses:        destNsqdTCPAddrs,
-		producers:        producers,
-		mode:             selectedMode,
-		hostPool:         hostPool,
-		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
-		perAddressStatus: perAddressStatus,
-		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
-	}
-
-	for _, consumer := range consumerList {
-		consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
-	}
-
-
-	for i := 0; i < len(destNsqdTCPAddrs); i++ {
-		go handler.responder()
-	}
+	consumerList := initConsumerAndHandler(cCfg, producers, selectedMode, hostPool, perAddressStatus)
 
 	for _, consumer := range consumerList {
 		err := consumer.ConnectToNSQDs(nsqdTCPAddrs)
@@ -416,7 +433,6 @@ func main() {
 		}(consumer, aggregateStopChan)
 	}
 
-
 	for {
 		select {
 		case <-aggregateStopChan:
@@ -427,5 +443,4 @@ func main() {
 			}
 		}
 	}
-
 }
