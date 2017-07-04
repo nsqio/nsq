@@ -130,9 +130,19 @@ func (c *context) checkForMasterWrite(topic string, part int) bool {
 func (c *context) PutMessageObj(topic *nsqd.Topic,
 	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	if c.nsqdCoord == nil {
+		if msg.DelayedType >= nsqd.MinDelayedType {
+			topic.Lock()
+			dq, err := topic.GetOrCreateDelayedQueueNoLock(nil)
+			topic.Unlock()
+			if err == nil {
+				id, offset, writeBytes, dend, err := dq.PutDelayMessage(msg)
+				return id, offset, writeBytes, dend, err
+			}
+			return 0, 0, 0, nil, err
+		}
 		return topic.PutMessage(msg)
 	}
-	if msg.DelayedType > 0 {
+	if msg.DelayedType >= nsqd.MinDelayedType {
 		return c.nsqdCoord.PutDelayedMessageToCluster(topic, msg)
 	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
@@ -363,7 +373,7 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	newMsg.Timestamp = oldMsg.Timestamp
 	newMsg.TraceID = oldMsg.TraceID
 	newMsg.Attempts = oldMsg.Attempts
-	newMsg.DelayedType = 1
+	newMsg.DelayedType = nsqd.ChannelDelayed
 	newMsg.DelayedTs = time.Now().Add(timeoutDuration).UnixNano()
 	newMsg.DelayedOrigID = oldMsg.ID
 	newMsg.DelayedChannel = ch.GetName()

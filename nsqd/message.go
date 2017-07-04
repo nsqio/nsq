@@ -63,17 +63,6 @@ type Message struct {
 	DelayedChannel string
 }
 
-func IsValidDelayedMessage(m *Message) bool {
-	if m.DelayedType == 1 {
-		return m.DelayedOrigID > 0 && len(m.DelayedChannel) > 0 && m.DelayedTs > 0
-	} else if m.DelayedType == 2 {
-		return m.DelayedTs > 0
-	} else if m.DelayedType == 3 {
-		return true
-	}
-	return false
-}
-
 func MessageHeaderBytes() int {
 	return MsgIDLength + 8 + 2
 }

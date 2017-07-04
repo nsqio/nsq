@@ -554,8 +554,7 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
-	if msg.DelayedOrigID > 0 && msg.DelayedType == 1 &&
-		msg.DelayedTs > 0 && c.GetDelayedQueue() != nil {
+	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
 		c.GetDelayedQueue().ConfirmedMessage(msg)
 		return 0, 0, true
 	}
@@ -935,7 +934,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, client Consumer, clientAddr
 	if err != nil {
 		if old != nil && old.IsDeferred() {
 			shouldSend = false
-		} else if old != nil && old.DelayedType == 1 {
+		} else if old != nil && old.DelayedType == ChannelDelayed {
 			shouldSend = false
 		} else {
 			nsqLog.LogWarningf("push message in flight failed: %v, %v", err,

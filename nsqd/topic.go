@@ -26,9 +26,10 @@ const (
 )
 
 var (
-	ErrInvalidMessageID      = errors.New("message id is invalid")
-	ErrWriteOffsetMismatch   = errors.New("write offset mismatch")
-	ErrOperationInvalidState = errors.New("the operation is not allowed under current state")
+	ErrInvalidMessageID           = errors.New("message id is invalid")
+	ErrWriteOffsetMismatch        = errors.New("write offset mismatch")
+	ErrOperationInvalidState      = errors.New("the operation is not allowed under current state")
+	ErrMessageInvalidDelayedState = errors.New("the message is invalid for delayed")
 )
 
 func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
@@ -724,13 +725,8 @@ func (t *Topic) PutMessage(m *Message) (MessageID, BackendOffset, int32, Backend
 	}
 	t.Lock()
 	defer t.Unlock()
-	if m.DelayedType > 0 {
-		dq, err := t.GetOrCreateDelayedQueueNoLock(nil)
-		if err == nil {
-			id, offset, writeBytes, dend, err := dq.PutDelayMessage(m)
-			return id, offset, writeBytes, dend, err
-		}
-		return 0, 0, 0, nil, err
+	if m.DelayedType >= MinDelayedType {
+		return 0, 0, 0, nil, ErrMessageInvalidDelayedState
 	}
 
 	id, offset, writeBytes, dend, err := t.PutMessageNoLock(m)
@@ -1258,4 +1254,23 @@ func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueSt
 	}
 	t.channelLock.Unlock()
 	return nil
+}
+
+func (t *Topic) GetDelayedQueueConsumedState() RecentKeyList {
+	if t.GetDynamicInfo().OrderedMulti {
+		return nil
+	}
+	t.Lock()
+	dq := t.delayedQueue
+	t.Unlock()
+	if dq == nil {
+		return nil
+	}
+	chList := make([]string, 0)
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		chList = append(chList, ch.GetName())
+	}
+	t.channelLock.RUnlock()
+	return dq.GetOldestConsumedState(chList)
 }

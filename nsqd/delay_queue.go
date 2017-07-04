@@ -19,6 +19,16 @@ var (
 	bucketMeta       = []byte("meta")
 )
 
+const (
+	MinDelayedType     = 1
+	ChannelDelayed     = 1
+	PubDelayed         = 2
+	TransactionDelayed = 3
+	MaxDelayedType     = 4
+)
+
+type RecentKeyList [][]byte
+
 func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
 	buf.Reset()
 	_, err := msg.WriteDelayedTo(buf)
@@ -26,6 +36,17 @@ func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueue
 		return 0, 0, diskQueueEndInfo{}, err
 	}
 	return bq.PutV2(buf.Bytes())
+}
+
+func IsValidDelayedMessage(m *Message) bool {
+	if m.DelayedType == ChannelDelayed {
+		return m.DelayedOrigID > 0 && len(m.DelayedChannel) > 0 && m.DelayedTs > 0
+	} else if m.DelayedType == PubDelayed {
+		return m.DelayedTs > 0
+	} else if m.DelayedType == TransactionDelayed {
+		return true
+	}
+	return false
 }
 
 func getDelayedMsgDBKey(dt int, ch string, ts int64, id MessageID) []byte {
@@ -65,6 +86,40 @@ func getDelayedMsgDBPrefixKey(dt int, ch string) []byte {
 	pos++
 	copy(msgKey[pos:pos+len(ch)], []byte(ch))
 	return msgKey
+}
+
+func deleteBucketKey(dt int, ch string, ts int64, id MessageID, tx *bolt.Tx) error {
+	b := tx.Bucket(bucketDelayedMsg)
+	msgKey := getDelayedMsgDBKey(dt, ch, ts, id)
+	oldV := b.Get(msgKey)
+	err := b.Delete(msgKey)
+	if err != nil {
+		nsqLog.Infof("failed to delete delayed message: %v", msgKey)
+		return err
+	}
+	if oldV != nil {
+		b = tx.Bucket(bucketMeta)
+		cntKey := []byte("counter_" + strconv.Itoa(dt) + "_" + ch)
+		cnt := uint64(0)
+		cntBytes := b.Get(cntKey)
+		if cntBytes != nil && len(cntBytes) == 8 {
+			cnt = binary.BigEndian.Uint64(cntBytes)
+		}
+		if cnt > 0 {
+			cnt--
+			cntBytes = make([]byte, 8)
+			binary.BigEndian.PutUint64(cntBytes[:8], cnt)
+			err = b.Put(cntKey, cntBytes)
+			if err != nil {
+				nsqLog.Infof("failed to update the meta count: %v, %v", cntKey, err)
+				return err
+			}
+		}
+	} else {
+		nsqLog.Infof("failed to get the deleting delayed message: %v", msgKey)
+		return errors.New("key not found")
+	}
+	return nil
 }
 
 type DelayQueue struct {
@@ -302,11 +357,11 @@ func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
 	db := q.kvStore
 	var prefix []byte
 	prefix = getDelayedMsgDBPrefixKey(dt, ch)
-	db.View(func(tx *bolt.Tx) error {
+	db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			_, delayedTs, _, _, err := decodeDelayedMsgDBKey(k)
+			_, delayedTs, id, _, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
 				continue
 			}
@@ -314,7 +369,10 @@ func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
 				break
 			}
 
-			b.Delete(k)
+			err = deleteBucketKey(dt, ch, delayedTs, id, tx)
+			if err != nil {
+				nsqLog.Infof("failed to delete : %v, %v", k, err)
+			}
 		}
 		return nil
 	})
@@ -323,12 +381,20 @@ func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
 func (q *DelayQueue) EmptyDelayedChannel(ch string) {
 	db := q.kvStore
 	var prefix []byte
-	prefix = getDelayedMsgDBPrefixKey(1, ch)
-	db.View(func(tx *bolt.Tx) error {
+	prefix = getDelayedMsgDBPrefixKey(ChannelDelayed, ch)
+	db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			b.Delete(k)
+			_, delayedTs, id, _, err := decodeDelayedMsgDBKey(k)
+			if err != nil {
+				continue
+			}
+			err = deleteBucketKey(ChannelDelayed, ch, delayedTs, id, tx)
+			if err != nil {
+				nsqLog.Infof("failed to delete : %v, %v", k, err)
+			}
+
 		}
 		return nil
 	})
@@ -378,11 +444,11 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 }
 
 func (q *DelayQueue) PeekRecentChannelTimeout(results []Message, ch string) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), 1, ch)
+	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), ChannelDelayed, ch)
 }
 
 func (q *DelayQueue) PeekRecentDelayedPub(results []Message) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), 2, "")
+	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), PubDelayed, "")
 }
 
 func (q *DelayQueue) PeekAll(results []Message) (int, error) {
@@ -407,11 +473,11 @@ func (q *DelayQueue) GetSyncedOffset() (BackendOffset, error) {
 	return synced, err
 }
 
-func (q *DelayQueue) GetCurrentDelayedCnt(channel string) uint64 {
+func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) uint64 {
 	cnt := uint64(0)
-	q.kvStore.Update(func(tx *bolt.Tx) error {
+	q.kvStore.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketMeta)
-		cntKey := []byte("counter_" + strconv.Itoa(1) + "_" + channel)
+		cntKey := []byte("counter_" + strconv.Itoa(dt) + "_" + channel)
 		cntBytes := b.Get(cntKey)
 		if cntBytes != nil {
 			cnt = binary.BigEndian.Uint64(cntBytes)
@@ -425,47 +491,46 @@ func (q *DelayQueue) GetCurrentDelayedCnt(channel string) uint64 {
 func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	// confirmed message is finished by channel, this message has swap the
 	// delayed id and original id to make sure the map key of inflight is original id
-	msgKey := getDelayedMsgDBKey(int(msg.DelayedType), msg.DelayedChannel,
-		msg.DelayedTs, msg.DelayedOrigID)
-
 	err := q.kvStore.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketDelayedMsg)
-		oldV := b.Get(msgKey)
-		err := b.Delete(msgKey)
-		if err != nil {
-			return err
-		}
-		if oldV != nil {
-			m, err := DecodeDelayedMessage(oldV)
-			if err != nil {
-				nsqLog.Infof("failed to decode delayed message: %v, %v", oldV, err)
-				return err
-			}
-			b = tx.Bucket(bucketMeta)
-			cntKey := []byte("counter_" + strconv.Itoa(int(m.DelayedType)) + "_" + m.DelayedChannel)
-			cnt := uint64(0)
-			cntBytes := b.Get(cntKey)
-			if cntBytes != nil && len(cntBytes) == 8 {
-				cnt = binary.BigEndian.Uint64(cntBytes)
-			}
-			if cnt > 0 {
-				cnt--
-				cntBytes = make([]byte, 8)
-				binary.BigEndian.PutUint64(cntBytes[:8], cnt)
-				err = b.Put(cntKey, cntBytes)
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			nsqLog.Infof("failed to get the deleting delayed message: %v, %v", msgKey, msg)
-		}
-		return nil
+		return deleteBucketKey(int(msg.DelayedType), msg.DelayedChannel,
+			msg.DelayedTs, msg.DelayedOrigID, tx)
 	})
 	if err != nil {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to delete delayed message %v-%v, %v",
-			q.GetFullName(), msg.ID, msg.DelayedTs, err)
+			q.GetFullName(), msg.DelayedOrigID, msg.DelayedTs, err)
 	}
 	return err
+}
+
+func (q *DelayQueue) GetOldestConsumedState(chList []string) RecentKeyList {
+	db := q.kvStore
+	prefixList := make([][]byte, 0, len(chList)+2)
+	for filterType := MinDelayedType; filterType < MaxDelayedType; filterType++ {
+		if filterType == ChannelDelayed {
+			continue
+		}
+		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(filterType, ""))
+	}
+	for _, ch := range chList {
+		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(ChannelDelayed, ch))
+
+	}
+	keyList := make(RecentKeyList, 0, len(prefixList))
+	for _, prefix := range prefixList {
+		db.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket(bucketDelayedMsg)
+			c := b.Cursor()
+			for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+				_, _, _, _, err := decodeDelayedMsgDBKey(k)
+				if err != nil {
+					continue
+				}
+				keyList = append(keyList, k)
+				break
+			}
+			return nil
+		})
+	}
+	return keyList
 }
