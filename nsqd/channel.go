@@ -739,7 +739,7 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		c.option.MaxReqTimeout {
 		return msg, true
 	}
-	if timeout > 10*threshold {
+	if timeout > threshold {
 		return msg, true
 	}
 
@@ -749,25 +749,19 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 	ts := time.Now().UnixNano() - c.DepthTimestamp()
 	isBlocking := atomic.LoadInt32(&c.waitingConfirm) >= int32(c.option.MaxConfirmWin)
 	if isBlocking {
-		if c.Depth() > 100 && ts > 20*threshold.Nanoseconds() {
-			return msg, true
-		} else {
-			if msg.Attempts > MAX_MEM_REQ_TIMES && ts > 10*threshold.Nanoseconds() {
-				return msg, true
-			}
-			if timeout > threshold && ts > 2*threshold.Nanoseconds() {
-				return msg, true
-			}
-			if ts < 5*threshold.Nanoseconds() {
-				return nil, false
-			}
-			if timeout > 2*threshold {
-				return msg, true
-			}
+		if msg.Timestamp > c.DepthTimestamp()+threshold.Nanoseconds() {
 			return nil, false
 		}
+
+		if msg.Attempts > MAX_MEM_REQ_TIMES && ts > threshold.Nanoseconds() {
+			return msg, true
+		}
+		if ts > 20*threshold.Nanoseconds() {
+			return msg, true
+		}
+		return nil, false
 	} else {
-		if msg.Timestamp > c.DepthTimestamp()+time.Second.Nanoseconds() {
+		if msg.Timestamp > c.DepthTimestamp()+threshold.Nanoseconds()/10 {
 			return nil, false
 		}
 
@@ -775,9 +769,6 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 			return nil, false
 		}
 		if ts < 20*threshold.Nanoseconds() {
-			return nil, false
-		}
-		if timeout < 10*threshold {
 			return nil, false
 		}
 		if c.Depth() < 100 {
@@ -831,11 +822,14 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 			msg.GetClientID(), clientID)
 	}
 	newTimeout := time.Now().Add(timeout)
-	if newTimeout.Sub(msg.deliveryTS) >=
-		c.option.MaxReqTimeout {
-		// we would have gone over, set to the max
-		nsqLog.Logf("requeue message: %v exceed max requeue timeout: %v, %v", id, msg.deliveryTS, newTimeout)
-		newTimeout = msg.deliveryTS.Add(c.option.MaxReqTimeout)
+	if (newTimeout.Sub(msg.deliveryTS) >
+		c.option.ReqToEndThreshold) ||
+		(newTimeout.Sub(msg.deliveryTS) >=
+			c.option.MaxReqTimeout) {
+		nsqLog.Logf("too long timeout %v, %v, %v, should req message: %v to delayed queue",
+			newTimeout, msg.deliveryTS, timeout, id)
+		return fmt.Errorf("this message %v timeout %v, %v exceed threshold should be requeue to delayed queue",
+			id, newTimeout, msg.deliveryTS)
 	}
 
 	atomic.AddInt64(&c.deferredCount, 1)
@@ -1482,7 +1476,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 							continue
 						}
 						threshold := time.Minute
-						if c.option.ReqToEndThreshold >= time.Second {
+						if c.option.ReqToEndThreshold >= time.Millisecond {
 							threshold = c.option.ReqToEndThreshold
 						}
 						// if the blocking message still need waiting too long,

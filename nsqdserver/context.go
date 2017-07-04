@@ -374,7 +374,12 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	newMsg.TraceID = oldMsg.TraceID
 	newMsg.Attempts = oldMsg.Attempts
 	newMsg.DelayedType = nsqd.ChannelDelayed
-	newMsg.DelayedTs = time.Now().Add(timeoutDuration).UnixNano()
+	if timeoutDuration > c.nsqd.GetOpts().MaxReqTimeout {
+		timeoutDuration = c.nsqd.GetOpts().MaxReqTimeout
+	}
+	newTimeout := time.Now().Add(timeoutDuration)
+	newMsg.DelayedTs = newTimeout.UnixNano()
+
 	newMsg.DelayedOrigID = oldMsg.ID
 	newMsg.DelayedChannel = ch.GetName()
 	_, _, _, _, putErr := c.PutMessageObj(topic, newMsg)
