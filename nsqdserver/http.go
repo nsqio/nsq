@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absolute8511/nsq/consistence"
@@ -74,6 +75,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/setorder", http_api.Decorate(s.doSetChannelOrder, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", "/delayqueue/enable", http_api.Decorate(s.doEnableDelayedQueue, log, http_api.V1))
 
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
 
@@ -1062,4 +1064,18 @@ func getOptByCfgName(opts interface{}, name string) (interface{}, bool) {
 		return val.FieldByName(field.Name).Interface(), true
 	}
 	return nil, false
+}
+
+func (s *httpServer) doEnableDelayedQueue(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	enableStr := reqParams.Get("enable")
+	if enableStr == "true" {
+		atomic.StoreInt32(&nsqd.EnableDelayedQueue, 1)
+		s.ctx.persistMetadata()
+	}
+	return nil, nil
 }

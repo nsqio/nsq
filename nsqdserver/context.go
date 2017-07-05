@@ -143,6 +143,9 @@ func (c *context) PutMessageObj(topic *nsqd.Topic,
 		return topic.PutMessage(msg)
 	}
 	if msg.DelayedType >= nsqd.MinDelayedType {
+		if atomic.LoadInt32(&nsqd.EnableDelayedQueue) != int32(1) {
+			return 0, 0, 0, nil, errors.New("delayed queue not enabled")
+		}
 		return c.nsqdCoord.PutDelayedMessageToCluster(topic, msg)
 	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
@@ -359,7 +362,7 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 		nsqd.NsqLogger().LogWarningf("req channel %v topic not found: %v", ch.GetName(), err)
 		return err
 	}
-	if topic.GetDynamicInfo().OrderedMulti {
+	if topic.IsOrdered() {
 		return errors.New("ordered topic can not requeue to end")
 	}
 	if ch.Exiting() {

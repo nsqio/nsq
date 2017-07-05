@@ -41,6 +41,8 @@ var (
 
 var DEFAULT_RETENTION_DAYS = 7
 
+var EnableDelayedQueue = int32(0)
+
 const (
 	FLUSH_DISTANCE = 4
 )
@@ -157,6 +159,9 @@ func (n *NSQD) SetPubLoop(loop func(t *Topic)) {
 }
 
 func (n *NSQD) GetOpts() *Options {
+	if n.opts.Load() == nil {
+		return nil
+	}
 	return n.opts.Load().(*Options)
 }
 
@@ -256,6 +261,13 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 		return
 	}
 
+	enabled, err := js.Get("enabled_delayedqueue").Int()
+	if err != nil {
+	} else {
+		atomic.StoreInt32(&EnableDelayedQueue, int32(enabled))
+	}
+	nsqLog.Logf("delayed queue enable state %s", enabled)
+
 	topics, err := js.Get("topics").Array()
 	if err != nil {
 		nsqLog.LogErrorf("failed to parse metadata - %s", err)
@@ -349,6 +361,7 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 		}
 	}
 	js["version"] = version.Binary
+	js["enabled_delayedqueue"] = atomic.LoadInt32(&EnableDelayedQueue)
 	js["topics"] = topics
 
 	data, err := json.Marshal(&js)
