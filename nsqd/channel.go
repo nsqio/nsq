@@ -1617,3 +1617,12 @@ exit:
 
 	return dirty
 }
+
+func (c *Channel) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, map[string]uint64) {
+	dq := c.GetDelayedQueue()
+	if dq == nil {
+		return nil, nil, nil
+	}
+
+	return dq.GetOldestConsumedState([]string{c.GetName()})
+}

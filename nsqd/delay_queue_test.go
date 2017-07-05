@@ -66,7 +66,8 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10
-	var middleTs int64
+	var middle *Message
+	middleIndex := 0
 	for i := 0; i < cnt; i++ {
 		msg := NewMessage(0, []byte("body"))
 		msg.DelayedType = ChannelDelayed
@@ -75,6 +76,10 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, _, err := dq.PutDelayMessage(msg)
 		test.Nil(t, err)
+		if i == cnt/2 {
+			middle = msg
+			middleIndex = i
+		}
 
 		msg = NewMessage(0, []byte("body"))
 		msg.DelayedType = ChannelDelayed
@@ -83,16 +88,20 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, _, err = dq.PutDelayMessage(msg)
 		time.Sleep(time.Millisecond * 100)
-		if i == cnt/2 {
-			middleTs = msg.DelayedTs
-		}
 	}
 
 	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
 	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
-	dq.EmptyDelayedUntil(ChannelDelayed, middleTs, "test")
+	dq.emptyDelayedUntil(ChannelDelayed, middle.DelayedTs, middle.ID, "test")
+	// test empty until should keep the until cursor
+	recent, _, _ := dq.GetOldestConsumedState([]string{"test"})
+	test.Equal(t, 1, len(recent))
+	_, ts, id, ch, err := decodeDelayedMsgDBKey(recent[0])
+	test.Equal(t, middle.DelayedChannel, ch)
+	test.Equal(t, middle.ID, id)
+	test.Equal(t, middle.DelayedTs, ts)
 
-	test.Equal(t, cnt/2-1, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	test.Equal(t, cnt-middleIndex, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
 	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
 	dq.EmptyDelayedChannel("test")
 	test.Equal(t, 0, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))

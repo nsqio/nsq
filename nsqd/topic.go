@@ -1274,3 +1274,19 @@ func (t *Topic) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, m
 	t.channelLock.RUnlock()
 	return dq.GetOldestConsumedState(chList)
 }
+
+func (t *Topic) UpdateDelayedQueueConsumedState(keyList RecentKeyList, cntList map[int]uint64, channelCntList map[string]uint64) error {
+	if t.GetDynamicInfo().OrderedMulti {
+		nsqLog.Infof("should never delayed queue in ordered topic: %v", t.GetFullName())
+		return nil
+	}
+	t.Lock()
+	dq := t.delayedQueue
+	t.Unlock()
+	if dq == nil {
+		nsqLog.Infof("no delayed queue while update delayed state on topic: %v", t.GetFullName())
+		return nil
+	}
+
+	return dq.UpdateConsumedState(keyList, cntList, channelCntList)
+}

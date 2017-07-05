@@ -353,26 +353,28 @@ func (q *DelayQueue) flush() error {
 	return err
 }
 
-func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
+func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch string) error {
 	db := q.kvStore
-	var prefix []byte
-	prefix = getDelayedMsgDBPrefixKey(dt, ch)
-	db.Update(func(tx *bolt.Tx) error {
+	prefix := getDelayedMsgDBPrefixKey(dt, ch)
+	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			_, delayedTs, id, delayedCh, err := decodeDelayedMsgDBKey(k)
+			_, delayedTs, delayedID, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
 				continue
 			}
 			if delayedTs > peekTs {
 				break
 			}
+			if delayedTs == peekTs && delayedID >= id {
+				break
+			}
 			if delayedCh != ch {
 				continue
 			}
 
-			err = deleteBucketKey(dt, ch, delayedTs, id, tx)
+			err = deleteBucketKey(dt, ch, delayedTs, delayedID, tx)
 			if err != nil {
 				nsqLog.Infof("failed to delete : %v, %v", k, err)
 			}
@@ -381,29 +383,43 @@ func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
 	})
 }
 
-func (q *DelayQueue) EmptyDelayedChannel(ch string) {
+func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 	db := q.kvStore
-	var prefix []byte
-	prefix = getDelayedMsgDBPrefixKey(ChannelDelayed, ch)
-	db.Update(func(tx *bolt.Tx) error {
+	prefix := getDelayedMsgDBPrefixKey(dt, ch)
+	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			_, delayedTs, id, delayedCh, err := decodeDelayedMsgDBKey(k)
+			delayedType, delayedTs, delayedID, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
 				continue
 			}
-			if delayedCh != ch {
+			if delayedType != uint16(dt) {
 				continue
 			}
-			err = deleteBucketKey(ChannelDelayed, ch, delayedTs, id, tx)
+			if ch != "" && delayedCh != ch {
+				continue
+			}
+			err = deleteBucketKey(int(delayedType), delayedCh, delayedTs, delayedID, tx)
 			if err != nil {
 				nsqLog.Infof("failed to delete : %v, %v", k, err)
 			}
-
 		}
 		return nil
 	})
+}
+
+func (q *DelayQueue) EmptyDelayedType(dt int) error {
+	return q.emptyAllDelayedType(dt, "")
+}
+
+func (q *DelayQueue) EmptyDelayedChannel(ch string) error {
+	if ch == "" {
+		// to avoid empty all channels by accident
+		// we do not allow empty channel with empty channel name
+		return errors.New("empty delayed channel name should be given")
+	}
+	return q.emptyAllDelayedType(ChannelDelayed, ch)
 }
 
 func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64, filterType int,
@@ -555,4 +571,25 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map
 		})
 	}
 	return keyList, cntList, channelCntList
+}
+
+func (q *DelayQueue) UpdateConsumedState(keyList RecentKeyList, cntList map[int]uint64, channelCntList map[string]uint64) error {
+	for _, k := range keyList {
+		dt, dts, id, delayedCh, err := decodeDelayedMsgDBKey(k)
+		if err != nil {
+			continue
+		}
+		q.emptyDelayedUntil(int(dt), dts, id, delayedCh)
+	}
+	for dt, cnt := range cntList {
+		if cnt == 0 && dt != ChannelDelayed {
+			q.EmptyDelayedType(dt)
+		}
+	}
+	for ch, cnt := range channelCntList {
+		if cnt == 0 {
+			q.EmptyDelayedChannel(ch)
+		}
+	}
+	return nil
 }
