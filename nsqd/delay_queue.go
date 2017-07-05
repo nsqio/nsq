@@ -99,7 +99,7 @@ func deleteBucketKey(dt int, ch string, ts int64, id MessageID, tx *bolt.Tx) err
 	}
 	if oldV != nil {
 		b = tx.Bucket(bucketMeta)
-		cntKey := []byte("counter_" + strconv.Itoa(dt) + "_" + ch)
+		cntKey := append([]byte("counter_"), getDelayedMsgDBPrefixKey(dt, ch)...)
 		cnt := uint64(0)
 		cntBytes := b.Get(cntKey)
 		if cntBytes != nil && len(cntBytes) == 8 {
@@ -274,7 +274,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 		}
 		b = tx.Bucket(bucketMeta)
 		if !exists {
-			cntKey := []byte("counter_" + strconv.Itoa(int(m.DelayedType)) + "_" + m.DelayedChannel)
+			cntKey := append([]byte("counter_"), getDelayedMsgDBPrefixKey(int(m.DelayedType), m.DelayedChannel)...)
 			cnt := uint64(0)
 			cntBytes := b.Get(cntKey)
 			if cntBytes != nil && len(cntBytes) == 8 {
@@ -361,12 +361,15 @@ func (q *DelayQueue) EmptyDelayedUntil(dt int, peekTs int64, ch string) {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			_, delayedTs, id, _, err := decodeDelayedMsgDBKey(k)
+			_, delayedTs, id, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
 				continue
 			}
 			if delayedTs > peekTs {
 				break
+			}
+			if delayedCh != ch {
+				continue
 			}
 
 			err = deleteBucketKey(dt, ch, delayedTs, id, tx)
@@ -386,8 +389,11 @@ func (q *DelayQueue) EmptyDelayedChannel(ch string) {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			_, delayedTs, id, _, err := decodeDelayedMsgDBKey(k)
+			_, delayedTs, id, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
+				continue
+			}
+			if delayedCh != ch {
 				continue
 			}
 			err = deleteBucketKey(ChannelDelayed, ch, delayedTs, id, tx)
@@ -412,12 +418,16 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-			_, delayedTs, _, _, err := decodeDelayedMsgDBKey(k)
+			_, delayedTs, _, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
 				continue
 			}
 			if delayedTs > peekTs || idx >= len(results) {
 				break
+			}
+
+			if delayedCh != filterChannel {
+				continue
 			}
 
 			m, err := DecodeDelayedMessage(v)
@@ -477,7 +487,7 @@ func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) uint64 {
 	cnt := uint64(0)
 	q.kvStore.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketMeta)
-		cntKey := []byte("counter_" + strconv.Itoa(dt) + "_" + channel)
+		cntKey := []byte("counter_" + string(getDelayedMsgDBPrefixKey(dt, channel)))
 		cntBytes := b.Get(cntKey)
 		if cntBytes != nil {
 			cnt = binary.BigEndian.Uint64(cntBytes)
@@ -503,27 +513,39 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	return err
 }
 
-func (q *DelayQueue) GetOldestConsumedState(chList []string) RecentKeyList {
+func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map[int]uint64, map[string]uint64) {
 	db := q.kvStore
 	prefixList := make([][]byte, 0, len(chList)+2)
+	cntList := make(map[int]uint64)
+	channelCntList := make(map[string]uint64)
 	for filterType := MinDelayedType; filterType < MaxDelayedType; filterType++ {
 		if filterType == ChannelDelayed {
 			continue
 		}
 		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(filterType, ""))
+		cntList[filterType] = q.GetCurrentDelayedCnt(filterType, "")
 	}
+	chIndex := len(prefixList)
 	for _, ch := range chList {
 		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(ChannelDelayed, ch))
-
+		channelCntList[ch] = q.GetCurrentDelayedCnt(ChannelDelayed, ch)
 	}
 	keyList := make(RecentKeyList, 0, len(prefixList))
-	for _, prefix := range prefixList {
+	for i, prefix := range prefixList {
+		var origCh string
+		if i >= chIndex {
+			origCh = chList[i-chIndex]
+		}
 		db.View(func(tx *bolt.Tx) error {
 			b := tx.Bucket(bucketDelayedMsg)
 			c := b.Cursor()
 			for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-				_, _, _, _, err := decodeDelayedMsgDBKey(k)
+				_, _, _, delayedCh, err := decodeDelayedMsgDBKey(k)
 				if err != nil {
+					continue
+				}
+				// prefix seek may across to other channel with the same prefix
+				if delayedCh != origCh {
 					continue
 				}
 				keyList = append(keyList, k)
@@ -532,5 +554,5 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string) RecentKeyList {
 			return nil
 		})
 	}
-	return keyList
+	return keyList, cntList, channelCntList
 }

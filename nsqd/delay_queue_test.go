@@ -94,6 +94,9 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 
 	test.Equal(t, cnt/2-1, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
 	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	dq.EmptyDelayedChannel("test")
+	test.Equal(t, 0, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
 }
 
 func TestDelayQueuePeekRecent(t *testing.T) {
@@ -198,6 +201,23 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			dq.ConfirmedMessage(&m)
 			newCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test"))
 			test.Equal(t, oldCnt-1, newCnt)
+			cursorList, cntList, channelCntList := dq.GetOldestConsumedState([]string{"test"})
+			for _, v := range cntList {
+				test.Equal(t, uint64(0), v)
+			}
+			test.Equal(t, 1, len(channelCntList))
+			test.Equal(t, uint64(newCnt), channelCntList["test"])
+			for _, c := range cursorList {
+				dt, ts, id, ch, err := decodeDelayedMsgDBKey(c)
+				test.Nil(t, err)
+				if dt == ChannelDelayed {
+					test.Equal(t, "test", ch)
+					test.Equal(t, true, ts > m.DelayedTs)
+					t.Logf("confirmed: %v, oldest ts: %v\n", m.DelayedTs, ts)
+					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*110))
+					test.Equal(t, true, id > m.ID)
+				}
+			}
 		}
 
 		n, err = dq.PeekRecentChannelTimeout(ret, "test2")
@@ -210,6 +230,23 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			dq.ConfirmedMessage(&m)
 			newCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2"))
 			test.Equal(t, oldCnt-1, newCnt)
+
+			cursorList, cntList, channelCntList := dq.GetOldestConsumedState([]string{"test2"})
+			for _, v := range cntList {
+				test.Equal(t, uint64(0), v)
+			}
+			test.Equal(t, 1, len(channelCntList))
+			test.Equal(t, uint64(newCnt), channelCntList["test2"])
+			for _, c := range cursorList {
+				dt, ts, id, ch, err := decodeDelayedMsgDBKey(c)
+				test.Nil(t, err)
+				if dt == ChannelDelayed {
+					test.Equal(t, "test2", ch)
+					test.Equal(t, true, ts > m.DelayedTs)
+					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*110))
+					test.Equal(t, true, id > m.ID)
+				}
+			}
 		}
 
 		if dq.GetCurrentDelayedCnt(ChannelDelayed, "test2") <= 0 {

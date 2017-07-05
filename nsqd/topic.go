@@ -1256,15 +1256,15 @@ func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueSt
 	return nil
 }
 
-func (t *Topic) GetDelayedQueueConsumedState() RecentKeyList {
+func (t *Topic) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, map[string]uint64) {
 	if t.GetDynamicInfo().OrderedMulti {
-		return nil
+		return nil, nil, nil
 	}
 	t.Lock()
 	dq := t.delayedQueue
 	t.Unlock()
 	if dq == nil {
-		return nil
+		return nil, nil, nil
 	}
 	chList := make([]string, 0)
 	t.channelLock.RLock()
