@@ -946,7 +946,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 		changed = tmpChanged
 		syncOffset.VOffset = int64(offset)
 		syncOffset.VCnt = cnt
-		if msg != nil && msg.DelayedType == 1 && len(msg.DelayedChannel) > 0 {
+		if msg != nil && msg.DelayedType == nsqd.ChannelDelayed && len(msg.DelayedChannel) > 0 {
 			delayedMsg = msg
 		}
 		return nil
@@ -976,9 +976,9 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 			rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 		} else {
 			if delayedMsg != nil {
-				// TODO:
-				//rpcErr = c.ConfirmDelayedMsg(&tcData.topicLeaderSession, &tcData.topicInfo,
-				//	channel.GetName(), delayedMsg)
+				cursorList, cntList, channelCntList := channel.GetDelayedQueueConsumedState()
+				rpcErr = c.UpdateDelayedQueueState(&tcData.topicLeaderSession, &tcData.topicInfo,
+					channel.GetName(), cursorList, cntList, channelCntList)
 			} else {
 				c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 			}
@@ -1203,6 +1203,30 @@ func (self *NsqdCoordinator) deleteChannelOnSlave(tc *coordData, channelName str
 	localErr = topic.DeleteExistingChannel(channelName)
 	if localErr != nil {
 		coordLog.Logf("delete channel %v on slave failed: %v ", channelName, localErr)
+	}
+	return nil
+}
+
+func (self *NsqdCoordinator) updateDelayedQueueStateOnSlave(tc *coordData, channelName string,
+	keyList [][]byte, cntList map[int]uint64, channelCntList map[string]uint64) *CoordErr {
+	topicName := tc.topicInfo.Name
+	partition := tc.topicInfo.Partition
+
+	if !tc.IsMineISR(self.myNode.GetID()) {
+		return ErrTopicWriteOnNonISR
+	}
+
+	coordLog.LogDebugf("got update delayed state (%v) on slave: %v, %v ", channelName, keyList, channelCntList)
+	topic, localErr := self.localNsqd.GetExistingTopic(topicName, partition)
+	if localErr != nil {
+		coordLog.Warningf("slave missing topic : %v", topicName)
+		return nil
+	}
+
+	localErr = topic.UpdateDelayedQueueConsumedState(keyList, cntList, channelCntList)
+	if localErr != nil {
+		coordLog.Logf("update delayed state (%v) on slave failed: %v ", channelName, localErr)
+		return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 	}
 	return nil
 }

@@ -659,10 +659,12 @@ type RpcTestRsp struct {
 	RetErr  *CoordErr
 }
 
-type RpcConfirmDelayedMsg struct {
-	DelayedType int32
-	DelayedTs   int64
-	DelayedID   int64
+type RpcConfirmedDelayedCursor struct {
+	RpcTopicData
+	UpdatedChannel string
+	KeyList        [][]byte
+	ChannelCntList map[string]uint64
+	OtherCntList   map[int]uint64
 }
 
 func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
@@ -717,6 +719,24 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 	}
 	// update local channel offset
 	err = self.nsqdCoord.updateChannelOffsetOnSlave(tc.GetData(), info.Channel, info.ChannelOffset)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
+func (self *NsqdCoordRpcServer) UpdateDelayedQueueState(info *RpcConfirmedDelayedCursor) *CoordErr {
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// update local channel offset
+	err = self.nsqdCoord.updateDelayedQueueStateOnSlave(tc.GetData(), info.UpdatedChannel, info.KeyList,
+		info.OtherCntList, info.ChannelCntList)
 	if err != nil {
 		ret = *err
 		return &ret
