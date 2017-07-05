@@ -39,7 +39,7 @@ type TopicStats struct {
 
 func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 	statsdName := t.GetTopicName()
-	if t.GetDynamicInfo().OrderedMulti {
+	if t.IsOrdered() {
 		statsdName += "." + strconv.Itoa(t.GetTopicPart())
 	}
 	return TopicStats{
@@ -55,7 +55,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Clients:              t.detailStats.GetPubClientStats(),
 		MsgSizeStats:         t.detailStats.GetMsgSizeStats(),
 		MsgWriteLatencyStats: t.detailStats.GetMsgWriteLatencyStats(),
-		IsMultiOrdered:       t.GetDynamicInfo().OrderedMulti,
+		IsMultiOrdered:       t.IsOrdered(),
 		StatsdName:           statsdName,
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
@@ -78,7 +78,7 @@ type ChannelStats struct {
 	TimeoutCount  uint64        `json:"timeout_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
-	Skipped	      bool	    `json:"skipped"`
+	Skipped       bool          `json:"skipped"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
@@ -103,7 +103,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
 		Clients:       clients,
 		Paused:        c.IsPaused(),
-		Skipped:	c.IsSkipped(),
+		Skipped:       c.IsSkipped(),
 
 		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}

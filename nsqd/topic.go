@@ -96,6 +96,7 @@ type Topic struct {
 	bp              sync.Pool
 	writeDisabled   int32
 	dynamicConf     *TopicDynamicConf
+	isOrdered       int32
 	magicCode       int64
 	committedOffset atomic.Value
 	detailStats     *DetailStatsInfo
@@ -106,7 +107,7 @@ type Topic struct {
 	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
 
-	delayedQueue *DelayQueue
+	delayedQueue atomic.Value
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -192,20 +193,32 @@ func NewTopic(topicName string, part int, opt *Options,
 	return t
 }
 
-func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue, error) {
-	var err error
-	if t.dynamicConf.OrderedMulti {
-		return nil, errors.New("ordered topic can not has delayed queue")
+func (t *Topic) GetDelayedQueue() *DelayQueue {
+	if t.IsOrdered() {
+		return nil
 	}
-	if t.delayedQueue == nil {
-		t.delayedQueue, err = NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
+
+	if t.delayedQueue.Load() == nil {
+		return nil
+	}
+	return t.delayedQueue.Load().(*DelayQueue)
+}
+
+func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue, error) {
+	if t.delayedQueue.Load() == nil {
+		delayedQueue, err := NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
 		if err == nil {
+			t.delayedQueue.Store(delayedQueue)
+			t.channelLock.RLock()
 			for _, ch := range t.channelMap {
-				ch.SetDelayedQueue(t.delayedQueue)
+				ch.SetDelayedQueue(delayedQueue)
 			}
+			t.channelLock.RUnlock()
+		} else {
+			return nil, err
 		}
 	}
-	return t.delayedQueue, err
+	return t.delayedQueue.Load().(*DelayQueue), nil
 }
 
 func (t *Topic) GetWaitChan() PubInfoChan {
@@ -321,8 +334,8 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	t.removeHistoryStat()
 	t.RemoveChannelMeta()
 	t.removeMagicCode()
-	if t.delayedQueue != nil {
-		t.delayedQueue.Delete()
+	if t.GetDelayedQueue() != nil {
+		t.GetDelayedQueue().Delete()
 	}
 	return renamePath, err
 }
@@ -350,11 +363,9 @@ func (t *Topic) SetTrace(enable bool) {
 	} else {
 		atomic.StoreInt32(&t.EnableTrace, 0)
 	}
-	t.Lock()
-	if t.delayedQueue != nil {
-		t.delayedQueue.SetTrace(enable)
+	if t.GetDelayedQueue() != nil {
+		t.GetDelayedQueue().SetTrace(enable)
 	}
-	t.Unlock()
 }
 
 func (t *Topic) getChannelMetaFileName() string {
@@ -530,24 +541,15 @@ func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
-func (t *Topic) SetMsgGenerator(idGen MsgIDGenerator) {
-	t.Lock()
-	t.msgIDCursor = idGen
-	t.Unlock()
-}
-
-func (t *Topic) GetMsgGenerator() MsgIDGenerator {
-	t.Lock()
-	cursor := t.msgIDCursor
-	t.Unlock()
-	return cursor
-}
-
 func (t *Topic) GetDynamicInfo() TopicDynamicConf {
 	t.Lock()
 	info := *t.dynamicConf
 	t.Unlock()
 	return info
+}
+
+func (t *Topic) IsOrdered() bool {
+	return atomic.LoadInt32(&t.isOrdered) == 1
 }
 
 func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
@@ -559,6 +561,14 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
 	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
 	t.dynamicConf.OrderedMulti = dynamicConf.OrderedMulti
+	if dynamicConf.OrderedMulti {
+		atomic.StoreInt32(&t.isOrdered, 1)
+	} else {
+		atomic.StoreInt32(&t.isOrdered, 0)
+	}
+	if !dynamicConf.OrderedMulti && idGen != nil {
+		t.GetOrCreateDelayedQueueNoLock(idGen)
+	}
 	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()
 }
@@ -637,6 +647,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			t.notifyCall, t.reqToEndCB)
 
 		channel.UpdateQueueEnd(readEnd, false)
+		channel.SetDelayedQueue(t.GetDelayedQueue())
 		if t.IsWriteDisabled() {
 			channel.DisableConsume(true)
 		}
@@ -968,8 +979,8 @@ func (t *Topic) exit(deleted bool) error {
 		}
 		t.channelLock.Unlock()
 
-		if t.delayedQueue != nil {
-			t.delayedQueue.Delete()
+		if t.GetDelayedQueue() != nil {
+			t.GetDelayedQueue().Delete()
 		}
 		// empty the queue (deletes the backend files, too)
 		t.Empty()
@@ -995,8 +1006,8 @@ func (t *Topic) exit(deleted bool) error {
 	}
 	t.channelLock.RUnlock()
 
-	if t.delayedQueue != nil {
-		t.delayedQueue.Close()
+	if t.GetDelayedQueue() != nil {
+		t.GetDelayedQueue().Close()
 	}
 	return t.backend.Close()
 }
@@ -1076,8 +1087,8 @@ func (t *Topic) ForceFlush() {
 }
 
 func (t *Topic) flush(notifyChan bool) error {
-	if t.delayedQueue != nil {
-		t.delayedQueue.ForceFlush()
+	if t.GetDelayedQueue() != nil {
+		t.GetDelayedQueue().ForceFlush()
 	}
 
 	ok := atomic.CompareAndSwapInt32(&t.needFlush, 1, 0)
@@ -1257,12 +1268,10 @@ func (t *Topic) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueSt
 }
 
 func (t *Topic) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, map[string]uint64) {
-	if t.GetDynamicInfo().OrderedMulti {
+	if t.IsOrdered() {
 		return nil, nil, nil
 	}
-	t.Lock()
-	dq := t.delayedQueue
-	t.Unlock()
+	dq := t.GetDelayedQueue()
 	if dq == nil {
 		return nil, nil, nil
 	}
@@ -1276,13 +1285,11 @@ func (t *Topic) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, m
 }
 
 func (t *Topic) UpdateDelayedQueueConsumedState(keyList RecentKeyList, cntList map[int]uint64, channelCntList map[string]uint64) error {
-	if t.GetDynamicInfo().OrderedMulti {
+	if t.IsOrdered() {
 		nsqLog.Infof("should never delayed queue in ordered topic: %v", t.GetFullName())
 		return nil
 	}
-	t.Lock()
-	dq := t.delayedQueue
-	t.Unlock()
+	dq := t.GetDelayedQueue()
 	if dq == nil {
 		nsqLog.Infof("no delayed queue while update delayed state on topic: %v", t.GetFullName())
 		return nil

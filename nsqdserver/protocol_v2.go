@@ -900,7 +900,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v, err:%v", topicName, err.Error())
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
-	if topic.GetDynamicInfo().OrderedMulti && !ordered {
+	if topic.IsOrdered() && !ordered {
 		return nil, protocol.NewFatalClientErr(nil, "E_SUB_ORDER_IS_MUST", "this topic is configured only allow ordered sub")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
@@ -1089,7 +1089,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	topic, _ := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
 	oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
 		msgID, timeoutDuration, true)
-	if topic != nil && topic.GetDynamicInfo().OrderedMulti {
+	if topic != nil && topic.IsOrdered() {
 		toEnd = false
 		// for ordered topic, disable defer since it may block the consume
 		if timeoutDuration > 0 {
@@ -1223,7 +1223,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
-	if origPart == -1 && topic.GetDynamicInfo().OrderedMulti {
+	if origPart == -1 && topic.IsOrdered() {
 		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 			fmt.Sprintf("topic partition is not valid for multi partition: %v", origPart))
 	}
