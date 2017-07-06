@@ -47,7 +47,7 @@ type Client struct {
 }
 
 func NewClient(tlsConfig *tls.Config) *Client {
-	transport := NewDeadlineTransport(2 * time.Second)
+	transport := NewDeadlineTransport(5 * time.Second)
 	transport.TLSClientConfig = tlsConfig
 	return &Client{
 		c: &http.Client{
