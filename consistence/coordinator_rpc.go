@@ -364,7 +364,8 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 
 		var localErr error
 		tpCoord, localErr = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
-			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition), rpcTopicReq.SyncEvery)
+			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition),
+			rpcTopicReq.SyncEvery, rpcTopicReq.OrderedMulti)
 		if localErr != nil || tpCoord == nil {
 			self.nsqdCoord.coordMutex.Unlock()
 			ret = *ErrLocalInitTopicCoordFailed
@@ -853,6 +854,19 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req *RpcCommitLogReq) (int64,
 		return ret, err.ToErrorType()
 	}
 	ret = tc.logMgr.GetLastCommitLogID()
+	return ret, nil
+}
+
+func (self *NsqdCoordRpcServer) GetLastDelayedQueueCommitLogID(req *RpcCommitLogReq) (int64, error) {
+	var ret int64
+	tc, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
+	if err != nil {
+		return ret, err.ToErrorType()
+	}
+	if tc.delayedLogMgr == nil {
+		return 0, nil
+	}
+	ret = tc.delayedLogMgr.GetLastCommitLogID()
 	return ret, nil
 }
 

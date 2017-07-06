@@ -115,8 +115,8 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	doLocalCommit := func() error {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			coordLog.Errorf("topic : %v, Generator %v failed write commit log : %v, logmgr: %v, %v",
-				topic.GetFullName(), topic.GetMsgGenerator(), localErr, logMgr.pLogID, logMgr.nLogID)
+			coordLog.Errorf("topic : %v failed write commit log : %v, logmgr: %v, %v",
+				topic.GetFullName(), localErr, logMgr.pLogID, logMgr.nLogID)
 		}
 		if !putDelayed {
 			topic.Lock()
@@ -243,8 +243,8 @@ func (self *NsqdCoordinator) PutMessagesToCluster(topic *nsqd.Topic,
 	doLocalCommit := func() error {
 		localErr := logMgr.AppendCommitLog(&commitLog, false)
 		if localErr != nil {
-			coordLog.Errorf("topic : %v, Generator %v failed write commit log : %v, logMgr: %v, %v",
-				topic.GetFullName(), topic.GetMsgGenerator(), localErr, logMgr.pLogID, logMgr.nLogID)
+			coordLog.Errorf("topic : %v failed write commit log : %v, logMgr: %v, %v",
+				topic.GetFullName(), localErr, logMgr.pLogID, logMgr.nLogID)
 		}
 		topic.Lock()
 		topic.UpdateCommittedOffset(queueEnd)
@@ -896,7 +896,7 @@ func (self *NsqdCoordinator) UpdateChannelStateToCluster(channel *nsqd.Channel, 
 	}
 	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
 		var rpcErr *CoordErr
-		rpcErr = c.NotifyUpdateChannelState(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), paused, skipped)
+		rpcErr = c.UpdateChannelState(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), paused, skipped)
 		if rpcErr != nil {
 			coordLog.Infof("sync channel(%v) state pause:%v, skip:%v to replica %v failed: %v, topic %v,%v", channel.GetName(), paused, skipped, nodeID, rpcErr, topicName, partition)
 		}

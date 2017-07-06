@@ -563,7 +563,8 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			shouldLoad := FindSlice(topicInfo.ISR, self.myNode.GetID()) != -1 || FindSlice(topicInfo.CatchupList, self.myNode.GetID()) != -1
 			if shouldLoad {
 				basepath := GetTopicPartitionBasePath(self.dataRootPath, topicInfo.Name, topicInfo.Partition)
-				tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath, topicInfo.SyncEvery)
+				tc, err := NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, basepath,
+					topicInfo.SyncEvery, topicInfo.OrderedMulti)
 				if err != nil {
 					coordLog.Infof("failed to get topic coordinator:%v-%v, err:%v", topicName, partition, err)
 					continue
@@ -723,6 +724,23 @@ func (self *NsqdCoordinator) checkLocalTopicForISR(tc *coordData) *CoordErr {
 		return err
 	}
 	coordLog.Infof("checking if ISR synced, logid leader: %v, myself:%v", leaderID, logid)
+	if leaderID > logid {
+		coordLog.Infof("this node fall behand, should catchup.")
+		return ErrLocalFallBehind
+	} else if logid > leaderID {
+		coordLog.Infof("this node has more data than leader, should rejoin.")
+		return ErrLocalForwardThanLeader
+	}
+	logDelayedMgr := tc.delayedLogMgr
+	if tc.topicInfo.OrderedMulti || logDelayedMgr == nil {
+		return nil
+	}
+	logid = logDelayedMgr.GetLastCommitLogID()
+	leaderID, err = c.GetLastDelayedQueueCommitLogID(&tc.topicInfo)
+	if err != nil {
+		return err
+	}
+	coordLog.Infof("checking if ISR delay queue synced, logid leader: %v, myself:%v", leaderID, logid)
 	if leaderID > logid {
 		coordLog.Infof("this node fall behand, should catchup.")
 		return ErrLocalFallBehind
@@ -1900,7 +1918,7 @@ func (self *NsqdCoordinator) removeTopicCoord(topic string, partition int, remov
 func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData, syncDelayedQueue bool) {
 	localTopic, _ := self.localNsqd.GetExistingTopic(tcData.topicInfo.Name, tcData.topicInfo.Partition)
 	if localTopic != nil {
-		if localTopic.GetDynamicInfo().OrderedMulti {
+		if localTopic.IsOrdered() {
 			// ordered topic update in sync mode, no need sync in background
 			return
 		}

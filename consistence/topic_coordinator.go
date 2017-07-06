@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"errors"
 	"os"
 	"path"
 	"sync"
@@ -55,7 +56,8 @@ type TopicCoordinator struct {
 	basePath       string
 }
 
-func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
+func NewTopicCoordinator(name string, partition int, basepath string,
+	syncEvery int, ordered bool) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{}
 	tc.coordData = &coordData{}
 	tc.coordData.consumeMgr = newChannelComsumeMgr()
@@ -83,23 +85,26 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 		coordLog.Errorf("topic(%v) failed to init log: %v ", name, err)
 		return nil, err
 	}
+
+	if !ordered {
+		dqPath := path.Join(tc.basePath, "delayed_queue")
+		os.MkdirAll(dqPath, 0755)
+		tc.delayedLogMgr, err = InitTopicCommitLogMgr(name, partition,
+			dqPath, buf)
+		if err != nil {
+			coordLog.Errorf("topic(%v) failed to init delayed queue log: %v ", name, err)
+			return nil, err
+		}
+	}
 	return tc, nil
 }
 
 func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error) {
-	var err error
-	var logMgr *TopicCommitLogMgr
 	self.dataMutex.Lock()
-	if self.delayedLogMgr == nil {
-		os.MkdirAll(path.Join(self.basePath, "delayed_queue"), 0755)
-		self.delayedLogMgr, err = InitTopicCommitLogMgr(self.topicInfo.Name, self.topicInfo.Partition,
-			path.Join(self.basePath, "delayed"), DEFAULT_COMMIT_BUF_SIZE)
-	}
-	logMgr = self.delayedLogMgr
+	logMgr := self.delayedLogMgr
 	self.dataMutex.Unlock()
-	if err != nil {
-		coordLog.Errorf("topic(%v) failed to init delayed queue log: %v ", self.topicInfo.GetTopicDesp(), err)
-		return nil, err
+	if logMgr == nil {
+		return nil, errors.New("delayed queue log mgr not init")
 	}
 	return logMgr, nil
 }
@@ -110,8 +115,14 @@ func (self *TopicCoordinator) DeleteNoWriteLock(removeData bool) {
 	self.dataMutex.Lock()
 	if removeData {
 		self.logMgr.Delete()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Delete()
+		}
 	} else {
 		self.logMgr.Close()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Close()
+		}
 	}
 	self.dataMutex.Unlock()
 }
@@ -123,8 +134,14 @@ func (self *TopicCoordinator) DeleteWithLock(removeData bool) {
 	self.dataMutex.Lock()
 	if removeData {
 		self.logMgr.Delete()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Delete()
+		}
 	} else {
 		self.logMgr.Close()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Close()
+		}
 	}
 	self.dataMutex.Unlock()
 	self.writeHold.Unlock()

@@ -299,11 +299,11 @@ func (self *NsqdRpcClient) DeleteChannel(leaderSession *TopicLeaderSession, info
 	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
-	retErr, err := self.CallFast("DeleteChannel", &updateInfo)
+	retErr, err := self.CallWithRetry("DeleteChannel", &updateInfo)
 	return convertRpcError(err, retErr)
 }
 
-func (self *NsqdRpcClient) NotifyUpdateChannelState(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, paused int, skipped int) *CoordErr {
+func (self *NsqdRpcClient) UpdateChannelState(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, paused int, skipped int) *CoordErr {
 	var channelState RpcChannelState
 	channelState.TopicName = info.Name
 	channelState.TopicPartition = info.Partition
@@ -315,8 +315,8 @@ func (self *NsqdRpcClient) NotifyUpdateChannelState(leaderSession *TopicLeaderSe
 	channelState.Paused = paused
 	channelState.Skipped = skipped
 
-	err := self.dc.Send("UpdateChannelState", &channelState)
-	return convertRpcError(err, nil)
+	retErr, err := self.CallWithRetry("UpdateChannelState", &channelState)
+	return convertRpcError(err, retErr)
 }
 
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
@@ -502,6 +502,18 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo)
 	req.TopicPartition = topicInfo.Partition
 	var retErr CoordErr
 	ret, err := self.CallWithRetry("GetLastCommitLogID", &req)
+	if err != nil || ret == nil {
+		return 0, convertRpcError(err, &retErr)
+	}
+	return ret.(int64), convertRpcError(err, &retErr)
+}
+
+func (self *NsqdRpcClient) GetLastDelayedQueueCommitLogID(topicInfo *TopicPartitionMetaInfo) (int64, *CoordErr) {
+	var req RpcCommitLogReq
+	req.TopicName = topicInfo.Name
+	req.TopicPartition = topicInfo.Partition
+	var retErr CoordErr
+	ret, err := self.CallWithRetry("GetLastDelayedQueueCommitLogID", &req)
 	if err != nil || ret == nil {
 		return 0, convertRpcError(err, &retErr)
 	}

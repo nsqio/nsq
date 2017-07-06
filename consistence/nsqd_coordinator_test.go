@@ -185,7 +185,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 	tpCoord, ok := coords[topicInfo.Partition]
 	if !ok {
 		path := GetTopicPartitionBasePath(nsqdCoord.dataRootPath, topicInfo.Name, topicInfo.Partition)
-		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0)
+		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0, topicInfo.OrderedMulti)
 		coords[topicInfo.Partition] = tpCoord
 	}
 	nsqdCoord.coordMutex.Unlock()
