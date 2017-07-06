@@ -1429,7 +1429,7 @@ func (c *Channel) GetChannelDebugStats() string {
 	debugStr += fmt.Sprintf("inflight %v messages : ", inFlightCount)
 	if nsqLog.Level() >= levellogger.LOG_DEBUG {
 		for _, msg := range c.inFlightMessages {
-			debugStr += fmt.Sprintf("%v(%v),", msg.ID, msg.offset)
+			debugStr += fmt.Sprintf("%v(%v, %v),", msg.ID, msg.offset, msg.DelayedType)
 		}
 	}
 	c.inFlightMutex.Unlock()
@@ -1481,7 +1481,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 						}
 						// if the blocking message still need waiting too long,
 						// we requeue to end or just timeout it immediately
-						if m.pri > time.Now().Add(threshold).UnixNano() {
+						if m.pri > time.Now().Add(threshold/2).UnixNano() {
 							blockingMsg = m
 						}
 						break

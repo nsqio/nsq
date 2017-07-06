@@ -339,6 +339,7 @@ func (n *NSQD) PersistMetadata(currentTopicMap map[string]map[int]*Topic) error 
 	// so that upon restart we can get back to the same state
 	fileName := fmt.Sprintf(path.Join(n.GetOpts().DataPath, "nsqd.%d.dat"), n.GetOpts().ID)
 	nsqLog.Logf("NSQ: persisting topic/channel metadata to %s", fileName)
+	defer nsqLog.Logf("NSQ: persisted metadata")
 
 	js := make(map[string]interface{})
 	topics := []interface{}{}
