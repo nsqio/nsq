@@ -32,7 +32,7 @@ const (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
-	singleDestinationTopic   = flag.String("single-destination-topic", "", "activate single destination nsq topic Note: default destination topic is the topic itself")
+	destTopic   = flag.String("destination-topic", "", "activate single destination nsq topic Note: default destination topic is the topic itself")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
@@ -267,7 +267,7 @@ func commandLineValidation() {
 		}
 	}
 
-	if *singleDestinationTopic != "" && !protocol.IsValidTopicName(*singleDestinationTopic) {
+	if *destTopic != "" && !protocol.IsValidTopicName(*destTopic) {
 		log.Fatal("--single-destination-topic is invalid")
 	}
 
@@ -297,7 +297,7 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 	var singleDestinationHandler *PublishHandler
 	var handlerList []*PublishHandler
 
-	if *singleDestinationTopic != "" {
+	if *destTopic != "" {
 		singleDestinationHandler = &PublishHandler{
 			addresses:        destNsqdTCPAddrs,
 			producers:        producers,
@@ -306,7 +306,7 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 			respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
 			perAddressStatus: perAddressStatus,
 			timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
-			destinationTopic: *singleDestinationTopic,
+			destinationTopic: *destTopic,
 		}
 		handlerList = append(handlerList, singleDestinationHandler)
 	}
