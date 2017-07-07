@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -136,15 +137,19 @@ func (c *context) PutMessageObj(topic *nsqd.Topic,
 }
 
 func (c *context) PutMessage(topic *nsqd.Topic,
-	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	body []byte, extContent ext.IExtContent, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+
+	var msg *nsqd.Message
+	if !topic.IsExt() {
+		msg = nsqd.NewMessage(0, body)
+	} else {
+		msg = nsqd.NewMessageWithExt(0, body, extContent.ExtVersion(), extContent.GetBytes())
+	}
+	msg.TraceID = traceID
+
 	if c.nsqdCoord == nil {
-		msg := nsqd.NewMessage(0, body)
-		msg.TraceID = traceID
 		return topic.PutMessage(msg)
 	}
-
-	msg := nsqd.NewMessage(0, body)
-	msg.TraceID = traceID
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
 
@@ -302,7 +307,11 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 			if info.MsgBody.Len() <= 0 {
 				nsqd.NsqLogger().Logf("empty msg body")
 			}
-			messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+			if !topic.IsExt() {
+				messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+			} else {
+				messages = append(messages, nsqd.NewMessageWithExt(0, info.MsgBody.Bytes(), info.ExtContent.ExtVersion(), info.ExtContent.GetBytes()))
+			}
 			pubInfoList = append(pubInfoList, info)
 			// TODO: avoid too much in a batch
 		default:
@@ -311,7 +320,11 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 				case <-quitChan:
 					return
 				case info := <-infoChan:
-					messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+					if !topic.IsExt() {
+						messages = append(messages, nsqd.NewMessage(0, info.MsgBody.Bytes()))
+					} else {
+						messages = append(messages, nsqd.NewMessageWithExt(0, info.MsgBody.Bytes(), info.ExtContent.ExtVersion(), info.ExtContent.GetBytes()))
+					}
 					pubInfoList = append(pubInfoList, info)
 				}
 				continue
@@ -356,7 +369,12 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	// the client before we requeue and update in the flight
 	ch.Pause()
 	defer ch.UnPause()
-	newMsg := nsqd.NewMessage(0, oldMsg.Body)
+	var newMsg *nsqd.Message
+	if topic.IsExt() {
+		newMsg = nsqd.NewMessageWithExt(0, oldMsg.Body, oldMsg.ExtVer, oldMsg.ExtBytes)
+	} else {
+		newMsg = nsqd.NewMessage(0, oldMsg.Body)
+	}
 	newMsg.TraceID = oldMsg.TraceID
 	newMsg.Attempts = oldMsg.Attempts
 	newID, offset, rawSize, msgEnd, putErr := c.PutMessageObj(topic, newMsg)

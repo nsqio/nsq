@@ -18,6 +18,7 @@ import (
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/quantile"
 	"github.com/absolute8511/nsq/internal/util"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -31,9 +32,9 @@ var (
 	ErrOperationInvalidState = errors.New("the operation is not allowed under current state")
 )
 
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
+func writeMessageToBackend(writeExt bool, buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
 	buf.Reset()
-	_, err := msg.WriteTo(buf)
+	_, err := msg.WriteTo(buf, writeExt)
 	if err != nil {
 		return 0, 0, diskQueueEndInfo{}, err
 	}
@@ -50,11 +51,13 @@ type TopicDynamicConf struct {
 	RetentionDay int32
 	SyncEvery    int64
 	OrderedMulti bool
+	Ext	     bool
 }
 
 type PubInfo struct {
 	Done     chan struct{}
 	MsgBody  *bytes.Buffer
+	ExtContent ext.IExtContent
 	StartPub time.Time
 	Err      error
 }
@@ -65,6 +68,7 @@ type ChannelMetaInfo struct {
 	Name   string `json:"name"`
 	Paused bool   `json:"paused"`
 	Skipped bool  `json:"skipped"`
+	Ext    bool   `json:"ext"`
 }
 
 type Topic struct {
@@ -104,6 +108,16 @@ type Topic struct {
 	pubLoopFunc     func(v *Topic)
 	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
+
+	isExt		int32
+}
+
+func (t *Topic) setExt() {
+	atomic.StoreInt32(&t.isExt, 1)
+}
+
+func (t *Topic) IsExt() bool {
+	return atomic.LoadInt32(&t.isExt) == 1
 }
 
 func GetTopicFullName(topic string, part int) string {
@@ -365,6 +379,10 @@ func (t *Topic) LoadChannelMeta() error {
 		if ch.Skipped {
 			channel.Skip()
 		}
+
+		if ch.Ext {
+			channel.SetExt(true)
+		}
 	}
 	return nil
 }
@@ -380,6 +398,7 @@ func (t *Topic) SaveChannelMeta() error {
 				Name:   channel.name,
 				Paused: channel.IsPaused(),
 				Skipped: channel.IsSkipped(),
+				Ext:    channel.Ext > 0,
 			}
 			channels = append(channels, meta)
 		}
@@ -532,6 +551,10 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	atomic.StoreInt32(&t.dynamicConf.AutoCommit, dynamicConf.AutoCommit)
 	atomic.StoreInt32(&t.dynamicConf.RetentionDay, dynamicConf.RetentionDay)
 	t.dynamicConf.OrderedMulti = dynamicConf.OrderedMulti
+	t.dynamicConf.Ext = dynamicConf.Ext
+	if dynamicConf.Ext {
+		t.setExt()
+	}
 	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()
 }
@@ -605,9 +628,15 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 			readEnd = curCommit
 		}
 
+		var ext int32
+		if t.IsExt() {
+			ext = 1
+		} else {
+			ext = 0
+		}
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, readEnd,
 			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled),
-			t.notifyCall, t.reqToEndCB)
+			t.notifyCall, t.reqToEndCB, ext)
 
 		channel.UpdateQueueEnd(readEnd, false)
 		if t.IsWriteDisabled() {
@@ -824,7 +853,7 @@ func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, di
 	if m.ID <= 0 {
 		m.ID = t.nextMsgID()
 	}
-	offset, writeBytes, dend, err := writeMessageToBackend(&t.putBuffer, m, t.backend)
+	offset, writeBytes, dend, err := writeMessageToBackend(t.IsExt(), &t.putBuffer, m, t.backend)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(
@@ -1145,7 +1174,7 @@ func (t *Topic) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanO
 			}
 			cleanEndInfo = readInfo
 		} else {
-			msg, decodeErr := decodeMessage(data.Data)
+			msg, decodeErr := decodeMessage(data.Data, t.IsExt())
 			if decodeErr != nil {
 				nsqLog.LogErrorf("failed to decode message - %s - %v", decodeErr, data)
 			} else {

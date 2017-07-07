@@ -21,6 +21,7 @@ import (
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -261,10 +262,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	close(client.ExitChan)
 	p.ctx.nsqd.CleanClientPubStats(client.RemoteAddr().String(), "tcp")
 	<-msgPumpStoppedChan
+	nsqd.NsqLogger().Logf("msg pump stopped client %v", client)
 
 	if client.Channel != nil {
 		client.Channel.RequeueClientMessages(client.ID, client.String())
-		client.Channel.RemoveClient(client.ID)
+		client.Channel.RemoveClient(client.ID, client.GetTag())
 	}
 	client.FinalClose()
 
@@ -311,15 +313,15 @@ func handleRequestReponseForClient(client *nsqd.ClientV2, response []byte, err e
 	return err
 }
 
-func SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, buf *bytes.Buffer, needFlush bool) error {
+func SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, writeExt bool, buf *bytes.Buffer, needFlush bool) error {
 	buf.Reset()
 	if !client.EnableTrace {
-		_, err := msg.WriteTo(buf)
+		_, err := msg.WriteTo(buf, writeExt)
 		if err != nil {
 			return err
 		}
 	} else {
-		_, err := msg.WriteToWithDetail(buf)
+		_, err := msg.WriteToWithDetail(buf, writeExt)
 		if err != nil {
 			return err
 		}
@@ -429,7 +431,6 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 	heartbeatFailedCnt := 0
 	msgTimeout := client.MsgTimeout
 	lastActiveTime := time.Now()
-
 	// v2 opportunistically buffers data to clients to reduce write system calls
 	// we force flush in two cases:
 	//    1. when the client is not ready to receive messages
@@ -458,12 +459,18 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 		} else if flushed {
 			// last iteration we flushed...
 			// do not select on the flusher ticker channel
-			clientMsgChan = subChannel.GetClientMsgChan()
+			clientMsgChan = client.GetTagMsgChannel()
+			if clientMsgChan == nil {
+				clientMsgChan = subChannel.GetClientMsgChan()
+			}
 			flusherChan = nil
 		} else {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
-			clientMsgChan = subChannel.GetClientMsgChan()
+			clientMsgChan = client.GetTagMsgChannel()
+			if clientMsgChan == nil {
+				clientMsgChan = subChannel.GetClientMsgChan()
+			}
 			flusherChan = outputBufferTicker.C
 		}
 
@@ -484,10 +491,14 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 		case <-client.ReadyStateChan:
 		case subChannel = <-subEventChan:
 			// you can't SUB anymore
-			nsqd.NsqLogger().Logf("client %v sub to topic %v channel: %v", client.ID,
+			nsqd.NsqLogger().Logf("client %v sub to topic %v channel: %v", client,
 				subChannel.GetTopicName(),
 				subChannel.GetName())
 			subEventChan = nil
+			tag := client.GetTag()
+			if tag != nil {
+				client.SetTagMsgChannel(subChannel.GetOrCreateClientMsgChannel(tag))
+			}
 		case identifyData := <-identifyEventChan:
 			// you can't IDENTIFY anymore
 			identifyEventChan = nil
@@ -547,9 +558,10 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
 				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
-				offset, _, _ := subChannel.ConfirmBackendQueue(msg)
-				// TODO: sync to replica nodes.
-				_ = offset
+				offset, confirmedCnt, changed := subChannel.ConfirmBackendQueue(msg)
+				if changed && p.ctx.nsqdCoord != nil {
+					p.ctx.nsqdCoord.SetChannelConsumeOffsetToCluster(subChannel, int64(offset), confirmedCnt, true)
+				}
 				continue
 			}
 			// avoid re-send some confirmed message,
@@ -559,14 +571,14 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.ContinueConsumeForOrder()
 				continue
 			}
-
 			shouldSend, err := subChannel.StartInFlightTimeout(msg, client, client.String(), msgTimeout)
 			if !shouldSend || err != nil {
 				continue
 			}
+
 			lastActiveTime = time.Now()
 			client.SendingMessage()
-			err = SendMessage(client, msg, &buf, subChannel.IsOrdered())
+			err = SendMessage(client, msg, subChannel.IsExt(), &buf, subChannel.IsOrdered())
 			if err != nil {
 				goto exit
 			}
@@ -664,6 +676,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired        bool   `json:"auth_required"`
 		OutputBufferSize    int    `json:"output_buffer_size"`
 		OutputBufferTimeout int64  `json:"output_buffer_timeout"`
+		DesiredTag	    string `json:"desired_tag,omitempty"`
 	}{
 		MaxRdyCount:         p.ctx.getOpts().MaxRdyCount,
 		Version:             version.Binary,
@@ -678,6 +691,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired:        p.ctx.isAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
+		DesiredTag:           string(client.GetTag()),
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -910,11 +924,23 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
+	//Check ext before add client
+	if topic.IsExt() {
+		channel.SetExt(true)
+	}
+	if !channel.IsExt() && client.GetTag() != nil {
+		return nil, protocol.NewFatalClientErr(nil, ext.E_TAG_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
+	}
+
 	err = channel.AddClient(client.ID, client)
 	if err != nil {
 		nsqd.NsqLogger().Logf("sub failed to add client: %v, %v", client, err)
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotWritable, "")
 	}
+
+	//if client.Tag != nil {
+	//	client.SetTagMsgChannel(channel.GetOrCreateClientMsgChannel(client.Tag))
+	//}
 
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel
@@ -928,6 +954,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		}
 		channel.SetOrdered(true)
 	}
+
 	if startFrom != nil {
 		cnt := channel.GetClientsCount()
 		if cnt > 1 {
@@ -1170,23 +1197,24 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 	return okBytes, nil
 }
 
-func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody int64, isMpub bool) (int32, *nsqd.Topic, error) {
+//if target topic is not configured as extendable and there is a tag, pub request should be stopped here
+func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody int64, isMpub bool) (int32, *nsqd.Topic, ext.IExtContent, error) {
 	var err error
 
 	if len(params) < 2 {
-		return 0, nil, protocol.NewFatalClientErr(nil, E_INVALID, "insufficient number of parameters")
+		return 0, nil, nil, protocol.NewFatalClientErr(nil, E_INVALID, "insufficient number of parameters")
 	}
 
 	topicName := string(params[1])
 	if !protocol.IsValidTopicName(topicName) {
-		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
+		return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("topic name %q is not valid", topicName))
 	}
 	partition := -1
-	if len(params) == 3 {
+	if len(params) >= 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
-			return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+			return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 				fmt.Sprintf("topic partition is not valid: %v", err))
 		}
 	}
@@ -1198,21 +1226,21 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 
 	bodyLen, err := readLen(client.Reader, client.LenSlice)
 	if err != nil {
-		return 0, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "failed to read body size")
+		return 0, nil, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "failed to read body size")
 	}
 
 	if bodyLen <= 0 {
-		return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+		return bodyLen, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 			fmt.Sprintf("invalid body size %d", bodyLen))
 	}
 
 	if int64(bodyLen) > maxBody {
 		nsqd.NsqLogger().Logf("topic: %v message body too large %v vs %v ", topicName, bodyLen, maxBody)
 		if isMpub {
-			return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+			return bodyLen, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 				fmt.Sprintf("body too big %d > %d", bodyLen, maxBody))
 		} else {
-			return bodyLen, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
+			return bodyLen, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
 				fmt.Sprintf("message too big %d > %d", bodyLen, maxBody))
 		}
 	}
@@ -1220,19 +1248,36 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	topic, err := p.ctx.getExistingTopic(topicName, partition)
 	if err != nil {
 		nsqd.NsqLogger().Logf("not existing topic: %v-%v, err:%v", topicName, partition, err.Error())
-		return bodyLen, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
+		return bodyLen, nil, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
 	if origPart == -1 && topic.GetDynamicInfo().OrderedMulti {
-		return 0, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
+		return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 			fmt.Sprintf("topic partition is not valid for multi partition: %v", origPart))
 	}
 
+	//parse tag, if there is extra param, else message has no tag
+	var extContent ext.IExtContent
+	isExt := topic.IsExt()
+	if len(params) == 4 && isExt {
+		nsqd.NsqLogger().Infof("create tag out of ext content")
+		extContent, err = ext.NewTagExt(params[3])
+		if err != nil {
+			return 0, nil, nil, protocol.NewFatalClientErr(nil, ext.E_BAD_TAG,
+				fmt.Sprintf("topic tag filter %v is not valid: %v", topicName, err))
+		}
+	} else if len(params) == 4 && !isExt {
+		return 0, nil, nil, protocol.NewFatalClientErr(nil, ext.E_TAG_NOT_SUPPORT,
+			fmt.Sprintf("tag filter %v not supportted in topic %v", extContent, topicName))
+	} else {
+		extContent = ext.NewNoExt()
+	}
+
 	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
-		return bodyLen, nil, err
+		return bodyLen, nil, nil, err
 	}
 	// mpub
-	return bodyLen, topic, nil
+	return bodyLen, topic, extContent, nil
 }
 
 // PUB TRACE data format
@@ -1274,13 +1319,14 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 	return buf, nil
 }
 
-func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic) error {
+func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic, extContent ext.IExtContent) error {
 	if topic.Exiting() {
 		return nsqd.ErrExiting
 	}
 	info := &nsqd.PubInfo{
 		Done:     make(chan struct{}),
 		MsgBody:  msgBody,
+		ExtContent:	  extContent,
 		StartPub: time.Now(),
 	}
 	if clientTimer == nil {
@@ -1305,9 +1351,10 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 	return info.Err
 }
 
+//func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic, tag ext.TagFilter) error {
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
-	bodyLen, topic, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
+	bodyLen, topic, extContent, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1342,9 +1389,9 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		offset := nsqd.BackendOffset(0)
 		rawSize := int32(0)
 		if asyncAction {
-			err = internalPubAsync(client.PubTimeout, messageBodyBuffer, topic)
+			err = internalPubAsync(client.PubTimeout, messageBodyBuffer, topic, extContent)
 		} else {
-			id, offset, rawSize, _, err = p.ctx.PutMessage(topic, realBody, traceID)
+			id, offset, rawSize, _, err = p.ctx.PutMessage(topic, realBody, extContent, traceID)
 		}
 		//p.ctx.setHealth(err)
 		if err != nil {
@@ -1376,13 +1423,13 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 
 func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
-	_, topic, preErr := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize, true)
+	_, topic, extContent, preErr := p.preparePub(client, params, p.ctx.getOpts().MaxBodySize, true)
 	if preErr != nil {
 		return nil, preErr
 	}
 
 	messages, buffers, preErr := readMPUB(client.Reader, client.LenSlice, topic,
-		p.ctx.getOpts().MaxMsgSize, p.ctx.getOpts().MaxBodySize, traceEnable)
+		p.ctx.getOpts().MaxMsgSize, p.ctx.getOpts().MaxBodySize, extContent, traceEnable)
 
 	defer func() {
 		for _, b := range buffers {
@@ -1459,7 +1506,7 @@ func (p *protocolV2) TOUCH(client *nsqd.ClientV2, params [][]byte) ([]byte, erro
 }
 
 func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64,
-	maxBodySize int64, traceEnable bool) ([]*nsqd.Message, []*bytes.Buffer, error) {
+	maxBodySize int64, extContent ext.IExtContent, traceEnable bool) ([]*nsqd.Message, []*bytes.Buffer, error) {
 	numMessages, err := readLen(r, tmp)
 	if err != nil {
 		return nil, nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
@@ -1512,7 +1559,13 @@ func readMPUB(r io.Reader, tmp []byte, topic *nsqd.Topic, maxMessageSize int64,
 		} else {
 			realBody = msgBody
 		}
-		msg := nsqd.NewMessage(0, realBody)
+
+		var msg *nsqd.Message
+		if !topic.IsExt() {
+			msg = nsqd.NewMessage(0, realBody)
+		} else {
+			msg = nsqd.NewMessageWithExt(0, realBody, extContent.ExtVersion(), extContent.GetBytes())
+		}
 		msg.TraceID = traceID
 		messages = append(messages, msg)
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), 0)

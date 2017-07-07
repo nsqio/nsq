@@ -50,6 +50,10 @@ var LookupView = BaseView.extend({
         if($(e.target.form.elements['orderedmulti']).is(':checked')){
             orderedmulti = 'true'
         }
+        var extend = 'false'
+        if($(e.target.form.elements['extend']).is(':checked')){
+            extend = 'true'
+        }
         if (topic === '' || partition_num === '' || replicator === '' || channel === '') {
             return;
         }
@@ -60,7 +64,8 @@ var LookupView = BaseView.extend({
                 'replicator': replicator,
                 'retention_days': retention_days,
                 'syncdisk': syncdisk,
-                'orderedmulti': orderedmulti
+                'orderedmulti': orderedmulti,
+                'extend': extend
             }))
             .done(function() { window.location.reload(true); })
             .fail(this.handleAJAXError.bind(this));

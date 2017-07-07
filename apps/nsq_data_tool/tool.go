@@ -26,6 +26,8 @@ var (
 	viewStartTimestamp = flag.Int64("view_start_timestamp", 0, "the start timestamp of message.")
 	viewOffset         = flag.Int64("view_offset", 0, "the virtual offset of the queue")
 	viewCnt            = flag.Int("view_cnt", 1, "the total count need to be viewed. should less than 1,000,000")
+	//TODO: add ext ver for decode message
+	extVer		   = flag.Int("ext_ver", -1, "extension version for message format")
 )
 
 func getBackendName(topicName string, part int) string {

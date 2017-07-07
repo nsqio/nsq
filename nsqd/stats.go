@@ -32,6 +32,7 @@ type TopicStats struct {
 	MsgSizeStats         []int64          `json:"msg_size_stats"`
 	MsgWriteLatencyStats []int64          `json:"msg_write_latency_stats"`
 	IsMultiOrdered       bool             `json:"is_multi_ordered"`
+	IsExt		      bool		`json:"is_ext"`
 	StatsdName           string           `json:"statsd_name"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
@@ -56,6 +57,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		MsgSizeStats:         t.detailStats.GetMsgSizeStats(),
 		MsgWriteLatencyStats: t.detailStats.GetMsgWriteLatencyStats(),
 		IsMultiOrdered:       t.GetDynamicInfo().OrderedMulti,
+		IsExt:		      t.GetDynamicInfo().Ext,
 		StatsdName:           statsdName,
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
@@ -142,6 +144,7 @@ type ClientStats struct {
 	Authed          bool   `json:"authed,omitempty"`
 	AuthIdentity    string `json:"auth_identity,omitempty"`
 	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
+	DesiredTag      string `json:"desired_tag"`
 
 	TLS                           bool   `json:"tls"`
 	CipherSuite                   string `json:"tls_cipher_suite"`

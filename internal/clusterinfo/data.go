@@ -820,6 +820,7 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 					channel.TopicPartition = topic.TopicPartition
 					channel.StatsdName = topic.StatsdName
 					channel.IsMultiOrdered = topic.IsMultiOrdered
+					channel.IsExt = topic.IsExt
 					channel.MemoryDepth = channel.Depth - channel.BackendDepth
 					key := channel.ChannelName
 					if selectedTopic == "" {
@@ -995,13 +996,13 @@ func (c *ClusterInfo) CreateTopicChannel(topicName string, channelName string, l
 }
 
 func (c *ClusterInfo) CreateTopic(topicName string, partitionNum int, replica int, syncDisk int,
-	retentionDays string, orderedmulti string, lookupdHTTPAddrs []string) error {
+	retentionDays string, orderedmulti string, ext string, lookupdHTTPAddrs []string) error {
 	var errs []error
 
 	// TODO: found the master lookup node first
 	// create the topic on all the nsqlookupd
-	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d&retention=%s&orderedmulti=%s",
-		url.QueryEscape(topicName), partitionNum, replica, syncDisk, retentionDays, orderedmulti)
+	qs := fmt.Sprintf("topic=%s&partition_num=%d&replicator=%d&syncdisk=%d&retention=%s&orderedmulti=%s&extend=%s",
+		url.QueryEscape(topicName), partitionNum, replica, syncDisk, retentionDays, orderedmulti, ext)
 	lookupdNodes, err := c.ListAllLookupdNodes(lookupdHTTPAddrs)
 	if err != nil {
 		c.logf("failed to list lookupd nodes while create topic: %v", err)
