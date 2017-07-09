@@ -25,6 +25,7 @@ import (
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 type httpServer struct {
@@ -195,6 +196,11 @@ func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (url.Va
 	return reqParams, topic, channelName, err
 }
 
+//TODO: will be refactored for further extension
+func getTag(reqParams url.Values) string {
+	return reqParams.Get("tag")
+}
+
 func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *nsqd.Topic, error) {
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -280,13 +286,29 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
 		}
 
+		//parse tag name, if target topic is not configured extendable, request should be stopped here
+		var extContent ext.IExtContent
+		isExt := topic.IsExt()
+		tagParam := getTag(params)
+		if isExt && tagParam != "" {
+			extContent, err = ext.NewTagExt([]byte(tagParam))
+			if err != nil {
+				nsqd.NsqLogger().Logf("parse tag err: %v", err)
+				return nil, http_api.Err{400, ext.E_BAD_TAG}
+			}
+		} else if !isExt && tagParam != "" {
+			return nil, http_api.Err{400, ext.E_TAG_NOT_SUPPORT}
+		} else {
+			extContent = ext.NewNoExt()
+		}
+
 		id := nsqd.MessageID(0)
 		offset := nsqd.BackendOffset(0)
 		rawSize := int32(0)
 		if asyncAction {
-			err = internalPubAsync(nil, b, topic)
+			err = internalPubAsync(nil, b, topic, extContent)
 		} else {
-			id, offset, rawSize, _, err = s.ctx.PutMessage(topic, body, traceID)
+			id, offset, rawSize, _, err = s.ctx.PutMessage(topic, body, extContent, traceID)
 		}
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
@@ -330,6 +352,21 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
+	var extContent ext.IExtContent
+	isExt := topic.IsExt()
+	tagParam := getTag(reqParams)
+	if isExt && tagParam != "" {
+		extContent, err = ext.NewTagExt([]byte(tagParam))
+		if err != nil {
+			nsqd.NsqLogger().Logf("parse tag err: %v", err)
+			return nil, http_api.Err{400, ext.E_BAD_TAG}
+		}
+	} else if !isExt && tagParam != "" {
+		return nil, http_api.Err{400, ext.E_TAG_NOT_SUPPORT}
+	} else {
+		extContent = ext.NewNoExt()
+	}
+
 	var msgs []*nsqd.Message
 	var buffers []*bytes.Buffer
 	var exit bool
@@ -338,7 +375,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	if ok {
 		tmp := make([]byte, 4)
 		msgs, buffers, err = readMPUB(req.Body, tmp, topic,
-			s.ctx.getOpts().MaxMsgSize, s.ctx.getOpts().MaxBodySize, false)
+			s.ctx.getOpts().MaxMsgSize, s.ctx.getOpts().MaxBodySize, extContent, false)
 		defer func() {
 			for _, b := range buffers {
 				topic.BufferPoolPut(b)
@@ -383,7 +420,12 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msg := nsqd.NewMessage(0, block)
+			var msg *nsqd.Message
+			if !topic.IsExt() {
+				msg = nsqd.NewMessage(0, block)
+			} else {
+				msg = nsqd.NewMessageWithExt(0, block, extContent.ExtVersion(), extContent.GetBytes())
+			}
 			msgs = append(msgs, msg)
 			topic.GetDetailStats().UpdateTopicMsgStats(int64(len(block)), 0)
 		}
@@ -442,7 +484,12 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, err
 	}
-	topic.GetChannel(channelName)
+	channel := topic.GetChannel(channelName)
+
+	//set tag filter is it is new
+	if topic.IsExt() {
+		channel.SetExt(true)
+	}
 	return nil, nil
 }
 
@@ -811,7 +858,7 @@ func (s *httpServer) doMessageGet(w http.ResponseWriter, req *http.Request, ps h
 		nsqd.NsqLogger().LogErrorf("search %v-%v, read data error: %v", searchMode, searchPos, ret)
 		return nil, http_api.Err{400, err.Error()}
 	}
-	msg, err := nsqd.DecodeMessage(ret.Data)
+	msg, err := nsqd.DecodeMessage(ret.Data, t.IsExt())
 	if err != nil {
 		nsqd.NsqLogger().LogErrorf("search %v-%v, decode data error: %v", searchMode, searchPos, err)
 		return nil, http_api.Err{400, err.Error()}

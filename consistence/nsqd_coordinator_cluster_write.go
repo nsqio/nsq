@@ -22,7 +22,7 @@ type handleSyncResultFunc func(int, *coordData) bool
 type checkDupFunc func(*coordData) bool
 
 func (self *NsqdCoordinator) PutMessageBodyToCluster(topic *nsqd.Topic,
-	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	msg := nsqd.NewMessage(0, body)
 	msg.TraceID = traceID
 	return self.PutMessageToCluster(topic, msg)
@@ -58,7 +58,6 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	}
 
 	var logMgr *TopicCommitLogMgr
-
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
 		if putDelayed {
@@ -830,7 +829,9 @@ func (self *NsqdCoordinator) SetChannelConsumeOffsetToCluster(ch *nsqd.Channel, 
 		if ch.IsEphemeral() {
 			return nil
 		}
-		rpcErr := c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
+
+		var rpcErr *CoordErr
+		rpcErr = c.UpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, ch.GetName(), syncOffset)
 		if rpcErr != nil {
 			coordLog.Infof("sync channel(%v) offset to replica %v failed: %v, offset: %v", ch.GetName(),
 				nodeID, rpcErr, syncOffset)

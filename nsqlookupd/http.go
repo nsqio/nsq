@@ -389,6 +389,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 			"meta": map[string]interface{}{
 				"partition_num": meta.PartitionNum,
 				"replica":       meta.Replica,
+				"extend_support": meta.Ext,
 			},
 			"producers":  peers,
 			"partitions": partitionProducers,
@@ -478,6 +479,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, err.Error()}
 	}
 	allowMultiOrdered := reqParams.Get("orderedmulti")
+	allowExt := reqParams.Get("extend")
 
 	if s.ctx.nsqlookupd.coordinator == nil {
 		return nil, http_api.Err{500, "MISSING_COORDINATOR"}
@@ -498,6 +500,9 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 	meta.RetentionDay = int32(retentionDays)
 	if allowMultiOrdered == "true" {
 		meta.OrderedMulti = true
+	}
+	if allowExt == "true" {
+		meta.Ext = true
 	}
 	err = s.ctx.nsqlookupd.coordinator.CreateTopic(topicName, meta)
 	if err != nil {

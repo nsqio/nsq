@@ -372,10 +372,12 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 	if len(topicStats) > 0 {
 		isOrdered = topicStats[0].IsMultiOrdered
 	}
+	isExt := topicStats[0].IsExt
 	allNodesTopicStats := &clusterinfo.TopicStats{
 		TopicName:      topicName,
 		StatsdName:     topicName,
 		IsMultiOrdered: isOrdered,
+		IsExt:          isExt,
 	}
 	for _, t := range topicStats {
 		stat, ok := statsMap[t.TopicName]
@@ -770,6 +772,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		SyncDisk      string `json:"syncdisk"`
 		Channel       string `json:"channel"`
 		OrderedMulti  string `json:"orderedmulti"`
+		Ext           string `json:"extend"`
 	}
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
@@ -801,7 +804,7 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 	}
 	syncDisk, _ := strconv.Atoi(body.SyncDisk)
 	err = s.ci.CreateTopic(body.Topic, pnum, replica,
-		syncDisk, body.RetentionDays, body.OrderedMulti,
+		syncDisk, body.RetentionDays, body.OrderedMulti, body.Ext,
 		s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
@@ -948,7 +951,11 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 			err = s.ci.SkipChannel(topicName, channelName,
 				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
 				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
-
+			if err == nil {
+				err = s.ci.EmptyChannel(topicName, channelName,
+				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+			}
 			s.notifyAdminAction("skip_channel", topicName, channelName, "", req)
 		}
 	case "unskip":

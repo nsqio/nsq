@@ -57,6 +57,8 @@ type TopicMetaInfo struct {
 	// used for ordered multi partition topic
 	// allow multi partitions on the same node
 	OrderedMulti bool
+	//used for message ext
+	Ext bool
 }
 
 type TopicPartitionReplicaInfo struct {
