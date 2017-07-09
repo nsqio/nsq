@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/boltdb/bolt"
+	"io"
 	"os"
 	"path"
 	"strconv"
@@ -137,6 +138,9 @@ type DelayQueue struct {
 	putBuffer   bytes.Buffer
 	kvStore     *bolt.DB
 	EnableTrace int32
+	SyncEvery   int64
+	lastSyncCnt int64
+	needFixData int32
 }
 
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
@@ -215,6 +219,144 @@ func (q *DelayQueue) nextMsgID() MessageID {
 	return MessageID(id)
 }
 
+func (q *DelayQueue) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
+	old := q.backend.GetQueueWriteEnd()
+	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, diffCnt)
+	_, err := q.backend.RollbackWriteV2(vend, diffCnt)
+	return err
+}
+
+func (q *DelayQueue) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
+	old := q.backend.GetQueueWriteEnd()
+	nsqLog.Logf("topic %v reset the backend from %v to : %v, %v", q.GetFullName(), old, vend, totalCnt)
+	_, err := q.backend.ResetWriteEndV2(vend, totalCnt)
+	if err != nil {
+		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
+	}
+	return err
+}
+
+func (q *DelayQueue) ResetBackendWithQueueStartNoLock(queueStartOffset int64, queueStartCnt int64) error {
+	if queueStartOffset < 0 || queueStartCnt < 0 {
+		return errors.New("queue start should not less than 0")
+	}
+	queueStart := q.backend.GetQueueWriteEnd().(*diskQueueEndInfo)
+	queueStart.virtualEnd = BackendOffset(queueStartOffset)
+	queueStart.totalMsgCnt = queueStartCnt
+	nsqLog.Warningf("reset the topic %v backend with queue start: %v", q.GetFullName(), queueStart)
+	err := q.backend.ResetWriteWithQueueStart(queueStart)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (q *DelayQueue) GetDiskQueueSnapshot() *DiskQueueSnapshot {
+	e := q.backend.GetQueueReadEnd()
+	start := q.backend.GetQueueReadStart()
+	d := NewDiskQueueSnapshot(getBackendName(q.tname, q.partition), q.dataPath, e)
+	d.SetQueueStart(start)
+	return d
+}
+
+func (q *DelayQueue) IsDataNeedFix() bool {
+	return atomic.LoadInt32(&q.needFixData) == 1
+}
+
+func (q *DelayQueue) SetDataFixState(needFix bool) {
+	if needFix {
+		atomic.StoreInt32(&q.needFixData, 1)
+	} else {
+		atomic.StoreInt32(&q.needFixData, 0)
+	}
+}
+
+func (q *DelayQueue) TotalMessageCnt() uint64 {
+	return uint64(q.backend.GetQueueWriteEnd().TotalMsgCnt())
+}
+
+func (q *DelayQueue) GetQueueReadStart() int64 {
+	return int64(q.backend.GetQueueReadStart().Offset())
+}
+
+func (q *DelayQueue) TotalDataSize() int64 {
+	e := q.backend.GetQueueWriteEnd()
+	if e == nil {
+		return 0
+	}
+	return int64(e.Offset())
+}
+
+func (q *DelayQueue) GetDBSize() (int64, error) {
+	totalSize := int64(0)
+	err := q.kvStore.View(func(tx *bolt.Tx) error {
+		totalSize = tx.Size()
+		return nil
+	})
+	return totalSize, err
+}
+
+func (q *DelayQueue) BackupKVStoreTo(w io.Writer) (int64, error) {
+	totalSize := int64(0)
+	err := q.kvStore.View(func(tx *bolt.Tx) error {
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, uint64(tx.Size()))
+		_, err := w.Write(buf)
+		if err != nil {
+			return err
+		}
+		totalSize = tx.Size() + 8
+		_, err = tx.WriteTo(w)
+		return err
+	})
+	return totalSize, err
+}
+
+func (q *DelayQueue) RestoreKVStoreFrom(body io.Reader) error {
+	buf := make([]byte, 8)
+	n, err := body.Read(buf)
+	if err != nil {
+		return err
+	}
+	if n != len(buf) {
+		return errors.New("unexpected length for body length")
+	}
+	bodyLen := int64(binary.BigEndian.Uint64(buf))
+	q.kvStore.Close()
+	kvPath := path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition))
+	err = os.Remove(kvPath)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(kvPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.CopyN(f, body, bodyLen)
+	if err != nil {
+		return err
+	}
+	f.Sync()
+	q.kvStore, err = bolt.Open(kvPath, 0644, nil)
+	if err != nil {
+		return err
+	}
+	err = q.kvStore.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(bucketDelayedMsg)
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(bucketMeta)
+		return err
+	})
+	if err != nil {
+		nsqLog.LogErrorf("topic(%v) failed to restore delayed db: %v , %v ", q.fullName, err, kvPath)
+		return err
+	}
+	return nil
+}
+
 func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int32, BackendQueueEnd, error) {
 	if atomic.LoadInt32(&q.exitFlag) == 1 {
 		return 0, 0, 0, nil, errors.New("exiting")
@@ -267,10 +409,14 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 
 	err = q.kvStore.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
-		exists := b.Get(msgKey) != nil
-		err := b.Put(msgKey, q.putBuffer.Bytes())
-		if err != nil {
-			return err
+		oldV := b.Get(msgKey)
+		exists := oldV != nil
+		if exists && bytes.Equal(oldV, q.putBuffer.Bytes()) {
+		} else {
+			err := b.Put(msgKey, q.putBuffer.Bytes())
+			if err != nil {
+				return err
+			}
 		}
 		b = tx.Bucket(bucketMeta)
 		if !exists {
@@ -301,6 +447,11 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 		if m.TraceID != 0 || atomic.LoadInt32(&q.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
 			nsqMsgTracer.TracePub(q.GetTopicName(), q.GetTopicPart(), "DELAY_QUEUE_PUB", m.TraceID, m, offset, dend.TotalMsgCnt())
 		}
+	}
+	syncEvery := atomic.LoadInt64(&q.SyncEvery)
+	if syncEvery == 1 ||
+		dend.TotalMsgCnt()-atomic.LoadInt64(&q.lastSyncCnt) >= syncEvery {
+		q.flush()
 	}
 
 	return m.ID, offset, writeBytes, dend, nil
@@ -344,6 +495,7 @@ func (q *DelayQueue) flush() error {
 	if !ok {
 		return nil
 	}
+	atomic.StoreInt64(&q.lastSyncCnt, q.backend.GetQueueWriteEnd().TotalMsgCnt())
 	err := q.backend.Flush()
 	if err != nil {
 		nsqLog.LogErrorf("failed flush: %v", err)

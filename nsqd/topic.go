@@ -494,7 +494,9 @@ func (t *Topic) UpdateCommittedOffset(offset BackendQueueEnd) {
 		nsqLog.LogDebugf("committed is rollbacked: %v, %v", cur, offset)
 	}
 	t.committedOffset.Store(offset)
-	if t.dynamicConf.SyncEvery == 1 || offset.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= t.dynamicConf.SyncEvery {
+	syncEvery := atomic.LoadInt64(&t.dynamicConf.SyncEvery)
+	if syncEvery == 1 ||
+		offset.TotalMsgCnt()-atomic.LoadInt64(&t.lastSyncCnt) >= syncEvery {
 		if !t.IsWriteDisabled() {
 			t.flush(true)
 		}
@@ -567,7 +569,10 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 		atomic.StoreInt32(&t.isOrdered, 0)
 	}
 	if !dynamicConf.OrderedMulti && idGen != nil {
-		t.GetOrCreateDelayedQueueNoLock(idGen)
+		dq, _ := t.GetOrCreateDelayedQueueNoLock(idGen)
+		if dq != nil {
+			atomic.StoreInt64(&dq.SyncEvery, dynamicConf.SyncEvery)
+		}
 	}
 	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()

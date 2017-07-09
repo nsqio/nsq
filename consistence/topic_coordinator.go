@@ -1,7 +1,6 @@
 package consistence
 
 import (
-	"errors"
 	"os"
 	"path"
 	"sync"
@@ -104,7 +103,7 @@ func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error
 	logMgr := self.delayedLogMgr
 	self.dataMutex.Unlock()
 	if logMgr == nil {
-		return nil, errors.New("delayed queue log mgr not init")
+		return nil, ErrTopicMissingDelayedLog.ToErrorType()
 	}
 	return logMgr, nil
 }

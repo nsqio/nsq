@@ -167,7 +167,9 @@ var (
 	ErrTopicWriteOnNonISR                 = NewCoordErrWithCode("topic write on a node not in ISR", CoordTmpErr, RpcErrWriteOnNonISR)
 	ErrTopicISRNotEnough                  = NewCoordErrWithCode("topic isr nodes not enough", CoordTmpErr, RpcCommonErr)
 	ErrClusterChanged                     = NewCoordErrWithCode("cluster changed ", CoordTmpErr, RpcNoErr)
+	ErrTopicMissingDelayedLog             = NewCoordErrWithCode("topic missing delayed queue log", CoordLocalErr, RpcNoErr)
 
+	ErrRpcMethodUnknown           = NewCoordErrWithCode("rpc method unknown", CoordClusterErr, RpcCommonErr)
 	ErrPubArgError                = NewCoordErr("pub argument error", CoordCommonErr)
 	ErrTopicNotRelated            = NewCoordErr("topic not related to me", CoordCommonErr)
 	ErrTopicCatchupAlreadyRunning = NewCoordErr("topic is already running catchup", CoordCommonErr)
@@ -185,8 +187,9 @@ var (
 	ErrLocalInitTopicFailed                = NewCoordErr("local topic init failed", CoordLocalErr)
 	ErrLocalInitTopicCoordFailed           = NewCoordErr("topic coordinator init failed", CoordLocalErr)
 	ErrLocalTopicDataCorrupt               = NewCoordErr("local topic data corrupt", CoordLocalErr)
-	ErrLocalChannelPauseFailed               = NewCoordErr("local channel pause/unpause failed", CoordLocalErr)
-	ErrLocalChannelSkipFailed               = NewCoordErr("local channel skip/unskip failed", CoordLocalErr)
+	ErrLocalChannelPauseFailed             = NewCoordErr("local channel pause/unpause failed", CoordLocalErr)
+	ErrLocalChannelSkipFailed              = NewCoordErr("local channel skip/unskip failed", CoordLocalErr)
+	ErrLocalDelayedQueueMissing            = NewCoordErr("local delayed queue is missing", CoordLocalErr)
 )
 
 func GenNsqdNodeID(n *NsqdNodeInfo, extra string) string {

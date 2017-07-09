@@ -265,3 +265,66 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 	}
 
 }
+
+func TestDelayQueueBackupRestore(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-delay-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
+	SetLogger(opts.Logger)
+
+	dq, err := NewDelayQueue("test-backup", 0, tmpDir, opts, nil)
+	test.Nil(t, err)
+	defer dq.Close()
+	cnt := 10
+	for i := 0; i < cnt; i++ {
+		msg := NewMessage(0, []byte("body"))
+		msg.DelayedType = ChannelDelayed
+		msg.DelayedTs = time.Now().Add(time.Second).UnixNano()
+		msg.DelayedChannel = "test"
+		msg.DelayedOrigID = MessageID(i + 1)
+		_, _, _, _, err := dq.PutDelayMessage(msg)
+		test.Nil(t, err)
+
+		msg = NewMessage(0, []byte("body"))
+		msg.DelayedType = ChannelDelayed
+		msg.DelayedTs = time.Now().Add(time.Second).UnixNano()
+		msg.DelayedChannel = "test2"
+		msg.DelayedOrigID = MessageID(i + 1)
+		_, _, _, _, err = dq.PutDelayMessage(msg)
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+
+	oldDBStat, err := os.Stat(dq.kvStore.Path())
+	test.Nil(t, err)
+
+	f, err := os.Create(path.Join(tmpDir, "backuped.file"))
+	test.Nil(t, err)
+	fsize, err := dq.BackupKVStoreTo(f)
+	test.Nil(t, err)
+	f.Sync()
+	f.Close()
+	stat, err := os.Stat(path.Join(tmpDir, "backuped.file"))
+	test.Equal(t, fsize, stat.Size())
+	f, err = os.OpenFile(path.Join(tmpDir, "backuped.file"), os.O_RDWR, 0666)
+	test.Nil(t, err)
+	err = dq.RestoreKVStoreFrom(f)
+	test.Nil(t, err)
+	dbSize, _ := dq.GetDBSize()
+	test.Equal(t, stat.Size()-8, dbSize)
+
+	dbStat, err := os.Stat(dq.kvStore.Path())
+	test.Nil(t, err)
+	test.Equal(t, oldDBStat.Size(), dbStat.Size())
+
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+}
