@@ -481,12 +481,7 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, err
 	}
-	channel := topic.GetChannel(channelName)
-
-	//set tag filter is it is new
-	if topic.IsExt() {
-		channel.SetExt(true)
-	}
+	topic.GetChannel(channelName)
 	return nil, nil
 }
 

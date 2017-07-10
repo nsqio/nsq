@@ -101,8 +101,12 @@ func (c *context) getExistingTopic(name string, part int) (*nsqd.Topic, error) {
 	return c.nsqd.GetExistingTopic(name, part)
 }
 
-func (c *context) getTopic(name string, part int) *nsqd.Topic {
-	return c.nsqd.GetTopic(name, part)
+func (c *context) getTopic(name string, part int, ext bool) *nsqd.Topic {
+	if ext {
+		return c.nsqd.GetTopicWithExt(name, part)
+	} else {
+		return c.nsqd.GetTopic(name, part)
+	}
 }
 
 func (c *context) deleteExistingTopic(name string, part int) error {
