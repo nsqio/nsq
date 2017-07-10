@@ -20,12 +20,12 @@ import (
 
 	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 type httpServer struct {
@@ -649,7 +649,7 @@ func (s *httpServer) doSkipChannel(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	// pro-actively persist metadata so in case of process failure
-	s.ctx.persistMetadata()
+	topic.SaveChannelMeta()
 	return nil, nil
 }
 
@@ -676,7 +676,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// pro-actively persist metadata so in case of process failure
-	s.ctx.persistMetadata()
+	topic.SaveChannelMeta()
 	return nil, nil
 }
 
