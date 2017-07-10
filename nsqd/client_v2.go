@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/absolute8511/nsq/internal/auth"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/golang/snappy"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
-const defaultBufferSize = 8 * 1024
+const defaultBufferSize = 4 * 1024
 const slowDownThreshold = 5
 
 const (
@@ -616,7 +616,7 @@ func (c *ClientV2) SetTagMsgChannel(tagMsgChan chan *Message) error {
 }
 
 func (c *ClientV2) GetTagMsgChannel() chan *Message {
-	return c.TagMsgChannel;
+	return c.TagMsgChannel
 }
 
 func (c *ClientV2) UpgradeTLS() error {

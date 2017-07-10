@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	DEFAULT_COMMIT_BUF_SIZE = 1024
+	DEFAULT_COMMIT_BUF_SIZE = 400
+	MAX_COMMIT_BUF_SIZE     = 1000
 	MAX_INCR_ID_BIT         = 50
 )
 
@@ -280,6 +281,9 @@ func GetTopicPartitionLogPath(basepath, t string, p int) string {
 func InitTopicCommitLogMgr(t string, p int, basepath string, commitBufSize int) (*TopicCommitLogMgr, error) {
 	if uint64(p) >= uint64(1)<<(63-MAX_INCR_ID_BIT) {
 		return nil, ErrCommitLogPartitionExceed
+	}
+	if commitBufSize > MAX_COMMIT_BUF_SIZE {
+		commitBufSize = MAX_COMMIT_BUF_SIZE
 	}
 	fullpath := GetTopicPartitionLogPath(basepath, t, p)
 	mgr := &TopicCommitLogMgr{
@@ -1055,8 +1059,8 @@ func (self *TopicCommitLogMgr) AppendCommitLog(l *CommitLogData, slave bool) err
 
 func (self *TopicCommitLogMgr) updateBufferSize(bs int) {
 	if bs != 0 {
-		if bs > MAX_SYNC_EVERY {
-			bs = MAX_SYNC_EVERY
+		if bs > MAX_COMMIT_BUF_SIZE {
+			bs = MAX_COMMIT_BUF_SIZE
 		} else if bs < 0 {
 			bs = DEFAULT_COMMIT_BUF_SIZE
 		}
