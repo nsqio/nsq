@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -143,6 +144,7 @@ type DelayQueue struct {
 	lastSyncCnt int64
 	needFixData int32
 	isExt       bool
+	dbLock      sync.Mutex
 }
 
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
@@ -190,6 +192,13 @@ func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 	}
 
 	return q, nil
+}
+
+func (q *DelayQueue) getStore() *bolt.DB {
+	q.dbLock.Lock()
+	d := q.kvStore
+	q.dbLock.Unlock()
+	return d
 }
 
 func (q *DelayQueue) GetFullName() string {
@@ -288,7 +297,7 @@ func (q *DelayQueue) TotalDataSize() int64 {
 
 func (q *DelayQueue) GetDBSize() (int64, error) {
 	totalSize := int64(0)
-	err := q.kvStore.View(func(tx *bolt.Tx) error {
+	err := q.getStore().View(func(tx *bolt.Tx) error {
 		totalSize = tx.Size()
 		return nil
 	})
@@ -297,7 +306,7 @@ func (q *DelayQueue) GetDBSize() (int64, error) {
 
 func (q *DelayQueue) BackupKVStoreTo(w io.Writer) (int64, error) {
 	totalSize := int64(0)
-	err := q.kvStore.View(func(tx *bolt.Tx) error {
+	err := q.getStore().View(func(tx *bolt.Tx) error {
 		buf := make([]byte, 8)
 		binary.BigEndian.PutUint64(buf, uint64(tx.Size()))
 		_, err := w.Write(buf)
@@ -321,22 +330,40 @@ func (q *DelayQueue) RestoreKVStoreFrom(body io.Reader) error {
 		return errors.New("unexpected length for body length")
 	}
 	bodyLen := int64(binary.BigEndian.Uint64(buf))
-	q.kvStore.Close()
-	kvPath := path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition))
-	err = os.Remove(kvPath)
+	tmpPath := path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)+"-tmp")
+	err = os.Remove(tmpPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	f, err := os.Create(kvPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 	_, err = io.CopyN(f, body, bodyLen)
 	if err != nil {
+		f.Close()
 		return err
 	}
-	f.Sync()
+	err = f.Sync()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
+
+	kvPath := path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition))
+	q.dbLock.Lock()
+	defer q.dbLock.Unlock()
+	q.kvStore.Close()
+	err = os.Rename(tmpPath, kvPath)
+	if err != nil {
+		return err
+	}
 	q.kvStore, err = bolt.Open(kvPath, 0644, nil)
 	if err != nil {
 		return err
@@ -406,7 +433,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 	}
 	msgKey := getDelayedMsgDBKey(int(m.DelayedType), m.DelayedChannel, m.DelayedTs, m.ID)
 
-	err = q.kvStore.Update(func(tx *bolt.Tx) error {
+	err = q.getStore().Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		oldV := b.Get(msgKey)
 		exists := oldV != nil
@@ -469,14 +496,15 @@ func (q *DelayQueue) exit(deleted bool) error {
 		return errors.New("exiting")
 	}
 
-	q.kvStore.Close()
 	if deleted {
+		q.getStore().Close()
 		os.RemoveAll(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)))
 		return q.backend.Delete()
 	}
 
 	// write anything leftover to disk
 	q.flush()
+	q.getStore().Close()
 	return q.backend.Close()
 }
 
@@ -500,12 +528,12 @@ func (q *DelayQueue) flush() error {
 		nsqLog.LogErrorf("failed flush: %v", err)
 		return err
 	}
-	q.kvStore.Sync()
+	q.getStore().Sync()
 	return err
 }
 
 func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch string) error {
-	db := q.kvStore
+	db := q.getStore()
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
@@ -535,7 +563,7 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 }
 
 func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
-	db := q.kvStore
+	db := q.getStore()
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
@@ -575,7 +603,7 @@ func (q *DelayQueue) EmptyDelayedChannel(ch string) error {
 
 func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64, filterType int,
 	filterChannel string) (int, error) {
-	db := q.kvStore
+	db := q.getStore()
 	idx := 0
 	var prefix []byte
 	if filterType > 0 {
@@ -634,7 +662,7 @@ func (q *DelayQueue) PeekAll(results []Message) (int, error) {
 
 func (q *DelayQueue) GetSyncedOffset() (BackendOffset, error) {
 	var synced BackendOffset
-	err := q.kvStore.View(func(tx *bolt.Tx) error {
+	err := q.getStore().View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketMeta)
 		v := b.Get(syncedOffsetKey)
 		offset, err := strconv.Atoi(string(v))
@@ -650,9 +678,9 @@ func (q *DelayQueue) GetSyncedOffset() (BackendOffset, error) {
 	return synced, err
 }
 
-func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) uint64 {
+func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) (uint64, error) {
 	cnt := uint64(0)
-	q.kvStore.View(func(tx *bolt.Tx) error {
+	err := q.getStore().View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketMeta)
 		cntKey := []byte("counter_" + string(getDelayedMsgDBPrefixKey(dt, channel)))
 		cntBytes := b.Get(cntKey)
@@ -662,13 +690,13 @@ func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) uint64 {
 		return nil
 	})
 
-	return cnt
+	return cnt, err
 }
 
 func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	// confirmed message is finished by channel, this message has swap the
 	// delayed id and original id to make sure the map key of inflight is original id
-	err := q.kvStore.Update(func(tx *bolt.Tx) error {
+	err := q.getStore().Update(func(tx *bolt.Tx) error {
 		return deleteBucketKey(int(msg.DelayedType), msg.DelayedChannel,
 			msg.DelayedTs, msg.DelayedOrigID, tx)
 	})
@@ -681,21 +709,29 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 }
 
 func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map[int]uint64, map[string]uint64) {
-	db := q.kvStore
+	db := q.getStore()
 	prefixList := make([][]byte, 0, len(chList)+2)
 	cntList := make(map[int]uint64)
 	channelCntList := make(map[string]uint64)
+	var err error
 	for filterType := MinDelayedType; filterType < MaxDelayedType; filterType++ {
 		if filterType == ChannelDelayed {
 			continue
 		}
 		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(filterType, ""))
-		cntList[filterType] = q.GetCurrentDelayedCnt(filterType, "")
+		cntList[filterType], err = q.GetCurrentDelayedCnt(filterType, "")
+		if err != nil {
+			return nil, nil, nil
+		}
 	}
 	chIndex := len(prefixList)
 	for _, ch := range chList {
 		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(ChannelDelayed, ch))
-		channelCntList[ch] = q.GetCurrentDelayedCnt(ChannelDelayed, ch)
+		channelCntList[ch], err = q.GetCurrentDelayedCnt(ChannelDelayed, ch)
+
+		if err != nil {
+			return nil, nil, nil
+		}
 	}
 	keyList := make(RecentKeyList, 0, len(prefixList))
 	for i, prefix := range prefixList {
@@ -703,7 +739,7 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map
 		if i >= chIndex {
 			origCh = chList[i-chIndex]
 		}
-		db.View(func(tx *bolt.Tx) error {
+		err := db.View(func(tx *bolt.Tx) error {
 			b := tx.Bucket(bucketDelayedMsg)
 			c := b.Cursor()
 			for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
@@ -720,6 +756,9 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map
 			}
 			return nil
 		})
+		if err != nil {
+			return nil, nil, nil
+		}
 	}
 	return keyList, cntList, channelCntList
 }
@@ -743,4 +782,85 @@ func (q *DelayQueue) UpdateConsumedState(keyList RecentKeyList, cntList map[int]
 		}
 	}
 	return nil
+}
+
+func (q *DelayQueue) TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset BackendOffset) (BackendQueueEnd, error) {
+	// clean the data that has been consumed and keep the retention policy
+	var oldestPos BackendQueueEnd
+	oldestPos = q.backend.GetQueueReadEnd()
+	if oldestPos == nil {
+		nsqLog.Logf("no end position found")
+		return nil, nil
+	}
+	cleanStart := q.backend.GetQueueReadStart()
+	nsqLog.Logf("clean topic %v data current start: %v, oldest end %v, max clean end: %v",
+		q.GetFullName(), cleanStart, oldestPos, maxCleanOffset)
+	if cleanStart.Offset()+BackendOffset(retentionSize) >= oldestPos.Offset() {
+		return nil, nil
+	}
+
+	if oldestPos.Offset() < maxCleanOffset || maxCleanOffset == BackendOffset(0) {
+		maxCleanOffset = oldestPos.Offset()
+	}
+	snapReader := NewDiskQueueSnapshot(getBackendName(q.tname, q.partition), q.dataPath, oldestPos)
+	snapReader.SetQueueStart(cleanStart)
+	err := snapReader.SeekTo(cleanStart.Offset())
+	if err != nil {
+		nsqLog.Errorf("topic: %v failed to seek to %v: %v", q.GetFullName(), cleanStart, err)
+		return nil, err
+	}
+	readInfo := snapReader.GetCurrentReadQueueOffset()
+	data := snapReader.ReadOne()
+	if data.Err != nil {
+		return nil, data.Err
+	}
+	var cleanEndInfo BackendQueueOffset
+	retentionDay := int32(DEFAULT_RETENTION_DAYS)
+	cleanTime := time.Now().Add(-1 * time.Hour * 24 * time.Duration(retentionDay))
+	for {
+		if retentionSize > 0 {
+			// clean data ignore the retention day
+			// only keep the retention size (start from the last consumed)
+			if data.Offset > maxCleanOffset-BackendOffset(retentionSize) {
+				break
+			}
+			cleanEndInfo = readInfo
+		} else {
+			msg, decodeErr := DecodeDelayedMessage(data.Data, q.isExt)
+			if decodeErr != nil {
+				nsqLog.LogErrorf("failed to decode message - %s - %v", decodeErr, data)
+			} else {
+				if msg.Timestamp >= cleanTime.UnixNano() {
+					break
+				}
+				if data.Offset >= maxCleanOffset {
+					break
+				}
+				cleanEndInfo = readInfo
+			}
+		}
+		err = snapReader.SkipToNext()
+		if err != nil {
+			nsqLog.Logf("failed to skip - %s ", err)
+			break
+		}
+		readInfo = snapReader.GetCurrentReadQueueOffset()
+		data = snapReader.ReadOne()
+		if data.Err != nil {
+			nsqLog.LogErrorf("failed to read - %s ", data.Err)
+			break
+		}
+	}
+
+	nsqLog.Infof("clean topic %v delayed queue from %v under retention %v, %v",
+		q.GetFullName(), cleanEndInfo, cleanTime, retentionSize)
+	if cleanEndInfo == nil || cleanEndInfo.Offset()+BackendOffset(retentionSize) >= maxCleanOffset {
+		if cleanEndInfo != nil {
+			nsqLog.Warningf("clean topic %v data at position: %v could not exceed current oldest confirmed %v and max clean end: %v",
+				q.GetFullName(), cleanEndInfo, oldestPos, maxCleanOffset)
+		}
+		return nil, nil
+	}
+	// TODO: shrink the boltdb here
+	return q.backend.CleanOldDataByRetention(cleanEndInfo, noRealClean, maxCleanOffset)
 }

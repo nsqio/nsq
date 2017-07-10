@@ -41,7 +41,8 @@ func TestDelayQueuePutChannelDelayed(t *testing.T) {
 	synced, err := dq.GetSyncedOffset()
 	test.Nil(t, err)
 	test.Equal(t, end, synced)
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
 	_, err = os.Stat(dq.dataPath)
 	test.Nil(t, err)
 	dq.Delete()
@@ -84,7 +85,8 @@ func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 	synced, err := dq.GetSyncedOffset()
 	test.Nil(t, err)
 	test.Equal(t, end, synced)
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
 	_, err = os.Stat(dq.dataPath)
 	test.Nil(t, err)
 
@@ -145,8 +147,10 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	}
 
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+	test.Equal(t, cnt, int(newCnt))
 	dq.emptyDelayedUntil(ChannelDelayed, middle.DelayedTs, middle.ID, "test")
 	// test empty until should keep the until cursor
 	recent, _, _ := dq.GetOldestConsumedState([]string{"test"})
@@ -156,11 +160,15 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 	test.Equal(t, middle.ID, id)
 	test.Equal(t, middle.DelayedTs, ts)
 
-	test.Equal(t, cnt-middleIndex, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt-middleIndex, int(newCnt))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+	test.Equal(t, cnt, int(newCnt))
 	dq.EmptyDelayedChannel("test")
-	test.Equal(t, 0, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, 0, int(newCnt))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+	test.Equal(t, cnt, int(newCnt))
 }
 
 func TestDelayQueuePeekRecent(t *testing.T) {
@@ -260,10 +268,11 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 		for _, m := range ret[:n] {
 			test.Equal(t, "test", m.DelayedChannel)
 			test.Equal(t, true, m.DelayedTs <= time.Now().UnixNano())
-			oldCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test"))
+			oldCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+
 			m.DelayedOrigID = m.ID
 			dq.ConfirmedMessage(&m)
-			newCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test"))
+			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
 			test.Equal(t, oldCnt-1, newCnt)
 			cursorList, cntList, channelCntList := dq.GetOldestConsumedState([]string{"test"})
 			for _, v := range cntList {
@@ -289,10 +298,10 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 		for _, m := range ret[:n] {
 			test.Equal(t, "test2", m.DelayedChannel)
 			test.Equal(t, true, m.DelayedTs <= time.Now().UnixNano())
-			oldCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2"))
+			oldCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
 			m.DelayedOrigID = m.ID
 			dq.ConfirmedMessage(&m)
-			newCnt := int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2"))
+			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
 			test.Equal(t, oldCnt-1, newCnt)
 
 			cursorList, cntList, channelCntList := dq.GetOldestConsumedState([]string{"test2"})
@@ -313,7 +322,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			}
 		}
 
-		if dq.GetCurrentDelayedCnt(ChannelDelayed, "test2") <= 0 {
+		if n, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test2"); n <= 0 {
 			break
 		}
 		time.Sleep(time.Millisecond * 100)
@@ -355,8 +364,10 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	}
 
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+	test.Equal(t, cnt, int(newCnt))
 
 	oldDBStat, err := os.Stat(dq.kvStore.Path())
 	test.Nil(t, err)
@@ -373,13 +384,16 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 	test.Nil(t, err)
 	err = dq.RestoreKVStoreFrom(f)
 	test.Nil(t, err)
-	dbSize, _ := dq.GetDBSize()
-	test.Equal(t, stat.Size()-8, dbSize)
 
 	dbStat, err := os.Stat(dq.kvStore.Path())
 	test.Nil(t, err)
 	test.Equal(t, oldDBStat.Size(), dbStat.Size())
 
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
-	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
+	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+	test.Equal(t, cnt, int(newCnt))
+
+	dbSize, _ := dq.GetDBSize()
+	test.Equal(t, stat.Size()-8, dbSize)
 }
