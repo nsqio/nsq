@@ -68,7 +68,6 @@ type ChannelMetaInfo struct {
 	Name   string `json:"name"`
 	Paused bool   `json:"paused"`
 	Skipped bool  `json:"skipped"`
-	Ext    bool   `json:"ext"`
 }
 
 type Topic struct {
@@ -108,7 +107,6 @@ type Topic struct {
 	pubLoopFunc     func(v *Topic)
 	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
-
 	isExt		int32
 }
 
@@ -124,8 +122,15 @@ func GetTopicFullName(topic string, part int) string {
 	return topic + "-" + strconv.Itoa(part)
 }
 
-// Topic constructor
 func NewTopic(topicName string, part int, opt *Options,
+deleteCallback func(*Topic), writeDisabled int32,
+notify func(v interface{}), loopFunc func(v *Topic),
+reqToEnd ReqToEndFunc) *Topic {
+	return NewTopicWithExt(topicName, part, false, opt, deleteCallback, writeDisabled, notify, loopFunc, reqToEnd)
+}
+
+// Topic constructor
+func NewTopicWithExt(topicName string, part int, ext bool, opt *Options,
 	deleteCallback func(*Topic), writeDisabled int32,
 	notify func(v interface{}), loopFunc func(v *Topic),
 	reqToEnd ReqToEndFunc) *Topic {
@@ -147,6 +152,9 @@ func NewTopic(topicName string, part int, opt *Options,
 		quitChan:       make(chan struct{}),
 		pubLoopFunc:    loopFunc,
 		reqToEndCB:     reqToEnd,
+	}
+	if ext {
+		t.setExt()
 	}
 	if t.dynamicConf.SyncEvery < 1 {
 		t.dynamicConf.SyncEvery = 1
@@ -379,10 +387,6 @@ func (t *Topic) LoadChannelMeta() error {
 		if ch.Skipped {
 			channel.Skip()
 		}
-
-		if ch.Ext {
-			channel.SetExt(true)
-		}
 	}
 	return nil
 }
@@ -398,7 +402,6 @@ func (t *Topic) SaveChannelMeta() error {
 				Name:   channel.name,
 				Paused: channel.IsPaused(),
 				Skipped: channel.IsSkipped(),
-				Ext:    channel.Ext > 0,
 			}
 			channels = append(channels, meta)
 		}

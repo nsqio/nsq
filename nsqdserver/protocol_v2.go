@@ -924,11 +924,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
-	//Check ext before add client
-	if topic.IsExt() {
-		channel.SetExt(true)
-	}
-	if !channel.IsExt() && client.GetTag() != nil {
+	if !topic.IsExt() && client.GetTag() != nil {
 		return nil, protocol.NewFatalClientErr(nil, ext.E_TAG_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
 	}
 
@@ -1184,12 +1180,18 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION", "partition should not less than 0")
 	}
 
+	ext, err := strconv.ParseBool(string(params[3]))
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_EXT",
+			fmt.Sprintf("topic ext is not valid: %v", err))
+	}
+
 	if p.ctx.nsqdCoord != nil {
 		return nil, protocol.NewClientErr(err, "E_CREATE_TOPIC_FAILED",
 			fmt.Sprintf("CREATE_TOPIC is not allowed here while cluster feature enabled."))
 	}
 
-	topic := p.ctx.getTopic(topicName, partition)
+	topic := p.ctx.getTopic(topicName, partition, ext)
 	if topic == nil {
 		return nil, protocol.NewClientErr(err, "E_CREATE_TOPIC_FAILED",
 			fmt.Sprintf("CREATE_TOPIC %v failed", topicName))

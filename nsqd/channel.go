@@ -290,14 +290,6 @@ func (c *Channel) IsEphemeral() bool {
 	return c.ephemeral
 }
 
-func (c *Channel) SetExt(enable bool) {
-	if enable {
-		atomic.StoreInt32(&c.Ext, 1)
-	} else {
-		atomic.StoreInt32(&c.Ext, 0)
-	}
-}
-
 func (c *Channel) IsExt() bool {
 	return atomic.LoadInt32(&c.Ext) == 1
 }

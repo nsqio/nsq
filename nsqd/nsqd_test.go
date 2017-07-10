@@ -360,3 +360,51 @@ func TestSetHealth(t *testing.T) {
 	equal(t, nsqd.GetHealth(), "OK")
 	equal(t, nsqd.IsHealthy(), true)
 }
+
+func TestLoadTopicMetaExt(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	//defer nsqd.Exit()
+
+	// avoid concurrency issue of async PersistMetadata() calls
+	atomic.StoreInt32(&nsqd.isLoading, 1)
+	topicName := "load_topic_meta" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
+
+	topicNameExt := "load_topic_meta_ext" + strconv.Itoa(int(time.Now().Unix()))
+	topicExt := nsqd.GetTopicIgnPart(topicNameExt)
+	topicDynConf := TopicDynamicConf{
+		AutoCommit:1,
+		SyncEvery:1,
+		Ext: true,
+	}
+	topicExt.SetDynamicInfo(topicDynConf, nil)
+	topicExt.GetChannel("ch")
+
+	atomic.StoreInt32(&nsqd.isLoading, 0)
+	nsqd.PersistMetadata(nsqd.GetTopicMapCopy())
+	nsqd.Exit()
+
+	_, _, nsqd = mustStartNSQD(opts)
+	defer nsqd.Exit()
+	nsqd.LoadMetadata(1)
+
+	topic, err := nsqd.GetExistingTopic(topicName, 0)
+	if err != nil {
+		t.FailNow()
+	}
+	if topic.IsExt() {
+		t.FailNow()
+	}
+
+	topicExt, err = nsqd.GetExistingTopic(topicNameExt, 0)
+	if err != nil {
+		t.FailNow()
+	}
+	if !topicExt.IsExt() {
+		t.FailNow()
+	}
+}

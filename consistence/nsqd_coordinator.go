@@ -1983,7 +1983,7 @@ func (self *NsqdCoordinator) notifyFlushData(topic string, partition int) {
 
 func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo, logMgr *TopicCommitLogMgr) (*nsqd.Topic, *CoordErr) {
 	// check topic exist and prepare on local.
-	t := self.localNsqd.GetTopicWithDisabled(topicInfo.Name, topicInfo.Partition)
+	t := self.localNsqd.GetTopicWithDisabled(topicInfo.Name, topicInfo.Partition, topicInfo.Ext)
 	if t == nil {
 		return nil, ErrLocalInitTopicFailed
 	}
