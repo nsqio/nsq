@@ -374,7 +374,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 		}
 		tpCoord.DisableWrite(true)
 
-		_, coordErr := self.nsqdCoord.updateLocalTopic(&rpcTopicReq.TopicPartitionMetaInfo, tpCoord.GetData().logMgr)
+		_, coordErr := self.nsqdCoord.updateLocalTopic(&rpcTopicReq.TopicPartitionMetaInfo, tpCoord.GetData())
 		if coordErr != nil {
 			coordLog.Warningf("init local topic failed: %v", coordErr)
 			self.nsqdCoord.coordMutex.Unlock()

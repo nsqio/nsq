@@ -521,7 +521,7 @@ func (self *NsqdRpcClient) GetLastDelayedQueueCommitLogID(topicInfo *TopicPartit
 }
 
 func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logCountNumIndex int64,
-	logIndex int64, offset int64) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
+	logIndex int64, offset int64, fromDelayedQueue bool) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
 	var req RpcCommitLogReq
 	req.LogStartIndex = logIndex
 	req.LogOffset = offset
@@ -530,16 +530,23 @@ func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaI
 	req.LogCountNumIndex = logCountNumIndex
 	req.UseCountIndex = true
 	var rsp *RpcCommitLogRsp
-	rspVar, err := self.CallWithRetry("GetCommitLogFromOffset", &req)
+	var rspVar interface{}
+	var err error
+	if !fromDelayedQueue {
+		rspVar, err = self.CallWithRetry("GetCommitLogFromOffset", &req)
+	} else {
+		rspVar, err = self.CallWithRetry("GetDelayedQueueCommitLogFromOffset", &req)
+	}
 	if err != nil {
 		return false, 0, 0, 0, CommitLogData{}, convertRpcError(err, nil)
 	}
 	rsp = rspVar.(*RpcCommitLogRsp)
 	return rsp.UseCountIndex, rsp.LogCountNumIndex, rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
+
 }
 
 func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, logCountNumIndex int64,
-	logIndex int64, startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
+	logIndex int64, startOffset int64, num int, fromDelayed bool) ([]CommitLogData, [][]byte, error) {
 	var r RpcPullCommitLogsReq
 	r.TopicName = topic
 	r.TopicPartition = partition
@@ -549,7 +556,13 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, lo
 	r.LogCountNumIndex = logCountNumIndex
 	r.UseCountIndex = true
 	var ret *RpcPullCommitLogsRsp
-	retVar, err := self.CallWithRetry("PullCommitLogsAndData", &r)
+	var retVar interface{}
+	var err error
+	if !fromDelayed {
+		retVar, err = self.CallWithRetry("PullCommitLogsAndData", &r)
+	} else {
+		retVar, err = self.CallWithRetry("PullDelayedQueueCommitLogsAndData", &r)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -557,12 +570,18 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, lo
 	return ret.Logs, ret.DataList, nil
 }
 
-func (self *NsqdRpcClient) GetFullSyncInfo(topic string, partition int) (*LogStartInfo, *CommitLogData, error) {
+func (self *NsqdRpcClient) GetFullSyncInfo(topic string, partition int, fromDelayed bool) (*LogStartInfo, *CommitLogData, error) {
 	var r RpcGetFullSyncInfoReq
 	r.TopicName = topic
 	r.TopicPartition = partition
 	var ret *RpcGetFullSyncInfoRsp
-	retVar, err := self.CallWithRetry("GetFullSyncInfo", &r)
+	var retVar interface{}
+	var err error
+	if !fromDelayed {
+		retVar, err = self.CallWithRetry("GetFullSyncInfo", &r)
+	} else {
+		retVar, err = self.CallWithRetry("GetDelayedQueueFullSyncInfo", &r)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -586,56 +605,6 @@ func (self *NsqdRpcClient) GetNodeInfo(nid string) (*NsqdNodeInfo, error) {
 	nodeInfo.RpcPort = ret.RpcPort
 	nodeInfo.TcpPort = ret.TcpPort
 	return &nodeInfo, nil
-}
-
-func (self *NsqdRpcClient) GetDelayedQueueCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logCountNumIndex int64,
-	logIndex int64, offset int64) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
-	var req RpcCommitLogReq
-	req.LogStartIndex = logIndex
-	req.LogOffset = offset
-	req.TopicName = topicInfo.Name
-	req.TopicPartition = topicInfo.Partition
-	req.LogCountNumIndex = logCountNumIndex
-	req.UseCountIndex = true
-	var rsp *RpcCommitLogRsp
-	rspVar, err := self.CallWithRetry("GetDelayedQueueCommitLogFromOffset", &req)
-	if err != nil {
-		return false, 0, 0, 0, CommitLogData{}, convertRpcError(err, nil)
-	}
-	rsp = rspVar.(*RpcCommitLogRsp)
-	return rsp.UseCountIndex, rsp.LogCountNumIndex, rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
-}
-
-func (self *NsqdRpcClient) PullDelayedQueueCommitLogsAndData(topic string, partition int, logCountNumIndex int64,
-	logIndex int64, startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
-	var r RpcPullCommitLogsReq
-	r.TopicName = topic
-	r.TopicPartition = partition
-	r.StartLogOffset = startOffset
-	r.StartIndexCnt = logIndex
-	r.LogMaxNum = num
-	r.LogCountNumIndex = logCountNumIndex
-	r.UseCountIndex = true
-	var ret *RpcPullCommitLogsRsp
-	retVar, err := self.CallWithRetry("PullDelayedQueueCommitLogsAndData", &r)
-	if err != nil {
-		return nil, nil, err
-	}
-	ret = retVar.(*RpcPullCommitLogsRsp)
-	return ret.Logs, ret.DataList, nil
-}
-
-func (self *NsqdRpcClient) GetDelayedQueueFullSyncInfo(topic string, partition int) (*LogStartInfo, *CommitLogData, error) {
-	var r RpcGetFullSyncInfoReq
-	r.TopicName = topic
-	r.TopicPartition = partition
-	var ret *RpcGetFullSyncInfoRsp
-	retVar, err := self.CallWithRetry("GetDelayedQueueFullSyncInfo", &r)
-	if err != nil {
-		return nil, nil, err
-	}
-	ret = retVar.(*RpcGetFullSyncInfoRsp)
-	return &ret.StartInfo, &ret.FirstLogData, nil
 }
 
 func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {

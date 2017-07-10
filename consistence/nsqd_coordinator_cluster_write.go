@@ -22,7 +22,7 @@ type handleSyncResultFunc func(int, *coordData) bool
 type checkDupFunc func(*coordData) bool
 
 func (self *NsqdCoordinator) PutMessageBodyToCluster(topic *nsqd.Topic,
-body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
+	body []byte, traceID uint64) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	msg := nsqd.NewMessage(0, body)
 	msg.TraceID = traceID
 	return self.PutMessageToCluster(topic, msg)
@@ -567,7 +567,7 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		if putDelayed {
 			delayQ, err := topic.GetOrCreateDelayedQueueNoLock(logMgr)
 			if err == nil {
-				queueEnd, localErr = delayQ.PutDelayMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+				queueEnd, localErr = delayQ.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
 			} else {
 				localErr = err
 			}

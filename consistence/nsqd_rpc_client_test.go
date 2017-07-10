@@ -7,6 +7,7 @@ import (
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/nsqd"
 	"io/ioutil"
+	"net"
 	"os"
 	"strconv"
 	"sync"
@@ -172,7 +173,14 @@ func (self *fakeNsqdLeadership) GetTopicLeaderSession(topic string, partition in
 }
 
 func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID string, nsqd *nsqd.NSQD, useFake bool) *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator(TEST_NSQ_CLUSTER_NAME, "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	httpPort := "0"
+	if nsqd != nil {
+		_, httpPort, _ = net.SplitHostPort(nsqd.GetOpts().HTTPAddress)
+		if httpPort == "" {
+			httpPort = "0"
+		}
+	}
+	nsqdCoord := NewNsqdCoordinator(TEST_NSQ_CLUSTER_NAME, "127.0.0.1", "0", rpcport, httpPort, extraID, dataPath, nsqd)
 	if useFake {
 		nsqdCoord.leadership = NewFakeNSQDLeadership()
 		nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
@@ -196,7 +204,7 @@ func startNsqdCoord(t *testing.T, rpcport string, dataPath string, extraID strin
 
 func startNsqdCoordWithFakeData(t *testing.T, rpcport string, dataPath string,
 	extraID string, nsqd *nsqd.NSQD, fakeLeadership *fakeNsqdLeadership, fakeLookupProxy *fakeLookupRemoteProxy) *NsqdCoordinator {
-	nsqdCoord := NewNsqdCoordinator(TEST_NSQ_CLUSTER_NAME, "127.0.0.1", "0", rpcport, extraID, dataPath, nsqd)
+	nsqdCoord := NewNsqdCoordinator(TEST_NSQ_CLUSTER_NAME, "127.0.0.1", "0", rpcport, "0", extraID, dataPath, nsqd)
 	nsqdCoord.leadership = fakeLeadership
 	nsqdCoord.lookupRemoteCreateFunc = func(addr string, to time.Duration) (INsqlookupRemoteProxy, error) {
 		fakeLookupProxy.t = t

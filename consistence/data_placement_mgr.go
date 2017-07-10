@@ -987,6 +987,7 @@ func (self *DataPlacement) addToCatchupAndWaitISRReady(monitorChan chan struct{}
 	topicInfo, err := self.lookupCoord.leadership.GetTopicInfo(topicName, partitionID)
 	if err != nil {
 		coordLog.Infof("failed to get topic info: %v-%v: %v", topicName, partitionID, err)
+		return err
 	}
 	if topicInfo.OrderedMulti && addNode == "" {
 		nodeNameList := make([]string, 0, len(sortedNodeTopicStats))

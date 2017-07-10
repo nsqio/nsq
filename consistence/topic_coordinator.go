@@ -34,6 +34,27 @@ type coordData struct {
 	forceLeave         int32
 }
 
+func (self *coordData) updateBufferSize(bs int) {
+	self.logMgr.updateBufferSize(bs)
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.updateBufferSize(bs)
+	}
+}
+
+func (self *coordData) flushCommitLogs() {
+	self.logMgr.FlushCommitLogs()
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.FlushCommitLogs()
+	}
+}
+
+func (self *coordData) switchForMaster(master bool) {
+	self.logMgr.switchForMaster(master)
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.switchForMaster(master)
+	}
+}
+
 func (self *coordData) GetCopy() *coordData {
 	newCoordData := &coordData{}
 	if self == nil {
