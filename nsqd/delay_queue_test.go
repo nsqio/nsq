@@ -3,6 +3,7 @@ package nsqd
 import (
 	//"github.com/absolute8511/nsq/internal/levellogger"
 	"fmt"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/test"
 	"io/ioutil"
 	"os"
@@ -22,7 +23,7 @@ func TestDelayQueuePutChannelDelayed(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
 
-	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil)
+	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil, false)
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10
@@ -50,6 +51,60 @@ func TestDelayQueuePutChannelDelayed(t *testing.T) {
 	test.NotNil(t, err)
 }
 
+func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-delay-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
+
+	dq, err := NewDelayQueue("test-ext", 0, tmpDir, opts, nil, true)
+	test.Nil(t, err)
+	defer dq.Close()
+	cnt := 10
+	var end BackendOffset
+	tagExt, err := ext.NewTagExt([]byte("exttagdata"))
+	test.Nil(t, err)
+	for i := 0; i < cnt; i++ {
+		msg := NewMessage(0, []byte("body"))
+		msg.ExtVer = tagExt.ExtVersion()
+		msg.ExtBytes = tagExt.GetBytes()
+		msg.DelayedType = ChannelDelayed
+		msg.DelayedTs = time.Now().Add(time.Millisecond).UnixNano()
+		msg.DelayedChannel = "test"
+		msg.DelayedOrigID = MessageID(i + 1)
+		_, _, _, dend, err := dq.PutDelayMessage(msg)
+		test.Nil(t, err)
+		end = dend.Offset()
+	}
+	synced, err := dq.GetSyncedOffset()
+	test.Nil(t, err)
+	test.Equal(t, end, synced)
+	test.Equal(t, cnt, int(dq.GetCurrentDelayedCnt(ChannelDelayed, "test")))
+	_, err = os.Stat(dq.dataPath)
+	test.Nil(t, err)
+
+	time.Sleep(time.Second)
+	ret := make([]Message, cnt)
+	n, err := dq.PeekRecentChannelTimeout(ret, "test")
+	test.Nil(t, err)
+	test.Equal(t, cnt, n)
+	for _, m := range ret {
+		test.Equal(t, tagExt.ExtVersion(), m.ExtVer)
+		test.Equal(t, tagExt.GetBytes(), m.ExtBytes)
+	}
+
+	dq.Delete()
+	_, err = os.Stat(dq.dataPath)
+	test.Nil(t, err)
+	_, err = os.Stat(path.Join(dq.dataPath, getDelayQueueDBName(dq.tname, dq.partition)))
+	test.NotNil(t, err)
+}
+
 func TestDelayQueueEmptyUntil(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-delay-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -62,7 +117,7 @@ func TestDelayQueueEmptyUntil(t *testing.T) {
 	opts.SyncEvery = 1
 	SetLogger(opts.Logger)
 
-	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil)
+	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil, false)
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10
@@ -119,7 +174,7 @@ func TestDelayQueuePeekRecent(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.SyncEvery = 1
 
-	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil)
+	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil, false)
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10
@@ -176,7 +231,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 	opts.SyncEvery = 1
 	SetLogger(opts.Logger)
 
-	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil)
+	dq, err := NewDelayQueue("test", 0, tmpDir, opts, nil, false)
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10
@@ -278,7 +333,7 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 	opts.SyncEvery = 1
 	SetLogger(opts.Logger)
 
-	dq, err := NewDelayQueue("test-backup", 0, tmpDir, opts, nil)
+	dq, err := NewDelayQueue("test-backup", 0, tmpDir, opts, nil, false)
 	test.Nil(t, err)
 	defer dq.Close()
 	cnt := 10

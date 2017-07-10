@@ -136,7 +136,7 @@ func NewOptions() *Options {
 		MaxBodySize:       5 * 1024 * 1024,
 		MaxReqTimeout:     3 * 24 * time.Hour,
 		ClientTimeout:     60 * time.Second,
-		ReqToEndThreshold: 5 * time.Minute,
+		ReqToEndThreshold: 15 * time.Minute,
 
 		MaxHeartbeatInterval:   60 * time.Second,
 		MaxRdyCount:            2500,

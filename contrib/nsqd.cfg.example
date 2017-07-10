@@ -58,10 +58,10 @@ max_msg_timeout = "15m"
 max_msg_size = 1024768
 
 ## maximum requeuing timeout for a message
-max_req_timeout = "1h"
+max_req_timeout = "24h"
 
-## duration threshold for requeue a message to the queue end
-req_to_end_threshold = "1m"
+## duration threshold for requeue a message to the delayed queue end
+req_to_end_threshold = "15m"
 
 ## maximum size of a single command body
 max_body_size = 5123840

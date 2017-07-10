@@ -30,9 +30,10 @@ const (
 
 type RecentKeyList [][]byte
 
-func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
+func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter,
+	isExt bool) (BackendOffset, int32, diskQueueEndInfo, error) {
 	buf.Reset()
-	_, err := msg.WriteDelayedTo(buf)
+	_, err := msg.WriteDelayedTo(buf, isExt)
 	if err != nil {
 		return 0, 0, diskQueueEndInfo{}, err
 	}
@@ -141,10 +142,11 @@ type DelayQueue struct {
 	SyncEvery   int64
 	lastSyncCnt int64
 	needFixData int32
+	isExt       bool
 }
 
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
-	idGen MsgIDGenerator) (*DelayQueue, error) {
+	idGen MsgIDGenerator, isExt bool) (*DelayQueue, error) {
 	dataPath = path.Join(dataPath, "delayed_queue")
 	os.MkdirAll(dataPath, 0755)
 	q := &DelayQueue{
@@ -153,6 +155,7 @@ func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 		putBuffer:   bytes.Buffer{},
 		dataPath:    dataPath,
 		msgIDCursor: idGen,
+		isExt:       isExt,
 	}
 	q.fullName = GetTopicFullName(q.tname, q.partition)
 	backendName := getDelayQueueBackendName(q.tname, q.partition)
@@ -275,10 +278,6 @@ func (q *DelayQueue) TotalMessageCnt() uint64 {
 	return uint64(q.backend.GetQueueWriteEnd().TotalMsgCnt())
 }
 
-func (q *DelayQueue) GetQueueReadStart() int64 {
-	return int64(q.backend.GetQueueReadStart().Offset())
-}
-
 func (q *DelayQueue) TotalDataSize() int64 {
 	e := q.backend.GetQueueWriteEnd()
 	if e == nil {
@@ -373,7 +372,7 @@ func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int3
 	return id, offset, writeBytes, &dend, err
 }
 
-func (q *DelayQueue) PutDelayMessageOnReplica(m *Message, offset BackendOffset) (BackendQueueEnd, error) {
+func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQueueEnd, error) {
 	if atomic.LoadInt32(&q.exitFlag) == 1 {
 		return nil, ErrExiting
 	}
@@ -397,7 +396,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 		m.ID = q.nextMsgID()
 	}
 
-	offset, writeBytes, dend, err := writeDelayedMessageToBackend(&q.putBuffer, m, q.backend)
+	offset, writeBytes, dend, err := writeDelayedMessageToBackend(&q.putBuffer, m, q.backend, q.isExt)
 	atomic.StoreInt32(&q.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(
@@ -598,7 +597,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				continue
 			}
 
-			m, err := DecodeDelayedMessage(v)
+			m, err := DecodeDelayedMessage(v, q.isExt)
 			if err != nil {
 				nsqLog.LogErrorf("failed to decode delayed message: %v, %v", m, err)
 				continue

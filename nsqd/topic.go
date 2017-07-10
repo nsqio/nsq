@@ -113,6 +113,7 @@ type Topic struct {
 
 	delayedQueue atomic.Value
 	isExt        int32
+	saveMutex    sync.Mutex
 }
 
 func (t *Topic) setExt() {
@@ -219,7 +220,7 @@ func (t *Topic) GetDelayedQueue() *DelayQueue {
 
 func (t *Topic) GetOrCreateDelayedQueueNoLock(idGen MsgIDGenerator) (*DelayQueue, error) {
 	if t.delayedQueue.Load() == nil {
-		delayedQueue, err := NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen)
+		delayedQueue, err := NewDelayQueue(t.tname, t.partition, t.dataPath, t.option, idGen, t.IsExt())
 		if err == nil {
 			t.delayedQueue.Store(delayedQueue)
 			t.channelLock.RLock()
@@ -446,6 +447,8 @@ func (t *Topic) SaveChannelMeta() error {
 	if err != nil {
 		return err
 	}
+	t.saveMutex.Lock()
+	defer t.saveMutex.Unlock()
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 	f, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {

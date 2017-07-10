@@ -3,10 +3,10 @@ package nsqd
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/absolute8511/nsq/internal/ext"
 	"io"
 	"sync/atomic"
 	"time"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -36,13 +36,13 @@ func PrintMessage(m *Message) string {
 }
 
 type Message struct {
-	ID            MessageID
-	TraceID       uint64
-	Body          []byte
-	Timestamp     int64
-	Attempts      uint16
-	ExtBytes      []byte
-	ExtVer        ext.ExtVer
+	ID        MessageID
+	TraceID   uint64
+	Body      []byte
+	Timestamp int64
+	Attempts  uint16
+	ExtBytes  []byte
+	ExtVer    ext.ExtVer
 
 	// for in-flight handling
 	deliveryTS time.Time
@@ -70,7 +70,7 @@ func MessageHeaderBytes() int {
 	return MsgIDLength + 8 + 2
 }
 
-func NewMessageWithExt(id MessageID, body []byte, extVer ext.ExtVer, extBytes[]byte) *Message {
+func NewMessageWithExt(id MessageID, body []byte, extVer ext.ExtVer, extBytes []byte) *Message {
 	return &Message{
 		ID:        id,
 		TraceID:   0,
@@ -154,7 +154,7 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 	}
 
 	//write ext content
-	if  writeExt {
+	if writeExt {
 		//write ext version
 		buf[0] = byte(m.ExtVer)
 		n, err = w.Write(buf[:1])
@@ -164,8 +164,8 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 		}
 
 		if m.ExtVer != ext.NO_EXT_VER {
-			binary.BigEndian.PutUint16(buf[1:1 + 2], uint16(len(m.ExtBytes)))
-			n, err = w.Write(buf[1:1 + 2])
+			binary.BigEndian.PutUint16(buf[1:1+2], uint16(len(m.ExtBytes)))
+			n, err = w.Write(buf[1 : 1+2])
 			total += int64(n)
 			if err != nil {
 				return total, err
@@ -197,7 +197,7 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 	return total, nil
 }
 
-func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
+func (m *Message) WriteDelayedTo(w io.Writer, writeExt bool) (int64, error) {
 	var buf [32]byte
 	var total int64
 
@@ -236,6 +236,31 @@ func (m *Message) WriteDelayedTo(w io.Writer) (int64, error) {
 	total += int64(n)
 	if err != nil {
 		return total, err
+	}
+
+	//write ext content
+	if writeExt {
+		//write ext version
+		buf[0] = byte(m.ExtVer)
+		n, err = w.Write(buf[:1])
+		total += int64(n)
+		if err != nil {
+			return total, err
+		}
+
+		if m.ExtVer != ext.NO_EXT_VER {
+			binary.BigEndian.PutUint16(buf[:2], uint16(len(m.ExtBytes)))
+			n, err = w.Write(buf[:2])
+			total += int64(n)
+			if err != nil {
+				return total, err
+			}
+			n, err = w.Write(m.ExtBytes)
+			total += int64(n)
+			if err != nil {
+				return total, err
+			}
+		}
 	}
 
 	n, err = w.Write(m.Body)
@@ -280,9 +305,9 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 		extVer := ext.ExtVer(uint8(b[bodyStart]))
 		switch extVer {
 		case ext.TAG_EXT_VER:
-			tagLen := binary.BigEndian.Uint16(b[27:27+2])
+			tagLen := binary.BigEndian.Uint16(b[27 : 27+2])
 			msg.ExtVer = ext.TAG_EXT_VER
-			msg.ExtBytes = b[29:29+tagLen]
+			msg.ExtBytes = b[29 : 29+tagLen]
 			bodyStart = 29 + int(tagLen)
 		case ext.NO_EXT_VER:
 			msg.ExtVer = ext.NO_EXT_VER
@@ -296,7 +321,7 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 	return &msg, nil
 }
 
-func DecodeDelayedMessage(b []byte) (*Message, error) {
+func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength {
@@ -332,6 +357,27 @@ func DecodeDelayedMessage(b []byte) (*Message, error) {
 
 	msg.DelayedChannel = string(b[pos : pos+int(nameLen)])
 	pos += int(nameLen)
+
+	if isExt {
+		if len(b) <= pos {
+			return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+		}
+
+		extVer := ext.ExtVer(uint8(b[pos]))
+		pos++
+		switch extVer {
+		case ext.TAG_EXT_VER:
+			tagLen := binary.BigEndian.Uint16(b[pos : pos+2])
+			pos += 2
+			msg.ExtVer = ext.TAG_EXT_VER
+			msg.ExtBytes = b[pos : pos+int(tagLen)]
+			pos += int(tagLen)
+		case ext.NO_EXT_VER:
+			msg.ExtVer = ext.NO_EXT_VER
+		default:
+			return nil, fmt.Errorf("invalid ext version %v", extVer)
+		}
+	}
 
 	msg.Body = b[pos:]
 	return &msg, nil
