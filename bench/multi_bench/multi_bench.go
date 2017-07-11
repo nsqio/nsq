@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"math/rand"
 	"os"
 	"sort"
 	"strconv"
@@ -35,7 +36,7 @@ var (
 	batchSize     = flagSet.Int("batch-size", 10, "batch size of messages")
 	deadline      = flagSet.String("deadline", "", "deadline to start the benchmark run")
 	concurrency   = flagSet.Int("c", 100, "concurrency of goroutine")
-	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/checkdata/benchlookup/benchreg/consumeoffset/checkdata2)")
+	benchCase     = flagSet.String("bench-case", "simple", "which bench should run (simple/benchpub/benchsub/benchdelaysub/checkdata/benchlookup/benchreg/consumeoffset/checkdata2)")
 	channelNum    = flagSet.Int("ch_num", 1, "the channel number under each topic")
 	trace         = flagSet.Bool("trace", false, "enable the trace of pub and sub")
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
@@ -141,7 +142,7 @@ func startBenchPub(msg []byte, batch [][]byte) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan)
+			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan, false)
 		}()
 		<-rdyChan
 	}
@@ -452,7 +453,7 @@ func startCheckData2() {
 }
 
 // check the pub data and sub data is the same at any time.
-func startCheckData(msg []byte, batch [][]byte) {
+func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 	var wg sync.WaitGroup
 	config.EnableTrace = *trace
 	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
@@ -495,7 +496,7 @@ func startCheckData(msg []byte, batch [][]byte) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan)
+			pubWorker(*runfor, pubMgr, topics[j%len(topics)], *batchSize, batch, rdyChan, goChan, testDelay)
 		}()
 		<-rdyChan
 	}
@@ -907,7 +908,7 @@ func main() {
 	} else if *benchCase == "benchsub" {
 		startBenchSub()
 	} else if *benchCase == "checkdata" {
-		startCheckData(msg, batch)
+		startCheckData(msg, batch, false)
 	} else if *benchCase == "benchlookup" {
 		startBenchLookup()
 	} else if *benchCase == "benchreg" {
@@ -916,10 +917,13 @@ func main() {
 		startCheckSetConsumerOffset()
 	} else if *benchCase == "checkdata2" {
 		startCheckData2()
+	} else if *benchCase == "benchdelaysub" {
+		startCheckData(msg, batch, true)
 	}
 }
 
-func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, batchSize int, batch [][]byte, rdyChan chan int, goChan chan int) {
+func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName string, batchSize int,
+	batch [][]byte, rdyChan chan int, goChan chan int, testDelay bool) {
 	pubMgr, err := nsq.NewTopicProducerMgr(topics, config)
 	if err != nil {
 		log.Printf("init error : %v", err)
@@ -948,12 +952,19 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 			time.Sleep(*sleepfor)
 		}
 
+		singleMsg := batch[0]
+		if testDelay && atomic.LoadInt64(&currentMsgCount)%171 == 0 {
+			delayDuration := time.Minute * time.Duration(1+rand.Intn(100))
+			delayStr := strconv.Itoa(int(time.Now().Add(delayDuration).Unix()))
+			singleMsg = []byte("delay-" + delayStr)
+			batch[0] = singleMsg
+		}
 		if *trace {
 			if batchSize == 1 {
 				if *ordered {
-					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, batch[0], batch[0])
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, batch[0], singleMsg)
 				} else {
-					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], batch[0])
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], singleMsg)
 				}
 			} else {
 				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
@@ -985,7 +996,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 		} else {
 			var err error
 			if batchSize == 1 {
-				err = pubMgr.Publish(topicName, batch[0])
+				err = pubMgr.Publish(topicName, singleMsg)
 			} else {
 				err = pubMgr.MultiPublish(topicName, batch)
 			}
@@ -1006,8 +1017,9 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 }
 
 type consumeHandler struct {
-	topic string
-	check bool
+	topic      string
+	check      bool
+	checkDelay bool
 }
 
 func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
@@ -1021,6 +1033,26 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 		if !ok {
 			topicCheck = make(map[uint64]*nsq.Message)
 			dumpCheck[c.topic+pidStr] = topicCheck
+		}
+		if c.checkDelay {
+			if len(message.Body) >= len("delay-") && string(message.Body[:len("delay-")]) == "delay-" {
+				delayTs, err := strconv.Atoi(string(message.Body[len("delay-"):]))
+				if err == nil {
+					now := int(time.Now().Unix())
+					if delayTs > now {
+						if message.Attempts > 1 {
+							log.Printf("got delayed message early: %v, now: %v", string(message.Body), now)
+						}
+						message.DisableAutoResponse()
+						message.Requeue(time.Duration(delayTs-now) * time.Second)
+						return nil
+					} else if now-delayTs > 10 {
+						log.Printf("got delayed message too late: %v, now: %v", string(message.Body), now)
+					}
+				} else {
+					log.Printf("got delayed message invalid delay: %v, %v", string(message.Body), err)
+				}
+			}
 		}
 		if *ordered {
 			lastResp, ok := orderCheck[c.topic+pidStr]
@@ -1060,16 +1092,19 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 	return nil
 }
 
-func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic string, channel string, rdyChan chan int, goChan chan int, id int) {
+func subWorker(quitChan chan int, td time.Duration, lookupAddr string, topic string, channel string,
+	rdyChan chan int, goChan chan int, id int) {
 	consumer, err := nsq.NewConsumer(topic, channel, config)
 	if err != nil {
 		panic(err.Error())
 	}
 	consumer.SetLogger(log.New(os.Stderr, "", log.LstdFlags), nsq.LogLevelInfo)
 	if *benchCase == "checkdata" {
-		consumer.AddHandler(&consumeHandler{topic, true})
+		consumer.AddHandler(&consumeHandler{topic, true, false})
+	} else if *benchCase == "benchdelaysub" {
+		consumer.AddHandler(&consumeHandler{topic, true, true})
 	} else {
-		consumer.AddHandler(&consumeHandler{topic, false})
+		consumer.AddHandler(&consumeHandler{topic, false, false})
 	}
 	rdyChan <- 1
 	<-goChan
