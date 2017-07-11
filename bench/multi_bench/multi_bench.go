@@ -68,6 +68,7 @@ var mutex sync.Mutex
 var topicMutex map[string]*sync.Mutex
 var traceIDWaitingList map[string]map[uint64]*nsq.Message
 var pubTraceFailedList map[string]map[uint64]int64
+var maxDelayTs int64
 
 type ByMsgOffset []*nsq.Message
 
@@ -529,12 +530,16 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 				currentTmc,
 				totalSub, atomic.LoadInt64(&totalDumpCount))
 			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
+				equalTimes++
 				if *benchCase == "benchdelaysub" {
-					if time.Since(startTime) <= time.Minute*time.Duration(*maxDelayMins+1) {
+					if totalSub >= atomic.LoadInt64(&totalMsgCount) && totalSub >= currentTmc && equalTimes > 3 {
+						close(quitChan)
+						return
+					}
+					if time.Now().Unix() <= atomic.LoadInt64(&maxDelayTs)+10 {
 						continue
 					}
 				}
-				equalTimes++
 				if totalSub >= currentTmc && equalTimes > 3 {
 					close(quitChan)
 					return
@@ -961,8 +966,11 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 		singleMsg := batch[0]
 		if testDelay && atomic.LoadInt64(&currentMsgCount)%171 == 0 {
 			delayDuration := time.Minute * time.Duration(1+rand.Intn(*maxDelayMins))
-			delayStr := strconv.Itoa(int(time.Now().Add(delayDuration).Unix()))
-			singleMsg = []byte("delay-" + delayStr)
+			delayTs := int(time.Now().Add(delayDuration).Unix())
+			if int64(delayTs) > atomic.LoadInt64(&maxDelayTs) {
+				atomic.StoreInt64(&maxDelayTs, int64(delayTs))
+			}
+			singleMsg = []byte("delay-" + strconv.Itoa(delayTs))
 			batch[0] = singleMsg
 		}
 		if *trace {
