@@ -263,6 +263,17 @@ func (m *Message) WriteDelayedTo(w io.Writer, writeExt bool) (int64, error) {
 		}
 	}
 
+	if m.DelayedType == ChannelDelayed {
+		// some data with original queue info
+		binary.BigEndian.PutUint64(buf[:8], uint64(m.offset))
+		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.rawMoveSize))
+		n, err = w.Write(buf[:8+4])
+		total += int64(n)
+		if err != nil {
+			return total, err
+		}
+	}
+
 	n, err = w.Write(m.Body)
 	total += int64(n)
 	if err != nil {
@@ -351,7 +362,7 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 	nameLen := binary.BigEndian.Uint32(b[pos : pos+4])
 	pos += 4
 
-	if len(b) < minValidMsgLength+8+4+int(nameLen) {
+	if len(b) < pos+int(nameLen) {
 		return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
 	}
 
@@ -359,7 +370,7 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 	pos += int(nameLen)
 
 	if isExt {
-		if len(b) <= pos {
+		if len(b) < pos+1 {
 			return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
 		}
 
@@ -379,6 +390,16 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 		}
 	}
 
+	if msg.DelayedType == ChannelDelayed {
+		if len(b) < pos+8+4 {
+			return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+		}
+		// some data with original queue info
+		msg.offset = BackendOffset(binary.BigEndian.Uint64(b[pos : pos+8]))
+		pos += 8
+		msg.rawMoveSize = BackendOffset(binary.BigEndian.Uint32(b[pos : pos+4]))
+		pos += 4
+	}
 	msg.Body = b[pos:]
 	return &msg, nil
 }
