@@ -1631,9 +1631,23 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			chList, ok := stat.ChannelList[topicInfo.GetTopicDesp()]
 			coordLog.Infof("topic %v sync channel list from leader: %v", topicInfo.GetTopicDesp(), chList)
 			if ok && len(chList) > 0 {
+				chMetas, _ := stat.ChannelMetas[topicInfo.GetTopicDesp()]
+				metaMaps := make(map[string]nsqd.ChannelMetaInfo, len(chMetas))
+				for _, meta := range chMetas {
+					metaMaps[meta.Name] = meta
+				}
+
 				oldChList := localTopic.GetChannelMapCopy()
 				for _, chName := range chList {
-					localTopic.GetChannel(chName)
+					ch := localTopic.GetChannel(chName)
+					if meta, ok := metaMaps[chName]; ok {
+						if meta.Paused {
+							ch.Pause()
+						}
+						if meta.Skipped {
+							ch.Skip()
+						}
+					}
 					delete(oldChList, chName)
 				}
 				coordLog.Infof("topic %v local channel not on leader: %v", topicInfo.GetTopicDesp(), oldChList)

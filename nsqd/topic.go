@@ -430,6 +430,25 @@ func (t *Topic) LoadChannelMeta() error {
 	return nil
 }
 
+func (t *Topic) GetChannelMeta() []ChannelMetaInfo {
+	t.channelLock.RLock()
+	channels := make([]ChannelMetaInfo, 0, len(t.channelMap))
+	for _, channel := range t.channelMap {
+		channel.RLock()
+		if !channel.ephemeral {
+			meta := ChannelMetaInfo{
+				Name:    channel.name,
+				Paused:  channel.IsPaused(),
+				Skipped: channel.IsSkipped(),
+			}
+			channels = append(channels, meta)
+		}
+		channel.RUnlock()
+	}
+	t.channelLock.RUnlock()
+	return channels
+}
+
 func (t *Topic) SaveChannelMeta() error {
 	fileName := t.getChannelMetaFileName()
 	channels := make([]*ChannelMetaInfo, 0)
