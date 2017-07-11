@@ -21,6 +21,7 @@ var LookupView = BaseView.extend({
 
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
+        var isAdmin = arguments[0]['isAdmin'];
         $.ajax(AppState.url('/topics?inactive=true'))
             .done(function(data) {
                 this.template = require('./lookup.hbs');
@@ -28,7 +29,8 @@ var LookupView = BaseView.extend({
                     'topics': _.map(data['topics'], function(v, k) {
                         return {'name': k, 'channels': v};
                     }),
-                    'message': data['message']
+                    'message': data['message'],
+                    'isAdmin': isAdmin
                 });
             }.bind(this))
             .fail(this.handleViewError.bind(this))
