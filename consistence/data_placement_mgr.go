@@ -152,6 +152,7 @@ func NewNodeTopicStats(nid string, cap int, cpus int) *NodeTopicStats {
 		TopicHourlyPubDataList: make(map[string][24]int64, cap),
 		ChannelNum:             make(map[string]int, cap),
 		ChannelList:            make(map[string][]string),
+		ChannelMetas:           make(map[string][]nsqd.ChannelMetaInfo),
 		NodeCPUs:               cpus,
 	}
 }

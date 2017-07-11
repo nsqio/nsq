@@ -96,6 +96,47 @@ type ILocalLogQueue interface {
 	TotalDataSize() int64
 
 	PutMessageOnReplica(msgs *nsqd.Message, offset nsqd.BackendOffset) (nsqd.BackendQueueEnd, error)
+	TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset nsqd.BackendOffset) (nsqd.BackendQueueEnd, error)
+}
+
+func getCommitLogAndLocalLogQ(tcData *coordData, localTopic *nsqd.Topic,
+	fromDelayedQueue bool) (ILocalLogQueue, *TopicCommitLogMgr) {
+	var localLogQ ILocalLogQueue
+	localLogQ = localTopic
+	logMgr := tcData.logMgr
+	if fromDelayedQueue {
+		if tcData.topicInfo.OrderedMulti {
+			return nil, nil
+		}
+		dq := localTopic.GetDelayedQueue()
+		if dq == nil {
+			return nil, nil
+		}
+		localLogQ = dq
+		logMgr = tcData.delayedLogMgr
+	}
+
+	return localLogQ, logMgr
+}
+
+func getOrCreateCommitLogAndLocalLogQ(tcData *coordData, localTopic *nsqd.Topic,
+	fromDelayedQueue bool) (ILocalLogQueue, *TopicCommitLogMgr, *CoordErr) {
+	var localLogQ ILocalLogQueue
+	localLogQ = localTopic
+	logMgr := tcData.logMgr
+	if fromDelayedQueue {
+		if tcData.topicInfo.OrderedMulti {
+			return nil, nil, ErrLocalDelayedQueueMissing
+		}
+		dq, _ := localTopic.GetOrCreateDelayedQueueNoLock(logMgr)
+		if dq == nil {
+			return nil, nil, ErrLocalDelayedQueueMissing
+		}
+		localLogQ = dq
+		logMgr = tcData.delayedLogMgr
+	}
+
+	return localLogQ, logMgr, nil
 }
 
 type NsqdCoordinator struct {
@@ -268,6 +309,46 @@ func (self *NsqdCoordinator) Stop() {
 func (self *NsqdCoordinator) checkAndCleanOldData() {
 	defer self.wg.Done()
 	ticker := time.NewTicker(time.Minute * 30)
+	doLogQClean := func(tcData *coordData, localTopic *nsqd.Topic, retentionSize int64, fromDelayedQueue bool) {
+		localLogQ, logMgr := getCommitLogAndLocalLogQ(tcData, localTopic, fromDelayedQueue)
+		if localLogQ == nil || logMgr == nil {
+			return
+		}
+		cleanEndInfo, err := localLogQ.TryCleanOldData(retentionSize, true, 0)
+		if err != nil {
+			coordLog.Infof("failed to get clean end: %v", err)
+		}
+		coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
+		if cleanEndInfo != nil {
+			matchIndex, matchOffset, l, err := logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
+			if err != nil {
+				coordLog.Infof("search log failed: %v", err)
+				return
+			}
+			coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
+			if l.MsgOffset > int64(cleanEndInfo.Offset()) {
+				coordLog.Warningf("search log clean position exceed the clean end, something wrong")
+				return
+			}
+			maxCleanOffset := cleanEndInfo.Offset()
+			if l.MsgOffset < int64(cleanEndInfo.Offset()) {
+				// the commit log is in the middle of the batch put,
+				// it may happen that the batch across the end of the segment of data file,
+				// so we should not clean the segment at the middle of the batch.
+				maxCleanOffset = nsqd.BackendOffset(l.MsgOffset)
+			}
+			err = logMgr.CleanOldData(matchIndex, matchOffset)
+			if err != nil {
+				coordLog.Infof("clean commit log err : %v", err)
+			} else {
+				_, err := localLogQ.TryCleanOldData(retentionSize, false, maxCleanOffset)
+				if err != nil {
+					coordLog.Infof("failed to clean disk queue: %v", err)
+				}
+			}
+		}
+	}
+
 	doCheckAndCleanOld := func(checkRetentionDay bool) {
 		tmpCoords := make(map[string]map[int]*TopicCoordinator)
 		self.coordMutex.RLock()
@@ -301,39 +382,8 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 				// first clean we just check the clean offset
 				// then we clean the commit log to make sure no access from log index
 				// after that, we clean the real queue data
-				cleanEndInfo, err := localTopic.TryCleanOldData(retentionSize, true, 0)
-				if err != nil {
-					coordLog.Infof("failed to get clean end: %v", err)
-				}
-				coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
-				if cleanEndInfo != nil {
-					matchIndex, matchOffset, l, err := tcData.logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
-					if err != nil {
-						coordLog.Infof("search log failed: %v", err)
-						continue
-					}
-					coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
-					if l.MsgOffset > int64(cleanEndInfo.Offset()) {
-						coordLog.Warningf("search log clean position exceed the clean end, something wrong")
-						continue
-					}
-					maxCleanOffset := cleanEndInfo.Offset()
-					if l.MsgOffset < int64(cleanEndInfo.Offset()) {
-						// the commit log is in the middle of the batch put,
-						// it may happen that the batch across the end of the segment of data file,
-						// so we should not clean the segment at the middle of the batch.
-						maxCleanOffset = nsqd.BackendOffset(l.MsgOffset)
-					}
-					err = tcData.logMgr.CleanOldData(matchIndex, matchOffset)
-					if err != nil {
-						coordLog.Infof("clean commit log err : %v", err)
-					} else {
-						_, err := localTopic.TryCleanOldData(retentionSize, false, maxCleanOffset)
-						if err != nil {
-							coordLog.Infof("failed to clean disk queue: %v", err)
-						}
-					}
-				}
+				doLogQClean(tcData, localTopic, retentionSize, false)
+				doLogQClean(tcData, localTopic, retentionSize, true)
 			}
 		}
 	}
@@ -1166,14 +1216,17 @@ func (self *NsqdCoordinator) syncToNewLeader(topicCoord *coordData, joinSession 
 
 func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 	topicInfo TopicPartitionMetaInfo, localTopic *nsqd.Topic, c *NsqdRpcClient, fromDelayedQueue bool) (int64, int64, *CoordErr) {
-
-	logMgr := tc.GetData().logMgr
-	if fromDelayedQueue {
-		logMgr = tc.GetData().delayedLogMgr
-		if topicInfo.OrderedMulti {
+	var localLogQ ILocalLogQueue
+	localTopic.Lock()
+	localLogQ, logMgr, coordErr := getOrCreateCommitLogAndLocalLogQ(tc.GetData(), localTopic, fromDelayedQueue)
+	localTopic.Unlock()
+	if coordErr != nil {
+		if fromDelayedQueue && topicInfo.OrderedMulti {
 			return 0, 0, nil
 		}
+		return 0, 0, coordErr
 	}
+
 	logIndex, offset, _, logErr := logMgr.GetLastCommitLogOffsetV2()
 	if logErr != nil && logErr != ErrCommitLogEOF {
 		coordLog.Warningf("catching failed since log offset read error: %v", logErr)
@@ -1282,18 +1335,6 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 		needFullSync = true
 	}
 
-	var localLogQ ILocalLogQueue
-	localTopic.Lock()
-	if !fromDelayedQueue {
-		localLogQ = localTopic
-	} else {
-		delayedQueue, _ := localTopic.GetOrCreateDelayedQueueNoLock(logMgr)
-		localLogQ = delayedQueue
-	}
-	localTopic.Unlock()
-	if fromDelayedQueue && localLogQ == nil {
-		return logIndex, offset, ErrLocalDelayedQueueMissing
-	}
 	localErr := self.checkAndFixLocalLogQueueData(tc.GetData(), localLogQ, logMgr)
 	if localErr != nil {
 		coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
