@@ -42,6 +42,7 @@ var (
 	ordered       = flagSet.Bool("ordered", false, "enable ordered sub")
 	checkMsgSize  = flagSet.Bool("check-size", false, "enable check the body size of sub")
 	topicListFile = flagSet.String("topic-list-file", "", "the file that contains one topic each line")
+	maxDelayMins  = flagSet.Int("max-delaymin", 30, "the max delayed message in minute")
 )
 
 func getPartitionID(msgID nsq.NewMessageID) string {
@@ -528,6 +529,11 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 				currentTmc,
 				totalSub, atomic.LoadInt64(&totalDumpCount))
 			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
+				if *benchCase == "benchdelaysub" {
+					if time.Since(startTime) <= time.Minute*time.Duration(*maxDelayMins+1) {
+						continue
+					}
+				}
 				equalTimes++
 				if totalSub >= currentTmc && equalTimes > 3 {
 					close(quitChan)
@@ -954,7 +960,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 
 		singleMsg := batch[0]
 		if testDelay && atomic.LoadInt64(&currentMsgCount)%171 == 0 {
-			delayDuration := time.Minute * time.Duration(1+rand.Intn(100))
+			delayDuration := time.Minute * time.Duration(1+rand.Intn(*maxDelayMins))
 			delayStr := strconv.Itoa(int(time.Now().Add(delayDuration).Unix()))
 			singleMsg = []byte("delay-" + delayStr)
 			batch[0] = singleMsg
