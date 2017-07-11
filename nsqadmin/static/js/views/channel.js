@@ -21,10 +21,11 @@ var ChannelView = BaseView.extend({
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
         this.listenTo(AppState, 'change:graph_interval', this.render);
+        var isAdmin = this.model.get('isAdmin');
         this.model.fetch()
             .done(function(data) {
                 this.template = require('./channel.hbs');
-                this.render({'message': data['message']});
+                this.render({'message': data['message'], 'isAdmin': isAdmin});
             }.bind(this))
             .fail(this.handleViewError.bind(this))
             .always(Pubsub.trigger.bind(Pubsub, 'view:ready'));

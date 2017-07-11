@@ -55,6 +55,10 @@ func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, 
 }
 
 func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQLookupd, *NSQAdmin) {
+	return bootstrapNSQClusterWithAuth(t, false)
+}
+
+func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.NSQD, []*nsqlookupd.NSQLookupd, *NSQAdmin) {
 	lgr := test.NewTestLogger(t)
 
 	nsqlookupdOpts := nsqlookupd.NewOptions()
@@ -85,6 +89,9 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, []*nsqlookupd.NSQL
 	nsqadminOpts.HTTPAddress = "127.0.0.1:0"
 	nsqadminOpts.NSQLookupdHTTPAddresses = []string{nsqlookupd1.RealHTTPAddr().String()}
 	nsqadminOpts.Logger = lgr
+	if withAuth {
+		nsqadminOpts.AdminUsers = []string{"matt"}
+	}
 	nsqadmin1 := New(nsqadminOpts)
 	go nsqadmin1.Main()
 

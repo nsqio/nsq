@@ -23,6 +23,7 @@
         var STATSD_INTERVAL = {{.StatsdInterval}};
         var STATSD_PREFIX = '{{.StatsdPrefix}}';
         var NSQLOOKUPD = [{{range .NSQLookupd}}'{{.}}',{{end}}];
+        var IS_ADMIN ={{.IsAdmin}};
     </script>
     <script src="/static/vendor.js"></script>
     <script src="/static/main.js"></script>
