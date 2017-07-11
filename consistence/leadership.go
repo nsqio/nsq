@@ -15,10 +15,11 @@ var (
 type EpochType int64
 
 type NsqdNodeInfo struct {
-	ID      string
-	NodeIP  string
-	TcpPort string
-	RpcPort string
+	ID       string
+	NodeIP   string
+	TcpPort  string
+	RpcPort  string
+	HttpPort string
 }
 
 func (self *NsqdNodeInfo) GetID() string {

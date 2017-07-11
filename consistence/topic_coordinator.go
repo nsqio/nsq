@@ -2,6 +2,7 @@ package consistence
 
 import (
 	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 )
@@ -29,7 +30,29 @@ type coordData struct {
 	topicLeaderSession TopicLeaderSession
 	consumeMgr         *ChannelConsumeMgr
 	logMgr             *TopicCommitLogMgr
+	delayedLogMgr      *TopicCommitLogMgr
 	forceLeave         int32
+}
+
+func (self *coordData) updateBufferSize(bs int) {
+	self.logMgr.updateBufferSize(bs)
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.updateBufferSize(bs)
+	}
+}
+
+func (self *coordData) flushCommitLogs() {
+	self.logMgr.FlushCommitLogs()
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.FlushCommitLogs()
+	}
+}
+
+func (self *coordData) switchForMaster(master bool) {
+	self.logMgr.switchForMaster(master)
+	if self.delayedLogMgr != nil {
+		self.delayedLogMgr.switchForMaster(master)
+	}
 }
 
 func (self *coordData) GetCopy() *coordData {
@@ -50,15 +73,18 @@ type TopicCoordinator struct {
 	catchupRunning int32
 	disableWrite   int32
 	exiting        int32
+	basePath       string
 }
 
-func NewTopicCoordinator(name string, partition int, basepath string, syncEvery int) (*TopicCoordinator, error) {
+func NewTopicCoordinator(name string, partition int, basepath string,
+	syncEvery int, ordered bool) (*TopicCoordinator, error) {
 	tc := &TopicCoordinator{}
 	tc.coordData = &coordData{}
 	tc.coordData.consumeMgr = newChannelComsumeMgr()
 	tc.topicInfo.Name = name
 	tc.topicInfo.Partition = partition
 	tc.disableWrite = 1
+	tc.basePath = basepath
 	var err error
 	err = os.MkdirAll(basepath, 0755)
 	if err != nil {
@@ -79,7 +105,28 @@ func NewTopicCoordinator(name string, partition int, basepath string, syncEvery 
 		coordLog.Errorf("topic(%v) failed to init log: %v ", name, err)
 		return nil, err
 	}
+
+	if !ordered {
+		dqPath := path.Join(tc.basePath, "delayed_queue")
+		os.MkdirAll(dqPath, 0755)
+		tc.delayedLogMgr, err = InitTopicCommitLogMgr(name, partition,
+			dqPath, buf)
+		if err != nil {
+			coordLog.Errorf("topic(%v) failed to init delayed queue log: %v ", name, err)
+			return nil, err
+		}
+	}
 	return tc, nil
+}
+
+func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error) {
+	self.dataMutex.Lock()
+	logMgr := self.delayedLogMgr
+	self.dataMutex.Unlock()
+	if logMgr == nil {
+		return nil, ErrTopicMissingDelayedLog.ToErrorType()
+	}
+	return logMgr, nil
 }
 
 func (self *TopicCoordinator) DeleteNoWriteLock(removeData bool) {
@@ -88,8 +135,14 @@ func (self *TopicCoordinator) DeleteNoWriteLock(removeData bool) {
 	self.dataMutex.Lock()
 	if removeData {
 		self.logMgr.Delete()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Delete()
+		}
 	} else {
 		self.logMgr.Close()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Close()
+		}
 	}
 	self.dataMutex.Unlock()
 }
@@ -101,8 +154,14 @@ func (self *TopicCoordinator) DeleteWithLock(removeData bool) {
 	self.dataMutex.Lock()
 	if removeData {
 		self.logMgr.Delete()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Delete()
+		}
 	} else {
 		self.logMgr.Close()
+		if self.delayedLogMgr != nil {
+			self.delayedLogMgr.Close()
+		}
 	}
 	self.dataMutex.Unlock()
 	self.writeHold.Unlock()

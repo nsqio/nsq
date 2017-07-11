@@ -13,7 +13,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 type fakeConsumer struct {
@@ -186,7 +185,7 @@ func ensureTopicOnNsqdCoord(nsqdCoord *NsqdCoordinator, topicInfo RpcAdminTopicI
 	tpCoord, ok := coords[topicInfo.Partition]
 	if !ok {
 		path := GetTopicPartitionBasePath(nsqdCoord.dataRootPath, topicInfo.Name, topicInfo.Partition)
-		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0)
+		tpCoord, _ = NewTopicCoordinator(topicInfo.Name, topicInfo.Partition, path, 0, topicInfo.OrderedMulti)
 		coords[topicInfo.Partition] = tpCoord
 	}
 	nsqdCoord.coordMutex.Unlock()
@@ -1030,7 +1029,7 @@ func TestNsqdCoordCatchupCleanOldData(t *testing.T) {
 	t.Log(logs2)
 	for i := 0; i < totalMsgNum-1; i++ {
 		select {
-		case msg := <- ch.GetClientMsgChan():
+		case msg := <-ch.GetClientMsgChan():
 			ch.StartInFlightTimeout(msg, NewFakeConsumer(1), "", time.Second)
 			err := nsqdCoord1.FinishMessageToCluster(ch, 1, "", msg.ID)
 			test.Nil(t, err)
@@ -1292,7 +1291,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	time.Sleep(time.Second)
 	coordLog.Infof("==== test client consume messages ====")
 	for i := msgConsumed; i < msgCnt; i++ {
-		msg := <- channel1.GetClientMsgChan()
+		msg := <-channel1.GetClientMsgChan()
 		channel1.StartInFlightTimeout(msg, NewFakeConsumer(1), "", time.Second)
 		err := nsqdCoord1.FinishMessageToCluster(channel1, 1, "", msg.ID)
 		test.Nil(t, err)
@@ -1385,7 +1384,7 @@ func TestNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T) {
 	topicData2.SetTrace(true)
 	coordLog.Infof("==== test client consume ====")
 	for i := msgConsumed; i < msgCnt; i++ {
-		msg := <- channel2.GetClientMsgChan()
+		msg := <-channel2.GetClientMsgChan()
 		channel2.StartInFlightTimeout(msg, NewFakeConsumer(1), "", time.Second)
 		err := nsqdCoord2.FinishMessageToCluster(channel2, 1, "", msg.ID)
 		test.Nil(t, err)

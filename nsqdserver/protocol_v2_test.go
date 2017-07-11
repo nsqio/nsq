@@ -2015,7 +2015,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 1
 	if testing.Verbose() {
-		opts.LogLevel = 3
+		opts.LogLevel = 4
 		nsqdNs.SetLogger(opts.Logger)
 	}
 	opts.SyncEvery = 1
@@ -2157,6 +2157,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	t.Logf("delay should be: %v", longestDelay)
 	test.Equal(t, delayDone >= longestDelay, true)
 	test.Equal(t, delayDone < longestDelay+opts.MsgTimeout+5*opts.QueueScanInterval, true)
+	test.Equal(t, true, int(msgClientOut.Attempts) > reqToEndAttempts)
 
 	test.Equal(t, true, putCnt <= finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)

@@ -13,7 +13,7 @@ const (
 
 type IMsgTracer interface {
 	Start()
-	TracePub(topic string, part int, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64)
+	TracePub(topic string, part int, pubMethod string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64)
 	// state will be READ_QUEUE, Start, Req, Fin, Timeout
 	TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string)
 }
@@ -43,9 +43,9 @@ type LogMsgTracer struct {
 func (self *LogMsgTracer) Start() {
 }
 
-func (self *LogMsgTracer) TracePub(topic string, part int, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
-	nsqLog.Logf("[TRACE] topic %v-%v trace id %v: message %v put at offset: %v, current count: %v at time %v", topic, part, msg.TraceID,
-		msg.ID, diskOffset, currentCnt, time.Now().UnixNano())
+func (self *LogMsgTracer) TracePub(topic string, part int, pubMethod string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
+	nsqLog.Logf("[TRACE] topic %v-%v trace id %v: message %v put %v at offset: %v, current count: %v at time %v, delayed: %v", topic, part, msg.TraceID,
+		msg.ID, pubMethod, diskOffset, currentCnt, time.Now().UnixNano(), msg.DelayedTs)
 }
 
 func (self *LogMsgTracer) TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string) {
@@ -77,7 +77,7 @@ func (self *RemoteMsgTracer) Stop() {
 	self.remoteLogger.Stop()
 }
 
-func (self *RemoteMsgTracer) TracePub(topic string, part int, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
+func (self *RemoteMsgTracer) TracePub(topic string, part int, pubMethod string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
 	now := time.Now().UnixNano()
 	detail := flume_log.NewDetailInfo(traceModule)
 	var traceItem [1]TraceLogItemInfo
@@ -85,17 +85,17 @@ func (self *RemoteMsgTracer) TracePub(topic string, part int, traceID uint64, ms
 	traceItem[0].TraceID = msg.TraceID
 	traceItem[0].Topic = topic
 	traceItem[0].Timestamp = now
-	traceItem[0].Action = "PUB"
+	traceItem[0].Action = pubMethod
 	detail.SetExtraInfo(traceItem[:])
 
-	l := fmt.Sprintf("[TRACE] topic %v-%v trace id %v: message %v put at offset: %v, current count: %v at time %v", topic, part, msg.TraceID,
-		msg.ID, diskOffset, currentCnt, now)
+	l := fmt.Sprintf("[TRACE] topic %v-%v trace id %v: message %v put at offset: %v, current count: %v at time %v, delayed to %v", topic, part, msg.TraceID,
+		msg.ID, diskOffset, currentCnt, now, msg.DelayedTs)
 	err := self.remoteLogger.Info(l, detail)
 	if err != nil || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		if err != nil {
 			nsqLog.Warningf("send log to remote error: %v", err)
 		}
-		self.localTracer.TracePub(topic, part, traceID, msg, diskOffset, currentCnt)
+		self.localTracer.TracePub(topic, part, pubMethod, traceID, msg, diskOffset, currentCnt)
 	}
 }
 

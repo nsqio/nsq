@@ -18,3 +18,4 @@ github.com/judwhite/go-svc/svc          63c12402f579f0bdf022653c821a1aa5d7544f01
 github.com/reechou/xlock2
 github.com/golang/protobuf/proto        3852dcfda249c2097355a6aabb199a28d97b30df
 google.golang.org/grpc  4f14d195bf76d2b7e8c1bd379549b88ffe5f4ee3
+github.com/boltdb/bolt

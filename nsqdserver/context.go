@@ -4,11 +4,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"sync/atomic"
 	"time"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -135,7 +135,23 @@ func (c *context) checkForMasterWrite(topic string, part int) bool {
 func (c *context) PutMessageObj(topic *nsqd.Topic,
 	msg *nsqd.Message) (nsqd.MessageID, nsqd.BackendOffset, int32, nsqd.BackendQueueEnd, error) {
 	if c.nsqdCoord == nil {
+		if msg.DelayedType >= nsqd.MinDelayedType {
+			topic.Lock()
+			dq, err := topic.GetOrCreateDelayedQueueNoLock(nil)
+			topic.Unlock()
+			if err == nil {
+				id, offset, writeBytes, dend, err := dq.PutDelayMessage(msg)
+				return id, offset, writeBytes, dend, err
+			}
+			return 0, 0, 0, nil, err
+		}
 		return topic.PutMessage(msg)
+	}
+	if msg.DelayedType >= nsqd.MinDelayedType {
+		if atomic.LoadInt32(&nsqd.EnableDelayedQueue) != int32(1) {
+			return 0, 0, 0, nil, errors.New("delayed queue not enabled")
+		}
+		return c.nsqdCoord.PutDelayedMessageToCluster(topic, msg)
 	}
 	return c.nsqdCoord.PutMessageToCluster(topic, msg)
 }
@@ -167,7 +183,7 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
-		_, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)
+		_, _, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)
 		if err == nil {
 			ch.ContinueConsumeForOrder()
 		}
@@ -357,17 +373,17 @@ func (c *context) internalPubLoop(topic *nsqd.Topic) {
 }
 
 func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
-	oldMsg *nsqd.Message, timeoutDuration time.Duration) (bool, error) {
+	oldMsg *nsqd.Message, timeoutDuration time.Duration) error {
 	topic, err := c.getExistingTopic(ch.GetTopicName(), ch.GetTopicPart())
 	if topic == nil || err != nil {
 		nsqd.NsqLogger().LogWarningf("req channel %v topic not found: %v", ch.GetName(), err)
-		return false, err
+		return err
 	}
-	if topic.GetDynamicInfo().OrderedMulti {
-		return false, errors.New("ordered topic can not requeue to end")
+	if topic.IsOrdered() {
+		return errors.New("ordered topic can not requeue to end")
 	}
 	if ch.Exiting() {
-		return false, nsqd.ErrExiting
+		return nsqd.ErrExiting
 	}
 	// pause to avoid the put to end message to be send to
 	// the client before we requeue and update in the flight
@@ -379,15 +395,25 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	} else {
 		newMsg = nsqd.NewMessage(0, oldMsg.Body)
 	}
+	newMsg.Timestamp = oldMsg.Timestamp
 	newMsg.TraceID = oldMsg.TraceID
 	newMsg.Attempts = oldMsg.Attempts
-	newID, offset, rawSize, msgEnd, putErr := c.PutMessageObj(topic, newMsg)
+	newMsg.DelayedType = nsqd.ChannelDelayed
+	if timeoutDuration > c.nsqd.GetOpts().MaxReqTimeout {
+		timeoutDuration = c.nsqd.GetOpts().MaxReqTimeout
+	}
+	newTimeout := time.Now().Add(timeoutDuration)
+	newMsg.DelayedTs = newTimeout.UnixNano()
+
+	newMsg.DelayedOrigID = oldMsg.ID
+	newMsg.DelayedChannel = ch.GetName()
+	_, _, _, _, putErr := c.PutMessageObj(topic, newMsg)
 	if putErr != nil {
 		nsqd.NsqLogger().Logf("req message %v to end failed, channel %v, put error: %v ",
 			oldMsg, ch.GetName(), putErr)
-		return false, putErr
+		return putErr
 	}
-	isOldDeferred, err := ch.ReqWithNewMsgAndConfirmOld(oldMsg.GetClientID(),
-		oldMsg.ID, timeoutDuration, newID, offset, rawSize, msgEnd)
-	return isOldDeferred, err
+
+	err = c.FinishMessage(ch, oldMsg.GetClientID(), "", oldMsg.ID)
+	return err
 }

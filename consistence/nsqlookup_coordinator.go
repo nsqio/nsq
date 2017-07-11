@@ -1464,7 +1464,7 @@ func (self *NsqLookupCoordinator) handleRequestJoinISR(topic string, partition i
 		state.Lock()
 		defer state.Unlock()
 		if state.waitingJoin {
-			coordLog.Warningf("failed request join isr because another is joining. :%v", state)
+			coordLog.Infof("failed request join isr because another is joining. :%v", state)
 			return
 		}
 		if time.Since(start) > time.Second*10 {

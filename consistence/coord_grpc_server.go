@@ -123,7 +123,7 @@ func (s *nsqdCoordGRpcServer) PutMessage(ctx context.Context, req *pb.RpcPutMess
 	msg.Timestamp = req.TopicMessage.Timestamp
 
 	msg.Body = req.TopicMessage.Body
-	err = s.nsqdCoord.putMessageOnSlave(tc, commitData, &msg)
+	err = s.nsqdCoord.putMessageOnSlave(tc, commitData, &msg, false)
 	if err != nil {
 		coordErr.ErrMsg = err.ErrMsg
 		coordErr.ErrCode = int32(err.ErrCode)

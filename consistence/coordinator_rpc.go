@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"errors"
 	"github.com/absolute8511/gorpc"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/nsqd"
@@ -169,7 +170,7 @@ func (self *NsqdCoordRpcServer) NotifyReleaseTopicLeader(rpcTopicReq *RpcRelease
 	}
 	if rpcTopicReq.Epoch < coordData.topicInfo.Epoch ||
 		coordData.topicLeaderSession.LeaderEpoch != rpcTopicReq.TopicLeaderSessionEpoch {
-		coordLog.Warningf("topic info epoch mismatch while release leader: %v, %v", coordData,
+		coordLog.Infof("topic info epoch mismatch while release leader: %v, %v", coordData,
 			rpcTopicReq)
 		ret = *ErrEpochMismatch
 		return &ret
@@ -364,7 +365,8 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 
 		var localErr error
 		tpCoord, localErr = NewTopicCoordinator(rpcTopicReq.Name, rpcTopicReq.Partition,
-			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition), rpcTopicReq.SyncEvery)
+			GetTopicPartitionBasePath(self.dataRootPath, rpcTopicReq.Name, rpcTopicReq.Partition),
+			rpcTopicReq.SyncEvery, rpcTopicReq.OrderedMulti)
 		if localErr != nil || tpCoord == nil {
 			self.nsqdCoord.coordMutex.Unlock()
 			ret = *ErrLocalInitTopicCoordFailed
@@ -372,7 +374,7 @@ func (self *NsqdCoordRpcServer) UpdateTopicInfo(rpcTopicReq *RpcAdminTopicInfo) 
 		}
 		tpCoord.DisableWrite(true)
 
-		_, coordErr := self.nsqdCoord.updateLocalTopic(&rpcTopicReq.TopicPartitionMetaInfo, tpCoord.GetData().logMgr)
+		_, coordErr := self.nsqdCoord.updateLocalTopic(&rpcTopicReq.TopicPartitionMetaInfo, tpCoord.GetData())
 		if coordErr != nil {
 			coordLog.Warningf("init local topic failed: %v", coordErr)
 			self.nsqdCoord.coordMutex.Unlock()
@@ -587,8 +589,8 @@ type RpcTopicData struct {
 type RpcChannelState struct {
 	RpcTopicData
 	Channel string
-	Paused int
-	Skipped   int
+	Paused  int
+	Skipped int
 }
 
 type RpcChannelOffsetArg struct {
@@ -659,6 +661,26 @@ type RpcTestRsp struct {
 	RetErr  *CoordErr
 }
 
+type RpcConfirmedDelayedCursor struct {
+	RpcTopicData
+	UpdatedChannel string
+	KeyList        [][]byte
+	ChannelCntList map[string]uint64
+	OtherCntList   map[int]uint64
+}
+
+type RpcNodeInfoReq struct {
+	NodeID string
+}
+
+type RpcNodeInfoRsp struct {
+	ID       string
+	NodeIP   string
+	TcpPort  string
+	RpcPort  string
+	HttpPort string
+}
+
 func (self *NsqdCoordinator) checkWriteForRpcCall(rpcData RpcTopicData) (*TopicCoordinator, *CoordErr) {
 	topicCoord, err := self.getTopicCoord(rpcData.TopicName, rpcData.TopicPartition)
 	if err != nil || topicCoord == nil {
@@ -718,6 +740,24 @@ func (self *NsqdCoordRpcServer) UpdateChannelOffset(info *RpcChannelOffsetArg) *
 	return &ret
 }
 
+func (self *NsqdCoordRpcServer) UpdateDelayedQueueState(info *RpcConfirmedDelayedCursor) *CoordErr {
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// update local channel offset
+	err = self.nsqdCoord.updateDelayedQueueStateOnSlave(tc.GetData(), info.UpdatedChannel, info.KeyList,
+		info.OtherCntList, info.ChannelCntList)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
 func (self *NsqdCoordRpcServer) DeleteChannel(info *RpcChannelOffsetArg) *CoordErr {
 	var ret CoordErr
 	defer coordErrStats.incCoordErr(&ret)
@@ -728,6 +768,35 @@ func (self *NsqdCoordRpcServer) DeleteChannel(info *RpcChannelOffsetArg) *CoordE
 	}
 	// update local channel offset
 	err = self.nsqdCoord.deleteChannelOnSlave(tc.GetData(), info.Channel)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	return &ret
+}
+
+// receive from leader
+func (self *NsqdCoordRpcServer) PutDelayedMessage(info *RpcPutMessage) *CoordErr {
+	if self.nsqdCoord.enableBenchCost || coordLog.Level() >= levellogger.LOG_DEBUG {
+		s := time.Now()
+		defer func() {
+			e := time.Now()
+			if e.Sub(s) > time.Second*time.Duration(RPC_TIMEOUT/2) {
+				coordLog.Infof("PutDelayedMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
+			}
+			coordLog.Warningf("PutDelayedMessage rpc call used: %v, start: %v, end: %v", e.Sub(s), s, e)
+		}()
+	}
+
+	var ret CoordErr
+	defer coordErrStats.incCoordErr(&ret)
+	tc, err := self.nsqdCoord.checkWriteForRpcCall(info.RpcTopicData)
+	if err != nil {
+		ret = *err
+		return &ret
+	}
+	// do local pub message
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, true)
 	if err != nil {
 		ret = *err
 		return &ret
@@ -756,7 +825,7 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 		return &ret
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage)
+	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, false)
 	if err != nil {
 		ret = *err
 		return &ret
@@ -798,6 +867,19 @@ func (self *NsqdCoordRpcServer) GetLastCommitLogID(req *RpcCommitLogReq) (int64,
 		return ret, err.ToErrorType()
 	}
 	ret = tc.logMgr.GetLastCommitLogID()
+	return ret, nil
+}
+
+func (self *NsqdCoordRpcServer) GetLastDelayedQueueCommitLogID(req *RpcCommitLogReq) (int64, error) {
+	var ret int64
+	tc, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
+	if err != nil {
+		return ret, err.ToErrorType()
+	}
+	if tc.delayedLogMgr == nil {
+		return 0, nil
+	}
+	ret = tc.delayedLogMgr.GetLastCommitLogID()
 	return ret, nil
 }
 
@@ -856,49 +938,76 @@ func handleCommitLogError(err error, logMgr *TopicCommitLogMgr, req *RpcCommitLo
 // return the logdata from offset, if the offset is larger than local,
 // then return the last logdata on local.
 func (self *NsqdCoordRpcServer) GetCommitLogFromOffset(req *RpcCommitLogReq) *RpcCommitLogRsp {
+	return self.getCommitLogFromOffset(req, false)
+}
+
+func (self *NsqdCoordRpcServer) getCommitLogFromOffset(req *RpcCommitLogReq,
+	fromDelayed bool) *RpcCommitLogRsp {
 	var ret RpcCommitLogRsp
 	tcData, coorderr := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if coorderr != nil {
 		ret.ErrInfo = *coorderr
 		return &ret
 	}
+	logMgr := tcData.logMgr
+	if fromDelayed {
+		logMgr = tcData.delayedLogMgr
+		if logMgr == nil {
+			ret.ErrInfo = *ErrTopicMissingDelayedLog
+			return &ret
+		}
+	}
 	var err error
 	if req.UseCountIndex {
-		newFileNum, newOffset, err := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
+		newFileNum, newOffset, err := logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
 		if err != nil {
 			coordLog.Warningf("failed to convert to offset index: %v, err:%v", req.LogCountNumIndex, err)
-			handleCommitLogError(err, tcData.logMgr, req, &ret)
+			handleCommitLogError(err, logMgr, req, &ret)
 			return &ret
 		}
 		req.LogStartIndex = newFileNum
 		req.LogOffset = newOffset
 	}
 
-	logData, err := tcData.logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
+	logData, err := logMgr.GetCommitLogFromOffsetV2(req.LogStartIndex, req.LogOffset)
 	if err != nil {
-		handleCommitLogError(err, tcData.logMgr, req, &ret)
+		handleCommitLogError(err, logMgr, req, &ret)
 		return &ret
 	} else {
 		ret.LogStartIndex = req.LogStartIndex
 		ret.LogOffset = req.LogOffset
 		ret.LogData = *logData
-		ret.LogCountNumIndex, _ = tcData.logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
+		ret.LogCountNumIndex, _ = logMgr.ConvertToCountIndex(ret.LogStartIndex, ret.LogOffset)
 	}
 	return &ret
 }
 
 func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq) (*RpcPullCommitLogsRsp, error) {
+	return self.pullCommitLogsAndData(req, false)
+}
+
+func (self *NsqdCoordRpcServer) pullCommitLogsAndData(req *RpcPullCommitLogsReq,
+	fromDelayed bool) (*RpcPullCommitLogsRsp, error) {
 	var ret RpcPullCommitLogsRsp
 	tcData, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
 		return nil, err.ToErrorType()
 	}
 
+	logMgr := tcData.logMgr
+	if fromDelayed {
+		logMgr = tcData.delayedLogMgr
+		if logMgr == nil {
+			return nil, ErrTopicMissingDelayedLog.ToErrorType()
+		}
+	}
+
 	var localErr error
 	if req.UseCountIndex {
-		newFileNum, newOffset, localErr := tcData.logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
+		newFileNum, newOffset, localErr := logMgr.ConvertToOffsetIndex(req.LogCountNumIndex)
 		if localErr != nil {
-			coordLog.Warningf("topic %v failed to convert to offset index: %v, err:%v", req.TopicName, req.LogCountNumIndex, localErr)
+			coordLog.Warningf("topic %v failed to convert to offset index: %v, err:%v",
+				req.TopicName, req.LogCountNumIndex, localErr)
 			if localErr != ErrCommitLogEOF {
 				return nil, localErr
 			}
@@ -906,7 +1015,7 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 		req.StartIndexCnt = newFileNum
 		req.StartLogOffset = newOffset
 	}
-	ret.Logs, localErr = tcData.logMgr.GetCommitLogsV2(req.StartIndexCnt, req.StartLogOffset, req.LogMaxNum)
+	ret.Logs, localErr = logMgr.GetCommitLogsV2(req.StartIndexCnt, req.StartLogOffset, req.LogMaxNum)
 	if localErr != nil {
 		if localErr != ErrCommitLogEOF {
 			return nil, localErr
@@ -928,7 +1037,8 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 		}
 	}
 
-	ret.DataList, err = self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name, tcData.topicInfo.Partition, offsetList, sizeList)
+	ret.DataList, err = self.nsqdCoord.readTopicRawData(tcData.topicInfo.Name,
+		tcData.topicInfo.Partition, offsetList, sizeList, fromDelayed)
 	ret.Logs = ret.Logs[:len(ret.DataList)]
 	if err != nil {
 		return nil, err.ToErrorType()
@@ -937,14 +1047,26 @@ func (self *NsqdCoordRpcServer) PullCommitLogsAndData(req *RpcPullCommitLogsReq)
 }
 
 func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*RpcGetFullSyncInfoRsp, error) {
+	return self.getFullSyncInfo(req, false)
+}
+
+func (self *NsqdCoordRpcServer) getFullSyncInfo(req *RpcGetFullSyncInfoReq, fromDelayed bool) (*RpcGetFullSyncInfoRsp, error) {
 	var ret RpcGetFullSyncInfoRsp
 	tcData, err := self.nsqdCoord.getTopicCoordData(req.TopicName, req.TopicPartition)
 	if err != nil {
 		return nil, err.ToErrorType()
 	}
 
+	logMgr := tcData.logMgr
+	if fromDelayed {
+		logMgr = tcData.delayedLogMgr
+		if logMgr == nil {
+			return nil, ErrTopicMissingDelayedLog.ToErrorType()
+		}
+	}
+
 	var localErr error
-	startInfo, firstLog, localErr := tcData.logMgr.GetLogStartInfo()
+	startInfo, firstLog, localErr := logMgr.GetLogStartInfo()
 	if localErr != nil {
 		if localErr != ErrCommitLogEOF {
 			return nil, localErr
@@ -961,8 +1083,19 @@ func (self *NsqdCoordRpcServer) GetFullSyncInfo(req *RpcGetFullSyncInfoReq) (*Rp
 		if err != nil {
 			return nil, err
 		}
-		ret.FirstLogData.MsgOffset = localTopic.TotalDataSize()
-		ret.FirstLogData.MsgCnt = int64(localTopic.TotalMessageCnt())
+
+		if fromDelayed {
+			dq := localTopic.GetDelayedQueue()
+			if dq == nil {
+				coordLog.Infof("topic %v missing local delayed queue", tcData.topicInfo.GetTopicDesp())
+				return nil, ErrLocalDelayedQueueMissing.ToErrorType()
+			}
+			ret.FirstLogData.MsgOffset = dq.TotalDataSize()
+			ret.FirstLogData.MsgCnt = int64(dq.TotalMessageCnt())
+		} else {
+			ret.FirstLogData.MsgOffset = localTopic.TotalDataSize()
+			ret.FirstLogData.MsgCnt = int64(localTopic.TotalMessageCnt())
+		}
 	}
 	return &ret, nil
 }
@@ -971,6 +1104,34 @@ func (self *NsqdCoordRpcServer) TriggerLookupChanged() error {
 	self.nsqdCoord.localNsqd.TriggerOptsNotification()
 	coordLog.Infof("got lookup changed trigger")
 	return nil
+}
+
+func (self *NsqdCoordRpcServer) GetNodeInfo(req *RpcNodeInfoReq) (*RpcNodeInfoRsp, error) {
+	var ret RpcNodeInfoRsp
+
+	if self.nsqdCoord.GetMyID() != req.NodeID {
+		return nil, errors.New("node id mismatch")
+	}
+
+	ret.ID = req.NodeID
+	ret.NodeIP = self.nsqdCoord.myNode.NodeIP
+	ret.TcpPort = self.nsqdCoord.myNode.TcpPort
+	ret.RpcPort = self.nsqdCoord.myNode.RpcPort
+	ret.HttpPort = self.nsqdCoord.myNode.HttpPort
+
+	return &ret, nil
+}
+
+func (self *NsqdCoordRpcServer) GetDelayedQueueCommitLogFromOffset(req *RpcCommitLogReq) *RpcCommitLogRsp {
+	return self.getCommitLogFromOffset(req, true)
+}
+
+func (self *NsqdCoordRpcServer) PullDelayedQueueCommitLogsAndData(req *RpcPullCommitLogsReq) (*RpcPullCommitLogsRsp, error) {
+	return self.pullCommitLogsAndData(req, true)
+}
+
+func (self *NsqdCoordRpcServer) GetDelayedQueueFullSyncInfo(req *RpcGetFullSyncInfoReq) (*RpcGetFullSyncInfoRsp, error) {
+	return self.getFullSyncInfo(req, true)
 }
 
 func (self *NsqdCoordRpcServer) TestRpcCoordErr(req *RpcTestReq) *CoordErr {

@@ -10,7 +10,7 @@ import (
 
 const (
 	MAX_PARTITION_NUM  = 255
-	MAX_SYNC_EVERY     = 5000
+	MAX_SYNC_EVERY     = 4000
 	MAX_RETENTION_DAYS = 60
 )
 

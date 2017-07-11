@@ -142,7 +142,7 @@ func (self *NsqdEtcdMgr) AcquireTopicLeader(topic string, partition int, nodeDat
 			coordLog.Infof("try to acquire topic leader session [%s]", topicKey)
 			rsp, err = self.client.Create(topicKey, string(valueB), 0)
 			if err != nil {
-				coordLog.Warningf("acquire topic leader session [%s] failed: %v", topicKey, err)
+				coordLog.Infof("acquire topic leader session [%s] failed: %v", topicKey, err)
 				return err
 			}
 			coordLog.Infof("acquire topic leader [%s] success: %v", topicKey, string(valueB))
@@ -173,7 +173,7 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 	_, err = self.client.CompareAndDelete(topicKey, string(valueB), 0)
 	if err != nil {
 		if !client.IsKeyNotFound(err) {
-			coordLog.Errorf("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
+			coordLog.Infof("try release topic leader session [%s] error: %v, orig: %v", topicKey, err, session)
 			// since the topic leader session type is changed, we need do the compatible check
 			rsp, innErr := self.client.Get(topicKey, false, false)
 			if innErr != nil {
@@ -183,11 +183,11 @@ func (self *NsqdEtcdMgr) ReleaseTopicLeader(topic string, partition int, session
 				if old == *session {
 					_, err = self.client.CompareAndDelete(topicKey, rsp.Node.Value, 0)
 					if err != nil {
-						coordLog.Errorf("release topic leader session [%s] error: %v, orig: %v",
+						coordLog.Warningf("release topic leader session [%s] error: %v, orig: %v",
 							topicKey, err, old)
 					}
 				} else {
-					coordLog.Errorf("topic leader session [%s] mismatch: %v, orig: %v",
+					coordLog.Warningf("topic leader session [%s] mismatch: %v, orig: %v",
 						topicKey, session, old)
 				}
 			}

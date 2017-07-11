@@ -17,11 +17,11 @@ import (
 	"unsafe"
 
 	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
@@ -676,7 +676,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired        bool   `json:"auth_required"`
 		OutputBufferSize    int    `json:"output_buffer_size"`
 		OutputBufferTimeout int64  `json:"output_buffer_timeout"`
-		DesiredTag	    string `json:"desired_tag,omitempty"`
+		DesiredTag          string `json:"desired_tag,omitempty"`
 	}{
 		MaxRdyCount:         p.ctx.getOpts().MaxRdyCount,
 		Version:             version.Binary,
@@ -691,7 +691,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired:        p.ctx.isAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
-		DesiredTag:           string(client.GetTag()),
+		DesiredTag:          string(client.GetTag()),
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -914,7 +914,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		nsqd.NsqLogger().Logf("sub to not existing topic: %v, err:%v", topicName, err.Error())
 		return nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
-	if topic.GetDynamicInfo().OrderedMulti && !ordered {
+	if topic.IsOrdered() && !ordered {
 		return nil, protocol.NewFatalClientErr(nil, "E_SUB_ORDER_IS_MUST", "this topic is configured only allow ordered sub")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
@@ -1059,13 +1059,13 @@ func (p *protocolV2) FIN(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 }
 
 func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
-	timeoutDuration time.Duration) (bool, error) {
-	isOldDeferred, err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
+	timeoutDuration time.Duration) error {
+	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
 	if err != nil {
 		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
-		return isOldDeferred, err
+		return err
 	}
-	return isOldDeferred, nil
+	return nil
 }
 
 func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1112,7 +1112,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	topic, _ := p.ctx.getExistingTopic(client.Channel.GetTopicName(), client.Channel.GetTopicPart())
 	oldMsg, toEnd := client.Channel.ShouldRequeueToEnd(client.ID, client.String(),
 		msgID, timeoutDuration, true)
-	if topic != nil && topic.GetDynamicInfo().OrderedMulti {
+	if topic != nil && topic.IsOrdered() {
 		toEnd = false
 		// for ordered topic, disable defer since it may block the consume
 		if timeoutDuration > 0 {
@@ -1122,7 +1122,7 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 		}
 	}
 	if toEnd {
-		_, err = p.requeueToEnd(client, oldMsg, timeoutDuration)
+		err = p.requeueToEnd(client, oldMsg, timeoutDuration)
 	} else {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}
@@ -1253,7 +1253,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 		return bodyLen, nil, nil, protocol.NewFatalClientErr(nil, E_TOPIC_NOT_EXIST, "")
 	}
 
-	if origPart == -1 && topic.GetDynamicInfo().OrderedMulti {
+	if origPart == -1 && topic.IsOrdered() {
 		return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
 			fmt.Sprintf("topic partition is not valid for multi partition: %v", origPart))
 	}
@@ -1326,10 +1326,10 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 		return nsqd.ErrExiting
 	}
 	info := &nsqd.PubInfo{
-		Done:     make(chan struct{}),
-		MsgBody:  msgBody,
-		ExtContent:	  extContent,
-		StartPub: time.Now(),
+		Done:       make(chan struct{}),
+		MsgBody:    msgBody,
+		ExtContent: extContent,
+		StartPub:   time.Now(),
 	}
 	if clientTimer == nil {
 		clientTimer = time.NewTimer(time.Second * 5)

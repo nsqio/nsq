@@ -15,16 +15,17 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/clusterinfo"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/julienschmidt/httprouter"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 type httpServer struct {
@@ -75,6 +76,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/setorder", http_api.Decorate(s.doSetChannelOrder, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", "/delayqueue/enable", http_api.Decorate(s.doEnableDelayedQueue, log, http_api.V1))
+	router.Handle("GET", "/delayqueue/backupto", http_api.Decorate(s.doDelayedQueueBackupTo, log, http_api.V1))
 
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
 
@@ -641,7 +644,7 @@ func (s *httpServer) doSkipChannel(w http.ResponseWriter, req *http.Request, ps 
 	}
 
 	// pro-actively persist metadata so in case of process failure
-	s.ctx.persistMetadata()
+	topic.SaveChannelMeta()
 	return nil, nil
 }
 
@@ -668,7 +671,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// pro-actively persist metadata so in case of process failure
-	s.ctx.persistMetadata()
+	topic.SaveChannelMeta()
 	return nil, nil
 }
 
@@ -1104,4 +1107,48 @@ func getOptByCfgName(opts interface{}, name string) (interface{}, bool) {
 		return val.FieldByName(field.Name).Interface(), true
 	}
 	return nil, false
+}
+
+func (s *httpServer) doEnableDelayedQueue(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	enableStr := reqParams.Get("enable")
+	if enableStr == "true" {
+		atomic.StoreInt32(&nsqd.EnableDelayedQueue, 1)
+		s.ctx.persistMetadata()
+	}
+	return nil, nil
+}
+
+func (s *httpServer) doDelayedQueueBackupTo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName := reqParams.Get("topic")
+	topicPartStr := reqParams.Get("partition")
+	topicPart, err := strconv.Atoi(topicPartStr)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
+	if err != nil {
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+	}
+
+	dq := t.GetDelayedQueue()
+	if dq == nil {
+		return nil, http_api.Err{400, "No delayed queue on this topic"}
+	}
+	_, err = dq.BackupKVStoreTo(w)
+	if err != nil {
+		nsqd.NsqLogger().Logf("failed to backup delayed queue for topic %v: %v", topicName, err)
+		return nil, http_api.Err{500, err.Error()}
+	}
+	return nil, nil
 }

@@ -299,11 +299,11 @@ func (self *NsqdRpcClient) DeleteChannel(leaderSession *TopicLeaderSession, info
 	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
 	updateInfo.TopicLeaderSession = leaderSession.Session
 	updateInfo.Channel = channel
-	retErr, err := self.CallFast("DeleteChannel", &updateInfo)
+	retErr, err := self.CallWithRetry("DeleteChannel", &updateInfo)
 	return convertRpcError(err, retErr)
 }
 
-func (self *NsqdRpcClient) NotifyUpdateChannelState(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, paused int, skipped int) *CoordErr {
+func (self *NsqdRpcClient) UpdateChannelState(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, paused int, skipped int) *CoordErr {
 	var channelState RpcChannelState
 	channelState.TopicName = info.Name
 	channelState.TopicPartition = info.Partition
@@ -315,8 +315,8 @@ func (self *NsqdRpcClient) NotifyUpdateChannelState(leaderSession *TopicLeaderSe
 	channelState.Paused = paused
 	channelState.Skipped = skipped
 
-	err := self.dc.Send("UpdateChannelState", &channelState)
-	return convertRpcError(err, nil)
+	retErr, err := self.CallWithRetry("UpdateChannelState", &channelState)
+	return convertRpcError(err, retErr)
 }
 
 func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, channel string, offset ChannelConsumerOffset) *CoordErr {
@@ -355,6 +355,39 @@ func (self *NsqdRpcClient) UpdateChannelOffset(leaderSession *TopicLeaderSession
 	updateInfo.Channel = channel
 	updateInfo.ChannelOffset = offset
 	retErr, err := self.CallFast("UpdateChannelOffset", &updateInfo)
+	return convertRpcError(err, retErr)
+}
+
+func (self *NsqdRpcClient) UpdateDelayedQueueState(leaderSession *TopicLeaderSession,
+	info *TopicPartitionMetaInfo, ch string, cursorList [][]byte,
+	cntList map[int]uint64, channelCntList map[string]uint64) *CoordErr {
+	var updateInfo RpcConfirmedDelayedCursor
+	updateInfo.TopicName = info.Name
+	updateInfo.TopicPartition = info.Partition
+	updateInfo.TopicWriteEpoch = info.EpochForWrite
+	updateInfo.Epoch = info.Epoch
+	updateInfo.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
+	updateInfo.TopicLeaderSession = leaderSession.Session
+	updateInfo.UpdatedChannel = ch
+	updateInfo.KeyList = cursorList
+	updateInfo.ChannelCntList = channelCntList
+	updateInfo.OtherCntList = cntList
+	retErr, err := self.CallFast("UpdateDelayedQueueState", &updateInfo)
+	return convertRpcError(err, retErr)
+}
+
+func (self *NsqdRpcClient) PutDelayedMessage(leaderSession *TopicLeaderSession, info *TopicPartitionMetaInfo, log CommitLogData, message *nsqd.Message) *CoordErr {
+	// it seems grpc is slower, so disable it.
+	var putData RpcPutMessage
+	putData.LogData = log
+	putData.TopicName = info.Name
+	putData.TopicPartition = info.Partition
+	putData.TopicMessage = message
+	putData.TopicWriteEpoch = info.EpochForWrite
+	putData.Epoch = info.Epoch
+	putData.TopicLeaderSessionEpoch = leaderSession.LeaderEpoch
+	putData.TopicLeaderSession = leaderSession.Session
+	retErr, err := self.CallWithRetry("PutDelayedMessage", &putData)
 	return convertRpcError(err, retErr)
 }
 
@@ -475,8 +508,20 @@ func (self *NsqdRpcClient) GetLastCommitLogID(topicInfo *TopicPartitionMetaInfo)
 	return ret.(int64), convertRpcError(err, &retErr)
 }
 
+func (self *NsqdRpcClient) GetLastDelayedQueueCommitLogID(topicInfo *TopicPartitionMetaInfo) (int64, *CoordErr) {
+	var req RpcCommitLogReq
+	req.TopicName = topicInfo.Name
+	req.TopicPartition = topicInfo.Partition
+	var retErr CoordErr
+	ret, err := self.CallWithRetry("GetLastDelayedQueueCommitLogID", &req)
+	if err != nil || ret == nil {
+		return 0, convertRpcError(err, &retErr)
+	}
+	return ret.(int64), convertRpcError(err, &retErr)
+}
+
 func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaInfo, logCountNumIndex int64,
-	logIndex int64, offset int64) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
+	logIndex int64, offset int64, fromDelayedQueue bool) (bool, int64, int64, int64, CommitLogData, *CoordErr) {
 	var req RpcCommitLogReq
 	req.LogStartIndex = logIndex
 	req.LogOffset = offset
@@ -485,16 +530,23 @@ func (self *NsqdRpcClient) GetCommitLogFromOffset(topicInfo *TopicPartitionMetaI
 	req.LogCountNumIndex = logCountNumIndex
 	req.UseCountIndex = true
 	var rsp *RpcCommitLogRsp
-	rspVar, err := self.CallWithRetry("GetCommitLogFromOffset", &req)
+	var rspVar interface{}
+	var err error
+	if !fromDelayedQueue {
+		rspVar, err = self.CallWithRetry("GetCommitLogFromOffset", &req)
+	} else {
+		rspVar, err = self.CallWithRetry("GetDelayedQueueCommitLogFromOffset", &req)
+	}
 	if err != nil {
 		return false, 0, 0, 0, CommitLogData{}, convertRpcError(err, nil)
 	}
 	rsp = rspVar.(*RpcCommitLogRsp)
 	return rsp.UseCountIndex, rsp.LogCountNumIndex, rsp.LogStartIndex, rsp.LogOffset, rsp.LogData, convertRpcError(err, &rsp.ErrInfo)
+
 }
 
 func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, logCountNumIndex int64,
-	logIndex int64, startOffset int64, num int) ([]CommitLogData, [][]byte, error) {
+	logIndex int64, startOffset int64, num int, fromDelayed bool) ([]CommitLogData, [][]byte, error) {
 	var r RpcPullCommitLogsReq
 	r.TopicName = topic
 	r.TopicPartition = partition
@@ -504,7 +556,13 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, lo
 	r.LogCountNumIndex = logCountNumIndex
 	r.UseCountIndex = true
 	var ret *RpcPullCommitLogsRsp
-	retVar, err := self.CallWithRetry("PullCommitLogsAndData", &r)
+	var retVar interface{}
+	var err error
+	if !fromDelayed {
+		retVar, err = self.CallWithRetry("PullCommitLogsAndData", &r)
+	} else {
+		retVar, err = self.CallWithRetry("PullDelayedQueueCommitLogsAndData", &r)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -512,17 +570,41 @@ func (self *NsqdRpcClient) PullCommitLogsAndData(topic string, partition int, lo
 	return ret.Logs, ret.DataList, nil
 }
 
-func (self *NsqdRpcClient) GetFullSyncInfo(topic string, partition int) (*LogStartInfo, *CommitLogData, error) {
+func (self *NsqdRpcClient) GetFullSyncInfo(topic string, partition int, fromDelayed bool) (*LogStartInfo, *CommitLogData, error) {
 	var r RpcGetFullSyncInfoReq
 	r.TopicName = topic
 	r.TopicPartition = partition
 	var ret *RpcGetFullSyncInfoRsp
-	retVar, err := self.CallWithRetry("GetFullSyncInfo", &r)
+	var retVar interface{}
+	var err error
+	if !fromDelayed {
+		retVar, err = self.CallWithRetry("GetFullSyncInfo", &r)
+	} else {
+		retVar, err = self.CallWithRetry("GetDelayedQueueFullSyncInfo", &r)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
 	ret = retVar.(*RpcGetFullSyncInfoRsp)
 	return &ret.StartInfo, &ret.FirstLogData, nil
+}
+
+func (self *NsqdRpcClient) GetNodeInfo(nid string) (*NsqdNodeInfo, error) {
+	var r RpcNodeInfoReq
+	r.NodeID = nid
+	var ret *RpcNodeInfoRsp
+	retVar, err := self.CallFast("GetNodeInfo", &r)
+	if err != nil {
+		return nil, err
+	}
+	ret = retVar.(*RpcNodeInfoRsp)
+	var nodeInfo NsqdNodeInfo
+	nodeInfo.ID = ret.ID
+	nodeInfo.NodeIP = ret.NodeIP
+	nodeInfo.HttpPort = ret.HttpPort
+	nodeInfo.RpcPort = ret.RpcPort
+	nodeInfo.TcpPort = ret.TcpPort
+	return &nodeInfo, nil
 }
 
 func (self *NsqdRpcClient) CallRpcTest(data string) (string, *CoordErr) {
