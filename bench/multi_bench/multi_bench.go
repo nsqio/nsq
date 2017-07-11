@@ -532,6 +532,9 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
 				equalTimes++
 				if *benchCase == "benchdelaysub" {
+					if totalSub < atomic.LoadInt64(&totalMsgCount) {
+						equalTimes = 0
+					}
 					if totalSub >= atomic.LoadInt64(&totalMsgCount) && totalSub >= currentTmc && equalTimes > 3 {
 						close(quitChan)
 						return
@@ -872,7 +875,9 @@ func main() {
 		config.MsgTimeout = time.Second * 200
 	}
 	config.DefaultRequeueDelay = time.Second * 30
-	config.MaxRequeueDelay = time.Second * 60
+	config.MaxRequeueDelay = time.Minute * 60
+	config.MaxBackoffDuration = time.Second * 3
+	config.MaxAttempts = 65534
 	config.MaxInFlight = 20
 	config.EnableTrace = *trace
 	config.EnableOrdered = *ordered
@@ -1058,7 +1063,7 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 							log.Printf("got delayed message early: %v, now: %v", string(message.Body), now)
 						}
 						message.DisableAutoResponse()
-						message.Requeue(time.Duration(delayTs-now) * time.Second)
+						message.RequeueWithoutBackoff(time.Duration(delayTs-now) * time.Second)
 						return nil
 					} else if now-delayTs > 10 {
 						log.Printf("got delayed message too late: %v, now: %v", string(message.Body), now)
