@@ -349,7 +349,7 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 	for i := 0; i < cnt; i++ {
 		msg := NewMessage(0, []byte("body"))
 		msg.DelayedType = ChannelDelayed
-		msg.DelayedTs = time.Now().Add(time.Second).UnixNano()
+		msg.DelayedTs = time.Now().Add(time.Millisecond).UnixNano()
 		msg.DelayedChannel = "test"
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, _, err := dq.PutDelayMessage(msg)
@@ -357,7 +357,7 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 
 		msg = NewMessage(0, []byte("body"))
 		msg.DelayedType = ChannelDelayed
-		msg.DelayedTs = time.Now().Add(time.Second).UnixNano()
+		msg.DelayedTs = time.Now().Add(time.Millisecond).UnixNano()
 		msg.DelayedChannel = "test2"
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, _, err = dq.PutDelayMessage(msg)
@@ -368,8 +368,9 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 	test.Equal(t, cnt, int(newCnt))
 	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
 	test.Equal(t, cnt, int(newCnt))
+	dq.getStore().Sync()
 
-	oldDBStat, err := os.Stat(dq.kvStore.Path())
+	oldDBStat, err := os.Stat(dq.getStore().Path())
 	test.Nil(t, err)
 
 	f, err := os.Create(path.Join(tmpDir, "backuped.file"))
@@ -385,10 +386,6 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 	err = dq.RestoreKVStoreFrom(f)
 	test.Nil(t, err)
 
-	dbStat, err := os.Stat(dq.kvStore.Path())
-	test.Nil(t, err)
-	test.Equal(t, oldDBStat.Size(), dbStat.Size())
-
 	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
 	test.Equal(t, cnt, int(newCnt))
 	newCnt, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
@@ -396,4 +393,116 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 
 	dbSize, _ := dq.GetDBSize()
 	test.Equal(t, stat.Size()-8, dbSize)
+
+	ret := make([]Message, cnt)
+	for {
+		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		test.Nil(t, err)
+		for _, m := range ret[:n] {
+			test.Equal(t, "test", m.DelayedChannel)
+			test.Equal(t, "body", string(m.Body))
+		}
+		n2, err := dq.PeekRecentChannelTimeout(ret, "test2")
+		test.Nil(t, err)
+		for _, m := range ret[:n2] {
+			test.Equal(t, "test2", m.DelayedChannel)
+			test.Equal(t, "body", string(m.Body))
+		}
+		if n+n2 >= cnt*2 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	dbStat, err := os.Stat(dq.getStore().Path())
+	test.Nil(t, err)
+	t.Logf("old %v, new %v\n", oldDBStat, dbStat)
+	test.Equal(t, true, oldDBStat.Size() >= dbStat.Size())
+}
+
+func TestDelayQueueCompactStore(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-delay-%d", time.Now().UnixNano()))
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	opts := NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.SyncEvery = 1
+	SetLogger(opts.Logger)
+
+	dq, err := NewDelayQueue("test-compact", 0, tmpDir, opts, nil, false)
+	test.Nil(t, err)
+	defer dq.Close()
+	cnt := CompactCntThreshold + 1
+	for i := 0; i < cnt; i++ {
+		msg := NewMessage(0, []byte("body"))
+		msg.DelayedType = ChannelDelayed
+		msg.DelayedTs = time.Now().Add(time.Millisecond).UnixNano()
+		msg.DelayedChannel = "test"
+		msg.DelayedOrigID = MessageID(i + 1)
+		_, _, _, _, err := dq.PutDelayMessage(msg)
+		test.Nil(t, err)
+	}
+	newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, cnt, int(newCnt))
+
+	beforeCompact, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	fi, err := os.Stat(dq.getStore().Path())
+	test.Nil(t, err)
+	CompactThreshold = 1024 * 8
+	// first compact is ignored
+	err = dq.compactStore(false)
+	test.Nil(t, err)
+	fi2, err := os.Stat(dq.getStore().Path())
+	t.Log(fi)
+	t.Log(fi2)
+	afterCompact, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, beforeCompact, afterCompact)
+	test.Equal(t, true, fi2.Size() == fi.Size())
+
+	ret := make([]Message, 100)
+	done := false
+	for !done {
+		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		test.Nil(t, err)
+		for _, m := range ret[:n] {
+			m.DelayedOrigID = m.ID
+			dq.ConfirmedMessage(&m)
+			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+			if int(newCnt) < cnt/10 {
+				done = true
+				break
+			}
+		}
+	}
+	dq.getStore().Sync()
+	beforeCompact, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, true, int(beforeCompact) <= cnt/10)
+
+	fi, err = os.Stat(dq.getStore().Path())
+	test.Nil(t, err)
+	err = dq.compactStore(false)
+	test.Nil(t, err)
+	fi2, err = os.Stat(dq.getStore().Path())
+	t.Log(fi)
+	t.Log(fi2)
+	afterCompact, _ = dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
+	test.Equal(t, beforeCompact, afterCompact)
+	test.Equal(t, true, fi2.Size() < fi.Size())
+
+	ret = make([]Message, beforeCompact)
+	for {
+		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		test.Nil(t, err)
+		for _, m := range ret[:n] {
+			test.Equal(t, "test", m.DelayedChannel)
+			test.Equal(t, "body", string(m.Body))
+		}
+		if uint64(n) >= beforeCompact {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
