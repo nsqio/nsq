@@ -1061,13 +1061,13 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 					now := int(time.Now().Unix())
 					if delayTs > now {
 						if message.Attempts > 1 {
-							log.Printf("got delayed message early: %v, now: %v", string(message.Body), now)
+							log.Printf("got delayed message early: %v (id %v), now: %v", string(message.Body), message.ID, now)
 						}
 						message.DisableAutoResponse()
 						message.RequeueWithoutBackoff(time.Duration(delayTs-now) * time.Second)
 						return nil
 					} else if now-delayTs > 10 {
-						log.Printf("got delayed message too late: %v, now: %v", string(message.Body), now)
+						log.Printf("got delayed message too late: %v (id %v), now: %v", string(message.Body), message.ID, now)
 					}
 				} else {
 					log.Printf("got delayed message invalid delay: %v, %v", string(message.Body), err)

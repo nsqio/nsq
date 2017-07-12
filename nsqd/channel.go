@@ -587,6 +587,10 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 		newTimeout = msg.deliveryTS.Add(c.option.MaxMsgTimeout)
 	}
 	msg.pri = newTimeout.UnixNano()
+	if msg.index != -1 {
+		c.inFlightPQ.Remove(msg.index)
+	}
+	c.inFlightPQ.Push(msg)
 	c.inFlightMutex.Unlock()
 	return nil
 }
@@ -929,6 +933,11 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		msg.belongedConsumer.RequeuedMessage()
 	}
 	msg.belongedConsumer = nil
+	if msg.index != -1 {
+		c.inFlightPQ.Remove(msg.index)
+	}
+	c.inFlightPQ.Push(msg)
+
 	nsqLog.LogDebugf("client %v requeue with delayed %v message: %v", clientID, timeout, id)
 	return nil
 }
@@ -1660,6 +1669,8 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 				clientAddr = client.String()
 			}
 			if msgCopy.IsDeferred() {
+				nsqLog.LogDebugf("msg %v defer timeout, expect at %v ",
+					msgCopy.ID, msgCopy.pri)
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
 			} else {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "TIMEOUT", msgCopy.TraceID, &msgCopy, clientAddr)
