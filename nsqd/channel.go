@@ -921,8 +921,6 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 			c.option.MaxReqTimeout) {
 		nsqLog.Logf("too long timeout %v, %v, %v, should req message: %v to delayed queue",
 			newTimeout, msg.deliveryTS, timeout, id)
-		return fmt.Errorf("this message %v timeout %v, %v exceed threshold should be requeue to delayed queue",
-			id, newTimeout, msg.deliveryTS)
 	}
 
 	atomic.AddInt64(&c.deferredCount, 1)

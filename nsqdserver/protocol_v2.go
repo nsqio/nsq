@@ -1062,7 +1062,7 @@ func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
 	timeoutDuration time.Duration) error {
 	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
 	if err != nil {
-		nsqd.NsqLogger().LogWarningf("[%s] req channel %v topic not found: %v", client, client.Channel.GetName(), err)
+		nsqd.NsqLogger().LogWarningf("[%s] req channel %v failed: %v", client, client.Channel.GetName(), err)
 		return err
 	}
 	return nil
@@ -1091,11 +1091,19 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
-	if timeoutDuration < 0 || timeoutDuration > p.ctx.getOpts().MaxReqTimeout {
-		return nil, protocol.NewFatalClientErr(nil, E_INVALID,
-			fmt.Sprintf("REQ timeout %v out of range 0-%v", timeoutDuration, p.ctx.getOpts().MaxReqTimeout))
-	}
+	maxReqTimeout := p.ctx.getOpts().MaxReqTimeout
+	clampedTimeout := timeoutDuration
 
+	if timeoutDuration < 0 {
+		clampedTimeout = 0
+	} else if timeoutDuration > maxReqTimeout {
+		clampedTimeout = maxReqTimeout
+	}
+	if clampedTimeout != timeoutDuration {
+		nsqd.NsqLogger().Logf("[%s] REQ timeout %d out of range 0-%d. Setting to %d",
+			client, timeoutDuration, maxReqTimeout, clampedTimeout)
+		timeoutDuration = clampedTimeout
+	}
 	if client.Channel == nil {
 		return nil, protocol.NewFatalClientErr(nil, E_INVALID, "No channel")
 	}
@@ -1123,7 +1131,14 @@ func (p *protocolV2) REQ(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	}
 	if toEnd {
 		err = p.requeueToEnd(client, oldMsg, timeoutDuration)
-	} else {
+		if err != nil {
+			// try to reduce timeout to requeue to memory if failed to requeue to end
+			if timeoutDuration > p.ctx.getOpts().ReqToEndThreshold {
+				timeoutDuration = p.ctx.getOpts().ReqToEndThreshold
+			}
+		}
+	}
+	if !toEnd || err != nil {
 		err = client.Channel.RequeueMessage(client.ID, client.String(), msgID, timeoutDuration, true)
 	}
 	if err != nil {
