@@ -266,7 +266,7 @@ func (n *NSQD) LoadMetadata(disabled int32) {
 	} else {
 		atomic.StoreInt32(&EnableDelayedQueue, int32(enabled))
 	}
-	nsqLog.Logf("delayed queue enable state %s", enabled)
+	nsqLog.Logf("delayed queue enable state %v", enabled)
 
 	topics, err := js.Get("topics").Array()
 	if err != nil {

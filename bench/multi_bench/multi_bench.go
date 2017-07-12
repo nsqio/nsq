@@ -69,6 +69,7 @@ var topicMutex map[string]*sync.Mutex
 var traceIDWaitingList map[string]map[uint64]*nsq.Message
 var pubTraceFailedList map[string]map[uint64]int64
 var maxDelayTs int64
+var myRand = rand.New(rand.NewSource(time.Now().Unix()))
 
 type ByMsgOffset []*nsq.Message
 
@@ -970,7 +971,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 
 		singleMsg := batch[0]
 		if testDelay && atomic.LoadInt64(&currentMsgCount)%171 == 0 {
-			delayDuration := time.Minute * time.Duration(1+rand.Intn(*maxDelayMins))
+			delayDuration := time.Minute * time.Duration(1+myRand.Intn(*maxDelayMins))
 			delayTs := int(time.Now().Add(delayDuration).Unix())
 			if int64(delayTs) > atomic.LoadInt64(&maxDelayTs) {
 				atomic.StoreInt64(&maxDelayTs, int64(delayTs))
