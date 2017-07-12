@@ -227,6 +227,25 @@ func (c *context) UpdateChannelState(ch *nsqd.Channel, paused int, skipped int) 
 	return nil
 }
 
+func (c *context) EmptyChannelDelayedQueue(ch *nsqd.Channel) error {
+	if c.nsqdCoord == nil {
+		if ch.GetDelayedQueue() != nil {
+			err := ch.GetDelayedQueue().EmptyDelayedChannel(ch.GetName())
+			if err != nil {
+				nsqd.NsqLogger().Logf("empty delayed queue for channel %v failed: %v", ch.GetName(), err)
+				return err
+			}
+		}
+	} else {
+		err := c.nsqdCoord.EmptyChannelDelayedStateToCluster(ch)
+		if err != nil {
+			nsqd.NsqLogger().Logf("failed to empty delayed for channel: %v , err: %v ", ch.GetName(), err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *context) SetChannelOffset(ch *nsqd.Channel, startFrom *ConsumeOffset, force bool) (int64, int64, error) {
 	var l *consistence.CommitLogData
 	var queueOffset int64

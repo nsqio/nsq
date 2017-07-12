@@ -56,11 +56,13 @@ func IsValidDelayedMessage(m *Message) bool {
 }
 
 func getDelayedMsgDBKey(dt int, ch string, ts int64, id MessageID) []byte {
-	msgKey := make([]byte, len(ch)+1+2+8+8)
+	msgKey := make([]byte, len(ch)+2+1+2+8+8)
 	binary.BigEndian.PutUint16(msgKey[:2], uint16(dt))
 	pos := 2
 	msgKey[pos] = '-'
 	pos++
+	binary.BigEndian.PutUint16(msgKey[pos:pos+2], uint16(len(ch)))
+	pos += 2
 	copy(msgKey[pos:pos+len(ch)], []byte(ch))
 	pos += len(ch)
 	binary.BigEndian.PutUint64(msgKey[pos:pos+8], uint64(ts))
@@ -70,14 +72,16 @@ func getDelayedMsgDBKey(dt int, ch string, ts int64, id MessageID) []byte {
 }
 
 func decodeDelayedMsgDBKey(b []byte) (uint16, int64, MessageID, string, error) {
-	if len(b) < 1+2+8+8 {
+	if len(b) < 2+1+2+8+8 {
 		return 0, 0, 0, "", errors.New("invalid buffer length")
 	}
 	dt := binary.BigEndian.Uint16(b[:2])
 	pos := 2
 	pos++
-	ch := b[pos : len(b)-8-8]
-	pos += len(ch)
+	chLen := int(binary.BigEndian.Uint16(b[pos : pos+2]))
+	pos += 2
+	ch := b[pos : pos+chLen]
+	pos += chLen
 	ts := int64(binary.BigEndian.Uint64(b[pos : pos+8]))
 	pos += 8
 	id := int64(binary.BigEndian.Uint64(b[pos : pos+8]))
@@ -85,11 +89,13 @@ func decodeDelayedMsgDBKey(b []byte) (uint16, int64, MessageID, string, error) {
 }
 
 func getDelayedMsgDBPrefixKey(dt int, ch string) []byte {
-	msgKey := make([]byte, len(ch)+1+2)
+	msgKey := make([]byte, len(ch)+2+1+2)
 	binary.BigEndian.PutUint16(msgKey[:2], uint16(dt))
 	pos := 2
 	msgKey[pos] = '-'
 	pos++
+	binary.BigEndian.PutUint16(msgKey[pos:pos+2], uint16(len(ch)))
+	pos += 2
 	copy(msgKey[pos:pos+len(ch)], []byte(ch))
 	return msgKey
 }
@@ -261,6 +267,7 @@ func (q *DelayQueue) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 	old := q.backend.GetQueueWriteEnd()
 	nsqLog.Logf("reset the backend from %v to : %v, %v", old, vend, diffCnt)
 	_, err := q.backend.RollbackWriteV2(vend, diffCnt)
+	atomic.StoreInt32(&q.needFlush, 1)
 	return err
 }
 
@@ -271,6 +278,7 @@ func (q *DelayQueue) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) e
 	if err != nil {
 		nsqLog.LogErrorf("reset backend to %v error: %v", vend, err)
 	}
+	atomic.StoreInt32(&q.needFlush, 1)
 	return err
 }
 
@@ -286,6 +294,7 @@ func (q *DelayQueue) ResetBackendWithQueueStartNoLock(queueStartOffset int64, qu
 	if err != nil {
 		return err
 	}
+	atomic.StoreInt32(&q.needFlush, 1)
 	return nil
 }
 

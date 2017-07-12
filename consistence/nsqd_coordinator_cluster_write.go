@@ -1208,6 +1208,66 @@ func (self *NsqdCoordinator) deleteChannelOnSlave(tc *coordData, channelName str
 	return nil
 }
 
+func (self *NsqdCoordinator) EmptyChannelDelayedStateToCluster(channel *nsqd.Channel) error {
+	if channel.IsOrdered() {
+		return nil
+	}
+
+	topicName := channel.GetTopicName()
+	partition := channel.GetTopicPart()
+	coord, checkErr := self.getTopicCoord(topicName, partition)
+	if checkErr != nil {
+		return checkErr.ToErrorType()
+	}
+	changed := false
+	doLocalWrite := func(d *coordData) *CoordErr {
+		if channel.GetDelayedQueue() != nil {
+			localErr := channel.GetDelayedQueue().EmptyDelayedChannel(channel.GetName())
+			if localErr != nil {
+				coordLog.Infof("channel %v empty delayed message error: %v", channel.GetName(), localErr)
+				return &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+			changed = true
+		}
+		return nil
+	}
+	doLocalExit := func(err *CoordErr) {}
+	doLocalCommit := func() error {
+		return nil
+	}
+	doLocalRollback := func() {}
+	doRefresh := func(d *coordData) *CoordErr {
+		return nil
+	}
+	doSlaveSync := func(c *NsqdRpcClient, nodeID string, tcData *coordData) *CoordErr {
+		if !changed {
+			return nil
+		}
+		var rpcErr *CoordErr
+		cursorList, cntList, channelCntList := channel.GetDelayedQueueConsumedState()
+		rpcErr = c.UpdateDelayedQueueState(&tcData.topicLeaderSession, &tcData.topicInfo,
+			channel.GetName(), cursorList, cntList, channelCntList)
+		if rpcErr != nil {
+			coordLog.Infof("sync channel(%v) delayed queue state to replica %v failed: %v", channel.GetName(),
+				nodeID, rpcErr)
+		}
+		return rpcErr
+	}
+	handleSyncResult := func(successNum int, tcData *coordData) bool {
+		// we can ignore the error if this channel is not ordered. (just sync next time)
+		if successNum == len(tcData.topicInfo.ISR) {
+			return true
+		}
+		return false
+	}
+	clusterErr := self.doSyncOpToCluster(false, coord, doLocalWrite, doLocalExit, doLocalCommit, doLocalRollback,
+		doRefresh, doSlaveSync, handleSyncResult)
+	if clusterErr != nil {
+		return clusterErr.ToErrorType()
+	}
+	return nil
+}
+
 func (self *NsqdCoordinator) updateDelayedQueueStateOnSlave(tc *coordData, channelName string,
 	keyList [][]byte, cntList map[int]uint64, channelCntList map[string]uint64) *CoordErr {
 	topicName := tc.topicInfo.Name

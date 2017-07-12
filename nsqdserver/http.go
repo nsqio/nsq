@@ -509,6 +509,11 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 		}
 		nsqd.NsqLogger().Logf("empty the channel to end offset: %v:%v, by client:%v",
 			queueOffset, cnt, req.RemoteAddr)
+		err = s.ctx.EmptyChannelDelayedQueue(channel)
+		if err != nil {
+			nsqd.NsqLogger().Logf("empty the channel %v failed to empty delayed: %v, by client:%v",
+				channelName, err, req.RemoteAddr)
+		}
 	} else {
 		nsqd.NsqLogger().LogDebugf("should request to master: %v, from %v",
 			topic.GetFullName(), req.RemoteAddr)

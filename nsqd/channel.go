@@ -449,6 +449,10 @@ func (c *Channel) exit(deleted bool) error {
 	c.flush()
 	if deleted {
 		// empty the queue (deletes the backend files, too)
+		if c.GetDelayedQueue() != nil {
+			c.GetDelayedQueue().EmptyDelayedChannel(c.GetName())
+		}
+
 		c.skipChannelToEnd()
 		return c.backend.Delete()
 	}
@@ -1714,6 +1718,8 @@ exit:
 				_, ok := c.inFlightMessages[m.DelayedOrigID]
 				c.inFlightMutex.Unlock()
 				if ok {
+					nsqLog.LogDebugf("msg %v already in flight while peek from delayed queue  %v ",
+						m.ID, m)
 					continue
 				}
 				tmpID := m.ID
