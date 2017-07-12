@@ -655,7 +655,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				continue
 			}
 			if nsqLog.Level() >= levellogger.LOG_DETAIL {
-				nsqLog.LogDebugf("peek delayed message: %v, %v", delayedTs, m)
+				nsqLog.LogDebugf("peek delayed message %v: %v, %v", k, delayedTs, m)
 			}
 
 			if filterType >= 0 && filterType != int(m.DelayedType) {
@@ -726,8 +726,8 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	})
 	if err != nil {
 		nsqLog.LogErrorf(
-			"TOPIC(%s) : failed to delete delayed message %v-%v, %v",
-			q.GetFullName(), msg.DelayedOrigID, msg.DelayedTs, err)
+			"%s : failed to delete delayed message %v-%v, %v",
+			q.GetFullName(), msg.DelayedOrigID, msg, err)
 	}
 	return err
 }
