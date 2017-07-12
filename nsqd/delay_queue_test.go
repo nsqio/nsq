@@ -287,7 +287,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 					test.Equal(t, "test", ch)
 					test.Equal(t, true, ts > m.DelayedTs)
 					t.Logf("confirmed: %v, oldest ts: %v\n", m.DelayedTs, ts)
-					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*110))
+					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*210))
 					test.Equal(t, true, id > m.ID)
 				}
 			}
@@ -316,7 +316,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 				if dt == ChannelDelayed {
 					test.Equal(t, "test2", ch)
 					test.Equal(t, true, ts > m.DelayedTs)
-					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*110))
+					test.Equal(t, true, ts < m.DelayedTs+int64(time.Millisecond*210))
 					test.Equal(t, true, id > m.ID)
 				}
 			}
