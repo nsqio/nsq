@@ -26,12 +26,12 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/test"
 	nsqdNs "github.com/absolute8511/nsq/nsqd"
 	"github.com/golang/snappy"
-	"github.com/absolute8511/nsq/internal/ext"
 )
 
 func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f int32) []byte {
@@ -248,9 +248,9 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 }
 
 func recvNextMsgAndCheckWithCloseChan(t *testing.T, conn io.ReadWriter,
-expLen int, expTraceID uint64, autoFin bool, ext bool, closeChan chan int) *nsqdNs.Message {
+	expLen int, expTraceID uint64, autoFin bool, ext bool, closeChan chan int) *nsqdNs.Message {
 	for {
-		select{
+		select {
 		case <-closeChan:
 			t.Logf("recvNextMsgAndCheckWithCloseChan exit")
 			return nil
@@ -327,7 +327,6 @@ func TestBasicV2(t *testing.T) {
 
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Equal(t, err, nil)
-
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, true)
 	test.NotNil(t, msgOut)
@@ -595,7 +594,7 @@ func TestSkipping(t *testing.T) {
 
 	test.NotEqual(t, offset1, offset2)
 	select {
-	case msg = <- channel.GetClientMsgChan():
+	case msg = <-channel.GetClientMsgChan():
 		t.Logf("message should not be received.")
 		t.Fail()
 	case <-time.Tick(500 * time.Millisecond):
@@ -621,9 +620,9 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 
@@ -651,7 +650,6 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
 	test.Equal(t, err, nil)
-
 
 	tag, err := ext.NewTagExt([]byte("TAG"))
 	//case 1: tagged message goes to client with tag
@@ -718,9 +716,9 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 
@@ -750,7 +748,6 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn2)
 	test.Equal(t, err, nil)
 
-
 	//subscribe normal client
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)
@@ -762,14 +759,12 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Equal(t, err, nil)
 
-
 	tag1, err := ext.NewTagExt([]byte("TAG1"))
 	//case 1: tagged message goes to client with tag
 	msg := nsqdNs.NewMessageWithExt(0, []byte("test body tag1"), tag1.ExtVersion(), tag1.GetBytes())
 	topic.GetChannel("ch")
 	_, _, _, _, putErr := topic.PutMessage(msg)
 	test.Nil(t, putErr)
-
 
 	tag2, err := ext.NewTagExt([]byte("TAG2"))
 	//case 1: tagged message goes to client with tag
@@ -829,9 +824,9 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 
@@ -861,7 +856,7 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	//case1 disconnect and connect
 	conn.Close()
 
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	ch := topic.GetChannel("ch")
 	_, exist := ch.GetClientTagMsgChan(tag)
 	test.Equal(t, false, exist)
@@ -916,17 +911,16 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	}
 
 	conn.Close()
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	ch = topic.GetChannel("ch")
 	_, exist = ch.GetClientTagMsgChan(tag)
 	test.Equal(t, true, exist)
 
 	conn2.Close()
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	_, exist = ch.GetClientTagMsgChan(tag)
 	test.Equal(t, false, exist)
 }
-
 
 func TestInvalidTagSub(t *testing.T) {
 	topicName := "test_tag_invalid" + strconv.Itoa(int(time.Now().Unix()))
@@ -938,9 +932,9 @@ func TestInvalidTagSub(t *testing.T) {
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 	topic.GetChannel("ch")
@@ -983,9 +977,9 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 	topic.GetChannel("ch")
@@ -1019,13 +1013,14 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 
 	go func(start chan int, closeChan chan int, cntChan chan int64) {
 		if !producerFirst {
-			<- start
+			<-start
 		}
 		cnt := int64(0)
 		t.Logf("producer1 starts")
-loop:		for {
+	loop:
+		for {
 			tag := tags[0]
-			body := fmt.Sprintf("%v tag 1", 100 + cnt)
+			body := fmt.Sprintf("%v tag 1", 100+cnt)
 			msg := nsqdNs.NewMessageWithExt(0, []byte(body), tag.ExtVersion(), tag.GetBytes())
 			topic.GetChannel("ch")
 			_, _, _, _, putErr := topic.PutMessage(msg)
@@ -1036,7 +1031,7 @@ loop:		for {
 			case <-closeChan:
 				t.Logf("producer1 exit, total msg published %v", cnt)
 				break loop
-			case <- time.After(time.Duration(timeBase) * time.Second):
+			case <-time.After(time.Duration(timeBase) * time.Second):
 			}
 		}
 		cntChan <- cnt
@@ -1044,13 +1039,14 @@ loop:		for {
 
 	go func(start chan int, closeChan chan int, cntChan chan int64) {
 		if !producerFirst {
-			<- start
+			<-start
 		}
 		cnt := int64(0)
 		t.Logf("producer2 starts")
-loop:		for {
+	loop:
+		for {
 			tag := tags[1]
-			body := fmt.Sprintf("%v tag 2", 100 + cnt)
+			body := fmt.Sprintf("%v tag 2", 100+cnt)
 			msg := nsqdNs.NewMessageWithExt(0, []byte(body), tag.ExtVersion(), tag.GetBytes())
 			topic.GetChannel("ch")
 			_, _, _, _, putErr := topic.PutMessage(msg)
@@ -1061,7 +1057,7 @@ loop:		for {
 			case <-closeChan:
 				t.Logf("producer2 exit, total msg published %v", cnt)
 				break loop
-			case <- time.After(time.Duration(timeBase) * time.Second):
+			case <-time.After(time.Duration(timeBase) * time.Second):
 			}
 		}
 		cntChan <- cnt
@@ -1069,13 +1065,14 @@ loop:		for {
 
 	go func(start chan int, closeChan chan int, cntChan chan int64) {
 		if !producerFirst {
-			<- start
+			<-start
 		}
 		cnt := int64(0)
 		t.Logf("producer3 starts")
-loop:		for {
+	loop:
+		for {
 			tag := tags[2]
-			body := fmt.Sprintf("%v tag 3", 100 + cnt)
+			body := fmt.Sprintf("%v tag 3", 100+cnt)
 			msg := nsqdNs.NewMessageWithExt(0, []byte(body), tag.ExtVersion(), tag.GetBytes())
 			topic.GetChannel("ch")
 			_, _, _, _, putErr := topic.PutMessage(msg)
@@ -1086,12 +1083,11 @@ loop:		for {
 			case <-closeChan:
 				t.Logf("producer3 exit, total msg published %v", cnt)
 				break loop
-			case <- time.After(time.Duration(timeBase) * time.Second):
+			case <-time.After(time.Duration(timeBase) * time.Second):
 			}
 		}
 		cntChan <- cnt
 	}(startP[2], clsP3, cntP3)
-
 
 	msg := nsqdNs.NewMessageWithExt(0, []byte("100 tag 0"), tags[0].ExtVersion(), tags[0].GetBytes())
 	//consumer behavior
@@ -1127,7 +1123,7 @@ loop:		for {
 	go func(closeChan chan int, cntChan chan int64, restart chan int, len int, traceID uint64) {
 		//subscribe tag client
 		cnt := int64(0)
-restart:
+	restart:
 		conn, err := mustConnectNSQD(tcpAddr)
 		test.Equal(t, err, nil)
 		client1Params := make(map[string]interface{})
@@ -1140,10 +1136,11 @@ restart:
 		test.Equal(t, err, nil)
 
 		//subsume
-loop:		for {
+	loop:
+		for {
 			msgOut, eof := recvNextMsgAndCheckExcept4EOF(t, conn, len, traceID, true, true)
 			if eof {
-				time.Sleep(1*time.Second)
+				time.Sleep(1 * time.Second)
 			} else {
 				test.NotNil(t, msgOut)
 				cnt++
@@ -1154,7 +1151,7 @@ loop:		for {
 				t.Logf("consumer1 exit, total msg consuemd %v", cnt)
 				conn.Close()
 				break loop
-			case <- restart:
+			case <-restart:
 				t.Logf("consuemr1 restart")
 				conn.Close()
 				goto restart
@@ -1180,7 +1177,8 @@ loop:		for {
 		test.Equal(t, err, nil)
 
 		//subsume
-loop:		for {
+	loop:
+		for {
 			msgOut, eof := recvNextMsgAndCheckExcept4EOF(t, conn, len, traceID, true, true)
 			if eof {
 				time.Sleep(1 * time.Second)
@@ -1194,7 +1192,7 @@ loop:		for {
 				t.Logf("consumer2 exit, total msg consuemd %v", cnt)
 				conn.Close()
 				break loop
-			case <- restart:
+			case <-restart:
 				t.Logf("consuemr2 restart")
 				conn.Close()
 				goto restart
@@ -1220,7 +1218,8 @@ loop:		for {
 		test.Equal(t, err, nil)
 
 		//subsume
-loop:		for {
+	loop:
+		for {
 			msgOut, eof := recvNextMsgAndCheckExcept4EOF(t, conn, len, traceID, true, true)
 			if eof {
 				time.Sleep(1 * time.Second)
@@ -1234,7 +1233,7 @@ loop:		for {
 				t.Logf("consumer3 exit, total msg consuemd %v", cnt)
 				conn.Close()
 				break loop
-			case <- restart:
+			case <-restart:
 				t.Logf("consuemr3 restart")
 				conn.Close()
 				goto restart
@@ -1248,7 +1247,7 @@ loop:		for {
 	go func(closeChan chan int, cntChan chan int64, restart chan int, len int, traceID uint64) {
 		//subscribe tag client
 		cnt := int64(0)
-		restart:
+	restart:
 		conn, err := mustConnectNSQD(tcpAddr)
 		test.Equal(t, err, nil)
 		client1Params := make(map[string]interface{})
@@ -1261,7 +1260,8 @@ loop:		for {
 		test.Equal(t, err, nil)
 
 		//subscribe
-loop:		for {
+	loop:
+		for {
 			msgOut, eof := recvNextMsgAndCheckExcept4EOF(t, conn, len, traceID, true, true)
 			if eof {
 				time.Sleep(1 * time.Second)
@@ -1275,7 +1275,7 @@ loop:		for {
 				t.Logf("consumer4 exit, total msg consuemd %v", cnt)
 				conn.Close()
 				break loop
-			case <- restart:
+			case <-restart:
 				t.Logf("consuemr4 restart")
 				conn.Close()
 				goto restart
@@ -1285,32 +1285,32 @@ loop:		for {
 		cntChan <- cnt
 	}(clsC4, cntC4, resC4, len(msg.Body), msg.TraceID)
 
-	time.Sleep(5*time.Second)
+	time.Sleep(5 * time.Second)
 	if !producerFirst {
 		for idx, start := range startP {
 			start <- 1
-			t.Logf("signal prducer %v to start", idx + 1)
+			t.Logf("signal prducer %v to start", idx+1)
 		}
 	}
 
 loop:
 	for {
 		idx := rand.Intn(3)
-		t.Logf("restart consumer %v", idx + 1)
+		t.Logf("restart consumer %v", idx+1)
 		resChans[idx] <- 1
-		time.Sleep(5*time.Second)
+		time.Sleep(5 * time.Second)
 		select {
 		case <-ticker.C:
 			t.Logf("close producer & consumer...")
 			for _, clsCh := range clsP {
 				clsCh <- 1
 			}
-			time.Sleep(5*time.Second)
+			time.Sleep(5 * time.Second)
 			for _, clsCh := range clsC {
 				clsCh <- 1
 			}
 			clsC4 <- 1
-			time.Sleep(5*time.Second)
+			time.Sleep(5 * time.Second)
 			break loop
 		default:
 		}
@@ -1330,9 +1330,9 @@ func TestWriteAndConsumeTagMix(t *testing.T) {
 
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 	topic.GetChannel("ch")
@@ -1401,7 +1401,7 @@ func TestWriteAndConsumeTagMix(t *testing.T) {
 			test.NotNil(t, msgOut)
 			test.Equal(t, msgBody, string(msgOut.Body))
 			test.Equal(t, "TAG", string(msgOut.ExtBytes))
-			tagCnt ++
+			tagCnt++
 			if tagCnt == 10 {
 				break
 			}
@@ -1442,9 +1442,9 @@ func TestStuckOnAnotherTag(t *testing.T) {
 	defer nsqdServer.Exit()
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 
@@ -1480,7 +1480,7 @@ func TestStuckOnAnotherTag(t *testing.T) {
 		wg.Done()
 	}()
 	t.Logf("sleep %v secs...", 5)
-	time.Sleep(5*time.Second)
+	time.Sleep(5 * time.Second)
 
 	conn2, err := mustConnectNSQD(tcpAddr)
 	test.Equal(t, err, nil)
@@ -1553,7 +1553,7 @@ func TestPausing(t *testing.T) {
 	// if pausing was not working on the internal clientMsgChan read
 	time.Sleep(50 * time.Millisecond)
 	msgChan := channel.GetClientMsgChan()
-	msg = <- msgChan
+	msg = <-msgChan
 	test.Equal(t, msg.Body, []byte("test body2"))
 
 	// unpause the channel... the client should now be pushed a message
@@ -3631,7 +3631,6 @@ func TestResetChannelToOld(t *testing.T) {
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
 	opts.MaxConfirmWin = 10
-	opts.ClientTimeout = time.Second * 4
 	opts.QueueScanRefreshInterval = time.Second * 2
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -3687,7 +3686,6 @@ func TestResetChannelToOld(t *testing.T) {
 			time.Sleep(time.Second)
 			if time.Since(startTime) > time.Second*20 {
 				if channel.GetConfirmed().Offset() == realEnd.Offset() {
-					conn.Close()
 					return
 				}
 				t.Errorf("should stop on : %v", recvCnt)
@@ -3697,7 +3695,8 @@ func TestResetChannelToOld(t *testing.T) {
 		}
 	}()
 	for {
-		resp, _ := nsq.ReadResponse(conn)
+		resp, err := nsq.ReadResponse(conn)
+		test.Nil(t, err)
 		frameType, data, err := nsq.UnpackResponse(resp)
 
 		test.Nil(t, err)
@@ -3756,7 +3755,6 @@ func TestResetChannelToOld(t *testing.T) {
 	}
 
 	conn.Close()
-
 }
 
 func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
@@ -4004,9 +4002,9 @@ func benchmarkProtocolV2SubExt(b *testing.B, size int) {
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopicIgnPart(topicName)
 	topicDynConf := nsqdNs.TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
 	topic.SetDynamicInfo(topicDynConf, nil)
 	topic.GetChannel("ch")

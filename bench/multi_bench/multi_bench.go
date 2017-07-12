@@ -1066,7 +1066,7 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 						message.DisableAutoResponse()
 						message.RequeueWithoutBackoff(time.Duration(delayTs-now) * time.Second)
 						return nil
-					} else if now-delayTs > 10 {
+					} else if now-delayTs > 3 {
 						log.Printf("got delayed message too late: %v (id %v), now: %v", string(message.Body), message.ID, now)
 					}
 				} else {
