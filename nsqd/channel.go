@@ -1719,7 +1719,8 @@ exit:
 		dmsgs := make([]Message, MaxWaitingDelayed)
 		cnt, err := delayedQueue.PeekRecentChannelTimeout(dmsgs, c.GetName())
 		if err == nil {
-			for _, m := range dmsgs[:cnt] {
+			for _, tmpMsg := range dmsgs[:cnt] {
+				m := tmpMsg
 				c.confirmMutex.Lock()
 				oldMsg, ok := c.delayedMsgs[m.DelayedOrigID]
 				if !ok {
@@ -1748,6 +1749,13 @@ exit:
 					if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 						nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_QUEUE_TIMEOUT", m.TraceID, &m, "")
 					}
+
+					if m.belongedConsumer != nil {
+						m.belongedConsumer.RequeuedMessage()
+						m.belongedConsumer = nil
+					}
+
+					atomic.StoreInt32(&m.deferredCnt, 0)
 					c.doRequeue(&m, "")
 				}
 				c.inFlightMutex.Unlock()
