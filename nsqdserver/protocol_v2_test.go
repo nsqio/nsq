@@ -2000,14 +2000,17 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, msgOut.ID, msg.ID)
 
 	time.Sleep(75 * time.Millisecond)
+	delayStart = time.Now()
 	_, err = nsq.Requeue(nsq.MessageID(msg.GetFullMsgID()), opts.MaxReqTimeout+time.Second*2).WriteTo(conn)
 	test.Equal(t, err, nil)
-	resp, err := nsq.ReadResponse(conn)
-	test.Equal(t, err, nil)
-	frameType, data, err := nsq.UnpackResponse(resp)
-	test.Nil(t, err)
-	test.Equal(t, frameType, frameTypeError)
-	test.Equal(t, string(data), fmt.Sprintf("E_INVALID REQ timeout %v out of range 0-%v", opts.MaxReqTimeout+time.Second*2, opts.MaxReqTimeout))
+
+	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
+	test.Equal(t, msgOut.ID, msg.ID)
+
+	delayDone = time.Since(delayStart)
+	t.Log(delayDone)
+	test.Equal(t, delayDone > opts.MaxReqTimeout, true)
+	test.Equal(t, delayDone < opts.MaxReqTimeout+time.Second+time.Duration(time.Millisecond*500*2), true)
 }
 
 func TestDelayMessageToQueueEnd(t *testing.T) {
