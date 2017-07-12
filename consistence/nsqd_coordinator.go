@@ -1328,13 +1328,29 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 		}
 	}
 	countNumIndex, _ = logMgr.ConvertToCountIndex(logIndex, offset)
-	coordLog.Infof("topic %v local commit log match leader %v at: %v:%v:%v", topicInfo.GetTopicDesp(),
-		topicInfo.Leader, logIndex, offset, countNumIndex)
-
-	if offset == localLogSegStart.SegmentStartOffset && logIndex == localLogSegStart.SegmentStartIndex {
-		needFullSync = true
+	if fromDelayedQueue {
+		coordLog.Infof("topic %v delayed queue commit log match leader %v at: %v:%v:%v", topicInfo.GetTopicDesp(),
+			topicInfo.Leader, logIndex, offset, countNumIndex)
+	} else {
+		coordLog.Infof("topic %v local commit log match leader %v at: %v:%v:%v", topicInfo.GetTopicDesp(),
+			topicInfo.Leader, logIndex, offset, countNumIndex)
 	}
 
+	compatibleMethod := false
+	if offset == localLogSegStart.SegmentStartOffset && logIndex == localLogSegStart.SegmentStartIndex {
+		if logIndex == 0 && offset == 0 {
+			// for compatible, if all replica start with 0 (no auto clean happen)
+			_, _, _, _, _, rpcErr := c.GetCommitLogFromOffset(&topicInfo, 0, 0, 0, fromDelayedQueue)
+			coordLog.Infof("catchup start with 0, check return: %v", rpcErr)
+			if rpcErr == nil || rpcErr.IsEqual(ErrTopicCommitLogEOF) {
+				coordLog.Infof("catchup start with 0, We can do full sync in old way since leader is also start with 0")
+				compatibleMethod = true
+			} else {
+				coordLog.Infof("catchup start with 0, need do full sync in new way: %v", rpcErr)
+			}
+		}
+		needFullSync = true
+	}
 	localErr := self.checkAndFixLocalLogQueueData(tc.GetData(), localLogQ, logMgr)
 	if localErr != nil {
 		coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
@@ -1343,6 +1359,7 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 
 	if localLogQ.IsDataNeedFix() {
 		needFullSync = true
+		compatibleMethod = false
 	}
 
 	if !needFullSync {
@@ -1376,64 +1393,81 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 		// we should clean local data, since the local start info maybe different with leader start info
 		coordLog.Infof("local topic %v should do full sync", localTopic.GetFullName())
 		localTopic.PrintCurrentStats()
-		leaderCommitStartInfo, firstLogData, err := c.GetFullSyncInfo(topicInfo.Name,
-			topicInfo.Partition, fromDelayedQueue)
-		if err != nil {
-			coordLog.Warningf("failed to get full sync info: %v", err)
-			if strings.Contains(err.Error(), "unknown service name") {
-				return logIndex, offset, ErrRpcMethodUnknown
+		if compatibleMethod {
+			localTopic.Lock()
+			localErr = localLogQ.ResetBackendEndNoLock(nsqd.BackendOffset(0), 0)
+			localTopic.Unlock()
+			if localErr != nil {
+				coordLog.Errorf("failed to reset local topic data: %v", localErr)
+				return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
-			return logIndex, offset, &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
-		}
-		coordLog.Infof("topic %v full sync with start: %v, %v", localTopic.GetFullName(), leaderCommitStartInfo, firstLogData)
-
-		if fromDelayedQueue {
-			ninfo, err := c.GetNodeInfo(topicInfo.Leader)
+			_, localErr = logMgr.TruncateToOffsetV2(0, 0)
+			if localErr != nil {
+				if localErr != ErrCommitLogEOF {
+					coordLog.Errorf("failed to truncate local commit log to %v:%v: %v", 0, 0, localErr)
+					return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+				}
+			}
+		} else {
+			leaderCommitStartInfo, firstLogData, err := c.GetFullSyncInfo(topicInfo.Name,
+				topicInfo.Partition, fromDelayedQueue)
 			if err != nil {
+				coordLog.Warningf("failed to get full sync info: %v", err)
 				if strings.Contains(err.Error(), "unknown service name") {
 					return logIndex, offset, ErrRpcMethodUnknown
 				}
 				return logIndex, offset, &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
 			}
-			ep := fmt.Sprintf("http://%s%s?topic=%s&partition=%v", net.JoinHostPort(ninfo.NodeIP, ninfo.HttpPort),
-				API_BACKUP_DELAYED_QUEUE_DB, localTopic.GetTopicName(),
-				localTopic.GetTopicPart())
-			// get the boltdb full file
-			coordLog.Infof("begin pull topic %v delayed db file ", localTopic.GetFullName())
-			rsp, err := http.Get(ep)
-			if err != nil {
-				coordLog.Warningf("pull topic %v delayed db file failed: %v", localTopic.GetFullName(), err)
-				return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			coordLog.Infof("topic %v full sync with start: %v, %v", localTopic.GetFullName(), leaderCommitStartInfo, firstLogData)
+
+			if fromDelayedQueue {
+				ninfo, err := c.GetNodeInfo(topicInfo.Leader)
+				if err != nil {
+					if strings.Contains(err.Error(), "unknown service name") {
+						return logIndex, offset, ErrRpcMethodUnknown
+					}
+					return logIndex, offset, &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
+				}
+				ep := fmt.Sprintf("http://%s%s?topic=%s&partition=%v", net.JoinHostPort(ninfo.NodeIP, ninfo.HttpPort),
+					API_BACKUP_DELAYED_QUEUE_DB, localTopic.GetTopicName(),
+					localTopic.GetTopicPart())
+				// get the boltdb full file
+				coordLog.Infof("begin pull topic %v delayed db file ", localTopic.GetFullName())
+				rsp, err := http.Get(ep)
+				if err != nil {
+					coordLog.Warningf("pull topic %v delayed db file failed: %v", localTopic.GetFullName(), err)
+					return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+				}
+				defer rsp.Body.Close()
+				err = localLogQ.(*nsqd.DelayQueue).RestoreKVStoreFrom(rsp.Body)
+				if err != nil {
+					coordLog.Warningf("topic %v delayed db file restore failed: %v", localTopic.GetFullName(), err)
+					return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+				}
+				coordLog.Infof("finished pull topic %v delayed db file ", localTopic.GetFullName())
 			}
-			defer rsp.Body.Close()
-			err = localLogQ.(*nsqd.DelayQueue).RestoreKVStoreFrom(rsp.Body)
-			if err != nil {
-				coordLog.Warningf("topic %v delayed db file restore failed: %v", localTopic.GetFullName(), err)
-				return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			localErr = logMgr.ResetLogWithStart(*leaderCommitStartInfo)
+			if localErr != nil {
+				coordLog.Warningf("reset commit log with start %v failed: %v", leaderCommitStartInfo, localErr)
+				return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
 			}
-			coordLog.Infof("finished pull topic %v delayed db file ", localTopic.GetFullName())
-		}
-		localErr = logMgr.ResetLogWithStart(*leaderCommitStartInfo)
-		if localErr != nil {
-			coordLog.Warningf("reset commit log with start %v failed: %v", leaderCommitStartInfo, localErr)
-			return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
-		}
-		localTopic.Lock()
-		// it is possible that the first log start is 0 and this means the leader queue has the full log (no clean happen)
-		if firstLogData.MsgCnt == 0 {
-			localErr = localLogQ.ResetBackendWithQueueStartNoLock(0, 0)
-		} else {
-			localErr = localLogQ.ResetBackendWithQueueStartNoLock(firstLogData.MsgOffset, firstLogData.MsgCnt-1)
-		}
-		localTopic.Unlock()
-		if localErr != nil {
-			localLogQ.SetDataFixState(true)
-			coordLog.Warningf("reset topic %v queue with start %v failed: %v", topicInfo.GetTopicDesp(), firstLogData, localErr)
-			return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
-		}
-		logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
-		if localErr != nil {
-			return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			localTopic.Lock()
+			// it is possible that the first log start is 0 and this means the leader queue has the full log (no clean happen)
+			if firstLogData.MsgCnt == 0 {
+				localErr = localLogQ.ResetBackendWithQueueStartNoLock(0, 0)
+			} else {
+				localErr = localLogQ.ResetBackendWithQueueStartNoLock(firstLogData.MsgOffset, firstLogData.MsgCnt-1)
+			}
+			localTopic.Unlock()
+			if localErr != nil {
+				localLogQ.SetDataFixState(true)
+				coordLog.Warningf("reset topic %v queue with start %v failed: %v", topicInfo.GetTopicDesp(), firstLogData, localErr)
+				return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
+			logIndex, offset, localErr = logMgr.ConvertToOffsetIndex(leaderCommitStartInfo.SegmentStartCount)
+			if localErr != nil {
+				return logIndex, offset, &CoordErr{localErr.Error(), RpcNoErr, CoordLocalErr}
+			}
 		}
 	}
 	return logIndex, offset, nil
